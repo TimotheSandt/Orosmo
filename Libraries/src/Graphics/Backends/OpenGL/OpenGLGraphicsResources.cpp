@@ -634,12 +634,27 @@ void OpenGLGeometryResource::Unbind() const { glBindVertexArray(0); }
 
 void OpenGLGeometryResource::UpdateVertexData(const float *data, std::size_t floatCount, std::size_t offsetFloats)
 {
-    if (vertexBufferID == 0 || data == nullptr || floatCount == 0 || offsetFloats + floatCount > vertexBufferFloatCount)
+    if (vertexBufferID == 0 || data == nullptr || floatCount == 0)
     {
         return;
     }
 
-    glBindBuffer(GL_ARRAY_BUFFER, vertexBufferID);
+    const std::size_t requiredFloats = offsetFloats + floatCount;
+    if (requiredFloats > vertexBufferFloatCount)
+    {
+        if (!dynamicVertexData)
+        {
+            return;
+        }
+        vertexBufferFloatCount = requiredFloats;
+        glBindBuffer(GL_ARRAY_BUFFER, vertexBufferID);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertexBufferFloatCount * sizeof(float)), nullptr, GL_DYNAMIC_DRAW);
+    }
+    else
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, vertexBufferID);
+    }
+
     glBufferSubData(GL_ARRAY_BUFFER, static_cast<GLintptr>(offsetFloats * sizeof(float)),
                     static_cast<GLsizeiptr>(floatCount * sizeof(float)), data);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -647,12 +662,27 @@ void OpenGLGeometryResource::UpdateVertexData(const float *data, std::size_t flo
 
 void OpenGLGeometryResource::UpdateInstanceData(const float *data, std::size_t floatCount, std::size_t offsetFloats)
 {
-    if (instanceBufferID == 0 || data == nullptr || floatCount == 0 || offsetFloats + floatCount > instanceBufferFloatCount)
+    if (instanceBufferID == 0 || data == nullptr || floatCount == 0)
     {
         return;
     }
 
-    glBindBuffer(GL_ARRAY_BUFFER, instanceBufferID);
+    const std::size_t requiredFloats = offsetFloats + floatCount;
+    if (requiredFloats > instanceBufferFloatCount)
+    {
+        if (!dynamicInstanceData)
+        {
+            return;
+        }
+        instanceBufferFloatCount = requiredFloats;
+        glBindBuffer(GL_ARRAY_BUFFER, instanceBufferID);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(instanceBufferFloatCount * sizeof(float)), nullptr, GL_DYNAMIC_DRAW);
+    }
+    else
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, instanceBufferID);
+    }
+
     glBufferSubData(GL_ARRAY_BUFFER, static_cast<GLintptr>(offsetFloats * sizeof(float)),
                     static_cast<GLsizeiptr>(floatCount * sizeof(float)), data);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -785,7 +815,7 @@ void OpenGLTextureResource::Readback(std::vector<std::byte> &output) const
             bytesPerPixel = sizeof(float);
             break;
         case TextureFormat::RG16F:
-            bytesPerPixel = 2 * sizeof(std::uint16_t);  // 2 × float16
+            bytesPerPixel = 2 * sizeof(std::uint16_t); // 2 × float16
             break;
         case TextureFormat::Depth24Stencil8:
         case TextureFormat::BGRA8:

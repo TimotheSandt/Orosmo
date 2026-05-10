@@ -36,6 +36,8 @@ struct Character
     Texture texture;
     glm::ivec2 size;
     glm::ivec2 bearing;
+    glm::vec2 uvMin = {0.0f, 0.0f};
+    glm::vec2 uvMax = {0.0f, 0.0f};
     unsigned int advance;
     unsigned int glyphIndex = 0;
 };
@@ -145,9 +147,12 @@ class TextRenderer
 
     struct FontData
     {
-        FT_Face face;
+        FT_Face face = nullptr;
         std::unordered_map<char, Character> characters;
-        unsigned int fontSize;
+        Texture atlasTexture;
+        unsigned int fontSize = 0;
+        int atlasWidth = 0;
+        int atlasHeight = 0;
         float visibleAscender = 0.0f;
         float visibleDescender = 0.0f;
         float visibleLineHeight = 0.0f;
@@ -173,6 +178,10 @@ class TextRenderer
     std::unique_ptr<IGeometryResource> glyphGeometry;
     glm::mat4 projection;
     unsigned int screenWidth, screenHeight;
+    std::vector<float> batchedVertices;
+    int projectionUniform = -1;
+    int textColorUniform = -1;
+    int textSamplerUniform = -1;
 
     // Méthodes privées
     void setupRenderData();
