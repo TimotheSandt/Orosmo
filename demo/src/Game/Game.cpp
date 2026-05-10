@@ -347,7 +347,10 @@ void Game::update()
 
 void Game::render()
 {
-    renderer3D.SetOutputResolution(*window.GetWidthptr(), *window.GetHeightptr());
+    const int windowWidth = *window.GetWidthptr();
+    const int windowHeight = *window.GetHeightptr();
+
+    renderer3D.SetOutputResolution(windowWidth, windowHeight);
     renderer3D.BeginPass();
     if (options.profileGpu)
     {
@@ -371,22 +374,24 @@ void Game::render()
 
     if (options.renderUI || options.renderOverlay)
     {
-        rendererUI.SetOutputResolution(*window.GetWidthptr(), *window.GetHeightptr());
+        rendererUI.SetOutputResolution(windowWidth, windowHeight);
         rendererUI.BeginPass();
         if (options.renderOverlay)
         {
+            UI::TextRenderer &tr = *UI::Manager::Instance().GetTextRenderer();
             const glm::vec3 overlayColor(1.0f, 0.8f, 1.0f);
-            rendererUI.RenderText(*textRenderer, "fps: " + std::to_string(int(window.GetAverageFPS())), 10, 10, 0.5f, overlayColor,
+            rendererUI.RenderText(tr, "fps: " + std::to_string(int(window.GetAverageFPS())), 10, 10, 0.5f, overlayColor,
                                   UI::TextAnchor::TopLeft);
             const std::string statsText =
                 std::format("Render: {:.3f}ms\nRender World: {:.3f}ms\nUpscale: {:.3f}ms\nUI Upscale: {:.3f}ms\nSwap Buffers: {:.3f}ms",
-                            averageTimeMs("Render"), averageTimeMs("RenderWorld"), averageTimeMs("Upscale"), averageTimeMs("UIUpscale"),
-                            averageTimeMs("SwapBuffers"));
-            rendererUI.RenderText(*textRenderer, statsText, 10, 50, 0.3f, overlayColor, UI::TextAnchor::TopLeft);
+                            Profiler::GetAverageTimeMs("Render"), Profiler::GetAverageTimeMs("RenderWorld"),
+                            Profiler::GetAverageTimeMs("Upscale"), Profiler::GetAverageTimeMs("UIUpscale"),
+                            Profiler::GetAverageTimeMs("SwapBuffers"));
+            rendererUI.RenderText(tr, statsText, 10, 50, 0.3f, overlayColor, UI::TextAnchor::TopLeft);
         }
         if (options.renderUI)
         {
-            UI::Manager::Instance().Render(rendererUI, *window.GetWidthptr(), *window.GetHeightptr());
+            UI::Manager::Instance().Render(rendererUI, windowWidth, windowHeight);
         }
         if (options.profileGpu)
         {

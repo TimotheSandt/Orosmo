@@ -27,7 +27,7 @@ class Manager
     void CreateUI(int w, int h, const Window *window = nullptr);
 
     void Update(float dt, int w, int h);
-    void Render(int w, int h);
+    void Render(Renderer2D &renderer2D, int w, int h);
 
     void SetRootContainer(std::shared_ptr<Container> root) { rootContainer = std::move(root); }
     std::shared_ptr<Container> GetRootContainer() { return rootContainer; }

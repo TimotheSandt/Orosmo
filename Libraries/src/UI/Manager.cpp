@@ -94,28 +94,26 @@ void Manager::Update(float dt, int w, int h)
     rootContainer->Update();
 }
 
-void Manager::Render(int w, int h)
+void Manager::Render(Renderer2D &externalRenderer, int w, int h)
 {
     if (!active)
     {
         return;
     }
 
-    // Ensure UI exists
     if (!rootContainer)
     {
         Init(w, h, window);
     }
 
-    renderer2D.SetOutputResolution(w, h);
-    renderer2D.BeginPass();
-    renderer2D.BeginCanvasPass();
+    // Apply Manager-owned render settings to the caller's renderer
+    externalRenderer.SetRenderScale(renderer2D.GetRenderScale());
+    externalRenderer.SetUpscalingEnabled(renderer2D.IsUpscalingEnabled());
 
-    // Draw root container with screen as container size
+    externalRenderer.BeginCanvasPass();
     glm::vec2 screenSize = {static_cast<float>(w), static_cast<float>(h)};
     rootContainer->Draw(screenSize, {0, 0});
-    renderer2D.EndCanvasPass();
-    renderer2D.EndPass();
+    externalRenderer.EndCanvasPass();
 }
 
 } // namespace UI

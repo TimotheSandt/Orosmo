@@ -78,6 +78,8 @@ constexpr double MsdfAngleThreshold = 3.0;
 constexpr unsigned long long MsdfColoringSeed = 0;
 constexpr int GlyphAtlasWidth = 1024;
 constexpr int GlyphAtlasPadding = 1;
+constexpr std::size_t GlyphQuadVertexCount = 6;
+constexpr std::size_t GlyphQuadFloatCount = GlyphQuadVertexCount * 4;
 
 struct TextLineMetrics
 {
