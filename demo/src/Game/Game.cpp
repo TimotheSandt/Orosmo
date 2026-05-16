@@ -14,6 +14,7 @@
 
 #include "Graphics/Core/GraphicsRuntime.h"
 #include "Graphics/Core/WindowContext.h"
+#include "UI/Views/PerformanceView.gen.h"
 
 namespace
 {
@@ -194,7 +195,9 @@ void Game::init()
 
     // Initialize UI system
     UI::Manager::Instance().Init(*window.GetWidthptr(), *window.GetHeightptr());
-    UI::Manager::Instance().SetActive(options.renderUI);
+    UI::Manager::Instance().SetActive(options.renderUI || options.renderOverlay);
+    UI::Manager::Instance().GetRootContainer()->AddChild(UI::CreatePerformanceView(&window));
+
     LOG_INFO("Game initialized: world=", WorldModeToString(options.worldMode),
              ", overlay=", options.renderOverlay ? "on" : "off", ", ui=", options.renderUI ? "on" : "off",
              ", gpuProfiler=", options.profileGpu ? "on" : "off");
@@ -339,7 +342,7 @@ void Game::update()
 
     this->world->Update();
 
-    if (options.renderUI)
+    if (options.renderUI || options.renderOverlay)
     {
         UI::Manager::Instance().Update(deltaTime, *window.GetWidthptr(), *window.GetHeightptr());
     }
@@ -376,23 +379,7 @@ void Game::render()
     {
         rendererUI.SetOutputResolution(windowWidth, windowHeight);
         rendererUI.BeginPass();
-        if (options.renderOverlay)
-        {
-            UI::TextRenderer &tr = *UI::Manager::Instance().GetTextRenderer();
-            const glm::vec3 overlayColor(1.0f, 0.8f, 1.0f);
-            rendererUI.RenderText(tr, "fps: " + std::to_string(int(window.GetAverageFPS())), 10, 10, 0.5f, overlayColor,
-                                  UI::TextAnchor::TopLeft);
-            const std::string statsText =
-                std::format("Render: {:.3f}ms\nRender World: {:.3f}ms\nUpscale: {:.3f}ms\nUI Upscale: {:.3f}ms\nSwap Buffers: {:.3f}ms",
-                            Profiler::GetAverageTimeMs("Render"), Profiler::GetAverageTimeMs("RenderWorld"),
-                            Profiler::GetAverageTimeMs("Upscale"), Profiler::GetAverageTimeMs("UIUpscale"),
-                            Profiler::GetAverageTimeMs("SwapBuffers"));
-            rendererUI.RenderText(tr, statsText, 10, 50, 0.3f, overlayColor, UI::TextAnchor::TopLeft);
-        }
-        if (options.renderUI)
-        {
-            UI::Manager::Instance().Render(rendererUI, windowWidth, windowHeight);
-        }
+        UI::Manager::Instance().Render(rendererUI, windowWidth, windowHeight);
         if (options.profileGpu)
         {
             Profiler::ProfileGPU("UIUpscale", &Renderer2D::EndPass, &rendererUI);

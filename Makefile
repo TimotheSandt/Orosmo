@@ -29,6 +29,7 @@
 # ── Combined ──────────────────────────────────────────────────────────────────
 #   make all-debug             engine debug → sync → demo debug
 #   make all-release           engine release → sync → demo release
+#   make clean-all             remove all engine/demo artifacts and vcpkg installs
 #   make setup                 install engine deps + make engine + demo deps + demo debug
 #   make setup-run             setup + run demo
 #
@@ -117,7 +118,7 @@ demo-search:
 	$(MAKE) -C demo search Q=$(Q) VCPKG=$(VCPKG)
 
 # ── Combined ──────────────────────────────────────────────────────────────────
-.PHONY: all-debug all-release setup setup-run
+.PHONY: all-debug all-release clean-all setup setup-run
 
 all-debug:
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=debug
@@ -126,6 +127,14 @@ all-debug:
 all-release:
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
 	$(MAKE) -C demo release
+
+clean-all:
+	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=debug
+	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=dev
+	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=release
+	$(MAKE) -C demo fclean
+	@rm -rf vcpkg_installed demo/vcpkg_installed demo/engine/vcpkg_installed
+	@echo "Removed all engine/demo build artifacts and vcpkg installs"
 
 # install engine deps → prepare full engine → install demo deps → build demo
 setup:

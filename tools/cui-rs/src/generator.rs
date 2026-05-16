@@ -41,6 +41,10 @@ impl<'a> Generator<'a> {
         let lets = let_fields(view);
         let funcs = func_fields(view);
         let cpp_blocks = cpp_fields(view);
+        let default_bounds =
+            GenContext::empty(self.registry).extract_static_root_frame_bounds(&view.root);
+        let has_parameter_only_overload = default_bounds.is_some()
+            && (!observed.is_empty() || !mutable_fields.is_empty() || !snapshot.is_empty());
 
         let mut includes = BTreeSet::from([
             "UI/View.h".to_string(),
@@ -77,12 +81,22 @@ impl<'a> Generator<'a> {
         header.push("{".to_string());
         header.push("public:".to_string());
         let ctor_params = self.ctor_params(&observed, &mutable_fields, &snapshot, true);
+        if default_bounds.is_some() {
+            header.push("    static UI::Bounds DefaultBounds();".to_string());
+        }
         header.push(format!("    explicit {}({ctor_params});", view.name));
+        if has_parameter_only_overload {
+            let field_params = self.field_params(&observed, &mutable_fields, &snapshot, false);
+            header.push(format!("    explicit {}({field_params});", view.name));
+        }
         header.push(String::new());
         header.push("protected:".to_string());
         header.push("    void Build() override;".to_string());
         header.push(String::new());
         header.push("private:".to_string());
+        if default_bounds.is_some() {
+            header.push("    static UI::Bounds ResolveBounds(UI::Bounds bounds);".to_string());
+        }
         for field in &observed {
             header.push(format!(
                 "    const {}* {} = nullptr;",
@@ -132,6 +146,14 @@ impl<'a> Generator<'a> {
             view.name, view.name
         ));
         header.push(format!("    {ctor_params});"));
+        if has_parameter_only_overload {
+            let field_params = self.field_params(&observed, &mutable_fields, &snapshot, false);
+            header.push(format!(
+                "std::shared_ptr<{}> Create{}(",
+                view.name, view.name
+            ));
+            header.push(format!("    {field_params});"));
+        }
         header.push(String::new());
         header.push("} // namespace ui::generated".to_string());
         header.push(String::new());
@@ -154,14 +176,60 @@ impl<'a> Generator<'a> {
         cpp.push("namespace ui::generated".to_string());
         cpp.push("{".to_string());
         cpp.push(String::new());
+        if let Some(default_bounds) = &default_bounds {
+            cpp.push(format!("UI::Bounds {}::DefaultBounds()", view.name));
+            cpp.push("{".to_string());
+            cpp.push(format!("    return {default_bounds};"));
+            cpp.push("}".to_string());
+            cpp.push(String::new());
+            cpp.push(format!(
+                "UI::Bounds {}::ResolveBounds(UI::Bounds bounds)",
+                view.name
+            ));
+            cpp.push("{".to_string());
+            cpp.push(
+                "    const bool isDefaultConstructedBounds = bounds.width.value == 0.0 &&"
+                    .to_string(),
+            );
+            cpp.push(
+                "        bounds.width.type == UI::ValueType::PIXEL && bounds.height.value == 0.0 &&"
+                    .to_string(),
+            );
+            cpp.push(
+                "        bounds.height.type == UI::ValueType::PIXEL && bounds.anchor == UI::Anchor::TOP_LEFT;"
+                    .to_string(),
+            );
+            cpp.push(
+                "    return isDefaultConstructedBounds ? DefaultBounds() : bounds;".to_string(),
+            );
+            cpp.push("}".to_string());
+            cpp.push(String::new());
+        }
         let ctor_params_nodef = self.ctor_params(&observed, &mutable_fields, &snapshot, false);
         let ctor_init = self.ctor_init(&observed, &mutable_fields, &snapshot);
         cpp.push(format!("{}::{}({ctor_params_nodef})", view.name, view.name));
-        cpp.push(format!("    : UI::View(bounds, false){ctor_init}"));
+        let ctor_bounds = if default_bounds.is_some() {
+            "ResolveBounds(bounds)"
+        } else {
+            "bounds"
+        };
+        cpp.push(format!("    : UI::View({ctor_bounds}, false){ctor_init}"));
         cpp.push("{".to_string());
         cpp.push("    DoSetIdentifierKind(UI::IdentifierKind::TRANSPARENT);".to_string());
         cpp.push("}".to_string());
         cpp.push(String::new());
+        if has_parameter_only_overload {
+            let field_params = self.field_params(&observed, &mutable_fields, &snapshot, false);
+            let field_args = self.field_args(&observed, &mutable_fields, &snapshot);
+            cpp.push(format!("{}::{}({field_params})", view.name, view.name));
+            cpp.push(format!(
+                "    : {}(DefaultBounds(), {field_args})",
+                view.name
+            ));
+            cpp.push("{".to_string());
+            cpp.push("}".to_string());
+            cpp.push(String::new());
+        }
         cpp.push(format!("void {}::Build()", view.name));
         cpp.push("{".to_string());
         for let_decl in &lets {
@@ -216,6 +284,21 @@ impl<'a> Generator<'a> {
         ));
         cpp.push("}".to_string());
         cpp.push(String::new());
+        if has_parameter_only_overload {
+            let field_params = self.field_params(&observed, &mutable_fields, &snapshot, false);
+            let field_args = self.field_args(&observed, &mutable_fields, &snapshot);
+            cpp.push(format!(
+                "std::shared_ptr<{}> Create{}(\n    {field_params})",
+                view.name, view.name
+            ));
+            cpp.push("{".to_string());
+            cpp.push(format!(
+                "    return std::make_shared<{}>({}::DefaultBounds(), {field_args});",
+                view.name, view.name
+            ));
+            cpp.push("}".to_string());
+            cpp.push(String::new());
+        }
         cpp.push("} // namespace ui::generated".to_string());
 
         Ok((header, cpp))
@@ -244,6 +327,41 @@ impl<'a> Generator<'a> {
         } else {
             "UI::Bounds bounds".to_string()
         }];
+        for field in observed {
+            params.push(format!(
+                "const {}* {}{}",
+                Self::dsl_to_cpp_type(&field.type_name),
+                field.name,
+                if with_defaults { " = nullptr" } else { "" }
+            ));
+        }
+        for field in mutable_fields {
+            params.push(format!(
+                "{}* {}{}",
+                Self::dsl_to_cpp_type(&field.type_name),
+                field.name,
+                if with_defaults { " = nullptr" } else { "" }
+            ));
+        }
+        for field in snapshot {
+            params.push(format!(
+                "{} {}{}",
+                Self::dsl_to_cpp_type(&field.type_name),
+                field.name,
+                if with_defaults { " = {}" } else { "" }
+            ));
+        }
+        params.join(", ")
+    }
+
+    fn field_params(
+        &self,
+        observed: &[WrappedField],
+        mutable_fields: &[WrappedField],
+        snapshot: &[WrappedField],
+        with_defaults: bool,
+    ) -> String {
+        let mut params = Vec::new();
         for field in observed {
             params.push(format!(
                 "const {}* {}{}",
@@ -305,6 +423,21 @@ impl<'a> Generator<'a> {
                 .map(|field| field.name.clone()),
         );
         args.join(", ")
+    }
+
+    fn field_args(
+        &self,
+        observed: &[WrappedField],
+        mutable_fields: &[WrappedField],
+        snapshot: &[WrappedField],
+    ) -> String {
+        observed
+            .iter()
+            .chain(mutable_fields.iter())
+            .chain(snapshot.iter())
+            .map(|field| field.name.clone())
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     fn gen_func_sig(&self, function: &FuncDecl, static_decl: bool, qualified: &str) -> String {
@@ -713,6 +846,26 @@ impl<'a> GenContext<'a> {
             .find(|modifier| modifier.name == "frame")
             .map(|modifier| self.gen_frame_bounds(modifier))
             .unwrap_or_default()
+    }
+
+    fn extract_static_root_frame_bounds(&self, element: &Element) -> Option<String> {
+        let modifier = element
+            .modifiers
+            .iter()
+            .find(|modifier| modifier.name == "frame")?;
+
+        let width_is_static = matches!(modifier.named_args.get("width"), Some(Expr::Number(_)));
+        let height_is_static = matches!(modifier.named_args.get("height"), Some(Expr::Number(_)));
+        let anchor_is_static = modifier
+            .named_args
+            .get("anchor")
+            .map_or(true, |expr| matches!(expr, Expr::EnumCase(_)));
+
+        if width_is_static && height_is_static && anchor_is_static {
+            Some(self.gen_frame_bounds(modifier))
+        } else {
+            None
+        }
     }
 
     fn gen_frame_bounds(&self, modifier: &Modifier) -> String {

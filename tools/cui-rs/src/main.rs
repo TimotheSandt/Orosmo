@@ -20,6 +20,8 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 const HASH_TAG: &str = "// @cui-hash:";
+// Bump this whenever generator output changes without a corresponding .cui syntax change.
+const OUTPUT_FORMAT_VERSION: &str = "2";
 
 fn main() {
     if let Err(err) = run_cli() {
@@ -325,7 +327,12 @@ fn read_registry(path: &Path) -> Result<Registry, String> {
 
 fn source_hash(source: &str) -> String {
     let mut hash = 0xcbf29ce484222325u64;
-    for byte in source.as_bytes() {
+    for byte in OUTPUT_FORMAT_VERSION
+        .as_bytes()
+        .iter()
+        .chain(std::iter::once(&b'\n'))
+        .chain(source.as_bytes().iter())
+    {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x100000001b3);
     }

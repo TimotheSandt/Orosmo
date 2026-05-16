@@ -1,5 +1,4 @@
 #include "Manager.h"
-#include "Layout/HBox.h"
 #include "Layout/VBox.h"
 #include "Widgets.h"
 #include "Window.h"
@@ -32,24 +31,12 @@ void Manager::CreateUI(int w, int h, const Window *windowArg)
 {
     window = windowArg;
 
-    // Create root with actual window size (not percentage)
     rootContainer = CreateContainer(
         Bounds({static_cast<float>(w), ValueType::PIXEL}, {static_cast<float>(h), ValueType::PIXEL}),
         {
             CreateVBox(Bounds(200_px, 200_px, Anchor::CENTER), {
                 CreateBox(Bounds(150_px, 50_px), {1.0f, 0.2f, 0.2f, 1.0f}),
                 CreateBox(Bounds(100_px, 50_px), {0.2f, 1.0f, 0.2f, 1.0f}),
-                CreateHBox(Bounds(150_px, 75_px), {
-                    CreateBox(Bounds(40_pct, 100_pct), {0.2f, 0.2f, 1.0f, 1.0f}),
-                    CreateBox(Bounds(40_pct, 100_pct), {1.0f, 0.2f, 0.2f, 1.0f}),
-                    CreateBox(Bounds(40_pct, 100_pct), {0.2f, 1.0f, 0.2f, 1.0f})
-                })
-                        ->SetColor(glm::vec4{0.3f, 0.9f, 0.4f, 1.0f})
-                        ->SetPadding(10.0f)
-                        ->SetJustifyContent(UI::JustifyContent::CENTER)
-                        ->SetOverflowMode(UI::OverflowMode::WRAP)
-                        ->SetChildrenDeform(true)
-                        ->SetChildAlignment(UI::VAlign::CENTER)
             })
              ->SetPadding(10.0f)
              ->SetSpacing(5.0f)
@@ -57,7 +44,6 @@ void Manager::CreateUI(int w, int h, const Window *windowArg)
              ->SetJustifyContent(UI::JustifyContent::CENTER)
              ->SetChildAlignment(UI::HAlign::CENTER),
         });
-
     rootContainer->SetIdentifierKind(UI::IdentifierKind::TRANSPARENT);
     rootContainer->Initialize();
 }
