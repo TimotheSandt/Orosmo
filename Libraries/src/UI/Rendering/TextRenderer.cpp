@@ -94,29 +94,11 @@ struct GlyphBitmap
     int bearingX = 0;
     int bearingY = 0;
     unsigned int advance = 0;
+    unsigned int glyphIndex = 0;
     int atlasX = 0;
     int atlasY = 0;
     std::vector<unsigned char> pixels;
 };
-
-void CopyGlyphBitmap(const FT_Bitmap &bitmap, std::vector<unsigned char> &pixels)
-{
-    const int width = static_cast<int>(bitmap.width);
-    const int height = static_cast<int>(bitmap.rows);
-    pixels.assign(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), 0);
-    if (bitmap.buffer == nullptr || width <= 0 || height <= 0)
-    {
-        return;
-    }
-
-    const int pitch = bitmap.pitch;
-    for (int row = 0; row < height; ++row)
-    {
-        const unsigned char *source = pitch >= 0 ? bitmap.buffer + row * pitch : bitmap.buffer + (height - 1 - row) * (-pitch);
-        std::memcpy(pixels.data() + static_cast<std::size_t>(row) * static_cast<std::size_t>(width), source,
-                    static_cast<std::size_t>(width));
-    }
-}
 
 float GetVisibleAscenderPixels(const Character &character)
 {
@@ -357,6 +339,46 @@ std::vector<std::uint8_t> GenerateMtsdfBitmap(msdfgen::Shape shape, int width, i
     return bitmap;
 }
 
+GlyphBitmap BuildMtsdfGlyphBitmap(FT_Face face, unsigned char c)
+{
+    GlyphBitmap glyph;
+    glyph.character = static_cast<char>(c);
+
+    if (FT_Load_Char(face, c, FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING) != 0)
+    {
+        LOG_ERROR(1, "ERROR::FREETYPE: Failed to load glyph '", static_cast<char>(c), "'");
+        return glyph;
+    }
+
+    glyph.advance = static_cast<unsigned int>(face->glyph->advance.x);
+    glyph.glyphIndex = static_cast<unsigned int>(FT_Get_Char_Index(face, static_cast<FT_ULong>(c)));
+
+    if (face->glyph->format != FT_GLYPH_FORMAT_OUTLINE || face->glyph->outline.n_contours <= 0)
+    {
+        return glyph;
+    }
+
+    msdfgen::Shape shape = BuildShapeFromOutline(face->glyph->outline);
+    if (shape.contours.empty() || shape.edgeCount() <= 0 || !shape.validate())
+    {
+        return glyph;
+    }
+
+    FT_BBox boundingBox{};
+    FT_Outline_Get_CBox(&face->glyph->outline, &boundingBox);
+    const float minX = std::floor(static_cast<float>(boundingBox.xMin) / 64.0f) - static_cast<float>(MsdfPaddingPixels);
+    const float minY = std::floor(static_cast<float>(boundingBox.yMin) / 64.0f) - static_cast<float>(MsdfPaddingPixels);
+    const float maxX = std::ceil(static_cast<float>(boundingBox.xMax) / 64.0f) + static_cast<float>(MsdfPaddingPixels);
+    const float maxY = std::ceil(static_cast<float>(boundingBox.yMax) / 64.0f) + static_cast<float>(MsdfPaddingPixels);
+
+    glyph.width = std::max(1, static_cast<int>(std::ceil(maxX - minX)));
+    glyph.height = std::max(1, static_cast<int>(std::ceil(maxY - minY)));
+    glyph.bearingX = static_cast<int>(std::floor(static_cast<float>(boundingBox.xMin) / 64.0f)) - MsdfPaddingPixels;
+    glyph.bearingY = static_cast<int>(std::ceil(static_cast<float>(boundingBox.yMax) / 64.0f)) + MsdfPaddingPixels;
+    glyph.pixels = GenerateMtsdfBitmap(std::move(shape), glyph.width, glyph.height, minX, minY);
+    return glyph;
+}
+
 } // namespace
 
 TextRenderer::TextRenderer() : ft(nullptr), screenWidth(800), screenHeight(600) {}
@@ -397,6 +419,8 @@ bool TextRenderer::init(unsigned int width, unsigned int height)
     projectionUniform = shaderProgram.GetUniformLocation("projection");
     textColorUniform = shaderProgram.GetUniformLocation("textColor");
     textSamplerUniform = shaderProgram.GetUniformLocation("text");
+    msdfPixelRangeUniform = shaderProgram.GetUniformLocation("msdfPixelRange");
+    msdfWeightUniform = shaderProgram.GetUniformLocation("msdfWeight");
 
     return shaderProgram.IsCompiled() && glyphGeometry != nullptr;
 }
@@ -492,23 +516,8 @@ bool TextRenderer::ensureFontLoaded(const std::string &fontName, unsigned int fo
     glyphs.reserve(128);
     for (unsigned char c = 0; c < 128; ++c)
     {
-        if (FT_Load_Char(face, c, FT_LOAD_RENDER) != 0)
-        {
-            LOG_ERROR(1, "ERROR::FREETYPE: Failed to load glyph '", static_cast<char>(c), "'");
-            continue;
-        }
-
-        GlyphBitmap glyph;
-        glyph.character = static_cast<char>(c);
-        glyph.width = static_cast<int>(face->glyph->bitmap.width);
-        glyph.height = static_cast<int>(face->glyph->bitmap.rows);
-        glyph.bearingX = face->glyph->bitmap_left;
-        glyph.bearingY = face->glyph->bitmap_top;
-        glyph.advance = static_cast<unsigned int>(face->glyph->advance.x);
-        CopyGlyphBitmap(face->glyph->bitmap, glyph.pixels);
-        glyphs.push_back(std::move(glyph));
+        glyphs.push_back(BuildMtsdfGlyphBitmap(face, c));
     }
-    computeFontMetrics(fontData);
 
     int cursorX = GlyphAtlasPadding;
     int cursorY = GlyphAtlasPadding;
@@ -530,7 +539,7 @@ bool TextRenderer::ensureFontLoaded(const std::string &fontName, unsigned int fo
 
     fontData.atlasWidth = GlyphAtlasWidth;
     fontData.atlasHeight = std::max(1, cursorY + rowHeight + GlyphAtlasPadding);
-    std::vector<unsigned char> atlasPixels(static_cast<std::size_t>(fontData.atlasWidth) * static_cast<std::size_t>(fontData.atlasHeight),
+    std::vector<unsigned char> atlasPixels(static_cast<std::size_t>(fontData.atlasWidth) * static_cast<std::size_t>(fontData.atlasHeight) * 4U,
                                            0);
 
     for (const GlyphBitmap &glyph : glyphs)
@@ -539,6 +548,7 @@ bool TextRenderer::ensureFontLoaded(const std::string &fontName, unsigned int fo
         character.size = {glyph.width, glyph.height};
         character.bearing = {glyph.bearingX, glyph.bearingY};
         character.advance = glyph.advance;
+        character.glyphIndex = glyph.glyphIndex;
         if (glyph.width > 0 && glyph.height > 0)
         {
             character.uvMin = {static_cast<float>(glyph.atlasX) / static_cast<float>(fontData.atlasWidth),
@@ -548,71 +558,24 @@ bool TextRenderer::ensureFontLoaded(const std::string &fontName, unsigned int fo
 
             for (int row = 0; row < glyph.height; ++row)
             {
-                const std::size_t dstOffset = static_cast<std::size_t>(glyph.atlasY + row) * static_cast<std::size_t>(fontData.atlasWidth) +
-                                              static_cast<std::size_t>(glyph.atlasX);
-                const std::size_t srcOffset = static_cast<std::size_t>(row) * static_cast<std::size_t>(glyph.width);
-                std::memcpy(atlasPixels.data() + dstOffset, glyph.pixels.data() + srcOffset, static_cast<std::size_t>(glyph.width));
+                const std::size_t dstOffset =
+                    (static_cast<std::size_t>(glyph.atlasY + row) * static_cast<std::size_t>(fontData.atlasWidth) +
+                     static_cast<std::size_t>(glyph.atlasX)) *
+                    4U;
+                const std::size_t srcOffset = static_cast<std::size_t>(row) * static_cast<std::size_t>(glyph.width) * 4U;
+                std::memcpy(atlasPixels.data() + dstOffset, glyph.pixels.data() + srcOffset,
+                            static_cast<std::size_t>(glyph.width) * 4U);
             }
         }
         fontData.characters.emplace(glyph.character, std::move(character));
     }
 
-    fontData.atlasTexture = Texture(atlasPixels.data(), fontData.atlasWidth, fontData.atlasHeight, "text", 0, TextureFormat::R8,
-                                    TexturePixelType::UnsignedByte, TextureFilterMode::Linear);
+    computeFontMetrics(fontData);
+    fontData.atlasTexture = Texture(atlasPixels.data(), fontData.atlasWidth, fontData.atlasHeight, "text", 0, TextureFormat::RGBA8,
+                                    TexturePixelType::UnsignedByte, TextureFilterMode::LinearNoMipmaps);
 
     fonts[cacheKey] = std::move(fontData);
     return true;
-}
-
-Character TextRenderer::loadCharacter(FT_Face face, char c)
-{
-    if (FT_Load_Char(face, c, FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING) != 0)
-    {
-        LOG_ERROR(1, "ERROR::FREETYPE: Failed to load glyph '", c, "'");
-        return {};
-    }
-
-    Character character;
-    character.advance = static_cast<unsigned int>(face->glyph->advance.x);
-    character.glyphIndex = static_cast<unsigned int>(FT_Get_Char_Index(face, static_cast<FT_ULong>(static_cast<unsigned char>(c))));
-
-    if (face->glyph->format != FT_GLYPH_FORMAT_OUTLINE || face->glyph->outline.n_contours <= 0)
-    {
-        static constexpr std::uint8_t EmptyMsdfPixel[4] = {0, 0, 0, 0};
-        character.texture = Texture(const_cast<std::uint8_t *>(EmptyMsdfPixel), 1, 1, "text", 0, TextureFormat::RGBA8,
-                                    TexturePixelType::UnsignedByte, TextureFilterMode::LinearNoMipmaps);
-        character.size = {0, 0};
-        character.bearing = {0, 0};
-        return character;
-    }
-
-    msdfgen::Shape shape = BuildShapeFromOutline(face->glyph->outline);
-    if (shape.contours.empty() || shape.edgeCount() <= 0 || !shape.validate())
-    {
-        static constexpr std::uint8_t EmptyMsdfPixel[4] = {0, 0, 0, 0};
-        character.texture = Texture(const_cast<std::uint8_t *>(EmptyMsdfPixel), 1, 1, "text", 0, TextureFormat::RGBA8,
-                                    TexturePixelType::UnsignedByte, TextureFilterMode::LinearNoMipmaps);
-        character.size = {0, 0};
-        character.bearing = {0, 0};
-        return character;
-    }
-
-    FT_BBox boundingBox{};
-    FT_Outline_Get_CBox(&face->glyph->outline, &boundingBox);
-    const float minX = std::floor(static_cast<float>(boundingBox.xMin) / 64.0f) - static_cast<float>(MsdfPaddingPixels);
-    const float minY = std::floor(static_cast<float>(boundingBox.yMin) / 64.0f) - static_cast<float>(MsdfPaddingPixels);
-    const float maxX = std::ceil(static_cast<float>(boundingBox.xMax) / 64.0f) + static_cast<float>(MsdfPaddingPixels);
-    const float maxY = std::ceil(static_cast<float>(boundingBox.yMax) / 64.0f) + static_cast<float>(MsdfPaddingPixels);
-    const int width = std::max(1, static_cast<int>(std::ceil(maxX - minX)));
-    const int height = std::max(1, static_cast<int>(std::ceil(maxY - minY)));
-
-    std::vector<std::uint8_t> bitmap = GenerateMtsdfBitmap(std::move(shape), width, height, minX, minY);
-    character.texture = Texture(bitmap.data(), width, height, "text", 0, TextureFormat::RGBA8, TexturePixelType::UnsignedByte,
-                                TextureFilterMode::LinearNoMipmaps);
-    character.size = {width, height};
-    character.bearing = {static_cast<int>(std::floor(static_cast<float>(boundingBox.xMin) / 64.0f)) - MsdfPaddingPixels,
-                         static_cast<int>(std::ceil(static_cast<float>(boundingBox.yMax) / 64.0f)) + MsdfPaddingPixels};
-    return character;
 }
 
 void TextRenderer::setActiveFont(const std::string &fontName)
@@ -755,6 +718,7 @@ void TextRenderer::renderText(const std::string &text, float x, float y, float s
     const float desiredPixelSize =
         registrationIt != fontRegistrations.end() ? static_cast<float>(registrationIt->second.baseSize) * std::max(scale, 0.01f) : lineHeight;
     const bool snapToPixels = desiredPixelSize >= SmallTextPixelSnapThreshold;
+    const float msdfWeight = desiredPixelSize <= SmallTextWeightPixelThreshold ? SmallTextWeight : 0.0f;
     const auto maybeRound = [snapToPixels](float value) { return snapToPixels ? std::round(value) : value; };
 
     const float startX = x + anchorOffset.x;
@@ -826,7 +790,10 @@ void TextRenderer::renderText(const std::string &text, float x, float y, float s
     shaderProgram.SetUniformMatrix4(projectionUniform, &projection[0][0]);
     shaderProgram.SetUniformFloats(textColorUniform, &color[0], 3);
     const int textureSlot = 0;
+    const float msdfPixelRange = MsdfPixelRange;
     shaderProgram.SetUniformInts(textSamplerUniform, &textureSlot, 1);
+    shaderProgram.SetUniformFloats(msdfPixelRangeUniform, &msdfPixelRange, 1);
+    shaderProgram.SetUniformFloats(msdfWeightUniform, &msdfWeight, 1);
 
     fontData.atlasTexture.Bind();
     glyphGeometry->Bind();

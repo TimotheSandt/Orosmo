@@ -182,10 +182,11 @@ class TextRenderer
     int projectionUniform = -1;
     int textColorUniform = -1;
     int textSamplerUniform = -1;
+    int msdfPixelRangeUniform = -1;
+    int msdfWeightUniform = -1;
 
     // Méthodes privées
     void setupRenderData();
-    Character loadCharacter(FT_Face face, char c);
     void computeFontMetrics(FontData &fontData);
     glm::vec2 calculateAnchorOffset(const std::string &text, float scale, TextAnchor anchor);
     bool ensureFontLoaded(const std::string &fontName, unsigned int fontSize);
