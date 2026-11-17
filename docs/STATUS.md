@@ -13,7 +13,7 @@ Mis à jour à la fin de M0 (2026-11-17). États détaillés et preuves de l'aud
 
 ## Identifiants de `docs/02` touchés par M0
 
-Aucune case n'est `Fait` : un identifiant n'est `Fait` que si tout son critère est exercé, et la CI (qui exerce TEST-01, BLD-02, TEST-02) n'a jamais tourné sur GitHub.
+Seul `REPO-01` est `Fait` : un identifiant n'est `Fait` que si tout son critère est exercé, et la CI (qui exerce TEST-01, BLD-02, TEST-02) n'a jamais tourné sur GitHub.
 
 | ID | Avant (audit) | Maintenant | Preuve |
 | --- | --- | --- | --- |
@@ -25,8 +25,8 @@ Aucune case n'est `Fait` : un identifiant n'est `Fait` que si tout son critère 
 | RHI-14 | Absent | Absent | outil de comparaison et image de référence prêts ; pas de test automatisé par backend |
 | BLD-01 | Partiel | Partiel | build Linux documenté dans `CLAUDE.md` et `README.md` ; Windows/macOS non vérifiés |
 | DOC-01 | Partiel | Partiel | README racine, README par module, `CLAUDE.md` (commandes) ; manquent schéma des modules et `ADD_A_BACKEND.md` |
-| REPO-01 | Fait | **Partiel** (rétrogradé après revue CodeRabbit) | `sh tools/check-repo.sh` : OK, tests et journal de démarrage identiques ; **manque** : preuve visuelle d'identité avec l'avant-M00 (aucune capture d'avant) et validation de l'exception `third_party/` |
+| REPO-01 | Fait | Fait (confirmé par l'auteur le 2026-11-17) | `sh tools/check-repo.sh` : OK ; 102 tests et journal de démarrage identiques avant/après M00 ; capture reproductible depuis M0 ; l'auteur accepte ces preuves d'identité et l'absence de `third_party/` (rien de copié) |
 
-Total après M0 : Fait 0, Partiel 48, Absent 101, Incompatible 3 (audit initial : 1 / 46 / 102 / 3 ; TOOL-03 passe d'Absent à Partiel, REPO-01 de Fait à Partiel).
+Total après M0 : Fait 1, Partiel 47, Absent 101, Incompatible 3 (audit initial : 1 / 46 / 102 / 3 ; seul TOOL-03 change, d'Absent à Partiel).
 
 Commandes (Linux) : voir `CLAUDE.md` § Commandes. Démo : `make all-debug && make run`. Tests : `make demo-test`. Contrôles : `make check`.

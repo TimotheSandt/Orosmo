@@ -84,3 +84,21 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 **A22. REPO-01 rétrogradé en `Partiel`** (remarque CodeRabbit, juste : « comportement identique » exigeait des captures d'avant M00, qui n'existent pas, et l'exception `third_party/` n'est pas validée). Pour le repasser à `Fait` : valider l'absence de `third_party/` (rien de copié) et accepter que la preuve d'identité soit tests + journal de démarrage + capture reproductible. *Ton accord demandé.*
 
 **A23. Dédoublonnage de la CI et validation du commit de fusion.** CodeRabbit (2e passage) objecte que `pull_request` teste le **commit de fusion** `dev` + `main`, pas la tête de `dev` : le dédoublonnage que tu m'as demandé retire cette validation. Dans ton flux, `main` ne reçoit que des fusions de `dev`, donc le commit de fusion est identique à la tête de `dev` tant que `main` n'a pas divergé ; le risque est faible et le gain est de 12 minutes de macOS par push. **Je garde le dédoublonnage** ; si `main` reçoit un jour autre chose que `dev`, retire la condition `if:` des trois jobs de `.github/workflows/ci.yml`. *Ton avis demandé.*
+
+## Réponses de l'auteur (2026-11-17, après M0) et suites
+
+| Point | Décision | Application |
+| --- | --- | --- |
+| A17 | Option 1 : migration au fil des jalons | Inscrit (CLAUDE.md « Conventions de code ») |
+| A20 | TEST-01 : framework et CI en M0, couverture de `core` en M1 et de `world` en M3, **sous le même identifiant** | `docs/05` modifié (M0 et M1) |
+| A9 | Un **M1 bis** après M1 pour les nettoyages de couches avant M2 | `docs/05` : section « M1 bis » ajoutée |
+| A22 | REPO-01 reste `Fait` (pas `Partiel`) | `STATUS.md`, `AUDIT_REPORT.md`, `GAPS.md` remis à `Fait` |
+| A23 | Ne pas dupliquer un run déjà existant | Job `plan` dans `ci.yml` : saute le run de la PR si la base est contenue dans la tête **et** qu'un run de push existe pour ce commit |
+| A19 | Compris : seuls des caches de compilation seront supprimés | Aucune action de ma part |
+| A11 | Corriger en temps voulu, selon le plan | Rien à faire avant M2/M4 |
+| Q5 | Licence à voir plus tard | Rien (note : un stash contient une GPL-3.0, voir `docs/notes/archive/README.md`) |
+| Q3 / A16 | Aligner `main` sur le remote | `main` locale ramenée sur `origin/main` ; **rien n'est perdu** : `main` locale (44 commits d'avance) était entièrement contenue dans `dev` |
+| Q7 | Analyser puis supprimer les stashes | Analysés ; 2 archivés ; patchs complets hors dépôt ; suppression en attente de ton « go » |
+| A18 | macOS : on ne se bloque pas dessus | macOS reste `continue-on-error` ; on le retouche à chaque PR |
+
+**A5 (JSON)** et **A12 (graine)** : explications données dans la conversation ; décisions attendues.
