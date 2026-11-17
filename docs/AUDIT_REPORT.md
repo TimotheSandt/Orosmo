@@ -26,19 +26,19 @@ Audit du 2026-11-17, branche `docs/audit` depuis `dev` (après M00). **Aucun fic
 | I. Interface | 0 | 5 | 7 | 0 | 12 |
 | J. Logique de jeu rechargeable | 0 | 0 | 7 | 0 | 7 |
 | K. Voxels et ray tracing | 0 | 0 | 4 | 1 | 5 |
-| L. Outils, qualité et construction | 1 | 8 | 2 | 0 | 11 |
-| **Total** | **1** | **46** | **102** | **3** | **152** |
+| L. Outils, qualité et construction | 0 | 9 | 2 | 0 | 11 |
+| **Total** | **0** | **47** | **102** | **3** | **152** |
 
 Par priorité :
 
 | Prio | Fait | Partiel | Absent | Incompatible |
 | --- | ---: | ---: | ---: | ---: |
-| P0 | 1 | 36 | 24 | 1 |
+| P0 | 0 | 37 | 24 | 1 |
 | P1 | 0 | 10 | 53 | 1 |
 | P2 | 0 | 0 | 19 | 1 |
 | P3 | 0 | 0 | 6 | 0 |
 
-**Lecture** : le moteur actuel est une base 3D/2D OpenGL + Vulkan avec un texte MSDF, une interface en langage maison et un bruit CPU. Aucun identifiant n'est `Fait` sauf `REPO-01` (M00). L'écart principal est l'architecture : le RHI à handles, passes et groupes de liaison de `docs/03` n'existe pas, et tout ce qui en dépend (compute, MRT complet, plugins de rendu, éclairage clusterisé, terrain GPU) est absent.
+**Lecture** : le moteur actuel est une base 3D/2D OpenGL + Vulkan avec un texte MSDF, une interface en langage maison et un bruit CPU. Aucun identifiant n'est `Fait` (`REPO-01` a été rétrogradé en `Partiel` après la revue CodeRabbit : le critère exige un comportement identique à la référence, et aucune capture d'écran d'avant M00 n'existe). L'écart principal est l'architecture : le RHI à handles, passes et groupes de liaison de `docs/03` n'existe pas, et tout ce qui en dépend (compute, MRT complet, plugins de rendu, éclairage clusterisé, terrain GPU) est absent.
 
 ## Lecture par module (étape 3 du protocole)
 
@@ -128,32 +128,32 @@ Colonnes : **Où** (fichier : symbole) · **Comment** (ce qui a été lu, lancé
 | REN-09 | Ombres avancées | P2 | **Absent** | — | même grep | Absent. | — | Après M10 (P2) |
 | REN-10 | Matériaux PBR | P0 | **Absent** | shaders/default.frag (Blinn-Phong simple : couleur sommet, normale, `specAmount`) | Lu | Pas de PBR (grep `metallic\|roughness\|albedo` : 0) ; textures sur `Mesh::AddTexture` mais pas de modèle de matériau. | — | M6 |
 | REN-11 | Variantes et instances de matériaux | P1 | **Absent** | — | pas de notion de matériau | Absent. | — | M6 |
-| REN-12 | Extensions de matériaux | P2 | **Absent** | — | — | Absent. | — | Après M10 (P2) |
+| REN-12 | Extensions de matériaux | P2 | **Absent** | — | Preuve d'absence : grep `clearcoat\|Clearcoat\|sheen\|Sheen\|subsurface\|anisotropy\|parallax\|Parallax` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | Après M10 (P2) |
 | REN-13 | IBL et sondes de lumière | P1 | **Absent** | — | grep `IBL\|irradiance\|probe` : 0 | Absent. | — | M6 |
 | REN-14 | Occlusion ambiante | P1 | **Absent** | — | grep `SSAO\|GTAO\|ssao` : 0 | Absent. | — | M7 |
-| REN-15 | Réflexions et GI | P2 | **Absent** | — | — | Absent. | — | Après M10 (P2) |
-| REN-16 | Éclairage précalculé | P2 | **Absent** | — | — | Absent (le mode `Baked` n'existe pas). | — | Après M10 (P2) |
+| REN-15 | Réflexions et GI | P2 | **Absent** | — | Preuve d'absence : grep `SSR\|ReflectionProbe\|VoxelGI\|screenSpaceReflection` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | Après M10 (P2) |
+| REN-16 | Éclairage précalculé | P2 | **Absent** | — | Preuve d'absence : grep `lightmap\|Lightmap\|Baked\|baked` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 3 fichier(s) — 3 résultats non pertinents (« baked into the binary » : mk/config.mk, mk/engine.mk, engine-init-rs) | Absent (le mode `Baked` n'existe pas). | — | Après M10 (P2) |
 | REN-17 | HDR et tonemapping | P0 | **Absent** | — | grep `tonemap\|HDR` : 0 ; cibles `RGBA8` | Pas de cible HDR ni de tonemapping. | — | M5 |
 | REN-18 | Post-traitement courant | P1 | **Absent** | include/Graphics/Upscaling/IPostProcessPass.h (interface seule) | grep `bloom\|Bloom` : 0 | Interface de passe de post-traitement, aucun effet fourni. | — | M5 |
 | REN-19 | Anticrénélage | P1 | **Partiel** | src/Graphics/Renderer.cpp:113 (séquence de Halton pour le jitter), `historyTarget`, `SetMotionVectorsEnabled` ; include/Graphics/Upscaling/ | Lu ; `renderers_tests` (5) verts | Infrastructure temporelle (jitter, historique, vecteurs de mouvement RG16F, mode d'upscaling bilinéaire `BilinearBlitUpscaleMode`) ; aucun SMAA, TAA, MSAA ni résolution dynamique par effet. | — | M5 |
-| REN-20 | Effets coûteux optionnels | P2 | **Absent** | — | — | Absent. | — | Après M10 (P2) |
+| REN-20 | Effets coûteux optionnels | P2 | **Absent** | — | Preuve d'absence : grep `DepthOfField\|depthOfField\|MotionBlur\|motionBlur\|FSR\|FidelityFX` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 1 fichier(s) — 1 résultat non pertinent (commentaire de `IAdvancedUpscaleMode.h` citant FSR comme exemple futur, aucune implémentation) | Absent. | — | Après M10 (P2) |
 | REN-21 | Sorties auxiliaires (AOV) | P1 | **Partiel** | src/Graphics/Renderer.cpp:151-154 ; `SetMotionVectorsEnabled`, `SetDepthAsTextureEnabled` ; `IRenderTargetResource::ReadPixelUInt` | Lu | Vecteurs de mouvement et profondeur lisible **activés à la demande** ; identifiants R32UI lisibles. Pas de normales octaédriques, rugosité/métal, profondeur linéaire, émission ; pas de règle MSAA. | — | M5 |
 | REN-22 | Boîte à outils de shaders | P1 | **Absent** | — | shaders/ : 8 fichiers, aucun `#include` | Pas de boîte à outils GLSL partagée. | — | M5 |
-| REN-23 | Textures de bruit en compute | P1 | **Absent** | — | — | Absent (pas de compute). | — | M7 |
+| REN-23 | Textures de bruit en compute | P1 | **Absent** | — | Preuve d'absence : grep `Worley\|worley\|Noise3D\|noise3D\|noiseTexture` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent (pas de compute). | — | M7 |
 | REN-24 | Ciel et atmosphère | P1 | **Absent** | — | grep `atmosphere\|rayleigh\|fog` : 0 | Absent. | — | M7 |
 | REN-25 | Brouillard | P1 | **Absent** | — | même grep | Absent. | — | M7 |
 | REN-26 | Nuages volumétriques | P2 | **Absent** | — | grep `cloud` : 0 | Absent. | — | M7 |
-| REN-27 | Eau | P2 | **Absent** | — | — | Absent. | — | M7 |
+| REN-27 | Eau | P2 | **Absent** | — | Preuve d'absence : grep `[Ww]ater\|[Oo]cean` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M7 |
 | REN-28 | Instancing | P0 | **Partiel** | src/Graphics/Mesh.cpp:124,212 (`instances`, `DrawIndexedInstanced`) | Lu | Données par instance possibles dans un maillage ; un draw call par `Mesh`, pas de regroupement par (maillage, matériau). | — | M5 |
 | REN-29 | Rendu piloté par GPU | P1 | **Absent** | — | grep `DrawIndirect\|MultiDraw\|Hi-Z` : 0 | Absent. | — | M5 |
 | REN-30 | Culling CPU | P0 | **Absent** | — | grep `Frustum\|BVH\|cull` : 0 (hors `CullMode`) | Absent. | — | M5 |
 | REN-31 | LOD et imposteurs | P1 | **Absent** | — | grep `\blod\b` hors backends : 0 dans le code suivi (un stash « add LOD » existe sur feat/vulkan, non intégré, non lu) | Absent de `dev`. | — | M5 |
-| REN-32 | Tri et ordre des transparents | P1 | **Absent** | — | — | Absent. | — | M5 |
+| REN-32 | Tri et ordre des transparents | P1 | **Absent** | — | Preuve d'absence : grep `Transparen\|transparen\|BackToFront\|sortByDepth` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 12 fichier(s) — 12 résultats non pertinents (`ClearTransparentColorBuffer`, `TransparencyMask` du texte : couleur de fond et masque, aucun tri) | Absent. | — | M5 |
 | REN-37 | Modes de fusion des matériaux | P0 | **Absent** | include/Graphics/Core/RenderState.h : `SetAlphaBlend`, `SetPremultipliedAlphaBlend` (états globaux) | Lu | Pas de `BlendMode` par matériau ; seulement deux interrupteurs d'état global. | — | M5 |
-| REN-38 | Réfraction et transmission | P2 | **Absent** | — | — | Absent. | — | M7 |
-| REN-39 | Ombres des transparents | P1 | **Absent** | — | — | Absent. | — | M5 |
-| REN-40 | Transparence indépendante de l'ordre (OIT) | P2 | **Absent** | — | — | Absent. | — | Après M10 (P2) |
-| REN-41 | Transparents et sorties auxiliaires | P1 | **Absent** | — | — | Absent. | — | M5 |
+| REN-38 | Réfraction et transmission | P2 | **Absent** | — | Preuve d'absence : grep `[Rr]efraction\|IOR\|ior\b` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 4 fichier(s) — 4 résultats non pertinents (le motif `ior` dans « prior » et assimilés) | Absent. | — | M7 |
+| REN-39 | Ombres des transparents | P1 | **Absent** | — | Preuve d'absence : grep `ShadowCaster\|shadowCaster\|shadowMode\|castShadow` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M5 |
+| REN-40 | Transparence indépendante de l'ordre (OIT) | P2 | **Absent** | — | Preuve d'absence : grep `\bOIT\b\|WeightedBlended\|weightedBlended` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | Après M10 (P2) |
+| REN-41 | Transparents et sorties auxiliaires | P1 | **Absent** | — | Preuve d'absence : grep `\bAOV\b\|\bAov\b\|aovOutput` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M5 |
 | REN-33 | Particules et décalques | P1 | **Absent** | — | grep `particle\|decal` : 0 | Absent. | — | M7 |
 | REN-34 | Dessin de debug | P0 | **Absent** | — | grep `DebugDraw\|DrawLine\|DrawBox` : 0 | Absent. | — | M3 |
 | REN-35 | Modes d'affichage de debug | P1 | **Partiel** | include/Graphics/Camera.h : `SetWireframe` ; `GraphicsRenderState::SetWireframe` | Lu | Un seul mode (filaire) sur huit. | — | M5 |
@@ -168,8 +168,8 @@ Colonnes : **Où** (fichier : symbole) · **Comment** (ce qui a été lu, lancé
 | R2D-03 | Formes, lignes, texte | P1 | **Partiel** | src/Graphics/Renderer2D.cpp : `RenderText`, `DrawSprite` | Lu | Texte et rectangles (sprites) ; pas de cercles, lignes, polygones. | — | M5 |
 | R2D-04 | Cartes de tuiles | P1 | **Absent** | — | grep `Tilemap\|Tile` : 0 | Absent. | — | M5 (proposé : non cité dans docs/05) |
 | R2D-05 | Mélange 2D/3D | P1 | **Partiel** | src/Graphics/Renderer.cpp (interface dessinée après l'upscaling : profil `UIUpscale`) | Lu | Seul le mode « superposition » existe (UI après le rendu 3D) ; ni 2D monde avec profondeur, ni 2D vers texture. | — | M5 |
-| R2D-06 | Plusieurs vues | P1 | **Absent** | — | — | Absent (un `Renderer3D` et un `Renderer2D` par fenêtre). | — | M5 |
-| R2D-07 | Éclairage 2D | P3 | **Absent** | — | — | Absent (P3). | — | Après M10 (P3) |
+| R2D-06 | Plusieurs vues | P1 | **Absent** | — | Preuve d'absence : grep `Camera2D\|SplitScreen\|splitScreen\|MultiView\|RenderView` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent (un `Renderer3D` et un `Renderer2D` par fenêtre). | — | M5 |
+| R2D-07 | Éclairage 2D | P3 | **Absent** | — | Preuve d'absence : grep `Light2D\|light2d\|Lighting2D` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent (P3). | — | Après M10 (P3) |
 
 ### F. Contenu et animation
 
@@ -177,16 +177,16 @@ Colonnes : **Où** (fichier : symbole) · **Comment** (ce qui a été lu, lancé
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ASSET-01 | Import glTF 2.0 | P0 | **Absent** | — | grep `gltf\|glTF\|KTX\|tinyobj` : 0 | Aucun import de modèle. | — | M6 |
 | ASSET-02 | Textures | P0 | **Partiel** | src/Graphics/Texture.cpp:69 `stbi_load` ; `TextureCreateInfo::generateMipmaps` | Lu | PNG/JPG via stb, mips : oui. Pas d'espace colorimétrique (aucun format sRGB). | — | M6 |
-| ASSET-03 | Textures compressées | P1 | **Absent** | — | — | Absent. | — | M6 |
+| ASSET-03 | Textures compressées | P1 | **Absent** | — | Preuve d'absence : grep `\bKTX\|\bktx\|BC7\|ASTC\|basisu` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M6 |
 | ASSET-04 | Outil de cuisson | P1 | **Absent** | — | grep `meshopt` : 0 | Absent. | — | M6 |
-| ASSET-05 | Rechargement à chaud des assets | P1 | **Absent** | — | — | Absent. | — | M6 |
-| ASSET-06 | OBJ | P2 | **Absent** | — | — | Absent. | — | Après M10 (P2) |
+| ASSET-05 | Rechargement à chaud des assets | P1 | **Absent** | — | Preuve d'absence : grep `last_write_time\|hotReload\|HotReload\|reloadAsset` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M6 |
+| ASSET-06 | OBJ | P2 | **Absent** | — | Preuve d'absence : grep `tinyobj\|OBJLoader\|ParseObj\|\.obj\"` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | Après M10 (P2) |
 | ANIM-01 | Squelettes et skinning GPU | P1 | **Absent** | — | grep `skeleton\|skinning` : 0 | Absent. | — | M6 |
-| ANIM-02 | Clips, mélange, machine à états | P1 | **Absent** | — | — | Absent. | — | M6 |
-| ANIM-03 | Animation de propriétés | P1 | **Absent** | — | — | Absent. | — | M6 |
-| ANIM-04 | Foules instanciées | P1 | **Absent** | — | — | Absent. | — | M6 |
-| ANIM-05 | IK, morph targets, root motion | P2 | **Absent** | — | — | Absent. | — | Après M10 (P2) |
-| ANIM-06 | Retargeting | P3 | **Absent** | — | — | Absent. | — | Après M10 (P3) |
+| ANIM-02 | Clips, mélange, machine à états | P1 | **Absent** | — | Preuve d'absence : grep `AnimationClip\|StateMachine\|Animator\|BlendTree` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M6 |
+| ANIM-03 | Animation de propriétés | P1 | **Absent** | — | Preuve d'absence : grep `AnimationCurve\|Keyframe\|keyframe\|Tween` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M6 |
+| ANIM-04 | Foules instanciées | P1 | **Absent** | — | Preuve d'absence : grep `VertexAnimation\|[Cc]rowd` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M6 |
+| ANIM-05 | IK, morph targets, root motion | P2 | **Absent** | — | Preuve d'absence : grep `[Ii]nverseKinematics\|MorphTarget\|RootMotion\|TwoBoneIK` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | Après M10 (P2) |
+| ANIM-06 | Retargeting | P3 | **Absent** | — | Preuve d'absence : grep `[Rr]etarget` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | Après M10 (P3) |
 
 ### G. Terrain et monde
 
@@ -195,28 +195,28 @@ Colonnes : **Où** (fichier : symbole) · **Comment** (ce qui a été lu, lancé
 | TER-01 | Bruit | P0 | **Partiel** | include/Noise/Noise.h, src/Noise/Noise.cpp : `Noise::WhiteNoise/SmoothNoise/FractalNoise/PerlinNoise` ; include/Noise/Random.h : `PCGRandom` | Lu ; 10 tests `Noise` verts (même graine → mêmes valeurs ; graines différentes → valeurs différentes) | Bruit blanc, bruit lissé (interpolation de valeurs hachées), fBm : oui (CPU, `float`). `PerlinNoise` n'est pas un bruit de Perlin à gradients. Pas de Simplex, Worley, distorsion de domaine ; **pas de version GPU** ni de comparaison CPU/GPU. `Noise()` et `PCGRandom::init()` s'initialisent avec l'**horloge** (`high_resolution_clock`) : contraire à la règle 9 si utilisés sans graine. Conversion `float`→`int` du hachage : reproductibilité inter-plateformes non testée. | — | M3 |
 | TER-02 | Génération par tuiles | P0 | **Partiel** | apps/demo/src/ProceduralGeneration/TerrainGeneration.cpp : `GeneratePerlinTerrain`, `GenerateFractalTerrain` ; Grid.cpp | Lu ; 8 tests `Procedural` verts | Une grille unique déterministe pour une graine. Pas de tuiles, pas d'asynchronisme, pas de dépendance (graine, coordonnées, paramètres). Le code est dans l'**application de démo**, et `TerrainGenerator` possède un `Mesh` (dépendance au rendu, contraire à `docs/03` §1 : `world` sans `renderer`). | — | M3 |
 | TER-03 | Maillage à niveaux de détail | P0 | **Absent** | — | grep `quadtree\|clipmap` : 0 | Absent (grille régulière de 498 002 triangles). | — | M3 |
-| TER-04 | Streaming | P0 | **Absent** | — | — | Absent. | — | M3 |
+| TER-04 | Streaming | P0 | **Absent** | — | Preuve d'absence : grep `ChunkManager\|LoadChunk\|UnloadChunk\|[Ss]treaming` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M3 |
 | TER-05 | Érosion | P1 | **Absent** | — | grep `erosion` : 0 | Absent (seul `GenerateCrater`). | — | M7 |
 | TER-06 | Biomes | P1 | **Absent** | — | grep `biome` : 0 | Absent. | — | M7 |
 | TER-07 | Texturage du terrain | P0 | **Absent** | apps/demo/src/ProceduralGeneration/Grid.cpp (couleur par sommet) | Lu | Pas de mélange pente/altitude ni texturage triplanaire. | — | M3 |
-| TER-08 | Végétation et dispersion | P1 | **Absent** | — | — | Absent. | — | M7 |
-| TER-09 | Planètes sphériques | P1 | **Absent** | — | — | Absent. | — | M7 |
-| TER-10 | Eau, rivières, lacs | P2 | **Absent** | — | — | Absent. | — | M7 |
+| TER-08 | Végétation et dispersion | P1 | **Absent** | — | Preuve d'absence : grep `[Vv]egetation\|[Ff]oliage\|[Ss]catter` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M7 |
+| TER-09 | Planètes sphériques | P1 | **Absent** | — | Preuve d'absence : grep `CubeSphere\|cubeSphere\|[Pp]lanet` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M7 |
+| TER-10 | Eau, rivières, lacs | P2 | **Absent** | — | Preuve d'absence : grep `\b[Rr]iver\|\b[Ll]ake\b\|SeaLevel\|seaLevel` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M7 |
 | TER-11 | Export | P0 | **Absent** | — | grep `stbi_write` et écriture OBJ/STL : 0 | Aucun export. | — | M3 |
 | TER-12 | Interface de réglage | P0 | **Absent** | — | pas de widget curseur (UI-03) ni de réflexion | Aucune interface de réglage. | — | M3 |
-| TER-13 | Lancer de rayon sur le terrain | P1 | **Absent** | — | — | Absent. | — | M3 |
-| TER-14 | Grottes et voxels | P3 | **Absent** | — | — | Absent (P3). | — | Après M10 (P3) |
+| TER-13 | Lancer de rayon sur le terrain | P1 | **Absent** | — | Preuve d'absence : grep `[Rr]aycast\|RayCast\|[Pp]icking\|ScreenToRay` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M3 |
+| TER-14 | Grottes et voxels | P3 | **Absent** | — | Preuve d'absence : grep `\b[Cc]ave\b\|[Vv]oxel` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent (P3). | — | Après M10 (P3) |
 
 ### H. Scène et simulation
 
 | ID | Fonctionnalité | Prio | État | Où | Comment | Écart | Portabilité | Jalon |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ECS-01 | Entités et composants | P1 | **Absent** | — | grep `ECS\|entt\|Entity` : 0 | Absent ; choix ECS maison/EnTT à trancher. | — | M8 |
-| ECS-02 | Transformations hiérarchiques | P1 | **Absent** | — | — | Absent (transformations dans `Mesh`). | — | M8 |
-| ECS-03 | Chargement et sauvegarde de scène | P1 | **Absent** | — | — | Absent. | — | M8 |
-| SIM-01 | Boucle de simulation à pas fixe | P1 | **Absent** | — | — | Absent. | — | M8 |
-| SIM-02 | Accès aux données du monde | P2 | **Absent** | — | — | Absent. | — | M8 |
-| SIM-03 | Agents et écosystème | P3 | **Absent** | — | — | Hors moteur (P3). | — | Après M10 (P3) |
+| ECS-02 | Transformations hiérarchiques | P1 | **Absent** | — | Preuve d'absence : grep `SceneNode\|sceneGraph\|worldMatrix\|parentTransform` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent (transformations dans `Mesh`). | — | M8 |
+| ECS-03 | Chargement et sauvegarde de scène | P1 | **Absent** | — | Preuve d'absence : grep `SaveScene\|LoadScene\|serializeScene` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M8 |
+| SIM-01 | Boucle de simulation à pas fixe | P1 | **Absent** | — | Preuve d'absence : grep `FixedStep\|fixedTimestep\|fixedDelta\|FixedUpdate\|accumulator` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M8 |
+| SIM-02 | Accès aux données du monde | P2 | **Absent** | — | Preuve d'absence : grep `HeightAt\|SampleHeight\|BiomeAt\|WorldQuery` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M8 |
+| SIM-03 | Agents et écosystème | P3 | **Absent** | — | Preuve d'absence : grep `\bAgent\b\|[Ee]cosystem\|[Ss]pecies` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 1 fichier(s) — 1 résultat non pertinent (« Agent » = user-agent HTTP dans engine-init-rs) | Hors moteur (P3). | — | Après M10 (P3) |
 
 ### I. Interface
 
@@ -231,7 +231,7 @@ Colonnes : **Où** (fichier : symbole) · **Comment** (ce qui a été lu, lancé
 | UI-07 | Thèmes en JSON | P0 | **Partiel** | include/UI/Rendering/Theme.h, src/UI/Rendering/Theme.cpp : `Theme`, `Colors`, `IdentifierKind`, `PresetTheme::{LIGHT,DARK}` | Lu | Thème en C++ (11 couleurs nommées, préréglages clair/sombre, états `HOVER/PRESSED/DISABLED`). Pas de JSON (grep `json` dans src/UI : 0), pas de jetons de rayon/police/ombre, pas de changement à chaud. Des couleurs sont aussi codées dans les vues (`.color(0.05, 0.05, 0.08, 0.65)` dans PerformanceView.cui). | — | M3 |
 | UI-08 | Rechargement à chaud de l'interface | P1 | **Absent** | — | grep `reload\|hot` : 0 | Absent. | — | M8 |
 | UI-09 | Navigation et accessibilité de base | P1 | **Absent** | — | grep `focus\|tab` dans UI : 0 | Absent. | — | M8 |
-| UI-10 | Inspecteur d'interface | P1 | **Absent** | — | — | Absent. | — | M8 |
+| UI-10 | Inspecteur d'interface | P1 | **Absent** | — | Preuve d'absence : grep `[Ii]nspector\|WidgetTree\|debugTree` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | M8 |
 | UI-11 | Spécification et tests du langage | P0 | **Partiel** | docs/UI_DSL_Spec.md (v0.2 « In Progress », en anglais) | Lu ; grep `#[test]` dans tools : 0 test Rust | Une spécification existe (exigences, grammaire, plan) mais pas `docs/UI_LANGUAGE.md`, et **aucun test de compilation** (valides/invalides). | — | M3 |
 | UI-12 | Paramètres réfléchis → curseurs | P1 | **Absent** | — | dépend de CORE-12 (absent) | Absent. | — | M3 |
 
@@ -251,21 +251,21 @@ Colonnes : **Où** (fichier : symbole) · **Comment** (ce qui a été lu, lancé
 
 | ID | Fonctionnalité | Prio | État | Où | Comment | Écart | Portabilité | Jalon |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| EXT-01 | Plugin de rendu voxel | P2 | **Absent** | — | — | Absent (pas de graphe de passes, voir REN-01). | — | M10 |
-| EXT-02 | Tracé de rayons logiciel sur voxels | P2 | **Absent** | — | — | Absent. | — | Après M10 (P2) |
+| EXT-01 | Plugin de rendu voxel | P2 | **Absent** | — | Preuve d'absence : grep `[Vv]oxel\|RenderFeature\|renderFeature` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent (pas de graphe de passes, voir REN-01). | — | M10 |
+| EXT-02 | Tracé de rayons logiciel sur voxels | P2 | **Absent** | — | Preuve d'absence : grep `sparse voxel\|VoxelGrid\|\bSVO\b\|\bDDA\b` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent. | — | Après M10 (P2) |
 | EXT-03 | Interface d'accélération de rayons | P2 | **Incompatible** | include/Graphics/AccelerationStructure.h, src/Graphics/AccelerationStructure.cpp ; `IAccelerationStructureResource` | Lu | Une façade existe, **sans construction BLAS/TLAS ni requête de rayon**, et Vulkan annonce `rayQuery = true` sans implémentation (voir RHI-18) : stub qui prétend marcher. | — | M2 (corriger les capacités) ; M10 |
-| EXT-04 | Ray tracing matériel | P3 | **Absent** | — | — | Absent (P3). | — | Après M10 (P3) |
-| EXT-05 | Traceur de chemin de référence | P3 | **Absent** | — | — | Absent (P3). | — | Après M10 (P3) |
+| EXT-04 | Ray tracing matériel | P3 | **Absent** | — | Preuve d'absence : grep `TraceRays\|traceRays\|rayQuery\(\|VK_KHR_ray` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent (P3). | — | Après M10 (P3) |
+| EXT-05 | Traceur de chemin de référence | P3 | **Absent** | — | Preuve d'absence : grep `PathTracer\|pathTracer\|path tracing` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 0 fichier(s) | Absent (P3). | — | Après M10 (P3) |
 
 ### L. Outils, qualité et construction
 
 | ID | Fonctionnalité | Prio | État | Où | Comment | Écart | Portabilité | Jalon |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | TOOL-01 | Visualiseur de terrain | P0 | **Partiel** | apps/demo/src/main.cpp, Game/Game.cpp, Game/World.cpp ; Camera::Inputs | Démo lancée | Caméra libre et terrain affichés ; pas de réglages (pas de widgets) ni d'export. Ce n'est pas un `terrain-viewer`. | — | M3 |
-| TOOL-02 | Générateur en ligne de commande | P0 | **Absent** | — | — | Absent (nécessite PLAT-04). | — | M3 |
+| TOOL-02 | Générateur en ligne de commande | P0 | **Absent** | — | Preuve d'absence : grep `terrain-gen\|headless\|Headless` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 1 fichier(s) — 1 résultat non pertinent (le mot « headless » dans un commentaire de `tests/support/test_support.hpp`) ; la démo n'offre que `--capture`/`--seed`, qui ouvrent une fenêtre | Absent (nécessite PLAT-04). | — | M3 |
 | TOOL-03 | Capture d'écran | P2 | **Absent** | include/Graphics/RenderTarget.h : `ReadPixelUInt`, `ReadPixelRGBA8` | grep `stbi_write` : 0 | Lecture de pixels possible, pas d'enregistrement d'image. **Désaccord** : P2 mais requis par RHI-14 (P0). | — | M2 (proposé : requis par RHI-14) |
 | BLD-01 | Construction multiplateforme | P0 | **Partiel** | Makefile, mk/engine.mk, apps/demo/Makefile, vcpkg.json, README.md | Build Linux reproduit (docs/BASELINE, docs/releases/M00.md) | Makefile + vcpkg, types `debug/dev/release`, Linux vérifié (apt + vcpkg). Windows et macOS non vérifiés ici. Dépendances non épinglées (pas de `builtin-baseline`). Pas de CMake (proposition à faire, voir QUESTIONS). | — | M0 |
-| REPO-01 | Dépôt propre et structuré | P0 | **Fait** | .gitignore, .gitattributes, .editorconfig, .clang-format, README.md, tools/check-repo.sh | `sh tools/check-repo.sh` : OK ; 102/102 tests et journal de démarrage identiques à la référence (docs/releases/M00.md) | Tous les points sont remplis ; `third_party/` n'existe pas car aucune bibliothèque n'est copiée (README de `src/ThirdParty/` l'explique) — écart assumé, à valider. | — | M00 (fait) |
+| REPO-01 | Dépôt propre et structuré | P0 | **Partiel** | .gitignore, .gitattributes, .editorconfig, .clang-format, README.md, tools/check-repo.sh | `sh tools/check-repo.sh` : OK ; 102/102 tests et journal de démarrage identiques à la référence (docs/releases/M00.md) | Tous les points sont remplis ; `third_party/` n'existe pas car aucune bibliothèque n'est copiée (README de `src/ThirdParty/` l'explique) — écart assumé, à valider. | — | M00 (fait) | **Rétrogradé :** identité visuelle avec l'avant-M00 non prouvée (pas de capture d'avant), exception `third_party/` non validée ; preuves existantes : tests, journal de démarrage identique, capture reproductible depuis M0.
 | GIT-01 | Flux de branches | P0 | **Partiel** | docs/06 ; historique de la branche `dev` | `git log` lu | Flux appliqué depuis M00 (branches `chore/`, `fix/`, `docs/`, fusions `--no-ff`). Protections côté hébergeur non activées par l'auteur ; avant M00, 92 commits sur 178 hors format `type(ID): résumé`. | — | Continu |
 | BLD-02 | Intégration continue | P0 | **Partiel** | .github/workflows/build-engine.yml | Lu | Matrice Windows/Linux/macOS (x64 et arm64) existe mais ne se lance que sur tag `v*` ou à la main, ne lance **aucun test** ni vérification des couches. | — | M0 |
 | TEST-01 | Tests unitaires | P0 | **Partiel** | tests/framework/TestFramework.{h,cpp}, tests/suites/*.cpp ; `make demo-test` | Lancé : **102/102** verts | Framework **maison** (spec : Catch2 ou doctest), non exécuté en CI ; `core` partiellement couvert (Logger, InputManager, TextRenderer, Light, UI compiler : 0 test). | — | M0 |
