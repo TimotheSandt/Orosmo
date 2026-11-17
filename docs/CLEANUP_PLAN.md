@@ -1,6 +1,6 @@
 # CLEANUP_PLAN : plan de nettoyage M00
 
-Statut : **proposition, en attente de ton accord**. Rien n'a été déplacé, supprimé ni réécrit. Seuls ont été créés : tag/branches/bundle de sauvegarde, `docs/BASELINE/README.md`, `docs/QUESTIONS.md`, ce plan et `docs/CLEANUP_MOVES.tsv`.
+Statut : **exécuté** le 2026-11-17 sur `chore/cleanup-m00` avec ton accord (option A, apt d'abord / vcpkg en repli, licence plus tard). Le texte ci-dessous est le plan d'origine ; les écarts constatés à l'exécution sont au §9 et le bilan dans `docs/releases/M00.md`.
 
 ## 0. Sauvegarde (faite)
 
@@ -163,3 +163,13 @@ Vérification de fin de M00 : (a) à chaque série, `make -n` + diff de la liste
 4. Q5 : licence.
 5. Q6 : garder les 2 en-têtes sans référence.
 6. Accord général pour exécuter, sur `chore/cleanup-*` depuis `dev`, **sans commit sur `dev`** avant la fusion `--no-ff`.
+
+## 9. Écarts entre le plan et l'exécution
+
+1. **Installeurs** : `apps/demo/installers/` reste en place (pas `tools/installers/`) : le Makefile de la démo les référence en relatif. Chemins de l'installeur NSIS adaptés (non testé).
+2. **Benchmark** : le module non commité est devenu un commit d'instantané (`chore(M00): snapshot unfinished benchmark work`), puis déplacé comme le reste : `include/Benchmark/`, `src/Benchmark/`, `apps/demo/benchmark/` (et non `apps/benchmark/`).
+3. **Chaque déplacement est suivi d'un commit de chemins** : le commit de `git mv` seul ne compile pas (le Makefile pointe encore l'ancien chemin) ; la compilation et les tests sont vérifiés après chaque **paire** de commits (déplacement + chemins), sur une extraction propre (`git archive`) de la tête de branche.
+4. **Ressources** : `demo/res/{fonts,public}` → `res/`, `demo/res/shader` → `shaders/`, recopiés sous `bin/<type>/res/` (identique à la référence, MD5 vérifiés). L'ancien comportement de chemins `GET_RESOURCE_PATH("shader/...")` est conservé.
+5. **Correctifs de portabilité Linux** ajoutés (non prévus au plan, indispensables pour compiler) : `-lmsdfgen-core`, bibliothèque de `<stacktrace>` selon la version de GCC, casse de `utilities.h`, script `tools/setup-linux-deps.sh`.
+6. **`dev` existait déjà** : le nettoyage y est fusionné avec `--no-ff`.
+7. **Non fait** : `LICENSE` (décision reportée), `third_party/` (rien de tiers copié), correction de `core.ignorecase` dans le dépôt (réglage local fait), nettoyage des gros dossiers ignorés sur le disque, tri des stashes et anciennes branches.
