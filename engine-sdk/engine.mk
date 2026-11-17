@@ -96,7 +96,10 @@ else ifeq ($(ENGINE_OS),Linux)
     endif
     ENGINE_EXE_EXT       :=
     ENGINE_PLATFORM_DEFS :=
-    _ENG_VCPKG_LIBS      := -lglfw -lglad -lGL -lvulkan \
+    # <stacktrace> : GCC 13 -> -lstdc++_libbacktrace, GCC 14+ -> -lstdc++exp
+    _ENG_GCC_MAJOR       := $(shell $(CXX) -dumpversion 2>/dev/null | cut -d. -f1)
+    _ENG_STACKTRACE_LIB  := $(if $(filter 13,$(_ENG_GCC_MAJOR)),-lstdc++_libbacktrace,-lstdc++exp)
+    _ENG_VCPKG_LIBS      := -lglfw -lglad -lGL -lvulkan -lmsdfgen-core $(_ENG_STACKTRACE_LIB) \
                             -lfreetype -lpng16 -lz -lbz2 -lbrotlidec -lbrotlicommon \
                             -lshaderc -lshaderc_util -lglslang \
                             -lSPIRV-Tools-opt -lSPIRV-Tools -lSPIRV \
