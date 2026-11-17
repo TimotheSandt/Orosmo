@@ -69,6 +69,72 @@ Assert(!ParseGraphicsAPI("directx").has_value(), "Unknown API should be rejected
         Assert(thrown, "Invalid graphics API should throw");
     }
 
+    TEST_CASE("launch options parse capture directory and frame count")
+    {
+        const char *argv[] = {"program", "--api", "opengl", "--capture", "out/ref", "--capture-frames", "25"};
+        const GraphicsLaunchOptions options = ParseGraphicsLaunchOptions(7, argv);
+        AssertEqual(options.captureDirectory, std::string("out/ref"), "Capture directory should be parsed");
+        AssertEqual(options.captureFrames, 25u, "Capture frame count should be parsed");
+    }
+
+    TEST_CASE("launch options default to no capture")
+    {
+        const char *argv[] = {"program"};
+        const GraphicsLaunchOptions options = ParseGraphicsLaunchOptions(1, argv);
+        Assert(options.captureDirectory.empty(), "Capture should be off by default");
+        AssertEqual(options.captureFrames, 10u, "Capture should default to 10 frames");
+    }
+
+    TEST_CASE("launch options parse the terrain seed")
+    {
+        const char *argv[] = {"program", "--seed", "42"};
+        const GraphicsLaunchOptions options = ParseGraphicsLaunchOptions(3, argv);
+        Assert(options.seed.has_value(), "A seed should be parsed");
+        AssertEqual(*options.seed, 42u, "The seed value should be kept");
+        const char *none[] = {"program"};
+        Assert(!ParseGraphicsLaunchOptions(1, none).seed.has_value(), "Without --seed the terrain stays random as before");
+    }
+
+    TEST_CASE("launch options reject an invalid seed")
+    {
+        const char *negative[] = {"program", "--seed", "-1"};
+        const char *text[] = {"program", "--seed", "abc"};
+        const char *missing[] = {"program", "--seed"};
+        for (const auto &args : {std::pair<const char *const *, int>{negative, 3}, {text, 3}, {missing, 2}})
+        {
+            bool thrown = false;
+            try
+            {
+                static_cast<void>(ParseGraphicsLaunchOptions(args.second, args.first));
+            }
+            catch (const std::invalid_argument &)
+            {
+                thrown = true;
+            }
+            Assert(thrown, "An invalid seed should throw");
+        }
+    }
+
+    TEST_CASE("launch options reject invalid capture arguments")
+    {
+        const char *missingValue[] = {"program", "--capture"};
+        const char *zeroFrames[] = {"program", "--capture", "x", "--capture-frames", "0"};
+        const char *textFrames[] = {"program", "--capture", "x", "--capture-frames", "ten"};
+        for (const auto &args : {std::pair<const char *const *, int>{missingValue, 2}, {zeroFrames, 5}, {textFrames, 5}})
+        {
+            bool thrown = false;
+            try
+            {
+                static_cast<void>(ParseGraphicsLaunchOptions(args.second, args.first));
+            }
+            catch (const std::invalid_argument &)
+            {
+                thrown = true;
+            }
+            Assert(thrown, "Invalid capture arguments should throw");
+        }
+    }
+
     TEST_CASE("interactive selection accepts valid entries")
     {
         std::istringstream input("2\n");
