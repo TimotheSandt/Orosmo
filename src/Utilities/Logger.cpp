@@ -516,7 +516,11 @@ void Logger::ChangeColor(const std::string &color) { std::cout << "\033[" << col
 
 void Logger::ResetColor() { std::cout << "\033[" << GetDefaultColor() << "m"; }
 
-#ifdef DEBUG
+#if defined(DEBUG) && !defined(LOGGER_HAS_STACKTRACE)
+std::string Logger::CaptureStackTrace() { return {}; }
+#endif
+
+#ifdef LOGGER_HAS_STACKTRACE
 std::string Logger::CaptureStackTrace()
 {
     std::ostringstream ss;

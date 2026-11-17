@@ -9,8 +9,15 @@
 #include <fstream>
 #include <memory>
 #include <sstream>
+// Stack traces in DEBUG builds need <stacktrace> (C++23) with a working implementation. Apple's libc++ has none:
+// the Logger then simply records an empty trace. Windows/GCC may need -lstdc++exp (see tools/engine-sdk/engine.mk).
 #ifdef DEBUG
+#if __has_include(<stacktrace>)
 #include <stacktrace>
+#endif
+#if defined(__cpp_lib_stacktrace)
+#define LOGGER_HAS_STACKTRACE 1
+#endif
 #endif
 
 enum LogLevel : std::int8_t
