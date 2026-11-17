@@ -27,6 +27,6 @@ Aucune case n'est passée à `Fait` par M0 : un identifiant n'est `Fait` que si 
 | DOC-01 | Partiel | Partiel | README racine, README par module, `CLAUDE.md` (commandes) ; manquent schéma des modules et `ADD_A_BACKEND.md` |
 | REPO-01 | Fait | Fait | `sh tools/check-repo.sh` : OK |
 
-Total (inchangé) : Fait 1, Partiel 46, Absent 102, Incompatible 3 (voir l'audit ; TOOL-03 passe d'Absent à Partiel : Fait 1, Partiel 47, Absent 101, Incompatible 3).
+Total après M0 : Fait 1, Partiel 47, Absent 101, Incompatible 3 (audit : 1 / 46 / 102 / 3 ; seul TOOL-03 change, d'Absent à Partiel).
 
 Commandes (Linux) : voir `CLAUDE.md` § Commandes. Démo : `make all-debug && make run`. Tests : `make demo-test`. Contrôles : `make check`.
