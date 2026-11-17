@@ -7,23 +7,23 @@ fn main() {
         .parent().unwrap()  // tools/
         .parent().unwrap(); // project root
 
-    let demo_dir = root.join("demo");
-    let src_dir  = root.join("demo").join("src");
+    let demo_dir = root.join("apps").join("demo");
+    let src_dir  = root.join("apps").join("demo").join("src");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let tpl_dir = out_dir.join("templates");
     fs::create_dir_all(&tpl_dir).expect("failed to create templates output dir");
 
-    // Build system templates come from demo/
+    // Build system templates come from apps/demo/
     for name in &["Makefile", "config.mk", "gitignore"] {
         let src_path = demo_dir.join(if *name == "gitignore" { ".gitignore" } else { name });
         let dst_path = tpl_dir.join(name);
         fs::copy(&src_path, &dst_path)
-            .unwrap_or_else(|e| panic!("failed to copy {name} from demo/: {e}"));
+            .unwrap_or_else(|e| panic!("failed to copy {name} from apps/demo/: {e}"));
         println!("cargo:rerun-if-changed={}", src_path.display());
     }
 
-    // C++ source tree: demo/src/ → templates/src.zip (preserving directory structure)
+    // C++ source tree: apps/demo/src/ → templates/src.zip (preserving directory structure)
     let zip_path = tpl_dir.join("src.zip");
     let zip_file = fs::File::create(&zip_path).expect("failed to create src.zip");
     let mut writer = zip::ZipWriter::new(zip_file);
@@ -32,13 +32,13 @@ fn main() {
     zip_dir(&src_dir, &src_dir, &mut writer, opts);
     writer.finish().expect("failed to finalize src.zip");
 
-    // Emit rerun-if-changed for every file under demo/src/
+    // Emit rerun-if-changed for every file under apps/demo/src/
     visit_files(&src_dir, &mut |p| println!("cargo:rerun-if-changed={}", p.display()));
 
-    // ── Engine identity from Libraries/config.mk ──────────────────────────────
-    // Priority: env var (set by Makefile) > Libraries/config.mk > built-in default.
+    // ── Engine identity from mk/config.mk ──────────────────────────────
+    // Priority: env var (set by Makefile) > mk/config.mk > built-in default.
     // This lets `cargo build` work without the Makefile, using the file as fallback.
-    let engine_config_path = root.join("Libraries").join("config.mk");
+    let engine_config_path = root.join("mk").join("config.mk");
     let engine_config = parse_mk_config(&engine_config_path);
     println!("cargo:rerun-if-changed={}", engine_config_path.display());
 

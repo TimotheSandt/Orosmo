@@ -1,0 +1,16 @@
+Logger initialized successfully. File: logs/log.log
+[INFO] src/main.cpp:89 Starting game with graphics API: OpenGL
+[TRACE] src/Game/Game.cpp:19 Initializing window
+MESA: warning: Support for this platform is experimental with Xe KMD, bug reports may be ignored.
+[DEBUGGING] main > Game::Game() > Window::Init() > GraphicsWindowContext::Initialize(GLFWwindow*, bool, int, int) Libraries/src/Graphics/Backends/OpenGL/OpenGLWindowContext.cpp:30 OpenGLWindowContext::Initialize step 1: ensure context current
+[DEBUGGING] main > Game::Game() > Window::Init() > GraphicsWindowContext::Initialize(GLFWwindow*, bool, int, int) Libraries/src/Graphics/Backends/OpenGL/OpenGLWindowContext.cpp:35 OpenGLWindowContext::Initialize step 2: load GLAD
+[DEBUGGING] main > Game::Game() > Window::Init() > GraphicsWindowContext::Initialize(GLFWwindow*, bool, int, int) Libraries/src/Graphics/Backends/OpenGL/OpenGLWindowContext.cpp:45 OpenGLWindowContext::Initialize step 3: set viewport
+[DEBUGGING] main > Game::Game() > Window::Init() > GraphicsWindowContext::Initialize(GLFWwindow*, bool, int, int) Libraries/src/Graphics/Backends/OpenGL/OpenGLWindowContext.cpp:50 OpenGLWindowContext::Initialize step 4: set swap interval
+[DEBUGGING] main > Game::Game() > Window::Init() > GraphicsWindowContext::Initialize(GLFWwindow*, bool, int, int) Libraries/src/Graphics/Backends/OpenGL/OpenGLWindowContext.cpp:56 OpenGLWindowContext::Initialize step 5: enable depth test
+[DEBUGGING] main > Game::Game() > Window::Init() > GraphicsWindowContext::Initialize(GLFWwindow*, bool, int, int) Libraries/src/Graphics/Backends/OpenGL/OpenGLWindowContext.cpp:61 OpenGLWindowContext::Initialize step 6: complete
+[TRACE] src/main.cpp:92 Game created
+[DEBUGGING] main > Game::init() src/Game/World.cpp:16 Triangle count: 498002
+[INFO] src/Game/World.cpp:19 World terrain ready: triangles=498002
+[INFO] src/Game/Game.cpp:44 Game initialized
+[TRACE] src/main.cpp:94 Game initialized
+[DEBUGGING] main > Game::run() > void std::__invoke_impl<void, void (*)()>(std::__invoke_other, void (*&&)()) >      at :0 > operator() Libraries/src/Graphics/Window.cpp:458 Window focus changed

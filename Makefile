@@ -5,17 +5,17 @@
 #   make install-deps-demo     install demo vcpkg deps
 #   make install-deps-all      both
 #
-# ── Engine (Libraries/) ───────────────────────────────────────────────────────
+# ── Engine (mk/, src/, include/) ───────────────────────────────────────────────────────
 #   make debug                 build engine archives (debug)
 #   make release               build engine archives (release)
-#   make engine                build debug+release, dist, tools, and demo/engine/
+#   make engine                build debug+release, dist, tools, and apps/demo/engine/
 #   make dist                  package engine → dist/engine-<platform>/
 #   make engine-tool           build the engine scaffolding binary
 #   make sync-demo             fast sync of current BUILD_TYPE into demo/engine/
 #   make install-demo          copy full dist package into demo/engine/
 #   make clean / fclean        remove engine build artifacts
 #
-# ── Demo (demo/) ──────────────────────────────────────────────────────────────
+# ── Demo (apps/demo/) ──────────────────────────────────────────────────────────────
 #   make demo-debug            build demo (debug)
 #   make demo-release          build demo (release)
 #   make run                   run last built binary (debug or release, whichever is newer); builds debug if none exists
@@ -41,7 +41,10 @@
 SHELL      := sh
 VCPKG      ?= vcpkg
 BUILD_TYPE ?= debug
-ENGINE_MK  := Libraries/Makefile
+ENGINE_MK  := mk/engine.mk
+
+# In-repo layout: demo resources, shaders and tests live at the repository root.
+DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico
 
 # ── vcpkg ─────────────────────────────────────────────────────────────────────
 .PHONY: install-deps install-deps-demo install-deps-all
@@ -50,7 +53,7 @@ install-deps:
 	$(MAKE) -f $(ENGINE_MK) install VCPKG=$(VCPKG)
 
 install-deps-demo:
-	$(MAKE) -C demo install VCPKG=$(VCPKG)
+	$(MAKE) -C apps/demo $(DEMO_ARGS) install VCPKG=$(VCPKG)
 
 install-deps-all: install-deps install-deps-demo
 
@@ -82,66 +85,72 @@ fclean:
 	$(MAKE) -f $(ENGINE_MK) fclean
 
 # ── Demo ──────────────────────────────────────────────────────────────────────
-.PHONY: demo-debug demo-dev demo-release run run-debug run-release demo-run demo-clean demo-fclean
+# demo-test builds (release) and runs apps/demo's test suite
+.PHONY: demo-test demo-debug demo-dev demo-release run run-debug run-release demo-run demo-clean demo-fclean
 .PHONY: demo-install demo-search
 
 demo-debug:
-	$(MAKE) -C demo debug
+	$(MAKE) -C apps/demo $(DEMO_ARGS) debug
 
 demo-dev:
-	$(MAKE) -C demo dev
+	$(MAKE) -C apps/demo $(DEMO_ARGS) dev
 
 demo-release:
-	$(MAKE) -C demo release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) release
 
 run:
-	$(MAKE) -C demo run
+	$(MAKE) -C apps/demo $(DEMO_ARGS) run
 
 run-debug:
-	$(MAKE) -C demo run-debug
+	$(MAKE) -C apps/demo $(DEMO_ARGS) run-debug
 
 run-release:
-	$(MAKE) -C demo run-release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) run-release
 
 demo-run: run
 
+demo-test:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) test
+
 demo-clean:
-	$(MAKE) -C demo clean
+	$(MAKE) -C apps/demo $(DEMO_ARGS) clean
 
 demo-fclean:
-	$(MAKE) -C demo fclean
+	$(MAKE) -C apps/demo $(DEMO_ARGS) fclean
 
 demo-install:
-	$(MAKE) -C demo install $(ARGS) LIBS=$(LIBS) VCPKG=$(VCPKG)
+	$(MAKE) -C apps/demo $(DEMO_ARGS) install $(ARGS) LIBS=$(LIBS) VCPKG=$(VCPKG)
 
 demo-search:
-	$(MAKE) -C demo search Q=$(Q) VCPKG=$(VCPKG)
+	$(MAKE) -C apps/demo $(DEMO_ARGS) search Q=$(Q) VCPKG=$(VCPKG)
 
 # ── Combined ──────────────────────────────────────────────────────────────────
 .PHONY: all-debug all-release clean-all setup setup-run
 
 all-debug:
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=debug
-	$(MAKE) -C demo debug
+	$(MAKE) -C apps/demo $(DEMO_ARGS) debug
 
 all-release:
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
-	$(MAKE) -C demo release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) release
 
 clean-all:
 	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=debug
 	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=dev
 	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=release
-	$(MAKE) -C demo fclean
-	@rm -rf vcpkg_installed demo/vcpkg_installed demo/engine/vcpkg_installed
+	$(MAKE) -C apps/demo $(DEMO_ARGS) fclean
+	@rm -rf vcpkg_installed apps/demo/vcpkg_installed apps/demo/engine/vcpkg_installed
 	@echo "Removed all engine/demo build artifacts and vcpkg installs"
 
 # install engine deps → prepare full engine → install demo deps → build demo
 setup:
 	$(MAKE) -f $(ENGINE_MK) install VCPKG=$(VCPKG)
 	$(MAKE) -f $(ENGINE_MK) engine
-	$(MAKE) -C demo install VCPKG=$(VCPKG)
-	$(MAKE) -C demo debug
+	$(MAKE) -C apps/demo $(DEMO_ARGS) install VCPKG=$(VCPKG)
+	$(MAKE) -C apps/demo $(DEMO_ARGS) debug
 
 setup-run: setup demo-run
 
@@ -152,7 +161,7 @@ setup-run: setup demo-run
 .PHONY: publish
 publish:
 	@set -e; \
-	CONFIG=Libraries/config.mk; \
+	CONFIG=mk/config.mk; \
 	\
 	BRANCH=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
 	if [ "$$BRANCH" != "main" ] && [ "$$BRANCH" != "master" ]; then \
@@ -214,6 +223,6 @@ info:
 	@printf "\n=== Engine ===\n"
 	@$(MAKE) -f $(ENGINE_MK) info --no-print-directory
 	@printf "=== Demo ===\n"
-	@$(MAKE) -C demo info --no-print-directory
+	@$(MAKE) -C apps/demo $(DEMO_ARGS) info --no-print-directory
 	@printf "BUILD_TYPE  : $(BUILD_TYPE)\n"
 	@printf "VCPKG       : $(VCPKG)\n\n"

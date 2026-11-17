@@ -11,5 +11,5 @@ Checks: >
   bugprone-integer-division,
   bugprone-reserved-identifier
 WarningsAsErrors: '*'
-HeaderFilterRegex: '^(Libraries|src|tests)/'
+HeaderFilterRegex: '^(include|src|tests)/'
 FormatStyle: file

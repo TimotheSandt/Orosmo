@@ -1,23 +1,45 @@
-.*/
-!.github/
-.vscode/
-.VSCodeCounter/
-.vs/
-vcpkg_installed/
+# ── Build outputs ─────────────────────────────────────────────────────────────
+/build/
+/dist/
+/lib/
+/obj/
+/vcpkg_installed/
 bin/
-build/
-dist/
 obj/
-lib/
+Generated/
 logs/
 *.log
 imgui.ini
-Generated/
-tools/target/
-tools/*/target/
-tools/cui.exe
-tools/cui
-tools/engine.exe
-tools/engine
-demo/engine/
-demo/config.local.mk
+
+# Engine copied/linked into the demo, per-machine overrides
+/apps/*/engine/
+/apps/*/vcpkg_installed/
+config.local.mk
+
+# Rust tools (cui, engine-init)
+/tools/target/
+/tools/.target*/
+/tools/*/target/
+/tools/cui
+/tools/cui.exe
+/tools/engine
+/tools/engine.exe
+
+# ── Editors, IDEs, assistants, OS ─────────────────────────────────────────────
+.vscode/
+.vs/
+.idea/
+.VSCodeCounter/
+.claude/
+.cache/
+*.user
+*.swp
+*~
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db
+__pycache__/
+
+# Local artefacts that must never be committed
+*.bundle

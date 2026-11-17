@@ -30,7 +30,7 @@ const TPL_CONFIG_LOCAL_MK: &str = "\
 
 const HASH_TAG: &str = "# @engine-template-hash:";
 
-// ── Engine identity (baked in from Libraries/config.mk via build.rs) ─────────
+// ── Engine identity (baked in from mk/config.mk via build.rs) ─────────
 
 const ENGINE_NAME:        &str = env!("ENGINE_NAME");
 const ENGINE_VERSION:     &str = env!("ENGINE_VERSION");
