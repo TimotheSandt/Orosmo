@@ -7,6 +7,9 @@ on:
     branches: [dev]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -21,8 +24,10 @@ jobs:
   # ── Linux : reference platform. apt for everything it has, vcpkg for glad (v1) and msdfgen. ──
   linux:
     name: Linux x64 (build, tests, checks, capture)
-    # A PR whose head is dev is already covered by the push run on the same commit: skip the duplicate.
-    if: github.event_name != 'pull_request' || github.head_ref != 'dev'
+    # A PR whose head is dev (in this repository) is covered by the push run on the same commit: skip the duplicate.
+    if: >-
+      github.event_name != 'pull_request' || github.head_ref != 'dev' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -60,8 +65,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .vcpkg-archives
-          key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-archives-linux-
+          key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-
 
       # Manifest mode: vcpkg.json lists glad and msdfgen (core only, no skia); the other packages come from apt on Linux.
       - name: Install glad and msdfgen (vcpkg, vcpkg.json)
@@ -70,11 +75,11 @@ jobs:
           "$VCPKG_ROOT/vcpkg" install
 
       - name: Save vcpkg archives
-        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        if: always()
         uses: actions/cache/save@v4
         with:
           path: .vcpkg-archives
-          key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
 
       - name: Link dependencies (apt + vcpkg)
         run: sh tools/setup-linux-deps.sh
@@ -117,8 +122,10 @@ jobs:
   # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
   sanitizers:
     name: Linux x64 (ASan + UBSan tests)
-    # A PR whose head is dev is already covered by the push run on the same commit: skip the duplicate.
-    if: github.event_name != 'pull_request' || github.head_ref != 'dev'
+    # A PR whose head is dev (in this repository) is covered by the push run on the same commit: skip the duplicate.
+    if: >-
+      github.event_name != 'pull_request' || github.head_ref != 'dev' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -141,18 +148,18 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .vcpkg-archives
-          key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-archives-linux-
+          key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-
       - name: Install glad and msdfgen (vcpkg, vcpkg.json)
         run: |
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           "$VCPKG_ROOT/vcpkg" install
       - name: Save vcpkg archives
-        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        if: always()
         uses: actions/cache/save@v4
         with:
           path: .vcpkg-archives
-          key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
       - name: Link dependencies
         run: sh tools/setup-linux-deps.sh
       - name: Tests under ASan + UBSan
@@ -166,8 +173,10 @@ jobs:
   # available while writing them). Remove the flag after the first green run; see docs/GAPS.md.
   other-platforms:
     name: ${{ matrix.name }} (build, tests)
-    # A PR whose head is dev is already covered by the push run on the same commit: skip the duplicate.
-    if: github.event_name != 'pull_request' || github.head_ref != 'dev'
+    # A PR whose head is dev (in this repository) is covered by the push run on the same commit: skip the duplicate.
+    if: >-
+      github.event_name != 'pull_request' || github.head_ref != 'dev' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ${{ matrix.os }}
     continue-on-error: true
     strategy:
@@ -217,8 +226,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .vcpkg-archives
-          key: vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-archives-${{ matrix.triplet }}-
+          key: vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-
 
       - name: Install vcpkg dependencies (Unix)
         if: runner.os != 'Windows'
@@ -236,11 +245,11 @@ jobs:
             --x-install-root=./vcpkg_installed --no-print-usage
 
       - name: Save vcpkg archives
-        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        if: always()
         uses: actions/cache/save@v4
         with:
           path: .vcpkg-archives
-          key: vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
 
       # WERROR=0 until the first green run on these systems (warnings are errors on Linux).
       - name: Build and test (Unix)
