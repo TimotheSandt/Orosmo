@@ -24,14 +24,14 @@ struct ShaderProgramCreateInfo
 {
     ShaderProgramDesc desc{};
     std::string debugName;
-    std::vector<ShaderStageSource> stageSources;
+    std::vector<ShaderStageSource> stageSources{};
 };
 
 struct BufferCreateInfo
 {
     BufferDesc desc{};
     std::string debugName;
-    std::vector<std::byte> initialData;
+    std::vector<std::byte> initialData{};
 };
 
 enum class BufferMapAccess : std::uint8_t
@@ -43,15 +43,15 @@ enum class BufferMapAccess : std::uint8_t
 
 struct GeometryLayout
 {
-    std::vector<std::uint32_t> vertexAttributes;
-    std::vector<std::uint32_t> instanceAttributes;
+    std::vector<std::uint32_t> vertexAttributes{};
+    std::vector<std::uint32_t> instanceAttributes{};
 };
 
 struct TextureCreateInfo
 {
     TextureDesc desc{};
     std::string debugName;
-    std::vector<std::byte> initialData;
+    std::vector<std::byte> initialData{};
     bool generateMipmaps = true;
     bool nearestFiltering = false;
 };
@@ -65,9 +65,9 @@ struct RenderTargetCreateInfo
 struct GeometryCreateInfo
 {
     GeometryLayout layout{};
-    std::vector<float> vertexData;
-    std::vector<std::uint32_t> indexData;
-    std::vector<float> instanceData;
+    std::vector<float> vertexData{};
+    std::vector<std::uint32_t> indexData{};
+    std::vector<float> instanceData{};
     bool dynamicVertexData = false;
     bool dynamicInstanceData = false;
     std::string debugName;
