@@ -43,6 +43,9 @@ VCPKG      ?= vcpkg
 BUILD_TYPE ?= debug
 ENGINE_MK  := Libraries/Makefile
 
+# In-repo layout: demo resources, shaders and tests live at the repository root.
+DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico
+
 # ── vcpkg ─────────────────────────────────────────────────────────────────────
 .PHONY: install-deps install-deps-demo install-deps-all
 
@@ -50,7 +53,7 @@ install-deps:
 	$(MAKE) -f $(ENGINE_MK) install VCPKG=$(VCPKG)
 
 install-deps-demo:
-	$(MAKE) -C apps/demo install VCPKG=$(VCPKG)
+	$(MAKE) -C apps/demo $(DEMO_ARGS) install VCPKG=$(VCPKG)
 
 install-deps-all: install-deps install-deps-demo
 
@@ -82,57 +85,61 @@ fclean:
 	$(MAKE) -f $(ENGINE_MK) fclean
 
 # ── Demo ──────────────────────────────────────────────────────────────────────
-.PHONY: demo-debug demo-dev demo-release run run-debug run-release demo-run demo-clean demo-fclean
+# demo-test builds (release) and runs apps/demo's test suite
+.PHONY: demo-test demo-debug demo-dev demo-release run run-debug run-release demo-run demo-clean demo-fclean
 .PHONY: demo-install demo-search
 
 demo-debug:
-	$(MAKE) -C apps/demo debug
+	$(MAKE) -C apps/demo $(DEMO_ARGS) debug
 
 demo-dev:
-	$(MAKE) -C apps/demo dev
+	$(MAKE) -C apps/demo $(DEMO_ARGS) dev
 
 demo-release:
-	$(MAKE) -C apps/demo release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) release
 
 run:
-	$(MAKE) -C apps/demo run
+	$(MAKE) -C apps/demo $(DEMO_ARGS) run
 
 run-debug:
-	$(MAKE) -C apps/demo run-debug
+	$(MAKE) -C apps/demo $(DEMO_ARGS) run-debug
 
 run-release:
-	$(MAKE) -C apps/demo run-release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) run-release
 
 demo-run: run
 
+demo-test:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) test
+
 demo-clean:
-	$(MAKE) -C apps/demo clean
+	$(MAKE) -C apps/demo $(DEMO_ARGS) clean
 
 demo-fclean:
-	$(MAKE) -C apps/demo fclean
+	$(MAKE) -C apps/demo $(DEMO_ARGS) fclean
 
 demo-install:
-	$(MAKE) -C apps/demo install $(ARGS) LIBS=$(LIBS) VCPKG=$(VCPKG)
+	$(MAKE) -C apps/demo $(DEMO_ARGS) install $(ARGS) LIBS=$(LIBS) VCPKG=$(VCPKG)
 
 demo-search:
-	$(MAKE) -C apps/demo search Q=$(Q) VCPKG=$(VCPKG)
+	$(MAKE) -C apps/demo $(DEMO_ARGS) search Q=$(Q) VCPKG=$(VCPKG)
 
 # ── Combined ──────────────────────────────────────────────────────────────────
 .PHONY: all-debug all-release clean-all setup setup-run
 
 all-debug:
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=debug
-	$(MAKE) -C apps/demo debug
+	$(MAKE) -C apps/demo $(DEMO_ARGS) debug
 
 all-release:
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
-	$(MAKE) -C apps/demo release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) release
 
 clean-all:
 	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=debug
 	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=dev
 	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=release
-	$(MAKE) -C apps/demo fclean
+	$(MAKE) -C apps/demo $(DEMO_ARGS) fclean
 	@rm -rf vcpkg_installed apps/demo/vcpkg_installed apps/demo/engine/vcpkg_installed
 	@echo "Removed all engine/demo build artifacts and vcpkg installs"
 
@@ -140,8 +147,8 @@ clean-all:
 setup:
 	$(MAKE) -f $(ENGINE_MK) install VCPKG=$(VCPKG)
 	$(MAKE) -f $(ENGINE_MK) engine
-	$(MAKE) -C apps/demo install VCPKG=$(VCPKG)
-	$(MAKE) -C apps/demo debug
+	$(MAKE) -C apps/demo $(DEMO_ARGS) install VCPKG=$(VCPKG)
+	$(MAKE) -C apps/demo $(DEMO_ARGS) debug
 
 setup-run: setup demo-run
 
@@ -214,6 +221,6 @@ info:
 	@printf "\n=== Engine ===\n"
 	@$(MAKE) -f $(ENGINE_MK) info --no-print-directory
 	@printf "=== Demo ===\n"
-	@$(MAKE) -C apps/demo info --no-print-directory
+	@$(MAKE) -C apps/demo $(DEMO_ARGS) info --no-print-directory
 	@printf "BUILD_TYPE  : $(BUILD_TYPE)\n"
 	@printf "VCPKG       : $(VCPKG)\n\n"

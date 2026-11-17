@@ -120,8 +120,11 @@ GAME_LDFLAGS  = \
 SRC_DIR  := src
 OBJ_DIR  := obj/$(BUILD_TYPE)
 BIN_DIR  := bin/$(BUILD_TYPE)
-TEST_DIR := tests
-RES_DIR  := res
+TEST_DIR  ?= tests
+RES_DIR   ?= res
+# Shaders, copied to $(BIN_DIR)/res/shader (runtime path "res/shader/...").
+# In the engine repo they live at the repository root; see DEMO_ARGS in the root Makefile.
+SHADER_DIR ?=
 
 # ── Build target name ─────────────────────────────────────────────────────────
 ifeq ($(BUILD_TYPE),release)
@@ -272,9 +275,11 @@ $(OBJ_DIR)/benchmark/%.o: $(BENCH_DIR)/%.cpp
 
 copy_res: | $(BIN_DIR)
 ifeq ($(ENGINE_OS),Windows)
-	@if [ -d "$(RES_DIR)" ]; then mkdir -p "$(BIN_DIR)/$(RES_DIR)"; powershell -NoProfile -Command "Copy-Item -Path '$(RES_DIR)/*' -Destination '$(BIN_DIR)/$(RES_DIR)' -Recurse -Force"; fi
+	@if [ -d "$(RES_DIR)" ]; then mkdir -p "$(BIN_DIR)/res"; powershell -NoProfile -Command "Copy-Item -Path '$(RES_DIR)/*' -Destination '$(BIN_DIR)/res' -Recurse -Force"; fi
+	@if [ -n "$(SHADER_DIR)" ] && [ -d "$(SHADER_DIR)" ]; then mkdir -p "$(BIN_DIR)/res/shader"; powershell -NoProfile -Command "Copy-Item -Path '$(SHADER_DIR)/*' -Destination '$(BIN_DIR)/res/shader' -Recurse -Force"; fi
 else
-	@if [ -d "$(RES_DIR)" ]; then cp -r "$(RES_DIR)" "$(BIN_DIR)/"; fi
+	@if [ -d "$(RES_DIR)" ]; then mkdir -p "$(BIN_DIR)/res" && cp -r "$(RES_DIR)/." "$(BIN_DIR)/res/"; fi
+	@if [ -n "$(SHADER_DIR)" ] && [ -d "$(SHADER_DIR)" ]; then mkdir -p "$(BIN_DIR)/res/shader" && cp -r "$(SHADER_DIR)/." "$(BIN_DIR)/res/shader/"; fi
 endif
 
 copy_libs: | $(BIN_DIR)
@@ -495,6 +500,7 @@ create_linux_installer: | $(BUILD_ARTIFACTS_DIR)
 	    > "$(TMP_DEB_DIR)/DEBIAN/control"
 	@cp -f "$(TARGET)" "$(TMP_DEB_DIR)/usr/bin/$(PROJECT_NAME)"
 	@cp -R "$(RES_DIR)/." "$(TMP_DEB_DIR)/usr/share/$(PROJECT_NAME)/"
+	@if [ -n "$(SHADER_DIR)" ] && [ -d "$(SHADER_DIR)" ]; then mkdir -p "$(TMP_DEB_DIR)/usr/share/$(PROJECT_NAME)/shader" && cp -R "$(SHADER_DIR)/." "$(TMP_DEB_DIR)/usr/share/$(PROJECT_NAME)/shader/"; fi
 	@dpkg-deb --build "$(TMP_DEB_DIR)" "$(BUILD_ARTIFACTS_DIR)/$(INSTALLER_FILE)"
 	@rm -rf "$(TMP_DEB_DIR)"
 	@echo "Package: $(BUILD_ARTIFACTS_DIR)/$(INSTALLER_FILE)"
