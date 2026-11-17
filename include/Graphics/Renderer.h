@@ -106,6 +106,14 @@ class Renderer
     void SetJitterSequenceLength(std::uint32_t length) noexcept;
     std::uint32_t GetJitterSequenceLength() const noexcept { return jitterSequenceLength; }
 
+    // Save the primary colour attachment of this renderer's target (render resolution, before any
+    // upscaling to the window) as a PNG. Valid after EndPass(); returns false on failure (TOOL-03).
+    bool SaveColorPng(const std::string &path) const;
+    // Render into the offscreen target even when no effect needs it, so SaveColorPng has something to read.
+    // The picture is then blitted to the window as for any offscreen pass (same image).
+    void SetForceRenderTarget(bool enabled) noexcept { forceRenderTarget = enabled; }
+    bool IsForceRenderTarget() const noexcept { return forceRenderTarget; }
+
     // Call once on scene cuts or camera teleports so temporal modes can discard stale history.
     void ResetTemporalHistory() noexcept { resetHistoryNextFrame = true; }
 
@@ -151,6 +159,7 @@ class Renderer
 
     // Temporal resource state
     bool motionVectorsEnabled = false;
+    bool forceRenderTarget = false;
     bool depthAsTextureEnabled = false;
     float deltaTime = 0.0f;
     glm::vec2 currentJitter = {0.0f, 0.0f};

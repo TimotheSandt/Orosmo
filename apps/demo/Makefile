@@ -111,7 +111,7 @@ _ADD_DEP_VCPKG_ROOT   = $(_VCPKG_ROOT)
 _ADD_DEP_VCPKG_LIBDIR = $(_VCPKG_ROOT)/$(ENGINE_VCPKG_TRIPLET)/lib
 
 GAME_CXXFLAGS = $(EXTRA_CXXFLAGS) \
-    $(if $(wildcard $(_GAME_VCPKG_DIR)/include),-I$(_GAME_VCPKG_DIR)/include)
+    $(if $(wildcard $(_GAME_VCPKG_DIR)/include),-isystem $(_GAME_VCPKG_DIR)/include)
 GAME_LDFLAGS  = \
     $(if $(wildcard $(_GAME_VCPKG_DIR)/lib),-L$(_GAME_VCPKG_DIR)/lib) \
     $(EXTRA_LDLIBS)

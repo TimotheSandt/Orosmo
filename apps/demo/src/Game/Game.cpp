@@ -26,19 +26,18 @@ Game::~Game() { this->stop(); }
 
 void Game::init()
 {
-    int *w = window.GetWidthptr();
-    int *h = window.GetHeightptr();
+    this->refreshViewSize();
 
-    this->camera.Initialize(w, h, glm::vec3(0.0f, 1.0f, 0.0f));
+    this->camera.Initialize(&this->viewWidth, &this->viewHeight, glm::vec3(0.0f, 1.0f, 0.0f));
     this->camera.SetFOV(75.0f);
     this->camera.SetNearPlane(0.1f);
     this->camera.SetFarPlane(1000.0f);
 
     this->world = std::make_unique<World>();
-    this->world->Init();
+    this->world->Init(this->terrainSeed);
 
     // Initialize UI system
-    UI::Manager::Instance().Init(*window.GetWidthptr(), *window.GetHeightptr());
+    UI::Manager::Instance().Init(this->viewWidth, this->viewHeight);
     UI::Manager::Instance().GetRootContainer()->AddChild(UI::CreatePerformanceView(&window));
 
     LOG_INFO("Game initialized");
@@ -64,6 +63,24 @@ void Game::stop()
     UI::Manager::Instance().Shutdown();
     this->camera.Destroy();
     this->window.Close();
+}
+
+// Logical size of the picture: the window's, except while capturing (fixed size, reproducible images).
+void Game::refreshViewSize()
+{
+    constexpr int kCaptureWidth = 1280;
+    constexpr int kCaptureHeight = 720;
+    const bool capturing = !this->captureDirectory.empty();
+    this->viewWidth = capturing ? kCaptureWidth : *window.GetWidthptr();
+    this->viewHeight = capturing ? kCaptureHeight : *window.GetHeightptr();
+}
+
+void Game::enableCapture(std::string directory, std::uint32_t frames)
+{
+    this->captureDirectory = std::move(directory);
+    this->captureFrames = frames;
+    this->renderer3D.SetForceRenderTarget(true);
+    this->rendererUI.SetForceRenderTarget(true);
 }
 
 void Game::run()
@@ -144,13 +161,15 @@ void Game::update()
     this->camera.Inputs(this->window.GetWindow(), deltaTime);
 
     this->world->Update();
-    UI::Manager::Instance().Update(deltaTime, *window.GetWidthptr(), *window.GetHeightptr());
+    this->refreshViewSize();
+    UI::Manager::Instance().Update(deltaTime, this->viewWidth, this->viewHeight);
 }
 
 void Game::render()
 {
-    const int windowWidth = *window.GetWidthptr();
-    const int windowHeight = *window.GetHeightptr();
+    this->refreshViewSize();
+    const int windowWidth = this->viewWidth;
+    const int windowHeight = this->viewHeight;
 
     renderer3D.SetOutputResolution(windowWidth, windowHeight);
     renderer3D.BeginPass();
@@ -163,5 +182,14 @@ void Game::render()
     rendererUI.BeginPass();
     UI::Manager::Instance().Render(rendererUI, windowWidth, windowHeight);
     Profiler::ProfileGPU("UIUpscale", &Renderer2D::EndPass, &rendererUI);
+
+    ++this->renderedFrames;
+    if (!this->captureDirectory.empty() && !this->captureDone && this->renderedFrames >= this->captureFrames)
+    {
+        const bool sceneSaved = renderer3D.SaveColorPng(this->captureDirectory + "/scene.png");
+        const bool uiSaved = rendererUI.SaveColorPng(this->captureDirectory + "/ui.png");
+        this->captureDone = sceneSaved && uiSaved;
+        glfwSetWindowShouldClose(this->window.GetWindow(), true);
+    }
 }
 

@@ -4,7 +4,7 @@ World::World() {}
 
 World::~World() { this->Destroy(); }
 
-void World::Init()
+void World::Init(std::optional<std::uint32_t> seed)
 {
     this->lightManager.Initialize();
     this->lightManager.SetAmbientLight(glm::vec3(1.0f, 1.0f, 1.0f), 0.2f);
@@ -13,6 +13,10 @@ void World::Init()
     this->lightManager.UploadChanges();
 
     this->terrain.init(500.0f, 500.0f, 500, 500);
+    if (seed.has_value())
+    {
+        this->terrain.SetNoiseSeed(static_cast<int>(*seed));
+    }
     LOG_DEBUGGING("Triangle count: ", this->terrain.GetGrid().GetTriangleCount());
     // this->terrain.GenerateRandomTerrain(2.0f);
     this->terrain.GenerateFractalTerrain(0.01f, 50.0f, 10, 0.5f, 2.0f);

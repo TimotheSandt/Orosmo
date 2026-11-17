@@ -27,6 +27,11 @@ struct GraphicsLaunchOptions
     bool listApis = false;
     bool chooseApiInteractively = false;
     bool apiExplicitlyRequested = false;
+    // --capture <dir> [--capture-frames N] : render N frames, save scene.png and ui.png in <dir>, exit (TOOL-03).
+    std::string captureDirectory;
+    std::uint32_t captureFrames = 10;
+    // --seed N : terrain seed of the demo (default: random, as before). --capture implies seed 1 unless given.
+    std::optional<std::uint32_t> seed;
 };
 
 std::string GraphicsAPIToString(GraphicsAPI api) noexcept;
