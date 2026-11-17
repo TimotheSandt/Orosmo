@@ -37,9 +37,10 @@ python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720
 
 ## Non fait / à surveiller avant de fusionner
 
-- **La CI n'a jamais tourné sur GitHub** : à observer ; les jobs Windows/macOS sont non bloquants et sans `-Werror`.
+- **CI** : Linux (build, tests, ASan/UBSan, capture) et Windows verts ; macOS rouge au dernier run (correctif d'édition de liens poussé, à reconfirmer). Windows/macOS non bloquants et sans `-Werror`.
+- **Revue CodeRabbit** : triée dans `docs/GAPS.md` ; corrigé : fuite de jeton Git, cache CI, macOS, NSIS, Benchmark ; reporté : constats sur l'ancien code (jalons M2-M4).
 - Windows et macOS non vérifiés ; Vulkan non touché (`--capture` le refuse jusqu'en M4).
 - Dépendance à installer : `sudo apt install doctest-dev`.
-- Décisions attendues : `docs/QUESTIONS.md` A17 (quand migrer vers `docs/03`), A18 (premier run CI), A19 (disque).
+- Décisions attendues : `docs/QUESTIONS.md` A17 (migration vers `docs/03`), A19 (disque), A20 (TEST-01), A21 (UI-02 et batch 2D), A22 (REPO-01).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
