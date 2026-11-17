@@ -3,17 +3,38 @@
   "version": "0.1.0",
   "dependencies": [
     "glad",
-    "glfw3",
-    "glm",
-    "stb",
-    "freetype",
-    "vulkan",
-    "shaderc",
     {
       "name": "msdfgen",
       "default-features": false,
       "features": []
     },
-    "doctest"
+    {
+      "name": "glfw3",
+      "platform": "!linux"
+    },
+    {
+      "name": "glm",
+      "platform": "!linux"
+    },
+    {
+      "name": "stb",
+      "platform": "!linux"
+    },
+    {
+      "name": "freetype",
+      "platform": "!linux"
+    },
+    {
+      "name": "vulkan",
+      "platform": "!linux"
+    },
+    {
+      "name": "shaderc",
+      "platform": "!linux"
+    },
+    {
+      "name": "doctest",
+      "platform": "!linux"
+    }
   ]
 }
