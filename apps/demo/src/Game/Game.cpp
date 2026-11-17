@@ -66,6 +66,12 @@ void Game::stop()
     this->window.Close();
 }
 
+void Game::enableCapture(std::string directory, std::uint32_t frames)
+{
+    this->captureDirectory = std::move(directory);
+    this->captureFrames = frames;
+}
+
 void Game::run()
 {
     while (!window.ShouldClose())
@@ -163,5 +169,14 @@ void Game::render()
     rendererUI.BeginPass();
     UI::Manager::Instance().Render(rendererUI, windowWidth, windowHeight);
     Profiler::ProfileGPU("UIUpscale", &Renderer2D::EndPass, &rendererUI);
+
+    ++this->renderedFrames;
+    if (!this->captureDirectory.empty() && !this->captureDone && this->renderedFrames >= this->captureFrames)
+    {
+        const bool sceneSaved = renderer3D.SaveColorPng(this->captureDirectory + "/scene.png");
+        const bool uiSaved = rendererUI.SaveColorPng(this->captureDirectory + "/ui.png");
+        this->captureDone = sceneSaved && uiSaved;
+        glfwSetWindowShouldClose(this->window.GetWindow(), true);
+    }
 }
 

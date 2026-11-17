@@ -69,6 +69,42 @@ Assert(!ParseGraphicsAPI("directx").has_value(), "Unknown API should be rejected
         Assert(thrown, "Invalid graphics API should throw");
     }
 
+    TEST_CASE("launch options parse capture directory and frame count")
+    {
+        const char *argv[] = {"program", "--api", "opengl", "--capture", "out/ref", "--capture-frames", "25"};
+        const GraphicsLaunchOptions options = ParseGraphicsLaunchOptions(7, argv);
+        AssertEqual(options.captureDirectory, std::string("out/ref"), "Capture directory should be parsed");
+        AssertEqual(options.captureFrames, 25u, "Capture frame count should be parsed");
+    }
+
+    TEST_CASE("launch options default to no capture")
+    {
+        const char *argv[] = {"program"};
+        const GraphicsLaunchOptions options = ParseGraphicsLaunchOptions(1, argv);
+        Assert(options.captureDirectory.empty(), "Capture should be off by default");
+        AssertEqual(options.captureFrames, 10u, "Capture should default to 10 frames");
+    }
+
+    TEST_CASE("launch options reject invalid capture arguments")
+    {
+        const char *missingValue[] = {"program", "--capture"};
+        const char *zeroFrames[] = {"program", "--capture", "x", "--capture-frames", "0"};
+        const char *textFrames[] = {"program", "--capture", "x", "--capture-frames", "ten"};
+        for (const auto &args : {std::pair<const char *const *, int>{missingValue, 2}, {zeroFrames, 5}, {textFrames, 5}})
+        {
+            bool thrown = false;
+            try
+            {
+                static_cast<void>(ParseGraphicsLaunchOptions(args.second, args.first));
+            }
+            catch (const std::invalid_argument &)
+            {
+                thrown = true;
+            }
+            Assert(thrown, "Invalid capture arguments should throw");
+        }
+    }
+
     TEST_CASE("interactive selection accepts valid entries")
     {
         std::istringstream input("2\n");

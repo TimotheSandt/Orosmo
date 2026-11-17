@@ -5,6 +5,7 @@
 #include "Logger.h"
 
 #include <cstdlib>
+#include <filesystem>
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -19,6 +20,7 @@ int main(int argc, char **argv)
 
     try
     {
+        const std::filesystem::path launchDirectory = std::filesystem::current_path();
         SetWorkingDirectoryToExe();
 
 #ifdef DEBUG
@@ -43,6 +45,10 @@ int main(int argc, char **argv)
             }
             return EXIT_SUCCESS;
         }
+
+        // The working directory is the executable's: resolve a relative capture directory against the launch directory.
+        const std::string captureDirectory =
+            launchOptions.captureDirectory.empty() ? std::string() : (launchDirectory / launchOptions.captureDirectory).string();
 
         selectedApi = launchOptions.api;
         const bool shouldPromptForApi = launchOptions.chooseApiInteractively;
@@ -89,11 +95,20 @@ int main(int argc, char **argv)
             LOG_INFO("Starting game with graphics API: ", GraphicsAPIToString(selectedApi));
 
             Game game;
+            if (!launchOptions.captureDirectory.empty())
+            {
+                game.enableCapture(captureDirectory, launchOptions.captureFrames);
+            }
             LOG_TRACE("Game created");
             game.init();
             LOG_TRACE("Game initialized");
             game.run();
             LOG_INFO("Game stopped");
+            if (!game.captureSucceeded())
+            {
+                LOG_ERROR(1, "Capture requested but not completed");
+                exitCode = EXIT_FAILURE;
+            }
         }
 
         if (graphicsBackend)

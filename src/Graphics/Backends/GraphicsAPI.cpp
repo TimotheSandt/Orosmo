@@ -134,6 +134,38 @@ GraphicsLaunchOptions ParseGraphicsLaunchOptions(int argc, const char *const *ar
             continue;
         }
 
+        if (argument == "--capture" || argument == "--capture-frames")
+        {
+            if (index + 1 >= argc)
+            {
+                throw std::invalid_argument("Missing value after " + argument);
+            }
+            const std::string value(argv[++index]);
+            if (argument == "--capture")
+            {
+                options.captureDirectory = value;
+            }
+            else
+            {
+                std::size_t parsedChars = 0;
+                unsigned long frames = 0;
+                try
+                {
+                    frames = std::stoul(value, &parsedChars);
+                }
+                catch (const std::exception &)
+                {
+                    parsedChars = 0;
+                }
+                if (parsedChars != value.size() || frames == 0 || frames > 100000)
+                {
+                    throw std::invalid_argument("Invalid frame count for --capture-frames: " + value);
+                }
+                options.captureFrames = static_cast<std::uint32_t>(frames);
+            }
+            continue;
+        }
+
         throw std::invalid_argument("Unknown argument: " + argument);
     }
 
@@ -142,9 +174,10 @@ GraphicsLaunchOptions ParseGraphicsLaunchOptions(int argc, const char *const *ar
 
 void PrintGraphicsAPIUsage(std::ostream &out)
 {
-    out << "Usage: ProceduralGeneration [--api <name>] [--choose-api] [--list-apis] [--help]\n";
+    out << "Usage: ProceduralGeneration [--api <name>] [--choose-api] [--list-apis] [--capture <dir> [--capture-frames N]] [--help]\n";
     out << "Available API names: " << JoinAvailableApis() << '\n';
     out << "Example: ProceduralGeneration --api opengl\n";
+    out << "Capture : renders N frames (default 10), writes <dir>/scene.png and <dir>/ui.png, then exits.\n";
 }
 
 bool PromptForGraphicsAPI(std::istream &input, std::ostream &output, GraphicsAPI &selectedApi)

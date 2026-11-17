@@ -27,6 +27,9 @@ struct GraphicsLaunchOptions
     bool listApis = false;
     bool chooseApiInteractively = false;
     bool apiExplicitlyRequested = false;
+    // --capture <dir> [--capture-frames N] : render N frames, save scene.png and ui.png in <dir>, exit (TOOL-03).
+    std::string captureDirectory;
+    std::uint32_t captureFrames = 10;
 };
 
 std::string GraphicsAPIToString(GraphicsAPI api) noexcept;

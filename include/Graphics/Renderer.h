@@ -106,6 +106,10 @@ class Renderer
     void SetJitterSequenceLength(std::uint32_t length) noexcept;
     std::uint32_t GetJitterSequenceLength() const noexcept { return jitterSequenceLength; }
 
+    // Save the primary colour attachment of this renderer's target (render resolution, before any
+    // upscaling to the window) as a PNG. Valid after EndPass(); returns false on failure (TOOL-03).
+    bool SaveColorPng(const std::string &path) const;
+
     // Call once on scene cuts or camera teleports so temporal modes can discard stale history.
     void ResetTemporalHistory() noexcept { resetHistoryNextFrame = true; }
 

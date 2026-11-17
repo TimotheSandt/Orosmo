@@ -5,12 +5,25 @@
 #include "Graphics/Core/GraphicsRuntime.h"
 #include "Graphics/Renderer2D.h"
 #include "Graphics/Renderer3D.h"
+#include "Graphics/RenderTarget.h"
+#include "Graphics/Screenshot.h"
+
+#include <filesystem>
 
 namespace tests
 {
 
 TEST_SUITE("Renderers")
 {
+    TEST_CASE("screenshot refuses an uninitialised render target and writes nothing")
+    {
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "proceduralgeneration_never_written.png";
+        std::filesystem::remove(path);
+        RenderTarget target;
+        Assert(!Screenshot::SavePng(target, 0, path.string()), "An uninitialised render target cannot be captured");
+        Assert(!std::filesystem::exists(path), "A failed capture must not leave a file behind");
+    }
+
     TEST_CASE("renderer2d tracks the current frame extent")
     {
         Renderer2D renderer2D;

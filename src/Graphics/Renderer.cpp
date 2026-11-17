@@ -3,6 +3,7 @@
 #include "Graphics/Core/GraphicsRuntime.h"
 #include "Graphics/Core/GraphicsTypes.h"
 #include "Graphics/Core/RenderState.h"
+#include "Graphics/Screenshot.h"
 #include "Graphics/Upscaling/IAdvancedUpscaleMode.h"
 #include "Graphics/Upscaling/Modes/BilinearBlitUpscaleMode.h"
 
@@ -167,6 +168,8 @@ void Renderer::BeginPass()
 
     OnBeginPass();
 }
+
+bool Renderer::SaveColorPng(const std::string &path) const { return Screenshot::SavePng(GetRenderTarget(), 0, path); }
 
 void Renderer::EndPass()
 {
