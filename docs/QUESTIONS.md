@@ -101,4 +101,6 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 | Q7 | Analyser puis supprimer les stashes | Analysés ; 2 archivés ; patchs complets hors dépôt ; suppression en attente de ton « go » |
 | A18 | macOS : on ne se bloque pas dessus | macOS reste `continue-on-error` ; on le retouche à chaque PR |
 
-**A5 (JSON)** et **A12 (graine)** : explications données dans la conversation ; décisions attendues.
+**A5 (JSON) : décidé le 2026-11-17 par l'auteur : nlohmann-json** (simdjson plus tard, seulement pour les gros fichiers en lecture seule, ex. glTF, si les mesures le justifient). Ajouté à `vcpkg.json` (toutes plateformes, en-têtes seuls).
+
+**A12 (graine) : décidé le 2026-11-17 par l'auteur** : constructeurs sans graine supprimés ; l'application peut choisir l'heure ou le hasard, mais **explicitement**, et journalise la graine. Fait en M1 (`fix/A12-graine-explicite`).
