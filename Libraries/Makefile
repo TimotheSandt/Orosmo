@@ -115,7 +115,7 @@ endif
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 LIBRARIES_SRC_DIR := Libraries/src
-INCLUDES_BASE     := Libraries/includes
+INCLUDES_BASE     := include
 OBJ_DIR           := obj
 LIB_DIR           := lib
 

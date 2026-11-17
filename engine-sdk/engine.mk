@@ -143,12 +143,12 @@ endif
 # ── Include paths ─────────────────────────────────────────────────────────────
 # Support two layouts:
 #   Release package:  ENGINE_DIR/includes/          (dist output)
-#   Engine repo:      ENGINE_DIR/Libraries/includes/ (source tree)
+#   Engine repo:      ENGINE_DIR/include/ (source tree)
 
 ifneq ($(wildcard $(ENGINE_DIR)/includes),)
     _ENG_INC_BASE := $(ENGINE_DIR)/includes
 else
-    _ENG_INC_BASE := $(ENGINE_DIR)/Libraries/includes
+    _ENG_INC_BASE := $(ENGINE_DIR)/include
 endif
 
 _ENG_INC_DIRS  := $(notdir $(wildcard $(_ENG_INC_BASE)/*))
