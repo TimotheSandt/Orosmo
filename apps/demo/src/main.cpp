@@ -60,6 +60,15 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
+        if (!launchOptions.captureDirectory.empty() && selectedApi != GraphicsAPI::OpenGL)
+        {
+            // Observed on Vulkan (M0 audit): the offscreen path raises validation errors (image layout) and the
+            // image differs from OpenGL. Vulkan is reworked in M4 (docs/05); no capture is offered before that.
+            LOG_ERROR(1, "--capture is only supported with the OpenGL backend until M4 (Vulkan)");
+            FLUSH_LOG_TO_FILE;
+            return EXIT_FAILURE;
+        }
+
         graphicsBackend = CreateGraphicsBackend({selectedApi});
         if (!graphicsBackend->IsAvailable())
         {
