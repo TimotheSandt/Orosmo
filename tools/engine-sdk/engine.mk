@@ -122,7 +122,9 @@ else # Darwin
                             -lbrotlidec -lbrotlicommon \
                             -lshaderc -lshaderc_util -lglslang \
                             -lSPIRV-Tools-opt -lSPIRV-Tools -lSPIRV \
-                            -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
+                            -lvulkan \
+                            -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo \
+                            -framework QuartzCore -framework Metal -framework CoreFoundation
     _ENG_LD_START        :=
     _ENG_LD_END          :=
 endif
