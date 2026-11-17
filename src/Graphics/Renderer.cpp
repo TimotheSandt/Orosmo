@@ -67,7 +67,7 @@ void Renderer::GetRenderResolution(int &width, int &height) const noexcept
 bool Renderer::UsesRenderTarget() const noexcept
 {
     return IsScaledRendering() || !postProcessPasses.empty() || frameGenMode != nullptr
-        || motionVectorsEnabled || depthAsTextureEnabled;
+        || motionVectorsEnabled || depthAsTextureEnabled || forceRenderTarget;
 }
 
 bool Renderer::NeedsTemporalResources() const noexcept

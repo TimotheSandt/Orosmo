@@ -24,6 +24,14 @@ TEST_SUITE("Renderers")
         Assert(!std::filesystem::exists(path), "A failed capture must not leave a file behind");
     }
 
+    TEST_CASE("renderers can be forced to render offscreen for captures")
+    {
+        Renderer3D renderer3D;
+        Assert(!renderer3D.IsForceRenderTarget(), "Offscreen rendering should be off by default");
+        renderer3D.SetForceRenderTarget(true);
+        Assert(renderer3D.IsForceRenderTarget(), "Offscreen rendering should be switchable for captures");
+    }
+
     TEST_CASE("renderer2d tracks the current frame extent")
     {
         Renderer2D renderer2D;

@@ -70,6 +70,8 @@ void Game::enableCapture(std::string directory, std::uint32_t frames)
 {
     this->captureDirectory = std::move(directory);
     this->captureFrames = frames;
+    this->renderer3D.SetForceRenderTarget(true);
+    this->rendererUI.SetForceRenderTarget(true);
 }
 
 void Game::run()
