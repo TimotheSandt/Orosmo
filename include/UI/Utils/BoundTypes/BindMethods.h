@@ -138,7 +138,7 @@ struct BindMethod
         decltype(std::invoke(std::declval<Method &>(),
                              std::declval<TObject &>(),
                              detail::ResolveBoundArg(std::declval<Args &>())...))>
-        lastResult;
+        lastResult{};
 
     bool IsDirty() const
     {

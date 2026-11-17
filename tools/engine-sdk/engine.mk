@@ -128,15 +128,19 @@ else # Darwin
 endif
 
 # ── Compiler flags ────────────────────────────────────────────────────────────
+# Same switches as mk/engine.mk: WERROR=0 keeps warnings non-fatal, SANITIZE=address,undefined.
+WERROR     ?= 1
+WARNFLAGS  ?= -Wall -Wextra -Wpedantic $(if $(filter 1,$(WERROR)),-Werror)
+SANFLAGS   := $(if $(SANITIZE),-fsanitize=$(SANITIZE) -fno-omit-frame-pointer)
 
 ifeq ($(BUILD_TYPE),debug)
-    ENGINE_CXXFLAGS := -std=c++23 -Wall -Wextra $(ENGINE_ARCH_FLAG) -O1 -g -DDEBUG \
+    ENGINE_CXXFLAGS := -std=c++23 $(WARNFLAGS) $(SANFLAGS) $(ENGINE_ARCH_FLAG) -O1 -g -DDEBUG \
                        $(ENGINE_PLATFORM_DEFS) -DGLM_ENABLE_EXPERIMENTAL
 else ifeq ($(BUILD_TYPE),dev)
-    ENGINE_CXXFLAGS := -std=c++23 $(ENGINE_ARCH_FLAG) -g3 -O0 -DDEBUG \
+    ENGINE_CXXFLAGS := -std=c++23 $(WARNFLAGS) $(SANFLAGS) $(ENGINE_ARCH_FLAG) -g3 -O0 -DDEBUG \
                        $(ENGINE_PLATFORM_DEFS) -DGLM_ENABLE_EXPERIMENTAL
 else
-    ENGINE_CXXFLAGS := -std=c++23 -Wall -Wextra $(ENGINE_ARCH_FLAG) -O3 -DNDEBUG \
+    ENGINE_CXXFLAGS := -std=c++23 $(WARNFLAGS) $(SANFLAGS) $(ENGINE_ARCH_FLAG) -O3 -DNDEBUG \
                        $(ENGINE_PLATFORM_DEFS) -DGLM_ENABLE_EXPERIMENTAL
 endif
 
@@ -164,7 +168,7 @@ ENGINE_GEN_DIR := $(ENGINE_DIR)/Generated
 ENGINE_INCLUDES := \
     -I$(_ENG_INC_BASE) \
     $(foreach d,$(_ENG_INC_DIRS),-I$(_ENG_INC_BASE)/$(d)) \
-    -I$(_ENG_VCPKG_DIR)/include \
+    -isystem $(_ENG_VCPKG_DIR)/include \
     -I$(ENGINE_GEN_DIR) \
     -I$(GAME_SRC_DIR)
 
