@@ -21,7 +21,7 @@ VCPKG_ROOT=${VCPKG_ROOT:-$HOME/vcpkg}
 TRIPLET=${TRIPLET:-x64-linux}
 DEST=${1:-$ROOT/vcpkg_installed/$TRIPLET}
 SYSLIB=/usr/lib/$(gcc -dumpmachine)
-link() { ln -sf "$1" "$2/$(basename "$1")"; }
+link() { ln -sfn "$1" "$2/$(basename "$1")"; }
 
 # 1. glad et msdfgen : installés par `vcpkg install` (mode manifeste) ou, à défaut, repris d'une installation classique.
 if [ -d "$DEST/include/glad" ] && [ ! -L "$DEST/include/glad" ] && [ -d "$DEST/include/msdfgen" ]; then
@@ -39,13 +39,13 @@ fi
 
 # 2. Paquets apt.
 DOCTEST_INC=${DOCTEST_INCLUDE_DIR:-/usr/include/doctest}
-for f in /usr/include/GLFW/glfw3.h /usr/include/glm/glm.hpp /usr/include/stb/stb_image.h /usr/include/shaderc/shaderc.hpp \
+for f in /usr/include/GLFW/glfw3.h /usr/include/glm/glm.hpp /usr/include/stb/stb_image.h /usr/include/shaderc/shaderc.hpp /usr/include/freetype2/ft2build.h \
          "$DOCTEST_INC/doctest.h" "$SYSLIB/libglfw.so" "$SYSLIB/libshaderc.so"; do
     [ -e "$f" ] || { echo "manquant : $f (paquets apt : voir l'en-tête de ce script)" >&2; exit 1; }
 done
 mkdir -p "$DEST/include" "$DEST/lib"
 for p in /usr/include/GLFW /usr/include/glm /usr/include/shaderc "$DOCTEST_INC"; do link "$p" "$DEST/include"; done
-for p in /usr/include/stb/*.h; do link "$p" "$DEST/include"; done
+for p in /usr/include/stb/*.h /usr/include/freetype2/*; do link "$p" "$DEST/include"; done   # stb_image.h, ft2build.h, freetype/
 for l in libglfw.so libshaderc.so libglslang.a libSPIRV.a libSPIRV-Tools.a libSPIRV-Tools-opt.a; do
     [ -e "$SYSLIB/$l" ] && link "$SYSLIB/$l" "$DEST/lib"
 done
