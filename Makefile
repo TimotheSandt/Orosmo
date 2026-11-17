@@ -59,6 +59,21 @@ VCPKG      ?= vcpkg
 BUILD_TYPE ?= debug
 ENGINE_MK  := mk/engine.mk
 
+# ── Linux x86_64: link the apt + vcpkg dependencies automatically when missing ────────────────
+# vcpkg_installed/ is recreated by tools/setup-linux-deps.sh (needs the apt packages and
+# `vcpkg install glad msdfgen`, see README.md). `make clean-all` removes it, the next build restores it.
+ifeq ($(shell uname -s 2>/dev/null)-$(shell uname -m 2>/dev/null),Linux-x86_64)
+ifeq ($(filter clean clean-all fclean demo-clean demo-fclean check check-repo check-layers check-api check-headers info,$(MAKECMDGOALS)),)
+ifeq ($(wildcard vcpkg_installed/x64-linux/include/glad),)
+$(info [deps] vcpkg_installed/x64-linux is missing: running tools/setup-linux-deps.sh)
+_DEPS_RC := $(shell sh tools/setup-linux-deps.sh 1>&2; echo $$?)
+ifneq ($(_DEPS_RC),0)
+$(warning tools/setup-linux-deps.sh failed (see above): install the dependencies listed in README.md)
+endif
+endif
+endif
+endif
+
 # In-repo layout: demo resources, shaders and tests live at the repository root.
 DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico
 
