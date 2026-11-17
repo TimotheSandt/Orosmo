@@ -98,6 +98,11 @@ int main(int argc, char **argv)
             if (!launchOptions.captureDirectory.empty())
             {
                 game.enableCapture(captureDirectory, launchOptions.captureFrames);
+                game.setSeed(launchOptions.seed.value_or(1u));
+            }
+            else if (launchOptions.seed.has_value())
+            {
+                game.setSeed(*launchOptions.seed);
             }
             LOG_TRACE("Game created");
             game.init();

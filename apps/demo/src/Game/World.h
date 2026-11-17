@@ -2,6 +2,9 @@
 
 #include "Camera.h"
 
+#include <cstdint>
+#include <optional>
+
 #include "glm/glm.hpp"
 #include "glm/gtx/hash.hpp"
 
@@ -15,7 +18,7 @@ class World
     World();
     ~World();
 
-    void Init();
+    void Init(std::optional<std::uint32_t> seed = std::nullopt);
     void Destroy();
 
     void Update();

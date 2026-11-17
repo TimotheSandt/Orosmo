@@ -85,6 +85,36 @@ Assert(!ParseGraphicsAPI("directx").has_value(), "Unknown API should be rejected
         AssertEqual(options.captureFrames, 10u, "Capture should default to 10 frames");
     }
 
+    TEST_CASE("launch options parse the terrain seed")
+    {
+        const char *argv[] = {"program", "--seed", "42"};
+        const GraphicsLaunchOptions options = ParseGraphicsLaunchOptions(3, argv);
+        Assert(options.seed.has_value(), "A seed should be parsed");
+        AssertEqual(*options.seed, 42u, "The seed value should be kept");
+        const char *none[] = {"program"};
+        Assert(!ParseGraphicsLaunchOptions(1, none).seed.has_value(), "Without --seed the terrain stays random as before");
+    }
+
+    TEST_CASE("launch options reject an invalid seed")
+    {
+        const char *negative[] = {"program", "--seed", "-1"};
+        const char *text[] = {"program", "--seed", "abc"};
+        const char *missing[] = {"program", "--seed"};
+        for (const auto &args : {std::pair<const char *const *, int>{negative, 3}, {text, 3}, {missing, 2}})
+        {
+            bool thrown = false;
+            try
+            {
+                static_cast<void>(ParseGraphicsLaunchOptions(args.second, args.first));
+            }
+            catch (const std::invalid_argument &)
+            {
+                thrown = true;
+            }
+            Assert(thrown, "An invalid seed should throw");
+        }
+    }
+
     TEST_CASE("launch options reject invalid capture arguments")
     {
         const char *missingValue[] = {"program", "--capture"};
