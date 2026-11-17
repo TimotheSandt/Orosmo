@@ -18,6 +18,8 @@ jobs:
   # ── Linux : reference platform. apt for everything it has, vcpkg for glad (v1) and msdfgen. ──
   linux:
     name: Linux x64 (build, tests, checks, capture)
+    # A PR whose head is dev is already covered by the push run on the same commit: skip the duplicate.
+    if: github.event_name != 'pull_request' || github.head_ref != 'dev'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -102,6 +104,8 @@ jobs:
   # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
   sanitizers:
     name: Linux x64 (ASan + UBSan tests)
+    # A PR whose head is dev is already covered by the push run on the same commit: skip the duplicate.
+    if: github.event_name != 'pull_request' || github.head_ref != 'dev'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -141,6 +145,8 @@ jobs:
   # available while writing them). Remove the flag after the first green run; see docs/GAPS.md.
   other-platforms:
     name: ${{ matrix.name }} (build, tests)
+    # A PR whose head is dev is already covered by the push run on the same commit: skip the duplicate.
+    if: github.event_name != 'pull_request' || github.head_ref != 'dev'
     runs-on: ${{ matrix.os }}
     continue-on-error: true
     strategy:
