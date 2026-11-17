@@ -3,7 +3,7 @@
 #
 # Paquets apt (Ubuntu/Debian) : tout ce qui existe dans la distribution.
 #   sudo apt install build-essential libglfw3-dev libglm-dev libstb-dev \
-#        libshaderc-dev glslc libfreetype-dev libvulkan-dev vulkan-validationlayers \
+#        libshaderc-dev glslc doctest-dev libfreetype-dev libvulkan-dev vulkan-validationlayers \
 #        libgl-dev libx11-dev autoconf autoconf-archive automake libtool
 # Repli vcpkg : ce qui n'existe pas dans apt (glad v1, msdfgen).
 #   ~/vcpkg/vcpkg install glad msdfgen --triplet x64-linux
@@ -30,7 +30,9 @@ rm -rf "$DEST"; mkdir -p "$DEST/include" "$DEST/lib"
 link() { ln -sf "$1" "$2/$(basename "$1")"; }
 
 for p in "$SRC"/include/*; do link "$p" "$DEST/include"; done
-for p in /usr/include/GLFW /usr/include/glm /usr/include/shaderc; do link "$p" "$DEST/include"; done
+DOCTEST_INC=${DOCTEST_INCLUDE_DIR:-/usr/include/doctest}
+[ -f "$DOCTEST_INC/doctest.h" ] || { echo "manquant : $DOCTEST_INC/doctest.h (sudo apt install doctest-dev, ou DOCTEST_INCLUDE_DIR=...)" >&2; exit 1; }
+for p in /usr/include/GLFW /usr/include/glm /usr/include/shaderc "$DOCTEST_INC"; do link "$p" "$DEST/include"; done
 for p in /usr/include/stb/*.h; do link "$p" "$DEST/include"; done
 
 for p in "$SRC"/lib/*.a; do link "$p" "$DEST/lib"; done
