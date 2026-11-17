@@ -20,3 +20,39 @@ Rien n'est poussé. Est-ce voulu ? Je ne pousse rien dans M00.
 **Q6. Fichiers sans référence** `Libraries/includes/UI/UI.h` et `Libraries/includes/Graphics/Presentation/PresentationController.h` : les garder (règle 3 : pas de suppression sans accord) ? Recommandation : garder, signaler dans `docs/GAPS.md` à l'audit.
 
 **Q7. Stashes (17) et anciennes branches** (`UI`, `feat/engine-init-tool`, `fix/makefile-lint-check-format`, etc.) : je n'y touche pas ; veux-tu un tri ?
+
+## Audit (2026-11-17) : désaccords, ambiguïtés et choix à valider
+
+Chaque point est une **proposition**, rien n'est appliqué. Références : `docs/AUDIT_REPORT.md`, `docs/PORTABILITY_REPORT.md`, `docs/UI_LANGUAGE_AUDIT.md`.
+
+**A1. Le plan suppose un seul backend existant, il y en a deux.** `docs/05` (M2) migre le rendu OpenGL « derrière le RHI », M4 écrit Vulkan. Dans le code, un backend Vulkan fonctionnel (2 500 lignes) et un OpenGL existent déjà derrière une autre abstraction (`IGraphicsDevice`). Proposition : M2 réécrit l'interface (handles, `CommandEncoder`, groupes) et porte **les deux** backends existants à parité de tests ; M4 devient parité/VMA/cache disque/validation. Alternative : conserver l'abstraction actuelle jusqu'à M3. *Décision demandée.*
+
+**A2. Arborescence et nommage de `docs/03`.** `docs/03` §2 : `include/engine/<module>/*.hpp`, fichiers en `snake_case`, fonctions en `camelCase`. Le code : `include/<Module>/*.h`, fichiers en `PascalCase`, méthodes en `PascalCase` (`GetInstance`), macros `LOG_*`. `CLAUDE.md` demande de suivre l'existant. Proposition : **garder l'existant**, l'inscrire dans `CLAUDE.md`, et n'ajouter `engine/` que si l'API est publiée à des tiers. *Choix demandé.*
+
+**A3. `-Wall -Wextra -Wpedantic -Werror`** (`docs/03` §7) : le build actuel émet 6 avertissements (`-Wmissing-field-initializers`). Proposition : corriger puis activer `-Werror` en M0 pour le code du dépôt (pas pour les bibliothèques tierces).
+
+**A4. TEST-01 : Catch2 ou doctest.** Le dépôt a un framework maison (`tests/framework`, 102 tests). Proposition : garder le framework maison tant qu'il suffit, ou migrer vers doctest (un seul en-tête) en M0 en conservant les tests. *Choix demandé.*
+
+**A5. Dépendances à ajouter.** JSON (CORE-12, UI-07, GAME-05) : nlohmann-json, simdjson ou autre ; SPIRV-Cross et VMA (`docs/03` §3-5) ; éventuellement `doctest`, `entt`, `meshoptimizer`. Aucune n'est dans `vcpkg.json`. *Liste à valider avant M1.*
+
+**A6. TOOL-03 (P2) requis par RHI-14 (P0).** Les tests d'images de référence exigent la capture. Proposition : placer TOOL-03 en M2.
+
+**A7. Identifiants sans jalon dans `docs/05`** : `R2D-04` (M5 proposé), `RHI-17` (M5), `CORE-03` (M5), `CORE-05` (M1 pour le CPU, M2/M4 pour le GPU), `CORE-08` (M3), `PLAT-05` (M3, champ de texte), `TOOL-03` (M2). `docs/05` cite en M1 « CORE-02 à CORE-13 » **et** dit de placer `CORE-03/05/08` au premier usage : contradiction légère, tranchée comme ci-dessus.
+
+**A8. `world` sans `renderer`.** `docs/03` §1 l'impose ; le terrain de la démo (`apps/demo/src/ProceduralGeneration/TerrainGenerator`, `Grid`) possède un `Mesh`. Proposition : séparer données (grille de hauteurs, déterministe, sans GPU) et maillage dès M3.
+
+**A9. Cycles `Graphics` ↔ `UI` ↔ `Profiler`** (règle 5). Proposition : sortir `Profiler` de `Graphics/Core` (ou l'inverser par une interface), déplacer `TextRenderer` sous `renderer`, avant M2. *Accord demandé pour un jalon court « M1 bis ».*
+
+**A10. Singletons.** `docs/03` §7 : « pas de singleton global caché ». Le code en a six (`GraphicsRuntime`, `ShaderLibrary`, `UI::Manager`, `InputManager::GetInstance`, `Logger`, `GraphicsRenderState`). Proposition : les remplacer pendant M2 par un contexte explicite, `Logger` excepté.
+
+**A11. Capacités Vulkan annoncées à tort** (`MakeAdvertisedCapabilities`) et minuterie GPU Vulkan factice : violent les règles 3 et 11. Proposition : les rendre honnêtes immédiatement (correctif `fix/`), avant M2, sans attendre. *Autorisation demandée : c'est du code existant.*
+
+**A12. Graine par horloge.** `Noise()` et `PCGRandom::init()` s'initialisent avec `high_resolution_clock` (règle 9). Proposition : constructeurs sans graine supprimés, graine explicite partout (`fix/` + test).
+
+**A13. Langage d'interface** (`docs/UI_LANGUAGE_AUDIT.md`) : (a) garde-t-on Rust ? (le build exige `cargo`) ; (b) syntaxe des événements : `onClick: startGeneration` (nom de fonction, comme `docs/03` §12) ou `.onClick(startGeneration)` (modificateur, cohérent avec la grammaire actuelle) ; (c) correction du nom d'en-tête généré (vue ≠ fichier) ; (d) `docs/UI_DSL_Spec.md` (anglais, v0.2) vs `docs/UI_LANGUAGE.md` (UI-11) : traduire/fusionner ?
+
+**A14. CMake.** BLD-01 invite à *proposer* CMake avec presets en gardant le Makefile en enveloppe. Le Makefile actuel (550 lignes, branches PowerShell) est le principal risque de portage. Proposition : en M0, prototype CMake limité au moteur + tests, comparé au Makefile avant décision. *Décision demandée.*
+
+**A15. Ajustement de jalons** : voir AUDIT_REPORT § « Proposition d'ajustement du plan » (M2 plus gros ; CI Linux de tests dès M0 ; casser les cycles avant M2).
+
+**A16. `main` locale** a 44 commits de plus que `origin/main` ; `dev` locale en a plus de 50 de plus que `origin/dev`. Rien n'est poussé (Q3 non tranché).
