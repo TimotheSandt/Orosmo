@@ -1,0 +1,222 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Configuration CodeRabbit. Lue depuis la branche de base de la PR (main) : elle ne s'applique qu'après fusion.
+language: fr-FR
+tone_instructions: >-
+  Direct et factuel. Chaque remarque cite le fichier et la règle de CLAUDE.md ou de docs/03 concernée.
+  Ne rien affirmer sans l'avoir vérifié dans le code.
+early_access: false
+
+reviews:
+  profile: chill                       # quiet | chill | assertive : passer à assertive pour une revue plus pointilleuse
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: true
+  sequence_diagrams: false             # peu utile sur ce dépôt
+  estimate_code_review_effort: true
+  poem: false
+  in_progress_fortune: false
+  enable_prompt_for_ai_agents: true    # ajoute un « Prompt for Coding Agents » aux commentaires (réutilisable tel quel)
+  suggested_reviewers: false           # dépôt à un seul auteur
+  auto_assign_reviewers: false
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  commit_status: true
+  fail_commit_status: false            # passer à true pour qu'une revue en erreur bloque une protection de branche
+
+  auto_review:
+    enabled: true
+    drafts: true                       # revue des PR en brouillon (par défaut : ignorées)
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 30   # défaut 5 : on pousse souvent sur dev
+    ignore_title_keywords: ["WIP", "DO NOT REVIEW"]
+
+  # Fichiers générés, références binaires et rapports d'audit : pas de revue.
+  path_filters:
+    - "!docs/BASELINE/**"
+    - "!tools/baseline/**"
+    - "!docs/AUDIT_REPORT.md"
+    - "!docs/CLEANUP_MOVES.tsv"
+    - "!**/*.png"
+    - "!**/*.ttf"
+    - "!**/*.ico"
+    - "!tools/Cargo.lock"
+    - "!**/Generated/**"
+    - "!apps/demo/engine/**"
+
+  path_instructions:
+    - path: "include/**"
+      instructions: >-
+        API publique. Aucun type d'API graphique (GLuint, VkBuffer, GLFWwindow*) ni <windows.h> (docs/03 §2).
+        Chaque en-tête doit se compiler seul (#pragma once, inclusions complètes). Pas de logique d'état global.
+    - path: "src/Graphics/Backends/**"
+      instructions: >-
+        Seul endroit où gl*, Vk*, vk*, MTL* sont permis (règle 4 de CLAUDE.md). Capacités optionnelles lues du matériel,
+        jamais supposées (règle 11). Pas de stub qui prétend marcher (règle 3).
+    - path: "src/**"
+      instructions: >-
+        Règles de CLAUDE.md : pas de gl*/Vk*/MTL* hors backends ; erreurs par std::expected et non par exception dans le flux
+        normal (règle 10) ; génération procédurale déterministe, sans rand() ni horloge (règle 9) ; un module ne dépend que
+        de ceux d'en dessous (règle 5, tools/layers.json). Signaler tout comportement indéfini, toute fuite, tout état
+        non initialisé. Le code existant garde son style (PascalCase) tant que son module n'est pas migré.
+    - path: "tests/**"
+      instructions: >-
+        Tests doctest (TEST_SUITE / TEST_CASE) déterministes : pas d'horloge, de réseau ni de fenêtre. Un test qui a besoin d'un
+        GPU doit être signalé. Les valeurs d'or doivent être justifiées.
+    - path: "apps/**"
+      instructions: >-
+        Applications : aucune logique de moteur ici. Les chemins de ressources passent par GET_RESOURCE_PATH.
+    - path: "tools/**/*.py"
+      instructions: >-
+        Scripts Python sans dépendance externe (bibliothèque standard seulement), compatibles Windows, Linux et macOS.
+    - path: "tools/**/*.sh"
+      instructions: >-
+        POSIX sh (pas de bashismes), appelés par `sh script`, jamais par chemin exécutable (disque monté sans bit exécutable).
+    - path: ".github/workflows/**"
+      instructions: >-
+        Vérifier la syntaxe YAML, les versions d'actions épinglées, les permissions minimales et que les jobs Windows/macOS
+        restent non bloquants tant qu'ils n'ont pas été vus verts.
+    - path: "Makefile"
+      instructions: >-
+        Makefiles GNU make portables (Linux, MSYS2/MinGW, macOS). Pas d'action implicite avec sudo.
+    - path: "mk/**"
+      instructions: >-
+        Makefiles GNU make portables (Linux, MSYS2/MinGW, macOS). Pas d'action implicite avec sudo.
+    - path: "docs/**"
+      instructions: >-
+        Documentation en français. Toute affirmation « Fait » doit citer fichier, test et résultat (règle 1) ; sinon
+        « Partiel » ou « Absent ». Chemins et commandes réels, pas de généralités.
+
+  # Finitions : CodeRabbit ne pousse rien sur les branches (dev et main ne reçoivent que des fusions contrôlées, docs/06).
+  finishing_touches:
+    unit_tests:
+      enabled: false
+    simplify:
+      enabled: false
+    autofix:
+      enabled: false
+    fix_ci:
+      enabled: false
+    resolve_merge_conflict:
+      enabled: false
+
+  pre_merge_checks:
+    title:
+      mode: "off"
+    description:
+      mode: warning
+    issue_assessment:
+      mode: "off"
+    custom_checks:
+      - name: "Règles de CLAUDE.md"
+        mode: warning
+        instructions: >-
+          Échouer si la PR ajoute un appel gl*/Vk*/MTL* ou un include GLFW/windows.h hors de src/Graphics/Backends/ (ou
+          src/rhi/, src/platform/), une exception dans le flux normal, rand() ou l'horloge dans de la génération procédurale,
+          ou coche « Fait » dans docs/STATUS.md sans fichier, test et résultat.
+
+  tools:
+    # Utiles ici
+    shellcheck:
+      enabled: true
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    yamllint:
+      enabled: true
+    checkmake:
+      enabled: true
+    ruff:
+      enabled: true
+    cppcheck:
+      enabled: true
+    clang:
+      enabled: true
+    gitleaks:
+      enabled: true
+    github-checks:
+      enabled: true
+    # Peu utiles ou bruyants sur ce dépôt
+    markdownlint:
+      enabled: false                   # documentation en français, tableaux larges
+    languagetool:
+      enabled: false
+    eslint:
+      enabled: false
+    biome:
+      enabled: false
+    oxc:
+      enabled: false
+    hadolint:
+      enabled: false
+    swiftlint:
+      enabled: false
+    phpstan:
+      enabled: false
+    phpmd:
+      enabled: false
+    phpcs:
+      enabled: false
+    golangci-lint:
+      enabled: false
+    tflint:
+      enabled: false
+    checkov:
+      enabled: false
+    detekt:
+      enabled: false
+    flake8:
+      enabled: false
+    pylint:
+      enabled: false
+    rubocop:
+      enabled: false
+    brakeman:
+      enabled: false
+    sqlfluff:
+      enabled: false
+    squawk:
+      enabled: false
+    stylelint:
+      enabled: false
+    htmlhint:
+      enabled: false
+    reactDoctor:
+      enabled: false
+    prismaLint:
+      enabled: false
+    shopifyThemeCheck:
+      enabled: false
+    luacheck:
+      enabled: false
+    buf:
+      enabled: false
+    regal:
+      enabled: false
+    circleci:
+      enabled: false
+    oasdiff:
+      enabled: false
+    emberTemplateLint:
+      enabled: false
+    smartyLint:
+      enabled: false
+    blinter:
+      enabled: false
+    psscriptanalyzer:
+      enabled: true                    # tools/format_sources.ps1, tools/vscode-cui/install.ps1
+    clippy:
+      enabled: true                    # tools/cui-rs et tools/engine-init-rs (Rust)
+
+chat:
+  art: false
+  auto_reply: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "CLAUDE.md"
+      - "docs/03-ARCHITECTURE_ET_PORTABILITE.md"
+      - "docs/06-WORKFLOW_GIT_ET_NETTOYAGE.md"
