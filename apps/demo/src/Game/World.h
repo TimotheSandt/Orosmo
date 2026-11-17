@@ -18,7 +18,7 @@ class World
     World();
     ~World();
 
-    void Init(std::optional<std::uint32_t> seed = std::nullopt);
+    void Init(std::uint32_t seed);
     void Destroy();
 
     void Update();

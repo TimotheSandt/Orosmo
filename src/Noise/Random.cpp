@@ -1,9 +1,6 @@
 #include "Random.h"
 
-PCGRandom::PCGRandom() { this->init(); }
 PCGRandom::PCGRandom(uint64_t seed) { this->init(seed); }
-
-void PCGRandom::init() { this->init(static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count())); }
 
 void PCGRandom::init(uint64_t seed)
 {

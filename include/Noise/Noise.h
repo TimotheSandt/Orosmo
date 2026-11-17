@@ -6,11 +6,10 @@
 class Noise
 {
   public:
-    Noise();
-    Noise(uint64_t seed);
+    Noise() = delete; // no hidden clock seed (rule 9): the application chooses the seed
+    explicit Noise(uint64_t seed);
     ~Noise() = default;
 
-    void SetSeed();
     void SetSeed(uint64_t seed);
     uint64_t GetSeed();
 

@@ -30,7 +30,7 @@ struct GraphicsLaunchOptions
     // --capture <dir> [--capture-frames N] : render N frames, save scene.png and ui.png in <dir>, exit (TOOL-03).
     std::string captureDirectory;
     std::uint32_t captureFrames = 10;
-    // --seed N : terrain seed of the demo (default: random, as before). --capture implies seed 1 unless given.
+    // --seed N : terrain seed of the demo (default: drawn at random by main() and logged). --capture implies seed 1 unless given.
     std::optional<std::uint32_t> seed;
 };
 

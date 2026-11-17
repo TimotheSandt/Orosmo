@@ -3,7 +3,6 @@
 #include "utilities.h"
 
 TerrainGenerator::TerrainGenerator(int seed) : noise(seed) {}
-TerrainGenerator::TerrainGenerator(float sizeX, float sizeZ, int resX, int resZ) : noise() { init(sizeX, sizeZ, resX, resZ); }
 TerrainGenerator::TerrainGenerator(float sizeX, float sizeZ, int resX, int resZ, int seed) : noise(seed) { init(sizeX, sizeZ, resX, resZ); }
 
 TerrainGenerator::~TerrainGenerator() { this->Destroy(); }
