@@ -43,3 +43,21 @@ Absents de `pre-cleanup`, appliqués localement pour cette mesure, puis commité
 ## Comparaison après nettoyage
 
 Voir `docs/releases/M00.md` : mêmes 102 tests, mêmes ressources (somme MD5 identique de `res/`), même journal de démarrage.
+
+## Mise à jour M0 (2026-11-17) : image de référence et sorties
+
+| Fichier | Contenu |
+| --- | --- |
+| `reference/scene-opengl-seed1-1280x720.png` | Scène 3D OpenGL, graine 1, 1280x720, 10 images, Intel Arc (Mesa 26.1.6). sha256 `8937f52b311633aafddf834a12ca5bf08ae0bb99c963511fc24bc0b09478974f` |
+| `tests-M0.txt` | Résumé doctest de `make demo-test` depuis un clone propre de `dev` : 118 cas, 647 assertions, 0 échec |
+
+Régénérer et comparer :
+
+```bash
+apps/demo/bin/debug/main --api opengl --capture /tmp/capture          # scene.png + ui.png
+python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720.png /tmp/capture/scene.png
+```
+
+Vérifié : 3 captures consécutives identiques (même sha256), 5 ou 30 images donnent la même image, `--seed 7` donne une autre image, et l'image produite après les correctifs de M0 (PCG défini, tests doctest, `-Werror`) est **identique pixel pour pixel** à la référence (`compare_png.py` : 0 pixel, écart max 0).
+
+Limites : la référence vient d'une seule machine ; un autre GPU ou pilote (ou llvmpipe en CI) peut différer de quelques pixels, d'où la tolérance dans la CI. `ui.png` n'est pas une référence (FPS affichés). Vulkan : capture refusée jusqu'en M4 (voir `docs/GAPS.md` G29). Pour la démo sans capture, `docs/BASELINE/run-opengl.txt` reste le journal de démarrage de référence.
