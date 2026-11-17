@@ -23,7 +23,7 @@ sudo apt install build-essential cmake cargo python3 \
 
 # glad (v1) et msdfgen n'existent pas dans apt : vcpkg
 git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
-~/vcpkg/vcpkg install glad msdfgen --triplet x64-linux
+~/vcpkg/vcpkg install glad "msdfgen[core]" --triplet x64-linux
 
 sh tools/setup-linux-deps.sh     # (sans sudo) relie apt + vcpkg dans vcpkg_installed/x64-linux
 make all-debug                   # moteur (debug) -> apps/demo/engine -> démo (debug)

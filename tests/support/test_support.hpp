@@ -24,3 +24,15 @@ template <typename T, typename U> void AssertEqual(const T &actual, const U &exp
 }
 
 } // namespace tests
+
+// Some tests need a real driver (Vulkan creates its device through the loader). On a machine without one
+// (CI runners, headless containers) the test reports a warning and ends instead of dereferencing a null device.
+#define SKIP_TEST_IF_NULL(pointer, reason)                    \
+    do                                                       \
+    {                                                        \
+        if ((pointer) == nullptr)                            \
+        {                                                    \
+            WARN_MESSAGE(false, "Skipped (no driver): " reason); \
+            return;                                          \
+        }                                                    \
+    } while (0)
