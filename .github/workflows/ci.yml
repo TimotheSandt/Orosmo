@@ -83,6 +83,15 @@ jobs:
             apps/demo/bin/debug/main --api opengl --capture "$PWD/ci-capture" --capture-frames 5
           ls -l ci-capture
 
+      - name: Compare with the reference image (tolerant: different GPU/driver than the reference)
+        continue-on-error: true
+        run: |
+          python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720.png ci-capture/scene.png \
+            --tolerance 8 --max-diff-percent 2 --diff-out ci-capture/diff.png
+
+      - name: Tool tests (Python)
+        run: python3 -m unittest discover -s tests/tools
+
       - name: Upload capture
         uses: actions/upload-artifact@v4
         with:
