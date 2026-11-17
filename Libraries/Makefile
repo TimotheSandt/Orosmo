@@ -134,6 +134,7 @@ LIB_NOISE      := $(LIB_DIR)/$(BUILD_TYPE)/libnoise.a
 LIB_PROFILER   := $(LIB_DIR)/$(BUILD_TYPE)/libprofiler.a
 LIB_UTILITIES  := $(LIB_DIR)/$(BUILD_TYPE)/libutilities.a
 LIB_THIRDPARTY := $(LIB_DIR)/$(BUILD_TYPE)/libthirdparty.a
+LIB_BENCHMARK  := $(LIB_DIR)/$(BUILD_TYPE)/libbenchmark.a
 
 ENGINE_LIBS := $(LIB_GRAPHICS) $(LIB_UI) $(LIB_NOISE) $(LIB_PROFILER) $(LIB_UTILITIES) $(LIB_THIRDPARTY)
 
@@ -144,6 +145,7 @@ Noise_SRCS      := $(shell find $(LIBRARIES_SRC_DIR)/Noise      -type f \( -name
 Profiler_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/Profiler   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Utilities_SRCS  := $(shell find $(LIBRARIES_SRC_DIR)/Utilities  -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 ThirdParty_SRCS := $(shell find $(LIBRARIES_SRC_DIR)/ThirdParty -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+Benchmark_SRCS  := $(shell find $(LIBRARIES_SRC_DIR)/Benchmark  -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 
 obj_from_src = \
     $(patsubst $(LIBRARIES_SRC_DIR)/%.cpp,$(OBJ_DIR_TYPE)/Libraries/%.o,$(filter %.cpp,$(1))) \
@@ -155,8 +157,9 @@ Noise_OBJS      := $(call obj_from_src,$(Noise_SRCS))
 Profiler_OBJS   := $(call obj_from_src,$(Profiler_SRCS))
 Utilities_OBJS  := $(call obj_from_src,$(Utilities_SRCS))
 ThirdParty_OBJS := $(call obj_from_src,$(ThirdParty_SRCS))
+Benchmark_OBJS  := $(call obj_from_src,$(Benchmark_SRCS))
 
-ALL_ENGINE_OBJS := $(Graphics_OBJS) $(UI_OBJS) $(Noise_OBJS) $(Profiler_OBJS) $(Utilities_OBJS) $(ThirdParty_OBJS)
+ALL_ENGINE_OBJS := $(Graphics_OBJS) $(UI_OBJS) $(Noise_OBJS) $(Profiler_OBJS) $(Utilities_OBJS) $(ThirdParty_OBJS) $(Benchmark_OBJS)
 
 # ── Git remote detection ──────────────────────────────────────────────────────
 # Reads the 'origin' remote and extracts the host and owner/repo slug.
@@ -274,6 +277,11 @@ $(LIB_THIRDPARTY): $(ThirdParty_OBJS)
 	@mkdir -p "$(dir $@)"
 	$(AR) rcs $@ $^
 	@echo "Archived [ThirdParty]  $(BUILD_TYPE): $@"
+
+$(LIB_BENCHMARK): $(Benchmark_OBJS)
+	@mkdir -p "$(dir $@)"
+	$(AR) rcs $@ $^
+	@echo "Archived [Benchmark]   $(BUILD_TYPE): $@"
 
 # ── Compilation rules ─────────────────────────────────────────────────────────
 $(OBJ_DIR_TYPE)/Libraries/%.o: $(LIBRARIES_SRC_DIR)/%.cpp

@@ -162,7 +162,13 @@ TEST_OBJS   := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/tests/%.o) $(TEST_GAME_O
 TEST_TARGET := bin/tests/tests$(ENGINE_EXE_EXT)
 
 # Style sources
-STYLE_SRCS := $(shell find $(SRC_DIR) $(TEST_DIR) -type f \( -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+BENCH_DIR    := benchmark
+BENCH_SRCS   := $(shell find $(BENCH_DIR) -type f -name "*.cpp" 2>/dev/null)
+BENCH_OBJS   := $(BENCH_SRCS:$(BENCH_DIR)/%.cpp=$(OBJ_DIR)/benchmark/%.o)
+BENCH_TARGET := bin/benchmark/benchmark$(ENGINE_EXE_EXT)
+BENCH_LIB    := $(ENGINE_DIR)/lib/$(BUILD_TYPE)/libbenchmark.a
+
+STYLE_SRCS := $(shell find $(SRC_DIR) $(TEST_DIR) $(BENCH_DIR) -type f \( -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 LINT_FLAGS  := $(filter-out -flto=jobserver,$(ENGINE_CXXFLAGS))
 
 # vcpkg platform-specific copy targets
@@ -246,6 +252,21 @@ $(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
 	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 
+# ── Benchmark ─────────────────────────────────────────────────────────────────
+.PHONY: benchmark
+benchmark: $(BENCH_TARGET)
+	@./$(BENCH_TARGET)
+
+$(BENCH_LIB):
+	$(error Missing libbenchmark.a — run 'make sync-demo' from the project root first)
+
+$(BENCH_TARGET): $(BENCH_OBJS) $(BENCH_LIB) | bin/benchmark
+	$(CXX) $(ENGINE_CXXFLAGS) $(BENCH_OBJS) $(BENCH_LIB) -o $@
+
+$(OBJ_DIR)/benchmark/%.o: $(BENCH_DIR)/%.cpp
+	@mkdir -p "$(dir $@)"
+	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP -I$(BENCH_DIR) $(ENGINE_INCLUDES) -c $< -o $@
+
 # ── Resources & libraries ─────────────────────────────────────────────────────
 .PHONY: copy_res copy_libs
 
@@ -263,7 +284,7 @@ copy_libs: | $(BIN_DIR)
 	 if [ -e "$$1" ]; then cp -f "$$@" "$(BIN_DIR)/" 2>/dev/null || :; fi
 
 # ── Directories ───────────────────────────────────────────────────────────────
-$(BIN_DIR) bin/tests:
+$(BIN_DIR) bin/tests bin/benchmark:
 	@mkdir -p "$@"
 
 # ── vcpkg dependency management ───────────────────────────────────────────────
