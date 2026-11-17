@@ -25,9 +25,11 @@ sudo apt install build-essential cmake cargo python3 \
 git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
 ~/vcpkg/vcpkg install glad msdfgen --triplet x64-linux
 
-tools/setup-linux-deps.sh        # relie apt + vcpkg dans vcpkg_installed/x64-linux
+sh tools/setup-linux-deps.sh     # (sans sudo) relie apt + vcpkg dans vcpkg_installed/x64-linux
 make all-debug                   # moteur (debug) -> apps/demo/engine -> démo (debug)
 ```
+
+Notes : lancer les scripts avec `sh` et **sans `sudo`** (le dépôt peut être sur un disque monté sans bit exécutable). `make clean-all` supprime aussi `vcpkg_installed/` : relancer ensuite `sh tools/setup-linux-deps.sh`. Après un changement de structure (`git pull`), faire `make clean-all` pour éliminer les anciens fichiers `.d`.
 
 ### Windows / macOS
 
@@ -48,8 +50,8 @@ make all-debug
 | `make sync-demo` | Copie le moteur construit dans `apps/demo/engine/` |
 | `make dist` / `make engine-tool` | Paquet du moteur / outil `engine init` |
 | `make clean` / `make fclean` / `make demo-fclean` | Nettoyage |
-| `tools/check-repo.sh` | Contrôle d'hygiène du dépôt (binaires, casse, CRLF) |
-| `tools/format_sources.sh` | Formatage (`clang-format`) |
+| `sh tools/check-repo.sh` | Contrôle d'hygiène du dépôt (binaires, casse, CRLF) |
+| `sh tools/format_sources.sh` | Formatage (`clang-format`) |
 
 ## Organisation
 
