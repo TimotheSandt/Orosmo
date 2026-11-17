@@ -19,5 +19,5 @@ tools/cui.exe
 tools/cui
 tools/engine.exe
 tools/engine
-demo/engine/
-demo/config.local.mk
+apps/demo/engine/
+apps/demo/config.local.mk

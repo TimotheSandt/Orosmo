@@ -245,7 +245,7 @@ all debug release dev: $(ENGINE_LIBS) $(_CUI_INSTALLED)
 	@echo "Engine [$(BUILD_TYPE)] — all archives up to date"
 
 engine: install-demo
-	@echo "Engine fully prepared in demo/engine/"
+	@echo "Engine fully prepared in apps/demo/engine/"
 
 # ── Archive rules ─────────────────────────────────────────────────────────────
 $(LIB_GRAPHICS): $(Graphics_OBJS)
@@ -408,56 +408,56 @@ engine-tool: $(ENGINE_PKG_ZIP) $(ENGINE_TOOL_EXE)
 	@echo "engine-tool done: $(ENGINE_TOOL_EXE)  $(ENGINE_PKG_ZIP)"
 
 # ── Sync demo ─────────────────────────────────────────────────────────────────
-# Copies the current BUILD_TYPE artifacts directly into demo/engine/.
+# Copies the current BUILD_TYPE artifacts directly into apps/demo/engine/.
 # Faster than install-demo: no dist packaging step required.
 # vcpkg_installed/ is linked (not copied) to avoid duplicating hundreds of MB.
 .PHONY: sync-demo
 sync-demo: $(ENGINE_LIBS) $(_CUI_INSTALLED)
-	@mkdir -p demo/engine/lib/$(BUILD_TYPE) demo/engine/make demo/engine/tools
+	@mkdir -p apps/demo/engine/lib/$(BUILD_TYPE) apps/demo/engine/make apps/demo/engine/tools
 ifeq ($(DETECTED_OS),Windows)
-	@mkdir -p demo/engine/includes
-	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination 'demo/engine/includes' -Recurse -Force"
+	@mkdir -p apps/demo/engine/includes
+	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination 'apps/demo/engine/includes' -Recurse -Force"
 else
-	@rm -rf demo/engine/includes && cp -r $(INCLUDES_BASE) demo/engine/includes
+	@rm -rf apps/demo/engine/includes && cp -r $(INCLUDES_BASE) apps/demo/engine/includes
 endif
 ifeq ($(DETECTED_OS),Windows)
-	@for f in $(ENGINE_LIBS); do powershell -NoProfile -Command "Copy-Item -Path '$$f' -Destination 'demo/engine/lib/$(BUILD_TYPE)' -Force"; done
-	@powershell -NoProfile -Command "Copy-Item -Path 'engine-sdk/engine.mk' -Destination 'demo/engine/make' -Force"
-	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination 'demo/engine/tools' -Force"
+	@for f in $(ENGINE_LIBS); do powershell -NoProfile -Command "Copy-Item -Path '$$f' -Destination 'apps/demo/engine/lib/$(BUILD_TYPE)' -Force"; done
+	@powershell -NoProfile -Command "Copy-Item -Path 'engine-sdk/engine.mk' -Destination 'apps/demo/engine/make' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination 'apps/demo/engine/tools' -Force"
 else
-	@cp $(ENGINE_LIBS) demo/engine/lib/$(BUILD_TYPE)/
-	@cp engine-sdk/engine.mk demo/engine/make/
-	@cp "$(_CUI_INSTALLED)" demo/engine/tools/
+	@cp $(ENGINE_LIBS) apps/demo/engine/lib/$(BUILD_TYPE)/
+	@cp engine-sdk/engine.mk apps/demo/engine/make/
+	@cp "$(_CUI_INSTALLED)" apps/demo/engine/tools/
 endif
-	@if [ ! -e demo/engine/vcpkg_installed ]; then \
+	@if [ ! -e apps/demo/engine/vcpkg_installed ]; then \
 	    if [ "$(DETECTED_OS)" = "Windows" ]; then \
 	        TARGET=$$(cd "$(VCPKG_INSTALLED_ROOT)" && pwd -W 2>/dev/null || echo "$(VCPKG_INSTALLED_ROOT)"); \
-	        MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"demo\\engine\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
-	            || ln -sfn "../../$(VCPKG_INSTALLED_ROOT)" demo/engine/vcpkg_installed; \
+	        MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\engine\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
+	            || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
 	    else \
-	        ln -sfn "../../$(VCPKG_INSTALLED_ROOT)" demo/engine/vcpkg_installed; \
+	        ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
 	    fi; \
 	fi
-	@echo "Synced [$(BUILD_TYPE)] → demo/engine/"
+	@echo "Synced [$(BUILD_TYPE)] → apps/demo/engine/"
 
 # ── Install demo ──────────────────────────────────────────────────────────────
 # Full dist-based install: packages headers, both build types, and tools.
 install-demo: engine-tool
 ifeq ($(DETECTED_OS),Windows)
-	@mkdir -p demo/engine
-	@powershell -NoProfile -Command "Copy-Item -Path '$(DIST_PKG_DIR)/*' -Destination 'demo/engine' -Recurse -Force"
+	@mkdir -p apps/demo/engine
+	@powershell -NoProfile -Command "Copy-Item -Path '$(DIST_PKG_DIR)/*' -Destination 'apps/demo/engine' -Recurse -Force"
 else
-	@rm -rf demo/engine
-	@cp -r "$(DIST_PKG_DIR)" demo/engine
+	@rm -rf apps/demo/engine
+	@cp -r "$(DIST_PKG_DIR)" apps/demo/engine
 endif
 	@if [ "$(DETECTED_OS)" = "Windows" ]; then \
 	    TARGET=$$(cd "$(VCPKG_INSTALLED_ROOT)" && pwd -W 2>/dev/null || echo "$(VCPKG_INSTALLED_ROOT)"); \
-	    MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"demo\\engine\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
-	        || ln -sfn "../../$(VCPKG_INSTALLED_ROOT)" demo/engine/vcpkg_installed; \
+	    MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\engine\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
+	        || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
 	else \
-	    ln -sfn "../../$(VCPKG_INSTALLED_ROOT)" demo/engine/vcpkg_installed; \
+	    ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
 	fi
-	@echo "Engine installed to demo/engine/"
+	@echo "Engine installed to apps/demo/engine/"
 
 # ── vcpkg dependency management ───────────────────────────────────────────────
 # install:   no args → install all Libraries/vcpkg.json deps (incremental)
