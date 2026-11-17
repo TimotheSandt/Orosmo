@@ -59,17 +59,22 @@ VCPKG      ?= vcpkg
 BUILD_TYPE ?= debug
 ENGINE_MK  := mk/engine.mk
 
-# ── Linux x86_64: link the apt packages into vcpkg_installed/ automatically ───────────────────
+# ── Linux (x86_64, arm64): link the apt packages into vcpkg_installed/ automatically ────────────
 # Prerequisites (README.md): the apt packages, then `vcpkg install` at the repository root (vcpkg.json: glad, msdfgen).
 # tools/setup-linux-deps.sh adds the apt packages to vcpkg_installed/<triplet>/ (marker file .apt-linked); make runs it
-# when the marker is missing (first build, after `make clean-all`).
-ifeq ($(shell uname -s 2>/dev/null)-$(shell uname -m 2>/dev/null),Linux-x86_64)
+# when the marker is missing (first build, after `make clean-all`). `make setup` runs it again after `vcpkg install`.
+_DEPS_OS   := $(shell uname -s 2>/dev/null)
+_DEPS_ARCH := $(shell uname -m 2>/dev/null)
+ifeq ($(_DEPS_OS),Linux)
+_DEPS_TRIPLET := $(if $(filter x86_64,$(_DEPS_ARCH)),x64-linux,$(if $(filter aarch64 arm64,$(_DEPS_ARCH)),arm64-linux))
+ifneq ($(_DEPS_TRIPLET),)
 ifeq ($(filter clean clean-all fclean demo-clean demo-fclean check check-repo check-layers check-api check-headers info,$(MAKECMDGOALS)),)
-ifeq ($(wildcard vcpkg_installed/x64-linux/.apt-linked),)
+ifeq ($(wildcard vcpkg_installed/$(_DEPS_TRIPLET)/.apt-linked),)
 $(info [deps] apt packages not linked yet: running tools/setup-linux-deps.sh)
-_DEPS_RC := $(shell sh tools/setup-linux-deps.sh 1>&2; echo $$?)
+_DEPS_RC := $(shell TRIPLET=$(_DEPS_TRIPLET) sh tools/setup-linux-deps.sh 1>&2; echo $$?)
 ifneq ($(_DEPS_RC),0)
 $(warning tools/setup-linux-deps.sh failed (see above): install the apt packages and run 'vcpkg install' as described in README.md)
+endif
 endif
 endif
 endif
@@ -180,6 +185,7 @@ clean-all:
 # install engine deps → prepare full engine → install demo deps → build demo
 setup:
 	$(MAKE) -f $(ENGINE_MK) install VCPKG=$(VCPKG)
+	@if [ "$$(uname -s)" = Linux ]; then TRIPLET=$(_DEPS_TRIPLET) sh tools/setup-linux-deps.sh; fi
 	$(MAKE) -f $(ENGINE_MK) engine
 	$(MAKE) -C apps/demo $(DEMO_ARGS) install VCPKG=$(VCPKG)
 	$(MAKE) -C apps/demo $(DEMO_ARGS) debug
