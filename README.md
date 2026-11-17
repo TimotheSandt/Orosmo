@@ -9,7 +9,7 @@ Moteur de jeu 3D et 2D en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec
 - **Compilateur** : GCC 13+ ou Clang 17+ (testé : GCC 13.3, Linux), MSVC 2022 / MinGW sous Windows.
 - **Outils** : GNU Make, CMake, Rust (`cargo`, pour `tools/cui-rs` et `tools/engine-init-rs`), Python 3.
 - **Pilotes** : OpenGL 4.3+ et Vulkan ; couches de validation Vulkan conseillées.
-- **Dépendances** : glfw3, glm, stb, freetype, vulkan, shaderc, glad (v1), msdfgen — liste dans [vcpkg.json](vcpkg.json).
+- **Dépendances** : glfw3, glm, stb, freetype, vulkan, shaderc, glad (v1), msdfgen, doctest (tests) — liste dans [vcpkg.json](vcpkg.json).
 
 ## Compiler
 
@@ -17,7 +17,7 @@ Moteur de jeu 3D et 2D en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec
 
 ```bash
 sudo apt install build-essential cmake cargo python3 \
-    libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc libfreetype-dev \
+    libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev libfreetype-dev \
     libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
     autoconf autoconf-archive automake libtool
 

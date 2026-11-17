@@ -1,4 +1,4 @@
-#include "suites/Suites.h"
+#include "support/test_support.hpp"
 
 #include "Graphics/Backends/Metal/MetalGraphicsBackend.h"
 #include "Graphics/Backends/OpenGL/OpenGLGraphicsBackend.h"
@@ -221,408 +221,379 @@ class FakeRayTracingDevice final : public IGraphicsDevice
 
 } // namespace
 
-TestSuite CreateGraphicsCoreSuite()
+TEST_SUITE("GraphicsCore")
 {
-    TestSuite suite{"GraphicsCore"};
+    TEST_CASE("shader stage bitmask tracks enabled stages")
+    {
+        const ShaderStageMask mask = ShaderStageBit(ShaderStage::Vertex) | ShaderStageBit(ShaderStage::Fragment);
+        Assert(HasShaderStage(mask, ShaderStage::Vertex), "Vertex stage should be flagged in the mask");
+        Assert(HasShaderStage(mask, ShaderStage::Fragment), "Fragment stage should be flagged in the mask");
+        Assert(!HasShaderStage(mask, ShaderStage::Compute), "Compute stage should stay absent from the mask");
+        Assert(!HasShaderStage(mask, ShaderStage::RayGeneration), "Ray generation stage should stay absent from the mask");
+    }
 
-    AddTest(suite, "shader stage bitmask tracks enabled stages",
-            []
-            {
-                const ShaderStageMask mask = ShaderStageBit(ShaderStage::Vertex) | ShaderStageBit(ShaderStage::Fragment);
-                Assert(HasShaderStage(mask, ShaderStage::Vertex), "Vertex stage should be flagged in the mask");
-                Assert(HasShaderStage(mask, ShaderStage::Fragment), "Fragment stage should be flagged in the mask");
-                Assert(!HasShaderStage(mask, ShaderStage::Compute), "Compute stage should stay absent from the mask");
-                Assert(!HasShaderStage(mask, ShaderStage::RayGeneration), "Ray generation stage should stay absent from the mask");
-            });
+    TEST_CASE("graphics pipeline defaults stay raster friendly")
+    {
+        const GraphicsPipelineDesc pipeline{};
+        AssertEqual(pipeline.topology, PrimitiveTopology::TriangleList, "Pipelines should default to triangle lists");
+        AssertEqual(pipeline.rasterState.fillMode, PolygonFillMode::Fill, "Pipelines should default to solid fill");
+        AssertEqual(pipeline.rasterState.cullMode, CullMode::Back, "Pipelines should default to back-face culling");
+        Assert(pipeline.rasterState.depthTest, "Pipelines should keep depth testing enabled by default");
+        Assert(pipeline.rasterState.depthWrite, "Pipelines should keep depth writes enabled by default");
+    }
 
-    AddTest(suite, "graphics pipeline defaults stay raster friendly",
-            []
-            {
-                const GraphicsPipelineDesc pipeline{};
-                AssertEqual(pipeline.topology, PrimitiveTopology::TriangleList, "Pipelines should default to triangle lists");
-                AssertEqual(pipeline.rasterState.fillMode, PolygonFillMode::Fill, "Pipelines should default to solid fill");
-                AssertEqual(pipeline.rasterState.cullMode, CullMode::Back, "Pipelines should default to back-face culling");
-                Assert(pipeline.rasterState.depthTest, "Pipelines should keep depth testing enabled by default");
-                Assert(pipeline.rasterState.depthWrite, "Pipelines should keep depth writes enabled by default");
-            });
+    TEST_CASE("texture description starts with a single mip")
+    {
+        const TextureDesc textureDesc{};
+        AssertEqual(textureDesc.format, TextureFormat::RGBA8, "Texture descriptions should default to RGBA8");
+        AssertEqual(textureDesc.mipLevels, 1u, "Texture descriptions should default to one mip level");
+        Assert(!textureDesc.renderTarget, "Texture descriptions should not default to render targets");
+    }
 
-    AddTest(suite, "texture description starts with a single mip",
-            []
-            {
-                const TextureDesc textureDesc{};
-                AssertEqual(textureDesc.format, TextureFormat::RGBA8, "Texture descriptions should default to RGBA8");
-                AssertEqual(textureDesc.mipLevels, 1u, "Texture descriptions should default to one mip level");
-                Assert(!textureDesc.renderTarget, "Texture descriptions should not default to render targets");
-            });
+    TEST_CASE("render target description defaults to depth-backed rgba")
+    {
+        const RenderTargetDesc renderTargetDesc{};
+        Assert(!renderTargetDesc.colorAttachments.empty(), "Render targets should default to at least one attachment");
+        AssertEqual(renderTargetDesc.colorAttachments[0], TextureFormat::RGBA8, "Render targets should default to RGBA8 color");
+        Assert(renderTargetDesc.hasDepthBuffer, "Render targets should default to a depth buffer");
+    }
 
-    AddTest(suite, "render target description defaults to depth-backed rgba",
-            []
-            {
-                const RenderTargetDesc renderTargetDesc{};
-                Assert(!renderTargetDesc.colorAttachments.empty(), "Render targets should default to at least one attachment");
-                AssertEqual(renderTargetDesc.colorAttachments[0], TextureFormat::RGBA8, "Render targets should default to RGBA8 color");
-                Assert(renderTargetDesc.hasDepthBuffer, "Render targets should default to a depth buffer");
-            });
+    TEST_CASE("buffer description starts immutable vertex oriented")
+    {
+        const BufferDesc bufferDesc{};
+        AssertEqual(bufferDesc.usage, BufferUsage::Vertex, "Buffers should default to vertex usage");
+        AssertEqual(bufferDesc.sizeInBytes, static_cast<std::size_t>(0), "Buffers should start with zero bytes");
+        Assert(!bufferDesc.cpuWritable, "Buffers should default to GPU-only ownership");
+    }
 
-    AddTest(suite, "buffer description starts immutable vertex oriented",
-            []
-            {
-                const BufferDesc bufferDesc{};
-                AssertEqual(bufferDesc.usage, BufferUsage::Vertex, "Buffers should default to vertex usage");
-                AssertEqual(bufferDesc.sizeInBytes, static_cast<std::size_t>(0), "Buffers should start with zero bytes");
-                Assert(!bufferDesc.cpuWritable, "Buffers should default to GPU-only ownership");
-            });
+    TEST_CASE("opengl device creates buffer resource descriptors")
+    {
+        const OpenGLGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        const std::unique_ptr<IBufferResource> buffer = device->CreateBuffer(
+            {.desc = {.usage = BufferUsage::Uniform, .sizeInBytes = 128, .cpuWritable = true}, .debugName = "camera_buffer"});
 
-    AddTest(suite, "opengl device creates buffer resource descriptors",
-            []
-            {
-                const OpenGLGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
-                const std::unique_ptr<IBufferResource> buffer = device->CreateBuffer(
-                    {.desc = {.usage = BufferUsage::Uniform, .sizeInBytes = 128, .cpuWritable = true}, .debugName = "camera_buffer"});
+        Assert(buffer != nullptr, "OpenGL should create buffer resources");
+        AssertEqual(buffer->GetAPI(), GraphicsAPI::OpenGL, "Buffer resources should keep the OpenGL API tag");
+        AssertEqual(buffer->GetDescription().usage, BufferUsage::Uniform, "Buffer usage should be preserved");
+        AssertEqual(buffer->GetDescription().sizeInBytes, static_cast<std::size_t>(128), "Buffer size should be preserved");
+    }
 
-                Assert(buffer != nullptr, "OpenGL should create buffer resources");
-                AssertEqual(buffer->GetAPI(), GraphicsAPI::OpenGL, "Buffer resources should keep the OpenGL API tag");
-                AssertEqual(buffer->GetDescription().usage, BufferUsage::Uniform, "Buffer usage should be preserved");
-                AssertEqual(buffer->GetDescription().sizeInBytes, static_cast<std::size_t>(128), "Buffer size should be preserved");
-            });
+    TEST_CASE("acceleration structure description defaults to conservative tracing")
+    {
+        const AccelerationStructureDesc desc{};
+        AssertEqual(desc.type, AccelerationStructureType::BottomLevel,
+                    "Acceleration structures should default to bottom-level builds");
+        AssertEqual(desc.buildHint, AccelerationStructureBuildHint::PreferFastTrace,
+                    "Acceleration structures should default to fast tracing");
+        AssertEqual(desc.primitiveCount, 0u, "Acceleration structures should default to zero primitives");
+        AssertEqual(desc.instanceCount, 0u, "Acceleration structures should default to zero instances");
+        Assert(!desc.allowUpdate, "Acceleration structures should default to immutable builds");
+        Assert(!desc.allowCompaction, "Acceleration structures should default to uncompacted builds");
+    }
 
-    AddTest(suite, "acceleration structure description defaults to conservative tracing",
-            []
-            {
-                const AccelerationStructureDesc desc{};
-                AssertEqual(desc.type, AccelerationStructureType::BottomLevel,
-                            "Acceleration structures should default to bottom-level builds");
-                AssertEqual(desc.buildHint, AccelerationStructureBuildHint::PreferFastTrace,
-                            "Acceleration structures should default to fast tracing");
-                AssertEqual(desc.primitiveCount, 0u, "Acceleration structures should default to zero primitives");
-                AssertEqual(desc.instanceCount, 0u, "Acceleration structures should default to zero instances");
-                Assert(!desc.allowUpdate, "Acceleration structures should default to immutable builds");
-                Assert(!desc.allowCompaction, "Acceleration structures should default to uncompacted builds");
-            });
+    TEST_CASE("opengl backend reports runtime shader and window support")
+    {
+        const OpenGLGraphicsBackend backend;
+        const GraphicsCapabilities &capabilities = backend.GetCapabilities();
 
-    AddTest(suite, "opengl backend reports runtime shader and window support",
-            []
-            {
-                const OpenGLGraphicsBackend backend;
-                const GraphicsCapabilities &capabilities = backend.GetCapabilities();
+        AssertEqual(capabilities.api, GraphicsAPI::OpenGL, "OpenGL capabilities should identify the OpenGL API");
+        Assert(capabilities.supportsRuntimeShaderCompilation, "OpenGL should support runtime shader compilation");
+        Assert(capabilities.supportsFramebufferBlit, "OpenGL should support framebuffer blits");
+        Assert(capabilities.supportsWireframeRendering, "OpenGL should support wireframe rendering");
+        Assert(capabilities.supportsWindowPresentation, "OpenGL should support presenting to a window");
+        Assert(!capabilities.supportsAccelerationStructures, "OpenGL should not report acceleration structures");
+        Assert(!capabilities.supportsRayTracingPipelines, "OpenGL should not report ray tracing pipelines");
+        Assert(!capabilities.supportsTemporalUpscaling, "OpenGL should not report temporal upscaling support by default");
+        Assert(!capabilities.supportsFrameGeneration, "OpenGL should not report frame generation support by default");
+    }
 
-                AssertEqual(capabilities.api, GraphicsAPI::OpenGL, "OpenGL capabilities should identify the OpenGL API");
-                Assert(capabilities.supportsRuntimeShaderCompilation, "OpenGL should support runtime shader compilation");
-                Assert(capabilities.supportsFramebufferBlit, "OpenGL should support framebuffer blits");
-                Assert(capabilities.supportsWireframeRendering, "OpenGL should support wireframe rendering");
-                Assert(capabilities.supportsWindowPresentation, "OpenGL should support presenting to a window");
-                Assert(!capabilities.supportsAccelerationStructures, "OpenGL should not report acceleration structures");
-                Assert(!capabilities.supportsRayTracingPipelines, "OpenGL should not report ray tracing pipelines");
-                Assert(!capabilities.supportsTemporalUpscaling, "OpenGL should not report temporal upscaling support by default");
-                Assert(!capabilities.supportsFrameGeneration, "OpenGL should not report frame generation support by default");
-            });
+    TEST_CASE("opengl backend creates a graphics device with matching capabilities")
+    {
+        const OpenGLGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
 
-    AddTest(suite, "opengl backend creates a graphics device with matching capabilities",
-            []
-            {
-                const OpenGLGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        Assert(device != nullptr, "OpenGL should be able to create a graphics device");
+        AssertEqual(device->GetAPI(), GraphicsAPI::OpenGL, "OpenGL devices should report the OpenGL API");
+        Assert(device->SupportsShaderStages(ShaderStageBit(ShaderStage::Vertex) | ShaderStageBit(ShaderStage::Fragment)),
+               "OpenGL devices should support vertex and fragment shader stages");
+        Assert(!device->SupportsShaderStages(1u << 31u), "OpenGL devices should reject unknown shader stage bits");
+    }
 
-                Assert(device != nullptr, "OpenGL should be able to create a graphics device");
-                AssertEqual(device->GetAPI(), GraphicsAPI::OpenGL, "OpenGL devices should report the OpenGL API");
-                Assert(device->SupportsShaderStages(ShaderStageBit(ShaderStage::Vertex) | ShaderStageBit(ShaderStage::Fragment)),
-                       "OpenGL devices should support vertex and fragment shader stages");
-                Assert(!device->SupportsShaderStages(1u << 31u), "OpenGL devices should reject unknown shader stage bits");
-            });
+    TEST_CASE("upscale input defaults stay vendor-ready but optional")
+    {
+        const UpscaleInput input{};
+        const UpscaleModeDesc desc{};
 
-    AddTest(suite, "upscale input defaults stay vendor-ready but optional",
-            []
-            {
-                const UpscaleInput input{};
-                const UpscaleModeDesc desc{};
+        Assert(input.color == nullptr, "Upscale input should default to no color texture");
+        AssertEqual(input.alphaMode, UpscaleAlphaMode::Opaque, "Upscale input should default to opaque composition");
+        AssertEqual(desc.quality, UpscaleQualityMode::Native, "Upscale modes should default to native quality");
+        Assert(desc.requirements.needsColor, "Upscale modes should default to requiring color");
+        Assert(!desc.requirements.needsMotionVectors, "Upscale modes should not require motion vectors by default");
+        Assert(!desc.supportsReactiveMask, "Upscale modes should not assume reactive mask support by default");
+    }
 
-                Assert(input.color == nullptr, "Upscale input should default to no color texture");
-                AssertEqual(input.alphaMode, UpscaleAlphaMode::Opaque, "Upscale input should default to opaque composition");
-                AssertEqual(desc.quality, UpscaleQualityMode::Native, "Upscale modes should default to native quality");
-                Assert(desc.requirements.needsColor, "Upscale modes should default to requiring color");
-                Assert(!desc.requirements.needsMotionVectors, "Upscale modes should not require motion vectors by default");
-                Assert(!desc.supportsReactiveMask, "Upscale modes should not assume reactive mask support by default");
-            });
+    TEST_CASE("frame generation input defaults to history-driven motion vectors")
+    {
+        const FrameGenerationInput input{};
+        const FrameGenerationModeDesc desc{};
 
-    AddTest(suite, "frame generation input defaults to history-driven motion vectors",
-            []
-            {
-                const FrameGenerationInput input{};
-                const FrameGenerationModeDesc desc{};
+        Assert(input.currentColor == nullptr, "Frame generation should default to no current color");
+        AssertEqual(desc.quality, FrameGenerationQualityMode::Off, "Frame generation should default to off");
+        Assert(desc.needsMotionVectors, "Frame generation should require motion vectors by default");
+        Assert(desc.needsHistory, "Frame generation should require frame history by default");
+        Assert(!desc.needsDepth, "Frame generation should not require depth by default");
+    }
 
-                Assert(input.currentColor == nullptr, "Frame generation should default to no current color");
-                AssertEqual(desc.quality, FrameGenerationQualityMode::Off, "Frame generation should default to off");
-                Assert(desc.needsMotionVectors, "Frame generation should require motion vectors by default");
-                Assert(desc.needsHistory, "Frame generation should require frame history by default");
-                Assert(!desc.needsDepth, "Frame generation should not require depth by default");
-            });
+    TEST_CASE("opengl device creates shader and texture resource descriptors")
+    {
+        const OpenGLGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
 
-    AddTest(suite, "opengl device creates shader and texture resource descriptors",
-            []
-            {
-                const OpenGLGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        const std::unique_ptr<IShaderProgramResource> shaderProgram = device->CreateShaderProgram(
+            {.desc = {.stages = ShaderStageBit(ShaderStage::Vertex) | ShaderStageBit(ShaderStage::Fragment)},
+             .debugName = "ui_shader"});
+        const std::unique_ptr<ITextureResource> texture = device->CreateTexture(
+            {.desc = {.extent = {256, 256}, .format = TextureFormat::RGBA8, .mipLevels = 1, .renderTarget = true},
+             .debugName = "ui_target"});
 
-                const std::unique_ptr<IShaderProgramResource> shaderProgram = device->CreateShaderProgram(
-                    {.desc = {.stages = ShaderStageBit(ShaderStage::Vertex) | ShaderStageBit(ShaderStage::Fragment)},
-                     .debugName = "ui_shader"});
-                const std::unique_ptr<ITextureResource> texture = device->CreateTexture(
-                    {.desc = {.extent = {256, 256}, .format = TextureFormat::RGBA8, .mipLevels = 1, .renderTarget = true},
-                     .debugName = "ui_target"});
+        Assert(shaderProgram != nullptr, "OpenGL should create shader program resources for supported shader stages");
+        Assert(texture != nullptr, "OpenGL should create texture resources");
+        AssertEqual(shaderProgram->GetAPI(), GraphicsAPI::OpenGL, "Shader resources should keep the OpenGL API tag");
+        AssertEqual(shaderProgram->GetDebugName(), std::string("ui_shader"), "Shader debug names should be preserved");
+        AssertEqual(texture->GetDescription().extent.width, 256u, "Texture width should be preserved in the resource descriptor");
+        Assert(texture->GetDescription().renderTarget, "Texture descriptors should preserve render-target intent");
+    }
 
-                Assert(shaderProgram != nullptr, "OpenGL should create shader program resources for supported shader stages");
-                Assert(texture != nullptr, "OpenGL should create texture resources");
-                AssertEqual(shaderProgram->GetAPI(), GraphicsAPI::OpenGL, "Shader resources should keep the OpenGL API tag");
-                AssertEqual(shaderProgram->GetDebugName(), std::string("ui_shader"), "Shader debug names should be preserved");
-                AssertEqual(texture->GetDescription().extent.width, 256u, "Texture width should be preserved in the resource descriptor");
-                Assert(texture->GetDescription().renderTarget, "Texture descriptors should preserve render-target intent");
-            });
+    TEST_CASE("opengl device creates render target resource descriptors")
+    {
+        const OpenGLGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        const std::unique_ptr<IRenderTargetResource> renderTarget = device->CreateRenderTarget(
+            {.desc = {.extent = {640, 360}, .hasDepthBuffer = true}, .debugName = "scene_rt"});
 
-    AddTest(suite, "opengl device creates render target resource descriptors",
-            []
-            {
-                const OpenGLGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
-                const std::unique_ptr<IRenderTargetResource> renderTarget = device->CreateRenderTarget(
-                    {.desc = {.extent = {640, 360}, .hasDepthBuffer = true}, .debugName = "scene_rt"});
+        Assert(renderTarget != nullptr, "OpenGL should create render target resources");
+        AssertEqual(renderTarget->GetAPI(), GraphicsAPI::OpenGL, "Render target resources should keep the OpenGL API tag");
+        AssertEqual(renderTarget->GetDescription().extent.width, 640u, "Render target width should be preserved");
+        Assert(renderTarget->GetDescription().hasDepthBuffer, "Render targets should preserve depth-buffer intent");
+    }
 
-                Assert(renderTarget != nullptr, "OpenGL should create render target resources");
-                AssertEqual(renderTarget->GetAPI(), GraphicsAPI::OpenGL, "Render target resources should keep the OpenGL API tag");
-                AssertEqual(renderTarget->GetDescription().extent.width, 640u, "Render target width should be preserved");
-                Assert(renderTarget->GetDescription().hasDepthBuffer, "Render targets should preserve depth-buffer intent");
-            });
+    TEST_CASE("opengl device creates geometry resource descriptors")
+    {
+        const OpenGLGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        const std::unique_ptr<IGeometryResource> geometry =
+            device->CreateGeometry({.layout = {.vertexAttributes = {3, 3, 2}},
+                                    .vertexData = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+                                                   0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f},
+                                    .indexData = {0, 1, 2},
+                                    .debugName = "triangle_geometry"});
 
-    AddTest(suite, "opengl device creates geometry resource descriptors",
-            []
-            {
-                const OpenGLGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
-                const std::unique_ptr<IGeometryResource> geometry =
-                    device->CreateGeometry({.layout = {.vertexAttributes = {3, 3, 2}},
-                                            .vertexData = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-                                                           0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f},
-                                            .indexData = {0, 1, 2},
-                                            .debugName = "triangle_geometry"});
+        Assert(geometry != nullptr, "OpenGL should create geometry resources");
+        AssertEqual(geometry->GetAPI(), GraphicsAPI::OpenGL, "Geometry resources should keep the OpenGL API tag");
+        AssertEqual(geometry->GetLayout().vertexAttributes.size(), static_cast<std::size_t>(3),
+                    "Geometry layouts should preserve their vertex attribute count");
+        AssertEqual(geometry->GetIndexCount(), static_cast<std::size_t>(3), "Geometry index counts should be preserved");
+    }
 
-                Assert(geometry != nullptr, "OpenGL should create geometry resources");
-                AssertEqual(geometry->GetAPI(), GraphicsAPI::OpenGL, "Geometry resources should keep the OpenGL API tag");
-                AssertEqual(geometry->GetLayout().vertexAttributes.size(), static_cast<std::size_t>(3),
-                            "Geometry layouts should preserve their vertex attribute count");
-                AssertEqual(geometry->GetIndexCount(), static_cast<std::size_t>(3), "Geometry index counts should be preserved");
-            });
+    TEST_CASE("opengl device rejects unsupported shader stage sets")
+    {
+        const OpenGLGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        ShaderProgramCreateInfo createInfo{};
+        createInfo.desc.stages = 1u << 31u;
+        createInfo.debugName = "invalid_shader";
 
-    AddTest(suite, "opengl device rejects unsupported shader stage sets",
-            []
-            {
-                const OpenGLGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
-                ShaderProgramCreateInfo createInfo{};
-                createInfo.desc.stages = 1u << 31u;
-                createInfo.debugName = "invalid_shader";
+        Assert(device->CreateShaderProgram(createInfo) == nullptr,
+               "OpenGL should reject shader programs with unsupported stage masks");
+    }
 
-                Assert(device->CreateShaderProgram(createInfo) == nullptr,
-                       "OpenGL should reject shader programs with unsupported stage masks");
-            });
+    TEST_CASE("opengl device rejects acceleration structure creation")
+    {
+        const OpenGLGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        const std::unique_ptr<IAccelerationStructureResource> accelerationStructure = device->CreateAccelerationStructure(
+            {.desc = {.type = AccelerationStructureType::BottomLevel, .primitiveCount = 12}, .debugName = "mesh_blas"});
 
-    AddTest(suite, "opengl device rejects acceleration structure creation",
-            []
-            {
-                const OpenGLGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
-                const std::unique_ptr<IAccelerationStructureResource> accelerationStructure = device->CreateAccelerationStructure(
-                    {.desc = {.type = AccelerationStructureType::BottomLevel, .primitiveCount = 12}, .debugName = "mesh_blas"});
+        Assert(accelerationStructure == nullptr, "OpenGL should reject acceleration structure creation");
+    }
 
-                Assert(accelerationStructure == nullptr, "OpenGL should reject acceleration structure creation");
-            });
+    TEST_CASE("fake ray tracing device exercises fully implemented acceleration structure flow")
+    {
+    const FakeRayTracingDevice device;
+    const std::unique_ptr<IShaderProgramResource> rayTracingProgram =
+        device.CreateShaderProgram({.desc = {.stages = ShaderStageBit(ShaderStage::RayGeneration) |
+                                                       ShaderStageBit(ShaderStage::Miss) | ShaderStageBit(ShaderStage::ClosestHit),
+                                             .runtimeCompilation = false},
+                                    .debugName = "path_trace_pipeline"});
+    const std::unique_ptr<IAccelerationStructureResource> accelerationStructure =
+        device.CreateAccelerationStructure({.desc = {.type = AccelerationStructureType::TopLevel,
+                                                     .buildHint = AccelerationStructureBuildHint::PreferFastTrace,
+                                                     .instanceCount = 64,
+                                                     .allowUpdate = true,
+                                                     .allowCompaction = true},
+                                            .debugName = "scene_tlas"});
+    const std::unique_ptr<IRenderTargetResource> renderTarget =
+        device.CreateRenderTarget({.desc = {.extent = {1920, 1080}, .hasDepthBuffer = true},
+                                   .debugName = "lighting_rt"});
+    const std::unique_ptr<IBufferResource> storageBuffer = device.CreateBuffer(
+        {.desc = {.usage = BufferUsage::Storage, .sizeInBytes = 4096, .cpuWritable = true}, .debugName = "light_storage"});
+    const std::unique_ptr<IGeometryResource> geometry = device.CreateGeometry(
+        {.layout = {.vertexAttributes = {3, 3}},
+         .vertexData = {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f},
+         .indexData = {0, 1, 2},
+         .debugName = "rt_geometry"});
 
-    AddTest(
-        suite, "fake ray tracing device exercises fully implemented acceleration structure flow",
-        []
-        {
-            const FakeRayTracingDevice device;
-            const std::unique_ptr<IShaderProgramResource> rayTracingProgram =
-                device.CreateShaderProgram({.desc = {.stages = ShaderStageBit(ShaderStage::RayGeneration) |
-                                                               ShaderStageBit(ShaderStage::Miss) | ShaderStageBit(ShaderStage::ClosestHit),
-                                                     .runtimeCompilation = false},
-                                            .debugName = "path_trace_pipeline"});
-            const std::unique_ptr<IAccelerationStructureResource> accelerationStructure =
-                device.CreateAccelerationStructure({.desc = {.type = AccelerationStructureType::TopLevel,
-                                                             .buildHint = AccelerationStructureBuildHint::PreferFastTrace,
-                                                             .instanceCount = 64,
-                                                             .allowUpdate = true,
-                                                             .allowCompaction = true},
-                                                    .debugName = "scene_tlas"});
-            const std::unique_ptr<IRenderTargetResource> renderTarget =
-                device.CreateRenderTarget({.desc = {.extent = {1920, 1080}, .hasDepthBuffer = true},
-                                           .debugName = "lighting_rt"});
-            const std::unique_ptr<IBufferResource> storageBuffer = device.CreateBuffer(
-                {.desc = {.usage = BufferUsage::Storage, .sizeInBytes = 4096, .cpuWritable = true}, .debugName = "light_storage"});
-            const std::unique_ptr<IGeometryResource> geometry = device.CreateGeometry(
-                {.layout = {.vertexAttributes = {3, 3}},
-                 .vertexData = {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f},
-                 .indexData = {0, 1, 2},
-                 .debugName = "rt_geometry"});
+    Assert(device.GetCapabilities().supportsAccelerationStructures,
+           "The fake device should simulate acceleration-structure support");
+    Assert(device.GetCapabilities().supportsRayTracingPipelines, "The fake device should simulate ray tracing pipeline support");
+    Assert(rayTracingProgram != nullptr, "The fake device should create a ray tracing shader program");
+    Assert(renderTarget != nullptr, "The fake device should create a render target resource");
+    Assert(storageBuffer != nullptr, "The fake device should create buffer resources");
+    Assert(geometry != nullptr, "The fake device should create geometry resources");
+    Assert(accelerationStructure != nullptr, "The fake device should create an acceleration structure resource");
+    AssertEqual(rayTracingProgram->GetDescription().stages,
+                ShaderStageBit(ShaderStage::RayGeneration) | ShaderStageBit(ShaderStage::Miss) |
+                    ShaderStageBit(ShaderStage::ClosestHit),
+                "The fake shader resource should preserve ray tracing shader stages");
+    AssertEqual(renderTarget->GetDescription().extent.height, 1080u, "The fake render target should preserve its output extent");
+    AssertEqual(storageBuffer->GetDescription().usage, BufferUsage::Storage,
+                "The fake buffer resource should preserve storage-buffer usage");
+    AssertEqual(geometry->GetIndexCount(), static_cast<std::size_t>(3), "The fake geometry resource should preserve index counts");
+    AssertEqual(accelerationStructure->GetDescription().type, AccelerationStructureType::TopLevel,
+                "The fake acceleration structure should preserve the TLAS type");
+    AssertEqual(accelerationStructure->GetDescription().instanceCount, 64u,
+                "The fake acceleration structure should preserve instance counts");
+    Assert(accelerationStructure->GetDescription().allowUpdate, "The fake acceleration structure should preserve update flags");
+    AssertEqual(accelerationStructure->GetDebugName(), std::string("scene_tlas"),
+                "The fake acceleration structure should preserve debug names");
+    }
 
-            Assert(device.GetCapabilities().supportsAccelerationStructures,
-                   "The fake device should simulate acceleration-structure support");
-            Assert(device.GetCapabilities().supportsRayTracingPipelines, "The fake device should simulate ray tracing pipeline support");
-            Assert(rayTracingProgram != nullptr, "The fake device should create a ray tracing shader program");
-            Assert(renderTarget != nullptr, "The fake device should create a render target resource");
-            Assert(storageBuffer != nullptr, "The fake device should create buffer resources");
-            Assert(geometry != nullptr, "The fake device should create geometry resources");
-            Assert(accelerationStructure != nullptr, "The fake device should create an acceleration structure resource");
-            AssertEqual(rayTracingProgram->GetDescription().stages,
-                        ShaderStageBit(ShaderStage::RayGeneration) | ShaderStageBit(ShaderStage::Miss) |
-                            ShaderStageBit(ShaderStage::ClosestHit),
-                        "The fake shader resource should preserve ray tracing shader stages");
-            AssertEqual(renderTarget->GetDescription().extent.height, 1080u, "The fake render target should preserve its output extent");
-            AssertEqual(storageBuffer->GetDescription().usage, BufferUsage::Storage,
-                        "The fake buffer resource should preserve storage-buffer usage");
-            AssertEqual(geometry->GetIndexCount(), static_cast<std::size_t>(3), "The fake geometry resource should preserve index counts");
-            AssertEqual(accelerationStructure->GetDescription().type, AccelerationStructureType::TopLevel,
-                        "The fake acceleration structure should preserve the TLAS type");
-            AssertEqual(accelerationStructure->GetDescription().instanceCount, 64u,
-                        "The fake acceleration structure should preserve instance counts");
-            Assert(accelerationStructure->GetDescription().allowUpdate, "The fake acceleration structure should preserve update flags");
-            AssertEqual(accelerationStructure->GetDebugName(), std::string("scene_tlas"),
-                        "The fake acceleration structure should preserve debug names");
-        });
+    TEST_CASE("vulkan backend capabilities reflect explicit pipeline expectations")
+    {
+        const VulkanGraphicsBackend backend;
+        const GraphicsCapabilities &capabilities = backend.GetCapabilities();
 
-    AddTest(suite, "vulkan backend capabilities reflect explicit pipeline expectations",
-            []
-            {
-                const VulkanGraphicsBackend backend;
-                const GraphicsCapabilities &capabilities = backend.GetCapabilities();
+        AssertEqual(capabilities.api, GraphicsAPI::Vulkan, "Vulkan capabilities should identify the Vulkan API");
+        Assert(!capabilities.supportsRuntimeShaderCompilation, "Vulkan should not rely on runtime shader compilation");
+        Assert(capabilities.supportsComputeShaders, "Vulkan should expose compute shader support");
+        Assert(capabilities.supportsFramebufferBlit, "Vulkan should support blit-style transfers");
+        Assert(capabilities.supportsAccelerationStructures,
+               "Vulkan foundation should expose acceleration-structure intent through capabilities");
+        Assert(capabilities.supportsRayTracingPipelines,
+               "Vulkan foundation should expose ray-tracing pipeline intent through capabilities");
+        Assert(capabilities.supportsRayQueries, "Vulkan foundation should expose ray-query intent through capabilities");
+        Assert(capabilities.supportsTemporalUpscaling, "Vulkan foundation should advertise temporal upscaling hooks");
+    }
 
-                AssertEqual(capabilities.api, GraphicsAPI::Vulkan, "Vulkan capabilities should identify the Vulkan API");
-                Assert(!capabilities.supportsRuntimeShaderCompilation, "Vulkan should not rely on runtime shader compilation");
-                Assert(capabilities.supportsComputeShaders, "Vulkan should expose compute shader support");
-                Assert(capabilities.supportsFramebufferBlit, "Vulkan should support blit-style transfers");
-                Assert(capabilities.supportsAccelerationStructures,
-                       "Vulkan foundation should expose acceleration-structure intent through capabilities");
-                Assert(capabilities.supportsRayTracingPipelines,
-                       "Vulkan foundation should expose ray-tracing pipeline intent through capabilities");
-                Assert(capabilities.supportsRayQueries, "Vulkan foundation should expose ray-query intent through capabilities");
-                Assert(capabilities.supportsTemporalUpscaling, "Vulkan foundation should advertise temporal upscaling hooks");
-            });
+    TEST_CASE("metal backend capabilities keep wireframe optional")
+    {
+        const MetalGraphicsBackend backend;
+        const GraphicsCapabilities &capabilities = backend.GetCapabilities();
 
-    AddTest(suite, "metal backend capabilities keep wireframe optional",
-            []
-            {
-                const MetalGraphicsBackend backend;
-                const GraphicsCapabilities &capabilities = backend.GetCapabilities();
+        AssertEqual(capabilities.api, GraphicsAPI::Metal, "Metal capabilities should identify the Metal API");
+        Assert(capabilities.supportsComputeShaders, "Metal should expose compute shader support");
+        Assert(!capabilities.supportsWireframeRendering, "Metal should keep wireframe support conservative by default");
+    }
 
-                AssertEqual(capabilities.api, GraphicsAPI::Metal, "Metal capabilities should identify the Metal API");
-                Assert(capabilities.supportsComputeShaders, "Metal should expose compute shader support");
-                Assert(!capabilities.supportsWireframeRendering, "Metal should keep wireframe support conservative by default");
-            });
+    TEST_CASE("vulkan foundation creates a device and hardware acceleration resources")
+    {
+        const VulkanGraphicsBackend vulkanBackend;
+        const std::unique_ptr<IGraphicsDevice> device = vulkanBackend.CreateDevice({});
+        const std::unique_ptr<IShaderProgramResource> rayProgram =
+            device->CreateShaderProgram({.desc = {.stages = ShaderStageBit(ShaderStage::RayGeneration) |
+                                                           ShaderStageBit(ShaderStage::Miss) |
+                                                           ShaderStageBit(ShaderStage::ClosestHit)},
+                                         .debugName = "vk_rt_program"});
+        const std::unique_ptr<IAccelerationStructureResource> accelerationStructure =
+            device->CreateAccelerationStructure({.desc = {.type = AccelerationStructureType::TopLevel, .instanceCount = 8},
+                                                .debugName = "vk_tlas"});
+        const std::unique_ptr<IGPUTimestampQueryResource> timestampQuery =
+            device->CreateTimestampQuery({.debugName = "vk_gpu_time"});
 
-    AddTest(suite, "vulkan foundation creates a device and hardware acceleration resources",
-            []
-            {
-                const VulkanGraphicsBackend vulkanBackend;
-                const std::unique_ptr<IGraphicsDevice> device = vulkanBackend.CreateDevice({});
-                const std::unique_ptr<IShaderProgramResource> rayProgram =
-                    device->CreateShaderProgram({.desc = {.stages = ShaderStageBit(ShaderStage::RayGeneration) |
-                                                                   ShaderStageBit(ShaderStage::Miss) |
-                                                                   ShaderStageBit(ShaderStage::ClosestHit)},
-                                                 .debugName = "vk_rt_program"});
-                const std::unique_ptr<IAccelerationStructureResource> accelerationStructure =
-                    device->CreateAccelerationStructure({.desc = {.type = AccelerationStructureType::TopLevel, .instanceCount = 8},
-                                                        .debugName = "vk_tlas"});
-                const std::unique_ptr<IGPUTimestampQueryResource> timestampQuery =
-                    device->CreateTimestampQuery({.debugName = "vk_gpu_time"});
+        Assert(device != nullptr, "Vulkan foundation should create a graphics device");
+        AssertEqual(device->GetAPI(), GraphicsAPI::Vulkan, "Vulkan devices should report the Vulkan API");
+        Assert(device->SupportsShaderStages(ShaderStageBit(ShaderStage::RayGeneration) | ShaderStageBit(ShaderStage::Miss)),
+               "Vulkan devices should accept ray-tracing shader stages");
+        Assert(rayProgram != nullptr, "Vulkan foundation should create ray-tracing shader descriptors");
+        Assert(accelerationStructure != nullptr, "Vulkan foundation should create acceleration-structure descriptors");
+        Assert(timestampQuery != nullptr, "Vulkan foundation should create timestamp-query descriptors");
+    }
 
-                Assert(device != nullptr, "Vulkan foundation should create a graphics device");
-                AssertEqual(device->GetAPI(), GraphicsAPI::Vulkan, "Vulkan devices should report the Vulkan API");
-                Assert(device->SupportsShaderStages(ShaderStageBit(ShaderStage::RayGeneration) | ShaderStageBit(ShaderStage::Miss)),
-                       "Vulkan devices should accept ray-tracing shader stages");
-                Assert(rayProgram != nullptr, "Vulkan foundation should create ray-tracing shader descriptors");
-                Assert(accelerationStructure != nullptr, "Vulkan foundation should create acceleration-structure descriptors");
-                Assert(timestampQuery != nullptr, "Vulkan foundation should create timestamp-query descriptors");
-            });
+    TEST_CASE("vulkan facades expose acceleration structures and gpu timing")
+    {
+        const VulkanGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        BindGraphicsRuntime({.api = GraphicsAPI::Vulkan, .backend = &backend, .device = device.get()});
 
-    AddTest(suite, "vulkan facades expose acceleration structures and gpu timing",
-            []
-            {
-                const VulkanGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
-                BindGraphicsRuntime({.api = GraphicsAPI::Vulkan, .backend = &backend, .device = device.get()});
+        AccelerationStructure accelerationStructure(
+            {.desc = {.type = AccelerationStructureType::BottomLevel, .primitiveCount = 12}, .debugName = "facade_blas"});
+        GPUTimestampQuery query({.debugName = "facade_timestamp"});
 
-                AccelerationStructure accelerationStructure(
-                    {.desc = {.type = AccelerationStructureType::BottomLevel, .primitiveCount = 12}, .debugName = "facade_blas"});
-                GPUTimestampQuery query({.debugName = "facade_timestamp"});
+        query.Begin();
+        query.End();
 
-                query.Begin();
-                query.End();
+        Assert(accelerationStructure.IsInitialized(), "AccelerationStructure facade should initialize on Vulkan");
+        AssertEqual(accelerationStructure.GetAPI(), GraphicsAPI::Vulkan, "AccelerationStructure facade should preserve the API tag");
+        AssertEqual(accelerationStructure.GetDescription().primitiveCount, 12u,
+                    "AccelerationStructure facade should preserve primitive counts");
+        Assert(query.IsInitialized(), "GPUTimestampQuery facade should initialize on Vulkan");
+        Assert(query.IsReady(), "GPUTimestampQuery facade should report a completed CPU-backed interval");
+        Assert(query.GetElapsedTime() >= std::chrono::nanoseconds::zero(),
+               "GPUTimestampQuery facade should return a non-negative elapsed time");
 
-                Assert(accelerationStructure.IsInitialized(), "AccelerationStructure facade should initialize on Vulkan");
-                AssertEqual(accelerationStructure.GetAPI(), GraphicsAPI::Vulkan, "AccelerationStructure facade should preserve the API tag");
-                AssertEqual(accelerationStructure.GetDescription().primitiveCount, 12u,
-                            "AccelerationStructure facade should preserve primitive counts");
-                Assert(query.IsInitialized(), "GPUTimestampQuery facade should initialize on Vulkan");
-                Assert(query.IsReady(), "GPUTimestampQuery facade should report a completed CPU-backed interval");
-                Assert(query.GetElapsedTime() >= std::chrono::nanoseconds::zero(),
-                       "GPUTimestampQuery facade should return a non-negative elapsed time");
+        ClearGraphicsRuntime();
+    }
 
-                ClearGraphicsRuntime();
-            });
+    TEST_CASE("metal backend remains a stub")
+    {
+        const MetalGraphicsBackend metalBackend;
+        Assert(metalBackend.CreateDevice({}) == nullptr, "Metal should not create a device before implementation");
+    }
 
-    AddTest(suite, "metal backend remains a stub",
-            []
-            {
-                const MetalGraphicsBackend metalBackend;
-                Assert(metalBackend.CreateDevice({}) == nullptr, "Metal should not create a device before implementation");
-            });
+    TEST_CASE("graphics runtime bindings expose the active backend and device")
+    {
+        const OpenGLGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
 
-    AddTest(suite, "graphics runtime bindings expose the active backend and device",
-            []
-            {
-                const OpenGLGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        BindGraphicsRuntime({.api = GraphicsAPI::OpenGL, .backend = &backend, .device = device.get()});
 
-                BindGraphicsRuntime({.api = GraphicsAPI::OpenGL, .backend = &backend, .device = device.get()});
+        AssertEqual(GetActiveGraphicsAPI(), GraphicsAPI::OpenGL, "Runtime should expose the bound graphics API");
+        Assert(TryGetActiveGraphicsBackend() == &backend, "Runtime should expose the bound backend");
+        Assert(TryGetActiveGraphicsDevice() == device.get(), "Runtime should expose the bound device");
+        Assert(IsGraphicsAPIActive(GraphicsAPI::OpenGL), "Runtime should report the bound API as active");
+        Assert(!IsGraphicsAPIActive(GraphicsAPI::Vulkan), "Runtime should reject non-bound APIs");
 
-                AssertEqual(GetActiveGraphicsAPI(), GraphicsAPI::OpenGL, "Runtime should expose the bound graphics API");
-                Assert(TryGetActiveGraphicsBackend() == &backend, "Runtime should expose the bound backend");
-                Assert(TryGetActiveGraphicsDevice() == device.get(), "Runtime should expose the bound device");
-                Assert(IsGraphicsAPIActive(GraphicsAPI::OpenGL), "Runtime should report the bound API as active");
-                Assert(!IsGraphicsAPIActive(GraphicsAPI::Vulkan), "Runtime should reject non-bound APIs");
+        ClearGraphicsRuntime();
+        Assert(TryGetActiveGraphicsBackend() == nullptr, "Runtime should clear backend bindings");
+        Assert(TryGetActiveGraphicsDevice() == nullptr, "Runtime should clear device bindings");
+    }
 
-                ClearGraphicsRuntime();
-                Assert(TryGetActiveGraphicsBackend() == nullptr, "Runtime should clear backend bindings");
-                Assert(TryGetActiveGraphicsDevice() == nullptr, "Runtime should clear device bindings");
-            });
+    TEST_CASE("vulkan render state tracks framebuffer and viewport")
+    {
+        const VulkanGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        BindGraphicsRuntime({.api = GraphicsAPI::Vulkan, .backend = &backend, .device = device.get()});
 
-    AddTest(suite, "vulkan render state tracks framebuffer and viewport",
-            []
-            {
-                const VulkanGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
-                BindGraphicsRuntime({.api = GraphicsAPI::Vulkan, .backend = &backend, .device = device.get()});
+        GraphicsRenderState::BindFramebuffer(7);
+        GraphicsRenderState::SetViewport(10, 20, 640, 360);
+        GraphicsRenderState::SetDepthTest(true);
+        GraphicsRenderState::SetBlend(true);
+        GraphicsRenderState::SetScissorTest(true);
 
-                GraphicsRenderState::BindFramebuffer(7);
-                GraphicsRenderState::SetViewport(10, 20, 640, 360);
-                GraphicsRenderState::SetDepthTest(true);
-                GraphicsRenderState::SetBlend(true);
-                GraphicsRenderState::SetScissorTest(true);
+        const GraphicsRenderState::FramebufferState state = GraphicsRenderState::CaptureFramebufferState();
 
-                const GraphicsRenderState::FramebufferState state = GraphicsRenderState::CaptureFramebufferState();
+        AssertEqual(state.framebuffer, 7u, "Vulkan render state should track the bound framebuffer");
+        AssertEqual(state.viewport[0], 10, "Vulkan render state should track viewport x");
+        AssertEqual(state.viewport[1], 20, "Vulkan render state should track viewport y");
+        AssertEqual(state.viewport[2], 640, "Vulkan render state should track viewport width");
+        AssertEqual(state.viewport[3], 360, "Vulkan render state should track viewport height");
+        Assert(state.depthTest, "Vulkan render state should track depth test");
+        Assert(state.blend, "Vulkan render state should track blending");
+        Assert(state.scissorTest, "Vulkan render state should track scissor test");
 
-                AssertEqual(state.framebuffer, 7u, "Vulkan render state should track the bound framebuffer");
-                AssertEqual(state.viewport[0], 10, "Vulkan render state should track viewport x");
-                AssertEqual(state.viewport[1], 20, "Vulkan render state should track viewport y");
-                AssertEqual(state.viewport[2], 640, "Vulkan render state should track viewport width");
-                AssertEqual(state.viewport[3], 360, "Vulkan render state should track viewport height");
-                Assert(state.depthTest, "Vulkan render state should track depth test");
-                Assert(state.blend, "Vulkan render state should track blending");
-                Assert(state.scissorTest, "Vulkan render state should track scissor test");
-
-                ClearGraphicsRuntime();
-            });
-
-    return suite;
+        ClearGraphicsRuntime();
+    }
 }
 
 } // namespace tests

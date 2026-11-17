@@ -1,4 +1,4 @@
-#include "suites/Suites.h"
+#include "support/test_support.hpp"
 
 #include "Graphics/Backends/OpenGL/OpenGLGraphicsBackend.h"
 #include "Graphics/Backends/Vulkan/VulkanGraphicsBackend.h"
@@ -9,93 +9,84 @@
 namespace tests
 {
 
-TestSuite CreateRenderersSuite()
+TEST_SUITE("Renderers")
 {
-    TestSuite suite{"Renderers"};
+    TEST_CASE("renderer2d tracks the current frame extent")
+    {
+        Renderer2D renderer2D;
+        renderer2D.SetOutputResolution(1280, 720);
+        renderer2D.BeginPass();
 
-    AddTest(suite, "renderer2d tracks the current frame extent",
-            []
-            {
-                Renderer2D renderer2D;
-                renderer2D.SetOutputResolution(1280, 720);
-                renderer2D.BeginPass();
+        AssertEqual(renderer2D.GetFrameWidth(), 1280, "Renderer2D should store the current frame width");
+        AssertEqual(renderer2D.GetFrameHeight(), 720, "Renderer2D should store the current frame height");
+        Assert(renderer2D.HasValidFrameExtent(), "Renderer2D should consider positive extents valid");
+    }
 
-                AssertEqual(renderer2D.GetFrameWidth(), 1280, "Renderer2D should store the current frame width");
-                AssertEqual(renderer2D.GetFrameHeight(), 720, "Renderer2D should store the current frame height");
-                Assert(renderer2D.HasValidFrameExtent(), "Renderer2D should consider positive extents valid");
-            });
+    TEST_CASE("renderer3d tracks the current frame extent")
+    {
+        Renderer3D renderer3D;
+        renderer3D.SetOutputResolution(1920, 1080);
+        renderer3D.BeginPass();
 
-    AddTest(suite, "renderer3d tracks the current frame extent",
-            []
-            {
-                Renderer3D renderer3D;
-                renderer3D.SetOutputResolution(1920, 1080);
-                renderer3D.BeginPass();
+        AssertEqual(renderer3D.GetFrameWidth(), 1920, "Renderer3D should store the current frame width");
+        AssertEqual(renderer3D.GetFrameHeight(), 1080, "Renderer3D should store the current frame height");
+        Assert(renderer3D.HasValidFrameExtent(), "Renderer3D should consider positive extents valid");
+    }
 
-                AssertEqual(renderer3D.GetFrameWidth(), 1920, "Renderer3D should store the current frame width");
-                AssertEqual(renderer3D.GetFrameHeight(), 1080, "Renderer3D should store the current frame height");
-                Assert(renderer3D.HasValidFrameExtent(), "Renderer3D should consider positive extents valid");
-            });
+    TEST_CASE("renderers require an active opengl runtime")
+    {
+        Renderer2D renderer2D;
+        Renderer3D renderer3D;
 
-    AddTest(suite, "renderers require an active opengl runtime",
-            []
-            {
-                Renderer2D renderer2D;
-                Renderer3D renderer3D;
+        ClearGraphicsRuntime();
 
-                ClearGraphicsRuntime();
+        Assert(!renderer2D.IsRuntimeCompatible(), "Renderer2D should reject an unbound runtime");
+        Assert(!renderer3D.IsRuntimeCompatible(), "Renderer3D should reject an unbound runtime");
 
-                Assert(!renderer2D.IsRuntimeCompatible(), "Renderer2D should reject an unbound runtime");
-                Assert(!renderer3D.IsRuntimeCompatible(), "Renderer3D should reject an unbound runtime");
+        const OpenGLGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        BindGraphicsRuntime({.api = GraphicsAPI::OpenGL, .backend = &backend, .device = device.get()});
 
-                const OpenGLGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
-                BindGraphicsRuntime({.api = GraphicsAPI::OpenGL, .backend = &backend, .device = device.get()});
+        Assert(renderer2D.IsRuntimeCompatible(), "Renderer2D should accept the OpenGL runtime");
+        Assert(renderer3D.IsRuntimeCompatible(), "Renderer3D should accept the OpenGL runtime");
 
-                Assert(renderer2D.IsRuntimeCompatible(), "Renderer2D should accept the OpenGL runtime");
-                Assert(renderer3D.IsRuntimeCompatible(), "Renderer3D should accept the OpenGL runtime");
+        ClearGraphicsRuntime();
+    }
 
-                ClearGraphicsRuntime();
-            });
+    TEST_CASE("renderers accept vulkan runtime bindings")
+    {
+        Renderer2D renderer2D;
+        Renderer3D renderer3D;
+        const VulkanGraphicsBackend backend;
+        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
 
-    AddTest(suite, "renderers accept vulkan runtime bindings",
-            []
-            {
-                Renderer2D renderer2D;
-                Renderer3D renderer3D;
-                const VulkanGraphicsBackend backend;
-                const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
+        BindGraphicsRuntime({.api = GraphicsAPI::Vulkan, .backend = &backend, .device = device.get()});
 
-                BindGraphicsRuntime({.api = GraphicsAPI::Vulkan, .backend = &backend, .device = device.get()});
+        Assert(renderer2D.IsRuntimeCompatible(), "Renderer2D should accept Vulkan through the backend abstraction");
+        Assert(renderer3D.IsRuntimeCompatible(), "Renderer3D should accept Vulkan through the backend abstraction");
 
-                Assert(renderer2D.IsRuntimeCompatible(), "Renderer2D should accept Vulkan through the backend abstraction");
-                Assert(renderer3D.IsRuntimeCompatible(), "Renderer3D should accept Vulkan through the backend abstraction");
+        ClearGraphicsRuntime();
+    }
 
-                ClearGraphicsRuntime();
-            });
+    TEST_CASE("renderers expose runtime-selectable upscale modes")
+    {
+        Renderer2D renderer2D;
+        Renderer3D renderer3D;
 
-    AddTest(suite, "renderers expose runtime-selectable upscale modes",
-            []
-            {
-                Renderer2D renderer2D;
-                Renderer3D renderer3D;
+        AssertEqual(std::string(renderer2D.GetActiveUpscaleMode()), std::string("bilinear-blit"),
+                    "Renderer2D should default to its shared bilinear blit upscale path");
+        AssertEqual(std::string(renderer3D.GetActiveUpscaleMode()), std::string("bilinear-blit"),
+                    "Renderer3D should default to its shared bilinear blit upscale path");
+        AssertEqual(renderer2D.GetRegisteredUpscaleModes().size(), std::size_t(1),
+                    "Renderer2D should expose its registered upscale strategies");
+        AssertEqual(renderer3D.GetRegisteredUpscaleModes().size(), std::size_t(1),
+                    "Renderer3D should expose its registered upscale strategies");
 
-                AssertEqual(std::string(renderer2D.GetActiveUpscaleMode()), std::string("bilinear-blit"),
-                            "Renderer2D should default to its shared bilinear blit upscale path");
-                AssertEqual(std::string(renderer3D.GetActiveUpscaleMode()), std::string("bilinear-blit"),
-                            "Renderer3D should default to its shared bilinear blit upscale path");
-                AssertEqual(renderer2D.GetRegisteredUpscaleModes().size(), std::size_t(1),
-                            "Renderer2D should expose its registered upscale strategies");
-                AssertEqual(renderer3D.GetRegisteredUpscaleModes().size(), std::size_t(1),
-                            "Renderer3D should expose its registered upscale strategies");
-
-                Assert(renderer2D.SetActiveUpscaleMode("disabled"), "Renderer2D should accept the disabled upscale mode");
-                Assert(renderer3D.SetActiveUpscaleMode("disabled"), "Renderer3D should accept the disabled upscale mode");
-                Assert(!renderer2D.SetActiveUpscaleMode("unknown-mode"), "Renderer2D should reject unknown upscale modes");
-                Assert(!renderer3D.SetActiveUpscaleMode("unknown-mode"), "Renderer3D should reject unknown upscale modes");
-            });
-
-    return suite;
+        Assert(renderer2D.SetActiveUpscaleMode("disabled"), "Renderer2D should accept the disabled upscale mode");
+        Assert(renderer3D.SetActiveUpscaleMode("disabled"), "Renderer3D should accept the disabled upscale mode");
+        Assert(!renderer2D.SetActiveUpscaleMode("unknown-mode"), "Renderer2D should reject unknown upscale modes");
+        Assert(!renderer3D.SetActiveUpscaleMode("unknown-mode"), "Renderer3D should reject unknown upscale modes");
+    }
 }
 
 } // namespace tests
