@@ -63,11 +63,11 @@ jobs:
           key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}
           restore-keys: vcpkg-archives-linux-
 
-      # msdfgen[core] only: the default features pull skia (17 minutes) and the TextRenderer only needs the core.
-      - name: Install glad and msdfgen (vcpkg)
+      # Manifest mode: vcpkg.json lists glad and msdfgen (core only, no skia); the other packages come from apt on Linux.
+      - name: Install glad and msdfgen (vcpkg, vcpkg.json)
         run: |
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
-          "$VCPKG_ROOT/vcpkg" install --classic glad "msdfgen[core]" --triplet x64-linux
+          "$VCPKG_ROOT/vcpkg" install
 
       - name: Save vcpkg archives
         if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
@@ -143,10 +143,10 @@ jobs:
           path: .vcpkg-archives
           key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}
           restore-keys: vcpkg-archives-linux-
-      - name: Install glad and msdfgen (vcpkg)
+      - name: Install glad and msdfgen (vcpkg, vcpkg.json)
         run: |
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
-          "$VCPKG_ROOT/vcpkg" install --classic glad "msdfgen[core]" --triplet x64-linux
+          "$VCPKG_ROOT/vcpkg" install
       - name: Save vcpkg archives
         if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4

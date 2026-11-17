@@ -13,7 +13,7 @@ Moteur de jeu 3D et 2D en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec
 
 ## Compiler
 
-### Linux (apt d'abord, vcpkg en repli)
+### Linux (apt d'abord, vcpkg pour glad et msdfgen)
 
 ```bash
 sudo apt install build-essential cmake cargo python3 \
@@ -21,15 +21,14 @@ sudo apt install build-essential cmake cargo python3 \
     libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
     autoconf autoconf-archive automake libtool
 
-# glad (v1) et msdfgen n'existent pas dans apt : vcpkg
+# glad (v1) et msdfgen n'existent pas dans apt : vcpkg, en UNE commande qui lit vcpkg.json (12 s)
 git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
-~/vcpkg/vcpkg install glad "msdfgen[core]" --triplet x64-linux
+~/vcpkg/vcpkg install                    # à la racine du dépôt
 
-sh tools/setup-linux-deps.sh     # (sans sudo) relie apt + vcpkg dans vcpkg_installed/x64-linux
-make all-debug                   # moteur (debug) -> apps/demo/engine -> démo (debug)
+make all-debug                           # relie les paquets apt tout seul, puis moteur -> démo (debug)
 ```
 
-Notes : les avertissements sont des erreurs (`-Wall -Wextra -Wpedantic -Werror`, `WERROR=0` pour les tolérer) ; lancer les scripts avec `sh` et **sans `sudo`** (le dépôt peut être sur un disque monté sans bit exécutable). `make clean-all` supprime aussi `vcpkg_installed/` : relancer ensuite `sh tools/setup-linux-deps.sh`. Après un changement de structure (`git pull`), faire `make clean-all` pour éliminer les anciens fichiers `.d`.
+`vcpkg.json` marque `glfw3`, `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad` et `msdfgen` (sans options par défaut : noyau seulement, sans skia). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
 
 ### Windows / macOS
 

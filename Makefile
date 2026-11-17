@@ -59,16 +59,17 @@ VCPKG      ?= vcpkg
 BUILD_TYPE ?= debug
 ENGINE_MK  := mk/engine.mk
 
-# ── Linux x86_64: link the apt + vcpkg dependencies automatically when missing ────────────────
-# vcpkg_installed/ is recreated by tools/setup-linux-deps.sh (needs the apt packages and
-# `vcpkg install glad msdfgen`, see README.md). `make clean-all` removes it, the next build restores it.
+# ── Linux x86_64: link the apt packages into vcpkg_installed/ automatically ───────────────────
+# Prerequisites (README.md): the apt packages, then `vcpkg install` at the repository root (vcpkg.json: glad, msdfgen).
+# tools/setup-linux-deps.sh adds the apt packages to vcpkg_installed/<triplet>/ (marker file .apt-linked); make runs it
+# when the marker is missing (first build, after `make clean-all`).
 ifeq ($(shell uname -s 2>/dev/null)-$(shell uname -m 2>/dev/null),Linux-x86_64)
 ifeq ($(filter clean clean-all fclean demo-clean demo-fclean check check-repo check-layers check-api check-headers info,$(MAKECMDGOALS)),)
-ifeq ($(wildcard vcpkg_installed/x64-linux/include/glad),)
-$(info [deps] vcpkg_installed/x64-linux is missing: running tools/setup-linux-deps.sh)
+ifeq ($(wildcard vcpkg_installed/x64-linux/.apt-linked),)
+$(info [deps] apt packages not linked yet: running tools/setup-linux-deps.sh)
 _DEPS_RC := $(shell sh tools/setup-linux-deps.sh 1>&2; echo $$?)
 ifneq ($(_DEPS_RC),0)
-$(warning tools/setup-linux-deps.sh failed (see above): install the dependencies listed in README.md)
+$(warning tools/setup-linux-deps.sh failed (see above): install the apt packages and run 'vcpkg install' as described in README.md)
 endif
 endif
 endif
