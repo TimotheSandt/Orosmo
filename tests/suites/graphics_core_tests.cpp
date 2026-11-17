@@ -500,6 +500,7 @@ TEST_SUITE("GraphicsCore")
     {
         const VulkanGraphicsBackend vulkanBackend;
         const std::unique_ptr<IGraphicsDevice> device = vulkanBackend.CreateDevice({});
+        SKIP_TEST_IF_NULL(device, "no Vulkan device could be created");
         const std::unique_ptr<IShaderProgramResource> rayProgram =
             device->CreateShaderProgram({.desc = {.stages = ShaderStageBit(ShaderStage::RayGeneration) |
                                                            ShaderStageBit(ShaderStage::Miss) |
