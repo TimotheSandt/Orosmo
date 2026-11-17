@@ -20,6 +20,19 @@ TEST_SUITE("Noise")
         }
     }
 
+    TEST_CASE("pcg sequence is frozen (golden values, identical on every platform)")
+    {
+        PCGRandom random(42);
+        const uint64_t expected[] = {1086343166915917234ULL, 7154313827778670325ULL, 4041289775404504274ULL,
+                                     18186911786337430094ULL, 8276444796075846183ULL, 14005899776696538563ULL};
+        for (const uint64_t value : expected)
+        {
+            AssertEqual(random.next(), value, "PCG output should match the recorded sequence");
+        }
+        PCGRandom ranged(7);
+        AssertEqual(ranged.next(10, 1000), 315ULL, "Ranged PCG output should match the recorded value");
+    }
+
     TEST_CASE("pcg ranged next stays in bounds")
     {
         PCGRandom random(123);

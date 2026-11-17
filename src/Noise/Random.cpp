@@ -24,7 +24,11 @@ float PCGRandom::nextFloat(float min, float max) { return min + this->nextFloat(
 uint64_t PCGRandom::Random(uint64_t &state)
 {
     state = state * 747796405u + 2891336453u;
-    uint64_t result = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    // The 32-bit PCG hash used a shift of (state >> 28) + 4 (0..19); on a 64-bit state that exponent can exceed 63,
+    // which is undefined behaviour (UBSan). Masking to 6 bits is what x86 hardware did already, so every existing
+    // sequence is unchanged, and it is now defined (and identical) on all platforms.
+    const uint64_t shift = ((state >> 28u) + 4u) & 63u;
+    uint64_t result = ((state >> shift) ^ state) * 277803737u;
     result = (result >> 22u) ^ result;
     return result;
 }
