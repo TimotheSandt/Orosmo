@@ -170,13 +170,14 @@ ALL_ENGINE_OBJS := $(Graphics_OBJS) $(UI_OBJS) $(Noise_OBJS) $(Profiler_OBJS) $(
 
 # ── Git remote detection ──────────────────────────────────────────────────────
 # Reads the 'origin' remote and extracts the host and owner/repo slug.
-# Supports HTTPS (https://host/owner/repo[.git]) and SSH (git@host:owner/repo[.git]).
+# Supports HTTPS (https://[user[:token]@]host/owner/repo[.git]) and SSH (git@host:owner/repo[.git]).
+# Credentials in the URL (user:token@) are dropped: REPO_HOST is compiled into the engine binary.
 # Override REPO_HOST or REPO_SLUG on the command line if needed.
 _GIT_REMOTE_URL := $(shell git remote get-url origin 2>/dev/null)
 _GIT_REPO_HOST  := $(shell printf '%s' "$(_GIT_REMOTE_URL)" | \
-    sed -E 's|https://([^/]+)/.*|\1|; t; s|git@([^:]+):.*|\1|' 2>/dev/null)
+    sed -E 's|https://([^/@]+@)?([^/]+)/.*|\2|; t; s|git@([^:]+):.*|\1|' 2>/dev/null)
 _GIT_REPO_SLUG  := $(shell printf '%s' "$(_GIT_REMOTE_URL)" | \
-    sed -E 's|https://[^/]+/||; s|git@[^:]+:||; s|\.git$$||' 2>/dev/null)
+    sed -E 's|https://([^/@]+@)?[^/]+/||; s|git@[^:]+:||; s|\.git$$||' 2>/dev/null)
 REPO_HOST ?= $(_GIT_REPO_HOST)
 REPO_SLUG ?= $(_GIT_REPO_SLUG)
 

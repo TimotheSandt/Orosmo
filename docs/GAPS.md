@@ -69,6 +69,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | UI-02 | Rendu indépendant du backend | Absent | Les composants dessinent directement via sprites ; aucune liste de dessin intermédiaire, pas d'adaptateur vers un batch 2D. | M2 |
 | UI-03 | Widgets de base | Absent | Aucun bouton, curseur, case à cocher, liste, champ de texte, etc. Seuls `Text` et `Label` (alias) existent. | M3 |
 | TOOL-03 | Capture d'écran | Partiel | Fait en M0 pour OpenGL (`--capture`, `Screenshot::SavePng`, `tools/compare_png.py`) ; Vulkan refusé jusqu'en M4 ; `ui.png` non reproductible (FPS affichés) ; pas de capture sans fenêtre (PLAT-04). | M0 (fait) ; M2 (usage RHI-14) |
+| REPO-01 | Dépôt propre et structuré | Partiel | Rétrogradé après revue CodeRabbit : pas de preuve visuelle d'identité avec l'avant-M00 (aucune capture d'avant) ; exception `third_party/` (rien de copié) à valider. | M0 (retour de l'auteur) |
 
 ## P1
 
@@ -223,6 +224,25 @@ Issues de M00 (G1 à G15, conservées) et de l'audit.
 | G35 | Fuites ASan | `detect_leaks=0` : les singletons statiques et le contexte GL font apparaître des fuites à l'arrêt ; non triées. | M1 |
 | G36 | Graine du terrain | La démo prend toujours une graine d'horloge sans `--seed` ; `Noise()` / `PCGRandom::init()` idem (règle 9). | M1 |
 | G37 | Disque | `/` à 97 % pendant M0 (voir `docs/QUESTIONS.md` A19). | Auteur |
+
+## Revue CodeRabbit de la PR #4 (2026-11-17) : constats reportés
+
+La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques portent sur du code antérieur à M00. Corrigés dans M0 : voir `docs/releases/M0.md`. Reportés :
+
+| # | Constat | Fichier | Jalon |
+| --- | --- | --- | --- |
+| G38 | `CaptureFramebufferState` / `RestoreFramebufferState` ne copient pas `scissorBox` : après une restauration, le test de ciseau s'applique avec un rectangle nul et tout est rogné (OpenGL et Vulkan) | `src/Graphics/Core/RenderState.cpp:223,255` | M2 (l'état global disparaît avec le RHI) ; bug réel, à corriger avant si l'on s'en sert |
+| G39 | Chaque programme compilé doit avoir une identité de cache distincte | `src/Graphics/ShaderProgram.cpp:139` | M2 (RHI-06, RHI-12) |
+| G40 | Les cas d'énumération (`.topLeft`) doivent être résolus selon le type du paramètre du modificateur | `tools/cui-rs/src/generator.rs:902` | M3 (UI-05) |
+| G41 | `Renderer::Clear` est un no-op sous Vulkan : contenu périmé | `src/Graphics/Backends/Vulkan/VulkanRenderState.cpp:136` | M4 |
+| G42 | Appliquer la limitation de fréquence (`throttle`) avant d'évaluer le contenu du texte | `src/UI/Widgets/Text.cpp:191` | M3 |
+| G43 | Appliquer les réglages du renderer avant `BeginPass()` | `src/UI/Manager.cpp:90` | M3 |
+| G44 | `Buffer::Initialize` : signaler l'échec et garder `desc` cohérent avec l'absence de ressource | `src/Graphics/Buffer.cpp:36-58` | M2 |
+| G45 | Fichier temporaire de `cui check` non unique (`cui_check_${Date.now()}.cui`) : collision à l'ouverture de plusieurs documents | `tools/vscode-cui/main.js:110-120` | M3 (outillage UI) |
+| G46 | `LogErrors(std::string context)` copie `context` : `performance-unnecessary-value-param` (clang-tidy) | `src/Graphics/Backends/OpenGL/OpenGLDiagnostics.*`, `Vulkan/VulkanDiagnostics.*` | M2 |
+| G47 | Code ajouté récemment (diagnostics, wrappers de backend, `NormalizeOrFallback` dans `Camera.cpp`) en `PascalCase` et sous `include/Graphics/` : `docs/03` demande `camelCase`, `kPascalCase`, `include/engine/` | plusieurs | M2 (migration, décision A2/A17) |
+| G48 | TEST-01 : le critère couvre `core` et `world`, que le plan traite en M1 et M3 : M0 ne peut pas le clore | `docs/02` | voir `docs/QUESTIONS.md` A20 |
+| G49 | UI-02 exige un adaptateur vers le batch R2D-01, planifié en M5, alors qu'UI-02 est en M2 | `docs/02`, `docs/05` | voir `docs/QUESTIONS.md` A21 |
 
 ## Table de rattachement : jalon → identifiants
 

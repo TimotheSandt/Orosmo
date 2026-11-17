@@ -74,3 +74,11 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 **A18. Windows et macOS dans la CI.** Les jobs correspondants de `.github/workflows/ci.yml` n'ont jamais tourné (aucune machine disponible pendant M0) : ils sont en `continue-on-error`. Quand tu auras vu un premier run, dis-moi ce qu'il affiche pour que je corrige et retire ce drapeau.
 
 **A19. Disque presque plein.** Pendant M0, `/` était à 100 % (97 Go sur 102) ; `~/vcpkg` pèse 7,5 Go (`buildtrees`, `downloads` supprimables avec `vcpkg` : `rm -rf ~/vcpkg/buildtrees ~/vcpkg/downloads`) et `~/.cache` 9,4 Go. Je n'ai rien supprimé chez toi, seulement mes fichiers temporaires.
+
+## Revue CodeRabbit de la PR #4 : questions sur le plan
+
+**A20. TEST-01 et la clôture de M0.** Le critère de TEST-01 (`docs/02`) inclut « couverture de `core` et `world` », que le plan traite en M1 (core) et M3 (world). M0 livre le framework (doctest), le build avec avertissements en erreur et la CI, pas la couverture. Proposition : dans `docs/05`, M0 clôt **« TEST-01 (framework et exécution en CI) »** ; la couverture de `core` et de `world` est suivie dans M1 et M3 sous les mêmes identifiants (`Partiel` jusque-là). Sinon, scinder TEST-01 en deux identifiants. *Décision demandée.*
+
+**A21. UI-02 et le batch 2D (R2D-01).** UI-02 (M2) demande « un adaptateur les envoie au batch 2D (R2D-01) », mais le batch est planifié en M5. Proposition : en M2, l'interface produit ses **listes de dessin** et un adaptateur provisoire les dessine par le renderer actuel ; l'adaptateur vers le batch R2D-01 est livré avec R2D-01 en M5. UI-02 reste `Partiel` entre les deux. *Décision demandée ; aucun jalon n'est ajouté.*
+
+**A22. REPO-01 rétrogradé en `Partiel`** (remarque CodeRabbit, juste : « comportement identique » exigeait des captures d'avant M00, qui n'existent pas, et l'exception `third_party/` n'est pas validée). Pour le repasser à `Fait` : valider l'absence de `third_party/` (rien de copié) et accepter que la preuve d'identité soit tests + journal de démarrage + capture reproductible. *Ton accord demandé.*
