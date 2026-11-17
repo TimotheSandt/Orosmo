@@ -113,3 +113,21 @@ TEST_SUITE("Noise")
 }
 
 } // namespace tests
+
+// A12 : plus de graine par horloge ; l'application choisit la graine explicitement.
+#include <type_traits>
+
+static_assert(!std::is_default_constructible_v<Noise>, "Noise must be built with an explicit seed (rule 9)");
+static_assert(!std::is_default_constructible_v<PCGRandom>, "PCGRandom must be built with an explicit seed (rule 9)");
+
+TEST_SUITE("Noise seeds")
+{
+    TEST_CASE("the same seed gives the same noise values, a different seed does not")
+    {
+        Noise a(1234), b(1234), c(1235);
+        const float va = a.WhiteNoise(1.5f, 2.5f, 3.5f);
+        CHECK(va == b.WhiteNoise(1.5f, 2.5f, 3.5f));
+        CHECK(va != c.WhiteNoise(1.5f, 2.5f, 3.5f));
+        CHECK(a.GetSeed() == 1234u);
+    }
+}

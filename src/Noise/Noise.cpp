@@ -12,11 +12,7 @@ uint64_t hash(uint64_t x)
     return x;
 }
 
-Noise::Noise() { this->SetSeed(); }
-
 Noise::Noise(uint64_t seed) { this->SetSeed(seed); }
-
-void Noise::SetSeed() { this->seed = static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count()); }
 
 void Noise::SetSeed(uint64_t seed) { this->seed = seed; }
 

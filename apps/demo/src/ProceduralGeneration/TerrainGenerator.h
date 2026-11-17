@@ -11,9 +11,11 @@
 class TerrainGenerator
 {
   public:
-    TerrainGenerator() = default;
+    // Seed of a generator built without one: fixed, never the clock (rule 9). The application picks the real seed.
+    static constexpr int kDefaultSeed = 1;
+
+    TerrainGenerator() : noise(kDefaultSeed) {}
     TerrainGenerator(int seed);
-    TerrainGenerator(float sizeX, float sizeZ, int resX, int resZ);
     TerrainGenerator(float sizeX, float sizeZ, int resX, int resZ, int seed);
     ~TerrainGenerator();
 
