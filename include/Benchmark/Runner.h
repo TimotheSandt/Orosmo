@@ -16,7 +16,7 @@ class Runner
     BenchmarkReport Run(ScenarioRegistry &registry);
 
   private:
-    const BenchmarkConfig &m_config;
+    BenchmarkConfig m_config; // by value: a temporary passed to the constructor must not dangle
 };
 
 } // namespace bench
