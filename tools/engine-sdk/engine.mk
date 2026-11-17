@@ -185,6 +185,7 @@ ENGINE_LIBS := \
     $(_ENG_LIB_DIR)/libnoise.a \
     $(_ENG_LIB_DIR)/libprofiler.a \
     $(_ENG_LIB_DIR)/libutilities.a \
+    $(_ENG_LIB_DIR)/libcore.a \
     $(_ENG_LIB_DIR)/libthirdparty.a
 
 # Wrap archives for cross-archive symbol resolution (--start-group / --end-group).
