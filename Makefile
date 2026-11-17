@@ -151,6 +151,15 @@ demo-test:
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
 	$(MAKE) -C apps/demo $(DEMO_ARGS) test
 
+# ── Core demo (M1): 10 000 tasks, hot-reloaded config, measurements; no window, no graphics ──
+#   make core-demo                     build and run          make core-demo CORE_DEMO_ARGS="--tasks 20000 --trace t.json"
+.PHONY: core-demo
+core-demo:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/core_demo BUILD_TYPE=release all
+	./apps/core_demo/bin/core_demo $(CORE_DEMO_ARGS)
+
 demo-clean:
 	$(MAKE) -C apps/demo $(DEMO_ARGS) clean
 
