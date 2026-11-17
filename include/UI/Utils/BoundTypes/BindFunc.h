@@ -18,7 +18,7 @@ struct BindFunc
     mutable detail::ResultCache<
         decltype(std::invoke(std::declval<Func &>(),
                              detail::ResolveBoundArg(std::declval<Args &>())...))>
-        lastResult;
+        lastResult{};
 
     bool IsDirty() const
     {
