@@ -9,11 +9,11 @@ Moteur de jeu 3D et 2D en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec
 - **Compilateur** : GCC 13+ ou Clang 17+ (testé : GCC 13.3, Linux), MSVC 2022 / MinGW sous Windows.
 - **Outils** : GNU Make, CMake, Rust (`cargo`, pour `tools/cui-rs` et `tools/engine-init-rs`), Python 3 (contrôles et comparaison d'images).
 - **Pilotes** : OpenGL 4.3+ et Vulkan ; couches de validation Vulkan conseillées.
-- **Dépendances** : glfw3, glm, stb, freetype, vulkan, shaderc, glad (v1), msdfgen, doctest (tests) — liste dans [vcpkg.json](vcpkg.json).
+- **Dépendances** : glfw3, glm, stb, freetype, vulkan, shaderc, glad (v1), msdfgen, nlohmann-json (JSON), doctest (tests) — liste dans [vcpkg.json](vcpkg.json).
 
 ## Compiler
 
-### Linux (apt d'abord, vcpkg pour glad et msdfgen)
+### Linux (apt d'abord, vcpkg pour glad, msdfgen et nlohmann-json)
 
 ```bash
 sudo apt install build-essential cmake cargo python3 \
@@ -21,14 +21,14 @@ sudo apt install build-essential cmake cargo python3 \
     libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
     autoconf autoconf-archive automake libtool
 
-# glad (v1) et msdfgen n'existent pas dans apt : vcpkg, en UNE commande qui lit vcpkg.json (12 s)
+# glad (v1), msdfgen et nlohmann-json (JSON) ne sont pas pris dans apt : vcpkg, en UNE commande qui lit vcpkg.json (12 s)
 git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
 ~/vcpkg/vcpkg install                    # à la racine du dépôt
 
 make all-debug                           # relie les paquets apt tout seul, puis moteur -> démo (debug)
 ```
 
-`vcpkg.json` marque `glfw3`, `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad` et `msdfgen` (sans options par défaut : noyau seulement, sans skia). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
+`vcpkg.json` marque `glfw3`, `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad`, `msdfgen` et `nlohmann-json` (sans options par défaut : noyau seulement, sans skia). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
 
 `make clean-all` supprime `vcpkg_installed/` : relance ensuite `~/vcpkg/vcpkg install` (12 s, les archives sont en cache), `make` relie le reste.
 
