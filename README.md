@@ -30,6 +30,8 @@ make all-debug                           # relie les paquets apt tout seul, puis
 
 `vcpkg.json` marque `glfw3`, `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad` et `msdfgen` (sans options par défaut : noyau seulement, sans skia). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
 
+`make clean-all` supprime `vcpkg_installed/` : relance ensuite `~/vcpkg/vcpkg install` (12 s, les archives sont en cache), `make` relie le reste.
+
 ### Windows / macOS
 
 ```bash
