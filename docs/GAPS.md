@@ -6,7 +6,7 @@ Alimenté par M00 ; l'audit (`docs/04`) le complétera avec la table de rattache
 | --- | --- | --- | --- |
 | G1 | Windows non vérifié | Les chemins du Makefile, de la CI et de l'installeur NSIS ont été adaptés à `apps/demo/`, `res/`, `shaders/` sans pouvoir tester sous Windows (branches `powershell`/`mklink`, `installers/windows/installer.nsi`). | M0 (CI Windows) |
 | G2 | macOS non vérifié | Aucun test sous macOS. | M0 / M9 |
-| G3 | Installeur NSIS | `apps/demo/installers/windows/installer.nsi` référence encore `..\..\res\*` : il doit aussi inclure `..\..\..\..\res` et `..\..\..\..\shaders` (copiés vers `res\shader`). | M0 |
+| G3 | Installeur NSIS | `apps/demo/installers/windows/installer.nsi` lit maintenant `res\` et `shaders\` à la racine du dépôt (`..\..\..\..\`) ; modification non testée (pas de Windows ni de `makensis` ici). | M0 |
 | G4 | Installeur .deb | `create_linux_installer` copie `SHADER_DIR` vers `usr/share/<nom>/shader` ; non exécuté. | M0 |
 | G5 | Cycles entre modules | `Graphics` ↔ `UI` ↔ `Profiler` (voir `src/Graphics/README.md`). Contraire à la règle 5 de `CLAUDE.md`. | audit, M2 |
 | G6 | `UI.h`, `PresentationController.h` | Aucun fichier ne les inclut. Conservés (décision de l'auteur) ; usage à trancher à l'implémentation de l'UI. | UI (M3/M8) |
