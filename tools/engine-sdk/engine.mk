@@ -118,7 +118,7 @@ else # Darwin
     endif
     ENGINE_EXE_EXT       :=
     ENGINE_PLATFORM_DEFS :=
-    _ENG_VCPKG_LIBS      := -lglfw -lglad -lfreetype -lpng16 -lz -lbz2 \
+    _ENG_VCPKG_LIBS      := -lglfw3 -lglad -lmsdfgen-core -lfreetype -lpng16 -lz -lbz2 \
                             -lbrotlidec -lbrotlicommon \
                             -lshaderc -lshaderc_util -lglslang \
                             -lSPIRV-Tools-opt -lSPIRV-Tools -lSPIRV \
