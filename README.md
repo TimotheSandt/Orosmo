@@ -36,11 +36,11 @@ A layered architecture designed for cross-API compatibility.
 - **Renderers:** High-level pass management (`Renderer3D`, `Renderer2D`).
 - **Resource Facades:** API-agnostic wrappers for `Mesh`, `Texture`, `Shader`.
 - **Backends:** Pluggable low-level implementations (OpenGL, Vulkan, Metal).
-- See [README-backend.md](README-backend.md) for a deep dive.
+- See [docs/GRAPHICS_BACKENDS.md](docs/GRAPHICS_BACKENDS.md) for a deep dive.
 
 ### 🧊 UI System & DSL
 A declarative UI system inspired by SwiftUI.
-- **DSL Precompiler:** Compiles `.cui` files into C++ source — see [Docs/UI_DSL_Spec.md](Docs/UI_DSL_Spec.md).
+- **DSL Precompiler:** Compiles `.cui` files into C++ source — see [docs/UI_DSL_Spec.md](docs/UI_DSL_Spec.md).
 - **Runtime:** Dirty-tracking, component-based UI with reactive bindings and layout engine.
 
 ### 📊 Profiler
