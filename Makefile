@@ -26,6 +26,22 @@
 #   make demo-search kw        search vcpkg catalog
 #   make demo-clean / fclean   remove demo build artifacts
 #
+# ── Architecture checks (docs/03 §8) — warning mode until the code is migrated ──
+.PHONY: check check-repo check-layers check-api check-headers
+check: check-repo check-layers check-api check-headers
+
+check-repo:
+	@sh tools/check-repo.sh
+
+check-layers:
+	@python3 tools/check_layers.py $(CHECK_ARGS)
+
+check-api:
+	@python3 tools/check_api_isolation.py $(CHECK_ARGS)
+
+check-headers:
+	@python3 tools/check_headers.py $(CHECK_ARGS)
+
 # ── Combined ──────────────────────────────────────────────────────────────────
 #   make all-debug             engine debug → sync → demo debug
 #   make all-release           engine release → sync → demo release

@@ -1,0 +1,48 @@
+{
+  "_doc": "Couches de docs/03 §1, du bas (0) vers le haut. Un fichier ne doit inclure que des fichiers de sa couche ou d'une couche inférieure. 'rules' : premier motif (fnmatch, chemins relatifs à la racine) qui correspond. Cette table décrit la CIBLE appliquée au code ACTUEL (avant migration) : elle sera remplacée par include/engine/<module>/ au fil des jalons.",
+  "levels": {
+    "core": 0, "platform": 1, "rhi": 2, "renderer": 3, "assets": 4, "anim": 5,
+    "scene": 6, "ui": 7, "world": 8, "sim": 9, "game": 10, "apps": 11
+  },
+  "rules": [
+    ["include/Utilities/InputManager.h", "platform"],
+    ["src/Utilities/InputManager.cpp", "platform"],
+    ["include/Utilities/*", "core"],
+    ["src/Utilities/*", "core"],
+    ["include/Profiler/*", "core"],
+    ["src/Profiler/*", "core"],
+    ["include/Benchmark/*", "core"],
+    ["src/Benchmark/*", "core"],
+    ["include/Noise/*", "world"],
+    ["src/Noise/*", "world"],
+    ["include/Graphics/Window.h", "platform"],
+    ["src/Graphics/Window.cpp", "platform"],
+    ["include/Graphics/Presentation/*", "platform"],
+    ["src/Graphics/Presentation/*", "platform"],
+    ["include/Graphics/Backends/*", "rhi"],
+    ["src/Graphics/Backends/*", "rhi"],
+    ["include/Graphics/Backend/*", "rhi"],
+    ["include/Graphics/Core/*", "rhi"],
+    ["src/Graphics/Core/*", "rhi"],
+    ["include/Graphics/Buffer.h", "rhi"],
+    ["src/Graphics/Buffer.cpp", "rhi"],
+    ["include/Graphics/GPUTimestampQuery.h", "rhi"],
+    ["src/Graphics/GPUTimestampQuery.cpp", "rhi"],
+    ["include/Graphics/AccelerationStructure.h", "rhi"],
+    ["src/Graphics/AccelerationStructure.cpp", "rhi"],
+    ["include/UI/Rendering/TextRenderer.h", "renderer"],
+    ["src/UI/Rendering/TextRenderer.cpp", "renderer"],
+    ["include/Graphics/*", "renderer"],
+    ["src/Graphics/*", "renderer"],
+    ["include/UI/*", "ui"],
+    ["src/UI/*", "ui"],
+    ["src/ThirdParty/*", "core"],
+    ["apps/*", "apps"]
+  ],
+  "include_roots": ["include", "include/Graphics", "include/UI", "include/Utilities", "include/Noise", "include/Profiler", "include/Benchmark"],
+  "scan": ["include", "src", "apps"],
+  "api_isolation": {
+    "allowed": ["src/Graphics/Backends/", "include/Graphics/Backends/", "src/rhi/", "src/platform/", "include/engine/platform/"],
+    "_doc": "docs/03 §8.2 : gl, GL_, Vk, vk, MTL, <GLFW/, <windows.h> interdits hors des backends et de platform."
+  }
+}
