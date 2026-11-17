@@ -1,5 +1,7 @@
 # Questions pour l'auteur
 
+Réponses de l'auteur (2026-11-16) : Q1 apt d'abord, vcpkg en repli ; Q2 commiter l'état actuel dans la branche de nettoyage ; Q4 option A ; Q5 licence plus tard (Apache-2.0 probable) ; Q6 garder les deux en-têtes (usage décidé à l'implémentation de l'UI). Q3 et Q7 : sans réponse, rien n'a été poussé ni nettoyé.
+
 ## M00
 
 **Q1. Installer vcpkg et les dépendances pour obtenir la référence de comportement ?**
