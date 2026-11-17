@@ -102,14 +102,21 @@ VCPKG_INSTALLED_DIR  := $(VCPKG_INSTALLED_ROOT)/$(VCPKG_TRIPLET)
 # ── Compiler flags (root Makefile overrides all) ──────────────────────────────
 DEPFLAGS ?= -MMD -MP
 
+# Warnings are errors for the repository's own code (third-party headers use -isystem).
+#   make WERROR=0 ...            warnings stay warnings
+#   make SANITIZE=address,undefined ...   ASan/UBSan (start from a clean tree: fclean)
+WERROR     ?= 1
+WARNFLAGS  ?= -Wall -Wextra -Wpedantic $(if $(filter 1,$(WERROR)),-Werror)
+SANFLAGS   := $(if $(SANITIZE),-fsanitize=$(SANITIZE) -fno-omit-frame-pointer)
+
 ifeq ($(BUILD_TYPE),debug)
-    CFLAGS   ?= -Wall -Wextra $(ARCH_FLAG) -O1 -g -DDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
+    CFLAGS   ?= $(WARNFLAGS) $(SANFLAGS) $(ARCH_FLAG) -O1 -g -DDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
     CXXFLAGS ?= -std=c++23 $(CFLAGS)
 else ifeq ($(BUILD_TYPE),dev)
-    CFLAGS   ?= $(ARCH_FLAG) -g3 -O0 -DDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
+    CFLAGS   ?= $(WARNFLAGS) $(SANFLAGS) $(ARCH_FLAG) -g3 -O0 -DDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
     CXXFLAGS ?= -std=c++23 $(CFLAGS)
 else
-    CFLAGS   ?= -Wall -Wextra $(ARCH_FLAG) -O3 -DNDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
+    CFLAGS   ?= $(WARNFLAGS) $(SANFLAGS) $(ARCH_FLAG) -O3 -DNDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
     CXXFLAGS ?= -std=c++23 $(CFLAGS)
 endif
 
@@ -125,7 +132,7 @@ INCLUDES_SUBDIRS := $(notdir $(wildcard $(INCLUDES_BASE)/*))
 INCLUDES ?= \
     -I$(INCLUDES_BASE) \
     $(foreach d,$(INCLUDES_SUBDIRS),-I$(INCLUDES_BASE)/$(d)) \
-    -I$(VCPKG_INSTALLED_DIR)/include
+    -isystem $(VCPKG_INSTALLED_DIR)/include
 
 # ── Subsystem archives ────────────────────────────────────────────────────────
 LIB_GRAPHICS   := $(LIB_DIR)/$(BUILD_TYPE)/libgraphics.a
