@@ -1,0 +1,13 @@
+.*/
+.vscode/
+.VSCodeCounter/
+bin/
+obj/
+build/
+Generated/
+logs/
+*.log
+imgui.ini
+engine/
+vcpkg_installed/
+config.local.mk

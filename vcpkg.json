@@ -1,11 +1,40 @@
 {
-  "name": "procedural-generation",
+  "name": "engine",
   "version": "0.1.0",
   "dependencies": [
     "glad",
-    "glfw3",
-    "glm",
-    "stb",
-    "freetype"
+    {
+      "name": "msdfgen",
+      "default-features": false,
+      "features": []
+    },
+    {
+      "name": "glfw3",
+      "platform": "!linux"
+    },
+    {
+      "name": "glm",
+      "platform": "!linux"
+    },
+    {
+      "name": "stb",
+      "platform": "!linux"
+    },
+    {
+      "name": "freetype",
+      "platform": "!linux"
+    },
+    {
+      "name": "vulkan",
+      "platform": "!linux"
+    },
+    {
+      "name": "shaderc",
+      "platform": "!linux"
+    },
+    {
+      "name": "doctest",
+      "platform": "!linux"
+    }
   ]
 }

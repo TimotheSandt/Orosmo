@@ -1,0 +1,43 @@
+{
+  "name": "cui-language",
+  "displayName": "CUI Language Support",
+  "description": "Syntax highlighting and diagnostics for .cui declarative UI DSL files",
+  "version": "0.2.0",
+  "publisher": "proceduralgeneration",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Programming Languages"],
+  "main": "./main.js",
+  "activationEvents": ["*"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "cui",
+        "aliases": ["CUI", "cui"],
+        "extensions": [".cui"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cui",
+        "scopeName": "source.cui",
+        "path": "./syntaxes/cui.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "CUI DSL",
+      "properties": {
+        "cui.toolPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the native CUI checker binary. If empty, the extension searches the workspace for tools/cui-rs/target/release/cui automatically."
+        },
+        "cui.registryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to registry.json produced by 'cui scan'. Relative paths are resolved from the workspace root. Leave empty to skip semantic validation."
+        }
+      }
+    }
+  }
+}

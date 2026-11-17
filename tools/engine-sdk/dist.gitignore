@@ -1,0 +1,5 @@
+# Everything here is generated — build with: make -f mk/engine.mk dist
+# or download a release from GitHub. Do not commit these files.
+*
+!.gitignore
+!README.md

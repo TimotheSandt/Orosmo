@@ -1,30 +1,14 @@
+// Point d'entrée des tests (doctest). Options : voir `--help` (filtres `-ts=`, `-tc=`, liste `-ltc`).
+#define DOCTEST_CONFIG_IMPLEMENT
+#include <doctest/doctest.h>
+
 #include "Utilities/Logger.h"
-#include "suites/Suites.h"
 
-#include <cstdlib>
-#include <exception>
-#include <vector>
-
-int main()
+int main(int argc, char **argv)
 {
-    try
-    {
-        Logger::SetMinimumLevel(L_FATAL);
+    Logger::SetMinimumLevel(L_FATAL);
 
-        const std::vector<tests::TestSuite> suites = {tests::CreateUtilitiesSuite(), tests::CreateShaderSuite(),
-                                                      tests::CreateNoiseSuite(),     tests::CreateProceduralSuite(),
-                                                      tests::CreateProfilerSuite(),  tests::CreateUIFoundationSuite()};
-
-        return tests::RunSuites(suites);
-    }
-    catch (const std::exception &e)
-    {
-        LOG_ERROR(1, "Unhandled test exception: ", e.what());
-        return EXIT_FAILURE;
-    }
-    catch (...)
-    {
-        LOG_ERROR(1, "Unhandled non-standard test exception");
-        return EXIT_FAILURE;
-    }
+    doctest::Context context;
+    context.applyCommandLine(argc, argv);
+    return context.run();
 }

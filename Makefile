@@ -1,424 +1,266 @@
-# Include configuration
--include config.mk
+# Makefile — ProceduralGeneration engine root
+#
+# ── vcpkg ─────────────────────────────────────────────────────────────────────
+#   make install-deps          install engine vcpkg deps
+#   make install-deps-demo     install demo vcpkg deps
+#   make install-deps-all      both
+#
+# ── Engine (mk/, src/, include/) ───────────────────────────────────────────────────────
+#   make debug                 build engine archives (debug)
+#   make release               build engine archives (release)
+#   make engine                build debug+release, dist, tools, and apps/demo/engine/
+#   make dist                  package engine → dist/engine-<platform>/
+#   make engine-tool           build the engine scaffolding binary
+#   make sync-demo             fast sync of current BUILD_TYPE into demo/engine/
+#   make install-demo          copy full dist package into demo/engine/
+#   make clean / fclean        remove engine build artifacts
+#
+# ── Demo (apps/demo/) ──────────────────────────────────────────────────────────────
+#   make demo-debug            build demo (debug)
+#   make demo-release          build demo (release)
+#   make run                   run last built binary (debug or release, whichever is newer); builds debug if none exists
+#   make run-debug             build debug if needed, then run it
+#   make run-release           build release if needed, then run it
+#   make demo-run              alias for make run
+#   make demo-install [pkg…]   add vcpkg dep(s) to demo
+#   make demo-search kw        search vcpkg catalog
+#   make demo-clean / fclean   remove demo build artifacts
+#
+# ── Architecture checks (docs/03 §8) — warning mode until the code is migrated ──
+.PHONY: check check-repo check-layers check-api check-headers
+check: check-repo check-layers check-api check-headers
 
-# This Makefile assumes GNU make recipes run in a POSIX shell.
-UNAME_S := $(shell uname -s 2>/dev/null || echo Unknown)
+check-repo:
+	@sh tools/check-repo.sh
 
-# Toolchain
-CXX ?= g++
-CC ?= gcc
-RC ?= windres
-VCPKG ?= vcpkg
-CLANG_FORMAT ?= clang-format
-CLANG_TIDY ?= clang-tidy
-PLATFORM_DEFINES :=
-POWERSHELL ?= powershell -NoProfile -Command
+check-layers:
+	@python3 tools/check_layers.py $(CHECK_ARGS)
 
-# Directories
-INCLUDES_BASE := Libraries/includes
-LIBRARIES_SRC_DIR := Libraries/src
-LIBRARIES_LIB_DIR := Libraries/libs
-MAIN_SRC_DIR := src
-OBJ_DIR := obj
-BIN_DIR := bin
-BUILD_DIR := build
-RES_DIR := res
-TEST_DIR := tests
-TMP_DEB_DIR := /tmp/proceduralgeneration_deb
+check-api:
+	@python3 tools/check_api_isolation.py $(CHECK_ARGS)
 
-# Helpers
-MKDIR_P := mkdir -p
-RM_F := rm -f
-RM_RF := rm -rf
-CP_F := cp -f
-CP_R := cp -R
-MV_F := mv -f
-TOUCH := touch
-FIND := find
+check-headers:
+	@python3 tools/check_headers.py $(CHECK_ARGS)
 
-# Platform detection
-ifeq ($(OS),Windows_NT)
-	DETECTED_OS := Windows
-else ifneq ($(filter Linux,$(UNAME_S)),)
-	DETECTED_OS := Linux
-else ifneq ($(filter Darwin,$(UNAME_S)),)
-	DETECTED_OS := Darwin
-else ifneq ($(filter MSYS% MINGW% CYGWIN%,$(UNAME_S)),)
-	DETECTED_OS := Windows
-else
-	DETECTED_OS := $(UNAME_S)
+# ── Combined ──────────────────────────────────────────────────────────────────
+#   make all-debug             engine debug → sync → demo debug
+#   make all-release           engine release → sync → demo release
+#   make clean-all             remove all engine/demo artifacts and vcpkg installs
+#   make setup                 install engine deps + make engine + demo deps + demo debug
+#   make setup-run             setup + run demo
+#
+# ── Release ───────────────────────────────────────────────────────────────────
+#   make publish               bump patch (0.1.0 → 0.1.1), commit, tag, push
+#   make publish VERSION=x.y.z bump to exact version, commit, tag, push
+#                              Must be on main/master. VERSION must be > current.
+
+SHELL      := sh
+VCPKG      ?= vcpkg
+BUILD_TYPE ?= debug
+ENGINE_MK  := mk/engine.mk
+
+# ── Linux (x86_64, arm64): link the apt packages into vcpkg_installed/ automatically ────────────
+# Prerequisites (README.md): the apt packages, then `vcpkg install` at the repository root (vcpkg.json: glad, msdfgen).
+# tools/setup-linux-deps.sh adds the apt packages to vcpkg_installed/<triplet>/ (marker file .apt-linked); make runs it
+# when the marker is missing (first build, after `make clean-all`). `make setup` runs it again after `vcpkg install`.
+_DEPS_OS   := $(shell uname -s 2>/dev/null)
+_DEPS_ARCH := $(shell uname -m 2>/dev/null)
+ifeq ($(_DEPS_OS),Linux)
+_DEPS_TRIPLET := $(if $(filter x86_64,$(_DEPS_ARCH)),x64-linux,$(if $(filter aarch64 arm64,$(_DEPS_ARCH)),arm64-linux))
+ifneq ($(_DEPS_TRIPLET),)
+ifeq ($(filter clean clean-all fclean demo-clean demo-fclean check check-repo check-layers check-api check-headers info,$(MAKECMDGOALS)),)
+ifeq ($(wildcard vcpkg_installed/$(_DEPS_TRIPLET)/.apt-linked),)
+$(info [deps] apt packages not linked yet: running tools/setup-linux-deps.sh)
+_DEPS_RC := $(shell TRIPLET=$(_DEPS_TRIPLET) sh tools/setup-linux-deps.sh 1>&2; echo $$?)
+ifneq ($(_DEPS_RC),0)
+$(warning tools/setup-linux-deps.sh failed (see above): install the apt packages and run 'vcpkg install' as described in README.md)
 endif
-
-ifeq ($(DETECTED_OS),Windows)
-	EXE_EXT := .exe
-	VCPKG_TRIPLET ?= x64-mingw-dynamic
-	GLFW_LINK_NAME := glfw3dll
-	PLATFORM_DEFINES += -DNOMINMAX -DWIN32_LEAN_AND_MEAN
-	LDFLAGS = -L$(VCPKG_INSTALLED_DIR)/lib -l$(GLFW_LINK_NAME) -lglad -lfreetype -lpng16 -lzlib -lbz2 -lbrotlidec -lbrotlienc -lbrotlicommon -lpsapi -lwinmm -lgdi32 -lstdc++exp
-	COPY_LIBS_TARGETS := copy_libs
-	CREATE_INSTALLER := create_windows_installer
-	ARCHITECTURE := $(ARCHITECTURE_WINDOWS)
-	INSTALLER_FILE := $(PROJECT_NAME)-$(VERSION)-$(ARCHITECTURE)-setup.exe
-	ifneq ($(wildcard C:/Program\ Files\ (x86)/NSIS/makensis.exe),)
-		NSIS_COMPILER := "C:\Program Files (x86)\NSIS\makensis.exe"
-	else ifneq ($(wildcard C:/Program Files/NSIS/makensis.exe),)
-		NSIS_COMPILER := "C:/Program Files/NSIS/makensis.exe"
-	else
-		NSIS_COMPILER := makensis
-	endif
-else ifeq ($(DETECTED_OS),Linux)
-	EXE_EXT :=
-	VCPKG_TRIPLET ?= x64-linux
-	GLFW_LINK_NAME := glfw
-	LDFLAGS = -lglfw -lGL -lpthread -lX11 -ldl -lm
-	COPY_LIBS_TARGETS :=
-	CREATE_INSTALLER := create_linux_installer
-	ARCHITECTURE := $(ARCHITECTURE_LINUX)
-	INSTALLER_FILE := $(PACKAGE)_$(VERSION)_$(ARCHITECTURE).deb
-else ifeq ($(DETECTED_OS),Darwin)
-	EXE_EXT :=
-	VCPKG_TRIPLET ?= x64-osx
-	GLFW_LINK_NAME := glfw
-	LDFLAGS = -lglfw -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
-	COPY_LIBS_TARGETS :=
-	CREATE_INSTALLER :=
-	INSTALLER_FILE :=
-else
-	EXE_EXT :=
-	VCPKG_TRIPLET ?= x64-linux
-	GLFW_LINK_NAME := glfw
-	LDFLAGS =
-	COPY_LIBS_TARGETS :=
-	CREATE_INSTALLER :=
-	INSTALLER_FILE :=
 endif
-
-VCPKG_INSTALLED_ROOT ?= ./vcpkg_installed
-VCPKG_INSTALLED_DIR := $(VCPKG_INSTALLED_ROOT)/$(VCPKG_TRIPLET)
-
-# Libraries
-VCPKG_LIB_DIR := $(VCPKG_INSTALLED_DIR)/lib
-VCPKG_BIN_DIR := $(VCPKG_INSTALLED_DIR)/bin
-LOCAL_LIB_DIRS := $(sort $(dir $(shell $(FIND) $(LIBRARIES_LIB_DIR) -type f \( -name "*.a" -o -name "*.lib" -o -name "*.dll" \) 2>/dev/null)))
-LOCAL_A_LIBS := $(shell $(FIND) $(LIBRARIES_LIB_DIR) -type f -name "*.a" 2>/dev/null)
-LOCAL_IMPORT_LIBS := $(shell $(FIND) $(LIBRARIES_LIB_DIR) -type f -name "*.lib" 2>/dev/null)
-LOCAL_DLLS := $(shell $(FIND) $(LIBRARIES_LIB_DIR) -type f -name "*.dll" 2>/dev/null)
-LOCAL_LINK_DIR_FLAGS := $(foreach dir,$(LOCAL_LIB_DIRS),-L$(dir))
-LOCAL_A_LINK_INPUTS := $(LOCAL_A_LIBS)
-LOCAL_IMPORT_LINK_INPUTS := $(LOCAL_IMPORT_LIBS)
-
-# Includes and resources
-INCLUDES_DIRS := $(notdir $(wildcard $(INCLUDES_BASE)/*))
-INCLUDES := -I$(INCLUDES_BASE) $(foreach dir,$(INCLUDES_DIRS),-I$(INCLUDES_BASE)/$(dir)) -I$(VCPKG_INSTALLED_DIR)/include
-TEST_INCLUDES := $(INCLUDES) -I$(TEST_DIR)
-ICON_RC := $(RES_DIR)/icon.rc
-
-# Flags
-CFLAGS := -m64 -O2 -DNDEBUG
-CXXFLAGS := -std=c++23
-DEPFLAGS := -MMD -MP
-
-# Target configuration
-BUILD_TYPE := normal
-TARGET_NAME := $(PROJECT_NAME)
-
-ifneq ($(findstring debug,$(MAKECMDGOALS)),)
-	CFLAGS := -Wall -Wextra -m64 -O1 -g -DDEBUG
-	BUILD_TYPE := debug
-	TARGET_NAME := main
-else ifneq ($(findstring dev,$(MAKECMDGOALS)),)
-	CFLAGS := -m64 -g3 -O0 -DDEBUG
-	BUILD_TYPE := dev
-	TARGET_NAME := main
-else ifneq ($(or $(findstring release,$(MAKECMDGOALS)),$(findstring installer,$(MAKECMDGOALS))),)
-	CFLAGS := -Wall -Wextra -Werror -m64 -O3 -flto -DNDEBUG -DRELEASE
-	CXXFLAGS += -flto=jobserver
-endif
-
-CXXFLAGS += $(CFLAGS) $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
-LINT_CXXFLAGS := $(filter-out -flto=jobserver,$(CXXFLAGS))
-
-BIN_DIR_TYPE := $(BIN_DIR)/$(BUILD_TYPE)
-OBJ_DIR_TYPE := $(OBJ_DIR)/$(BUILD_TYPE)
-TARGET := $(BIN_DIR_TYPE)/$(TARGET_NAME)$(EXE_EXT)
-TEST_BIN_DIR := $(BIN_DIR)/tests
-TEST_OBJ_DIR := $(OBJ_DIR)/tests
-TEST_TARGET := $(TEST_BIN_DIR)/tests$(EXE_EXT)
-TEST_CPP_SOURCES = $(shell $(FIND) $(TEST_DIR) -type f -name "*.cpp" 2>/dev/null)
-STYLE_SOURCES = $(shell $(FIND) Libraries src tests -type f \( -name "*.h" -o -name "*.hpp" -o -name "*.c" -o -name "*.cpp" \) 2>/dev/null)
-
-# Source files
-LIBRARIES_CPP_SOURCES := $(shell $(FIND) $(LIBRARIES_SRC_DIR) -type f -name "*.cpp" 2>/dev/null)
-LIBRARIES_C_SOURCES := $(shell $(FIND) $(LIBRARIES_SRC_DIR) -type f -name "*.c" 2>/dev/null)
-MAIN_CPP_SOURCES := $(shell $(FIND) $(MAIN_SRC_DIR) -type f -name "*.cpp" 2>/dev/null)
-MAIN_C_SOURCES := $(shell $(FIND) $(MAIN_SRC_DIR) -type f -name "*.c" 2>/dev/null)
-
-LIB_SOURCES := $(LOCAL_DLLS) $(LOCAL_IMPORT_LIBS) $(LOCAL_A_LIBS)
-ALL_CPP_SOURCES := $(LIBRARIES_CPP_SOURCES) $(MAIN_CPP_SOURCES)
-ALL_C_SOURCES := $(LIBRARIES_C_SOURCES) $(MAIN_C_SOURCES)
-
-# Objects
-LIBRARIES_CPP_OBJECTS := $(LIBRARIES_CPP_SOURCES:$(LIBRARIES_SRC_DIR)/%.cpp=$(OBJ_DIR_TYPE)/Libraries/%.o)
-LIBRARIES_C_OBJECTS := $(LIBRARIES_C_SOURCES:$(LIBRARIES_SRC_DIR)/%.c=$(OBJ_DIR_TYPE)/Libraries/%.o)
-MAIN_CPP_OBJECTS := $(MAIN_CPP_SOURCES:$(MAIN_SRC_DIR)/%.cpp=$(OBJ_DIR_TYPE)/src/%.o)
-MAIN_C_OBJECTS := $(MAIN_C_SOURCES:$(MAIN_SRC_DIR)/%.c=$(OBJ_DIR_TYPE)/src/%.o)
-ALL_OBJECTS := $(LIBRARIES_CPP_OBJECTS) $(LIBRARIES_C_OBJECTS) $(MAIN_CPP_OBJECTS) $(MAIN_C_OBJECTS)
-TEST_CPP_OBJECTS := $(TEST_CPP_SOURCES:$(TEST_DIR)/%.cpp=$(TEST_OBJ_DIR)/tests/%.o)
-TEST_OBJECTS := $(TEST_CPP_OBJECTS) $(LIBRARIES_CPP_OBJECTS) $(LIBRARIES_C_OBJECTS)
-
-ifneq ($(strip $(ICON_NAME)),)
-ifneq ($(wildcard $(ICON_NAME)),)
-ifeq ($(DETECTED_OS),Windows)
-	ALL_OBJECTS += $(OBJ_DIR_TYPE)/src/icon.o
 endif
 endif
 endif
 
-COPY_TARGETS := copy_res $(COPY_LIBS_TARGETS)
+# In-repo layout: demo resources, shaders and tests live at the repository root.
+DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico
 
-# Build rules
-all: $(TARGET)
+# ── vcpkg ─────────────────────────────────────────────────────────────────────
+.PHONY: install-deps install-deps-demo install-deps-all
 
-debug dev: $(TARGET)
+install-deps:
+	$(MAKE) -f $(ENGINE_MK) install VCPKG=$(VCPKG)
 
-test: $(TEST_TARGET) copy_test_libs
-	@./$(TEST_TARGET)
+install-deps-demo:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) install VCPKG=$(VCPKG)
 
-installer: $(CREATE_INSTALLER)
+install-deps-all: install-deps install-deps-demo
 
-release: $(TARGET) installer
-	@echo "Release build complete"
+# ── Engine ────────────────────────────────────────────────────────────────────
+.PHONY: debug dev release engine dist engine-tool sync-demo install-demo clean fclean info
 
-# Execution rules
-run run-dev run-debug: $(TARGET)
-	@./$(TARGET)
+debug dev release:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=$@ $@
 
-run-release: $(TARGET) installer
-	@./$(TARGET)
+engine:
+	$(MAKE) -f $(ENGINE_MK) engine
 
-# Windows installer
-create_windows_installer: | $(BUILD_DIR)
-	@echo "Creating Windows installer..."
-	@echo "Installer File: $(INSTALLER_FILE)"
-	@$(NSIS_COMPILER) \
-		-DPRODUCT_NAME="$(PROJECT_NAME)" \
-		-DVERSION="$(VERSION)" \
-		-DPUBLISHER="$(PUBLISHER)" \
-		-DMANTAINER="$(MAINTAINER)" \
-		-DARCH="$(ARCHITECTURE)" \
-		-DICON_NAME="$(ICON_NAME)" \
-		-DOUTPUT_FILE="$(INSTALLER_FILE)" \
-		-DPROJECT_DESCRIPTION="$(PROJECT_DESCRIPTION)" \
-		installers/windows/installer.nsi
-	@test -f "installers/windows/$(INSTALLER_FILE)" || { echo "Installer file was not generated!"; exit 1; }
-	@$(MV_F) "installers/windows/$(INSTALLER_FILE)" "$(BUILD_DIR)/"
-	@echo "Windows installer created: $(BUILD_DIR)/$(INSTALLER_FILE)"
+dist:
+	$(MAKE) -f $(ENGINE_MK) dist
 
-# Linux installer
-create_linux_installer: | $(BUILD_DIR)
-	@$(RM_RF) "$(TMP_DEB_DIR)"
-	@echo "Creating Linux .deb package..."
-	@$(MKDIR_P) "$(TMP_DEB_DIR)/usr/bin" "$(TMP_DEB_DIR)/usr/share/proceduralgeneration" "$(TMP_DEB_DIR)/DEBIAN"
-	@$(TOUCH) "$(TMP_DEB_DIR)/DEBIAN/control"
-	@echo 'Package: $(PACKAGE)' >> "$(TMP_DEB_DIR)/DEBIAN/control"
-	@echo 'Version: $(VERSION)' >> "$(TMP_DEB_DIR)/DEBIAN/control"
-	@echo 'Maintainer: $(MAINTAINER)' >> "$(TMP_DEB_DIR)/DEBIAN/control"
-	@echo 'Section: $(SECTION)' >> "$(TMP_DEB_DIR)/DEBIAN/control"
-	@echo 'Priority: $(PRIORITY)' >> "$(TMP_DEB_DIR)/DEBIAN/control"
-	@echo 'Architecture: $(ARCHITECTURE)' >> "$(TMP_DEB_DIR)/DEBIAN/control"
-	@echo 'Depends: $(DEPENDS)' >> "$(TMP_DEB_DIR)/DEBIAN/control"
-	@echo 'Description: $(PROJECT_DESCRIPTION)' >> "$(TMP_DEB_DIR)/DEBIAN/control"
-	@$(CP_F) installers/linux/DEBIAN/postinst "$(TMP_DEB_DIR)/DEBIAN/"
-	@$(CP_F) installers/linux/DEBIAN/postrm "$(TMP_DEB_DIR)/DEBIAN/"
-	@chmod 755 "$(TMP_DEB_DIR)/DEBIAN" "$(TMP_DEB_DIR)/DEBIAN/postinst" "$(TMP_DEB_DIR)/DEBIAN/postrm"
-	@chmod 644 "$(TMP_DEB_DIR)/DEBIAN/control"
-	@$(CP_F) "bin/$(BUILD_TYPE)/$(PROJECT_NAME)" "$(TMP_DEB_DIR)/usr/bin/proceduralgeneration"
-	@$(CP_R) "bin/$(BUILD_TYPE)/res" "$(TMP_DEB_DIR)/usr/share/proceduralgeneration/"
-	@set -- "bin/$(BUILD_TYPE)"/*.so*; if [ -e "$$1" ]; then $(CP_F) "$$@" "$(TMP_DEB_DIR)/usr/share/proceduralgeneration/"; fi
-	@set -- "bin/$(BUILD_TYPE)"/*.dylib; if [ -e "$$1" ]; then $(CP_F) "$$@" "$(TMP_DEB_DIR)/usr/share/proceduralgeneration/"; fi
-	@dpkg-deb --build "$(TMP_DEB_DIR)" "$(BUILD_DIR)/$(INSTALLER_FILE)"
-	@$(RM_RF) "$(TMP_DEB_DIR)"
-	@echo "Linux .deb created: $(BUILD_DIR)/$(INSTALLER_FILE)"
+engine-tool:
+	$(MAKE) -f $(ENGINE_MK) engine-tool
 
-# Dependencies via vcpkg
-install_deps:
-	@echo "Checking and installing dependencies with vcpkg..."
-	$(VCPKG) install --triplet=$(VCPKG_TRIPLET) --x-install-root=$(VCPKG_INSTALLED_ROOT)
+sync-demo:
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=$(BUILD_TYPE)
 
-remove_deps:
-	@echo "Removing dependencies with vcpkg..."
-	@$(RM_RF) ./vcpkg_installed
+install-demo:
+	$(MAKE) -f $(ENGINE_MK) install-demo
 
-reset_deps:
-	@echo "Resetting dependencies with vcpkg..."
-	@$(RM_RF) $(VCPKG_INSTALLED_ROOT)
-	$(VCPKG) install --triplet=$(VCPKG_TRIPLET) --x-install-root=$(VCPKG_INSTALLED_ROOT)
-
-# Icon resource
-$(OBJ_DIR_TYPE)/src/icon.o: $(BIN_DIR_TYPE)/$(ICON_RC)
-	@$(MKDIR_P) "$(dir $@)"
-	$(RC) -i $< -o $@
-
-$(BIN_DIR_TYPE)/$(ICON_RC): $(ICON_NAME) | $(BIN_DIR_TYPE)
-	@$(MKDIR_P) "$(dir $@)"
-	@printf '1 ICON "%s"\n' "$(ICON_NAME)" > "$@"
-
-# Asset copy
-copy_libs: | $(BIN_DIR_TYPE)
-	@echo "Copying libraries to $(BIN_DIR_TYPE)"
-	@set -- "$(VCPKG_BIN_DIR)"/*.dll; if [ -e "$$1" ]; then $(CP_F) "$$@" "$(BIN_DIR_TYPE)/" 2>/dev/null || :; fi
-	@set -- $(LOCAL_DLLS); if [ -n "$(strip $(LOCAL_DLLS))" ] && [ -e "$$1" ]; then $(CP_F) "$$@" "$(BIN_DIR_TYPE)/" 2>/dev/null || :; fi
-	@set -- $(LOCAL_IMPORT_LIBS); if [ -n "$(strip $(LOCAL_IMPORT_LIBS))" ] && [ -e "$$1" ]; then $(CP_F) "$$@" "$(BIN_DIR_TYPE)/" 2>/dev/null || :; fi
-	@set -- $(LOCAL_A_LIBS); if [ -n "$(strip $(LOCAL_A_LIBS))" ] && [ -e "$$1" ]; then $(CP_F) "$$@" "$(BIN_DIR_TYPE)/" 2>/dev/null || :; fi
-
-copy_res: | $(BIN_DIR_TYPE)
-	@echo "Copying resources to $(BIN_DIR_TYPE)"
-	@if [ -d "$(RES_DIR)" ]; then \
-		$(MKDIR_P) "$(BIN_DIR_TYPE)/$(RES_DIR)" && \
-		cp -Rf "$(RES_DIR)/." "$(BIN_DIR_TYPE)/$(RES_DIR)/" 2>/dev/null || :; \
-	fi
-
-copy_test_libs: | $(TEST_BIN_DIR)
-	@echo "Copying test libraries to $(TEST_BIN_DIR)"
-	@set -- "$(VCPKG_BIN_DIR)"/*.dll; if [ -e "$$1" ]; then $(CP_F) "$$@" "$(TEST_BIN_DIR)/" 2>/dev/null || :; fi
-	@set -- $(LOCAL_DLLS); if [ -n "$(strip $(LOCAL_DLLS))" ] && [ -e "$$1" ]; then $(CP_F) "$$@" "$(TEST_BIN_DIR)/" 2>/dev/null || :; fi
-
-all_copy: $(COPY_TARGETS)
-
-# Build target
-$(TARGET): all_copy $(ALL_OBJECTS) | $(BIN_DIR_TYPE)
-	$(CXX) $(CXXFLAGS) $(ALL_OBJECTS) $(LOCAL_LINK_DIR_FLAGS) $(LOCAL_A_LINK_INPUTS) $(LOCAL_IMPORT_LINK_INPUTS) $(LDFLAGS) -o $@
-	@echo "Compilation successful for: $(TARGET)"
-
-$(TEST_TARGET): $(TEST_OBJECTS) | $(TEST_BIN_DIR)
-	$(CXX) $(filter-out -flto=jobserver,$(CXXFLAGS)) $(TEST_OBJECTS) $(LOCAL_LINK_DIR_FLAGS) $(LOCAL_A_LINK_INPUTS) $(LOCAL_IMPORT_LINK_INPUTS) $(LDFLAGS) -o $@
-	@echo "Compilation successful for: $(TEST_TARGET)"
-
-# Compilation rules
-$(OBJ_DIR_TYPE)/Libraries/%.o: $(LIBRARIES_SRC_DIR)/%.cpp
-	@$(MKDIR_P) "$(dir $@)"
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
-	@echo "Compiled (C++ Libraries) $(BUILD_TYPE): $<"
-
-$(OBJ_DIR_TYPE)/Libraries/%.o: $(LIBRARIES_SRC_DIR)/%.c
-	@$(MKDIR_P) "$(dir $@)"
-	$(CC) $(CFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
-	@echo "Compiled (C Libraries) $(BUILD_TYPE): $<"
-
-$(OBJ_DIR_TYPE)/src/%.o: $(MAIN_SRC_DIR)/%.cpp
-	@$(MKDIR_P) "$(dir $@)"
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
-	@echo "Compiled (C++ Main) $(BUILD_TYPE): $<"
-
-$(OBJ_DIR_TYPE)/src/%.o: $(MAIN_SRC_DIR)/%.c
-	@$(MKDIR_P) "$(dir $@)"
-	$(CC) $(CFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
-	@echo "Compiled (C Main) $(BUILD_TYPE): $<"
-
-$(TEST_OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp
-	@$(MKDIR_P) "$(dir $@)"
-	$(CXX) $(filter-out -flto=jobserver,$(CXXFLAGS)) $(DEPFLAGS) $(TEST_INCLUDES) -c $< -o $@
-	@echo "Compiled (C++ Tests): $<"
-
-# Directories
-$(BIN_DIR_TYPE):
-	@echo "Creating $@ directory"
-	@$(MKDIR_P) "$@"
-
-$(BUILD_DIR):
-	@$(MKDIR_P) "$@"
-
-$(TEST_BIN_DIR):
-	@$(MKDIR_P) "$@"
-
-# Clean rules
 clean:
-	@$(RM_RF) $(OBJ_DIR)
-	@$(RM_F) installers/windows/*.exe
-	@$(RM_F) installers/linux/*.deb
-	@echo "Objects deleted"
+	$(MAKE) -f $(ENGINE_MK) clean
 
-fclean: clean
-	@$(RM_RF) $(BIN_DIR)
-	@echo "Executables deleted"
+fclean:
+	$(MAKE) -f $(ENGINE_MK) fclean
 
-fclean-build: fclean
-	@$(RM_RF) $(BUILD_DIR)
+# ── Demo ──────────────────────────────────────────────────────────────────────
+# demo-test builds (release) and runs apps/demo's test suite
+.PHONY: demo-test demo-debug demo-dev demo-release run run-debug run-release demo-run demo-clean demo-fclean
+.PHONY: demo-install demo-search
 
-re: fclean all
-re-debug: fclean debug
-re-dev: fclean dev
-re-release: fclean release
+demo-debug:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) debug
 
-# Check syntax and style
-check: check-syntax check-format lint
+demo-dev:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) dev
 
-check-syntax:
-	@echo "Checking C++ syntax..."
-	@if [ -n "$(strip $(ALL_CPP_SOURCES))" ]; then $(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only $(ALL_CPP_SOURCES); fi
-	@echo "Checking C syntax..."
-	@if [ -n "$(strip $(ALL_C_SOURCES))" ]; then $(CC) $(CFLAGS) $(INCLUDES) -fsyntax-only $(ALL_C_SOURCES); fi
+demo-release:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) release
 
-check-format:
-	@echo "Checking code formatting..."
-	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
-	@if [ -n "$(strip $(STYLE_SOURCES))" ]; then $(CLANG_FORMAT) --dry-run --Werror $(STYLE_SOURCES); fi
+run:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) run
 
-format:
-	@echo "Formatting code..."
-	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 || { echo "$(CLANG_FORMAT) not found"; exit 1; }
-ifeq ($(DETECTED_OS),Windows)
-	@$(POWERSHELL) "& '.\\tools\\format_sources.ps1' '$(CLANG_FORMAT)'"
-else
-	@if [ -n "$(strip $(STYLE_SOURCES))" ]; then $(CLANG_FORMAT) -i $(STYLE_SOURCES); fi
-endif
+run-debug:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) run-debug
 
-lint:
-	@echo "Running clang-tidy..."
-	@command -v $(CLANG_TIDY) >/dev/null 2>&1 || { echo "$(CLANG_TIDY) not found"; exit 1; }
-	@if [ -n "$(strip $(ALL_CPP_SOURCES))" ]; then $(CLANG_TIDY) $(ALL_CPP_SOURCES) -- $(LINT_CXXFLAGS) $(INCLUDES); fi
-	@if [ -n "$(strip $(TEST_CPP_SOURCES))" ]; then $(CLANG_TIDY) $(TEST_CPP_SOURCES) -- $(LINT_CXXFLAGS) $(TEST_INCLUDES); fi
+run-release:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) run-release
 
-# Info
-debug-info info-debug: info
-dev-info info-dev: info
-release-info info-release: info
+demo-run: run
 
+demo-test:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) test
+
+demo-clean:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) clean
+
+demo-fclean:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) fclean
+
+demo-install:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) install $(ARGS) LIBS=$(LIBS) VCPKG=$(VCPKG)
+
+demo-search:
+	$(MAKE) -C apps/demo $(DEMO_ARGS) search Q=$(Q) VCPKG=$(VCPKG)
+
+# ── Combined ──────────────────────────────────────────────────────────────────
+.PHONY: all-debug all-release clean-all setup setup-run
+
+all-debug:
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=debug
+	$(MAKE) -C apps/demo $(DEMO_ARGS) debug
+
+all-release:
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) release
+
+clean-all:
+	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=debug
+	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=dev
+	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) fclean
+	@rm -rf vcpkg_installed apps/demo/vcpkg_installed apps/demo/engine/vcpkg_installed
+	@echo "Removed all engine/demo build artifacts and vcpkg installs"
+
+# install engine deps → prepare full engine → install demo deps → build demo
+setup:
+	$(MAKE) -f $(ENGINE_MK) install VCPKG=$(VCPKG)
+	@if [ "$$(uname -s)" = Linux ]; then TRIPLET=$(_DEPS_TRIPLET) sh tools/setup-linux-deps.sh; fi
+	$(MAKE) -f $(ENGINE_MK) engine
+	$(MAKE) -C apps/demo $(DEMO_ARGS) install VCPKG=$(VCPKG)
+	$(MAKE) -C apps/demo $(DEMO_ARGS) debug
+
+setup-run: setup demo-run
+
+# ── Publish ───────────────────────────────────────────────────────────────────
+# make publish              — bump patch version (0.1.0 → 0.1.1)
+# make publish VERSION=x.y.z — bump to exact version (must be > current)
+# Requires: clean working tree, main or master branch.
+.PHONY: publish
+publish:
+	@set -e; \
+	CONFIG=mk/config.mk; \
+	\
+	BRANCH=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
+	if [ "$$BRANCH" != "main" ] && [ "$$BRANCH" != "master" ]; then \
+	    printf "error: publish requires main or master branch (current: %s)\n" "$$BRANCH"; \
+	    exit 1; \
+	fi; \
+	\
+	if ! git diff --quiet || ! git diff --cached --quiet; then \
+	    printf "error: working tree has uncommitted changes -- commit or stash first\n"; \
+	    exit 1; \
+	fi; \
+	\
+	CURRENT=$$(awk '/^ENGINE_VERSION[[:space:]]*\?=/ { \
+	    match($$0, /\?=[[:space:]]*/); \
+	    print substr($$0, RSTART+RLENGTH) }' "$$CONFIG" | tr -d ' \t\r'); \
+	if [ -z "$$CURRENT" ]; then \
+	    printf "error: ENGINE_VERSION not found in %s\n" "$$CONFIG"; \
+	    exit 1; \
+	fi; \
+	\
+	if [ -n "$(VERSION)" ]; then \
+	    NEW="$(VERSION)"; \
+	    if ! printf '%s' "$$NEW" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$$'; then \
+	        printf "error: VERSION=%s is not valid semver (expected X.Y.Z)\n" "$$NEW"; \
+	        exit 1; \
+	    fi; \
+	    VALID=$$(awk -v cur="$$CURRENT" -v new="$$NEW" 'BEGIN { \
+	        split(cur,c,"."); split(new,n,"."); \
+	        if (n[1]+0>c[1]+0 || \
+	            (n[1]+0==c[1]+0 && n[2]+0>c[2]+0) || \
+	            (n[1]+0==c[1]+0 && n[2]+0==c[2]+0 && n[3]+0>c[3]+0)) \
+	            print "ok"; else print "fail" }'); \
+	    if [ "$$VALID" != "ok" ]; then \
+	        printf "error: VERSION=%s is not greater than current %s\n" "$$NEW" "$$CURRENT"; \
+	        exit 1; \
+	    fi; \
+	else \
+	    MAJ=$$(printf '%s' "$$CURRENT" | cut -d. -f1); \
+	    MIN=$$(printf '%s' "$$CURRENT" | cut -d. -f2); \
+	    PAT=$$(printf '%s' "$$CURRENT" | cut -d. -f3); \
+	    NEW="$$MAJ.$$MIN.$$((PAT + 1))"; \
+	fi; \
+	\
+	printf "Bumping %s -> %s\n" "$$CURRENT" "$$NEW"; \
+	awk -v ver="$$NEW" '/^ENGINE_VERSION[[:space:]]*\?=/ \
+	    { sub(/\?=.*/, "?= " ver) } 1' "$$CONFIG" > "$$CONFIG.tmp" \
+	    && mv "$$CONFIG.tmp" "$$CONFIG"; \
+	\
+	git add "$$CONFIG"; \
+	git commit -m "update version to $$NEW"; \
+	git tag "v$$NEW"; \
+	git push; \
+	git push origin "v$$NEW"; \
+	printf "Published v%s\n" "$$NEW"
+
+# ── Info ──────────────────────────────────────────────────────────────────────
+.PHONY: info
 info:
-	@echo "Project: $(PROJECT_NAME)"
-	@echo "Detected OS: $(DETECTED_OS)"
-	@echo "Recipe shell: $(SHELL)"
-	@echo "Structure:"
-	@echo "  - Libraries/src/: $(words $(LIBRARIES_CPP_SOURCES)) C++ files, $(words $(LIBRARIES_C_SOURCES)) C files"
-	@echo "  - src/: $(words $(MAIN_CPP_SOURCES)) C++ files, $(words $(MAIN_C_SOURCES)) C files"
-	@echo "Total sources: $(words $(ALL_CPP_SOURCES)) C++, $(words $(ALL_C_SOURCES)) C"
-	@echo "C++ Compiler: $(CXX)"
-	@echo "C Compiler: $(CC)"
-	@echo "C++ Flags: $(CXXFLAGS)"
-	@echo "C Flags: $(CFLAGS)"
-	@echo "Includes Directories: $(INCLUDES_DIRS)"
-	@echo "Target: $(TARGET)"
-ifeq ($(DETECTED_OS),Linux)
-	@echo "Dependencies: sudo apt install libglfw3-dev libgl1-mesa-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libstb-dev"
-else ifeq ($(DETECTED_OS),Darwin)
-	@echo "Dependencies: brew install glfw glm"
-else ifeq ($(DETECTED_OS),Windows)
-	@echo "Dependencies: use MinGW/clang with a POSIX shell and install libraries via vcpkg"
-	@echo "LIBS: $(notdir $(LIB_SOURCES))"
-else
-	@echo "Unknown OS"
-endif
-
-# Phony rules
-.PHONY: all release dev debug
-.PHONY: test
-.PHONY: run run-release run-dev run-debug
-.PHONY: clean fclean fclean-build re re-debug re-dev re-release
-.PHONY: info info-debug info-dev info-release debug-info dev-info release-info
-.PHONY: check check-syntax check-format format lint copy_libs copy_res copy_test_libs all_copy
-.PHONY: create_windows_installer create_linux_installer installer
-.PHONY: install_deps remove_deps reset_deps
-
-# Dependencies
--include $(wildcard $(ALL_OBJECTS:.o=.d))
--include $(wildcard $(TEST_OBJECTS:.o=.d))
+	@printf "\n=== Engine ===\n"
+	@$(MAKE) -f $(ENGINE_MK) info --no-print-directory
+	@printf "=== Demo ===\n"
+	@$(MAKE) -C apps/demo $(DEMO_ARGS) info --no-print-directory
+	@printf "BUILD_TYPE  : $(BUILD_TYPE)\n"
+	@printf "VCPKG       : $(VCPKG)\n\n"
