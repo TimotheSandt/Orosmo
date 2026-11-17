@@ -6,7 +6,7 @@
 #        libshaderc-dev glslc doctest-dev libfreetype-dev libvulkan-dev vulkan-validationlayers \
 #        libgl-dev libx11-dev autoconf autoconf-archive automake libtool
 # Repli vcpkg : ce qui n'existe pas dans apt (glad v1, msdfgen).
-#   ~/vcpkg/vcpkg install glad msdfgen --triplet x64-linux
+#   ~/vcpkg/vcpkg install glad "msdfgen[core]" --triplet x64-linux
 #
 # Le Makefile cherche tout dans vcpkg_installed/<triplet>/{include,lib} : ce script y
 # relie (liens symboliques, rien n'est copié) les deux sources. Dossier ignoré par Git.

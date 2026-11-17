@@ -65,7 +65,7 @@ sudo apt install build-essential cmake cargo python3 libglfw3-dev libglm-dev lib
     doctest-dev libfreetype-dev libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
     autoconf autoconf-archive automake libtool
 git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
-~/vcpkg/vcpkg install glad msdfgen --triplet x64-linux
+~/vcpkg/vcpkg install glad "msdfgen[core]" --triplet x64-linux
 sh tools/setup-linux-deps.sh            # relie apt + vcpkg dans vcpkg_installed/x64-linux
 
 # 2. Build et démo
