@@ -127,6 +127,7 @@ else # Darwin
                             -framework QuartzCore -framework Metal -framework CoreFoundation
     _ENG_LD_START        :=
     _ENG_LD_END          :=
+    _ENG_DARWIN          := 1   # vcpkg's vulkan-loader is a dylib: the executables need an rpath to it
 endif
 
 # ── Compiler flags ────────────────────────────────────────────────────────────
@@ -190,7 +191,8 @@ ENGINE_LIBS := \
 # Use ENGINE_LINK_LIBS in your link command instead of ENGINE_LIBS directly.
 ENGINE_LINK_LIBS := $(_ENG_LD_START) $(ENGINE_LIBS) $(_ENG_LD_END)
 
-ENGINE_LDFLAGS := -L$(_ENG_VCPKG_DIR)/lib $(_ENG_VCPKG_LIBS)
+comma := ,
+ENGINE_LDFLAGS := -L$(_ENG_VCPKG_DIR)/lib $(_ENG_VCPKG_LIBS) $(if $(_ENG_DARWIN),-Wl$(comma)-rpath$(comma)$(abspath $(_ENG_VCPKG_DIR))/lib)
 
 # ── Missing archive error ─────────────────────────────────────────────────────
 # Archives must come from a GitHub release or be built with mk/engine.mk.

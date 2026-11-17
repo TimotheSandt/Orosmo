@@ -6,8 +6,8 @@ Mis à jour à la fin de M0 (2026-11-17). États détaillés et preuves de l'aud
 
 | Jalon | État | Preuve |
 | --- | --- | --- |
-| M00 Nettoyage du projet et du dépôt | Fait | `docs/releases/M00.md` |
-| Audit | Fait | `docs/AUDIT_REPORT.md`, `PORTABILITY_REPORT.md`, `UI_LANGUAGE_AUDIT.md` |
+| M00 Nettoyage du projet et du dépôt | Fait | `docs/releases/M00.md` : clone propre de `dev`, build et 102 tests verts, journal de démarrage identique à la référence, `tools/check-repo.sh` OK |
+| Audit | Fait | `docs/AUDIT_REPORT.md` (152 identifiants, preuve par ligne), `PORTABILITY_REPORT.md`, `UI_LANGUAGE_AUDIT.md` (compilateur exécuté sur 5 entrées) |
 | **M0 Audit et base solide** | **Livré côté code ; CI jamais observée sur GitHub** | `docs/releases/M0.md` : clone propre de `dev`, build sans avertissement, 118 cas doctest verts, ASan+UBSan propres, contrôles, capture identique à la référence |
 | M1 Noyau | À faire (en attente du feu vert) | |
 
