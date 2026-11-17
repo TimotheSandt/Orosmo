@@ -1,0 +1,210 @@
+name: CI
+
+# Pull requests, pushes to dev, manual runs. The release workflow (build-engine.yml) stays tag-only.
+on:
+  pull_request:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VCPKG_ROOT: /tmp/vcpkg
+
+jobs:
+  # ── Linux : reference platform. apt for everything it has, vcpkg for glad (v1) and msdfgen. ──
+  linux:
+    name: Linux x64 (build, tests, checks, capture)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/cargo-tools
+          key: cargo-linux-${{ hashFiles('tools/Cargo.lock') }}
+          restore-keys: cargo-linux-
+
+      - name: Install system packages (apt)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake python3 pkg-config curl zip unzip tar git \
+            autoconf autoconf-archive automake libtool \
+            libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
+            libfreetype-dev libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            xvfb libgl1-mesa-dri mesa-vulkan-drivers
+
+      - name: Bootstrap vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Cache vcpkg packages (glad, msdfgen)
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/vcpkg/installed
+          key: vcpkg-x64-linux-glad-msdfgen-${{ hashFiles('vcpkg.json') }}
+
+      - name: Install glad and msdfgen (vcpkg)
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        run: "$VCPKG_ROOT/vcpkg install glad msdfgen --triplet x64-linux"
+
+      - name: Link dependencies (apt + vcpkg)
+        run: sh tools/setup-linux-deps.sh
+
+      - name: Repository checks
+        run: |
+          sh tools/check-repo.sh
+          python3 tools/check_layers.py --baseline tools/baseline/layers.txt
+          python3 tools/check_api_isolation.py --baseline tools/baseline/api_isolation.txt
+          python3 tools/check_headers.py
+
+      - name: Build (debug, -Werror)
+        run: make -j"$(nproc)" all-debug
+
+      - name: Tests
+        run: make demo-test
+
+      - name: Capture reference images (OpenGL, Mesa llvmpipe under Xvfb)
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" \
+            apps/demo/bin/debug/main --api opengl --capture "$PWD/ci-capture" --capture-frames 5
+          ls -l ci-capture
+
+      - name: Upload capture
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-linux-opengl
+          path: ci-capture/*.png
+          retention-days: 7
+
+  # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
+  sanitizers:
+    name: Linux x64 (ASan + UBSan tests)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install system packages (apt)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake python3 pkg-config curl zip unzip tar git \
+            autoconf autoconf-archive automake libtool \
+            libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
+            libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+      - name: Bootstrap vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Cache vcpkg packages (glad, msdfgen)
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/vcpkg/installed
+          key: vcpkg-x64-linux-glad-msdfgen-${{ hashFiles('vcpkg.json') }}
+      - name: Install glad and msdfgen (vcpkg)
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        run: "$VCPKG_ROOT/vcpkg install glad msdfgen --triplet x64-linux"
+      - name: Link dependencies
+        run: sh tools/setup-linux-deps.sh
+      - name: Tests under ASan + UBSan
+        env:
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: make demo-test SANITIZE=address,undefined
+
+  # ── Windows and macOS: same entry points through vcpkg manifest mode. ─────────────────────
+  # `continue-on-error`: these two jobs have never been observed green (no Windows/macOS machine was
+  # available while writing them). Remove the flag after the first green run; see docs/GAPS.md.
+  other-platforms:
+    name: ${{ matrix.name }} (build, tests)
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64 (MinGW)
+            os: windows-latest
+            triplet: x64-mingw-static
+          - name: macOS arm64
+            os: macos-latest
+            triplet: arm64-osx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc mingw-w64-x86_64-make mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-python git zip unzip tar
+
+      - name: Setup macOS tools
+        if: runner.os == 'macOS'
+        run: brew install ninja cmake zip
+
+      - name: Bootstrap vcpkg (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Bootstrap vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git /tmp/vcpkg --depth=1
+          /tmp/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Cache vcpkg packages
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: vcpkg_installed
+          key: vcpkg-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}
+
+      - name: Install vcpkg dependencies (Unix)
+        if: runner.os != 'Windows' && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        run: >-
+          "$VCPKG_ROOT/vcpkg" install --triplet=${{ matrix.triplet }} --x-manifest-root=.
+          --x-install-root=./vcpkg_installed --no-print-usage
+
+      - name: Install vcpkg dependencies (Windows)
+        if: runner.os == 'Windows' && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: >-
+          /tmp/vcpkg/vcpkg install --triplet=${{ matrix.triplet }} --x-manifest-root=.
+          --x-install-root=./vcpkg_installed --no-print-usage
+
+      # WERROR=0 until the first green run on these systems (warnings are errors on Linux).
+      - name: Build and test (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+
+      - name: Build and test (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          mingw32-make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
