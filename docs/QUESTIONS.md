@@ -56,3 +56,21 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 **A15. Ajustement de jalons** : voir AUDIT_REPORT § « Proposition d'ajustement du plan » (M2 plus gros ; CI Linux de tests dès M0 ; casser les cycles avant M2).
 
 **A16. `main` locale** a 44 commits de plus que `origin/main` ; `dev` locale en a plus de 50 de plus que `origin/dev`. Rien n'est poussé (Q3 non tranché).
+
+## Décisions de l'auteur sur l'audit (2026-11-17) et suites en M0
+
+| Point | Décision | Application |
+| --- | --- | --- |
+| A1 | Suivre le plan : OpenGL jusqu'en M3, Vulkan seulement à partir de M4 | M0 ne touche pas à Vulkan (sauf deux contournements de compilation). `--capture` refuse Vulkan jusqu'en M4. **À confirmer en M2** : que devient l'ancien backend Vulkan pendant M2-M3 (retiré du build, ou laissé tel quel sans garantie) ? |
+| A2 | Suivre `docs/03` même si cela change beaucoup | Inscrit dans `CLAUDE.md` (« Conventions de code »). Le code neuf suit `docs/03` ; le code existant migre **module par module au jalon qui le réécrit** (M1 core, M2 rhi/platform/renderer…). **Question A17 ci-dessous.** |
+| A3 | (non tranché) `docs/03` §7 demande `-Werror` | Appliqué (`-Wall -Wextra -Wpedantic -Werror`, `WERROR=0` pour désactiver) |
+| A4 | (non tranché) Catch2 ou doctest | **doctest** (un seul en-tête, `docs/02` TEST-01) ; framework maison supprimé |
+| A5 | Ajouter les dépendances, dire à l'auteur quoi faire à temps | M0 ajoute **doctest** : `sudo apt install doctest-dev` (Linux) ; `vcpkg.json` le liste pour Windows/macOS |
+| A6 | TOOL-03 passe en P0 | `docs/02` modifié ; fait en M0 (capture PNG + outil de comparaison) |
+| A11 | Corriger en temps voulu, selon le plan | Rien changé : capacités Vulkan fausses et minuterie GPU factice restent notées (`GAPS.md`) pour M2/M4 |
+
+**A17. Quand migrer l'arborescence et les noms vers `docs/03` ?** Option 1 (recommandée) : au fil des jalons, comme écrit plus haut. Option 2 : une migration de masse dédiée avant M1 (`include/engine/<module>/*.hpp`, fichiers en `snake_case`, fonctions en `camelCase`), qui touche ~19 000 lignes mécaniquement mais fait passer tous les `#include` et tous les appels ; je la ferais avec les tests comme filet. *Dis-moi si tu préfères l'option 2.*
+
+**A18. Windows et macOS dans la CI.** Les jobs correspondants de `.github/workflows/ci.yml` n'ont jamais tourné (aucune machine disponible pendant M0) : ils sont en `continue-on-error`. Quand tu auras vu un premier run, dis-moi ce qu'il affiche pour que je corrige et retire ce drapeau.
+
+**A19. Disque presque plein.** Pendant M0, `/` était à 100 % (97 Go sur 102) ; `~/vcpkg` pèse 7,5 Go (`buildtrees`, `downloads` supprimables avec `vcpkg` : `rm -rf ~/vcpkg/buildtrees ~/vcpkg/downloads`) et `~/.cache` 9,4 Go. Je n'ai rien supprimé chez toi, seulement mes fichiers temporaires.

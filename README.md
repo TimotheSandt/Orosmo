@@ -7,7 +7,7 @@ Moteur de jeu 3D et 2D en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec
 ## Prérequis
 
 - **Compilateur** : GCC 13+ ou Clang 17+ (testé : GCC 13.3, Linux), MSVC 2022 / MinGW sous Windows.
-- **Outils** : GNU Make, CMake, Rust (`cargo`, pour `tools/cui-rs` et `tools/engine-init-rs`), Python 3.
+- **Outils** : GNU Make, CMake, Rust (`cargo`, pour `tools/cui-rs` et `tools/engine-init-rs`), Python 3 (contrôles et comparaison d'images).
 - **Pilotes** : OpenGL 4.3+ et Vulkan ; couches de validation Vulkan conseillées.
 - **Dépendances** : glfw3, glm, stb, freetype, vulkan, shaderc, glad (v1), msdfgen, doctest (tests) — liste dans [vcpkg.json](vcpkg.json).
 
@@ -29,7 +29,7 @@ sh tools/setup-linux-deps.sh     # (sans sudo) relie apt + vcpkg dans vcpkg_inst
 make all-debug                   # moteur (debug) -> apps/demo/engine -> démo (debug)
 ```
 
-Notes : lancer les scripts avec `sh` et **sans `sudo`** (le dépôt peut être sur un disque monté sans bit exécutable). `make clean-all` supprime aussi `vcpkg_installed/` : relancer ensuite `sh tools/setup-linux-deps.sh`. Après un changement de structure (`git pull`), faire `make clean-all` pour éliminer les anciens fichiers `.d`.
+Notes : les avertissements sont des erreurs (`-Wall -Wextra -Wpedantic -Werror`, `WERROR=0` pour les tolérer) ; lancer les scripts avec `sh` et **sans `sudo`** (le dépôt peut être sur un disque monté sans bit exécutable). `make clean-all` supprime aussi `vcpkg_installed/` : relancer ensuite `sh tools/setup-linux-deps.sh`. Après un changement de structure (`git pull`), faire `make clean-all` pour éliminer les anciens fichiers `.d`.
 
 ### Windows / macOS
 
@@ -44,7 +44,12 @@ make all-debug
 | Commande | Effet |
 | --- | --- |
 | `make run` | Construit si besoin puis lance la démo (`apps/demo/bin/<type>/`) |
-| `make demo-test` | Construit et lance les tests (`tests/`, framework maison) |
+| `make demo-test` | Construit et lance les tests (`tests/`, doctest ; filtres : `-ts=<suite>`, `-tc=<cas>`) |
+| `make demo-test SANITIZE=address,undefined` | Idem sous ASan + UBSan (arbre propre : `make fclean` avant) |
+| `make check` | Dépôt, couches, isolation des API, en-têtes autonomes (mode avertissement) ; `CHECK_ARGS=--strict` pour échouer |
+| `main --api opengl --capture <dossier>` | Rend 10 images à 1280x720 (graine 1), écrit `scene.png` (reproductible) et `ui.png` ; OpenGL seulement |
+| `python3 tools/compare_png.py A.png B.png` | Compare deux images (tolérance, budget de pixels, image de différence) |
+| `python3 -m unittest discover -s tests/tools` | Tests des outils Python |
 | `make debug` / `make release` | Archives du moteur dans `lib/<type>/` |
 | `make all-debug` / `make all-release` | Moteur → `apps/demo/engine/` → démo |
 | `make sync-demo` | Copie le moteur construit dans `apps/demo/engine/` |
@@ -59,7 +64,7 @@ make all-debug
 include/      en-têtes publics du moteur, par module (Graphics, UI, Noise, Profiler, Utilities, Benchmark)
 src/          implémentations, même découpage ; README.md par module
 apps/demo/    application de démonstration (sources, Makefile, installeurs, benchmark)
-tests/        tests (framework maison)
+tests/        tests (doctest) et tests des outils Python (tests/tools)
 shaders/      shaders GLSL (copiés vers <bin>/res/shader/)
 res/          polices, icône (copiés vers <bin>/res/)
 mk/           Makefile du moteur (engine.mk) et configuration (config.mk)

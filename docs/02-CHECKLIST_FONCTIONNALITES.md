@@ -212,7 +212,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | --- | --- | --- | --- | --- |
 | TOOL-01 | Visualiseur de terrain | P0 | Application de démo : caméra libre, réglages, export. Démo principale. | ? |
 | TOOL-02 | Générateur en ligne de commande | P0 | `terrain-gen --seed N --size S --out fichier` sans fenêtre ; sorties de TER-11 ; code de retour fiable. | ? |
-| TOOL-03 | Capture d'écran | P2 | Image depuis le rendu ; utilisée par RHI-14. | ? |
+| TOOL-03 | Capture d'écran | P0 | Image depuis le rendu ; utilisée par RHI-14. (Priorité passée de P2 à P0 par l'auteur le 2026-11-17 : comparer les images dès le début.) | ? |
 | BLD-01 | Construction multiplateforme | P0 | Un seul chemin de build documenté pour Windows, Linux, macOS ; vcpkg ; types debug/dev/release. L'IA peut **proposer** CMake (avec presets) en gardant le Makefile en enveloppe, sans migrer sans accord. | ? |
 | REPO-01 | Dépôt propre et structuré | P0 | M00 de `docs/06` : `.gitignore`, `.gitattributes`, `.editorconfig`, `.clang-format`, `README.md` racine, `third_party/` documenté, aucun fichier généré ou binaire inutile suivi, historique conservé, comportement identique à la référence. | ? |
 | GIT-01 | Flux de branches | P0 | `main` réservé à l'auteur, `dev` d'intégration, une branche par fonctionnalité, commits au format `type(ID): résumé`, fin de jalon par merge request de l'auteur (détail en `docs/06`). | ? |

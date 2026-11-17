@@ -51,6 +51,39 @@ Toute correction de portabilité Windows → Linux est faite sans casser la comp
 - Les couches de validation graphique (Vulkan validation, `GL_KHR_debug`) ne signalent aucune erreur sur la démo.
 - Le module est documenté ; `docs/STATUS.md` est à jour ; la commande de démo est donnée.
 
+## Conventions de code (décision de l'auteur, 2026-11-17)
+
+On suit `docs/03` §2 (arborescence `include/engine/<module>/*.hpp`, `src/<module>/`, `src/rhi/<backend>/`, `tests/<module>/`, `apps/<nom>/`) et §7 (types `PascalCase`, fonctions et variables `camelCase`, constantes `kPascalCase`, fichiers `snake_case`, `-Wall -Wextra -Wpedantic -Werror`). Le code existant (`include/<Module>/*.h`, noms `PascalCase`) **migre module par module** quand le jalon du plan le réécrit (M1 core, M2 rhi/platform/renderer…) : tout code neuf suit déjà `docs/03`. Pas de renommage de masse hors jalon.
+
 ## Commandes
 
-À compléter par l'IA après l'audit (build, tests, démo, formatage) et à garder à jour ici.
+Linux (Ubuntu/Debian ; g++ 13.3 vérifié). Dépôt sur un disque monté sans bit exécutable : lancer les scripts avec `sh`.
+
+```bash
+# 1. Dépendances (une fois). apt d'abord, vcpkg pour ce qui n'existe pas dans apt (glad v1, msdfgen).
+sudo apt install build-essential cmake cargo python3 libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc \
+    doctest-dev libfreetype-dev libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
+    autoconf autoconf-archive automake libtool
+git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
+~/vcpkg/vcpkg install glad msdfgen --triplet x64-linux
+sh tools/setup-linux-deps.sh            # relie apt + vcpkg dans vcpkg_installed/x64-linux
+
+# 2. Build et démo
+make all-debug                          # moteur (debug, -Wpedantic -Werror) -> apps/demo/engine -> démo
+make run                                # lance la démo (OpenGL par défaut ; --api vulkan non fiable avant M4)
+
+# 3. Tests et contrôles
+make demo-test                          # doctest : 117 cas (construit les archives release d'abord)
+make demo-test SANITIZE=address,undefined   # ASan + UBSan (partir d'un arbre propre : make fclean)
+make check                              # dépôt, couches, isolation des API, en-têtes autonomes (mode avertissement)
+python3 -m unittest discover -s tests/tools # outils Python (compare_png)
+
+# 4. Images de référence
+apps/demo/bin/debug/main --api opengl --capture /chemin/sortie        # scene.png (reproductible) + ui.png (FPS affichés)
+python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720.png /chemin/sortie/scene.png
+
+# 5. Formatage (clang-format requis)
+sh tools/format_sources.sh
+```
+
+Options utiles : `WERROR=0` (avertissements non bloquants), `--seed N` (terrain de la démo), `--capture-frames N`. Windows/macOS : voir `README.md` ; non vérifiés (`docs/GAPS.md`).
