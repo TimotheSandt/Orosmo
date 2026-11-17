@@ -69,7 +69,6 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | UI-02 | Rendu indépendant du backend | Absent | Les composants dessinent directement via sprites ; aucune liste de dessin intermédiaire, pas d'adaptateur vers un batch 2D. | M2 |
 | UI-03 | Widgets de base | Absent | Aucun bouton, curseur, case à cocher, liste, champ de texte, etc. Seuls `Text` et `Label` (alias) existent. | M3 |
 | TOOL-03 | Capture d'écran | Partiel | Fait en M0 pour OpenGL (`--capture`, `Screenshot::SavePng`, `tools/compare_png.py`) ; Vulkan refusé jusqu'en M4 ; `ui.png` non reproductible (FPS affichés) ; pas de capture sans fenêtre (PLAT-04). | M0 (fait) ; M2 (usage RHI-14) |
-| REPO-01 | Dépôt propre et structuré | Partiel | Rétrogradé après revue CodeRabbit : pas de preuve visuelle d'identité avec l'avant-M00 (aucune capture d'avant) ; exception `third_party/` (rien de copié) à valider. | M0 (retour de l'auteur) |
 
 ## P1
 
@@ -204,7 +203,7 @@ Issues de M00 (G1 à G15, conservées) et de l'audit.
 | G21 | Compilateur `.cui` : en-tête généré mal nommé si vue ≠ fichier | `docs/UI_LANGUAGE_AUDIT.md`. | M3 |
 | G22 | Avertissements `-Wmissing-field-initializers` | `BindFunc.h:137`, `BindMethods.h:319`. | M0 |
 | G23 | Dossier `Libraries/` dans le nom des objets | `obj/<type>/Libraries/` dans `mk/engine.mk` (cosmétique). | M0 |
-| G24 | Branche `feat/vulkan` et 17 stashes non lus | Peuvent contenir du travail (« add LOD »). | À trier par l'auteur |
+| G24 | 17 stashes et anciennes branches | Stashes analysés le 2026-11-17 : 2 utiles archivés dans `docs/notes/archive/` (LOD du terrain → TER-03, `ClearAttachments` Vulkan → G41) ; patchs complets hors dépôt. Branches anciennes (`UI`, `feat/*`, `feature/*`, `fix/makefile-lint-check-format`) non analysées. | Auteur (suppression des stashes) |
 | G25 | Branche ambiguë `main` locale en avance de 44 commits sur `origin/main` | Rien n'est poussé. | Auteur |
 | G26 | `TODO` dans le code | `InputManager.cpp:98`, `InputManager.h:301` (molette), `Window.h:43` (`taskbarVisible`). | M2 (platform) |
 | G27 | `TextRenderer` sans UTF-8 | Voir REN-36. | M2 / M3 |

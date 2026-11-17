@@ -26,19 +26,19 @@ Audit du 2026-11-17, branche `docs/audit` depuis `dev` (après M00). **Aucun fic
 | I. Interface | 0 | 5 | 7 | 0 | 12 |
 | J. Logique de jeu rechargeable | 0 | 0 | 7 | 0 | 7 |
 | K. Voxels et ray tracing | 0 | 0 | 4 | 1 | 5 |
-| L. Outils, qualité et construction | 0 | 9 | 2 | 0 | 11 |
-| **Total** | **0** | **47** | **102** | **3** | **152** |
+| L. Outils, qualité et construction | 1 | 8 | 2 | 0 | 11 |
+| **Total** | **1** | **46** | **102** | **3** | **152** |
 
 Par priorité :
 
 | Prio | Fait | Partiel | Absent | Incompatible |
 | --- | ---: | ---: | ---: | ---: |
-| P0 | 0 | 37 | 24 | 1 |
+| P0 | 1 | 36 | 24 | 1 |
 | P1 | 0 | 10 | 53 | 1 |
 | P2 | 0 | 0 | 19 | 1 |
 | P3 | 0 | 0 | 6 | 0 |
 
-**Lecture** : le moteur actuel est une base 3D/2D OpenGL + Vulkan avec un texte MSDF, une interface en langage maison et un bruit CPU. Aucun identifiant n'est `Fait` (`REPO-01` a été rétrogradé en `Partiel` après la revue CodeRabbit : le critère exige un comportement identique à la référence, et aucune capture d'écran d'avant M00 n'existe). L'écart principal est l'architecture : le RHI à handles, passes et groupes de liaison de `docs/03` n'existe pas, et tout ce qui en dépend (compute, MRT complet, plugins de rendu, éclairage clusterisé, terrain GPU) est absent.
+**Lecture** : le moteur actuel est une base 3D/2D OpenGL + Vulkan avec un texte MSDF, une interface en langage maison et un bruit CPU. Seul `REPO-01` est `Fait` (CodeRabbit l'avait contesté ; l'auteur a confirmé le 2026-11-17 que tests identiques, journal de démarrage identique et capture reproductible suffisent comme preuve d'identité). L'écart principal est l'architecture : le RHI à handles, passes et groupes de liaison de `docs/03` n'existe pas, et tout ce qui en dépend (compute, MRT complet, plugins de rendu, éclairage clusterisé, terrain GPU) est absent.
 
 ## Lecture par module (étape 3 du protocole)
 
@@ -265,7 +265,7 @@ Colonnes : **Où** (fichier : symbole) · **Comment** (ce qui a été lu, lancé
 | TOOL-02 | Générateur en ligne de commande | P0 | **Absent** | — | Preuve d'absence : grep `terrain-gen\|headless\|Headless` sur include/, src/, apps/, shaders/, tests/, tools/, mk/ : 1 fichier(s) — 1 résultat non pertinent (le mot « headless » dans un commentaire de `tests/support/test_support.hpp`) ; la démo n'offre que `--capture`/`--seed`, qui ouvrent une fenêtre | Absent (nécessite PLAT-04). | — | M3 |
 | TOOL-03 | Capture d'écran | P2 | **Absent** | include/Graphics/RenderTarget.h : `ReadPixelUInt`, `ReadPixelRGBA8` | grep `stbi_write` : 0 | Lecture de pixels possible, pas d'enregistrement d'image. **Désaccord** : P2 mais requis par RHI-14 (P0). | — | M2 (proposé : requis par RHI-14) |
 | BLD-01 | Construction multiplateforme | P0 | **Partiel** | Makefile, mk/engine.mk, apps/demo/Makefile, vcpkg.json, README.md | Build Linux reproduit (docs/BASELINE, docs/releases/M00.md) | Makefile + vcpkg, types `debug/dev/release`, Linux vérifié (apt + vcpkg). Windows et macOS non vérifiés ici. Dépendances non épinglées (pas de `builtin-baseline`). Pas de CMake (proposition à faire, voir QUESTIONS). | — | M0 |
-| REPO-01 | Dépôt propre et structuré | P0 | **Partiel** | .gitignore, .gitattributes, .editorconfig, .clang-format, README.md, tools/check-repo.sh | `sh tools/check-repo.sh` : OK ; 102/102 tests et journal de démarrage identiques à la référence (docs/releases/M00.md) | Tous les points sont remplis ; `third_party/` n'existe pas car aucune bibliothèque n'est copiée (README de `src/ThirdParty/` l'explique) — écart assumé, à valider. | — | M00 (fait) | **Rétrogradé :** identité visuelle avec l'avant-M00 non prouvée (pas de capture d'avant), exception `third_party/` non validée ; preuves existantes : tests, journal de démarrage identique, capture reproductible depuis M0.
+| REPO-01 | Dépôt propre et structuré | P0 | **Fait** | .gitignore, .gitattributes, .editorconfig, .clang-format, README.md, tools/check-repo.sh | `sh tools/check-repo.sh` : OK ; 102/102 tests et journal de démarrage identiques à la référence (docs/releases/M00.md) | Tous les points sont remplis ; `third_party/` n'existe pas car aucune bibliothèque n'est copiée (README de `src/ThirdParty/` l'explique) — écart assumé, à valider. | — | M00 (fait) |
 | GIT-01 | Flux de branches | P0 | **Partiel** | docs/06 ; historique de la branche `dev` | `git log` lu | Flux appliqué depuis M00 (branches `chore/`, `fix/`, `docs/`, fusions `--no-ff`). Protections côté hébergeur non activées par l'auteur ; avant M00, 92 commits sur 178 hors format `type(ID): résumé`. | — | Continu |
 | BLD-02 | Intégration continue | P0 | **Partiel** | .github/workflows/build-engine.yml | Lu | Matrice Windows/Linux/macOS (x64 et arm64) existe mais ne se lance que sur tag `v*` ou à la main, ne lance **aucun test** ni vérification des couches. | — | M0 |
 | TEST-01 | Tests unitaires | P0 | **Partiel** | tests/framework/TestFramework.{h,cpp}, tests/suites/*.cpp ; `make demo-test` | Lancé : **102/102** verts | Framework **maison** (spec : Catch2 ou doctest), non exécuté en CI ; `core` partiellement couvert (Logger, InputManager, TextRenderer, Light, UI compiler : 0 test). | — | M0 |
