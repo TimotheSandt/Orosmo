@@ -64,7 +64,7 @@ void RenderTarget::Init(int width, int height)
 {
     RenderTargetDesc desc;
     desc.extent = {static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)};
-    desc.colorAttachments = {TextureFormat::RGBA8};
+    desc.colorAttachments.assign(1, TextureFormat::RGBA8);
     desc.hasDepthBuffer = true;
     desc.depthAsTexture = false;
     this->Init(desc);
