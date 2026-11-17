@@ -59,7 +59,7 @@ jobs:
 
       - name: Install glad and msdfgen (vcpkg)
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
-        run: "$VCPKG_ROOT/vcpkg install glad msdfgen --triplet x64-linux"
+        run: "$VCPKG_ROOT/vcpkg install --classic glad msdfgen --triplet x64-linux"
 
       - name: Link dependencies (apt + vcpkg)
         run: sh tools/setup-linux-deps.sh
@@ -127,7 +127,7 @@ jobs:
           key: vcpkg-x64-linux-glad-msdfgen-${{ hashFiles('vcpkg.json') }}
       - name: Install glad and msdfgen (vcpkg)
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
-        run: "$VCPKG_ROOT/vcpkg install glad msdfgen --triplet x64-linux"
+        run: "$VCPKG_ROOT/vcpkg install --classic glad msdfgen --triplet x64-linux"
       - name: Link dependencies
         run: sh tools/setup-linux-deps.sh
       - name: Tests under ASan + UBSan
@@ -163,6 +163,7 @@ jobs:
         with:
           msystem: MINGW64
           update: true
+          path-type: inherit   # keep the Windows PATH (cargo from dtolnay/rust-toolchain)
           install: >-
             mingw-w64-x86_64-gcc mingw-w64-x86_64-make mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
             mingw-w64-x86_64-python git zip unzip tar
