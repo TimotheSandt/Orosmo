@@ -110,6 +110,8 @@ run-release:
 demo-run: run
 
 demo-test:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
 	$(MAKE) -C apps/demo $(DEMO_ARGS) test
 
 demo-clean:
