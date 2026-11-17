@@ -112,7 +112,7 @@ jobs:
         id: vcpkg-cache
         with:
           path: vcpkg_installed
-          key: vcpkg-${{ matrix.triplet }}-${{ hashFiles('Libraries/vcpkg.json') }}
+          key: vcpkg-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: vcpkg-${{ matrix.triplet }}-
 
       # ── Install vcpkg dependencies ─────────────────────────────────────────────
@@ -121,7 +121,7 @@ jobs:
         run: |
           $VCPKG_ROOT/vcpkg install \
             --triplet=${{ matrix.triplet }} \
-            --x-manifest-root=Libraries \
+            --x-manifest-root=. \
             --x-install-root=./vcpkg_installed \
             --no-print-usage
 
@@ -131,7 +131,7 @@ jobs:
         run: |
           $VCPKG_ROOT/vcpkg install \
             --triplet=${{ matrix.triplet }} \
-            --x-manifest-root=Libraries \
+            --x-manifest-root=. \
             --x-install-root=./vcpkg_installed \
             --no-print-usage
 
@@ -141,7 +141,7 @@ jobs:
       - name: Build engine tool (Unix)
         if: runner.os != 'Windows'
         run: |
-          make -f Libraries/Makefile engine-tool \
+          make -f mk/engine.mk engine-tool \
             VCPKG_TRIPLET=${{ matrix.triplet }} \
             VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
@@ -149,7 +149,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          mingw32-make -f Libraries/Makefile engine-tool \
+          mingw32-make -f mk/engine.mk engine-tool \
             VCPKG_TRIPLET=${{ matrix.triplet }} \
             VCPKG_INSTALLED_ROOT=./vcpkg_installed
 

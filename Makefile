@@ -5,7 +5,7 @@
 #   make install-deps-demo     install demo vcpkg deps
 #   make install-deps-all      both
 #
-# ── Engine (Libraries/) ───────────────────────────────────────────────────────
+# ── Engine (mk/, src/, include/) ───────────────────────────────────────────────────────
 #   make debug                 build engine archives (debug)
 #   make release               build engine archives (release)
 #   make engine                build debug+release, dist, tools, and apps/demo/engine/
@@ -41,7 +41,7 @@
 SHELL      := sh
 VCPKG      ?= vcpkg
 BUILD_TYPE ?= debug
-ENGINE_MK  := Libraries/Makefile
+ENGINE_MK  := mk/engine.mk
 
 # In-repo layout: demo resources, shaders and tests live at the repository root.
 DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico
@@ -159,7 +159,7 @@ setup-run: setup demo-run
 .PHONY: publish
 publish:
 	@set -e; \
-	CONFIG=Libraries/config.mk; \
+	CONFIG=mk/config.mk; \
 	\
 	BRANCH=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
 	if [ "$$BRANCH" != "main" ] && [ "$$BRANCH" != "master" ]; then \

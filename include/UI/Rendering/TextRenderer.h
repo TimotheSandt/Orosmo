@@ -1,4 +1,4 @@
-// Libraries/includes/UI/TextRenderer.h
+// include/UI/Rendering/TextRenderer.h
 #pragma once
 
 #include <string>

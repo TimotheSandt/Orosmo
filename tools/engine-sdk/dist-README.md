@@ -139,4 +139,4 @@ Recommended workflows:
   game repository.
 
 - **Submodule**: reference the engine source repository as a submodule and run
-  `make -f Libraries/Makefile dist` locally. Keep the `dist/` output gitignored.
+  `make -f mk/engine.mk dist` locally. Keep the `dist/` output gitignored.

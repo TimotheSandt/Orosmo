@@ -187,9 +187,9 @@ ENGINE_LINK_LIBS := $(_ENG_LD_START) $(ENGINE_LIBS) $(_ENG_LD_END)
 ENGINE_LDFLAGS := -L$(_ENG_VCPKG_DIR)/lib $(_ENG_VCPKG_LIBS)
 
 # ── Missing archive error ─────────────────────────────────────────────────────
-# Archives must come from a GitHub release or be built with Libraries/Makefile.
+# Archives must come from a GitHub release or be built with mk/engine.mk.
 $(ENGINE_LIBS):
-	$(error Missing engine archive: $@$(newline)Download a release at https://github.com/TimotheSandt/ProceduralGeneration/releases$(newline)or build locally: make -f path/to/engine/Libraries/Makefile BUILD_TYPE=$(BUILD_TYPE))
+	$(error Missing engine archive: $@$(newline)Download a release at https://github.com/TimotheSandt/ProceduralGeneration/releases$(newline)or build locally: make -f path/to/engine/mk/engine.mk BUILD_TYPE=$(BUILD_TYPE))
 
 # ── CUI precompiler ───────────────────────────────────────────────────────────
 

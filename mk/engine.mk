@@ -1,10 +1,10 @@
-# Libraries/Makefile — Builds the engine subsystem archives.
+# mk/engine.mk — Builds the engine subsystem archives.
 #
 # ── Standalone usage (from project root) ─────────────────────────────────────
-#   make -f Libraries/Makefile debug
-#   make -f Libraries/Makefile release
-#   make -f Libraries/Makefile BUILD_TYPE=debug lib/debug/libui.a   # single archive
-#   make -f Libraries/Makefile dist                                  # package for distribution
+#   make -f mk/engine.mk debug
+#   make -f mk/engine.mk release
+#   make -f mk/engine.mk BUILD_TYPE=debug lib/debug/libui.a   # single archive
+#   make -f mk/engine.mk dist                                  # package for distribution
 #
 # ── Variables passed by the root game Makefile ───────────────────────────────
 #   BUILD_TYPE, CXX, CC, AR, CXXFLAGS, CFLAGS, DEPFLAGS, INCLUDES,
@@ -318,8 +318,8 @@ cui-tool: $(_CUI_INSTALLED)
 # into $(DIST_PKG_DIR)/ then zips it as $(ENGINE_PKG_ZIP).
 
 dist: $(_CUI_INSTALLED)
-	@$(MAKE) -f Libraries/Makefile BUILD_TYPE=debug debug
-	@$(MAKE) -f Libraries/Makefile BUILD_TYPE=release release
+	@$(MAKE) -f mk/engine.mk BUILD_TYPE=debug debug
+	@$(MAKE) -f mk/engine.mk BUILD_TYPE=release release
 ifeq ($(DETECTED_OS),Windows)
 	@mkdir -p "$(DIST_PKG_DIR)/includes" "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
 	          "$(DIST_PKG_DIR)/make" "$(DIST_PKG_DIR)/tools"
@@ -328,7 +328,7 @@ ifeq ($(DETECTED_OS),Windows)
 	@powershell -NoProfile -Command "Copy-Item -Path 'lib/release/*.a' -Destination '$(DIST_PKG_DIR)/lib/release' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination '$(DIST_PKG_DIR)/make' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination '$(DIST_PKG_DIR)/tools' -Force"
-	@powershell -NoProfile -Command "Copy-Item -Path 'Libraries/vcpkg.json' -Destination '$(DIST_PKG_DIR)' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'vcpkg.json' -Destination '$(DIST_PKG_DIR)' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist.gitignore' -Destination '$(DIST_PKG_DIR)/.gitignore' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist-README.md' -Destination '$(DIST_PKG_DIR)/README.md' -Force"
 else
@@ -340,7 +340,7 @@ else
 	@cp lib/release/*.a           "$(DIST_PKG_DIR)/lib/release/"
 	@cp tools/engine-sdk/engine.mk      "$(DIST_PKG_DIR)/make/"
 	@cp "$(_CUI_INSTALLED)"       "$(DIST_PKG_DIR)/tools/"
-	@cp Libraries/vcpkg.json      "$(DIST_PKG_DIR)/vcpkg.json"
+	@cp vcpkg.json      "$(DIST_PKG_DIR)/vcpkg.json"
 	@cp tools/engine-sdk/dist.gitignore "$(DIST_PKG_DIR)/.gitignore"
 	@cp tools/engine-sdk/dist-README.md "$(DIST_PKG_DIR)/README.md"
 endif
@@ -460,14 +460,14 @@ endif
 	@echo "Engine installed to apps/demo/engine/"
 
 # ── vcpkg dependency management ───────────────────────────────────────────────
-# install:   no args → install all Libraries/vcpkg.json deps (incremental)
+# install:   no args → install all vcpkg.json deps (incremental)
 #            with args → add packages, install them, print detected linker flags
 # search:    search the vcpkg catalog
 #
 # Usage:
-#   make -f Libraries/Makefile install
-#   make -f Libraries/Makefile install fmt
-#   make -f Libraries/Makefile search json
+#   make -f mk/engine.mk install
+#   make -f mk/engine.mk install fmt
+#   make -f mk/engine.mk search json
 
 ifeq ($(firstword $(MAKECMDGOALS)),install)
   _INSTALL_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
@@ -489,31 +489,31 @@ install install-deps:
 	@if [ -z "$(_INSTALL_ARGS)" ]; then \
 	    $(VCPKG) install \
 	        --triplet=$(VCPKG_TRIPLET) \
-	        --x-manifest-root=Libraries \
+	        --x-manifest-root=. \
 	        --x-install-root=$(VCPKG_INSTALLED_ROOT) \
 	        --no-print-usage; \
 	else \
-	    [ -f Libraries/vcpkg.json ] || printf '{\n  "name": "engine",\n  "version": "0.1.0",\n  "dependencies": []\n}\n' > Libraries/vcpkg.json; \
+	    [ -f vcpkg.json ] || printf '{\n  "name": "engine",\n  "version": "0.1.0",\n  "dependencies": []\n}\n' > vcpkg.json; \
 	    LIBDIR="$(VCPKG_INSTALLED_DIR)/lib"; \
 	    for dep in $(_INSTALL_ARGS); do \
 	        if command -v jq >/dev/null 2>&1; then \
-	            if jq --arg d "$$dep" -e '.dependencies[] | select((type=="string" and .==$$d) or (.name?==$$d))' Libraries/vcpkg.json >/dev/null 2>&1; then \
+	            if jq --arg d "$$dep" -e '.dependencies[] | select((type=="string" and .==$$d) or (.name?==$$d))' vcpkg.json >/dev/null 2>&1; then \
 	                printf "  [vcpkg.json] %s already listed\n" "$$dep"; \
 	            else \
-	                tmp=$$(mktemp); jq --arg d "$$dep" '.dependencies += [$$d]' Libraries/vcpkg.json > "$$tmp" && mv "$$tmp" Libraries/vcpkg.json; \
+	                tmp=$$(mktemp); jq --arg d "$$dep" '.dependencies += [$$d]' vcpkg.json > "$$tmp" && mv "$$tmp" vcpkg.json; \
 	                printf "  [vcpkg.json] Added %s\n" "$$dep"; \
 	            fi; \
 	        elif command -v python3 >/dev/null 2>&1; then \
-	            DEP="$$dep" python3 -c "import json,os; dep=os.environ['DEP']; d=json.load(open('Libraries/vcpkg.json')); deps=d.setdefault('dependencies',[]); n=[x if isinstance(x,str) else x.get('name','') for x in deps]; deps.append(dep) if dep not in n else None; open('Libraries/vcpkg.json','w').write(json.dumps(d,indent=2))"; \
+	            DEP="$$dep" python3 -c "import json,os; dep=os.environ['DEP']; d=json.load(open('vcpkg.json')); deps=d.setdefault('dependencies',[]); n=[x if isinstance(x,str) else x.get('name','') for x in deps]; deps.append(dep) if dep not in n else None; open('vcpkg.json','w').write(json.dumps(d,indent=2))"; \
 	            printf "  [vcpkg.json] Updated (%s)\n" "$$dep"; \
 	        else \
-	            printf "Error: jq or python3 required to edit Libraries/vcpkg.json\n"; exit 1; \
+	            printf "Error: jq or python3 required to edit vcpkg.json\n"; exit 1; \
 	        fi; \
 	        b=$$(mktemp); a=$$(mktemp); \
 	        ls "$$LIBDIR/"*.a 2>/dev/null | sort > "$$b" || :; \
 	        $(VCPKG) install "$$dep" \
 	            --triplet=$(VCPKG_TRIPLET) \
-	            --x-manifest-root=Libraries \
+	            --x-manifest-root=. \
 	            --x-install-root=$(VCPKG_INSTALLED_ROOT) \
 	            --no-print-usage; \
 	        ls "$$LIBDIR/"*.a 2>/dev/null | sort > "$$a" || :; \
@@ -535,7 +535,7 @@ install install-deps:
 	fi
 
 search:
-	@[ -n "$(Q)" ] || { printf "Usage: make -f Libraries/Makefile search <keyword>\n"; exit 1; }
+	@[ -n "$(Q)" ] || { printf "Usage: make -f mk/engine.mk search <keyword>\n"; exit 1; }
 	$(VCPKG) search "$(Q)"
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
