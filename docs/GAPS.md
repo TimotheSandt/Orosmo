@@ -1,6 +1,6 @@
 # GAPS : liste de travail
 
-Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`. Triée par priorité, puis `Incompatible` > `Partiel` > `Absent`. La colonne **Jalon** est le jalon de `docs/05` qui traite l'identifiant ; « (proposé) » = absent de `docs/05`, jalon proposé (voir `docs/QUESTIONS.md`). Aucun identifiant n'est sans jalon.
+Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise à jour à la fin de M0** (TEST-01/02/03, BLD-02, RHI-14, TOOL-03 ; TOOL-03 est passé en P0 sur décision de l'auteur). Triée par priorité, puis `Incompatible` > `Partiel` > `Absent`. La colonne **Jalon** est le jalon de `docs/05` qui traite l'identifiant ; « (proposé) » = absent de `docs/05`, jalon proposé (voir `docs/QUESTIONS.md`). Aucun identifiant n'est sans jalon.
 
 
 ## P0
@@ -10,7 +10,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`. Triée
 | RHI-01 | Interface RHI | Incompatible | Existe une abstraction (`IGraphicsDevice`, `IBufferResource`…), mais elle ne suit pas `docs/03` §3 : objets `unique_ptr` avec `Bind()/Unbind()`, uniformes par emplacement entier, `AttachToFramebuffer(std::uint32_t … | M2 |
 | ASSET-02 | Textures | Partiel | PNG/JPG via stb, mips : oui. Pas d'espace colorimétrique (aucun format sRGB). | M6 |
 | BLD-01 | Construction multiplateforme | Partiel | Makefile + vcpkg, types `debug/dev/release`, Linux vérifié (apt + vcpkg). Windows et macOS non vérifiés ici. Dépendances non épinglées (pas de `builtin-baseline`). Pas de CMake (proposition à faire, voir QUESTIONS). | M0 |
-| BLD-02 | Intégration continue | Partiel | Matrice Windows/Linux/macOS (x64 et arm64) existe mais ne se lance que sur tag `v*` ou à la main, ne lance **aucun test** ni vérification des couches. | M0 |
+| BLD-02 | Intégration continue | Partiel | `.github/workflows/ci.yml` écrit (Linux : build, tests, contrôles, capture ; ASan/UBSan ; Windows/macOS en `continue-on-error`) ; **jamais exécuté sur GitHub**. Les contrôles de couches/API sont bloquants seulement contre une baseline (pas de migration encore). | M0 (observer la CI) |
 | CORE-01 | Logger (pile d'appels, dédoublonnage, couleurs, `<stacktrace>`) | Partiel | Niveaux, fichier, mutex, dédoublonnage, couleurs, pile (`<stacktrace>`, DEBUG seulement) : présents. **Aucun test** (le mot `Logger` n'apparaît que dans tests/test_main.cpp). `logs` (vecteur statique) n'est jamais purgé hors … | M1 |
 | CORE-07 | Temps | Partiel | Horloge et delta variable : oui. Pas de pas fixe, pas de test déterministe du temps. | M1 |
 | CORE-09 | Mathématiques | Partiel | Vecteurs et matrices en `float` ; **aucune position monde en `double`**, pas de conversion explicite. Repère : main droite, Y haut (`glm::lookAt`), à confirmer. | M1 |
@@ -36,8 +36,8 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`. Triée
 | RHI-15 | Rendu vers plusieurs cibles (MRT) | Partiel | Plusieurs cibles couleur (jusqu'à `maxColorAttachments`) et profondeur lisible : oui (vecteurs de mouvement RG16F ajoutés à la demande). Pas d'opérations load/store par cible ; limite 8 codée en dur côté Vulkan … | M2 |
 | TER-01 | Bruit | Partiel | Bruit blanc, bruit lissé (interpolation de valeurs hachées), fBm : oui (CPU, `float`). `PerlinNoise` n'est pas un bruit de Perlin à gradients. Pas de Simplex, Worley, distorsion de domaine ; **pas de version GPU** ni de … | M3 |
 | TER-02 | Génération par tuiles | Partiel | Une grille unique déterministe pour une graine. Pas de tuiles, pas d'asynchronisme, pas de dépendance (graine, coordonnées, paramètres). Le code est dans l'**application de démo**, et `TerrainGenerator` possède un `Mesh` … | M3 |
-| TEST-01 | Tests unitaires | Partiel | Framework **maison** (spec : Catch2 ou doctest), non exécuté en CI ; `core` partiellement couvert (Logger, InputManager, TextRenderer, Light, UI compiler : 0 test). | M0 |
-| TEST-03 | Tests de déterminisme | Partiel | Déterminisme « même graine, mêmes valeurs » dans un processus ; pas de somme de contrôle de référence ni de comparaison inter-plateformes. | M3 |
+| TEST-01 | Tests unitaires | Partiel | doctest en place (117 cas verts, clone propre) ; CI écrite mais jamais observée sur GitHub ; couverture de `core` partielle (Logger, InputManager, Light, TextRenderer, compilateur `.cui` : 0 test). | M0 (observer la CI) puis continu |
+| TEST-03 | Tests de déterminisme | Partiel | Séquence PCG figée par des valeurs d'or (`noise_tests.cpp`) et image de terrain reproductible (3 captures identiques, `docs/BASELINE/reference/`) ; pas de somme de contrôle des sorties de génération sur 3 systèmes ; `Noise()` sans graine reste lié à l'horloge. | M3 |
 | TOOL-01 | Visualiseur de terrain | Partiel | Caméra libre et terrain affichés ; pas de réglages (pas de widgets) ni d'export. Ce n'est pas un `terrain-viewer`. | M3 |
 | UI-01 | UIManager | Partiel | Composant, conteneur, VBox/HBox, `DeferredValue<T>` à double tampon, mixin CRTP : présents et testés. « Migré sur le RHI » : non (dépend de `Graphics` actuel, cycle `UI`↔`Graphics`). `Manager` est un singleton … | M2 |
 | UI-05 | Langage d'interface : compilateur vers C++ | Partiel | Compilation vers C++ sans coût d'exécution supplémentaire, dépendances de build, `@cui-cpp` : oui. Erreurs **ligne:colonne** du source : oui (nom du fichier présent à l'exécution `run`, absent du JSON `check`). **Manque** : … | M3 |
@@ -58,7 +58,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`. Triée
 | REN-37 | Modes de fusion des matériaux | Absent | Pas de `BlendMode` par matériau ; seulement deux interrupteurs d'état global. | M5 |
 | RHI-07 | Groupes de liaison | Absent | Pas de groupes 0/1/2 ; le Vulkan « patche » `layout(binding)` en `set = 0` (une seule table). | M2 |
 | RHI-09 | Compute | Absent | Aucun appel de calcul, aucun tampon de stockage utilisé hors SSBO des lumières. | M2 |
-| RHI-14 | Tests de rendu | Absent | Aucun test d'image de référence. | M2 |
+| RHI-14 | Tests de rendu | Absent | Outil de comparaison (`tools/compare_png.py`) et image de référence OpenGL existent (M0) ; pas encore de test automatisé « image de référence par backend » ni de rapport de différence dans la CI. | M2 |
 | RHI-16 | Textures 3D et images de stockage | Absent | Pas de textures 3D, d'images de stockage ; RGBA16F/R32F absents des formats (seuls R32UI et RG16F). | M2 |
 | TER-03 | Maillage à niveaux de détail | Absent | Absent (grille régulière de 498 002 triangles). | M3 |
 | TER-04 | Streaming | Absent | Absent. | M3 |
@@ -68,6 +68,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`. Triée
 | TOOL-02 | Générateur en ligne de commande | Absent | Absent (nécessite PLAT-04). | M3 |
 | UI-02 | Rendu indépendant du backend | Absent | Les composants dessinent directement via sprites ; aucune liste de dessin intermédiaire, pas d'adaptateur vers un batch 2D. | M2 |
 | UI-03 | Widgets de base | Absent | Aucun bouton, curseur, case à cocher, liste, champ de texte, etc. Seuls `Text` et `Label` (alias) existent. | M3 |
+| TOOL-03 | Capture d'écran | Partiel | Fait en M0 pour OpenGL (`--capture`, `Screenshot::SavePng`, `tools/compare_png.py`) ; Vulkan refusé jusqu'en M4 ; `ui.png` non reproductible (FPS affichés) ; pas de capture sans fenêtre (PLAT-04). | M0 (fait) ; M2 (usage RHI-14) |
 
 ## P1
 
@@ -83,7 +84,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`. Triée
 | REN-21 | Sorties auxiliaires (AOV) | Partiel | Vecteurs de mouvement et profondeur lisible **activés à la demande** ; identifiants R32UI lisibles. Pas de normales octaédriques, rugosité/métal, profondeur linéaire, émission ; pas de règle MSAA. | M5 |
 | REN-35 | Modes d'affichage de debug | Partiel | Un seul mode (filaire) sur huit. | M5 |
 | RHI-11 | Minuteries GPU et noms de debug | Partiel | Les `debugName` sont conservés mais **jamais transmis** à l'API (grep `glObjectLabel\|glPushDebugGroup\|SetDebugUtilsObjectName` : 0). Minuterie Vulkan = horloge CPU (stub qui prétend marcher, règle 3). | M2 (OpenGL) ; M4 (Vulkan) |
-| TEST-02 | Assainisseurs et analyse | Partiel | Configurations présentes mais non exécutées ; pas d'ASan/UBSan ; 6 avertissements `-Wall -Wextra` (`-Wmissing-field-initializers` dans `BindFunc.h:137`, `BindMethods.h:319`). | M0 |
+| TEST-02 | Assainisseurs et analyse | Partiel | `-Wpedantic -Werror` : 0 avertissement ; ASan + UBSan : tests verts (voir `docs/releases/M0.md`) ; manquent clang-tidy et clang-format (outils absents ici), `detect_leaks` désactivé, et exécution en CI. | M0 (observer la CI) |
 | ANIM-01 | Squelettes et skinning GPU | Absent | Absent. | M6 |
 | ANIM-02 | Clips, mélange, machine à états | Absent | Absent. | M6 |
 | ANIM-03 | Animation de propriétés | Absent | Absent. | M6 |
@@ -161,7 +162,6 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`. Triée
 | RHI-19 | Transferts asynchrones | Absent | Absent. | Après M10 (P2) |
 | SIM-02 | Accès aux données du monde | Absent | Absent. | M8 |
 | TER-10 | Eau, rivières, lacs | Absent | Absent. | M7 |
-| TOOL-03 | Capture d'écran | Absent | Lecture de pixels possible, pas d'enregistrement d'image. **Désaccord** : P2 mais requis par RHI-14 (P0). | M2 (proposé : requis par RHI-14) |
 
 ## P3
 
@@ -209,14 +209,29 @@ Issues de M00 (G1 à G15, conservées) et de l'audit.
 | G27 | `TextRenderer` sans UTF-8 | Voir REN-36. | M2 / M3 |
 
 
+## Ajouts de M0 (G28 à G37)
+
+| # | Sujet | Détail | Traité en |
+| --- | --- | --- | --- |
+| G28 | CI jamais exécutée | `.github/workflows/ci.yml` : Windows et macOS en `continue-on-error` ; `WERROR=0` hors Linux ; aucun run observé. | M0 (retour de l'auteur) |
+| G29 | Capture Vulkan | `--capture --api vulkan` refusé : 33 erreurs de validation (layout d'image `SHADER_READ_ONLY` attendu, `GENERAL` trouvé) et image différente d'OpenGL pour la même graine (fond blanc). | M4 |
+| G30 | Capture non reproductible entre machines | La référence (`docs/BASELINE/reference/`) vient d'Intel Arc/Mesa 26.1.6 ; llvmpipe (CI) peut différer de quelques pixels : comparer avec tolérance. | M2 |
+| G31 | `ui.png` | Affiche les FPS : non reproductible ; seul `scene.png` sert de référence. | M3 (UI) |
+| G32 | Baselines de couches/API | `tools/baseline/*.txt` figent 5 violations de couches et 13 fichiers en infraction d'isolation ; toute nouvelle violation échoue en CI. À vider au fil de la migration. | M1-M4 |
+| G33 | En-tête non autonome | `Graphics/Upscaling/IFrameGenerationMode.h` n'inclut pas `GraphicsCapabilities`. | M2 |
+| G34 | Faux positifs GCC 13 | `-Warray-bounds` (vecteur à 1 élément, contourné par `assign`) et `-Wmaybe-uninitialized` dans `std::regex` (pragma local, ancien backend Vulkan) sous ASan -O3. | M4 (Vulkan réécrit) |
+| G35 | Fuites ASan | `detect_leaks=0` : les singletons statiques et le contexte GL font apparaître des fuites à l'arrêt ; non triées. | M1 |
+| G36 | Graine du terrain | La démo prend toujours une graine d'horloge sans `--seed` ; `Noise()` / `PCGRandom::init()` idem (règle 9). | M1 |
+| G37 | Disque | `/` à 97 % pendant M0 (voir `docs/QUESTIONS.md` A19). | Auteur |
+
 ## Table de rattachement : jalon → identifiants
 
 | Jalon | Identifiants |
 | --- | --- |
 | M00 | REPO-01 |
-| M0 | BLD-01, BLD-02, DOC-01, TEST-01, TEST-02 |
+| M0 | BLD-01, BLD-02, DOC-01, TEST-01, TEST-02, TOOL-03 |
 | M1 | CORE-01, CORE-02, CORE-04, CORE-05, CORE-06, CORE-07, CORE-09, CORE-10, CORE-11, CORE-12, CORE-13 |
-| M2 | EXT-03, PLAT-01, PLAT-02, PLAT-04, REN-05, REN-36, RHI-01, RHI-02, RHI-05, RHI-06, RHI-07, RHI-08, RHI-09, RHI-10, RHI-11, RHI-12, RHI-14, RHI-15, RHI-16, RHI-18, TOOL-03, UI-01, UI-02 |
+| M2 | EXT-03, PLAT-01, PLAT-02, PLAT-04, REN-05, REN-36, RHI-01, RHI-02, RHI-05, RHI-06, RHI-07, RHI-08, RHI-09, RHI-10, RHI-11, RHI-12, RHI-14, RHI-15, RHI-16, RHI-18, UI-01, UI-02 |
 | M3 | CORE-08, PLAT-05, REN-02, REN-34, TER-01, TER-02, TER-03, TER-04, TER-07, TER-11, TER-12, TER-13, TEST-03, TOOL-01, TOOL-02, UI-03, UI-05, UI-06, UI-07, UI-11, UI-12 |
 | M4 | RHI-03, RHI-04 |
 | M5 | CORE-03, R2D-01, R2D-02, R2D-03, R2D-04, R2D-05, R2D-06, REN-01, REN-03, REN-04, REN-06, REN-07, REN-08, REN-17, REN-18, REN-19, REN-21, REN-22, REN-28, REN-29, REN-30, REN-31, REN-32, REN-35, REN-37, REN-39, REN-41, RHI-17 |
