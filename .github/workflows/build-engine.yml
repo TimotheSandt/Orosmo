@@ -32,7 +32,7 @@ jobs:
             exe_ext: ""
 
           - name: macOS x64
-            os: macos-13
+            os: macos-15-intel
             platform: macos-x64
             triplet: x64-osx
             exe_ext: ""
@@ -64,6 +64,7 @@ jobs:
         with:
           msystem: ${{ matrix.msystem }}
           update: true
+          path-type: inherit   # keep the Windows PATH (cargo)
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-make
