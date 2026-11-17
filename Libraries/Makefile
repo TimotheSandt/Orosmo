@@ -326,11 +326,11 @@ ifeq ($(DETECTED_OS),Windows)
 	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination '$(DIST_PKG_DIR)/includes' -Recurse -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'lib/debug/*.a' -Destination '$(DIST_PKG_DIR)/lib/debug' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'lib/release/*.a' -Destination '$(DIST_PKG_DIR)/lib/release' -Force"
-	@powershell -NoProfile -Command "Copy-Item -Path 'engine-sdk/engine.mk' -Destination '$(DIST_PKG_DIR)/make' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination '$(DIST_PKG_DIR)/make' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination '$(DIST_PKG_DIR)/tools' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'Libraries/vcpkg.json' -Destination '$(DIST_PKG_DIR)' -Force"
-	@powershell -NoProfile -Command "Copy-Item -Path 'engine-sdk/dist.gitignore' -Destination '$(DIST_PKG_DIR)/.gitignore' -Force"
-	@powershell -NoProfile -Command "Copy-Item -Path 'engine-sdk/dist-README.md' -Destination '$(DIST_PKG_DIR)/README.md' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist.gitignore' -Destination '$(DIST_PKG_DIR)/.gitignore' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist-README.md' -Destination '$(DIST_PKG_DIR)/README.md' -Force"
 else
 	@rm -rf "$(_DIST_STAGING)"
 	@mkdir -p "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
@@ -338,11 +338,11 @@ else
 	@cp -r $(INCLUDES_BASE)       "$(DIST_PKG_DIR)/includes"
 	@cp lib/debug/*.a             "$(DIST_PKG_DIR)/lib/debug/"
 	@cp lib/release/*.a           "$(DIST_PKG_DIR)/lib/release/"
-	@cp engine-sdk/engine.mk      "$(DIST_PKG_DIR)/make/"
+	@cp tools/engine-sdk/engine.mk      "$(DIST_PKG_DIR)/make/"
 	@cp "$(_CUI_INSTALLED)"       "$(DIST_PKG_DIR)/tools/"
 	@cp Libraries/vcpkg.json      "$(DIST_PKG_DIR)/vcpkg.json"
-	@cp engine-sdk/dist.gitignore "$(DIST_PKG_DIR)/.gitignore"
-	@cp engine-sdk/dist-README.md "$(DIST_PKG_DIR)/README.md"
+	@cp tools/engine-sdk/dist.gitignore "$(DIST_PKG_DIR)/.gitignore"
+	@cp tools/engine-sdk/dist-README.md "$(DIST_PKG_DIR)/README.md"
 endif
 	@echo "Engine package ready: $(DIST_PKG_DIR)/"
 
@@ -422,11 +422,11 @@ else
 endif
 ifeq ($(DETECTED_OS),Windows)
 	@for f in $(ENGINE_LIBS); do powershell -NoProfile -Command "Copy-Item -Path '$$f' -Destination 'apps/demo/engine/lib/$(BUILD_TYPE)' -Force"; done
-	@powershell -NoProfile -Command "Copy-Item -Path 'engine-sdk/engine.mk' -Destination 'apps/demo/engine/make' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination 'apps/demo/engine/make' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination 'apps/demo/engine/tools' -Force"
 else
 	@cp $(ENGINE_LIBS) apps/demo/engine/lib/$(BUILD_TYPE)/
-	@cp engine-sdk/engine.mk apps/demo/engine/make/
+	@cp tools/engine-sdk/engine.mk apps/demo/engine/make/
 	@cp "$(_CUI_INSTALLED)" apps/demo/engine/tools/
 endif
 	@if [ ! -e apps/demo/engine/vcpkg_installed ]; then \
@@ -529,7 +529,7 @@ install install-deps:
 	            printf "  %s is header-only — no linker flags needed\n" "$$dep"; \
 	        else \
 	            printf "  Detected: %s\n" "$$NEW"; \
-	            printf "  → Add to engine-sdk/engine.mk _ENG_VCPKG_LIBS: %s\n" "$$NEW"; \
+	            printf "  → Add to tools/engine-sdk/engine.mk _ENG_VCPKG_LIBS: %s\n" "$$NEW"; \
 	        fi; \
 	    done; \
 	fi
