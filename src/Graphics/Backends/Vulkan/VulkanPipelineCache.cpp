@@ -8,7 +8,17 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+// GCC 13 reports a false -Wmaybe-uninitialized inside std::regex when optimising with sanitizers; the
+// diagnostic is located in the library headers, so it is silenced around their inclusion only.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 #include <regex>
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 #include <sstream>
 #include <system_error>
 #include <unordered_map>
