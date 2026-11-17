@@ -221,8 +221,22 @@ Issues de M00 (G1 à G15, conservées) et de l'audit.
 | G33 | En-tête non autonome | `Graphics/Upscaling/IFrameGenerationMode.h` n'inclut pas `GraphicsCapabilities`. | M2 |
 | G34 | Faux positifs GCC 13 | `-Warray-bounds` (vecteur à 1 élément, contourné par `assign`) et `-Wmaybe-uninitialized` dans `std::regex` (pragma local, ancien backend Vulkan) sous ASan -O3. | M4 (Vulkan réécrit) |
 | G35 | Fuites ASan | `detect_leaks=0` : les singletons statiques et le contexte GL font apparaître des fuites à l'arrêt ; non triées. | M1 |
-| G36 | Graine du terrain | La démo prend toujours une graine d'horloge sans `--seed` ; `Noise()` / `PCGRandom::init()` idem (règle 9). | M1 |
+| G36 | Graine du terrain | **Traité en M1 (A12)** : `Noise()` / `PCGRandom()` supprimés (`static_assert`), `TerrainGenerator()` a la graine fixe 1, la démo tire une graine aléatoire explicite dans `main()` et la journalise. | M1 (fait) |
 | G37 | Disque | `/` à 97 % pendant M0 (voir `docs/QUESTIONS.md` A19). | Auteur |
+
+## Ajouts de M1 (G50 à G58)
+
+| # | Sujet | Détail | Traité en |
+| --- | --- | --- | --- |
+| G50 | `Logger::Initialize` lance une exception | Un dossier de journal impossible à créer (`/proc/x/y.log`) lève `std::filesystem::filesystem_error` (`create_directories` sans `error_code`) ; trouvé en écrivant les tests du logger (CORE-01). Comportement conservé, test retiré. | M1 bis |
+| G51 | Exceptions restantes dans le flux normal | CORE-02 est fourni pour le code neuf ; `UI/Core/Bounds.cpp`, `Graphics/Light.cpp`, `Graphics/ShaderProgram.cpp`, `Game.cpp` lancent encore (audit). | M2 (chaque module à sa migration) |
+| G52 | `ParseGraphicsLaunchOptions` | Analyse de la ligne de commande maison (`--api`, `--seed`, `--capture`...) ; `Config` (CORE-06) n'est pas encore branché sur la démo. | M2 |
+| G53 | Macros de chemins | `GET_RESOURCE_PATH`, `GetUserDataPath` : la démo n'utilise pas encore `Vfs` (`res://`, `user://`). | M2 |
+| G54 | GPU dans `TraceRecorder` | `addSample(..., TraceTrack::kGpu)` existe ; le branchement sur les minuteries du RHI (`GPUTimestampQuery`) se fait avec le RHI. Adaptateur Tracy non fait (export Chrome trace/Perfetto suffit). | M2 |
+| G55 | `FileWatcher` par interrogation | Portable et prouvé sur Linux ; Windows/macOS attendent la CI du push. Remplaçable par inotify/ReadDirectoryChangesW/FSEvents derrière la même interface si le coût de `poll()` gêne (gros dossiers). | M3 (shaders, thèmes) |
+| G56 | `TaskSystem` : file unique | Une file protégée par un verrou : suffisant (10 000 tâches en ~20 ms), vol de travail à ajouter si les mesures le demandent (génération de terrain par blocs). | M3 |
+| G57 | Allocateurs non utilisés | `ArenaAllocator` / `ObjectPool` sont testés mais pas encore employés par le moteur (première utilisation proposée en M5). | M5 |
+| G58 | Couverture de `core` | Pas de mesure de couverture (`gcov`) : TEST-01 reste `Partiel` ; 64 cas écrits pour `core` + 6 pour le logger. | M1 bis |
 
 ## Revue CodeRabbit de la PR #4 (2026-11-17) : constats reportés
 
