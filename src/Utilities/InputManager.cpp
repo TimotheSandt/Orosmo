@@ -132,10 +132,40 @@ void InputManager::AutoDetectKeyLayout()
             break;
     }
 #else
-    layout = KeyLayout::QWERTY;
+    // Linux, macOS : GLFW donne le caractère imprimé sur chaque touche physique d'après la disposition du système
+    // (XKB, Wayland ou X11 ; TIS sur macOS). C'est ce que la démo utilisait mal : QWERTY en dur donnait Z -> « w » sur AZERTY.
+    layout = DetectKeyLayoutFromKeyNames([](int key) { return glfwGetKeyName(key, 0); });
+    const char *name = layout == KeyLayout::AZERTY  ? "AZERTY"
+                       : layout == KeyLayout::QWERTZ ? "QWERTZ"
+                       : layout == KeyLayout::DVORAK ? "Dvorak"
+                                                     : "QWERTY";
+    LOG_INFO("Keyboard layout detected: ", name);
 #endif
 
     InputManager::SetKeyLayout(layout);
+}
+
+KeyLayout InputManager::DetectKeyLayoutFromKeyNames(const std::function<const char *(int)> &keyName)
+{
+    auto is = [&](int key, const char *expected) {
+        const char *name = keyName(key);
+        return name != nullptr && std::string(name) == expected;
+    };
+    // Les codes GLFW désignent la position US de la touche : en AZERTY la touche en position Q porte « a », en QWERTZ
+    // celle en position Y porte « z », en Dvorak celle en position Q porte « ' ».
+    if (is(GLFW_KEY_Q, "a") && is(GLFW_KEY_W, "z"))
+        return KeyLayout::AZERTY;
+    if (is(GLFW_KEY_Y, "z") && is(GLFW_KEY_Z, "y"))
+        return KeyLayout::QWERTZ;
+    if (is(GLFW_KEY_Q, "'") && is(GLFW_KEY_W, ","))
+        return KeyLayout::DVORAK;
+    return KeyLayout::QWERTY;
+}
+
+int InputManager::GetKeyCode(KeyButton key)
+{
+    auto it = keyMap.find(key);
+    return it == keyMap.end() ? GLFW_KEY_UNKNOWN : it->second;
 }
 
 #pragma region Key Layout Mapping
@@ -237,49 +267,49 @@ void InputManager::SetKeyLayout(KeyLayout layout)
 
 #pragma region DVORAK
         case KeyLayout::DVORAK:
-            // Disposition Dvorak complète
-            // Rangée supérieure: ',.PYFGCRL
-            keyMap[KeyButton::Q] = GLFW_KEY_APOSTROPHE; // Q logique -> ' physique
-            keyMap[KeyButton::W] = GLFW_KEY_COMMA;      // W logique -> , physique
-            keyMap[KeyButton::E] = GLFW_KEY_PERIOD;     // E logique -> . physique
-            keyMap[KeyButton::R] = GLFW_KEY_P;          // R logique -> P physique
-            keyMap[KeyButton::T] = GLFW_KEY_Y;          // T logique -> Y physique
-            keyMap[KeyButton::Y] = GLFW_KEY_F;          // Y logique -> F physique
-            keyMap[KeyButton::U] = GLFW_KEY_G;          // U logique -> G physique
-            keyMap[KeyButton::I] = GLFW_KEY_C;          // I logique -> C physique
-            keyMap[KeyButton::O] = GLFW_KEY_R;          // O logique -> R physique
-            keyMap[KeyButton::P] = GLFW_KEY_L;          // P logique -> L physique
+            // Disposition Dvorak (US). keyMap[touche logique] = touche PHYSIQUE (désignée par sa position US) qui porte
+            // cette lettre en Dvorak. Rangée du haut (positions Q W E R T Y U I O P) : ' , . p y f g c r l
+            keyMap[KeyButton::P] = GLFW_KEY_R;
+            keyMap[KeyButton::Y] = GLFW_KEY_T;
+            keyMap[KeyButton::F] = GLFW_KEY_Y;
+            keyMap[KeyButton::G] = GLFW_KEY_U;
+            keyMap[KeyButton::C] = GLFW_KEY_I;
+            keyMap[KeyButton::R] = GLFW_KEY_O;
+            keyMap[KeyButton::L] = GLFW_KEY_P;
 
-            // Rangée du milieu: AOEUIDHTNS
-            keyMap[KeyButton::A] = GLFW_KEY_A; // A reste A
-            keyMap[KeyButton::S] = GLFW_KEY_O; // S logique -> O physique
-            keyMap[KeyButton::D] = GLFW_KEY_E; // D logique -> E physique
-            keyMap[KeyButton::F] = GLFW_KEY_U; // F logique -> U physique
-            keyMap[KeyButton::G] = GLFW_KEY_I; // G logique -> I physique
-            keyMap[KeyButton::H] = GLFW_KEY_D; // H logique -> D physique
-            keyMap[KeyButton::J] = GLFW_KEY_H; // J logique -> H physique
-            keyMap[KeyButton::K] = GLFW_KEY_T; // K logique -> T physique
-            keyMap[KeyButton::L] = GLFW_KEY_N; // L logique -> N physique
+            // Rangée du milieu (positions A S D F G H J K L ;) : a o e u i d h t n s
+            keyMap[KeyButton::A] = GLFW_KEY_A;
+            keyMap[KeyButton::O] = GLFW_KEY_S;
+            keyMap[KeyButton::E] = GLFW_KEY_D;
+            keyMap[KeyButton::U] = GLFW_KEY_F;
+            keyMap[KeyButton::I] = GLFW_KEY_G;
+            keyMap[KeyButton::D] = GLFW_KEY_H;
+            keyMap[KeyButton::H] = GLFW_KEY_J;
+            keyMap[KeyButton::T] = GLFW_KEY_K;
+            keyMap[KeyButton::N] = GLFW_KEY_L;
+            keyMap[KeyButton::S] = GLFW_KEY_SEMICOLON;
 
-            // Rangée inférieure: ;QJKXBM
-            keyMap[KeyButton::Z] = GLFW_KEY_SEMICOLON; // Z logique -> ; physique
-            keyMap[KeyButton::X] = GLFW_KEY_Q;         // X logique -> Q physique
-            keyMap[KeyButton::C] = GLFW_KEY_J;         // C logique -> J physique
-            keyMap[KeyButton::V] = GLFW_KEY_K;         // V logique -> K physique
-            keyMap[KeyButton::B] = GLFW_KEY_X;         // B logique -> X physique
-            keyMap[KeyButton::N] = GLFW_KEY_B;         // N logique -> B physique
-            keyMap[KeyButton::M] = GLFW_KEY_M;         // M reste M
+            // Rangée du bas (positions Z X C V B N M , . /) : ; q j k x b m w v z
+            keyMap[KeyButton::Q] = GLFW_KEY_X;
+            keyMap[KeyButton::J] = GLFW_KEY_C;
+            keyMap[KeyButton::K] = GLFW_KEY_V;
+            keyMap[KeyButton::X] = GLFW_KEY_B;
+            keyMap[KeyButton::B] = GLFW_KEY_N;
+            keyMap[KeyButton::M] = GLFW_KEY_M;
+            keyMap[KeyButton::W] = GLFW_KEY_COMMA;
+            keyMap[KeyButton::V] = GLFW_KEY_PERIOD;
+            keyMap[KeyButton::Z] = GLFW_KEY_SLASH;
 
-            // Symboles Dvorak
-            keyMap[KeyButton::MINUS] = GLFW_KEY_LEFT_BRACKET;   // - logique -> [ physique
-            keyMap[KeyButton::EQUALS] = GLFW_KEY_RIGHT_BRACKET; // = logique -> ] physique
-            keyMap[KeyButton::LEFT_BRACKET] = GLFW_KEY_SLASH;   // [ logique -> / physique
-            keyMap[KeyButton::RIGHT_BRACKET] = GLFW_KEY_EQUAL;  // ] logique -> = physique
-            keyMap[KeyButton::SEMICOLON] = GLFW_KEY_S;          // ; logique -> S physique
-            keyMap[KeyButton::APOSTROPHE] = GLFW_KEY_MINUS;     // ' logique -> - physique
-            keyMap[KeyButton::COMMA] = GLFW_KEY_W;              // , logique -> W physique
-            keyMap[KeyButton::PERIOD] = GLFW_KEY_V;             // . logique -> V physique
-            keyMap[KeyButton::SLASH] = GLFW_KEY_Z;              // / logique -> Z physique
+            // Symboles Dvorak : ' , . sont sur la rangée du haut, ; en bas à gauche, [ ] / = autour de la touche -
+            keyMap[KeyButton::APOSTROPHE] = GLFW_KEY_Q;
+            keyMap[KeyButton::COMMA] = GLFW_KEY_W;
+            keyMap[KeyButton::PERIOD] = GLFW_KEY_E;
+            keyMap[KeyButton::SEMICOLON] = GLFW_KEY_Z;
+            keyMap[KeyButton::MINUS] = GLFW_KEY_APOSTROPHE;
+            keyMap[KeyButton::EQUALS] = GLFW_KEY_RIGHT_BRACKET;
+            keyMap[KeyButton::LEFT_BRACKET] = GLFW_KEY_MINUS;
+            keyMap[KeyButton::RIGHT_BRACKET] = GLFW_KEY_EQUAL;
+            keyMap[KeyButton::SLASH] = GLFW_KEY_LEFT_BRACKET;
             keyMap[KeyButton::BACKSLASH] = GLFW_KEY_BACKSLASH;  // Backslash remains Backslash
             break;
 #pragma endregion DVORAK
