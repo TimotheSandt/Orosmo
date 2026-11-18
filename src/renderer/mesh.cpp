@@ -115,7 +115,7 @@ core::Result<Mesh> Mesh::create(rhi::Device &device, const MeshData &data)
     }
     mesh.modelBuffer_ = std::move(*model);
     rhi::BindGroupDesc bg;
-    bg.entries = {{.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = mesh.modelBuffer_.handle(), .size = sizeof(glm::mat4)}};
+    bg.entries.push_back({.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = mesh.modelBuffer_.handle(), .size = sizeof(glm::mat4)});
     bg.debugName = data.name + ".modelGroup";
     auto group = device.createBindGroup(bg);
     if (!group)
