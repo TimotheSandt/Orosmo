@@ -3,6 +3,7 @@
 #include <doctest/doctest.h>
 
 #include "support/test_support.hpp"
+#include "renderer/repo_paths.hpp"
 #include "rhi/gpu_fixture.hpp"
 
 #include <engine/renderer/camera.hpp>
@@ -25,7 +26,7 @@ namespace
 {
 
 // Racine du dépôt déduite de ce fichier (les tests tournent depuis apps/demo : __FILE__ est relatif à ce dossier).
-fs::path repoRoot() { return fs::path(__FILE__).parent_path().parent_path().parent_path(); }
+fs::path repoRoot() { return tests::repoRoot(__FILE__); }
 fs::path shaderDir() { return repoRoot() / "shaders" / "rhi"; }
 
 struct Scene

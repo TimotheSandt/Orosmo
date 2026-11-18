@@ -4,6 +4,7 @@
 #include <doctest/doctest.h>
 
 #include "support/test_support.hpp"
+#include "renderer/repo_paths.hpp"
 
 #include <engine/renderer/image.hpp>
 #include <engine/renderer/light.hpp>
@@ -21,7 +22,7 @@ namespace rhi = engine::rhi;
 
 namespace
 {
-fs::path repoRoot() { return fs::path(__FILE__).parent_path().parent_path().parent_path(); }
+fs::path repoRoot() { return tests::repoRoot(__FILE__); }
 fs::path shaderDir() { return repoRoot() / "shaders" / "rhi"; }
 } // namespace
 
