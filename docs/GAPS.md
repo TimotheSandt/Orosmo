@@ -317,3 +317,12 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | G77 | Code hérité et nouveau code coexistent | `Buffer`, `Texture`, `RenderTarget`, `ShaderProgram`, `ShaderLibrary` (singleton), `Screenshot`, `GPUTimestampQuery` et `GraphicsRenderState` (G38 : `scissorBox` non restauré) restent en service jusqu'à la migration de leurs consommateurs ; ils sont supprimés en B6. Entre-temps le dépôt a deux couches de ressources (l'ancienne reste la seule branchée sur la démo). | B4, B5, B6 |
 | G78 | `GpuTimer` pas encore relié au `Profiler` | `IGpuTimerFactory` (A25) est toujours installée par l'ancien `BindGraphicsRuntime` ; la fabrique sur `engine::renderer::GpuTimer` vient avec le renderer. | B4 |
 | G79 | Façades limitées au 2D | `Texture` ne crée que des textures 2D et un échantillonneur par texture ; tableaux, cubes, 3D et partage d'échantillonneurs se font par le RHI directement. | M5 |
+
+## Ajouts de M2 lot B4 (G80 à G83)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G80 | `Camera::Inputs` pas porté | La nouvelle `Camera` ne lit ni clavier, ni souris, ni GLFW (couche `renderer`). Le pilotage (actions `Camera::MoveForward`, rotation à la souris, bascule fil de fer, curseur masqué) revient à l'application, branché sur `InputManager` / `platform` au moment de la bascule de la démo. | B6, C |
+| G81 | Constantes de shader brutes | L'ancien `Mesh::SetUniform*("nom", ...)` (uniformes libres par nom) devient des push constants : octets bruts (`Mesh::setPushConstants`), le premier entier étant le drapeau fil de fer. La réflexion ne donne pas encore les noms et décalages des membres du bloc : pas d'écriture par nom. | M3 (UI-12, paramètres réfléchis) |
+| G82 | Lumières ponctuelles et projecteurs non rendus | Types créables et envoyés au GPU, mais `mesh.frag` ne traite que l'ambiante et la directionnelle, comme l'ancien shader (REN-05 reste Partiel). | M5 |
+| G83 | Tests de scène dépendants du dossier courant | Les tests retrouvent `shaders/rhi/` et la référence par `__FILE__` : ils supposent le lancement depuis `apps/demo` (comme `make demo-test`). Les shaders ne sont pas encore copiés dans le paquet du moteur (SDK) : à faire à la bascule. | B6 |
