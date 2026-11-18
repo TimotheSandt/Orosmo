@@ -1,10 +1,17 @@
 # Graphics
 
-Rendu 2D/3D et couche d'abstraction graphique actuelle (OpenGL, Vulkan, Metal en squelette).
+Ce qui reste de l'ancienne couche graphique après M2 B6 : la **fenêtre** et le choix de l'API en ligne de commande. Tout le rendu est
+passé sur le RHI (`src/rhi/`, `include/engine/rhi/`) et la couche `engine::renderer` (`src/renderer/`).
 
-- **Rôle** : fenêtre (`Window`), caméra, maillages, textures, shaders (`ShaderProgram`, `ShaderLibrary`), cibles de rendu, rendus `Renderer2D`/`Renderer3D`, upscaling, et les backends (`Backends/OpenGL`, `Backends/Vulkan`, `Backends/Metal`).
-- **API publique** : `include/Graphics/` (`Core/` : `GraphicsBackend`, `GraphicsDevice`, `RenderState`, `WindowContext`…).
-- **Dépendances** : GLFW, glad, Vulkan, shaderc, stb, glm ; modules `Utilities`, `Profiler`, `UI` (voir l'avertissement).
-- **Couches (M1 bis)** : `tools/check_layers.py --strict` ne trouve plus aucune violation. `Window` (couche platform) n'inclut plus aucun en-tête du RHI : elle passe par `IWindowGraphicsBinding` (`include/Graphics/Presentation/WindowGraphicsBinding.h`), que `BindGraphicsRuntime` installe (`GraphicsWindowContext::RuntimeBinding()`, `src/Graphics/Core/WindowContext.cpp`). `Window` garde le binding avec lequel elle a été initialisée et s'en sert à `Close()`. Le binding reste installé après `ClearGraphicsRuntime`, mais il choisit son API d'après le runtime actif : **fermer la fenêtre avant `ClearGraphicsRuntime`**, sinon un contexte Vulkan ne serait pas libéré (comportement d'avant M1 bis, G65). De même, le `Profiler` n'inclut plus `Graphics` : il reçoit un fournisseur de minuteries GPU installé au même endroit. Tests : `tests/suites/window_graphics_binding_tests.cpp`, `profiler_gpu_timer_tests.cpp`.
-- Les appels `gl*`/`Vk*` sont tous sous `Backends/` à ce jour.
-- Détail des backends : [docs/GRAPHICS_BACKENDS.md](../../docs/GRAPHICS_BACKENDS.md).
+| Fichier | Rôle |
+| --- | --- |
+| `Window.cpp` / `include/Graphics/Window.h` | fenêtre GLFW : taille, plein écran, bordure, compteur d'images, entrées. **Ne connaît aucune API graphique** : `Init(beforeCreate)` appelle un rappel juste avant la création (l'application y pose `rhi::prepareWindowHints`), puis le périphérique RHI adopte la fenêtre (`SurfaceDesc::nativeWindow`) et la présente. Migrera en `platform::Window` au lot C |
+| `Backends/GraphicsAPI.cpp` / `include/Graphics/Backends/GraphicsAPI.h` | `--api`, `--list-apis`, `--choose-api`, `--capture`, `--seed` : analyse de la ligne de commande. OpenGL disponible ; Vulkan « pas avant M4 », Metal « pas avant M9 » (RHI-04) |
+
+- **Supprimé en B6** (historique git, étiquette `archive/pre-M2-B6-legacy-graphics`) : `IGraphicsDevice` et ses backends OpenGL, Vulkan et Metal,
+  `GraphicsRenderState`, `Buffer`, `Texture`, `RenderTarget`, `ShaderProgram`, `ShaderLibrary`, `Mesh`, `Sprite`, `Light`, `Camera`,
+  `Renderer`, `Renderer2D`, `Renderer3D`, les modes d'upscale, `Screenshot`, `GPUTimestampQuery`, les shaders d'origine. Leurs remplaçants :
+  voir `src/renderer/README.md` et `docs/RHI.md`.
+- **Dépendances** : GLFW, glm ; modules `Utilities`, `Profiler`.
+- **Isolation des API** : plus aucun `gl*`, `GL_*`, `Vk*`, `MTL*` hors de `src/rhi/` (`tools/check_api_isolation.py --graphics-only --strict`).
+  GLFW reste dans `Window`, `InputManager` et la démo jusqu'au lot C (baseline `tools/baseline/api_isolation.txt`).

@@ -497,3 +497,41 @@ TEST_SUITE("renderer/gpu_timer")
         gpu.expectNoValidationErrors();
     }
 }
+
+TEST_SUITE("renderer/gpu_timer/profiler")
+{
+    TEST_CASE("the Profiler timer provider writes into the current encoder and reports a GPU duration; without an encoder it measures nothing")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        rd::ProfilerGpuTimerFactory factory(*gpu.device);
+        auto idle = factory.CreateTimer("idle");
+        REQUIRE(idle != nullptr);
+        idle->Begin(); // aucun encodeur : sans effet
+        idle->End();
+        CHECK_FALSE(idle->IsReady());
+
+        const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {64, 64});
+        const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVs), gpu.shader(ShaderStage::kFragment, kRedFs));
+        auto timer = factory.CreateTimer("pass");
+        REQUIRE(timer != nullptr);
+        auto encoder = gpu->createCommandEncoder();
+        factory.setEncoder(encoder.get());
+        timer->Begin();
+        encoder->beginRenderPass(passOn(color));
+        encoder->setPipeline(pipe);
+        encoder->draw(3);
+        encoder->endRenderPass();
+        timer->End();
+        factory.setEncoder(nullptr);
+        REQUIRE(gpu->submit(std::move(encoder)).has_value());
+        for (int i = 0; i < 200 && !timer->IsReady(); ++i)
+        {
+            gpu->present();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        REQUIRE(timer->IsReady());
+        CHECK(timer->GetElapsedTime().count() >= 0);
+        gpu.expectNoValidationErrors();
+    }
+}

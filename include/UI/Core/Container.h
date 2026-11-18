@@ -1,7 +1,6 @@
 #pragma once
 #include <cstdint>
 #include "Component.h"
-#include "RenderTarget.h"
 #include "Utilities.h"
 
 namespace UI
@@ -41,8 +40,6 @@ class ContainerBase : public ComponentBase
   protected:
     std::vector<std::shared_ptr<ComponentBase>> children;
 
-    RenderTarget renderTarget;
-    bool fboInitialized = false;
     DeferredValue<bool> renderToTexture = false;
 
     glm::vec2 scrollOffset = {0, 0};
@@ -57,7 +54,6 @@ class ContainerBase : public ComponentBase
     void Initialize() override;
     void Update() override;
 
-    void Draw(glm::vec2 containerSize, glm::vec2 offset = {0, 0}) override;
     void Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset = {0, 0}) override;
 
     // Override MarkDirty - propagates upward, not downward
@@ -112,16 +108,11 @@ class ContainerBase : public ComponentBase
     DeferredValue<float> spacing = 0.0f;
 
   protected:
-    void RefreshSpriteShader();
-    void InitializeRenderTarget();
     virtual void RecalculateChildBounds();
-
-    void RenderChildren();
 
     void UpdateTheme() override;
 
     // Clear a specific zone in the render target
-    void ClearZone(glm::vec4 bounds);
 };
 
 // Chainable Container Wrapper

@@ -78,7 +78,7 @@ ifeq ($(ENGINE_OS),Windows)
     ENGINE_PLATFORM_DEFS := -DNOMINMAX -DWIN32_LEAN_AND_MEAN
     _ENG_VCPKG_LIBS      := -lglfw3 -lglad -lmsdfgen-core -lfreetype \
                             -lpng16 -lzs -lbz2 -lbrotlidec -lbrotlienc -lbrotlicommon \
-                            -lvulkan-1 -lshaderc -lshaderc_util -lglslang \
+                            -lshaderc -lshaderc_util -lglslang \
                             -lMachineIndependent -lGenericCodeGen -lOSDependent \
                             -lspirv-cross-reflect -lspirv-cross-glsl -lspirv-cross-core \
                             -lSPIRV -lSPIRV-Tools-opt -lSPIRV-Tools \
@@ -100,7 +100,7 @@ else ifeq ($(ENGINE_OS),Linux)
     # <stacktrace> : GCC 13 -> -lstdc++_libbacktrace, GCC 14+ -> -lstdc++exp
     _ENG_GCC_MAJOR       := $(shell $(CXX) -dumpversion 2>/dev/null | cut -d. -f1)
     _ENG_STACKTRACE_LIB  := $(if $(filter 13,$(_ENG_GCC_MAJOR)),-lstdc++_libbacktrace,-lstdc++exp)
-    _ENG_VCPKG_LIBS      := -lglfw -lglad -lGL -lvulkan -lmsdfgen-core $(_ENG_STACKTRACE_LIB) \
+    _ENG_VCPKG_LIBS      := -lglfw -lglad -lGL -lmsdfgen-core $(_ENG_STACKTRACE_LIB) \
                             -lfreetype -lpng16 -lz -lbz2 -lbrotlidec -lbrotlicommon \
                             -lshaderc -lshaderc_util -lglslang \
                             -lspirv-cross-reflect -lspirv-cross-glsl -lspirv-cross-core \
@@ -125,7 +125,6 @@ else # Darwin
                             -lshaderc -lshaderc_util -lglslang \
                             -lspirv-cross-reflect -lspirv-cross-glsl -lspirv-cross-core \
                             -lSPIRV-Tools-opt -lSPIRV-Tools -lSPIRV \
-                            -lvulkan \
                             -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo \
                             -framework QuartzCore -framework Metal -framework CoreFoundation
     _ENG_LD_START        :=

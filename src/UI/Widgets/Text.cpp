@@ -28,35 +28,6 @@ void TextWidgetBase::Update()
     ComponentBase::Update();
 }
 
-void TextWidgetBase::Draw(glm::vec2 containerSize, glm::vec2 offset)
-{
-    if (!visible.Get())
-    {
-        return;
-    }
-
-    ApplyAutoSize();
-
-    std::shared_ptr<TextRenderer> textRenderer = GetTextRenderer();
-    if (textRenderer == nullptr)
-    {
-        return;
-    }
-
-    if (containerSize.x <= 0.0f || containerSize.y <= 0.0f)
-    {
-        return;
-    }
-
-    textRenderer->updateScreenSize(static_cast<unsigned int>(containerSize.x), static_cast<unsigned int>(containerSize.y));
-
-    const glm::vec2 drawPosition = ResolveDrawPosition(offset);
-    const glm::vec3 textColor = glm::vec3(GetColor());
-    textRenderer->renderText(displayedText, drawPosition.x, drawPosition.y, textScale, textColor, textAnchor);
-
-    ClearDirty();
-}
-
 void TextWidgetBase::Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset)
 {
     if (!visible.Get())
@@ -226,11 +197,6 @@ void Text::Update()
 {
     SyncDisplayText();
     TextWidgetBase::Update();
-}
-
-void Text::Draw(glm::vec2 containerSize, glm::vec2 offset)
-{
-    TextWidgetBase::Draw(containerSize, offset);
 }
 
 void Text::Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset)

@@ -1,7 +1,7 @@
 #include "support/test_support.hpp"
 
 #include "Graphics/Backends/GraphicsAPI.h"
-#include "Graphics/Core/GraphicsBackend.h"
+#include <engine/rhi/device.hpp>
 
 #include <sstream>
 #include <stdexcept>
@@ -188,11 +188,14 @@ Assert(!ParseGraphicsAPI("directx").has_value(), "Unknown API should be rejected
         Assert(!GetGraphicsAPIAvailabilityMessage(GraphicsAPI::Metal).empty(), "Metal availability message should be present");
     }
 
-    TEST_CASE("backend factory returns matching api")
+    TEST_CASE("the selectable APIs match the backends compiled into the RHI (RHI-04)")
     {
-        const std::unique_ptr<IGraphicsBackend> backend = CreateGraphicsBackend({GraphicsAPI::OpenGL});
-        AssertEqual(backend->GetAPI(), GraphicsAPI::OpenGL, "Factory should return a backend matching the requested API");
-        Assert(backend->IsAvailable(), "OpenGL backend returned by the factory should be available");
+        Assert(engine::rhi::isBackendCompiled(engine::rhi::Backend::kOpenGL), "the OpenGL backend is compiled");
+        Assert(!engine::rhi::isBackendCompiled(engine::rhi::Backend::kVulkan), "the Vulkan backend comes back in M4");
+        AssertEqual(IsGraphicsAPIAvailable(GraphicsAPI::OpenGL), engine::rhi::isBackendCompiled(engine::rhi::Backend::kOpenGL),
+                    "OpenGL availability should follow the RHI");
+        AssertEqual(IsGraphicsAPIAvailable(GraphicsAPI::Vulkan), engine::rhi::isBackendCompiled(engine::rhi::Backend::kVulkan),
+                    "Vulkan availability should follow the RHI");
     }
 }
 
