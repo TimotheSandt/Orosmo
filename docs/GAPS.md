@@ -191,8 +191,8 @@ Issues de M00 (G1 à G15, conservées) et de l'audit.
 | G9 | Tests | Framework maison, pas de CI de tests, pas d'ASan/UBSan, release seulement. | M0 |
 | G10 | Licence | Aucun `LICENSE` (Apache-2.0 probable) ; licence de Roboto à documenter. | Décision de l'auteur |
 | G11 | Référence visuelle | Pas de capture de référence ; parité Vulkan/OpenGL non mesurée. | M0 / M2 |
-| G12 | Casse `utilities.h` / `Utilities.cpp` | Incohérence interne. | M1 |
-| G13 | `Graphics/Backend/` (singulier) vs `Backends/` | Non renommé : changerait des `#include`. | M2 |
+| G12 | Casse `utilities.h` / `Utilities.cpp` | **Traité en M1 bis** : `include/Utilities/Utilities.h` (`git mv` + `#include` mis à jour ; 224 tests verts). | — |
+| G13 | `Graphics/Backend/` (singulier) vs `Backends/` | **Traité en M1 bis** : `GraphicsAPI.h` déplacé dans `include/Graphics/Backends/`, la règle de couche `Backend/*` est supprimée. | — |
 | G14 | Espaces en fin de ligne | 3 fichiers. | M0 (formatage) |
 | G15 | Installeurs dans `apps/demo/installers/` | Le plan prévoyait `tools/installers/`. | M0 |
 | G16 | Capacités Vulkan annoncées à tort | RHI-18. | M2 |
@@ -237,7 +237,7 @@ Issues de M00 (G1 à G15, conservées) et de l'audit.
 | G56 | `TaskSystem` : file unique, pas de suspension de tâche | Une file protégée par un verrou : suffisant (10 000 tâches en ~20 ms), vol de travail à ajouter si les mesures le demandent (génération de terrain par blocs). **Limite connue** (revue CodeRabbit PR #5) : `wait()` exécute d'abord la tâche attendue si elle est prête (cas « A soumet C puis attend C » corrigé), mais une tâche prête exécutée « par aide » est empilée sur l'appelant ; si elle attend elle-même cet appelant et que la tâche attendue n'est pas prête, le pool peut se bloquer. Une vraie solution suspend les tâches (coroutines ou fibres) : à décider avec le moteur de tâches du terrain. | M3 |
 | G57 | Allocateurs non utilisés | `ArenaAllocator` / `ObjectPool` sont testés mais pas encore employés par le moteur (première utilisation proposée en M5). | M5 |
 | G58 | Couverture de `core` | Pas de mesure de couverture (`gcov`) : TEST-01 reste `Partiel` ; 83 cas écrits pour `core` + 6 pour le logger. | M1 bis |
-| G59 | `core` appelle le système directement | Revue CodeRabbit PR #5 : `Vfs::defaultUserDirectory` lit `APPDATA`/`HOME`/`XDG_DATA_HOME` (`std::getenv`), `FileWatcher` et `TraceRecorder` utilisent `std::filesystem` sans passer par `platform` (`docs/03` §6). `src/platform` n'existe pas encore : l'interface (chemins, dossiers utilisateur, fichiers) est créée avec la couche plateforme. | M1 bis (interface `platform`) puis M2 |
+| G59 | `core` appelle le système directement | **Traité en M1 bis pour `<windows.h>` et l'environnement** : `Logger`, `Utilities`, `FPSCounter` et `Vfs` passent par `include/engine/core/system.hpp`, défini dans `src/platform/system.cpp` (`getenv` et `<windows.h>` ne sont plus dans `core`). **Reste** : `std::filesystem` (bibliothèque standard, portable) dans `Vfs`, `FileWatcher`, `Config` et `TraceRecorder` ; décision à valider, voir `QUESTIONS.md` A24. | M2 (si A24 demande de l'envelopper) |
 | G60 | Remarques CodeRabbit de PR #5 non suivies | **`SteadyClock` dans `time_tests`** : un seul cas vérifie que l'horloge réelle est monotone (preuve de CORE-03) ; les autres cas utilisent `ManualClock`. **Test multithread de `trace`** : il utilise l'horloge réelle exprès (concurrence). **`EventBus::publish` et `typeid`** : RTTI conservé, un identifiant de type maison ne se justifie pas avant une mesure. **Démarrage partiel du pool de threads** : la correction (arrêt et jonction des workers lancés) n'est pas testable sans échec de création de thread. **Nettoyage des objets release avant ASan/UBSan** : déjà documenté (`make fclean` avant `SANITIZE=`), pas d'automatisme ajouté. | Aucun |
 
 
@@ -278,3 +278,11 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | M10 | EXT-01 |
 | Après M10 | ANIM-05, ANIM-06, ASSET-06, EXT-02, EXT-04, EXT-05, PLAT-03, R2D-07, REN-09, REN-12, REN-15, REN-16, REN-20, REN-40, RHI-19, SIM-03, TER-14 |
 | Continu | GIT-01 |
+
+## Ajouts de M1 bis (G61 à G63)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G61 | Code Windows/macOS de `system.cpp` non compilé | `terminalWidth`, `executablePath`, `userDataDirectory` (`SHGetFolderPathA`), `preciseSleep` (Sleep + QueryPerformanceCounter) et `begin/endHighResolutionTimer` (`timeBeginPeriod`) ont été **déplacés tels quels** depuis `Logger`, `Utilities` et `FPSCounter`, mais seule la branche Linux a été compilée et testée ici. `tests/platform/system_tests.cpp` s'exécutera sur Windows et macOS à la CI. Windows lit désormais le dossier de données par `SHGetFolderPathA` (comme `GetUserDataPath`) au lieu de `%APPDATA%` dans `Vfs` : même dossier en pratique. | CI du push |
+| G62 | `XDG_DATA_HOME` vide | Avant : traité comme un dossier valide (`GetUserDataPath` créait `ProceduralGeneration/` dans le dossier courant). Maintenant : comme non défini (spécification XDG), on retombe sur `~/.local/share`. Seul changement de comportement de M1 bis, voulu. | — |
+| G63 | Isolation des API : 11 fichiers restent en infraction | `GLFW` dans `Window`, `InputManager`, `Camera`, `RenderState`, `WindowContext` et leurs en-têtes ; `<windows.h>` dans `Window.cpp` (barre des tâches) et `InputManager.cpp`. Ces fichiers sont dans la couche `platform` ou `rhi` mais pas encore dans `src/platform/` ni `src/rhi/` : la migration se fait en M2 (baseline `tools/baseline/api_isolation.txt`, 13 → 11). | M2 |
