@@ -1,6 +1,7 @@
 #include "Logger.h"
 
-#include "utilities.h"
+#include "Utilities.h"
+#include <engine/core/system.hpp>
 
 #include <iostream>
 #include <iomanip>
@@ -9,11 +10,9 @@
 #include <algorithm>
 
 #ifdef _WIN32
-#include <windows.h>
 #include <io.h>
 #include <process.h>
 #else
-#include <sys/ioctl.h>
 #include <unistd.h>
 #endif
 
@@ -213,27 +212,7 @@ void Logger::FlushToFile() noexcept
     }
 }
 
-size_t getTerminalWidth()
-{
-#ifdef _WIN32
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    int columns;
-
-    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi))
-    {
-        columns = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-        return columns > 0 ? columns : 80;
-    }
-    return 80; // Défaut si échec
-#else
-    struct winsize w;
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0 && w.ws_col > 0)
-    {
-        return w.ws_col;
-    }
-    return 80; // Défaut si échec
-#endif
-}
+size_t getTerminalWidth() { return engine::core::system::terminalWidth(); } // OS : src/platform/system.cpp
 
 size_t Logger::CalculateLogLength(const LogMessage &log)
 {

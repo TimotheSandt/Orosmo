@@ -2,7 +2,7 @@
 #include <cstdint>
 #include "Component.h"
 #include "RenderTarget.h"
-#include "utilities.h"
+#include "Utilities.h"
 
 namespace UI
 {

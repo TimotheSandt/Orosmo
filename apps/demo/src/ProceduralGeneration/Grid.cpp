@@ -1,6 +1,6 @@
 #include "Grid.h"
 
-#include "utilities.h"
+#include "Utilities.h"
 
 namespace
 {

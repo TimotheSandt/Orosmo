@@ -24,13 +24,15 @@ jobs:
   # ── Plan: do not repeat a run that already exists ────────────────────────────────────────────────
   # A pull request run is skipped when (1) the PR comes from this repository, (2) the target branch is already contained
   # in the PR head (so the merge commit that pull_request tests has the same content as the head) and (3) a push run of
-  # this workflow for the head commit has already FINISHED SUCCESSFULLY. A running, failed, cancelled or skipped push run
-  # does not count: GitHub shows a job skipped by a condition as green, so skipping on anything but a known success
-  # would hide a failure (or a result that does not exist yet) behind a green PR check.
-  # Otherwise (fork, diverged main, no successful push run yet) the PR gets its own run.
+  # this workflow for the head commit FINISHED SUCCESSFULLY. A push run that is still queued or running is WAITED for (up to
+  # 45 minutes), because opening the PR right after the push is the normal case: GitHub shows a job skipped by a condition as
+  # green, so skipping before the result exists (or after a failure) would hide it behind a green PR check, and not waiting
+  # would run everything twice. A failed, cancelled or missing push run does not count: the PR then gets its own run.
+  # Otherwise (fork, diverged main) the PR gets its own run.
   plan:
     name: Plan (skip a run that already exists)
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     permissions:
       contents: read
       actions: read
@@ -52,10 +54,16 @@ jobs:
           skip=false
           if [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] \
              && git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"; then
-            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&event=push" \
-              --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | length')
-            echo "successful push runs for $HEAD_SHA: $runs"
-            [ "${runs:-0}" -gt 0 ] && skip=true
+            deadline=$((SECONDS + 2700))
+            while true; do
+              json=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&event=push")
+              ok=$(echo "$json" | jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | length')
+              pending=$(echo "$json" | jq '[.workflow_runs[] | select(.status != "completed")] | length')
+              echo "push runs for $HEAD_SHA: $ok succeeded, $pending not finished"
+              if [ "${ok:-0}" -gt 0 ]; then skip=true; break; fi
+              if [ "${pending:-0}" -eq 0 ] || [ "$SECONDS" -ge "$deadline" ]; then break; fi
+              sleep 30
+            done
           fi
           echo "skip=$skip" >> "$GITHUB_OUTPUT"
           echo "skip=$skip"
@@ -69,7 +77,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # branch stable, pinned: the branch moves
+        with:
+          toolchain: stable
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -124,9 +134,9 @@ jobs:
       - name: Repository checks
         run: |
           sh tools/check-repo.sh
-          python3 tools/check_layers.py --baseline tools/baseline/layers.txt
+          python3 tools/check_layers.py --strict
           python3 tools/check_api_isolation.py --baseline tools/baseline/api_isolation.txt
-          python3 tools/check_headers.py
+          python3 tools/check_headers.py --strict
 
       - name: Build (debug, -Werror)
         run: make -j"$(nproc)" all-debug
@@ -156,6 +166,77 @@ jobs:
           path: ci-capture/*.png
           retention-days: 7
 
+  # ── Linux arm64 (ubuntu-24.04-arm) ────────────────────────────────────────────────────────
+  # `continue-on-error` and WERROR=0 until the first green run, like Windows and macOS: nothing here had ever run on arm64.
+  # vcpkg has no prebuilt tools for arm64 Linux: VCPKG_FORCE_SYSTEM_BINARIES=1 makes it use the system cmake and ninja.
+  linux-arm64:
+    name: Linux arm64 (build, tests)
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04-arm
+    continue-on-error: true
+    env:
+      VCPKG_FORCE_SYSTEM_BINARIES: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # branch stable, pinned: the branch moves
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/cargo-tools
+          key: cargo-linux-arm64-${{ hashFiles('tools/Cargo.lock') }}
+          restore-keys: cargo-linux-arm64-
+
+      - name: Install system packages (apt)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build python3 pkg-config curl zip unzip tar git \
+            autoconf autoconf-archive automake libtool \
+            libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
+            libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+
+      - name: Bootstrap vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Restore vcpkg archives
+        uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-linux-arm64-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: vcpkg-archives-linux-arm64-${{ hashFiles('vcpkg.json') }}-
+
+      - name: Install glad, msdfgen and nlohmann-json (vcpkg, vcpkg.json)
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          "$VCPKG_ROOT/vcpkg" install --triplet=arm64-linux
+
+      - name: Save vcpkg archives
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-linux-arm64-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+
+      - name: Link dependencies (apt + vcpkg)
+        run: TRIPLET=arm64-linux sh tools/setup-linux-deps.sh
+
+      - name: Build (debug)
+        run: make -j"$(nproc)" all-debug WERROR=0
+
+      - name: Tests
+        run: make demo-test WERROR=0
+
   # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
   sanitizers:
     name: Linux x64 (ASan + UBSan tests)
@@ -164,7 +245,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # branch stable, pinned: the branch moves
+        with:
+          toolchain: stable
       - name: Install system packages (apt)
         run: |
           sudo apt-get update -qq
@@ -224,7 +307,9 @@ jobs:
             triplet: arm64-osx
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # branch stable, pinned: the branch moves
+        with:
+          toolchain: stable
 
       - name: Setup MSYS2
         if: runner.os == 'Windows'

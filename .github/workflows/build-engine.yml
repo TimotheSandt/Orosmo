@@ -1,10 +1,22 @@
 name: Build & Release Engine
 
+# Tags v* publish a release. A push to main builds the same four packages WITHOUT publishing (the release job needs a tag):
+# it proves the release build before anyone tags, and it fills the vcpkg cache of main, which is the only branch a tag run can
+# read caches from (caches made on dev or in pull requests are invisible to a tag).
 on:
   push:
     tags:
       - "v*"
+    branches: [main]
   workflow_dispatch:
+
+# Least privilege: the build jobs only read the repository; the release job asks for contents: write itself.
+permissions:
+  contents: read
+
+env:
+  # Same binary cache directory and keys as ci.yml: both workflows read and write the same vcpkg archives.
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-archives
 
 jobs:
   build:
@@ -12,29 +24,40 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+            platform: linux-arm64
+            triplet: arm64-linux
+            cache_id: linux-arm64
+            exe_ext: ""
+
           - name: Windows x64
             os: windows-latest
             platform: windows-x64
             triplet: x64-mingw-static
+            cache_id: x64-mingw-static   # same value as the triplet in ci.yml
             msystem: MINGW64
             exe_ext: .exe
 
           - name: Linux x64
-            os: ubuntu-latest
+            os: ubuntu-24.04   # same image as ci.yml (the apt package set below is the one CI proves)
             platform: linux-x64
             triplet: x64-linux
+            cache_id: linux              # ci.yml names its Linux archive cache "linux"
             exe_ext: ""
 
           - name: macOS arm64
             os: macos-latest
             platform: macos-arm64
             triplet: arm64-osx
+            cache_id: arm64-osx
             exe_ext: ""
 
           - name: macOS x64
             os: macos-15-intel
             platform: macos-x64
             triplet: x64-osx
+            cache_id: x64-osx
             exe_ext: ""
 
     runs-on: ${{ matrix.os }}
@@ -45,7 +68,9 @@ jobs:
 
       # ── Rust toolchain ─────────────────────────────────────────────────────────
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # branch stable, pinned: the branch moves
+        with:
+          toolchain: stable
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -76,20 +101,28 @@ jobs:
             tar
 
       # ── Linux: system packages ─────────────────────────────────────────────────
+      # On Linux vcpkg.json only provides glad, msdfgen and nlohmann-json: glfw, glm, stb, shaderc, freetype, vulkan and
+      # doctest come from apt (same list as ci.yml, minus the test-only packages xvfb / mesa drivers / validation layers).
       - name: Setup Linux tools
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            build-essential curl zip unzip tar git \
-            pkg-config cmake ninja-build \
-            libgl1-mesa-dev libx11-dev libxrandr-dev \
-            libxinerama-dev libxcursor-dev libxi-dev
+            build-essential cmake ninja-build python3 pkg-config curl zip unzip tar git \
+            autoconf autoconf-archive automake libtool \
+            libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
+            libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
 
       # ── macOS: ensure tools ────────────────────────────────────────────────────
       - name: Setup macOS tools
         if: runner.os == 'macOS'
         run: brew install ninja cmake zip
+
+      # vcpkg has no prebuilt tools for arm64 Linux: use the system cmake and ninja installed above.
+      - name: vcpkg on arm64 Linux
+        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+        run: echo "VCPKG_FORCE_SYSTEM_BINARIES=1" >> "$GITHUB_ENV"
 
       # ── vcpkg bootstrap ────────────────────────────────────────────────────────
       - name: Bootstrap vcpkg (Unix)
@@ -107,19 +140,22 @@ jobs:
           /tmp/vcpkg/bootstrap-vcpkg.sh -disableMetrics
           echo "VCPKG_ROOT=/tmp/vcpkg" >> $GITHUB_ENV
 
-      # ── vcpkg cache ────────────────────────────────────────────────────────────
-      - name: Cache vcpkg packages
-        uses: actions/cache@v4
-        id: vcpkg-cache
+      # ── vcpkg cache (shared with ci.yml) ───────────────────────────────────────
+      # vcpkg stores each built package as an archive in the binary cache; restoring that directory makes the install take
+      # seconds instead of 10-20 minutes. The key ends with the run id so a new entry is saved every run (an existing cache
+      # is immutable); restore-keys finds the newest one.
+      - name: Restore vcpkg archives
+        uses: actions/cache/restore@v4
         with:
-          path: vcpkg_installed
-          key: vcpkg-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-${{ matrix.triplet }}-
+          path: .vcpkg-archives
+          key: vcpkg-archives-${{ matrix.cache_id }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: vcpkg-archives-${{ matrix.cache_id }}-${{ hashFiles('vcpkg.json') }}-
 
       # ── Install vcpkg dependencies ─────────────────────────────────────────────
       - name: Install vcpkg dependencies (Unix)
-        if: runner.os != 'Windows' && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        if: runner.os != 'Windows'
         run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           $VCPKG_ROOT/vcpkg install \
             --triplet=${{ matrix.triplet }} \
             --x-manifest-root=. \
@@ -127,14 +163,29 @@ jobs:
             --no-print-usage
 
       - name: Install vcpkg dependencies (Windows)
-        if: runner.os == 'Windows' && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           $VCPKG_ROOT/vcpkg install \
             --triplet=${{ matrix.triplet }} \
             --x-manifest-root=. \
             --x-install-root=./vcpkg_installed \
             --no-print-usage
+
+      - name: Save vcpkg archives
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-${{ matrix.cache_id }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+
+      # ── Link the apt packages into vcpkg_installed/ (Linux) ────────────────────────────────────
+      # `make -f mk/engine.mk` bypasses the root Makefile, which is what normally runs this script; without it
+      # stb_image.h and ft2build.h are not found (reproduced from a clean clone). Idempotent, so it also runs on a cache hit.
+      - name: Link apt packages (Linux)
+        if: runner.os == 'Linux'
+        run: TRIPLET=${{ matrix.triplet }} sh tools/setup-linux-deps.sh
 
       # ── Build dist package + engine tool ───────────────────────────────────────
       # 'engine-tool' builds debug+release archives, packages the dist/ into a zip,
@@ -142,7 +193,9 @@ jobs:
       - name: Build engine tool (Unix)
         if: runner.os != 'Windows'
         run: |
+          # -Werror is proven on Linux x64 only (ci.yml builds the other platforms with WERROR=0 for the same reason).
           make -f mk/engine.mk engine-tool \
+            WERROR=${{ matrix.platform == 'linux-x64' && '1' || '0' }} \
             VCPKG_TRIPLET=${{ matrix.triplet }} \
             VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
@@ -151,6 +204,7 @@ jobs:
         shell: msys2 {0}
         run: |
           mingw32-make -f mk/engine.mk engine-tool \
+            WERROR=0 \
             VCPKG_TRIPLET=${{ matrix.triplet }} \
             VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
@@ -177,6 +231,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A release is cut from main (docs/06): refuse a tag that points at a commit main does not contain.
+      - name: Check that the tag is on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::tag $GITHUB_REF_NAME ($GITHUB_SHA) is not contained in origin/main: merge the pull request first, then tag main"
+            exit 1
+          fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -197,6 +262,7 @@ jobs:
             |---|---|---|
             | Windows x64 (MinGW) | `engine-windows-x64.exe` | `engine-pkg-windows-x64.zip` |
             | Linux x64           | `engine-linux-x64`       | `engine-pkg-linux-x64.zip`   |
+            | Linux arm64         | `engine-linux-arm64`     | `engine-pkg-linux-arm64.zip` |
             | macOS arm64 (M1+)   | `engine-macos-arm64`     | `engine-pkg-macos-arm64.zip` |
             | macOS x64 (Intel)   | `engine-macos-x64`       | `engine-pkg-macos-x64.zip`   |
 

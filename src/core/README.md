@@ -2,7 +2,8 @@
 
 Couche 0 de `docs/03` : ne dépend d'aucun autre module du moteur (bibliothèque standard, `glm`, `nlohmann-json`, et le
 logger existant `Utilities/Logger.h`). Code neuf dans `include/engine/core/*.hpp`, `namespace engine::core`, `camelCase` /
-`kPascalCase` ; le code hérité (`Logger`, `Profiler`, `Utilities`) migre en M1 bis. Archive : `libcore.a`.
+`kPascalCase` ; le code hérité (`Logger`, `Profiler`, `Utilities`) garde ses noms et migre plus tard, mais n'appelle plus le
+système directement depuis M1 bis (voir `system.hpp`). Archive : `libcore.a`.
 
 | Fichier | ID | Rôle |
 | --- | --- | --- |
@@ -18,6 +19,7 @@ logger existant `Utilities/Logger.h`). Code neuf dans `include/engine/core/*.hpp
 | `vfs.hpp` | CORE-11 | `Vfs` : `res://`, `user://`, montages superposés, `..` refusé |
 | `reflection.hpp`, `serialization.hpp` | CORE-12 | `Reflect<T>` + `field(...)`, JSON et MessagePack, documents versionnés + migrations |
 | `file_watcher.hpp` | CORE-13 | `FileWatcher` par interrogation (fichier ou dossier récursif) |
+| `system.hpp` | M1 bis | Services du système (largeur de console, chemin de l'exécutable, dossier de données, attente précise) : **déclarés ici, définis par `platform`** (`src/platform/system.cpp`). `core` n'inclut aucun en-tête système |
 
 ## Règles d'usage
 
@@ -26,7 +28,7 @@ logger existant `Utilities/Logger.h`). Code neuf dans `include/engine/core/*.hpp
 - **Positions** : `WorldPosition` (double) ne se convertit pas implicitement en `Vec3` ; passer par `toLocal(position, origine)`.
 - **Réflexion** : décrire une structure une fois (`Reflect<T>::fields()`), la sérialisation et l'interface automatique (UI-12) en dérivent. Champ absent à la lecture : valeur par défaut gardée ; champ inconnu : ignoré ; type erroné ou hors plage : `Error` qui nomme le champ (`layers[0].weight`).
 - **Fils d'exécution** : `TaskSystem`, `ResourceCache`, `TraceRecorder`, `Logger` sont thread-safe ; `EventBus`, `Config`, `Vfs`, `FileWatcher`, `ArenaAllocator`, `ObjectPool` ne le sont pas (un propriétaire, ou verrou extérieur).
-- **Aucun appel graphique** dans ce module (règle 4).
+- **Aucun appel graphique** dans ce module (règle 4), ni `<windows.h>` / `getenv` : les services du système passent par `system.hpp`. `std::filesystem` (bibliothèque standard, portable) reste utilisé par `Vfs`, `FileWatcher`, `Config` et `TraceRecorder` (`docs/QUESTIONS.md`, A24).
 
 ## Tests et démo
 

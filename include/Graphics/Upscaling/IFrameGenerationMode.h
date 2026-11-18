@@ -3,6 +3,7 @@
 #include "Graphics/Upscaling/UpscaleTypes.h"
 
 class IGraphicsDevice;
+struct GraphicsCapabilities; // utilisée par référence seulement : la déclaration suffit, l'en-tête se compile seul
 
 class IFrameGenerationMode
 {

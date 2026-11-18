@@ -10,7 +10,7 @@ Mis à jour à la fin de M1 (2026-11-17). États détaillés et preuves de l'aud
 | Audit | Fait | `docs/AUDIT_REPORT.md` (152 identifiants, preuve par ligne), `PORTABILITY_REPORT.md`, `UI_LANGUAGE_AUDIT.md` (compilateur exécuté sur 5 entrées) |
 | **M0 Audit et base solide** | **Livré côté code ; CI jamais observée sur GitHub** | `docs/releases/M0.md` : clone propre de `dev`, build sans avertissement, 118 cas doctest verts, ASan+UBSan propres, contrôles, capture identique à la référence |
 | **M1 Noyau** | **Livré côté code ; CI Windows/macOS à observer au push** | `docs/releases/M1.md` : module `core` (13 fichiers), 208 cas doctest verts (90 de plus qu'en M0), ASan+UBSan propres (208 cas), capture identique à la référence (écart max 0/255), `make core-demo` |
-| M1 bis Remise en ordre des couches | À faire (après le feu vert) | |
+| **M1 bis Remise en ordre des couches** | **Livré côté code ; Windows/macOS à observer à la CI** | `docs/releases/M1bis.md` : `check_layers.py --strict` : 0 violation (5 avant), `check_headers.py --strict` : 0 (1 avant), `<windows.h>` et `getenv` hors de `core`, G12 et G13 traités, 224 cas doctest verts (10 de plus qu'en M1), ASan+UBSan propres, capture identique à la référence (écart max 0/255) |
 
 ## Identifiants de `docs/02` touchés par M1
 

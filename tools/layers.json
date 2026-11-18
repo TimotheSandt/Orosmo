@@ -7,6 +7,8 @@
   "rules": [
     ["include/engine/core/*", "core"],
     ["src/core/*", "core"],
+    ["include/engine/platform/*", "platform"],
+    ["src/platform/*", "platform"],
     ["include/Utilities/InputManager.h", "platform"],
     ["src/Utilities/InputManager.cpp", "platform"],
     ["include/Utilities/*", "core"],
@@ -23,7 +25,6 @@
     ["src/Graphics/Presentation/*", "platform"],
     ["include/Graphics/Backends/*", "rhi"],
     ["src/Graphics/Backends/*", "rhi"],
-    ["include/Graphics/Backend/*", "rhi"],
     ["include/Graphics/Core/*", "rhi"],
     ["src/Graphics/Core/*", "rhi"],
     ["include/Graphics/Buffer.h", "rhi"],

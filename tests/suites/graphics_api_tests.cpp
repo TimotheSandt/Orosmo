@@ -1,6 +1,6 @@
 #include "support/test_support.hpp"
 
-#include "Graphics/Backend/GraphicsAPI.h"
+#include "Graphics/Backends/GraphicsAPI.h"
 #include "Graphics/Core/GraphicsBackend.h"
 
 #include <sstream>
