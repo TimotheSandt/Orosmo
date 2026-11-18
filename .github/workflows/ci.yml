@@ -24,13 +24,15 @@ jobs:
   # ── Plan: do not repeat a run that already exists ────────────────────────────────────────────────
   # A pull request run is skipped when (1) the PR comes from this repository, (2) the target branch is already contained
   # in the PR head (so the merge commit that pull_request tests has the same content as the head) and (3) a push run of
-  # this workflow for the head commit has already FINISHED SUCCESSFULLY. A running, failed, cancelled or skipped push run
-  # does not count: GitHub shows a job skipped by a condition as green, so skipping on anything but a known success
-  # would hide a failure (or a result that does not exist yet) behind a green PR check.
-  # Otherwise (fork, diverged main, no successful push run yet) the PR gets its own run.
+  # this workflow for the head commit FINISHED SUCCESSFULLY. A push run that is still queued or running is WAITED for (up to
+  # 45 minutes), because opening the PR right after the push is the normal case: GitHub shows a job skipped by a condition as
+  # green, so skipping before the result exists (or after a failure) would hide it behind a green PR check, and not waiting
+  # would run everything twice. A failed, cancelled or missing push run does not count: the PR then gets its own run.
+  # Otherwise (fork, diverged main) the PR gets its own run.
   plan:
     name: Plan (skip a run that already exists)
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     permissions:
       contents: read
       actions: read
@@ -52,10 +54,16 @@ jobs:
           skip=false
           if [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] \
              && git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"; then
-            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&event=push" \
-              --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | length')
-            echo "successful push runs for $HEAD_SHA: $runs"
-            [ "${runs:-0}" -gt 0 ] && skip=true
+            deadline=$((SECONDS + 2700))
+            while true; do
+              json=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&event=push")
+              ok=$(echo "$json" | jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | length')
+              pending=$(echo "$json" | jq '[.workflow_runs[] | select(.status != "completed")] | length')
+              echo "push runs for $HEAD_SHA: $ok succeeded, $pending not finished"
+              if [ "${ok:-0}" -gt 0 ]; then skip=true; break; fi
+              if [ "${pending:-0}" -eq 0 ] || [ "$SECONDS" -ge "$deadline" ]; then break; fi
+              sleep 30
+            done
           fi
           echo "skip=$skip" >> "$GITHUB_OUTPUT"
           echo "skip=$skip"
