@@ -52,6 +52,23 @@ Décidé par l'auteur le 2026-11-17 : ce qui doit être nettoyé **avant** M2 ma
 - Tests d'images de référence (RHI-14).
 - L'interface produit des listes de dessin (UI-02) ; le texte passe par le RHI.
 
+### Découpage de M2 en lots et sous-lots (décidé par l'auteur le 2026-11-18)
+
+Trois lots, chacun fusionné dans `dev` puis arrêt pour validation. Le **lot B** est une **réécriture explicite** des façades de rendu sur `Device` / `CommandEncoder` (passes, groupes de liaison, pipelines à état fixe), sans adaptateur d'état implicite : l'ancienne abstraction `IGraphicsDevice` et les backends associés disparaissent. L'API publique des façades **change** ; `Game`, `World` et l'interface suivent. Chaque sous-lot est une branche, fusionnée quand compilation, tests et contrôles sont verts ; **la démo peut être temporairement incomplète entre deux sous-lots** (notée dans leur compte rendu) et la capture de référence ne redevient identique qu'à B6.
+
+| Lot | Contenu | État |
+| --- | --- | --- |
+| A | Interface RHI, backend OpenGL hors écran, tests GPU, `make rhi-demo` | **Fait** (`docs/releases/M2-lotA.md`) |
+| B1 | **Pipeline de shaders** (RHI-12) : GLSL 450 → SPIR-V → GLSL 430, réflexion, `#include`, cache mémoire et disque, rechargement à chaud | **Fait**, fusionné dans `dev` (branche `feat/RHI-12-shader-pipeline`) |
+| B2 | **Surface de fenêtre du RHI** : le périphérique OpenGL adopte une fenêtre GLFW créée par la couche appelante (backbuffer = framebuffer par défaut, `present` = échange des tampons, vsync, `resize`) ; le contexte et les attributs de contexte restent dans `src/rhi/opengl/`. Test de présentation sous xvfb | À faire |
+| B3 | **Ressources** : `Buffer`, `Texture`, `RenderTarget`, `ShaderProgram` / `ShaderLibrary` réécrits sur le RHI (handles, usages, passes, `ShaderCache`, rechargement à chaud branché) ; `Screenshot` et `GPUTimestampQuery` sur `readTexture` et `writeTimestamp` ; suppression de `GraphicsRenderState` (état global, G38) ; tests des façades réécrits | À faire |
+| B4 | **Scène** : `Mesh`, `MeshUniform`, `Sprite`, `Light` (SSBO), `Camera`, `Renderer`, `Renderer2D`, `Renderer3D`, modes d'upscale, post-traitement et génération d'images sur les passes RHI ; shaders du dépôt passés en GLSL 450 (`set`/`binding`, push constants) ; `Game` et `World` adaptés | À faire |
+| B5 | **Texte et interface** : `TextRenderer` (atlas MSDF) sur le RHI (REN-36) ; l'interface produit des **listes de dessin** (rectangles, texte, images, découpage, ordre `z`) sans connaître le RHI (UI-02) ; un adaptateur provisoire les dessine par le renderer (le batch R2D-01 arrive en M5, `docs/QUESTIONS.md` A21) ; singleton `UI::Manager` remplacé par un contexte explicite (A10 pour ce module) | À faire |
+| B6 | **Retrait et vérification** : suppression de `IGraphicsDevice`, des anciens backends OpenGL et Vulkan (archivés, A1 ; `--api vulkan` répond « non disponible avant M4 ») et de `AccelerationStructure` si sans usage ; capacités honnêtes (RHI-18) ; `check_api_isolation.py` bloquant pour `gl*`, `GL_*`, `Vk*`, `MTL*` (la baseline ne garde que `GLFW`/`<windows.h>` jusqu'au lot C) ; **tests d'images de référence** par backend avec tolérance et rapport de différence (RHI-14), en CI ; capture identique à `docs/BASELINE/reference/` ; documentation du RHI et STATUS | À faire |
+| C | `platform::Window` (GLFW caché, DPI, plein écran), mode sans fenêtre (PLAT-04), entrées (PLAT-02, `Camera::Inputs`), isolation des API **intégralement bloquante** (GLFW compris), vsync | À faire |
+
+Les identifiants de `docs/02` restent ceux de la table de rattachement (M2). Un sous-lot n'est « Fait » que sur preuve (CLAUDE.md règle 1) ; STATUS est mis à jour à chaque fusion.
+
 **Démo** : l'application actuelle, même image qu'avant, sans aucun appel `gl*` hors de `src/rhi/opengl/`.
 **Terminé** : règle d'isolation des API en mode bloquant ; images identiques à la référence dans la tolérance ; documentation du RHI.
 
