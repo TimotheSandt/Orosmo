@@ -9,6 +9,7 @@
 // faux positif de la bibliothèque standard, constaté plusieurs fois dans les tests du RHI. Limité aux tests, à GCC.
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic ignored "-Warray-bounds"
+#pragma GCC diagnostic ignored "-Wstringop-overread"
 #endif
 
 #include <cmath>
