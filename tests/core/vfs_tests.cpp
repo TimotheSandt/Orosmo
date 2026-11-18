@@ -21,6 +21,16 @@ struct TempDir
     }
     ~TempDir() { fs::remove_all(path); }
 };
+// Rend les droits au répertoire à la sortie du test (même si un CHECK échoue) : TempDir doit pouvoir le supprimer.
+struct PermissionGuard
+{
+    fs::path path;
+    ~PermissionGuard()
+    {
+        std::error_code ec;
+        fs::permissions(path, fs::perms::owner_all, ec);
+    }
+};
 void touch(const fs::path &p, const std::string &text)
 {
     fs::create_directories(p.parent_path());
@@ -152,6 +162,7 @@ TEST_SUITE("core/vfs")
         touch(lower.path / "f.txt", "lower");
         touch(upper.path / "locked" / "f.txt", "upper");
         touch(lower.path / "locked" / "f.txt", "lower");
+        PermissionGuard guard{upper.path / "locked"};
         fs::permissions(upper.path / "locked", fs::perms::none);
         std::error_code ec;
         const bool enforced = !fs::exists(upper.path / "locked" / "f.txt", ec) && ec; // faux si on est root
@@ -166,7 +177,6 @@ TEST_SUITE("core/vfs")
             auto l = vfs.list("res://locked");
             CHECK_FALSE(l.has_value());
         }
-        fs::permissions(upper.path / "locked", fs::perms::owner_all);
     }
 #endif
 }
