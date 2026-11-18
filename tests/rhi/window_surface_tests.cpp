@@ -120,7 +120,7 @@ TEST_SUITE("rhi/opengl/window")
         GraphicsPipelineDesc pd;
         pd.vertex = *vs;
         pd.fragment = *fs;
-        pd.colorTargets = {ColorTargetState{}};
+        pd.colorTargets.assign(1, ColorTargetState{}); // pas de liste d'initialisation : faux positif -Warray-bounds de GCC 13 sous ASan (G34)
         pd.raster.cull = CullMode::kNone;
         auto pipe = device->createGraphicsPipeline(pd);
         REQUIRE(pipe.has_value());
