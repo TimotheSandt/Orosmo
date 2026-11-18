@@ -5,13 +5,21 @@
 #include <optional>
 #include <string>
 
-#include "World.h"
-#include "Camera.h"
-#include "Window.h"
-#include "Renderer3D.h"
+#include "CameraController.h"
+#include "InputManager.h"
 #include "Profiler.h"
 #include "UIManager.h"
-#include "InputManager.h"
+#include "Window.h"
+#include "World.h"
+
+#include "engine/renderer/camera.hpp"
+#include "engine/renderer/canvas_renderer.hpp"
+#include "engine/renderer/gpu_timer.hpp"
+#include "engine/renderer/pipeline_cache.hpp"
+#include "engine/renderer/render_target.hpp"
+#include "engine/renderer/scene_renderer.hpp"
+#include "engine/renderer/shader_library.hpp"
+#include "engine/rhi/device.hpp"
 
 class Game
 {
@@ -32,15 +40,30 @@ class Game
   private:
     void processInput();
     void update();
+    bool beginFrame();
     void render();
+    void endFrame();
     void refreshViewSize();
+    bool renderUi(engine::rhi::CommandEncoder &encoder, const engine::rhi::TextureHandle &composed);
 
   private:
     Window window;
-    Renderer3D renderer3D;
-    Renderer2D rendererUI;
+    // Graphique (RHI) : le périphérique d'abord (détruit en dernier) ; tout le reste le référence.
+    std::unique_ptr<engine::rhi::Device> device;
+    std::unique_ptr<engine::renderer::ShaderLibrary> shaders;
+    std::unique_ptr<engine::renderer::PipelineCache> pipelines;
+    std::unique_ptr<engine::renderer::SceneRenderer> sceneRenderer;
+    std::unique_ptr<engine::renderer::CanvasRenderer> canvas;
+    std::unique_ptr<engine::renderer::ProfilerGpuTimerFactory> gpuTimers;
+    engine::renderer::RenderTarget composed;   // l'image finale (scène puis interface), à la taille de la vue
+    engine::renderer::RenderTarget uiTarget;   // interface à échelle réduite (touches de debug 5 à 8)
+    std::unique_ptr<engine::rhi::CommandEncoder> frameEncoder;
+    engine::rhi::TextureHandle backbuffer;
+    float uiRenderScale = 1.0f;
+    bool uiUpscaling = false;
 
-    Camera camera;
+    engine::renderer::Camera camera;
+    CameraController cameraController;
     std::unique_ptr<World> world = nullptr;
     bool stopped = false;
 

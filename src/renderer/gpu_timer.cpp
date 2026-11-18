@@ -60,4 +60,39 @@ std::optional<std::chrono::nanoseconds> GpuTimer::elapsed() const
     return std::chrono::nanoseconds(static_cast<std::chrono::nanoseconds::rep>((*t)[1] - (*t)[0]));
 }
 
+namespace
+{
+class ProfilerTimer final : public IGpuTimer
+{
+  public:
+    ProfilerTimer(const ProfilerGpuTimerFactory &factory, rhi::Device &device, const std::string &name) : factory_(factory), timer_(device, name) {}
+    void Begin() override
+    {
+        if (rhi::CommandEncoder *e = factory_.encoder(); e != nullptr)
+        {
+            timer_.begin(*e);
+        }
+    }
+    void End() override
+    {
+        if (rhi::CommandEncoder *e = factory_.encoder(); e != nullptr)
+        {
+            timer_.end(*e);
+        }
+    }
+    bool IsReady() const override { return timer_.isReady(); }
+    std::chrono::nanoseconds GetElapsedTime() const override { return timer_.elapsed().value_or(std::chrono::nanoseconds(0)); }
+
+  private:
+    const ProfilerGpuTimerFactory &factory_;
+    GpuTimer timer_;
+};
+} // namespace
+
+std::unique_ptr<IGpuTimer> ProfilerGpuTimerFactory::CreateTimer(const std::string &name) const
+{
+    auto timer = std::make_unique<ProfilerTimer>(*this, device_, name);
+    return timer;
+}
+
 } // namespace engine::renderer

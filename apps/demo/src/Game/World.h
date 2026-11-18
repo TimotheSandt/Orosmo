@@ -1,16 +1,21 @@
 #pragma once
 
-#include "Camera.h"
-
-#include <cstdint>
-#include <optional>
+#include "engine/renderer/camera.hpp"
+#include "engine/renderer/light.hpp"
+#include "engine/renderer/mesh.hpp"
+#include "engine/renderer/scene_renderer.hpp"
+#include "engine/renderer/shader_library.hpp"
+#include "engine/rhi/device.hpp"
 
 #include "glm/glm.hpp"
 #include "glm/gtx/hash.hpp"
 
-#include "Renderer3D.h"
 #include "ProceduralGeneration/TerrainGenerator.h"
-#include "Light.h"
+
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <optional>
 
 class World
 {
@@ -18,14 +23,15 @@ class World
     World();
     ~World();
 
-    void Init(std::uint32_t seed);
+    // Génère le terrain de `seed` et crée ses ressources GPU (maillage, lumières). `shaderDirectory` : shaders/rhi/.
+    engine::core::Result<> Init(engine::rhi::Device &device, engine::renderer::ShaderLibrary &library, const std::filesystem::path &shaderDirectory,
+                                std::uint32_t seed);
     void Destroy();
-
     void Update();
-
-    void Render(Renderer3D &renderer3D, Camera &camera);
+    void Render(engine::renderer::SceneRenderer &renderer, const engine::renderer::Camera &camera);
 
   private:
     TerrainGenerator terrain;
-    LightManager lightManager;
+    engine::renderer::Mesh terrainMesh;
+    engine::renderer::LightManager lightManager;
 };

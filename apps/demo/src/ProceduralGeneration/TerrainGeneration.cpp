@@ -11,8 +11,6 @@ void TerrainGenerator::Destroy() { grid.Destroy(); }
 
 void TerrainGenerator::init(float sizeX, float sizeZ, int resX, int resZ) { grid.init(sizeX, sizeZ, resX, resZ); }
 
-void TerrainGenerator::Render(const Renderer3D &renderer3D, Camera &camera) { grid.Render(renderer3D, camera); }
-
 void TerrainGenerator::GenerateFlatTerrain()
 {
     grid.TransformPoints(

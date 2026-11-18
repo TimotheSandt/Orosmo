@@ -97,6 +97,8 @@ class SceneRenderer
     // Referme la passe, exécute post-traitements, historique, mise à l'échelle vers `output`, génération d'images.
     core::Result<> endFrame(const UpscaleTarget &output);
 
+    // Outil de copie plein écran partagé (présentation, mises à l'échelle de l'application).
+    FullscreenBlit &blit() noexcept { return *blit_; }
     int frameWidth() const noexcept { return frameWidth_; }
     int frameHeight() const noexcept { return frameHeight_; }
     const RenderTarget &sceneTarget() const noexcept { return sceneTarget_; }

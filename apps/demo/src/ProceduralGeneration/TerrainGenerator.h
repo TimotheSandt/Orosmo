@@ -2,7 +2,6 @@
 
 #include "Grid.h"
 #include "Noise.h"
-#include "Renderer3D.h"
 
 #include <functional>
 #include <cmath>
@@ -22,7 +21,6 @@ class TerrainGenerator
     void Destroy();
 
     void init(float sizeX, float sizeZ, int resX, int resZ);
-    void Render(const Renderer3D &renderer3D, Camera &camera);
 
     // Terrain Generation
     void GenerateFlatTerrain();
@@ -37,7 +35,7 @@ class TerrainGenerator
 
     Grid &GetGrid() { return grid; }
     const Grid &GetGrid() const { return grid; }
-    Mesh &GetMesh() { return grid.GetMesh(); }
+    const engine::renderer::MeshData &GetMeshData() const { return grid.GetMeshData(); }
 
     void SetNoiseSeed(int seed) { noise.SetSeed(seed); }
 

@@ -172,11 +172,14 @@ Assert(!ParseGraphicsAPI("directx").has_value(), "Unknown API should be rejected
         Assert(IsGraphicsAPIAvailable(GraphicsAPI::OpenGL), "OpenGL should be runnable");
     }
 
-    TEST_CASE("vulkan backend is reported available")
+    TEST_CASE("vulkan backend is recognized but not available before M4 (A1: the old backend was removed)")
     {
-        AssertEqual(GetGraphicsAPIAvailability(GraphicsAPI::Vulkan), GraphicsAPIAvailability::Available,
-                    "Vulkan backend should be advertised as available");
-        Assert(IsGraphicsAPIAvailable(GraphicsAPI::Vulkan), "Vulkan should now be runnable through the runtime");
+        AssertEqual(GetGraphicsAPIAvailability(GraphicsAPI::Vulkan), GraphicsAPIAvailability::NotBuilt,
+                    "Vulkan should be recognized but not built until it is rewritten on the RHI");
+        Assert(!IsGraphicsAPIAvailable(GraphicsAPI::Vulkan), "Vulkan must not be selectable");
+        Assert(GetGraphicsAPIAvailabilityMessage(GraphicsAPI::Vulkan).find("M4") != std::string::npos,
+               "the message should say when Vulkan comes back");
+        Assert(IsGraphicsAPIAvailable(GraphicsAPI::OpenGL), "OpenGL is the RHI backend");
     }
 
     TEST_CASE("other backend messages are non-empty")
