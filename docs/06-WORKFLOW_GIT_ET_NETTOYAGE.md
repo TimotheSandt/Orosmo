@@ -36,6 +36,11 @@ Quand tous les identifiants du jalon sont `Fait` avec preuve et que `dev` est ve
 1. Mettre à jour `docs/STATUS.md` et écrire `docs/releases/<jalon>.md` : ce qui est livré, comment lancer la démo, ce qui n'est pas fait et pourquoi, bugs connus.
 2. Vérifier que `dev` compile et que les tests passent **depuis un clone propre** (`git clone` dans un dossier vide, build, tests, démo).
 3. Rédiger la description de la merge request (résumé, liste des identifiants, commande de démo, résultat des tests) dans `docs/releases/<jalon>-MR.md`.
+   Le message de fin de jalon donne aussi la **commande exacte pour ouvrir la merge request**, prête à copier (l'auteur l'exécute après avoir poussé `dev`) :
+   ```bash
+   git push origin dev
+   gh pr create --draft --base main --head dev --title "<jalon> : <titre>" --body-file docs/releases/<jalon>-MR.md
+   ```
 4. **S'arrêter** et le dire. L'auteur teste, ouvre la merge request vers `main`, la fusionne, puis pose le tag `<jalon>` (ex. `M2`). L'IA ne pose pas ce tag.
    **Mode de fusion `dev` → `main` : « Create a merge commit », jamais « Squash and merge ».** Un squash met le jalon dans un seul commit de `main` que `dev` ne contient pas : la base commune de GitHub reste en arrière, et la merge request suivante recompte tout le jalon précédent (cela a donné 345 fichiers au lieu de 69 en M1 et bloqué la revue CodeRabbit, limitée à 300 fichiers). Si un squash a quand même eu lieu : avant de commencer le jalon suivant, l'IA fait sur `chore/sync-main-squash` `git merge -s ours origin/main` (arbre de `dev` inchangé, après avoir vérifié que `main` n'a rien que `dev` n'ait pas) puis fusionne dans `dev` avec `--no-ff`.
 
