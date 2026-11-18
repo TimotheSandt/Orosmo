@@ -9,6 +9,9 @@
 
 #include <GLFW/glfw3.h>
 
+#include <chrono>
+#include <thread>
+
 namespace
 {
 
@@ -215,7 +218,13 @@ TEST_SUITE("rhi/opengl/window")
         auto device = window.device(true);
         SKIP_TEST_IF_NULL(device.get(), "windowed OpenGL 4.3 device");
         glfwSetWindowSize(window.handle, 96, 72);
-        glfwPollEvents();
+        // Le redimensionnement X11 est asynchrone : on attend qu'il soit appliqué (sans gestionnaire de fenêtres il peut ne
+        // jamais l'être : le test compare alors à la taille stable courante).
+        for (int i = 0; i < 200 && !(window.framebufferSize() == Extent2D{96, 72}); ++i)
+        {
+            glfwPollEvents();
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
         REQUIRE(device->resize({1, 1}).has_value()); // l'argument est ignoré pour une fenêtre
         auto frame = device->beginFrame();
         REQUIRE(frame.has_value());
