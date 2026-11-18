@@ -17,7 +17,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | DOC-01 | Documentation | Partiel | README par module (M00) et STATUS existent. Manquent : schéma des modules, `docs/ADD_A_BACKEND.md`, mise à jour par jalon. | M0 puis continu ; ADD_A_BACKEND en M4 |
 | GIT-01 | Flux de branches | Partiel | Flux appliqué depuis M00 (branches `chore/`, `fix/`, `docs/`, fusions `--no-ff`). Protections côté hébergeur non activées par l'auteur ; avant M00, 92 commits sur 178 hors format `type(ID): résumé`. | Continu |
 | PLAT-01 | Fenêtre | Partiel | Création, redimensionnement, plein écran, bordure, vsync (`parameters.vsync`, faux par défaut) : oui. **GLFW est exposé** (`#include <GLFW/glfw3.h>` dans Window.h, `GLFWwindow*` dans WindowContext.h, InputManager.h, Camera.h). … | M2 |
-| PLAT-02 | InputManager | Partiel | Dispositions QWERTY/QWERTZ/AZERTY/DVORAK, remappage par actions, états `Release/PressBegin/Pressed/PressEnd` : présents. Détection de la disposition **seulement sous Windows** (`GetKeyboardLayout`), QWERTY ailleurs ; molette « … | M2 |
+| PLAT-02 | InputManager | Partiel | Dispositions QWERTY/QWERTZ/AZERTY/DVORAK, remappage par actions, états `Release/PressBegin/Pressed/PressEnd` : présents. Détection de la disposition : Windows (`GetKeyboardLayout`, non vérifié ici) et, depuis `fix/keyboard-layout-detection`, Linux/macOS par les noms de touches de GLFW (`DetectKeyLayoutFromKeyNames`, testé ; vérifié sur AZERTY/Linux) ; autres dispositions (Colemak...) : QWERTY ; molette « … | M2 |
 | R2D-01 | Batch de sprites | Partiel | Un sprite = un dessin ; pas de batch instancié, d'atlas, de tri par couche et matériau. | M5 |
 | R2D-02 | Caméra 2D | Partiel | Passe en coordonnées pixel et filtrage « plus proche » disponible ; pas de classe de caméra 2D ni d'échelle entière. | M5 |
 | REN-02 | Caméra | Partiel | Perspective seule ; jitter présent. Pas d'orthographique, pas de reverse-Z/plan lointain infini, pas de rendu relatif à la caméra (flottants). | M3 |
@@ -69,7 +69,6 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | UI-02 | Rendu indépendant du backend | Absent | Les composants dessinent directement via sprites ; aucune liste de dessin intermédiaire, pas d'adaptateur vers un batch 2D. | M2 |
 | UI-03 | Widgets de base | Absent | Aucun bouton, curseur, case à cocher, liste, champ de texte, etc. Seuls `Text` et `Label` (alias) existent. | M3 |
 | TOOL-03 | Capture d'écran | Partiel | Fait en M0 pour OpenGL (`--capture`, `Screenshot::SavePng`, `tools/compare_png.py`) ; Vulkan refusé jusqu'en M4 ; `ui.png` non reproductible (FPS affichés) ; pas de capture sans fenêtre (PLAT-04). | M0 (fait) ; M2 (usage RHI-14) |
-| REPO-01 | Dépôt propre et structuré | Partiel | Rétrogradé après revue CodeRabbit : pas de preuve visuelle d'identité avec l'avant-M00 (aucune capture d'avant) ; exception `third_party/` (rien de copié) à valider. | M0 (retour de l'auteur) |
 
 ## P1
 
@@ -204,7 +203,7 @@ Issues de M00 (G1 à G15, conservées) et de l'audit.
 | G21 | Compilateur `.cui` : en-tête généré mal nommé si vue ≠ fichier | `docs/UI_LANGUAGE_AUDIT.md`. | M3 |
 | G22 | Avertissements `-Wmissing-field-initializers` | `BindFunc.h:137`, `BindMethods.h:319`. | M0 |
 | G23 | Dossier `Libraries/` dans le nom des objets | `obj/<type>/Libraries/` dans `mk/engine.mk` (cosmétique). | M0 |
-| G24 | Branche `feat/vulkan` et 17 stashes non lus | Peuvent contenir du travail (« add LOD »). | À trier par l'auteur |
+| G24 | 17 stashes et anciennes branches | Stashes analysés le 2026-11-17 : 2 utiles archivés dans `docs/notes/archive/` (LOD du terrain → TER-03, `ClearAttachments` Vulkan → G41) ; patchs complets hors dépôt. Branches anciennes (`UI`, `feat/*`, `feature/*`, `fix/makefile-lint-check-format`) non analysées. | Auteur (suppression des stashes) |
 | G25 | Branche ambiguë `main` locale en avance de 44 commits sur `origin/main` | Rien n'est poussé. | Auteur |
 | G26 | `TODO` dans le code | `InputManager.cpp:98`, `InputManager.h:301` (molette), `Window.h:43` (`taskbarVisible`). | M2 (platform) |
 | G27 | `TextRenderer` sans UTF-8 | Voir REN-36. | M2 / M3 |
@@ -222,8 +221,25 @@ Issues de M00 (G1 à G15, conservées) et de l'audit.
 | G33 | En-tête non autonome | `Graphics/Upscaling/IFrameGenerationMode.h` n'inclut pas `GraphicsCapabilities`. | M2 |
 | G34 | Faux positifs GCC 13 | `-Warray-bounds` (vecteur à 1 élément, contourné par `assign`) et `-Wmaybe-uninitialized` dans `std::regex` (pragma local, ancien backend Vulkan) sous ASan -O3. | M4 (Vulkan réécrit) |
 | G35 | Fuites ASan | `detect_leaks=0` : les singletons statiques et le contexte GL font apparaître des fuites à l'arrêt ; non triées. | M1 |
-| G36 | Graine du terrain | La démo prend toujours une graine d'horloge sans `--seed` ; `Noise()` / `PCGRandom::init()` idem (règle 9). | M1 |
+| G36 | Graine du terrain | **Traité en M1 (A12)** : `Noise()` / `PCGRandom()` supprimés (`static_assert`), `TerrainGenerator()` a la graine fixe 1, la démo tire une graine aléatoire explicite dans `main()` et la journalise. | M1 (fait) |
 | G37 | Disque | `/` à 97 % pendant M0 (voir `docs/QUESTIONS.md` A19). | Auteur |
+
+## Ajouts de M1 (G50 à G58)
+
+| # | Sujet | Détail | Traité en |
+| --- | --- | --- | --- |
+| G50 | `Logger::Initialize` lance une exception | Un dossier de journal impossible à créer (`/proc/x/y.log`) lève `std::filesystem::filesystem_error` (`create_directories` sans `error_code`) ; trouvé en écrivant les tests du logger (CORE-01). Comportement conservé, test retiré. | M1 bis |
+| G51 | Exceptions restantes dans le flux normal | CORE-02 est fourni pour le code neuf ; `UI/Core/Bounds.cpp`, `Graphics/Light.cpp`, `Graphics/ShaderProgram.cpp`, `Game.cpp` lancent encore (audit). | M2 (chaque module à sa migration) |
+| G52 | `ParseGraphicsLaunchOptions` | Analyse de la ligne de commande maison (`--api`, `--seed`, `--capture`...) ; `Config` (CORE-06) n'est pas encore branché sur la démo. | M2 |
+| G53 | Macros de chemins | `GET_RESOURCE_PATH`, `GetUserDataPath` : la démo n'utilise pas encore `Vfs` (`res://`, `user://`). | M2 |
+| G54 | GPU dans `TraceRecorder` | `addSample(..., TraceTrack::kGpu)` existe ; le branchement sur les minuteries du RHI (`GPUTimestampQuery`) se fait avec le RHI. Adaptateur Tracy non fait (export Chrome trace/Perfetto suffit). | M2 |
+| G55 | `FileWatcher` par interrogation | Portable et prouvé sur Linux ; Windows/macOS attendent la CI du push. Remplaçable par inotify/ReadDirectoryChangesW/FSEvents derrière la même interface si le coût de `poll()` gêne (gros dossiers). | M3 (shaders, thèmes) |
+| G56 | `TaskSystem` : file unique, pas de suspension de tâche | Une file protégée par un verrou : suffisant (10 000 tâches en ~20 ms), vol de travail à ajouter si les mesures le demandent (génération de terrain par blocs). **Limite connue** (revue CodeRabbit PR #5) : `wait()` exécute d'abord la tâche attendue si elle est prête (cas « A soumet C puis attend C » corrigé), mais une tâche prête exécutée « par aide » est empilée sur l'appelant ; si elle attend elle-même cet appelant et que la tâche attendue n'est pas prête, le pool peut se bloquer. Une vraie solution suspend les tâches (coroutines ou fibres) : à décider avec le moteur de tâches du terrain. | M3 |
+| G57 | Allocateurs non utilisés | `ArenaAllocator` / `ObjectPool` sont testés mais pas encore employés par le moteur (première utilisation proposée en M5). | M5 |
+| G58 | Couverture de `core` | Pas de mesure de couverture (`gcov`) : TEST-01 reste `Partiel` ; 83 cas écrits pour `core` + 6 pour le logger. | M1 bis |
+| G59 | `core` appelle le système directement | Revue CodeRabbit PR #5 : `Vfs::defaultUserDirectory` lit `APPDATA`/`HOME`/`XDG_DATA_HOME` (`std::getenv`), `FileWatcher` et `TraceRecorder` utilisent `std::filesystem` sans passer par `platform` (`docs/03` §6). `src/platform` n'existe pas encore : l'interface (chemins, dossiers utilisateur, fichiers) est créée avec la couche plateforme. | M1 bis (interface `platform`) puis M2 |
+| G60 | Remarques CodeRabbit de PR #5 non suivies | **`SteadyClock` dans `time_tests`** : un seul cas vérifie que l'horloge réelle est monotone (preuve de CORE-03) ; les autres cas utilisent `ManualClock`. **Test multithread de `trace`** : il utilise l'horloge réelle exprès (concurrence). **`EventBus::publish` et `typeid`** : RTTI conservé, un identifiant de type maison ne se justifie pas avant une mesure. **Démarrage partiel du pool de threads** : la correction (arrêt et jonction des workers lancés) n'est pas testable sans échec de création de thread. **Nettoyage des objets release avant ASan/UBSan** : déjà documenté (`make fclean` avant `SANITIZE=`), pas d'automatisme ajouté. | Aucun |
+
 
 ## Revue CodeRabbit de la PR #4 (2026-11-17) : constats reportés
 

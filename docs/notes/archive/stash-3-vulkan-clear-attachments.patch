@@ -1,0 +1,278 @@
+diff --git a/Libraries/includes/Graphics/RenderTarget.h b/Libraries/includes/Graphics/RenderTarget.h
+index b0a393d..64a65ed 100644
+--- a/Libraries/includes/Graphics/RenderTarget.h
++++ b/Libraries/includes/Graphics/RenderTarget.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include "Graphics/Core/RenderState.h"
+ #include "Graphics/Core/GraphicsResources.h"
+ #include "Graphics/Core/GraphicsTypes.h"
+ #include "ShaderProgram.h"
+@@ -7,6 +8,7 @@
+ 
+ #include <cstdint>
+ #include <glm/vec4.hpp>
++#include <optional>
+ #include <vector>
+ 
+ class RenderTarget
+@@ -92,4 +94,5 @@ class RenderTarget
+ 
+     std::unique_ptr<IGeometryResource> screenQuadGeometry;
+     ShaderProgram screenQuadShaderProgram;
++    mutable std::optional<GraphicsRenderState::FramebufferState> savedFramebufferState;
+ };
+diff --git a/Libraries/src/Graphics/Backends/Vulkan/VulkanRenderState.cpp b/Libraries/src/Graphics/Backends/Vulkan/VulkanRenderState.cpp
+index 50785e9..3bbd013 100644
+--- a/Libraries/src/Graphics/Backends/Vulkan/VulkanRenderState.cpp
++++ b/Libraries/src/Graphics/Backends/Vulkan/VulkanRenderState.cpp
+@@ -51,6 +51,133 @@ struct PendingBufferDestroy
+ std::vector<PendingBufferDestroy> pendingDestroys;
+ std::uint64_t frameCounter = 0;
+ 
++VkRect2D GetCurrentClearRect() noexcept
++{
++    VkRect2D clearRect{};
++
++    const int viewportWidth = state.viewport[2] > 0 ? state.viewport[2] : static_cast<int>(currentExtent.width);
++    const int viewportHeight = state.viewport[3] > 0 ? state.viewport[3] : static_cast<int>(currentExtent.height);
++
++    if (state.scissorTest)
++    {
++        clearRect.offset.x = scissorRect[0];
++        clearRect.offset.y = viewportHeight - (scissorRect[1] + scissorRect[3]);
++        clearRect.extent.width = static_cast<std::uint32_t>(std::max(scissorRect[2], 0));
++        clearRect.extent.height = static_cast<std::uint32_t>(std::max(scissorRect[3], 0));
++    }
++    else
++    {
++        clearRect.offset = {0, 0};
++        clearRect.extent.width = static_cast<std::uint32_t>(std::max(viewportWidth, 0));
++        clearRect.extent.height = static_cast<std::uint32_t>(std::max(viewportHeight, 0));
++    }
++
++    return clearRect;
++}
++
++void ClearAttachments(bool clearColorAttachment, bool clearDepthAttachment, const glm::vec4 *colorOverride) noexcept
++{
++    if (currentCommandBuffer == VK_NULL_HANDLE || currentRenderPass == VK_NULL_HANDLE)
++    {
++        return;
++    }
++
++    const VkRect2D clearRect = GetCurrentClearRect();
++    if (clearRect.extent.width == 0 || clearRect.extent.height == 0)
++    {
++        return;
++    }
++
++    std::vector<VkClearAttachment> attachments;
++    attachments.reserve(2);
++
++    if (clearColorAttachment)
++    {
++        VkClearAttachment colorAttachment{};
++        colorAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
++        colorAttachment.colorAttachment = 0;
++        const glm::vec4 clear = colorOverride != nullptr ? *colorOverride : ::VulkanRenderState::GetClearColor();
++        colorAttachment.clearValue.color = {clear.r, clear.g, clear.b, clear.a};
++        attachments.push_back(colorAttachment);
++    }
++
++    if (clearDepthAttachment)
++    {
++        VkClearAttachment depthAttachment{};
++        depthAttachment.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
++        depthAttachment.clearValue.depthStencil = {1.0f, 0};
++        attachments.push_back(depthAttachment);
++    }
++
++    if (attachments.empty())
++    {
++        return;
++    }
++
++    VkClearRect clearRegion{};
++    clearRegion.rect = clearRect;
++    clearRegion.baseArrayLayer = 0;
++    clearRegion.layerCount = 1;
++
++    vkCmdClearAttachments(currentCommandBuffer, static_cast<std::uint32_t>(attachments.size()), attachments.data(), 1, &clearRegion);
++}
++
++VkViewport MakeViewport(int x, int y, int width, int height) noexcept
++{
++    VkViewport viewport{};
++    viewport.x = static_cast<float>(x);
++    viewport.y = static_cast<float>(y + height);
++    viewport.width = static_cast<float>(width);
++    viewport.height = -static_cast<float>(height);
++    viewport.minDepth = 0.0f;
++    viewport.maxDepth = 1.0f;
++    return viewport;
++}
++
++VkRect2D MakeScissorRect(int x, int y, int width, int height) noexcept
++{
++    VkRect2D rect{};
++    const int viewportHeight = state.viewport[3] > 0 ? state.viewport[3] : static_cast<int>(currentExtent.height);
++    rect.offset.x = x;
++    rect.offset.y = viewportHeight - (y + height);
++    rect.extent.width = static_cast<std::uint32_t>(std::max(width, 0));
++    rect.extent.height = static_cast<std::uint32_t>(std::max(height, 0));
++    return rect;
++}
++
++void ApplyViewportIfPossible() noexcept
++{
++    if (currentCommandBuffer == VK_NULL_HANDLE)
++    {
++        return;
++    }
++
++    const VkViewport viewport = MakeViewport(state.viewport[0], state.viewport[1], state.viewport[2], state.viewport[3]);
++    vkCmdSetViewport(currentCommandBuffer, 0, 1, &viewport);
++}
++
++void ApplyScissorIfPossible() noexcept
++{
++    if (currentCommandBuffer == VK_NULL_HANDLE)
++    {
++        return;
++    }
++
++    VkRect2D rect{};
++    if (state.scissorTest)
++    {
++        rect = MakeScissorRect(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
++    }
++    else
++    {
++        rect.offset = {0, 0};
++        rect.extent.width = state.viewport[2] > 0 ? static_cast<std::uint32_t>(state.viewport[2]) : currentExtent.width;
++        rect.extent.height = state.viewport[3] > 0 ? static_cast<std::uint32_t>(state.viewport[3]) : currentExtent.height;
++    }
++
++    vkCmdSetScissor(currentCommandBuffer, 0, 1, &rect);
++}
++
+ } // namespace
+ 
+ void SetFramebuffer(unsigned int framebuffer) noexcept { state.framebuffer = framebuffer; }
+@@ -117,19 +244,23 @@ void SetViewport(int x, int y, int width, int height) noexcept
+     state.viewport[1] = y;
+     state.viewport[2] = width;
+     state.viewport[3] = height;
++    ApplyViewportIfPossible();
+ }
+ 
+ void ClearColor(const glm::vec4 &color) noexcept { clearColor = color; }
+ 
+-void ClearColorBuffer() noexcept {}
++void ClearColorBuffer() noexcept { ClearAttachments(true, false, &clearColor); }
+ 
+ void ClearBuffers(bool clearColorBuffer, bool clearDepth) noexcept
+ {
+-    static_cast<void>(clearColorBuffer);
+-    static_cast<void>(clearDepth);
++    ClearAttachments(clearColorBuffer, clearDepth, &clearColor);
+ }
+ 
+-void ClearTransparentColorBuffer() noexcept { clearColor = glm::vec4(0.0f); }
++void ClearTransparentColorBuffer() noexcept
++{
++    clearColor = glm::vec4(0.0f);
++    ClearAttachments(true, false, &clearColor);
++}
+ 
+ void SetDepthTest(bool enabled) noexcept { state.depthTest = enabled; }
+ 
+@@ -141,7 +272,11 @@ void SetAlphaBlend() noexcept {}
+ 
+ void SetPremultipliedAlphaBlend() noexcept {}
+ 
+-void SetScissorTest(bool enabled) noexcept { state.scissorTest = enabled; }
++void SetScissorTest(bool enabled) noexcept
++{
++    state.scissorTest = enabled;
++    ApplyScissorIfPossible();
++}
+ 
+ void SetScissor(int x, int y, int width, int height) noexcept
+ {
+@@ -149,6 +284,7 @@ void SetScissor(int x, int y, int width, int height) noexcept
+     scissorRect[1] = y;
+     scissorRect[2] = width;
+     scissorRect[3] = height;
++    ApplyScissorIfPossible();
+ }
+ 
+ glm::vec4 GetClearColor() noexcept { return clearColor; }
+diff --git a/Libraries/src/Graphics/RenderTarget.cpp b/Libraries/src/Graphics/RenderTarget.cpp
+index 97041fd..04a228d 100644
+--- a/Libraries/src/Graphics/RenderTarget.cpp
++++ b/Libraries/src/Graphics/RenderTarget.cpp
+@@ -38,6 +38,7 @@ void RenderTarget::Swap(RenderTarget &other) noexcept
+     std::swap(this->depthTexture, other.depthTexture);
+     std::swap(this->hasDepthTexture, other.hasDepthTexture);
+     std::swap(this->currentDesc, other.currentDesc);
++    std::swap(this->savedFramebufferState, other.savedFramebufferState);
+ }
+ 
+ void RenderTarget::Destroy()
+@@ -50,6 +51,7 @@ void RenderTarget::Destroy()
+     ID = 0;
+     depthBufferID = 0;
+     hasDepthTexture = false;
++    savedFramebufferState.reset();
+ 
+     this->screenQuadGeometry.reset();
+     this->screenQuadShaderProgram.Destroy();
+@@ -125,12 +127,13 @@ void RenderTarget::Init(const RenderTargetDesc &desc)
+         return;
+     }
+ 
+-    backendRenderTarget->Bind();
++    this->Bind();
+     this->InitAttachments(desc);
+ 
+     if (!backendRenderTarget->IsComplete())
+     {
+         LOG_ERROR(1, "RenderTarget incomplete");
++        this->Unbind();
+         return;
+     }
+ 
+@@ -183,6 +186,8 @@ void RenderTarget::Bind() const
+     {
+         return;
+     }
++
++    savedFramebufferState = GraphicsRenderState::CaptureFramebufferState();
+     GraphicsRenderState::BindFramebuffer(ID);
+     GraphicsRenderState::SetViewport(0, 0, width, height);
+ }
+@@ -191,7 +196,20 @@ void RenderTarget::Unbind() const
+ {
+     if (backendRenderTarget != nullptr)
+     {
+-        GraphicsRenderState::BindDefaultFramebuffer();
++        if (savedFramebufferState.has_value())
++        {
++            GraphicsRenderState::BindFramebuffer(savedFramebufferState->framebuffer);
++            GraphicsRenderState::SetViewport(savedFramebufferState->viewport[0], savedFramebufferState->viewport[1],
++                                             savedFramebufferState->viewport[2], savedFramebufferState->viewport[3]);
++            GraphicsRenderState::SetDepthTest(savedFramebufferState->depthTest);
++            GraphicsRenderState::SetBlend(savedFramebufferState->blend);
++            GraphicsRenderState::SetScissorTest(savedFramebufferState->scissorTest);
++            savedFramebufferState.reset();
++        }
++        else
++        {
++            GraphicsRenderState::BindDefaultFramebuffer();
++        }
+     }
+ }
+ 

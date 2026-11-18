@@ -1,0 +1,214 @@
+#include <doctest/doctest.h>
+
+#include <engine/core/resources.hpp>
+
+#include <atomic>
+#include <chrono>
+#include <map>
+#include <string>
+#include <thread>
+
+using namespace engine::core;
+
+namespace
+{
+struct Text
+{
+    std::string value;
+};
+
+struct FakeDisk
+{
+    std::mutex mutex;
+    std::map<std::string, std::string> files;
+    std::atomic<int> reads{0};
+    std::atomic<int> captured{0}; // lectures dont le contenu est déjà lu (avant l'éventuelle suspension)
+    // Quand `gate` est vrai, la PREMIÈRE lecture reste bloquée (après avoir lu le contenu) jusqu'à ce qu'il retombe :
+    // pas de délai arbitraire, l'état « chargement en cours » est tenu aussi longtemps que le test le veut.
+    std::atomic<bool> gate{false};
+    ResourceCache<Text>::Loader loader()
+    {
+        return [this](const std::string &path) -> Result<Text> {
+            const int n = ++reads;
+            Result<Text> result = makeError(ErrorCode::kNotFound, path);
+            {
+                std::lock_guard lock(mutex);
+                auto it = files.find(path);
+                if (it != files.end())
+                    result = Text{it->second};
+            }
+            ++captured;
+            while (n == 1 && gate.load())
+                std::this_thread::yield();
+            return result;
+        };
+    }
+};
+} // namespace
+
+TEST_SUITE("core/resources")
+{
+    TEST_CASE("load, share by path, reference counting")
+    {
+        FakeDisk disk;
+        disk.files["a.txt"] = "A";
+        ResourceCache<Text> cache(disk.loader());
+        Handle<Text> h1 = cache.load("a.txt");
+        Handle<Text> h2 = cache.load("a.txt");
+        CHECK(h1 == h2);
+        CHECK(disk.reads.load() == 1);
+        CHECK(cache.refCount(h1) == 2);
+        REQUIRE(cache.get(h1) != nullptr);
+        CHECK(cache.get(h1)->value == "A");
+        cache.release(h1);
+        CHECK(cache.get(h2) != nullptr);
+        cache.release(h2);
+        CHECK(cache.get(h2) == nullptr);
+        CHECK(cache.liveCount() == 0);
+    }
+
+    TEST_CASE("generation: a stale handle never reaches the resource that reuses its slot")
+    {
+        FakeDisk disk;
+        disk.files["a"] = "A";
+        disk.files["b"] = "B";
+        ResourceCache<Text> cache(disk.loader());
+        Handle<Text> a = cache.load("a");
+        cache.release(a);
+        Handle<Text> b = cache.load("b");
+        CHECK(a.index == b.index);          // emplacement réutilisé
+        CHECK(a.generation != b.generation);
+        CHECK(cache.get(a) == nullptr);     // l'ancienne poignée ne voit pas « b »
+        CHECK((cache.state(a) == ResourceState::kInvalid));
+        REQUIRE(cache.get(b) != nullptr);
+        CHECK(cache.get(b)->value == "B");
+        CHECK(cache.get(Handle<Text>{}) == nullptr);
+        cache.release(a); // sans effet sur b
+        CHECK(cache.refCount(b) == 1);
+    }
+
+    TEST_CASE("failed load is reported, not thrown")
+    {
+        FakeDisk disk;
+        ResourceCache<Text> cache(disk.loader());
+        Handle<Text> h = cache.load("missing");
+        CHECK((cache.state(h) == ResourceState::kFailed));
+        CHECK(cache.get(h) == nullptr);
+        CHECK(cache.lastError(h).find("kNotFound") != std::string::npos);
+    }
+
+    TEST_CASE("async load: kLoading then kReady, no duplicate read")
+    {
+        FakeDisk disk;
+        disk.files["big"] = "BIG";
+        disk.gate = true;
+        TaskSystem tasks(2);
+        ResourceCache<Text> cache(disk.loader(), &tasks);
+        Handle<Text> h = cache.loadAsync("big");
+        Handle<Text> again = cache.loadAsync("big");
+        CHECK(h == again);
+        CHECK((cache.state(h) == ResourceState::kLoading));
+        CHECK(cache.get(h) == nullptr);
+        disk.gate = false;
+        tasks.waitIdle();
+        CHECK((cache.state(h) == ResourceState::kReady));
+        CHECK(cache.get(h)->value == "BIG");
+        CHECK(disk.reads.load() == 1);
+    }
+
+    TEST_CASE("hot reload keeps the handle and swaps the content; a failing reload keeps the old content")
+    {
+        FakeDisk disk;
+        disk.files["cfg"] = "v1";
+        ResourceCache<Text> cache(disk.loader());
+        Handle<Text> h = cache.load("cfg");
+        auto held = cache.get(h); // un lecteur garde l'ancienne version
+        CHECK(cache.version(h) == 0);
+        disk.files["cfg"] = "v2";
+        REQUIRE(cache.reload("cfg").has_value());
+        CHECK(cache.get(h)->value == "v2");
+        CHECK(held->value == "v1"); // l'ancien objet reste valide pour qui le tient
+        CHECK(cache.version(h) == 1);
+
+        disk.files.erase("cfg");
+        CHECK_FALSE(cache.reload("cfg").has_value());
+        CHECK(cache.get(h)->value == "v2");
+        CHECK(cache.version(h) == 1);
+        CHECK((cache.reload("never-loaded").error().code == ErrorCode::kNotFound));
+    }
+
+    TEST_CASE("release during an async load is safe")
+    {
+        FakeDisk disk;
+        disk.files["x"] = "X";
+        disk.gate = true;
+        TaskSystem tasks(1);
+        ResourceCache<Text> cache(disk.loader(), &tasks);
+        Handle<Text> h = cache.loadAsync("x");
+        cache.release(h);
+        disk.gate = false;
+        tasks.waitIdle();
+        CHECK(cache.get(h) == nullptr);
+        CHECK(cache.liveCount() == 0);
+    }
+
+    TEST_CASE("a cache destroyed inside a task of its own TaskSystem does not wait for that task")
+    {
+        FakeDisk disk;
+        TaskSystem tasks(1);
+        std::atomic<bool> destroyed{false};
+        TaskHandle t = tasks.submit([&] {
+            {
+                ResourceCache<Text> cache(disk.loader(), &tasks); // aucun chargement lancé
+            }
+            destroyed = true;
+        });
+        tasks.wait(t);
+        CHECK(destroyed.load());
+    }
+
+    TEST_CASE("load() waits for a load that loadAsync() already started")
+    {
+        FakeDisk disk;
+        disk.files["x"] = "X";
+        TaskSystem tasks(1);
+        std::atomic<bool> release{false};
+        TaskHandle blocker = tasks.submit([&] {
+            while (!release.load())
+                std::this_thread::yield();
+        }); // occupe l'unique worker : le chargement reste en file
+        ResourceCache<Text> cache(disk.loader(), &tasks);
+        Handle<Text> a = cache.loadAsync("x");
+        CHECK((cache.state(a) == ResourceState::kLoading));
+        Handle<Text> b = cache.load("x"); // contrat bloquant : à son retour la ressource est prête
+        CHECK(a == b);
+        CHECK((cache.state(b) == ResourceState::kReady));
+        REQUIRE(cache.get(b) != nullptr);
+        CHECK(cache.get(b)->value == "X");
+        CHECK(disk.reads.load() == 1);
+        release = true;
+        tasks.wait(blocker);
+    }
+
+    TEST_CASE("a load that finishes after a newer reload does not overwrite it")
+    {
+        FakeDisk disk;
+        disk.files["x"] = "v1";
+        disk.gate = true; // la première lecture (chargement initial) a lu v1 puis reste suspendue
+        TaskSystem tasks(2);
+        ResourceCache<Text> cache(disk.loader(), &tasks);
+        Handle<Text> h = cache.loadAsync("x");
+        while (disk.captured.load() < 1) // le chargement initial a lu v1 et attend
+            std::this_thread::yield();
+        {
+            std::lock_guard lock(disk.mutex);
+            disk.files["x"] = "v2";
+        }
+        REQUIRE(cache.reload("x").has_value()); // installe v2 pendant que le chargement initial attend
+        disk.gate = false;
+        tasks.waitIdle();
+        REQUIRE(cache.get(h) != nullptr);
+        CHECK(cache.get(h)->value == "v2");
+        CHECK(cache.version(h) == 1);
+    }
+}

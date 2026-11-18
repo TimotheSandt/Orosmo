@@ -9,10 +9,8 @@ class PCGRandom
     uint64_t state;
 
   public:
-    PCGRandom();
-    PCGRandom(uint64_t seed);
-
-    void init();
+    PCGRandom() = delete; // no hidden clock seed (rule 9)
+    explicit PCGRandom(uint64_t seed);
 
     void init(uint64_t seed);
 

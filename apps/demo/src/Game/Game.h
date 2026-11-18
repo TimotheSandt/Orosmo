@@ -44,7 +44,7 @@ class Game
     std::unique_ptr<World> world = nullptr;
     bool stopped = false;
 
-    std::optional<std::uint32_t> terrainSeed;
+    std::uint32_t terrainSeed = 1u; // set by main(): never derived from the clock
     int viewWidth = 0;
     int viewHeight = 0;
     std::string captureDirectory;

@@ -1,0 +1,10 @@
+[tasks]  10000 tasks on 21 threads, checksum 49995000 (expected 49995000) -> OK
+[config] name=first octaves=4 (file read)
+[reload] config.name      = "edited while running"
+[reload] config.octaves   = 9
+[time]   6 frames, 6 fixed steps of 10 ms, simulation time 60 ms
+[trace]  scope               count   total (ms)   avg (us)
+         run tasks               1       17.336   17335.62
+         task                10000        1.244       0.12
+         reload config           1        0.032      31.94
+[trace]  written to /tmp/m1-trace.json

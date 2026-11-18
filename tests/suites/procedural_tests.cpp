@@ -107,7 +107,7 @@ TEST_SUITE("Procedural")
 
     TEST_CASE("terrain generator init configures grid")
     {
-        TerrainGenerator terrain(5.0f, 7.0f, 6, 8);
+        TerrainGenerator terrain(5.0f, 7.0f, 6, 8, 1);
         AssertEqual(terrain.GetGrid().GetResolutionX(), 6u, "Terrain generator should propagate the x resolution");
         AssertEqual(terrain.GetGrid().GetResolutionY(), 8u, "Terrain generator should propagate the z resolution");
         AssertEqual(terrain.GetGrid().GetPointCount(), 48u, "Terrain generator should initialize the grid points");

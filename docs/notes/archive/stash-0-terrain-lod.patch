@@ -1,0 +1,231 @@
+diff --git a/Libraries/includes/ProceduralGeneration/Grid.h b/Libraries/includes/ProceduralGeneration/Grid.h
+index 00e2805..2ffd186 100644
+--- a/Libraries/includes/ProceduralGeneration/Grid.h
++++ b/Libraries/includes/ProceduralGeneration/Grid.h
+@@ -52,10 +52,10 @@ class Grid
+   private:
+     struct Chunk
+     {
+-        Mesh mesh;
++        std::array<Mesh, 3> lodMeshes;
++        std::array<unsigned int, 3> lodTriangleCounts{};
+         glm::vec3 minBounds = glm::vec3(0.0f);
+         glm::vec3 maxBounds = glm::vec3(0.0f);
+-        unsigned int triangleCount = 0;
+     };
+ 
+     void DestroyRenderMeshes();
+@@ -72,5 +72,16 @@ class Grid
+     unsigned int lastRenderedChunkCount = 0;
+     unsigned int lastRenderedTriangleCount = 0;
+ 
++    mutable glm::mat4 cachedFrustumMatrix{0.0f};
++    mutable bool frustumCacheValid = false;
++
++    // Six planes cached from last ExtractFrustumPlanes call; stored as float[4] (normal xyz + distance).
++    struct CachedPlane
++    {
++        glm::vec3 normal{};
++        float distance = 0.0f;
++    };
++    mutable std::array<CachedPlane, 6> cachedFrustumPlanes{};
++
+     Mesh mesh;
+ };
+diff --git a/Libraries/src/ProceduralGeneration/Grid.cpp b/Libraries/src/ProceduralGeneration/Grid.cpp
+index 18d10c8..9fe67d1 100644
+--- a/Libraries/src/ProceduralGeneration/Grid.cpp
++++ b/Libraries/src/ProceduralGeneration/Grid.cpp
+@@ -8,7 +8,10 @@
+ namespace
+ {
+ 
+-constexpr unsigned int TerrainChunkCellSize = 64;
++constexpr unsigned int TerrainChunkCellSize = 128;
++constexpr std::array<unsigned int, 3> TerrainLodSteps = {1, 2, 4};
++constexpr float TerrainLod0Distance = 80.0f;
++constexpr float TerrainLod1Distance = 160.0f;
+ 
+ struct FrustumPlane
+ {
+@@ -80,6 +83,36 @@ void AppendVertex(std::vector<float> &vertices, const Vertex &vertex)
+     vertices.push_back(vertex.Color.z);
+ }
+ 
++std::vector<unsigned int> BuildSampledAxis(unsigned int start, unsigned int end, unsigned int step)
++{
++    std::vector<unsigned int> samples;
++    samples.reserve(((end - start) / step) + 2);
++    for (unsigned int value = start; value < end; value += step)
++    {
++        samples.push_back(value);
++    }
++    if (samples.empty() || samples.back() != end)
++    {
++        samples.push_back(end);
++    }
++    return samples;
++}
++
++unsigned int SelectTerrainLod(const glm::vec3 &cameraPosition, const glm::vec3 &minBounds, const glm::vec3 &maxBounds)
++{
++    const glm::vec3 center = (minBounds + maxBounds) * 0.5f;
++    const float distance = glm::length(glm::vec2(cameraPosition.x - center.x, cameraPosition.z - center.z));
++    if (distance < TerrainLod0Distance)
++    {
++        return 0;
++    }
++    if (distance < TerrainLod1Distance)
++    {
++        return 1;
++    }
++    return 2;
++}
++
+ } // namespace
+ 
+ Grid::Grid() : size_x(1.0f), size_z(1.0f), resolution_x(3), resolution_z(3) { this->GeneratePoints(); }
+@@ -211,7 +244,10 @@ void Grid::DestroyRenderMeshes()
+     this->mesh.Destroy();
+     for (Chunk &chunk : this->chunks)
+     {
+-        chunk.mesh.Destroy();
++        for (Mesh &lodMesh : chunk.lodMeshes)
++        {
++            lodMesh.Destroy();
++        }
+     }
+     this->chunks.clear();
+     this->lastRenderedChunkCount = 0;
+@@ -277,11 +313,6 @@ void Grid::GenerateChunkedMesh()
+         {
+             const unsigned int startZ = chunkZ * TerrainChunkCellSize;
+             const unsigned int endZ = std::min(startZ + TerrainChunkCellSize, cellCountZ);
+-            const unsigned int localResolutionZ = endZ - startZ + 1;
+-            const unsigned int localResolutionX = endX - startX + 1;
+-
+-            std::vector<float> vertices;
+-            vertices.reserve(static_cast<std::size_t>(localResolutionX) * static_cast<std::size_t>(localResolutionZ) * 9);
+             glm::vec3 minBounds(std::numeric_limits<float>::max());
+             glm::vec3 maxBounds(std::numeric_limits<float>::lowest());
+ 
+@@ -290,39 +321,56 @@ void Grid::GenerateChunkedMesh()
+                 for (unsigned int z = startZ; z <= endZ; ++z)
+                 {
+                     const Vertex &vertex = this->points[x * this->resolution_z + z];
+-                    AppendVertex(vertices, vertex);
+                     minBounds = glm::min(minBounds, vertex.Position);
+                     maxBounds = glm::max(maxBounds, vertex.Position);
+                 }
+             }
+ 
+-            std::vector<std::uint32_t> indices;
+-            indices.reserve(static_cast<std::size_t>(endX - startX) * static_cast<std::size_t>(endZ - startZ) * 6);
+-            for (unsigned int x = startX; x < endX; ++x)
++            Chunk chunk;
++            chunk.minBounds = minBounds;
++            chunk.maxBounds = maxBounds;
++
++            for (std::size_t lodIndex = 0; lodIndex < TerrainLodSteps.size(); ++lodIndex)
+             {
+-                for (unsigned int z = startZ; z < endZ; ++z)
++                const std::vector<unsigned int> sampledX = BuildSampledAxis(startX, endX, TerrainLodSteps[lodIndex]);
++                const std::vector<unsigned int> sampledZ = BuildSampledAxis(startZ, endZ, TerrainLodSteps[lodIndex]);
++
++                std::vector<float> vertices;
++                vertices.reserve(sampledX.size() * sampledZ.size() * 9);
++                for (const unsigned int x : sampledX)
+                 {
+-                    const std::uint32_t p1 = (x - startX) * localResolutionZ + (z - startZ);
+-                    const std::uint32_t p2 = (x - startX + 1) * localResolutionZ + (z - startZ);
+-                    const std::uint32_t p3 = (x - startX) * localResolutionZ + (z - startZ + 1);
+-                    const std::uint32_t p4 = (x - startX + 1) * localResolutionZ + (z - startZ + 1);
+-
+-                    indices.push_back(p1);
+-                    indices.push_back(p2);
+-                    indices.push_back(p3);
+-                    indices.push_back(p2);
+-                    indices.push_back(p4);
+-                    indices.push_back(p3);
++                    for (const unsigned int z : sampledZ)
++                    {
++                        AppendVertex(vertices, this->points[x * this->resolution_z + z]);
++                    }
+                 }
++
++                std::vector<std::uint32_t> indices;
++                indices.reserve((sampledX.size() - 1) * (sampledZ.size() - 1) * 6);
++                for (std::size_t x = 0; x + 1 < sampledX.size(); ++x)
++                {
++                    for (std::size_t z = 0; z + 1 < sampledZ.size(); ++z)
++                    {
++                        const std::uint32_t p1 = static_cast<std::uint32_t>(x * sampledZ.size() + z);
++                        const std::uint32_t p2 = static_cast<std::uint32_t>((x + 1) * sampledZ.size() + z);
++                        const std::uint32_t p3 = static_cast<std::uint32_t>(x * sampledZ.size() + z + 1);
++                        const std::uint32_t p4 = static_cast<std::uint32_t>((x + 1) * sampledZ.size() + z + 1);
++
++                        indices.push_back(p1);
++                        indices.push_back(p2);
++                        indices.push_back(p3);
++                        indices.push_back(p2);
++                        indices.push_back(p4);
++                        indices.push_back(p3);
++                    }
++                }
++
++                chunk.lodTriangleCounts[lodIndex] = static_cast<unsigned int>(indices.size() / 3);
++                chunk.lodMeshes[lodIndex].Initialize(std::move(vertices), std::move(indices), {3, 3, 3});
++                chunk.lodMeshes[lodIndex].SetShaderCopy(terrainShader);
++                chunk.lodMeshes[lodIndex].UploadTransform();
+             }
+ 
+-            Chunk chunk;
+-            chunk.minBounds = minBounds;
+-            chunk.maxBounds = maxBounds;
+-            chunk.triangleCount = static_cast<unsigned int>(indices.size() / 3);
+-            chunk.mesh.Initialize(std::move(vertices), std::move(indices), {3, 3, 3});
+-            chunk.mesh.SetShaderCopy(terrainShader);
+-            chunk.mesh.UploadTransform();
+             this->chunks.push_back(std::move(chunk));
+         }
+     }
+@@ -349,7 +397,26 @@ void Grid::Render(const Renderer3D &renderer3D, Camera &camera)
+         return;
+     }
+ 
+-    const std::array<FrustumPlane, 6> frustumPlanes = ExtractFrustumPlanes(camera.GetMatrix());
++    const glm::mat4 currentMatrix = camera.GetMatrix();
++    if (!frustumCacheValid || currentMatrix != cachedFrustumMatrix)
++    {
++        const std::array<FrustumPlane, 6> planes = ExtractFrustumPlanes(currentMatrix);
++        for (std::size_t i = 0; i < 6; ++i)
++        {
++            cachedFrustumPlanes[i].normal = planes[i].normal;
++            cachedFrustumPlanes[i].distance = planes[i].distance;
++        }
++        cachedFrustumMatrix = currentMatrix;
++        frustumCacheValid = true;
++    }
++
++    std::array<FrustumPlane, 6> frustumPlanes;
++    for (std::size_t i = 0; i < 6; ++i)
++    {
++        frustumPlanes[i].normal = cachedFrustumPlanes[i].normal;
++        frustumPlanes[i].distance = cachedFrustumPlanes[i].distance;
++    }
++
+     this->lastRenderedChunkCount = 0;
+     this->lastRenderedTriangleCount = 0;
+     for (Chunk &chunk : this->chunks)
+@@ -359,8 +426,9 @@ void Grid::Render(const Renderer3D &renderer3D, Camera &camera)
+             continue;
+         }
+ 
+-        renderer3D.DrawMesh(chunk.mesh, camera);
++        const unsigned int lodIndex = SelectTerrainLod(camera.GetPosition(), chunk.minBounds, chunk.maxBounds);
++        renderer3D.DrawMesh(chunk.lodMeshes[lodIndex], camera);
+         ++this->lastRenderedChunkCount;
+-        this->lastRenderedTriangleCount += chunk.triangleCount;
++        this->lastRenderedTriangleCount += chunk.lodTriangleCounts[lodIndex];
+     }
+ }

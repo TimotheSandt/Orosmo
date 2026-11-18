@@ -4,6 +4,7 @@
 #include "Graphics/Core/GraphicsRuntime.h"
 #include "Logger.h"
 
+#include <random>
 #include <cstdlib>
 #include <filesystem>
 #include <exception>
@@ -104,15 +105,24 @@ int main(int argc, char **argv)
             LOG_INFO("Starting game with graphics API: ", GraphicsAPIToString(selectedApi));
 
             Game game;
+            // The seed is chosen HERE, explicitly (rule 9: no clock inside the generation). Captures use seed 1 unless
+            // given; otherwise a random seed is drawn and logged so that the terrain can be replayed with --seed N.
+            std::uint32_t terrainSeed = 1u;
             if (!launchOptions.captureDirectory.empty())
             {
                 game.enableCapture(captureDirectory, launchOptions.captureFrames);
-                game.setSeed(launchOptions.seed.value_or(1u));
+                terrainSeed = launchOptions.seed.value_or(1u);
             }
             else if (launchOptions.seed.has_value())
             {
-                game.setSeed(*launchOptions.seed);
+                terrainSeed = *launchOptions.seed;
             }
+            else
+            {
+                terrainSeed = std::random_device{}() & 0x7fffffffu;
+                LOG_INFO("Random terrain seed: ", terrainSeed, " (replay it with --seed ", terrainSeed, ")");
+            }
+            game.setSeed(terrainSeed);
             LOG_TRACE("Game created");
             game.init();
             LOG_TRACE("Game initialized");

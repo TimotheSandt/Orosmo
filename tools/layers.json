@@ -5,6 +5,8 @@
     "scene": 6, "ui": 7, "world": 8, "sim": 9, "game": 10, "apps": 11
   },
   "rules": [
+    ["include/engine/core/*", "core"],
+    ["src/core/*", "core"],
     ["include/Utilities/InputManager.h", "platform"],
     ["src/Utilities/InputManager.cpp", "platform"],
     ["include/Utilities/*", "core"],

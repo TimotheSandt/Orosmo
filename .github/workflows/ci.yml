@@ -21,13 +21,50 @@ env:
   VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-archives
 
 jobs:
+  # ── Plan: do not repeat a run that already exists ────────────────────────────────────────────────
+  # A pull request run is skipped when (1) the PR comes from this repository, (2) the target branch is already contained
+  # in the PR head (so the merge commit that pull_request tests has the same content as the head) and (3) a push run of
+  # this workflow for the head commit has already FINISHED SUCCESSFULLY. A running, failed, cancelled or skipped push run
+  # does not count: GitHub shows a job skipped by a condition as green, so skipping on anything but a known success
+  # would hide a failure (or a result that does not exist yet) behind a green PR check.
+  # Otherwise (fork, diverged main, no successful push run yet) the PR gets its own run.
+  plan:
+    name: Plan (skip a run that already exists)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      skip: ${{ steps.decide.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          skip=false
+          if [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] \
+             && git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"; then
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&event=push" \
+              --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | length')
+            echo "successful push runs for $HEAD_SHA: $runs"
+            [ "${runs:-0}" -gt 0 ] && skip=true
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          echo "skip=$skip"
+
   # ── Linux : reference platform. apt for everything it has, vcpkg for glad (v1) and msdfgen. ──
   linux:
     name: Linux x64 (build, tests, checks, capture)
-    # A PR whose head is dev (in this repository) is covered by the push run on the same commit: skip the duplicate.
-    if: >-
-      github.event_name != 'pull_request' || github.head_ref != 'dev' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -122,10 +159,8 @@ jobs:
   # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
   sanitizers:
     name: Linux x64 (ASan + UBSan tests)
-    # A PR whose head is dev (in this repository) is covered by the push run on the same commit: skip the duplicate.
-    if: >-
-      github.event_name != 'pull_request' || github.head_ref != 'dev' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -173,10 +208,8 @@ jobs:
   # available while writing them). Remove the flag after the first green run; see docs/GAPS.md.
   other-platforms:
     name: ${{ matrix.name }} (build, tests)
-    # A PR whose head is dev (in this repository) is covered by the push run on the same commit: skip the duplicate.
-    if: >-
-      github.event_name != 'pull_request' || github.head_ref != 'dev' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
     runs-on: ${{ matrix.os }}
     continue-on-error: true
     strategy:
