@@ -69,7 +69,7 @@ core::Result<rhi::BindGroupHandle> FullscreenBlit::groupFor(rhi::TextureHandle s
         groups_.clear();
     }
     rhi::BindGroupDesc desc;
-    desc.entries = {{.binding = 0, .type = rhi::BindingType::kSampledTexture, .texture = source, .sampler = sampler}};
+    desc.entries.push_back({.binding = 0, .type = rhi::BindingType::kSampledTexture, .texture = source, .sampler = sampler});
     desc.debugName = "blit.source";
     auto group = device_.createBindGroup(desc);
     if (!group)
@@ -84,7 +84,7 @@ core::Result<> FullscreenBlit::draw(rhi::CommandEncoder &encoder, rhi::TextureHa
 {
     GraphicsState state;
     state.raster.cull = rhi::CullMode::kNone;
-    state.colorTargets = {rhi::ColorTargetState{.format = destinationFormat}};
+    state.colorTargets.assign(1, rhi::ColorTargetState{.format = destinationFormat});
     state.debugName = "blit";
     auto pipeline = pipelines_.graphics(*program_, state);
     if (!pipeline)
@@ -106,7 +106,7 @@ core::Result<> FullscreenBlit::copy(rhi::CommandEncoder &encoder, rhi::TextureHa
                                     rhi::Format destinationFormat, const std::string &passName)
 {
     rhi::RenderPassDesc pass;
-    pass.colors = {{.texture = destination, .load = rhi::LoadOp::kDontCare}};
+    pass.colors.push_back({.texture = destination, .load = rhi::LoadOp::kDontCare});
     pass.debugName = passName;
     encoder.beginRenderPass(pass);
     auto r = draw(encoder, source, sampler, destinationFormat);

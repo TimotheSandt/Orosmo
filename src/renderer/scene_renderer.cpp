@@ -195,8 +195,8 @@ core::Result<> SceneRenderer::rebuildFrameGroup()
         return {};
     }
     rhi::BindGroupDesc desc;
-    desc.entries = {{.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = cameraBuffer_.handle(), .size = sizeof(CameraData)},
-                    {.binding = 1, .type = rhi::BindingType::kStorageBuffer, .buffer = lights.buffer().handle()}};
+    desc.entries.push_back({.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = cameraBuffer_.handle(), .size = sizeof(CameraData)});
+    desc.entries.push_back({.binding = 1, .type = rhi::BindingType::kStorageBuffer, .buffer = lights.buffer().handle()});
     desc.debugName = "scene.frame";
     auto group = device_.createBindGroup(desc);
     if (!group)
