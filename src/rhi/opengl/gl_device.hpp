@@ -41,6 +41,7 @@ struct TextureRes
     TextureDesc desc;
     std::uint32_t levels = 1;
     std::uint32_t layers = 1; // couches réelles (6 pour un cube)
+    bool defaultFramebuffer = false; // backbuffer d'une fenêtre : framebuffer 0, non échantillonnable
 };
 
 struct SamplerRes
@@ -138,6 +139,7 @@ class GlDevice final : public Device
     Result<TextureHandle> beginFrame() override;
     Result<> present() override;
     Result<> resize(Extent2D size) override;
+    void setVSync(bool enabled) override;
     void waitIdle() override;
 
     std::uint64_t validationErrorCount() const noexcept override { return validationErrors_.load(); }
@@ -170,7 +172,12 @@ class GlDevice final : public Device
     Result<TextureHandle> createTextureImpl(const TextureDesc &desc);
     void releaseTexture(const TextureRes &texture);
 
+    Result<> refreshWindowBackbuffer();
+
     GLFWwindow *window_ = nullptr;
+    bool ownsWindow_ = true;  // false : fenêtre adoptée, détruite par son créateur
+    bool windowed_ = false;
+    bool glReady_ = false;
     Capabilities caps_;
     Extent2D backbufferSize_{1, 1};
     TextureHandle backbuffer_;
@@ -201,5 +208,6 @@ class GlDevice final : public Device
 };
 
 Result<std::unique_ptr<Device>> createGlDevice(const DeviceDesc &desc);
+void applyWindowHints(const DeviceDesc &desc);
 
 } // namespace engine::rhi::gl

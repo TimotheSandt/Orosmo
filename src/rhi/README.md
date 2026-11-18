@@ -73,10 +73,24 @@ de l'image, profondeur NDC −1..1 (`glDepthRange` 0..1). Vulkan et Metal ont l'
 `GL_ARB_clip_control` pour la profondeur 0..1 et le reverse-Z de REN-02) est décidée avec le premier shader commun (lot B) et
 M4. Les textures d'image sont stockées sans inversion ici.
 
-## Limites connues (lot A)
+## Surface : hors écran ou fenêtre (B2, RHI-08)
 
-- **Surface hors écran seulement** : `SurfaceDesc::nativeWindow` non nul renvoie `kUnsupported`. La fenêtre arrive avec
-  `platform::Window` (lot C). Le contexte hors écran est une fenêtre GLFW invisible 1×1 ; GLFW n'est jamais terminé par le RHI.
+- **Hors écran** (`SurfaceDesc::nativeWindow` nul) : contexte porté par une fenêtre GLFW invisible 1×1, backbuffer = texture RGBA8 de
+  `surface.size` (tests, mode sans fenêtre PLAT-04).
+- **Fenêtre** : la couche fenêtre appelle `prepareWindowHints(desc)` **avant** `glfwCreateWindow` (4.3 core, contexte de debug si
+  `desc.validation`, double tampon, sRGB non souhaité), pose ses propres attributs, puis passe le `GLFWwindow*` dans
+  `SurfaceDesc::nativeWindow`. Le RHI **adopte** la fenêtre (il ne la détruit pas ; à la destruction du périphérique le contexte est
+  libéré du fil, la fenêtre reste valide) et la rend courante sur le fil appelant.
+  - Le backbuffer est le framebuffer 0 : RGBA8 linéaire (le backend coupe `GL_FRAMEBUFFER_SRGB` pour lui, le visuel système pouvant être
+    sRGB), usages `RenderTarget` et `CopySrc` seulement. Il doit être **l'unique attachement** de sa passe (ni profondeur, ni MRT :
+    rendre dans une cible puis copier/dessiner dans le backbuffer) ; il ne s'échantillonne pas, ne reçoit pas d'envoi de texels, n'a pas de mips.
+  - `beginFrame` relit la taille du framebuffer (HiDPI compris) ; une fenêtre réduite renvoie `kBusy` (sauter l'image). `resize`
+    relit aussi cette taille. `present` = `glfwSwapBuffers` ; `setVSync` = `glfwSwapInterval`.
+
+## Limites connues (lot A et B2)
+
+- Le contexte hors écran est une fenêtre GLFW invisible 1×1 ; GLFW n'est jamais initialisé ni terminé par une fenêtre adoptée
+  (c'est la couche fenêtre qui le fait).
 - **Shaders GLSL 430 uniquement** (`ShaderLanguage::kGlsl`) ; SPIR-V refusé (`Capabilities::spirvShaders = false`). Le pipeline
   GLSL 450 → SPIR-V → GLSL 430 est le lot B (RHI-12).
 - Pas de cache de pipelines sur disque (RHI-06, lot B), pas de multi-draw avec compteur (`GL_ARB_indirect_parameters`), pas de

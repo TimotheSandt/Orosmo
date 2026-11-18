@@ -67,9 +67,10 @@ class CommandEncoder
 
 struct SurfaceDesc
 {
-    // Descripteur opaque fourni par `platform` (fenêtre) ; nul : périphérique hors écran (tests, mode sans fenêtre, PLAT-04).
+    // Descripteur opaque fourni par `platform` : la fenêtre (OpenGL : le GLFWwindow*), créée APRÈS `prepareWindowHints`. Le RHI
+    // l'adopte sans en devenir propriétaire (il ne la détruit pas). Nul : périphérique hors écran (tests, PLAT-04).
     void *nativeWindow = nullptr;
-    Extent2D size{1, 1}; // taille du backbuffer hors écran
+    Extent2D size{1, 1}; // taille du backbuffer hors écran ; ignorée pour une fenêtre (taille du framebuffer de la fenêtre)
 };
 
 struct DeviceDesc
@@ -134,10 +135,16 @@ class Device
     virtual Result<> submit(std::unique_ptr<CommandEncoder> encoder) = 0;
 
     // Image courante. Hors écran : une texture de la taille de `SurfaceDesc::size`, format RGBA8.
+    // Fenêtre : le backbuffer prend la taille courante du framebuffer de la fenêtre (HiDPI compris) ; une fenêtre réduite
+    // (framebuffer de taille nulle) renvoie kBusy : l'appelant saute l'image.
     virtual Result<TextureHandle> beginFrame() = 0;
     // Termine l'image : présentation (fenêtre) et libération des ressources détruites. Hors écran : seulement la libération.
     virtual Result<> present() = 0;
+    // Hors écran : réalloue le backbuffer à `size`. Fenêtre : relit la taille du framebuffer de la fenêtre (`size` est ignoré :
+    // c'est la couche fenêtre qui redimensionne).
     virtual Result<> resize(Extent2D size) = 0;
+    // Synchronisation verticale (RHI-08) ; sans effet hors écran.
+    virtual void setVSync(bool enabled) = 0;
     virtual void waitIdle() = 0;
 
     // Nombre de messages d'erreur ou d'avertissement reçus de la couche de validation depuis la création (GL_KHR_debug,
@@ -149,6 +156,11 @@ class Device
 // Crée le périphérique du backend demandé. Un backend non compilé ou indisponible sur la machine renvoie kUnsupported
 // avec la raison (RHI-04).
 Result<std::unique_ptr<Device>> createDevice(const DeviceDesc &desc);
+
+// À appeler par la couche fenêtre AVANT de créer la fenêtre que `SurfaceDesc::nativeWindow` recevra : pose les attributs de
+// contexte que le backend exige (OpenGL : 4.3 core, contexte de debug si `desc.validation`, backbuffer RGBA8 linéaire (préférence ; le backend coupe la conversion sRGB à l'écriture dans la fenêtre), double tampon).
+// N'efface pas les attributs déjà posés (taille, bordure, visibilité restent ceux de l'appelant).
+Result<> prepareWindowHints(const DeviceDesc &desc);
 
 // Backends compilés dans cette bibliothèque.
 bool isBackendCompiled(Backend backend) noexcept;

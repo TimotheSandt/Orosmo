@@ -122,33 +122,44 @@ Result<std::unique_ptr<GlDevice>> GlDevice::create(const DeviceDesc &desc)
     return device;
 }
 
-Result<> GlDevice::init(const DeviceDesc &desc)
+void applyWindowHints(const DeviceDesc &desc)
 {
-    if (desc.surface.nativeWindow != nullptr)
-    {
-        return makeError(ErrorCode::kUnsupported,
-                         "OpenGL RHI: presenting to a window arrives with platform::Window (M2 lot C); use an offscreen surface");
-    }
-    backbufferSize_ = {std::max(desc.surface.size.width, 1u), std::max(desc.surface.size.height, 1u)};
-
-    // GLFW est initialisé ici mais jamais terminé : sa durée de vie appartient à `platform` (lot C).
-    if (glfwInit() != GLFW_TRUE)
-    {
-        return makeError(ErrorCode::kUnsupported, "OpenGL RHI: glfwInit failed (no display?)");
-    }
-    glfwDefaultWindowHints();
-    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, desc.validation ? GLFW_TRUE : GLFW_FALSE);
-    window_ = glfwCreateWindow(1, 1, "rhi-offscreen", nullptr, nullptr);
-    if (window_ == nullptr)
+    glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE); // backbuffer RGBA8 linéaire : aucune conversion sRGB à l'écriture
+    glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
+}
+
+Result<> GlDevice::init(const DeviceDesc &desc)
+{
+    windowed_ = desc.surface.nativeWindow != nullptr;
+    backbufferSize_ = {std::max(desc.surface.size.width, 1u), std::max(desc.surface.size.height, 1u)};
+
+    if (windowed_)
     {
-        return makeError(ErrorCode::kUnsupported, "OpenGL RHI: cannot create an OpenGL 4.3 core context");
+        window_ = static_cast<GLFWwindow *>(desc.surface.nativeWindow);
+        ownsWindow_ = false;
+    }
+    else
+    {
+        // GLFW est initialisé ici mais jamais terminé : sa durée de vie appartient à `platform`.
+        if (glfwInit() != GLFW_TRUE)
+        {
+            return makeError(ErrorCode::kUnsupported, "OpenGL RHI: glfwInit failed (no display?)");
+        }
+        glfwDefaultWindowHints();
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        applyWindowHints(desc);
+        window_ = glfwCreateWindow(1, 1, "rhi-offscreen", nullptr, nullptr);
+        if (window_ == nullptr)
+        {
+            return makeError(ErrorCode::kUnsupported, "OpenGL RHI: cannot create an OpenGL 4.3 core context");
+        }
     }
     glfwMakeContextCurrent(window_);
-    glfwSwapInterval(0);
+    glfwSwapInterval(desc.vsync && windowed_ ? 1 : 0);
     if (gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)) == 0)
     {
         return makeError(ErrorCode::kUnsupported, "OpenGL RHI: gladLoadGLLoader failed");
@@ -157,13 +168,21 @@ Result<> GlDevice::init(const DeviceDesc &desc)
     {
         return makeError(ErrorCode::kUnsupported, "OpenGL RHI: OpenGL 4.3 or newer is required");
     }
+    glReady_ = true;
 
     if (desc.validation)
     {
-        glEnable(GL_DEBUG_OUTPUT);
-        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-        glDebugMessageCallback(debugCallback, this);
-        glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
+        if ((getInt(GL_CONTEXT_FLAGS) & GL_CONTEXT_FLAG_DEBUG_BIT) != 0)
+        {
+            glEnable(GL_DEBUG_OUTPUT);
+            glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+            glDebugMessageCallback(debugCallback, this);
+            glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
+        }
+        else
+        {
+            LOG_WARNING("OpenGL RHI: validation requested but the window's context is not a debug context (call prepareWindowHints first)");
+        }
     }
 
     // ── Capacités ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -216,6 +235,22 @@ Result<> GlDevice::init(const DeviceDesc &desc)
     label(GL_BUFFER, pushBuffer_, "rhi.pushConstants");
     glBindBufferBase(GL_UNIFORM_BUFFER, kPushConstantBinding, pushBuffer_);
 
+    if (windowed_)
+    {
+        int w = 0, h = 0;
+        glfwGetFramebufferSize(window_, &w, &h);
+        backbufferSize_ = {static_cast<std::uint32_t>(std::max(w, 1)), static_cast<std::uint32_t>(std::max(h, 1))};
+        TextureRes res;
+        res.id = 0; // framebuffer par défaut
+        res.target = GL_TEXTURE_2D;
+        res.desc.format = Format::kRGBA8Unorm;
+        res.desc.size = {backbufferSize_.width, backbufferSize_.height, 1};
+        res.desc.usage = TextureUsage::kRenderTarget | TextureUsage::kCopySrc;
+        res.desc.debugName = "rhi.backbuffer";
+        res.defaultFramebuffer = true;
+        backbuffer_ = textures_.add(std::move(res));
+        return {};
+    }
     TextureDesc backbufferDesc;
     backbufferDesc.format = Format::kRGBA8Unorm;
     backbufferDesc.size = {backbufferSize_.width, backbufferSize_.height, 1};
@@ -234,6 +269,14 @@ GlDevice::~GlDevice()
 {
     if (window_ == nullptr)
     {
+        return;
+    }
+    if (!glReady_)
+    {
+        if (ownsWindow_)
+        {
+            glfwDestroyWindow(window_);
+        }
         return;
     }
     glfwMakeContextCurrent(window_);
@@ -260,7 +303,14 @@ GlDevice::~GlDevice()
     glDeleteFramebuffers(1, &scratchFbo_);
     glDeleteVertexArrays(1, &emptyVao_);
     glDeleteBuffers(1, &pushBuffer_);
-    glfwDestroyWindow(window_);
+    if (ownsWindow_)
+    {
+        glfwDestroyWindow(window_);
+    }
+    else
+    {
+        glfwMakeContextCurrent(nullptr); // la fenêtre reste à son créateur
+    }
 }
 
 DeviceStats GlDevice::stats() const noexcept
@@ -526,6 +576,10 @@ Result<> GlDevice::updateTexture(TextureHandle handle, const TextureCopy &copy, 
     {
         return std::unexpected(region.error());
     }
+    if (texture->defaultFramebuffer)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "updateTexture: the window backbuffer cannot be written by upload; render into it");
+    }
     const std::uint32_t bpt = formatInfo(texture->desc.format).bytesPerTexel;
     const std::uint64_t rowLength = copy.bufferRowLength != 0 ? copy.bufferRowLength : region->size.width;
     const std::uint64_t required = rowLength * region->size.height * region->size.depth * bpt;
@@ -577,6 +631,16 @@ Result<> GlDevice::readRegion(const TextureRes &texture, const SliceRegion &regi
     const std::uint64_t rowTexels = rowLength != 0 ? rowLength : region.size.width;
     const std::uint64_t sliceBytes = rowTexels * region.size.height * info.bytesPerTexel;
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    if (texture.defaultFramebuffer)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glReadBuffer(GL_BACK);
+        glPixelStorei(GL_PACK_ROW_LENGTH, static_cast<GLint>(rowLength));
+        glReadPixels(region.offset.x, region.offset.y, static_cast<GLsizei>(region.size.width), static_cast<GLsizei>(region.size.height), gf.format,
+                     gf.type, reinterpret_cast<void *>(destination));
+        glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+        return {};
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, scratchFbo_);
     glPixelStorei(GL_PACK_ROW_LENGTH, static_cast<GLint>(rowLength));
     const GLenum attachment = info.kind == FormatKind::kDepth          ? GL_DEPTH_ATTACHMENT
@@ -1007,17 +1071,57 @@ void GlDevice::destroy(QueryPoolHandle handle)
 
 // ── Images, redimensionnement ──────────────────────────────────────────────────────────────────────────────────────
 
-Result<TextureHandle> GlDevice::beginFrame() { return backbuffer_; }
+Result<> GlDevice::refreshWindowBackbuffer()
+{
+    int w = 0, h = 0;
+    glfwGetFramebufferSize(window_, &w, &h);
+    if (w <= 0 || h <= 0)
+    {
+        return makeError(ErrorCode::kBusy, "the window has an empty framebuffer (minimized): skip the frame");
+    }
+    TextureRes *bb = textures_.get(backbuffer_);
+    bb->desc.size = {static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), 1};
+    backbufferSize_ = {static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h)};
+    return {};
+}
+
+Result<TextureHandle> GlDevice::beginFrame()
+{
+    if (windowed_)
+    {
+        if (auto r = refreshWindowBackbuffer(); !r)
+        {
+            return std::unexpected(r.error());
+        }
+    }
+    return backbuffer_;
+}
 
 Result<> GlDevice::present()
 {
+    if (windowed_)
+    {
+        glfwSwapBuffers(window_);
+    }
     ++frame_;
     flushReleases(false);
     return {};
 }
 
+void GlDevice::setVSync(bool enabled)
+{
+    if (windowed_)
+    {
+        glfwSwapInterval(enabled ? 1 : 0);
+    }
+}
+
 Result<> GlDevice::resize(Extent2D size)
 {
+    if (windowed_)
+    {
+        return refreshWindowBackbuffer();
+    }
     if (size.width == 0 || size.height == 0)
     {
         return makeError(ErrorCode::kInvalidArgument, "resize: empty size");

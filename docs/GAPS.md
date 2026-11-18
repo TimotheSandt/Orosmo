@@ -300,3 +300,11 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | G70 | Barrières conservatrices | `glMemoryBarrier(GL_ALL_BARRIER_BITS)` après chaque `dispatch` et fin de passe qui a lié du stockage : correct, pas optimal. Le calcul fin d'après l'usage déclaré viendra avec le premier compute réel (M3). | M3 |
 | G71 | Pas de multi-draw avec compteur | `drawIndirect` / `drawIndexedIndirect` (RHI-10) fonctionnent ; la variante `...Count` (`GL_ARB_indirect_parameters`, compteur lu sur le GPU) n'est pas exposée : `Capabilities` n'a pas de champ pour elle. | M5 |
 | G72 | Images de stockage et unités plates | `groupe × 8 + binding` peut dépasser `GL_MAX_IMAGE_UNITS` (8 sur certains pilotes) : `setBindGroup` refuse avec un message. Convention : images de stockage dans le groupe 0. À revoir avec la réflexion des shaders (lot B), qui peut compacter. | M2 lot B |
+
+## Ajouts de M2 lot B2 (G73 à G75)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G73 | Fenêtre minimisée non testée | `beginFrame` renvoie `kBusy` quand le framebuffer est de taille nulle ; le cas n'est pas reproduit par les tests (xvfb ne minimise pas). Même limite pour la présentation réelle (visible, compositeur) : les tests utilisent une fenêtre invisible. | B4 (la démo présente via le RHI) |
+| G74 | Vsync non observable | `setVSync` appelle `glfwSwapInterval` sans erreur ; aucun test ne mesure le rythme d'affichage. RHI-08 reste Partiel pour le vsync. | B4 / C |
+| G75 | Backbuffer sans profondeur ni MRT | Le backbuffer d'une fenêtre doit être l'unique attachement de sa passe (framebuffer par défaut). Le rendu de scène se fait dans une cible RHI puis est copié ou dessiné dans le backbuffer, comme le fait déjà le code hérité (`BlitToDefault`). | — (voulu) |

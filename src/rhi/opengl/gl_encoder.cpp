@@ -186,12 +186,32 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
         depthFormat = attachments[kMaxAttachments]->desc.format;
     }
 
-    const GLuint fbo = device_.framebufferFor(key, static_cast<std::uint32_t>(desc.colors.size()), attachments);
+    bool toWindow = false;
+    for (std::size_t i = 0; i < desc.colors.size(); ++i)
+    {
+        toWindow = toWindow || attachments[i]->defaultFramebuffer;
+    }
+    if (toWindow && !check(desc.colors.size() == 1 && !desc.depth, ErrorCode::kInvalidArgument,
+                           "beginRenderPass: the window backbuffer must be the only attachment of its pass (no depth, no MRT)"))
+    {
+        return;
+    }
+    const GLuint fbo = toWindow ? 0 : device_.framebufferFor(key, static_cast<std::uint32_t>(desc.colors.size()), attachments);
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    // Le backbuffer d'une fenêtre est RGBA8 linéaire par convention : le framebuffer par défaut peut être sRGB selon le visuel
+    // choisi par le système (l'attribut GLFW n'est qu'une préférence), on coupe donc la conversion pour lui.
+    if (toWindow)
+    {
+        glDisable(GL_FRAMEBUFFER_SRGB);
+    }
+    else
+    {
+        glEnable(GL_FRAMEBUFFER_SRGB);
+    }
     std::array<GLenum, kMaxAttachments> drawBuffers{};
     for (std::size_t i = 0; i < desc.colors.size(); ++i)
     {
-        drawBuffers[i] = GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(i);
+        drawBuffers[i] = toWindow ? GL_BACK : GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(i);
     }
     if (desc.colors.empty())
     {
@@ -201,7 +221,7 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
     else
     {
         glDrawBuffers(static_cast<GLsizei>(desc.colors.size()), drawBuffers.data());
-        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        glReadBuffer(toWindow ? GL_BACK : GL_COLOR_ATTACHMENT0);
     }
     if (!check(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE, ErrorCode::kUnsupported,
                "beginRenderPass: framebuffer incomplete (" + desc.debugName + ")"))
@@ -240,7 +260,7 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
         }
         if (c.store == StoreOp::kDontCare)
         {
-            invalidate_.push_back(GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(i));
+            invalidate_.push_back(toWindow ? GL_COLOR : GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(i));
         }
     }
     if (desc.depth)
@@ -677,7 +697,8 @@ void GlEncoder::copyBufferToTexture(BufferHandle src, TextureHandle dst, const T
         return;
     }
     auto region = resolveRegion(*t, copy);
-    if (!check(region.has_value(), ErrorCode::kOutOfRange, region ? "" : region.error().message))
+    if (!check(region.has_value(), ErrorCode::kOutOfRange, region ? "" : region.error().message) ||
+        !check(!t->defaultFramebuffer, ErrorCode::kInvalidArgument, "copyBufferToTexture: the window backbuffer cannot be a copy destination"))
     {
         return;
     }
@@ -725,6 +746,7 @@ void GlEncoder::generateMips(TextureHandle handle)
     const TextureRes *t = device_.get(handle);
     if (check(!inPass_, ErrorCode::kInvalidArgument, "generateMips: inside a render pass") &&
         check(t != nullptr, ErrorCode::kNotFound, "generateMips: stale or null texture") &&
+        check(!t->defaultFramebuffer, ErrorCode::kInvalidArgument, "generateMips: the window backbuffer has no mip chain") &&
         check(!formatInfo(t->desc.format).isDepth() && formatInfo(t->desc.format).kind != FormatKind::kUint, ErrorCode::kInvalidArgument,
               "generateMips: depth and integer formats have no mip generation"))
     {
