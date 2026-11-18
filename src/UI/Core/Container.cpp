@@ -347,6 +347,117 @@ void ContainerBase::Draw(glm::vec2 containerSize, glm::vec2 offset)
     ClearDirty();
 }
 
+void ContainerBase::Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset)
+{
+    if (!visible.Get())
+    {
+        collectedLayerSize = {0, 0}; // la couche sera recréée quand le conteneur redeviendra visible
+        return;
+    }
+
+    if (dirtySelfLayout || dirtyChildLayout)
+    {
+        RecalculateChildBounds();
+    }
+
+    if (UsesOwnRenderTarget())
+    {
+        if (contentSize.x <= 0 || contentSize.y <= 0)
+        {
+            ClearDirty();
+            return;
+        }
+
+        // Taille changée : la couche est recréée vide, tout est à redessiner (comme l'ancienne InitializeRenderTarget).
+        if (collectedLayerSize != contentSize)
+        {
+            collectedLayerSize = contentSize;
+            MarkFullDirty();
+        }
+
+        const std::uint64_t layerId = reinterpret_cast<std::uintptr_t>(this);
+        bool hasLayoutDirty = IsSelfLayoutDirty();
+        bool hasAppearanceDirty = false;
+        for (auto &child : children)
+        {
+            if (child->IsSelfLayoutDirty() || child->IsChildLayoutDirty())
+            {
+                hasLayoutDirty = true;
+                break;
+            }
+            if (child->IsAppearanceDirty())
+            {
+                hasAppearanceDirty = true;
+            }
+        }
+
+        if (hasLayoutDirty)
+        {
+            list.beginLayer(layerId, contentSize, true);
+            for (auto &child : children)
+            {
+                const glm::vec4 childBounds = child->GetCachedBoundsInParent();
+                child->Collect(list, contentSize, {childBounds.x, childBounds.y});
+                child->ClearDirty();
+            }
+            list.endLayer();
+        }
+        else if (hasAppearanceDirty)
+        {
+            list.beginLayer(layerId, contentSize, false);
+            for (auto &child : children)
+            {
+                if (child->IsAppearanceDirty())
+                {
+                    const glm::vec4 childBounds = child->GetCachedBoundsInParent();
+                    list.clearRect({childBounds.x, childBounds.y}, {childBounds.z, childBounds.w});
+                    child->Collect(list, contentSize, {childBounds.x, childBounds.y});
+                    child->ClearDirty();
+                }
+            }
+            list.endLayer();
+        }
+        // Sinon la couche garde son contenu : seule son image est redessinée.
+
+        engine::renderer::DrawLayerImage image;
+        image.layerId = layerId;
+        image.position = offset;
+        image.size = localBounds.scale;
+        image.scrollOffset = scrollOffset;
+        image.contentSize = contentSize;
+        image.color = this->color.Get();
+        list.layerImage(image);
+
+        ClearDirty();
+        return;
+    }
+
+    if (GetColor().a > 0.0f)
+    {
+        list.rect(offset, localBounds.scale, this->color.Get());
+    }
+
+    const bool shouldClipChildren = overflowMode.Get() == OverflowMode::HIDDEN || overflowMode.Get() == OverflowMode::SCROLL;
+    if (shouldClipChildren)
+    {
+        list.pushClip(offset, localBounds.scale);
+    }
+
+    const glm::vec2 childBaseOffset = offset - scrollOffset;
+    for (auto &child : children)
+    {
+        const glm::vec4 childBounds = child->GetCachedBoundsInParent();
+        child->Collect(list, containerSize, {childBaseOffset.x + childBounds.x, childBaseOffset.y + childBounds.y});
+    }
+
+    if (shouldClipChildren)
+    {
+        list.popClip();
+    }
+
+    ClearDirty();
+}
+
 void ContainerBase::MarkFullDirty()
 {
     MarkSelfLayoutDirty();

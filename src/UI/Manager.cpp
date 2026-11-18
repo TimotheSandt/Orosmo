@@ -80,6 +80,22 @@ void Manager::Update(float dt, int w, int h)
     rootContainer->Update();
 }
 
+void Manager::Collect(engine::renderer::DrawList &list, int w, int h)
+{
+    if (!active)
+    {
+        return;
+    }
+
+    if (!rootContainer)
+    {
+        Init(w, h, window);
+    }
+
+    list.logicalSize = {static_cast<float>(w), static_cast<float>(h)};
+    rootContainer->Collect(list, list.logicalSize, {0, 0});
+}
+
 void Manager::Render(Renderer2D &externalRenderer, int w, int h)
 {
     if (!active)

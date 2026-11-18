@@ -4,6 +4,7 @@
 #include "Logger.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -571,8 +572,21 @@ bool TextRenderer::ensureFontLoaded(const std::string &fontName, unsigned int fo
     }
 
     computeFontMetrics(fontData);
-    fontData.atlasTexture = Texture(atlasPixels.data(), fontData.atlasWidth, fontData.atlasHeight, "text", 0, TextureFormat::RGBA8,
-                                    TexturePixelType::UnsignedByte, TextureFilterMode::LinearNoMipmaps);
+    {
+        static std::atomic<std::uint64_t> nextAtlasId{1};
+        auto atlas = std::make_shared<engine::renderer::AtlasImage>();
+        atlas->id = nextAtlasId.fetch_add(1);
+        atlas->width = static_cast<std::uint32_t>(fontData.atlasWidth);
+        atlas->height = static_cast<std::uint32_t>(fontData.atlasHeight);
+        atlas->rgba.assign(atlasPixels.begin(), atlasPixels.end());
+        fontData.atlas = std::move(atlas);
+    }
+    // Texture de l'ancien chemin graphique : seulement quand un runtime graphique hérité est actif (sans lui, la liste de dessin suffit).
+    if (TryGetActiveGraphicsDevice() != nullptr)
+    {
+        fontData.atlasTexture = Texture(atlasPixels.data(), fontData.atlasWidth, fontData.atlasHeight, "text", 0, TextureFormat::RGBA8,
+                                        TexturePixelType::UnsignedByte, TextureFilterMode::LinearNoMipmaps);
+    }
 
     fonts[cacheKey] = std::move(fontData);
     return true;
@@ -697,7 +711,8 @@ glm::vec2 TextRenderer::calculateAnchorOffset(const std::string &text, float sca
 
 void TextRenderer::renderText(const std::string &text, float x, float y, float scale, const glm::vec3 &color, TextAnchor anchor)
 {
-    if (fontRegistrations.empty() || activeFontName.empty() || glyphGeometry == nullptr || !shaderProgram.IsCompiled())
+    const bool legacyDrawReady = glyphGeometry != nullptr && shaderProgram.IsCompiled();
+    if (fontRegistrations.empty() || activeFontName.empty() || (drawSink == nullptr && !legacyDrawReady))
     {
         return;
     }
@@ -783,6 +798,18 @@ void TextRenderer::renderText(const std::string &text, float x, float y, float s
 
     if (batchedVertices.empty())
     {
+        return;
+    }
+
+    if (drawSink != nullptr)
+    {
+        engine::renderer::DrawGlyphs run;
+        run.atlas = fontData.atlas;
+        run.vertices = batchedVertices;
+        run.color = color;
+        run.msdfPixelRange = MsdfPixelRange;
+        run.msdfWeight = msdfWeight;
+        drawSink->glyphs(std::move(run));
         return;
     }
 

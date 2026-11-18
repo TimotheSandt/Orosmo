@@ -47,6 +47,7 @@ class ContainerBase : public ComponentBase
 
     glm::vec2 scrollOffset = {0, 0};
     glm::vec2 contentSize = {0, 0};
+    glm::vec2 collectedLayerSize = {0, 0}; // taille de la couche déjà produite par Collect (0 : à recréer)
     DeferredValue<OverflowMode> overflowMode = OverflowMode::NONE;
 
   public:
@@ -57,6 +58,7 @@ class ContainerBase : public ComponentBase
     void Update() override;
 
     void Draw(glm::vec2 containerSize, glm::vec2 offset = {0, 0}) override;
+    void Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset = {0, 0}) override;
 
     // Override MarkDirty - propagates upward, not downward
     void MarkFullDirty() override;

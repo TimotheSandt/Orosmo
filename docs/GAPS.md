@@ -326,3 +326,12 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | G81 | Constantes de shader brutes | L'ancien `Mesh::SetUniform*("nom", ...)` (uniformes libres par nom) devient des push constants : octets bruts (`Mesh::setPushConstants`), le premier entier étant le drapeau fil de fer. La réflexion ne donne pas encore les noms et décalages des membres du bloc : pas d'écriture par nom. | M3 (UI-12, paramètres réfléchis) |
 | G82 | Lumières ponctuelles et projecteurs non rendus | Types créables et envoyés au GPU, mais `mesh.frag` ne traite que l'ambiante et la directionnelle, comme l'ancien shader (REN-05 reste Partiel). | M5 |
 | G83 | Chemins des tests de scène | **Corrigé** (`tests/renderer/repo_paths.hpp` : la racine est cherchée en remontant depuis le dossier courant) : les tests tournent depuis n'importe quel dossier. **Reste** : les shaders ne sont pas encore copiés dans le paquet du moteur (SDK) : à faire à la bascule. | B6 |
+
+## Ajouts de M2 lot B5 (G84 à G87)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G84 | Deux chemins de dessin dans l'interface | `Draw` (immédiat, via `Sprite` et l'ancien backend) et `Collect` (liste de dessin) coexistent ; les composants gardent un `Sprite` et les conteneurs un `RenderTarget` hérités. UI-02 reste Partiel : « l'interface ne connaît ni le RHI ni le backend » ne sera vrai qu'après suppression de `Draw`. | B6 |
+| G85 | Singleton `UI::Manager::Instance()` | Conservé : les textes y trouvent leur `TextRenderer`. Remplacement par un contexte explicite (A10 pour ce module) avec la bascule. | B6 |
+| G86 | Pas de batch 2D | Un rectangle, une série de glyphes ou une image de couche = un dessin. Le batch par instances (R2D-01) arrive en M5 (A21). | M5 |
+| G87 | Texte | Pas d'UTF-8 (G27), un atlas MSDF par taille de police ; `TextRenderer::init` compile encore le shader hérité (inutile pour la liste de dessin). La parité du texte est prouvée sur une police et six chaînes, pas sur tous les cas de mise en page (retour à la ligne, ellipse, défilement : `renderTextAdvanced` passe par `renderText`, non testé par liste de dessin). | B6, M3 |
