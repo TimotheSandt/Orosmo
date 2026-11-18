@@ -96,26 +96,4 @@ void Manager::Collect(engine::renderer::DrawList &list, int w, int h)
     rootContainer->Collect(list, list.logicalSize, {0, 0});
 }
 
-void Manager::Render(Renderer2D &externalRenderer, int w, int h)
-{
-    if (!active)
-    {
-        return;
-    }
-
-    if (!rootContainer)
-    {
-        Init(w, h, window);
-    }
-
-    // Apply Manager-owned render settings to the caller's renderer
-    externalRenderer.SetRenderScale(renderer2D.GetRenderScale());
-    externalRenderer.SetUpscalingEnabled(renderer2D.IsUpscalingEnabled());
-
-    externalRenderer.BeginCanvasPass();
-    glm::vec2 screenSize = {static_cast<float>(w), static_cast<float>(h)};
-    rootContainer->Draw(screenSize, {0, 0});
-    externalRenderer.EndCanvasPass();
-}
-
 } // namespace UI

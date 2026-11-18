@@ -21,6 +21,9 @@ PATTERNS = [
     re.compile(r"\bGLFW[A-Za-z0-9_]*\b"),
     re.compile(r"#\s*include\s*<(?:GLFW/|windows\.h|vulkan/|glad/|GL/|d3d)"),
 ]
+# Mode --graphics-only (M2 B6) : seules les API graphiques (OpenGL, Vulkan, Metal, glad) sont surveillées ; GLFW et <windows.h> le seront
+# quand `platform::Window` existera (lot C). Mêmes motifs que ci-dessus, sans GLFW ni windows.h.
+GRAPHICS_ONLY_PATTERNS = PATTERNS[:7] + [re.compile(r"#\s*include\s*<(?:vulkan/|glad/|GL/|d3d)")]
 STRIP = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"', re.S)
 
 
@@ -39,9 +42,11 @@ def strip_keep_includes(text):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--strict", action="store_true")
+    ap.add_argument("--graphics-only", action="store_true", help="ne surveille que gl*, GL_*, Vk*, MTL*, glad, vulkan (pas GLFW ni windows.h)")
     ap.add_argument("--baseline")
     ap.add_argument("--write-baseline")
     a = ap.parse_args()
+    patterns = GRAPHICS_ONLY_PATTERNS if a.graphics_only else PATTERNS
     cfg = json.load(open(os.path.join(ROOT, "tools", "layers.json"), encoding="utf-8"))
     allowed = tuple(cfg["api_isolation"]["allowed"])
     found = {}
@@ -57,7 +62,7 @@ def main():
                 files += 1
                 text = open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace").read()
                 for ln, line in enumerate(strip_keep_includes(text).split("\n"), 1):
-                    for p in PATTERNS:
+                    for p in patterns:
                         m = p.search(line)
                         if m:
                             found.setdefault(rel, []).append((ln, m.group(0)))

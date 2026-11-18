@@ -49,7 +49,7 @@
   "include_roots": ["include", "include/Graphics", "include/UI", "include/Utilities", "include/Noise", "include/Profiler", "include/Benchmark"],
   "scan": ["include", "src", "apps"],
   "api_isolation": {
-    "allowed": ["src/Graphics/Backends/", "include/Graphics/Backends/", "src/rhi/", "src/platform/", "include/engine/platform/"],
+    "allowed": ["src/rhi/", "src/platform/", "include/engine/platform/"],
     "_doc": "docs/03 §8.2 : gl, GL_, Vk, vk, MTL, <GLFW/, <windows.h> interdits hors des backends et de platform."
   }
 }

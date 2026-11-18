@@ -8,7 +8,6 @@
 #include <chrono>
 
 #include "InputManager.h"
-#include "Sprite.h"
 #include "engine/renderer/draw_list.hpp"
 
 #include "Bounds.h"
@@ -28,7 +27,6 @@ class ComponentBase : public std::enable_shared_from_this<ComponentBase>
 {
   protected:
     Bounds localBounds;
-    Sprite sprite;
 
     std::weak_ptr<ContainerBase> parent;
 
@@ -65,9 +63,7 @@ class ComponentBase : public std::enable_shared_from_this<ComponentBase>
 
     virtual void Initialize();
     virtual void Update();
-    virtual void Draw(glm::vec2 containerSize, glm::vec2 offset = {0, 0});
-    // UI-02 : produit des commandes de dessin au lieu de dessiner (aucun appel graphique). Même parcours, mêmes états « dirty » que `Draw` ;
-    // `Draw` (ancien chemin) disparaît à la bascule de la démo (M2 B6).
+    // UI-02 : produit des commandes de dessin (aucun appel graphique) ; `engine::renderer::CanvasRenderer` les exécute.
     virtual void Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset = {0, 0});
 
     // Bounds

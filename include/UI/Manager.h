@@ -1,7 +1,6 @@
 #pragma once
 #include "Core/Container.h"
 #include "Rendering/TextRenderer.h"
-#include "Renderer2D.h"
 
 class Window;
 
@@ -12,7 +11,6 @@ class Manager
 {
     std::shared_ptr<Container> rootContainer;
     std::shared_ptr<TextRenderer> textRenderer;
-    Renderer2D renderer2D;
     const Window *window = nullptr;
     bool active = true;
 
@@ -27,7 +25,6 @@ class Manager
     void CreateUI(int w, int h, const Window *window = nullptr);
 
     void Update(float dt, int w, int h);
-    void Render(Renderer2D &renderer2D, int w, int h);
     // UI-02 : produit la liste de dessin de l'interface (aucun appel graphique) ; `CanvasRenderer` l'exécute.
     void Collect(engine::renderer::DrawList &list, int w, int h);
 
@@ -35,11 +32,6 @@ class Manager
     std::shared_ptr<Container> GetRootContainer() { return rootContainer; }
 
     std::shared_ptr<TextRenderer> GetTextRenderer() { return textRenderer; }
-    void SetRenderScale(float scale) { renderer2D.SetRenderScale(scale); }
-    float GetRenderScale() const { return renderer2D.GetRenderScale(); }
-    void SetUpscalingEnabled(bool enabled) { renderer2D.SetUpscalingEnabled(enabled); }
-    bool IsUpscalingEnabled() const { return renderer2D.IsUpscalingEnabled(); }
-    void ToggleUpscaling() { renderer2D.SetUpscalingEnabled(!renderer2D.IsUpscalingEnabled()); }
 
     void SetActive(bool a) { active = a; }
     bool IsActive() const { return active; }

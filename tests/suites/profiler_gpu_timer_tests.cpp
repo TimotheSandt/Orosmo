@@ -2,8 +2,6 @@
 // que le runtime graphique enregistre quand on lie un backend. Ces tests n'utilisent aucun GPU.
 #include <doctest/doctest.h>
 
-#include "Graphics/Backends/OpenGL/OpenGLGraphicsBackend.h"
-#include "Graphics/Core/GraphicsRuntime.h"
 #include "Profiler/GpuTimer.h"
 #include "Profiler/Profiler.h"
 
@@ -87,21 +85,5 @@ TEST_SUITE("ProfilerGpuTimer")
         CHECK(calls == 2);
         CHECK(factory.created == 1);
         CHECK(factory.begins == 0); // aucun minuteur GPU n'a été utilisé
-    }
-
-    TEST_CASE("binding the graphics runtime registers a provider that is empty while no device is bound")
-    {
-        FactoryGuard guard;
-        Profiler::SetGpuTimerFactory(nullptr);
-
-        const OpenGLGraphicsBackend backend;
-        const std::unique_ptr<IGraphicsDevice> device = backend.CreateDevice({});
-        BindGraphicsRuntime({.api = GraphicsAPI::OpenGL, .backend = &backend, .device = device.get()});
-        REQUIRE(Profiler::GetGpuTimerFactory() != nullptr);
-
-        ClearGraphicsRuntime(); // plus de device : le fournisseur reste installé mais ne produit aucun minuteur
-        const IGpuTimerFactory *factory = Profiler::GetGpuTimerFactory();
-        REQUIRE(factory != nullptr);
-        CHECK(factory->CreateTimer("m1bis-no-device") == nullptr);
     }
 }
