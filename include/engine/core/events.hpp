@@ -4,11 +4,11 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <typeindex>
 #include <unordered_map>
-#include <vector>
 
 namespace engine::core
 {
@@ -111,7 +111,9 @@ class EventBus
             std::function<void(const E &)> handler;
             bool live;
         };
-        std::vector<Slot> slots;
+        // deque : push_back ne déplace aucun élément existant, donc un abonné peut s'abonner pendant publish() sans
+        // que le std::function en cours d'appel (et ses petites captures, stockées dedans) change d'adresse.
+        std::deque<Slot> slots;
         int depth = 0;
         void remove(std::uint64_t id)
         {
