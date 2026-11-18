@@ -20,6 +20,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+            platform: linux-arm64
+            triplet: arm64-linux
+            cache_id: linux-arm64
+            exe_ext: ""
+
           - name: Windows x64
             os: windows-latest
             platform: windows-x64
@@ -106,6 +113,11 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja cmake zip
 
+      # vcpkg has no prebuilt tools for arm64 Linux: use the system cmake and ninja installed above.
+      - name: vcpkg on arm64 Linux
+        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+        run: echo "VCPKG_FORCE_SYSTEM_BINARIES=1" >> "$GITHUB_ENV"
+
       # ── vcpkg bootstrap ────────────────────────────────────────────────────────
       - name: Bootstrap vcpkg (Unix)
         if: runner.os != 'Windows'
@@ -175,9 +187,9 @@ jobs:
       - name: Build engine tool (Unix)
         if: runner.os != 'Windows'
         run: |
-          # -Werror is proven on Linux only (ci.yml builds Windows and macOS with WERROR=0 for the same reason).
+          # -Werror is proven on Linux x64 only (ci.yml builds the other platforms with WERROR=0 for the same reason).
           make -f mk/engine.mk engine-tool \
-            WERROR=${{ runner.os == 'Linux' && '1' || '0' }} \
+            WERROR=${{ matrix.platform == 'linux-x64' && '1' || '0' }} \
             VCPKG_TRIPLET=${{ matrix.triplet }} \
             VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
@@ -244,6 +256,7 @@ jobs:
             |---|---|---|
             | Windows x64 (MinGW) | `engine-windows-x64.exe` | `engine-pkg-windows-x64.zip` |
             | Linux x64           | `engine-linux-x64`       | `engine-pkg-linux-x64.zip`   |
+            | Linux arm64         | `engine-linux-arm64`     | `engine-pkg-linux-arm64.zip` |
             | macOS arm64 (M1+)   | `engine-macos-arm64`     | `engine-pkg-macos-arm64.zip` |
             | macOS x64 (Intel)   | `engine-macos-x64`       | `engine-pkg-macos-x64.zip`   |
 
