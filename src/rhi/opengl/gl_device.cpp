@@ -389,6 +389,16 @@ Result<BufferHandle> GlDevice::createBuffer(const BufferDesc &desc, std::span<co
     return buffers_.add({id, desc});
 }
 
+Result<TextureDesc> GlDevice::textureDesc(TextureHandle handle) const
+{
+    const TextureRes *texture = textures_.get(handle);
+    if (texture == nullptr)
+    {
+        return makeError(ErrorCode::kNotFound, "textureDesc: stale or null texture handle");
+    }
+    return texture->desc;
+}
+
 Result<> GlDevice::updateBuffer(BufferHandle handle, std::uint64_t offset, std::span<const std::byte> data)
 {
     BufferRes *buffer = buffers_.get(handle);
@@ -972,6 +982,33 @@ Result<QueryPoolHandle> GlDevice::createQueryPool(std::uint32_t count, const cha
     glGenQueries(static_cast<GLsizei>(count), res.ids.data());
     (void)debugName; // un objet de requête n'existe qu'après son premier usage : pas de glObjectLabel avant
     return queryPools_.add(std::move(res));
+}
+
+Result<bool> GlDevice::timestampsReady(QueryPoolHandle handle, std::uint32_t first, std::uint32_t count)
+{
+    QueryPoolRes *pool = queryPools_.get(handle);
+    if (pool == nullptr)
+    {
+        return makeError(ErrorCode::kNotFound, "timestampsReady: stale or null query pool");
+    }
+    if (first > pool->ids.size() || count > pool->ids.size() - first)
+    {
+        return makeError(ErrorCode::kOutOfRange, "timestampsReady: range exceeds the pool");
+    }
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        if (!pool->written[first + i])
+        {
+            return false;
+        }
+        GLint available = GL_FALSE;
+        glGetQueryObjectiv(pool->ids[first + i], GL_QUERY_RESULT_AVAILABLE, &available);
+        if (available != GL_TRUE)
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 Result<std::vector<std::uint64_t>> GlDevice::readTimestamps(QueryPoolHandle handle, std::uint32_t first, std::uint32_t count)

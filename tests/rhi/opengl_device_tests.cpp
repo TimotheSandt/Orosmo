@@ -938,3 +938,42 @@ TEST_SUITE("rhi/opengl/timing")
         gpu.expectNoValidationErrors();
     }
 }
+
+TEST_SUITE("rhi/opengl/query")
+{
+    TEST_CASE("textureDesc reports the resolved description; stale handles are refused")
+    {
+        Gpu gpu({6, 4});
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        TextureDesc d;
+        d.size = {8, 4, 1};
+        d.mipLevels = 0;
+        d.usage = TextureUsage::kSampled;
+        auto t = gpu->createTexture(d);
+        REQUIRE(t.has_value());
+        auto real = gpu->textureDesc(*t);
+        REQUIRE(real.has_value());
+        CHECK(real->mipLevels == 4);
+        CHECK(real->size.width == 8);
+        auto frame = gpu->beginFrame();
+        REQUIRE(frame.has_value());
+        CHECK(gpu->textureDesc(*frame)->size.width == 6);
+        gpu->destroy(*t);
+        CHECK((gpu->textureDesc(*t).error().code == ErrorCode::kNotFound));
+    }
+
+    TEST_CASE("timestampsReady is false until the timestamps were written and finished by the GPU")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        auto pool = gpu->createQueryPool(2, "ready");
+        REQUIRE(pool.has_value());
+        CHECK_FALSE(*gpu->timestampsReady(*pool, 0, 2));
+        gpu.run([&](CommandEncoder &e) { e.writeTimestamp(*pool, 0); e.writeTimestamp(*pool, 1); });
+        gpu->waitIdle();
+        CHECK(*gpu->timestampsReady(*pool, 0, 2));
+        CHECK((gpu->timestampsReady(*pool, 1, 5).error().code == ErrorCode::kOutOfRange));
+        gpu->destroy(*pool);
+        CHECK((gpu->timestampsReady(*pool, 0, 1).error().code == ErrorCode::kNotFound));
+    }
+}

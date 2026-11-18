@@ -309,3 +309,11 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | G74 | Vsync non observable | `setVSync` appelle `glfwSwapInterval` sans erreur ; aucun test ne mesure le rythme d'affichage. RHI-08 reste Partiel pour le vsync. | B4 / C |
 | G75 | Backbuffer sans profondeur ni MRT | Le backbuffer d'une fenêtre doit être l'unique attachement de sa passe (framebuffer par défaut). Le rendu de scène se fait dans une cible RHI puis est copié ou dessiné dans le backbuffer, comme le fait déjà le code hérité (`BlitToDefault`). | — (voulu) |
 | G76 | ASan : `alloc-dealloc-mismatch` dans libshaderc | Le `libshaderc` d'Ubuntu 24.04 (2023.8) libère avec `free` des options allouées par `operator new` (`shaderc::CompileOptions`) : ASan s'arrête dès le premier `compileGlsl`. Le contrôle `alloc_dealloc_mismatch` est désactivé **pour le binaire de tests seulement** (`tests/test_main.cpp`, `__asan_default_options`) ; les autres contrôles ASan/UBSan restent actifs. À retirer si la bibliothèque est corrigée ou remplacée (vcpkg `shaderc`). | B6 (revoir) |
+
+## Ajouts de M2 lot B3 (G77 à G79)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G77 | Code hérité et nouveau code coexistent | `Buffer`, `Texture`, `RenderTarget`, `ShaderProgram`, `ShaderLibrary` (singleton), `Screenshot`, `GPUTimestampQuery` et `GraphicsRenderState` (G38 : `scissorBox` non restauré) restent en service jusqu'à la migration de leurs consommateurs ; ils sont supprimés en B6. Entre-temps le dépôt a deux couches de ressources (l'ancienne reste la seule branchée sur la démo). | B4, B5, B6 |
+| G78 | `GpuTimer` pas encore relié au `Profiler` | `IGpuTimerFactory` (A25) est toujours installée par l'ancien `BindGraphicsRuntime` ; la fabrique sur `engine::renderer::GpuTimer` vient avec le renderer. | B4 |
+| G79 | Façades limitées au 2D | `Texture` ne crée que des textures 2D et un échantillonneur par texture ; tableaux, cubes, 3D et partage d'échantillonneurs se font par le RHI directement. | M5 |

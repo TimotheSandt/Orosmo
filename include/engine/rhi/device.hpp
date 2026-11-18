@@ -121,6 +121,9 @@ class Device
     virtual void destroy(BindGroupHandle handle) = 0;
     virtual void destroy(QueryPoolHandle handle) = 0;
 
+    // Description réelle d'une texture vivante (niveaux de mips résolus, couches, taille courante du backbuffer).
+    virtual Result<TextureDesc> textureDesc(TextureHandle texture) const = 0;
+
     // Mises à jour et lectures synchrones (chemin lent : chargement, captures, tests). Les copies asynchrones passent par
     // CommandEncoder::copy*.
     virtual Result<> updateBuffer(BufferHandle buffer, std::uint64_t offset, std::span<const std::byte> data) = 0;
@@ -129,6 +132,9 @@ class Device
     // Texels de la région, lignes serrées, sans remplissage. Repère : première ligne = bas de l'image (OpenGL).
     virtual Result<std::vector<std::byte>> readTexture(TextureHandle texture, const TextureCopy &region = {}) = 0;
     // Horodatages en nanosecondes (valeurs absolues du compteur GPU ; la différence de deux valeurs est une durée).
+    // Vrai quand les `count` horodatages sont disponibles sans attente (readTimestamps ne bloquera pas). Faux tant qu'un n'a pas
+    // été écrit puis terminé par le GPU.
+    virtual Result<bool> timestampsReady(QueryPoolHandle pool, std::uint32_t first, std::uint32_t count) = 0;
     virtual Result<std::vector<std::uint64_t>> readTimestamps(QueryPoolHandle pool, std::uint32_t first, std::uint32_t count) = 0;
 
     virtual std::unique_ptr<CommandEncoder> createCommandEncoder() = 0;
