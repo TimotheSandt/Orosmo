@@ -488,7 +488,7 @@ TEST_SUITE("renderer/gpu_timer")
         std::optional<std::chrono::nanoseconds> elapsed;
         for (int i = 0; i < 200 && !(elapsed = timer.elapsed()); ++i)
         {
-            gpu->present();
+            (void)gpu->present();
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
         REQUIRE(elapsed.has_value());
@@ -527,7 +527,7 @@ TEST_SUITE("renderer/gpu_timer/profiler")
         REQUIRE(gpu->submit(std::move(encoder)).has_value());
         for (int i = 0; i < 200 && !timer->IsReady(); ++i)
         {
-            gpu->present();
+            (void)gpu->present();
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
         REQUIRE(timer->IsReady());
