@@ -49,7 +49,8 @@ Quand tous les identifiants du jalon sont `Fait` avec preuve et que `dev` est ve
 Le workflow `.github/workflows/build-engine.yml` construit l'outil `engine` et le paquet du moteur (`engine-pkg-<plateforme>.zip`) pour Windows x64, Linux x64, macOS arm64 et macOS x64, puis crée la release GitHub. Il ne publie **pas** la démo.
 
 1. **Répétition, sans rien publier** (à faire avant le premier tag, et après toute modification du workflow) :
-   `gh workflow run build-engine.yml --ref main` puis `gh run watch`. Les builds tournent et déposent leurs artefacts ; aucune release n'est créée car le job `release` exige un tag.
+   `gh workflow run build-engine.yml --ref main` puis `gh run watch`. Les builds tournent et déposent leurs artefacts ; aucune release n'est créée car le job `release` exige un tag. **Un push sur `main` (la fusion de la merge request) lance ce même workflow sans publier** : la répétition se fait donc d'elle-même à chaque jalon, et elle remplit le cache vcpkg de `main`, le seul qu'un tag peut lire (les caches de `dev` et des merge requests lui sont invisibles).
+   Le cache vcpkg est partagé avec `ci.yml` (mêmes clés `vcpkg-archives-<triplet>-…`) : sans lui l'installation des dépendances prend 10 à 20 minutes par plateforme, avec lui moins d'une minute.
 2. **Release** : la merge request est fusionnée dans `main`, puis, sur `main` à jour :
    ```bash
    git checkout main && git pull

@@ -1,10 +1,18 @@
 name: Build & Release Engine
 
+# Tags v* publish a release. A push to main builds the same four packages WITHOUT publishing (the release job needs a tag):
+# it proves the release build before anyone tags, and it fills the vcpkg cache of main, which is the only branch a tag run can
+# read caches from (caches made on dev or in pull requests are invisible to a tag).
 on:
   push:
     tags:
       - "v*"
+    branches: [main]
   workflow_dispatch:
+
+env:
+  # Same binary cache directory and keys as ci.yml: both workflows read and write the same vcpkg archives.
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-archives
 
 jobs:
   build:
@@ -16,6 +24,7 @@ jobs:
             os: windows-latest
             platform: windows-x64
             triplet: x64-mingw-static
+            cache_id: x64-mingw-static   # same value as the triplet in ci.yml
             msystem: MINGW64
             exe_ext: .exe
 
@@ -23,18 +32,21 @@ jobs:
             os: ubuntu-24.04   # same image as ci.yml (the apt package set below is the one CI proves)
             platform: linux-x64
             triplet: x64-linux
+            cache_id: linux              # ci.yml names its Linux archive cache "linux"
             exe_ext: ""
 
           - name: macOS arm64
             os: macos-latest
             platform: macos-arm64
             triplet: arm64-osx
+            cache_id: arm64-osx
             exe_ext: ""
 
           - name: macOS x64
             os: macos-15-intel
             platform: macos-x64
             triplet: x64-osx
+            cache_id: x64-osx
             exe_ext: ""
 
     runs-on: ${{ matrix.os }}
@@ -110,19 +122,22 @@ jobs:
           /tmp/vcpkg/bootstrap-vcpkg.sh -disableMetrics
           echo "VCPKG_ROOT=/tmp/vcpkg" >> $GITHUB_ENV
 
-      # ── vcpkg cache ────────────────────────────────────────────────────────────
-      - name: Cache vcpkg packages
-        uses: actions/cache@v4
-        id: vcpkg-cache
+      # ── vcpkg cache (shared with ci.yml) ───────────────────────────────────────
+      # vcpkg stores each built package as an archive in the binary cache; restoring that directory makes the install take
+      # seconds instead of 10-20 minutes. The key ends with the run id so a new entry is saved every run (an existing cache
+      # is immutable); restore-keys finds the newest one.
+      - name: Restore vcpkg archives
+        uses: actions/cache/restore@v4
         with:
-          path: vcpkg_installed
-          key: vcpkg-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-${{ matrix.triplet }}-
+          path: .vcpkg-archives
+          key: vcpkg-archives-${{ matrix.cache_id }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: vcpkg-archives-${{ matrix.cache_id }}-${{ hashFiles('vcpkg.json') }}-
 
       # ── Install vcpkg dependencies ─────────────────────────────────────────────
       - name: Install vcpkg dependencies (Unix)
-        if: runner.os != 'Windows' && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        if: runner.os != 'Windows'
         run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           $VCPKG_ROOT/vcpkg install \
             --triplet=${{ matrix.triplet }} \
             --x-manifest-root=. \
@@ -130,14 +145,22 @@ jobs:
             --no-print-usage
 
       - name: Install vcpkg dependencies (Windows)
-        if: runner.os == 'Windows' && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           $VCPKG_ROOT/vcpkg install \
             --triplet=${{ matrix.triplet }} \
             --x-manifest-root=. \
             --x-install-root=./vcpkg_installed \
             --no-print-usage
+
+      - name: Save vcpkg archives
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-${{ matrix.cache_id }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
 
       # ── Link the apt packages into vcpkg_installed/ (Linux) ────────────────────────────────────
       # `make -f mk/engine.mk` bypasses the root Makefile, which is what normally runs this script; without it
