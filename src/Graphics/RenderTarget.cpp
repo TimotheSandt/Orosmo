@@ -5,7 +5,7 @@
 #include "Graphics/Core/RenderState.h"
 #include "Graphics/Core/GraphicsRuntime.h"
 #include "Logger.h"
-#include "utilities.h"
+#include "Utilities.h"
 
 RenderTarget::RenderTarget(int width, int height) { this->Init(width, height); }
 

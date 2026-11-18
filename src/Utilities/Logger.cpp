@@ -1,6 +1,6 @@
 #include "Logger.h"
 
-#include "utilities.h"
+#include "Utilities.h"
 
 #include <iostream>
 #include <iomanip>

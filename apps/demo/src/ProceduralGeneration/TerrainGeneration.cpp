@@ -1,6 +1,6 @@
 #include "TerrainGenerator.h"
 
-#include "utilities.h"
+#include "Utilities.h"
 
 TerrainGenerator::TerrainGenerator(int seed) : noise(seed) {}
 TerrainGenerator::TerrainGenerator(float sizeX, float sizeZ, int resX, int resZ, int seed) : noise(seed) { init(sizeX, sizeZ, resX, resZ); }
