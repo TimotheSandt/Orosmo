@@ -3,7 +3,7 @@
 Couche 3 de `docs/03` : ce qui se construit **sur** le RHI. Archive : `librenderer.a` (`src/renderer/`), API publique
 `include/engine/renderer/`. Dépend de `rhi`, `platform` et `core` seulement. Namespace `engine::renderer`.
 
-Sous-lots B3 et B4 de M2 : la **couche de ressources** qui remplace, objet par objet, les anciennes façades à état global (`Buffer`,
+Sous-lots B3, B4 et B5 de M2 : la **couche de ressources** qui remplace, objet par objet, les anciennes façades à état global (`Buffer`,
 `Texture`, `RenderTarget`, `ShaderProgram`, `ShaderLibrary`, `Screenshot`, `GPUTimestampQuery`). Elles **coexistent** avec les anciennes
 jusqu'à B4/B5 (les consommateurs `Mesh`, `Sprite`, `Light`, `Renderer*`, texte et interface migrent) ; les anciennes sont supprimées
 en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de liaison et des passes explicites.
@@ -29,6 +29,17 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | `upscaling.hpp` | extensions de fin d'image : `IUpscaleMode`, `IAdvancedUpscaleMode`, `IPostProcessPass`, `IFrameGenerationMode`, `BilinearBlitUpscaleMode` |
 | `scene_renderer.hpp` | `SceneRenderer` : cible de scène, groupe de liaison par image (caméra + lumières), `beginFrame` / `setCamera` / `drawMesh` / `endFrame`, échelle de rendu, jitter de Halton, historique, vecteurs de mouvement, profondeur lisible ; remplace `Renderer` + `Renderer3D` |
 | `shaders/rhi/` | `mesh.vert` / `mesh.frag` (éclairage identique à l'ancien), `blit.vert` / `blit.frag` : GLSL 450 (`set`/`binding`, push constants) |
+
+### Dessin 2D (B5)
+
+| En-tête | Rôle |
+| --- | --- |
+| `draw_list.hpp` | `DrawList` : liste de commandes **sans dépendance graphique** (rectangle, effacement partiel, série de glyphes MSDF, image de couche, début/fin de couche, découpage), coordonnées logiques en pixels, origine en haut. C'est ce que l'interface produit (`UI::Manager::Collect`, `ComponentBase::Collect`) |
+| `canvas_renderer.hpp` | `CanvasRenderer` : exécute une `DrawList` sur une texture du RHI : mélange alpha (comme l'ancien), découpages imbriqués par ciseau, atlas de glyphes mis en cache par identifiant, couches hors écran (conteneurs dessinés dans une texture, défilement, mise à jour partielle, libération des couches plus référencées), tampon de sommets de glyphes envoyé une fois par liste |
+| `shaders/rhi/ui_*.vert/frag` | rectangle, glyphes MSDF, image de couche : GLSL 450, push constants, quad généré par `gl_VertexIndex` |
+
+Un rectangle = un dessin : le batch par instances (R2D-01) vient en M5 (`docs/QUESTIONS.md` A21). La taille logique de la liste est indépendante de
+la taille de la cible (échelle d'interface, HiDPI). Parité : `tests/renderer/parity_tests.cpp` rejoue `ui.png` de l'ancien rendu.
 
 La scène est **toujours** dessinée dans sa propre cible, puis copiée vers la destination (1:1 sans échelle) : l'ancien « rendu direct à
 l'écran » n'existe plus, ce qui supprime la profondeur du framebuffer par défaut. Parité vérifiée par `tests/renderer/parity_tests.cpp`.

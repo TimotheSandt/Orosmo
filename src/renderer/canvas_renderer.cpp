@@ -129,14 +129,8 @@ core::Result<CanvasRenderer::Atlas *> CanvasRenderer::atlasFor(const AtlasImage 
     info.filter = FilterMode::kLinearNoMipmaps;
     info.address = rhi::AddressMode::kClampToEdge;
     info.debugName = "ui.atlas." + std::to_string(image.id);
-    // Les pixels de l'atlas commencent par le haut (v = 0 en haut) ; la convention du RHI commence par le bas : on retourne.
-    std::vector<std::uint8_t> flipped(image.rgba.size());
-    const std::size_t row = static_cast<std::size_t>(image.width) * 4;
-    for (std::uint32_t y = 0; y < image.height; ++y)
-    {
-        std::memcpy(flipped.data() + y * row, image.rgba.data() + (image.height - 1 - y) * row, row);
-    }
-    auto texture = Texture::create(device_, info, std::as_bytes(std::span(flipped)));
+    // Les lignes de l'atlas sont envoyées telles quelles : la ligne 0 est v = 0 (les coordonnées des glyphes en dépendent).
+    auto texture = Texture::create(device_, info, std::as_bytes(std::span(image.rgba)));
     if (!texture)
     {
         return std::unexpected(texture.error());

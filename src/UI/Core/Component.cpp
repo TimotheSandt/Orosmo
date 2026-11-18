@@ -79,6 +79,24 @@ glm::vec2 ComponentBase::CalculatePixelSize()
     return this->localBounds.scale;
 }
 
+void ComponentBase::Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset)
+{
+    (void)containerSize;
+    if (!visible.Get())
+    {
+        return;
+    }
+
+    // offset already includes anchor offset from cachedBoundsInParent
+    const glm::vec4 c = this->color.Get();
+    if (c.a > 0.0f)
+    {
+        list.rect(offset, this->localBounds.scale, c);
+    }
+
+    ClearDirty();
+}
+
 void ComponentBase::Draw(glm::vec2 containerSize, glm::vec2 offset)
 {
     if (!visible.Get())

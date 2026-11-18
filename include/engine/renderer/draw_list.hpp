@@ -20,7 +20,7 @@ struct AtlasImage
     std::uint64_t id = 0;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
-    std::vector<std::uint8_t> rgba; // width * height * 4, première ligne = haut de l'atlas (coordonnées v des glyphes)
+    std::vector<std::uint8_t> rgba; // width * height * 4 ; la ligne i correspond à v = i / height (la ligne 0 à v = 0)
 };
 
 struct DrawRect

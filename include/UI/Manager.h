@@ -28,6 +28,8 @@ class Manager
 
     void Update(float dt, int w, int h);
     void Render(Renderer2D &renderer2D, int w, int h);
+    // UI-02 : produit la liste de dessin de l'interface (aucun appel graphique) ; `CanvasRenderer` l'exécute.
+    void Collect(engine::renderer::DrawList &list, int w, int h);
 
     void SetRootContainer(std::shared_ptr<Container> root) { rootContainer = std::move(root); }
     std::shared_ptr<Container> GetRootContainer() { return rootContainer; }
