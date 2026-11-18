@@ -201,4 +201,41 @@ TEST_SUITE("core/serialization")
         REQUIRE_FALSE(future.has_value());
         CHECK((future.error().code == ErrorCode::kVersionMismatch));
     }
+
+    TEST_CASE("integers: representable values are accepted whatever their JSON representation, the others are refused")
+    {
+        // Entier JSON stocké « signé » (littéral int) mais positif : représentable dans un champ non signé.
+        TerrainParams p;
+        Json doc = {{"version", 2}, {"data", {{"resolution", 128}}}};
+        REQUIRE(loadDocument(p, doc).has_value());
+        CHECK(p.resolution == 128u);
+
+        int i = 0;
+        auto r = fromJsonValue(i, *parseJson("18446744073709551615"), "x"); // 2^64-1 : ne tient pas dans int
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kOutOfRange));
+        r = fromJsonValue(i, *parseJson("2147483648"), "x"); // INT_MAX + 1
+        CHECK_FALSE(r.has_value());
+        r = fromJsonValue(i, *parseJson("-2147483648"), "x");
+        REQUIRE(r.has_value());
+        CHECK(i == INT32_MIN);
+
+        std::uint32_t u = 0;
+        CHECK_FALSE(fromJsonValue(u, *parseJson("4294967296"), "x").has_value());
+        CHECK_FALSE(fromJsonValue(u, *parseJson("-1"), "x").has_value());
+        REQUIRE(fromJsonValue(u, *parseJson("4294967295"), "x").has_value());
+        CHECK(u == 4294967295u);
+    }
+
+    TEST_CASE("a document version outside int is refused instead of being truncated")
+    {
+        TerrainParams p;
+        // 4294967298 = 2^32 + 2 : tronqué sur 32 bits, il vaudrait 2 (la version courante) et passerait.
+        auto r = loadDocument(p, *parseJson(R"({"version":4294967298,"data":{"octaves":3}})"));
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kVersionMismatch));
+        CHECK(p.octaves == 4); // rien n'a été chargé
+        r = loadDocument(p, *parseJson(R"({"version":-1,"data":{}})"));
+        CHECK_FALSE(r.has_value());
+    }
 }
