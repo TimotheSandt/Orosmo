@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour à la fin du lot A de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour à la fin du sous-lot B2 de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -12,6 +12,20 @@ Mis à jour à la fin du lot A de M2 (2026-11-18). États détaillés et preuves
 | **M1 Noyau** | **Livré côté code ; CI Windows/macOS à observer au push** | `docs/releases/M1.md` : module `core` (13 fichiers), 208 cas doctest verts (90 de plus qu'en M0), ASan+UBSan propres (208 cas), capture identique à la référence (écart max 0/255), `make core-demo` |
 | **M1 bis Remise en ordre des couches** | **Livré côté code ; Windows/macOS à observer à la CI** | `docs/releases/M1bis.md` : `check_layers.py --strict` : 0 violation (5 avant), `check_headers.py --strict` : 0 (1 avant), `<windows.h>` et `getenv` hors de `core`, G12 et G13 traités, 224 cas doctest verts (10 de plus qu'en M1), ASan+UBSan propres, capture identique à la référence (écart max 0/255) |
 | **M2 lot A : interface RHI et backend OpenGL** | **Lot A livré côté code ; M2 en cours (lots B et C à faire)** | `docs/releases/M2-lotA.md` : `include/engine/rhi/` + `src/rhi/opengl/`, 256 cas doctest verts (32 de plus), ASan+UBSan propres, `make rhi-demo` (calcul + MRT + instanciation, 0 message de validation) ; Windows/macOS : tests GPU non exécutés (G67) |
+| **M2 lot B1 + B2 : pipeline de shaders, fenêtre du RHI** | **B1 et B2 livrés côté code ; B3 à B6 et lot C à faire** | `docs/releases/M2-B2.md` : `include/engine/rhi/shader_compiler.hpp`, adoption d'une fenêtre par le périphérique OpenGL ; 269 cas doctest verts (+13), ASan+UBSan propres, capture de référence identique ; plan : `docs/05` (tableau des sous-lots) |
+
+## Identifiants de `docs/02` touchés par M2 B1 et B2
+
+Preuves sous Linux (g++ 13.3, Mesa 26.1.6, Intel Arc ; la CI exécute aussi sous llvmpipe + xvfb). Fenêtre : invisible dans les tests. Windows et macOS : tests GPU et fenêtre non exécutés (G67).
+
+| ID | Avant | Maintenant | Fichier / symbole, test, résultat |
+| --- | --- | --- | --- |
+| RHI-12 | Partiel | Partiel | `shader_compiler.hpp` : `compileGlsl` (shaderc), `translateToGlsl430` (SPIRV-Cross), `ShaderCache`, `createShaderFromGlsl`, `ShaderHotReloader` ; `tests/rhi/shader_compiler_tests.cpp` (8 cas CPU : réflexion, traduction `set*8+binding`, erreurs avec fichier:ligne, `#include`, cache disque, rechargement à chaud ; 2 cas GPU : rendu MRT avec push constants, compute). **Manque** : compilation « hors ligne » au sens d'une étape de build (ici à l'exécution avec cache), sortie MSL (M9), shaders du dépôt encore en GLSL 430 (B4) |
+| RHI-06 | Partiel | Partiel | cache disque de **SPIR-V** (`ShaderCache`, testé : survit à un autre cache, fichier corrompu ignoré). **Manque** : cache de pipelines natifs du pilote |
+| RHI-08 | Partiel | Partiel | `prepareWindowHints`, `SurfaceDesc::nativeWindow`, `beginFrame`/`present`/`resize`/`setVSync` sur une fenêtre adoptée ; `tests/rhi/window_surface_tests.cpp` (5 cas : adoption, rendu et relecture sur 3 images, usages interdits du backbuffer, redimensionnement). **Manque** : vsync mesuré, fenêtre réduite, fenêtre visible (G73, G74) ; swapchain Vulkan (M4) |
+| PLAT-01 | Partiel | Partiel | la surface de fenêtre côté RHI existe ; `platform::Window` reste à écrire (lot C) |
+
+Totaux inchangés : Fait 14, Partiel 47, Absent 90, Incompatible 1.
 
 ## Identifiants de `docs/02` touchés par M2 lot A
 
