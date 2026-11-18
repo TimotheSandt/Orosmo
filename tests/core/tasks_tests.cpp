@@ -6,6 +6,7 @@
 #include <chrono>
 #include <numeric>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 using namespace engine::core;
@@ -33,13 +34,17 @@ TEST_SUITE("core/tasks")
         TaskSystem sys(4);
         std::atomic<int> stage{0};
         std::atomic<bool> orderOk{true};
+        std::atomic<bool> release{false}; // `a` reste active tant que `c` n'est pas enregistrée (pas de délai)
         TaskHandle a = sys.submit([&] {
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            while (!release.load())
+                std::this_thread::yield();
             stage.fetch_add(1);
         });
         TaskHandle b = sys.submit([&] { stage.fetch_add(1); });
         const TaskHandle deps[] = {a, b};
         TaskHandle c = sys.submit([&] { orderOk = (stage.load() == 2); stage.fetch_add(1); }, deps);
+        CHECK_FALSE(c.done());
+        release = true;
         sys.wait(c);
         CHECK(orderOk.load());
         CHECK(stage.load() == 3);
@@ -116,5 +121,51 @@ TEST_SUITE("core/tasks")
         const TaskHandle deps[] = {bad};
         sys.wait(sys.submit([&] { ran = true; }, deps));
         CHECK(ran.load());
+    }
+
+    TEST_CASE("waiting for a task runs that task first (single thread, queued sibling that waits for the waiter)")
+    {
+        TaskSystem sys(1);
+        std::atomic<bool> bQueued{false}, aFinished{false}, bFinished{false}, cRan{false};
+        TaskHandle hA;
+        hA = sys.submit([&] {
+            while (!bQueued.load())
+                std::this_thread::yield();
+            TaskHandle c = sys.submit([&] { cRan = true; });
+            sys.wait(c); // la file contient [B, C] : prendre B ici l'empilerait au-dessus de A, et B attend A
+            aFinished = true;
+        });
+        TaskHandle hB = sys.submit([&] {
+            sys.wait(hA);
+            bFinished = true;
+        });
+        bQueued = true;
+        // Le thread de test n'aide pas (pas de wait/waitIdle) : seul l'unique worker travaille.
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (!(aFinished && bFinished) && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        CHECK(aFinished.load());
+        CHECK(bFinished.load());
+        CHECK(cRan.load());
+    }
+
+    TEST_CASE("a task of system B that depends on a running task of system A is owned by B")
+    {
+        TaskSystem a(1), b(1);
+        std::atomic<bool> release{false};
+        std::atomic<int> ran{0};
+        TaskHandle ta = a.submit([&] {
+            while (!release.load())
+                std::this_thread::yield();
+        });
+        const TaskHandle deps[] = {ta};
+        TaskHandle tb = b.submit([&] { ran.fetch_add(1); }, deps);
+        release = true;
+        b.wait(tb);
+        b.waitIdle();
+        a.waitIdle();
+        CHECK(ran.load() == 1);
+        CHECK(a.pendingTasks() == 0);
+        CHECK(b.pendingTasks() == 0);
     }
 }

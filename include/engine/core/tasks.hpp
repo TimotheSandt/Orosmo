@@ -48,8 +48,10 @@ class TaskSystem
     // `fn` s'exécute quand toutes les `dependencies` sont terminées.
     TaskHandle submit(std::function<void()> fn, std::span<const TaskHandle> dependencies = {});
 
-    // Attend la tâche. Le thread appelant exécute d'autres tâches pendant l'attente : attendre depuis une tâche
-    // ne bloque donc jamais le pool, même avec un seul thread.
+    // Attend la tâche. Le thread appelant l'exécute lui-même si elle est prête, sinon il exécute d'autres tâches
+    // prêtes pendant l'attente : attendre une tâche fille depuis une tâche ne bloque pas le pool, même avec un seul
+    // thread. Limite connue (docs/GAPS.md G56) : une tâche prête exécutée « par aide » est empilée sur l'appelant ;
+    // si elle attend elle-même cet appelant, le pool peut se bloquer (il faudrait suspendre les tâches).
     void wait(const TaskHandle &task);
     // Attend que toutes les tâches soumises soient terminées.
     void waitIdle();
@@ -63,7 +65,8 @@ class TaskSystem
   private:
     friend struct detail::TaskNode;
     void enqueue(std::shared_ptr<detail::TaskNode> node);
-    bool runOne(); // exécute une tâche prête si elle existe
+    bool runOne();                                             // exécute une tâche prête si elle existe
+    bool runSpecific(const std::shared_ptr<detail::TaskNode> &); // exécute CETTE tâche si elle est dans la file
     void execute(const std::shared_ptr<detail::TaskNode> &node);
     void workerLoop();
 

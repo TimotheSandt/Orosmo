@@ -18,6 +18,8 @@ struct TaskNode
     bool done = false;
     std::vector<std::shared_ptr<TaskNode>> dependents;
     std::atomic<int> pending{1}; // dépendances non terminées + 1 de retenue pendant l'enregistrement
+    TaskSystem *owner = nullptr; // le système qui a reçu submit() : c'est lui qui met en file et qui compte la tâche
+    bool queued = false;         // dans mReady (protégé par TaskSystem::mMutex)
 };
 } // namespace detail
 
@@ -37,8 +39,23 @@ TaskSystem::TaskSystem(unsigned threads)
         threads = hw > 1 ? hw - 1 : 1;
     }
     mThreads.reserve(threads);
-    for (unsigned i = 0; i < threads; ++i)
-        mThreads.emplace_back([this] { workerLoop(); });
+    try
+    {
+        for (unsigned i = 0; i < threads; ++i)
+            mThreads.emplace_back([this] { workerLoop(); });
+    }
+    catch (...)
+    {
+        // Démarrage partiel : arrêter et joindre les workers déjà lancés, sinon ~thread() appelle std::terminate().
+        {
+            std::lock_guard lock(mMutex);
+            mStopping = true;
+        }
+        mWake.notify_all();
+        for (std::thread &t : mThreads)
+            t.join();
+        throw;
+    }
 }
 
 TaskSystem::~TaskSystem()
@@ -57,6 +74,7 @@ TaskHandle TaskSystem::submit(std::function<void()> fn, std::span<const TaskHand
 {
     auto node = std::make_shared<detail::TaskNode>();
     node->fn = std::move(fn);
+    node->owner = this;
     mOutstanding.fetch_add(1);
 
     for (const TaskHandle &dep : dependencies)
@@ -79,6 +97,7 @@ void TaskSystem::enqueue(std::shared_ptr<detail::TaskNode> node)
 {
     {
         std::lock_guard lock(mMutex);
+        node->queued = true;
         mReady.push_back(std::move(node));
     }
     mWake.notify_one();
@@ -110,7 +129,7 @@ void TaskSystem::execute(const std::shared_ptr<detail::TaskNode> &node)
     node->doneCv.notify_all();
     for (auto &d : dependents)
         if (d->pending.fetch_sub(1) == 1)
-            enqueue(d);
+            d->owner->enqueue(d); // chaque dépendant retourne dans SON système (file et compteur d'origine)
 
     if (mOutstanding.fetch_sub(1) == 1)
     {
@@ -128,6 +147,7 @@ bool TaskSystem::runOne()
             return false;
         node = std::move(mReady.front());
         mReady.pop_front();
+        node->queued = false;
     }
     execute(node);
     return true;
@@ -145,9 +165,26 @@ void TaskSystem::workerLoop()
                 return; // mStopping et plus rien à faire
             node = std::move(mReady.front());
             mReady.pop_front();
+            node->queued = false;
         }
         execute(node);
     }
+}
+
+bool TaskSystem::runSpecific(const std::shared_ptr<detail::TaskNode> &target)
+{
+    {
+        std::lock_guard lock(mMutex);
+        if (!target->queued)
+            return false;
+        auto it = std::find(mReady.begin(), mReady.end(), target);
+        if (it == mReady.end())
+            return false;
+        mReady.erase(it);
+        target->queued = false;
+    }
+    execute(target);
+    return true;
 }
 
 void TaskSystem::wait(const TaskHandle &task)
@@ -161,6 +198,10 @@ void TaskSystem::wait(const TaskHandle &task)
             if (task.mNode->done)
                 return;
         }
+        // D'abord la tâche attendue si elle est prête : exécuter une autre tâche prête (qui pourrait elle-même attendre
+        // l'appelant) l'empilerait au-dessus de l'appelant et pourrait bloquer le pool.
+        if (task.mNode->owner == this && runSpecific(task.mNode))
+            continue;
         if (runOne())
             continue;
         std::unique_lock lock(task.mNode->mutex);
