@@ -28,7 +28,8 @@ void write(const fs::path &p, const std::string &text, int secondsOffset = 0)
         std::ofstream(p, std::ios::trunc) << text;
     }
     // Le test ne dépend pas de la finesse de l'horloge du système de fichiers : on décale la date explicitement.
-    fs::last_write_time(p, fs::file_time_type::clock::now() + std::chrono::seconds(secondsOffset));
+    const auto base = fs::file_time_type::clock::time_point{} + std::chrono::hours(24 * 365 * 40); // date fixe
+    fs::last_write_time(p, base + std::chrono::seconds(secondsOffset));
 }
 } // namespace
 
@@ -109,4 +110,32 @@ TEST_SUITE("core/file_watcher")
         w.poll();
         CHECK(n == 2); // les deux événements du premier poll, aucun du second
     }
+
+#ifdef __linux__
+    TEST_CASE("a directory that cannot be read during a scan is not reported as removed files")
+    {
+        TempDir t("locked");
+        write(t.path / "sub" / "a.txt", "1", -50);
+        write(t.path / "b.txt", "2", -50);
+        FileWatcher w;
+        std::vector<FileEvent> events;
+        w.watch(t.path, [&](const FileEvent &e) { events.push_back(e); });
+        fs::permissions(t.path / "sub", fs::perms::none);
+        std::error_code ec;
+        const bool enforced = !fs::is_directory(t.path / "sub", ec) || [&] {
+            std::error_code e2;
+            fs::directory_iterator it(t.path / "sub", e2);
+            return static_cast<bool>(e2);
+        }();
+        if (enforced)
+        {
+            CHECK(w.poll() == 0); // scan incomplet : on garde l'état connu, pas de « removed » fantôme
+            CHECK(events.empty());
+            fs::permissions(t.path / "sub", fs::perms::owner_all);
+            CHECK(w.poll() == 0); // à nouveau lisible : rien n'a changé
+        }
+        else
+            fs::permissions(t.path / "sub", fs::perms::owner_all);
+    }
+#endif
 }

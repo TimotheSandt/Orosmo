@@ -91,9 +91,10 @@ void Config::declare(std::string key, Json defaultValue, std::string description
 
 Result<Json> Config::get(std::string_view key) const
 {
-    for (const Json *layer : {&mCli, &mFile, &mDefaults})
-        if (const Json *v = find(*layer, key))
-            return *v;
+    // Même vue fusionnée que applyTo() : un objet demandé contient aussi les clés que seule une couche plus basse définit.
+    const Json merged = effective();
+    if (const Json *v = find(merged, key))
+        return *v;
     return makeError(ErrorCode::kNotFound, "unknown setting: " + std::string(key));
 }
 
@@ -142,6 +143,7 @@ Result<> Config::saveFile(const std::filesystem::path &path) const
     if (!out)
         return makeError(ErrorCode::kIo, "cannot write config file: " + path.string());
     out << dumpJson(mFile) << '\n';
+    out.close(); // le vidage du tampon peut échouer (disque plein) : seule la fermeture le révèle pour un petit fichier
     return out ? Result<>{} : makeError(ErrorCode::kIo, "write failed: " + path.string());
 }
 
@@ -169,6 +171,9 @@ Result<std::vector<std::string>> Config::parseArgs(const std::vector<std::string
         const bool negated = !hasValue && key.rfind("no-", 0) == 0 && find(mDefaults, key.substr(3)) != nullptr;
         if (negated)
         {
+            const Json *target = find(mDefaults, key.substr(3));
+            if (!target->is_boolean())
+                return makeError(ErrorCode::kInvalidArgument, "--" + key + ": only boolean settings can be negated");
             assign(cli, key.substr(3), false);
             continue;
         }
@@ -196,8 +201,10 @@ Result<std::vector<std::string>> Config::parseArgs(const std::vector<std::string
             if (parsedValue.is_discarded())
                 parsedValue = value;
         }
-        if (declared && declared->type() != parsedValue.type() &&
-            !(declared->is_number() && parsedValue.is_number()))
+        // Un entier est accepté pour un réglage flottant, pas l'inverse (--tasks=2.5 pour un entier : erreur ici).
+        const bool numberOk = declared && declared->is_number() && parsedValue.is_number() &&
+                              !(declared->is_number_integer() && !parsedValue.is_number_integer());
+        if (declared && declared->type() != parsedValue.type() && !numberOk)
             return makeError(ErrorCode::kParse, "--" + key + ": expected " + std::string(declared->type_name()) + ", got '" + value + "'");
         assign(cli, key, std::move(parsedValue));
     }

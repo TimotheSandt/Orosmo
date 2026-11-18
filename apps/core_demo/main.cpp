@@ -15,9 +15,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <thread>
 
 using namespace engine::core;
@@ -64,8 +66,14 @@ int main(int argc, char **argv)
 
     // ── 1. 10 000 tâches ──────────────────────────────────────────────────────
     const int taskCount = config.getOr<int>("tasks", 10000);
-    TaskSystem tasks(static_cast<unsigned>(config.getOr<int>("threads", 0)));
-    std::atomic<long> checksum{0};
+    const int threadCount = config.getOr<int>("threads", 0);
+    if (taskCount < 0 || threadCount < 0 || threadCount > 1024)
+    {
+        std::fprintf(stderr, "--tasks must be >= 0 and --threads in [0, 1024]\n");
+        return 2;
+    }
+    TaskSystem tasks(static_cast<unsigned>(threadCount));
+    std::atomic<std::int64_t> checksum{0};
     {
         ENGINE_TRACE_SCOPE(trace, "run tasks");
         for (int i = 0; i < taskCount; ++i)
@@ -75,13 +83,26 @@ int main(int argc, char **argv)
             });
         tasks.waitIdle();
     }
-    const long expected = static_cast<long>(taskCount) * (taskCount - 1) / 2;
-    std::printf("[tasks]  %d tasks on %u threads, checksum %ld (expected %ld) -> %s\n", taskCount, tasks.threadCount(),
-                checksum.load(), expected, checksum.load() == expected ? "OK" : "MISMATCH");
+    const std::int64_t expected = static_cast<std::int64_t>(taskCount) * (taskCount - 1) / 2; // 64 bits avant le produit
+    std::printf("[tasks]  %d tasks on %u threads, checksum %lld (expected %lld) -> %s\n", taskCount, tasks.threadCount(),
+                static_cast<long long>(checksum.load()), static_cast<long long>(expected), checksum.load() == expected ? "OK" : "MISMATCH");
 
     // ── 2. Rechargement à chaud de la configuration ───────────────────────────
-    const fs::path dir = fs::temp_directory_path() / "engine_core_demo";
-    fs::create_directories(dir);
+    // Dossier temporaire à nom imprévisible, créé exclusivement : pas de nom fixe qu'un autre utilisateur local pourrait
+    // préparer à l'avance (lien symbolique vers un fichier de la victime).
+    fs::path dir;
+    {
+        std::random_device rd;
+        std::error_code ec;
+        do
+            dir = fs::temp_directory_path() / ("engine_core_demo_" + std::to_string(rd()) + std::to_string(rd()));
+        while (!fs::create_directory(dir, ec) && !ec);
+        if (ec)
+        {
+            std::fprintf(stderr, "cannot create a temporary directory: %s\n", ec.message().c_str());
+            return 1;
+        }
+    }
     Vfs vfs;
     vfs.mount("user", dir);
     const fs::path file = dir / "settings.json";

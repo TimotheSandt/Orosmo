@@ -10,10 +10,12 @@
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <map>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace engine::core
@@ -42,6 +44,29 @@ template <typename V, int N> Result<> readVec(V &out, const Json &j, const std::
             return std::unexpected(parseError(path, "number"));
         out[i] = j[static_cast<std::size_t>(i)].template get<float>();
     }
+    return {};
+}
+
+// Lit un entier JSON dans I sans conversion qui tronque : la valeur est comparée aux bornes de I dans sa propre
+// représentation (signée ou non signée, selon ce que nlohmann a stocké) avant d'être convertie.
+template <typename I> Result<> readInteger(I &out, const Json &j, const std::string &path)
+{
+    if (!j.is_number_integer()) // vrai aussi pour les entiers non signés
+        return std::unexpected(parseError(path, "integer"));
+    if (j.is_number_unsigned())
+    {
+        const auto v = j.get<std::uint64_t>();
+        if (!std::in_range<I>(v))
+            return makeError(ErrorCode::kOutOfRange, path + ": integer does not fit the type");
+        out = static_cast<I>(v);
+        return {};
+    }
+    const auto v = j.get<std::int64_t>();
+    if (v < 0 && !std::is_signed_v<I>)
+        return makeError(ErrorCode::kOutOfRange, path + ": negative value for an unsigned field");
+    if (!std::in_range<I>(v))
+        return makeError(ErrorCode::kOutOfRange, path + ": integer does not fit the type");
+    out = static_cast<I>(v);
     return {};
 }
 } // namespace detail
@@ -106,31 +131,13 @@ template <typename T> Result<> fromJsonValue(T &out, const Json &j, const std::s
     }
     else if constexpr (std::is_enum_v<T>)
     {
-        if (!j.is_number_integer())
-            return std::unexpected(detail::parseError(path, "integer (enum)"));
-        out = static_cast<T>(j.get<std::underlying_type_t<T>>());
+        std::underlying_type_t<T> raw{};
+        if (auto r = detail::readInteger(raw, j, path); !r)
+            return r;
+        out = static_cast<T>(raw);
     }
     else if constexpr (std::is_integral_v<T>)
-    {
-        if (!j.is_number_integer())
-            return std::unexpected(detail::parseError(path, "integer"));
-        if constexpr (std::is_signed_v<T>)
-        {
-            const auto v = j.get<std::int64_t>();
-            if (v < static_cast<std::int64_t>(std::numeric_limits<T>::min()) || v > static_cast<std::int64_t>(std::numeric_limits<T>::max()))
-                return makeError(ErrorCode::kOutOfRange, path + ": integer does not fit the type");
-            out = static_cast<T>(v);
-        }
-        else
-        {
-            if (j.is_number_integer() && !j.is_number_unsigned())
-                return makeError(ErrorCode::kOutOfRange, path + ": negative value for an unsigned field");
-            const auto v = j.get<std::uint64_t>();
-            if (v > static_cast<std::uint64_t>(std::numeric_limits<T>::max()))
-                return makeError(ErrorCode::kOutOfRange, path + ": integer does not fit the type");
-            out = static_cast<T>(v);
-        }
-    }
+        return detail::readInteger(out, j, path);
     else if constexpr (std::is_floating_point_v<T>)
     {
         if (!j.is_number())
@@ -186,8 +193,18 @@ template <Reflected T> Result<> loadDocument(T &out, Json document, const Migrat
     if (!document.is_object() || !document.contains("version") || !document["version"].is_number_integer() ||
         !document.contains("data"))
         return makeError(ErrorCode::kParse, "document must be {\"version\": int, \"data\": ...}");
-    int version = document["version"].get<int>();
+    const Json &rawVersion = document["version"];
+    int version = 0;
     const int current = versionOf<T>();
+    if (auto r = detail::readInteger(version, rawVersion, "version"); !r)
+    {
+        // Hors de int : une version négative est un document invalide ; une version énorme est « plus récente ».
+        if (rawVersion.is_number_unsigned() || rawVersion.get<std::int64_t>() >= 0)
+            return makeError(ErrorCode::kVersionMismatch, "document version is newer than supported version " + std::to_string(current));
+        return makeError(ErrorCode::kParse, "document version must not be negative");
+    }
+    if (version < 0)
+        return makeError(ErrorCode::kParse, "document version must not be negative");
     if (version > current)
         return makeError(ErrorCode::kVersionMismatch, "document version " + std::to_string(version) +
                                                          " is newer than supported version " + std::to_string(current));

@@ -103,4 +103,70 @@ TEST_SUITE("core/vfs")
         CHECK(user.filename() == "EngineTest");
         CHECK(user.is_absolute());
     }
+
+    TEST_CASE("drive names are refused in logical paths (no escape from the mount on Windows)")
+    {
+        TempDir t("drive");
+        Vfs vfs;
+        vfs.mount("res", t.path);
+        for (const char *bad : {"res://C:/outside.txt", "res://a/D:/x", "res://C:outside.txt", "res://a\\C:\\x"})
+        {
+            auto r = vfs.writeText(bad, "x");
+            REQUIRE_FALSE(r.has_value());
+            CHECK((r.error().code == ErrorCode::kInvalidArgument));
+            CHECK_FALSE(vfs.exists(bad));
+        }
+        REQUIRE(vfs.writeText("res://shaders/a.glsl", "ok").has_value()); // un chemin relatif ordinaire reste accepté
+    }
+
+    TEST_CASE("list() builds its prefix from the normalised path")
+    {
+        TempDir t("prefix");
+        touch(t.path / "sub" / "a.txt", "1");
+        Vfs vfs;
+        vfs.mount("res", t.path);
+        auto a = vfs.list("res://sub");
+        auto b = vfs.list("res://sub//./");
+        auto c = vfs.list("res://./sub/");
+        REQUIRE((a.has_value() && b.has_value() && c.has_value()));
+        CHECK(*a == std::vector<std::string>{"res://sub/a.txt"});
+        CHECK(*b == *a);
+        CHECK(*c == *a);
+    }
+
+#ifdef __linux__
+    TEST_CASE("writeBytes reports a write that only fails when the file is closed")
+    {
+        TempDir t("full");
+        fs::create_symlink("/dev/full", t.path / "full.bin"); // ouvre sans erreur, ENOSPC au vidage
+        Vfs vfs;
+        vfs.mount("user", t.path);
+        auto r = vfs.writeText("user://full.bin", "small");
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kIo));
+    }
+
+    TEST_CASE("an unreadable mount is an error, not a silent fall-through to the next mount")
+    {
+        TempDir lower("lower"), upper("upper");
+        touch(lower.path / "f.txt", "lower");
+        touch(upper.path / "locked" / "f.txt", "upper");
+        touch(lower.path / "locked" / "f.txt", "lower");
+        fs::permissions(upper.path / "locked", fs::perms::none);
+        std::error_code ec;
+        const bool enforced = !fs::exists(upper.path / "locked" / "f.txt", ec) && ec; // faux si on est root
+        Vfs vfs;
+        vfs.mount("res", lower.path);
+        vfs.mount("res", upper.path);
+        if (enforced)
+        {
+            auto r = vfs.readText("res://locked/f.txt");
+            REQUIRE_FALSE(r.has_value());
+            CHECK((r.error().code == ErrorCode::kIo));
+            auto l = vfs.list("res://locked");
+            CHECK_FALSE(l.has_value());
+        }
+        fs::permissions(upper.path / "locked", fs::perms::owner_all);
+    }
+#endif
 }

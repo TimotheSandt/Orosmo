@@ -56,7 +56,9 @@ class FileWatcher
         std::vector<std::string> extensions;
         std::vector<std::pair<std::filesystem::path, Stamp>> known; // trié par chemin
     };
-    static std::vector<std::pair<std::filesystem::path, Stamp>> scan(const Watch &w);
+    // `complete` vaut false si le parcours a été interrompu (répertoire illisible, erreur d'E/S) : le résultat est alors
+    // partiel et ne doit pas être comparé à l'état connu.
+    static std::vector<std::pair<std::filesystem::path, Stamp>> scan(const Watch &w, bool &complete);
 
     std::vector<Watch> mWatches;
     WatchId mNextId = 0;

@@ -7,8 +7,9 @@ namespace engine::core
 
 namespace fs = std::filesystem;
 
-std::vector<std::pair<fs::path, FileWatcher::Stamp>> FileWatcher::scan(const Watch &w)
+std::vector<std::pair<fs::path, FileWatcher::Stamp>> FileWatcher::scan(const Watch &w, bool &complete)
 {
+    complete = true;
     std::vector<std::pair<fs::path, Stamp>> out;
     std::error_code ec;
     auto accept = [&](const fs::path &p) {
@@ -26,10 +27,18 @@ std::vector<std::pair<fs::path, FileWatcher::Stamp>> FileWatcher::scan(const Wat
     if (fs::is_regular_file(w.root, ec))
         add(w.root);
     else if (fs::is_directory(w.root, ec))
-        for (fs::recursive_directory_iterator it(w.root, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end;
-             it.increment(ec))
-            if (it->is_regular_file(ec) && accept(it->path()))
+    {
+        // Pas de skip_permission_denied : un sous-répertoire illisible doit rendre le scan incomplet, pas faire croire que
+        // ses fichiers ont disparu.
+        for (fs::recursive_directory_iterator it(w.root, ec), end; !ec && it != end; it.increment(ec))
+        {
+            std::error_code e3;
+            if (it->is_regular_file(e3) && accept(it->path()))
                 add(it->path());
+        }
+        if (ec)
+            complete = false;
+    }
     std::sort(out.begin(), out.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
     return out;
 }
@@ -37,7 +46,8 @@ std::vector<std::pair<fs::path, FileWatcher::Stamp>> FileWatcher::scan(const Wat
 FileWatcher::WatchId FileWatcher::watch(fs::path path, Callback callback, std::vector<std::string> extensions)
 {
     Watch w{++mNextId, std::move(path), std::move(callback), std::move(extensions), {}};
-    w.known = scan(w);
+    bool complete = true;
+    w.known = scan(w, complete);
     const WatchId id = w.id;
     mWatches.push_back(std::move(w));
     return id;
@@ -60,7 +70,10 @@ std::size_t FileWatcher::poll()
         auto it = std::find_if(mWatches.begin(), mWatches.end(), [id](const Watch &w) { return w.id == id; });
         if (it == mWatches.end())
             continue;
-        auto now = scan(*it);
+        bool complete = true;
+        auto now = scan(*it, complete);
+        if (!complete)
+            continue; // scan interrompu : on garde l'état connu et on réessaie au prochain poll()
         std::vector<FileEvent> events;
         auto &old = it->known;
         std::size_t i = 0, j = 0;
