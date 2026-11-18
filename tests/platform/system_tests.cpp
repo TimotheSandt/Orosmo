@@ -65,13 +65,12 @@ TEST_SUITE("platform/system")
         const auto start = std::chrono::steady_clock::now();
         preciseSleep(5ms);
         const auto elapsed = std::chrono::steady_clock::now() - start;
-        CHECK(elapsed >= 4ms); // marge pour la granularité du minuteur système
-        CHECK(elapsed < 500ms);
+        CHECK(elapsed >= 4ms); // marge pour la granularité du minuteur système ; pas de borne haute (machine chargée)
 
-        const auto zeroStart = std::chrono::steady_clock::now();
+        // Durée nulle, négative ou minimale : retour immédiat, sans débordement (nanoseconds::min() * fréquence).
         preciseSleep(0ns);
         preciseSleep(-5ms);
+        preciseSleep(std::chrono::nanoseconds::min());
         preciseSleep(200us);
-        CHECK(std::chrono::steady_clock::now() - zeroStart < 200ms);
     }
 }

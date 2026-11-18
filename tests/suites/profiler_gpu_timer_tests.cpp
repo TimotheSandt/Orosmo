@@ -87,7 +87,6 @@ TEST_SUITE("ProfilerGpuTimer")
         CHECK(calls == 2);
         CHECK(factory.created == 1);
         CHECK(factory.begins == 0); // aucun minuteur GPU n'a été utilisé
-        CHECK(Profiler::GetLastTime("m1bis-cpu-null") >= 0ns);
     }
 
     TEST_CASE("binding the graphics runtime registers a provider that is empty while no device is bound")

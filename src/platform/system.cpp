@@ -16,6 +16,7 @@
 #include <unistd.h>
 #endif
 
+#include <cerrno>
 #include <cstdlib>
 #include <string>
 #include <system_error>
@@ -104,6 +105,10 @@ fs::path userDataDirectory()
 
 void preciseSleep(std::chrono::nanoseconds sleepTime)
 {
+    // Rien à attendre : retour avant tout calcul (sous Windows, nanoseconds::min() * fréquence déborderait).
+    if (sleepTime <= std::chrono::nanoseconds::zero())
+        return;
+
 #if defined(_WIN32)
     // Windows : Sleep() à la milliseconde pour les attentes longues, attente active sur QueryPerformanceCounter en dessous.
     if (sleepTime >= std::chrono::milliseconds(1))
@@ -129,10 +134,13 @@ void preciseSleep(std::chrono::nanoseconds sleepTime)
     // Linux : nanosleep pour les attentes longues, attente active sinon.
     if (sleepTime >= std::chrono::microseconds(100))
     {
-        struct timespec ts;
-        ts.tv_sec = sleepTime.count() / 1000000000LL;
-        ts.tv_nsec = sleepTime.count() % 1000000000LL;
-        nanosleep(&ts, nullptr);
+        struct timespec request;
+        request.tv_sec = sleepTime.count() / 1000000000LL;
+        request.tv_nsec = sleepTime.count() % 1000000000LL;
+        struct timespec remaining;
+        // Un signal interrompt nanosleep (EINTR) : on reprend avec le temps restant au lieu de rendre la main trop tôt.
+        while (nanosleep(&request, &remaining) == -1 && errno == EINTR)
+            request = remaining;
     }
     else
     {

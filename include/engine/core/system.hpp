@@ -23,8 +23,11 @@ std::filesystem::path executablePath();
 // Vide si le système n'en donne pas (pas de HOME par exemple).
 std::filesystem::path userDataDirectory();
 
-// Attend au moins `duration` avec la meilleure précision disponible (nanosleep, Sleep + QueryPerformanceCounter, ou attente
-// active pour les très courtes durées). Une durée nulle ou négative revient immédiatement.
+// Attend `duration` avec la meilleure précision disponible : nanosleep (repris après une interruption par signal) sous Linux,
+// Sleep + QueryPerformanceCounter sous Windows, attente active pour les très courtes durées. Une durée nulle ou négative
+// revient immédiatement. Linux et autres : au moins `duration`. Windows : la partie en millisecondes passe par Sleep() et est
+// donc tronquée à la milliseconde (1,9 ms attend 1 ms) ; c'était déjà le comportement du limiteur d'images avant M1 bis, qui
+// compense avec son propre seuil d'attente active (`FPSCounter::spinThreshold`).
 void preciseSleep(std::chrono::nanoseconds duration);
 
 // Demande une résolution de minuteur système de 1 ms (Windows : timeBeginPeriod(1)). Renvoie true si la demande a été
