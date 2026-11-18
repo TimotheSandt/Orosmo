@@ -78,9 +78,11 @@ TEST_SUITE("core/trace")
         rec.addSample("gpu-pass", microseconds(100), microseconds(900), TraceTrack::kGpu);
         const auto path = std::filesystem::temp_directory_path() / "engine_trace_test.json";
         REQUIRE(rec.writeChromeTrace(path).has_value());
-        std::ifstream in(path);
         std::stringstream ss;
-        ss << in.rdbuf();
+        {
+            std::ifstream in(path); // closed before remove(): Windows refuses to delete an open file
+            ss << in.rdbuf();
+        }
         auto j = nlohmann::json::parse(ss.str(), nullptr, false);
         REQUIRE_FALSE(j.is_discarded());
         const auto &ev = j["traceEvents"];
