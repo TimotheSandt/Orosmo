@@ -20,8 +20,17 @@ void *operator new(std::size_t n)
         return p;
     throw std::bad_alloc();
 }
+// GCC 13 (-O3, avec les sanitizers) signale à tort l'appariement operator new -> free une fois new inliné dans make_unique :
+// c'est exactement le remplacement standard new/malloc + delete/free ci-dessus.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmismatched-new-delete"
+#endif
 void operator delete(void *p) noexcept { std::free(p); }
 void operator delete(void *p, std::size_t) noexcept { std::free(p); }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 using namespace engine::core;
 

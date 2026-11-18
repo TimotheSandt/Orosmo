@@ -21,6 +21,15 @@ struct TempDir
     }
     ~TempDir() { fs::remove_all(path); }
 };
+struct PermissionGuard // rend les droits à la sortie du test, même si un CHECK échoue
+{
+    fs::path path;
+    ~PermissionGuard()
+    {
+        std::error_code ec;
+        fs::permissions(path, fs::perms::owner_all, ec);
+    }
+};
 void write(const fs::path &p, const std::string &text, int secondsOffset = 0)
 {
     fs::create_directories(p.parent_path());
@@ -120,6 +129,7 @@ TEST_SUITE("core/file_watcher")
         FileWatcher w;
         std::vector<FileEvent> events;
         w.watch(t.path, [&](const FileEvent &e) { events.push_back(e); });
+        PermissionGuard guard{t.path / "sub"};
         fs::permissions(t.path / "sub", fs::perms::none);
         std::error_code ec;
         const bool enforced = !fs::is_directory(t.path / "sub", ec) || [&] {
@@ -134,8 +144,6 @@ TEST_SUITE("core/file_watcher")
             fs::permissions(t.path / "sub", fs::perms::owner_all);
             CHECK(w.poll() == 0); // à nouveau lisible : rien n'a changé
         }
-        else
-            fs::permissions(t.path / "sub", fs::perms::owner_all);
     }
 #endif
 }
