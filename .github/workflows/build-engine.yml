@@ -10,6 +10,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege: the build jobs only read the repository; the release job asks for contents: write itself.
+permissions:
+  contents: read
+
 env:
   # Same binary cache directory and keys as ci.yml: both workflows read and write the same vcpkg archives.
   VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-archives
@@ -64,7 +68,9 @@ jobs:
 
       # ── Rust toolchain ─────────────────────────────────────────────────────────
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # branch stable, pinned: the branch moves
+        with:
+          toolchain: stable
 
       - name: Cache Cargo
         uses: actions/cache@v4

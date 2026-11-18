@@ -77,7 +77,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # branch stable, pinned: the branch moves
+        with:
+          toolchain: stable
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -178,7 +180,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # branch stable, pinned: the branch moves
+        with:
+          toolchain: stable
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -241,7 +245,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # branch stable, pinned: the branch moves
+        with:
+          toolchain: stable
       - name: Install system packages (apt)
         run: |
           sudo apt-get update -qq
@@ -301,7 +307,9 @@ jobs:
             triplet: arm64-osx
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # branch stable, pinned: the branch moves
+        with:
+          toolchain: stable
 
       - name: Setup MSYS2
         if: runner.os == 'Windows'
