@@ -23,7 +23,6 @@
     ["src/Graphics/Presentation/*", "platform"],
     ["include/Graphics/Backends/*", "rhi"],
     ["src/Graphics/Backends/*", "rhi"],
-    ["include/Graphics/Backend/*", "rhi"],
     ["include/Graphics/Core/*", "rhi"],
     ["src/Graphics/Core/*", "rhi"],
     ["include/Graphics/Buffer.h", "rhi"],

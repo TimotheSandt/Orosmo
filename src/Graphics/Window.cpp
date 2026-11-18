@@ -7,7 +7,7 @@
 #include "InputManager.h"
 #include "Profiler.h"
 #include "Logger.h"
-#include "utilities.h"
+#include "Utilities.h"
 
 #ifdef _WIN32
 #include <windows.h>

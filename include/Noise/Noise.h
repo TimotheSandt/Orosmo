@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Random.h"
-#include "utilities.h"
+#include "Utilities.h"
 
 class Noise
 {

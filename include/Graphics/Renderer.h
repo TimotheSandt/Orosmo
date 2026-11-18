@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Graphics/Backend/GraphicsAPI.h"
+#include "Graphics/Backends/GraphicsAPI.h"
 #include "Graphics/RenderTarget.h"
 #include "Graphics/Upscaling/IFrameGenerationMode.h"
 #include "Graphics/Upscaling/IPostProcessPass.h"

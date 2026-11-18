@@ -2,7 +2,7 @@
 #include "Graphics/Core/RenderState.h"
 #include "Graphics/Core/GraphicsDiagnostics.h"
 #include "Logger.h"
-#include "utilities.h"
+#include "Utilities.h"
 
 #include <algorithm>
 #include <cmath>

@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "utilities.h"
+#include "Utilities.h"
 
 struct ShaderStageSource
 {
