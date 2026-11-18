@@ -62,9 +62,15 @@ Décidé par l'auteur le 2026-11-17 : ce qui doit être nettoyé **avant** M2 ma
 - REN-02 (caméra, reverse-Z), REN-34 (debug), éclairage existant migré.
 - TEST-03 : déterminisme.
 - **Interface** : fin du langage d'interface pour ce que le visualiseur exige : UI-03 (widgets), UI-05 (compilateur, erreurs lisibles), UI-06 (mise en page), UI-07 (thèmes JSON), UI-11 (spécification et tests), UI-12 (paramètres réfléchis → curseurs).
+- **Première release utilisable (décidé par l'auteur le 2026-11-18)** : M3 est le premier jalon dont la release (`vX.Y.Z`) est présentée comme utilisable et à peu près stable ; les releases précédentes (`v0.1.0`…) restent des instantanés pour développeurs. Tâches (rattachées à DOC-01, BLD-01, BLD-02) :
+  - **Guide d'utilisation** `docs/USING_THE_ENGINE.md`, relié depuis le `README.md` racine : installer depuis la release par l'exécutable `engine` (`engine init`, `engine update`) **et** par le zip `engine-pkg-<plateforme>.zip` (`ENGINE_DIR`), prérequis par système, projet minimal complet, limites connues, version minimale du compilateur.
+  - **Mettre à jour** `tools/engine-sdk/dist-README.md` et le corps de la release (`build-engine.yml`) : archives `librhi.a` et `libplatform.a`, en-têtes `include/engine/…`, API du RHI.
+  - **Test de bout en bout en CI** : à partir du paquet construit (sans les sources du moteur), créer un projet vide avec `engine init`, le compiler et le lancer (capture ou mode sans fenêtre) sur Linux, Windows et macOS ; échec de la CI si le chemin documenté casse.
+  - **Stabilité de l'API** : figer les en-têtes publics `include/engine/…` (migration `PascalCase` → `camelCase` terminée pour les modules livrés), table des changements incompatibles dans `docs/releases/`, numéro de version sémantique ; les identifiants de `docs/02` livrés doivent être `Fait` ou limités dans le guide.
+  - **Exemple fourni** : le visualiseur et `terrain-gen` compilables depuis le paquet comme exemples de projet.
 
 **Démo** : visualiseur avec graine et paramètres modifiables en direct dans une interface décrite dans le langage maison, thème changeable ; `terrain-gen --seed 42 --size 4096 --out relief.png` produit une carte de hauteur identique à chaque lancement.
-**Terminé** : somme de contrôle de référence ; pas de fissure entre niveaux de détail ; budget mémoire respecté ; exports vérifiés en les rouvrant ; tests de compilation du langage verts ; `docs/UI_LANGUAGE.md` écrit.
+**Terminé** : somme de contrôle de référence ; pas de fissure entre niveaux de détail ; budget mémoire respecté ; exports vérifiés en les rouvrant ; tests de compilation du langage verts ; `docs/UI_LANGUAGE.md` écrit. La release de fin de M3 est utilisable : `docs/USING_THE_ENGINE.md` écrit, `engine init` + compilation vérifiés en CI sur les trois systèmes, API publique figée.
 
 ## M4 · Backend Vulkan
 
