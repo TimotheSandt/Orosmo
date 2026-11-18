@@ -3,9 +3,6 @@
 // Repère : première ligne lue = bas de l'image (voir src/rhi/README.md).
 #include <doctest/doctest.h>
 
-// Les structures de description se remplissent champ par champ (initialiseurs désignés) : les champs omis gardent leur défaut.
-#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
-
 #include "support/test_support.hpp"
 
 #include <engine/rhi/device.hpp>

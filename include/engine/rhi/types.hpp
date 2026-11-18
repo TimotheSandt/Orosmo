@@ -149,7 +149,7 @@ struct BufferDesc
     std::uint64_t size = 0;
     BufferUsage usage = BufferUsage::kNone;
     MemoryKind memory = MemoryKind::kGpuOnly;
-    std::string debugName; // docs/03 §3 règle 8 : visible dans RenderDoc
+    std::string debugName{}; // docs/03 §3 règle 8 : visible dans RenderDoc
 };
 
 // ── Textures et échantillonneurs ────────────────────────────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ struct TextureDesc
     std::uint32_t mipLevels = 1; // 0 = chaîne complète
     std::uint32_t layers = 1;    // k2DArray ; 6 pour kCube (forcé)
     TextureUsage usage = TextureUsage::kSampled;
-    std::string debugName;
+    std::string debugName{};
 };
 
 enum class Filter : std::uint8_t
@@ -217,11 +217,11 @@ struct SamplerDesc
     AddressMode addressV = AddressMode::kRepeat;
     AddressMode addressW = AddressMode::kRepeat;
     float maxAnisotropy = 1.0f; // > 1 exige Capabilities::anisotropy
-    std::optional<CompareOp> compare; // échantillonneur de comparaison (ombres)
+    std::optional<CompareOp> compare{}; // échantillonneur de comparaison (ombres)
     std::array<float, 4> borderColor{0.0f, 0.0f, 0.0f, 0.0f};
     float minLod = 0.0f;
     float maxLod = 1000.0f;
-    std::string debugName;
+    std::string debugName{};
 };
 
 // ── Shaders et pipelines ────────────────────────────────────────────────────────────────────────────────────────
@@ -242,9 +242,9 @@ struct ShaderDesc
 {
     ShaderStage stage = ShaderStage::kVertex;
     ShaderLanguage language = ShaderLanguage::kGlsl;
-    std::span<const std::byte> code; // copié par createShader
+    std::span<const std::byte> code{}; // copié par createShader
     std::string entryPoint = "main";
-    std::string debugName;
+    std::string debugName{};
 };
 
 enum class VertexFormat : std::uint8_t
@@ -376,23 +376,23 @@ struct DepthState
 
 struct GraphicsPipelineDesc
 {
-    ShaderHandle vertex;
-    ShaderHandle fragment;
-    std::vector<VertexBufferLayout> vertexBuffers;
-    std::vector<VertexAttribute> vertexAttributes;
+    ShaderHandle vertex{};
+    ShaderHandle fragment{};
+    std::vector<VertexBufferLayout> vertexBuffers{};
+    std::vector<VertexAttribute> vertexAttributes{};
     PrimitiveTopology topology = PrimitiveTopology::kTriangleList;
     RasterState raster{};
     DepthState depth{};
     // Une entrée par attachement couleur de la passe (MRT, RHI-15) ; chaque cible a son format, son mélange, son masque.
-    std::vector<ColorTargetState> colorTargets;
+    std::vector<ColorTargetState> colorTargets{};
     Format depthFormat = Format::kUndefined; // kUndefined : pas de profondeur
-    std::string debugName;
+    std::string debugName{};
 };
 
 struct ComputePipelineDesc
 {
-    ShaderHandle compute;
-    std::string debugName;
+    ShaderHandle compute{};
+    std::string debugName{};
 };
 
 // ── Liaison des ressources (docs/03 §4) ─────────────────────────────────────────────────────────────────────────
@@ -413,20 +413,20 @@ struct BindGroupEntry
     std::uint32_t binding = 0; // < kBindingsPerGroup
     BindingType type = BindingType::kUniformBuffer;
     // tampons
-    BufferHandle buffer;
+    BufferHandle buffer{};
     std::uint64_t offset = 0;
     std::uint64_t size = 0; // 0 : jusqu'à la fin du tampon
     bool dynamicOffset = false; // consomme une valeur de `dynamicOffsets` dans setBindGroup, dans l'ordre des entrées
     // textures
-    TextureHandle texture;
-    SamplerHandle sampler; // kSampledTexture
+    TextureHandle texture{};
+    SamplerHandle sampler{}; // kSampledTexture
     std::uint32_t mipLevel = 0; // kStorageImage ; tableaux, cubes et 3D sont liés en entier (toutes les couches)
 };
 
 struct BindGroupDesc
 {
-    std::vector<BindGroupEntry> entries;
-    std::string debugName;
+    std::vector<BindGroupEntry> entries{};
+    std::string debugName{};
 };
 
 // ── Passes de rendu (RHI-08, RHI-15) ────────────────────────────────────────────────────────────────────────────
@@ -445,7 +445,7 @@ enum class StoreOp : std::uint8_t
 
 struct ColorAttachment
 {
-    TextureHandle texture;
+    TextureHandle texture{};
     std::uint32_t mipLevel = 0;
     std::uint32_t layer = 0;
     LoadOp load = LoadOp::kClear;
@@ -455,7 +455,7 @@ struct ColorAttachment
 
 struct DepthAttachment
 {
-    TextureHandle texture;
+    TextureHandle texture{};
     LoadOp load = LoadOp::kClear;
     StoreOp store = StoreOp::kStore;
     float clearDepth = 1.0f;
@@ -464,9 +464,9 @@ struct DepthAttachment
 
 struct RenderPassDesc
 {
-    std::vector<ColorAttachment> colors; // jusqu'à Capabilities::maxColorAttachments
-    std::optional<DepthAttachment> depth;
-    std::string debugName;
+    std::vector<ColorAttachment> colors{}; // jusqu'à Capabilities::maxColorAttachments
+    std::optional<DepthAttachment> depth{};
+    std::string debugName{};
 };
 
 enum class IndexType : std::uint8_t

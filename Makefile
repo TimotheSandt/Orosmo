@@ -160,6 +160,15 @@ core-demo:
 	$(MAKE) -C apps/core_demo BUILD_TYPE=release all
 	./apps/core_demo/bin/core_demo $(CORE_DEMO_ARGS)
 
+# ── RHI demo (M2 lot A): compute image, MRT render pass, instancing, GPU timestamps, offscreen; writes a PNG ──
+#   make rhi-demo                      build and run          make rhi-demo RHI_DEMO_ARGS="--out /tmp/rhi.png"
+.PHONY: rhi-demo
+rhi-demo:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/rhi_demo BUILD_TYPE=release all
+	./apps/rhi_demo/bin/rhi_demo $(RHI_DEMO_ARGS)
+
 demo-clean:
 	$(MAKE) -C apps/demo $(DEMO_ARGS) clean
 
