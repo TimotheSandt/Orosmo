@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour à la fin du sous-lot B3 de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour à la fin du sous-lot B4 de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -14,6 +14,21 @@ Mis à jour à la fin du sous-lot B3 de M2 (2026-11-18). États détaillés et p
 | **M2 lot A : interface RHI et backend OpenGL** | **Lot A livré côté code ; M2 en cours (lots B et C à faire)** | `docs/releases/M2-lotA.md` : `include/engine/rhi/` + `src/rhi/opengl/`, 256 cas doctest verts (32 de plus), ASan+UBSan propres, `make rhi-demo` (calcul + MRT + instanciation, 0 message de validation) ; Windows/macOS : tests GPU non exécutés (G67) |
 | **M2 lot B1 + B2 : pipeline de shaders, fenêtre du RHI** | **B1 et B2 livrés côté code ; B3 à B6 et lot C à faire** | `docs/releases/M2-B2.md` : `include/engine/rhi/shader_compiler.hpp`, adoption d'une fenêtre par le périphérique OpenGL ; 269 cas doctest verts (+13), ASan+UBSan propres, capture de référence identique ; plan : `docs/05` (tableau des sous-lots) |
 | **M2 lot B3 : couche de ressources `engine::renderer`** | **B3 livré côté code ; B4 à B6 et lot C à faire** | `docs/releases/M2-B3.md` : `GpuBuffer`, `Texture`, `RenderTarget`, `ShaderLibrary`, `PipelineCache`, `Image`, `GpuTimer` sur le RHI ; 280 cas doctest verts (+11), ASan+UBSan propres, capture de référence identique (code hérité non touché) |
+| **M2 lot B4 : couche de scène `engine::renderer`** | **B4 livré côté code ; B5, B6 et lot C à faire** | `docs/releases/M2-B4.md` : `Camera`, `LightManager`, `Mesh`, `SceneRenderer`, shaders `shaders/rhi/` ; la scène de terrain graine 1 rendue par la nouvelle couche est **identique pixel pour pixel** à l'image de référence du rendu hérité (tolérance 0, Intel Arc) ; 290 cas doctest verts (+10) |
+
+## Identifiants de `docs/02` touchés par M2 B4
+
+Preuves sous Linux (g++ 13.3, Mesa 26.1.6, Intel Arc ; la CI exécute aussi sous llvmpipe + xvfb). La démo applicative n'utilise pas encore la nouvelle couche (bascule en B6) : RHI-02 et les identifiants de migration restent donc ouverts.
+
+| ID | Avant | Maintenant | Fichier / symbole, test, résultat |
+| --- | --- | --- | --- |
+| RHI-02 | Partiel | Partiel | `tests/renderer/parity_tests.cpp` : terrain graine 1 (250 000 sommets, 500 000 triangles), caméra, ambiante + directionnelle, rendus par `SceneRenderer` sur le RHI : **0 pixel d'écart à la tolérance 0** avec `docs/BASELINE/reference/scene-opengl-seed1-1280x720.png`. **Manque** : la démo n'utilise pas encore cette couche, l'interface et le texte ne sont pas migrés (B5, B6), `ui.png` non couvert |
+| REN-05 | Partiel | Partiel | `LightManager` / `Light` : ambiante, directionnelle, ponctuelle, projecteur ; disposition std430 vérifiée par `static_assert` et relue octet par octet (`tests/renderer/scene_tests.cpp`) ; tampon qui grandit. **Manque** : ponctuelles et projecteurs non rendus par le shader (G82) ; clusterisation (M5) |
+| REN-02 | Absent | Absent | `Camera` reprend la perspective de l'ancienne caméra (GL, profondeur −1..1). Le reverse-Z reste à faire (M3, A26) |
+| RHI-15 | Fait (OpenGL) | Fait (OpenGL) | `SceneRenderer` s'en sert : cible de scène RGBA8 + RG16F (vecteurs de mouvement) + profondeur, testée |
+| RHI-10 | Partiel | Partiel | `Mesh` instancié dessiné par `drawIndexed` avec `instanceCount` (attributs par instance) |
+
+Totaux inchangés : Fait 14, Partiel 47, Absent 90, Incompatible 1.
 
 ## Identifiants de `docs/02` touchés par M2 B3
 
