@@ -1,5 +1,7 @@
 #include <engine/core/vfs.hpp>
 
+#include <engine/core/system.hpp>
+
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
@@ -195,21 +197,11 @@ Result<std::vector<std::string>> Vfs::list(std::string_view logicalDirectory) co
 
 fs::path Vfs::defaultUserDirectory(const std::string &appName)
 {
-#if defined(_WIN32)
-    if (const char *appData = std::getenv("APPDATA"))
-        return fs::path(appData) / appName;
+    // Le dossier de données de la plateforme (variables d'environnement, API du système) vient de platform via
+    // engine/core/system.hpp ; core ne lit plus l'environnement lui-même.
+    if (const fs::path base = system::userDataDirectory(); !base.empty())
+        return base / appName;
     return fs::temp_directory_path() / appName;
-#elif defined(__APPLE__)
-    if (const char *home = std::getenv("HOME"))
-        return fs::path(home) / "Library" / "Application Support" / appName;
-    return fs::temp_directory_path() / appName;
-#else
-    if (const char *xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg)
-        return fs::path(xdg) / appName;
-    if (const char *home = std::getenv("HOME"))
-        return fs::path(home) / ".local" / "share" / appName;
-    return fs::temp_directory_path() / appName;
-#endif
 }
 
 } // namespace engine::core
