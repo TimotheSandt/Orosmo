@@ -164,6 +164,75 @@ jobs:
           path: ci-capture/*.png
           retention-days: 7
 
+  # ── Linux arm64 (ubuntu-24.04-arm) ────────────────────────────────────────────────────────
+  # `continue-on-error` and WERROR=0 until the first green run, like Windows and macOS: nothing here had ever run on arm64.
+  # vcpkg has no prebuilt tools for arm64 Linux: VCPKG_FORCE_SYSTEM_BINARIES=1 makes it use the system cmake and ninja.
+  linux-arm64:
+    name: Linux arm64 (build, tests)
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04-arm
+    continue-on-error: true
+    env:
+      VCPKG_FORCE_SYSTEM_BINARIES: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/cargo-tools
+          key: cargo-linux-arm64-${{ hashFiles('tools/Cargo.lock') }}
+          restore-keys: cargo-linux-arm64-
+
+      - name: Install system packages (apt)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build python3 pkg-config curl zip unzip tar git \
+            autoconf autoconf-archive automake libtool \
+            libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
+            libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+
+      - name: Bootstrap vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Restore vcpkg archives
+        uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-linux-arm64-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: vcpkg-archives-linux-arm64-${{ hashFiles('vcpkg.json') }}-
+
+      - name: Install glad, msdfgen and nlohmann-json (vcpkg, vcpkg.json)
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          "$VCPKG_ROOT/vcpkg" install --triplet=arm64-linux
+
+      - name: Save vcpkg archives
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-linux-arm64-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+
+      - name: Link dependencies (apt + vcpkg)
+        run: TRIPLET=arm64-linux sh tools/setup-linux-deps.sh
+
+      - name: Build (debug)
+        run: make -j"$(nproc)" all-debug WERROR=0
+
+      - name: Tests
+        run: make demo-test WERROR=0
+
   # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
   sanitizers:
     name: Linux x64 (ASan + UBSan tests)
