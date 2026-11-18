@@ -399,6 +399,8 @@ struct ComputePipelineDesc
 // Trois groupes fixes. Un backend OpenGL convertit (groupe, binding) en emplacement plat : voir kBindingsPerGroup.
 inline constexpr std::uint32_t kGroupCount = 3;
 inline constexpr std::uint32_t kBindingsPerGroup = 8;
+// Emplacement plat de l'UBO qui émule les push constants sur OpenGL (juste après les liaisons des trois groupes).
+inline constexpr std::uint32_t kPushConstantBinding = kGroupCount * kBindingsPerGroup;
 
 enum class BindingType : std::uint8_t
 {

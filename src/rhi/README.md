@@ -11,6 +11,7 @@ API publique : `include/engine/rhi/` (aucun type d'API graphique). Backends priv
 | `include/engine/rhi/capabilities.hpp` | `Capabilities` : limites, fonctions, capacités optionnelles réservées (toutes `false`, RHI-18) |
 | `include/engine/rhi/device.hpp` | `Device`, `CommandEncoder`, `DeviceStats`, `createDevice` |
 | `src/rhi/format.cpp`, `src/rhi/device.cpp` | `formatInfo`, choix du backend |
+| `include/engine/rhi/shader_compiler.hpp`, `src/rhi/shader_compiler.cpp` | pipeline de shaders (RHI-12) : `compileGlsl`, `translateToGlsl430`, `ShaderCache`, `createShaderFromGlsl`, `ShaderHotReloader` |
 | `src/rhi/opengl/` | backend OpenGL 4.3 (`gl_device.cpp` ressources, `gl_encoder.cpp` commandes, `gl_translate.hpp` tables) |
 
 ## Utilisation
@@ -48,6 +49,22 @@ utilisent ces numéros (`layout(binding = 8) uniform sampler2D tex;` = groupe 1,
 convertira `set`/`binding` du GLSL 450 commun vers cet emplacement. L'**UBO 24** (`kGroupCount * kBindingsPerGroup`) porte les push
 constants (128 octets, émulés). Les images de stockage exigent un emplacement `< GL_MAX_IMAGE_UNITS` (8 sur certains pilotes) :
 utiliser le groupe 0 pour elles ; `setBindGroup` refuse sinon, avec ce message.
+
+## Pipeline de shaders (RHI-12)
+
+Source unique en **GLSL 450** « style Vulkan » : `layout(set = N, binding = M)`, `layout(push_constant)`, `gl_VertexIndex`,
+`#include` (`#extension GL_GOOGLE_include_directive : enable`), textures **combinées** (`sampler2D`). Chaîne :
+shaderc → SPIR-V (sans optimisation : stable, noms conservés) → réflexion SPIRV-Cross (liaisons par `(set, binding)`, taille des push
+constants, taille de groupe de calcul, sorties couleur ; refus d'une liaison hors des 3 groupes × 8, de textures et échantillonneurs
+séparés, de deux ressources sur la même liaison) → pour OpenGL, GLSL 430 avec **liaison = set × 8 + binding** et push constants en UBO 24.
+Pas de correction d'espace de clipping (A26). Le choix « SPIRV-Cross plutôt que `GL_ARB_gl_spirv` » vient du minimum OpenGL 4.3 ;
+`GL_ARB_gl_spirv` (4.6) pourra être ajouté derrière `Capabilities::spirvShaders`.
+
+- **Cache** (`ShaderCache`) : clé = hachage du source *prétraité* (includes et macros développés) + étage + version du cache ; mémoire
+  puis disque (`<dossier>/<hash>.spv`, écriture atomique, fichier corrompu ignoré). Cache de **pipelines** natifs du pilote : non fait.
+- **Rechargement à chaud** (`ShaderHotReloader`) : surveille le fichier et ses `#include`, recompile, appelle le rappel (résultat ou
+  erreur) ; l'appelant recrée le pipeline et garde l'ancien si la compilation échoue.
+- Dépendance : `spirv-cross` (vcpkg, toutes plateformes), `shaderc` (apt sous Linux).
 
 ## Conventions (choix du lot A, à confirmer : `docs/QUESTIONS.md` A26)
 

@@ -80,6 +80,7 @@ ifeq ($(ENGINE_OS),Windows)
                             -lpng16 -lzs -lbz2 -lbrotlidec -lbrotlienc -lbrotlicommon \
                             -lvulkan-1 -lshaderc -lshaderc_util -lglslang \
                             -lMachineIndependent -lGenericCodeGen -lOSDependent \
+                            -lspirv-cross-reflect -lspirv-cross-glsl -lspirv-cross-core \
                             -lSPIRV -lSPIRV-Tools-opt -lSPIRV-Tools \
                             -lpsapi -lwinmm -lgdi32 -luser32 -lshell32 -lopengl32 -lstdc++exp
     _ENG_LD_START        := -Wl,--start-group
@@ -102,6 +103,7 @@ else ifeq ($(ENGINE_OS),Linux)
     _ENG_VCPKG_LIBS      := -lglfw -lglad -lGL -lvulkan -lmsdfgen-core $(_ENG_STACKTRACE_LIB) \
                             -lfreetype -lpng16 -lz -lbz2 -lbrotlidec -lbrotlicommon \
                             -lshaderc -lshaderc_util -lglslang \
+                            -lspirv-cross-reflect -lspirv-cross-glsl -lspirv-cross-core \
                             -lSPIRV-Tools-opt -lSPIRV-Tools -lSPIRV \
                             -lpthread -lX11 -ldl -lm
     _ENG_LD_START        := -Wl,--start-group
@@ -121,6 +123,7 @@ else # Darwin
     _ENG_VCPKG_LIBS      := -lglfw3 -lglad -lmsdfgen-core -lfreetype -lpng16 -lz -lbz2 \
                             -lbrotlidec -lbrotlicommon \
                             -lshaderc -lshaderc_util -lglslang \
+                            -lspirv-cross-reflect -lspirv-cross-glsl -lspirv-cross-core \
                             -lSPIRV-Tools-opt -lSPIRV-Tools -lSPIRV \
                             -lvulkan \
                             -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo \

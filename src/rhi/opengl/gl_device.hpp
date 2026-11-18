@@ -20,7 +20,6 @@ namespace engine::rhi::gl
 // Emplacement plat des liaisons : (groupe, binding) -> groupe * kBindingsPerGroup + binding (docs/03 §4, RHI-07).
 // Les shaders OpenGL écrits à la main utilisent ces numéros dans `layout(binding = N)` ; le pipeline de shaders (lot B)
 // convertit `set`/`binding` du GLSL 450 commun vers cet emplacement.
-inline constexpr std::uint32_t kPushConstantBinding = kGroupCount * kBindingsPerGroup; // UBO réservé aux push constants
 inline constexpr std::uint32_t kFramesInFlight = 2;
 inline constexpr std::uint32_t kMaxAttachments = 8;
 

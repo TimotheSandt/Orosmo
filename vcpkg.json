@@ -4,6 +4,7 @@
   "dependencies": [
     "glad",
     "nlohmann-json",
+    "spirv-cross",
     {
       "name": "msdfgen",
       "default-features": false,
