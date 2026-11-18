@@ -8,7 +8,9 @@
 #include <mutex>
 #include <queue>
 #include <vector>
-#include "Graphics/Core/GraphicsRuntime.h"
+#include <atomic>
+#include <memory>
+#include "GpuTimer.h"
 #include "RingBuffer.h"
 
 #define MAX_QUERIES 12
@@ -72,16 +74,13 @@ class Profiler
         return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     }
 
+    // Fournisseur de minuteries GPU (installé par le runtime graphique, voir Profiler/GpuTimer.h). nullptr : mesure CPU.
+    static void SetGpuTimerFactory(const IGpuTimerFactory *factory) noexcept { gpuTimerFactory().store(factory); }
+    static const IGpuTimerFactory *GetGpuTimerFactory() noexcept { return gpuTimerFactory().load(); }
+
     static void ProfileGPU(const std::string &name, const std::function<void()> &func)
     {
-        const IGraphicsDevice *device = TryGetActiveGraphicsDevice();
-        if (device == nullptr)
-        {
-            Profile(name, func);
-            return;
-        }
-
-        std::unique_ptr<IGPUTimestampQueryResource> query = device->CreateTimestampQuery({.debugName = name});
+        std::unique_ptr<IGpuTimer> query = CreateGpuTimer(name);
         if (query == nullptr)
         {
             Profile(name, func);
@@ -100,8 +99,7 @@ class Profiler
     template <typename Func, typename... Args>
     static auto ProfileGPU(const std::string &name, Func &&func, Args &&...args) -> std::invoke_result_t<Func, Args...>
     {
-        const IGraphicsDevice *device = TryGetActiveGraphicsDevice();
-        std::unique_ptr<IGPUTimestampQueryResource> query = device != nullptr ? device->CreateTimestampQuery({.debugName = name}) : nullptr;
+        std::unique_ptr<IGpuTimer> query = CreateGpuTimer(name);
         if (query == nullptr)
         {
             return Profile(name, std::forward<Func>(func), std::forward<Args>(args)...);
@@ -153,6 +151,18 @@ class Profiler
     static double GetAverageTimeMs(const std::string &name) { return static_cast<double>(GetAverageTime(name).count()) * 1e-6; }
 
   private:
+    static std::atomic<const IGpuTimerFactory *> &gpuTimerFactory() noexcept
+    {
+        static std::atomic<const IGpuTimerFactory *> factory{nullptr};
+        return factory;
+    }
+
+    static std::unique_ptr<IGpuTimer> CreateGpuTimer(const std::string &name)
+    {
+        const IGpuTimerFactory *factory = GetGpuTimerFactory();
+        return factory != nullptr ? factory->CreateTimer(name) : nullptr;
+    }
+
     static void ProcessQueries(const std::string &name)
     {
         while (!getQueries(name).empty())
@@ -190,7 +200,7 @@ class Profiler
         }
     }
 
-    static void AddQuery(const std::string &name, std::unique_ptr<IGPUTimestampQueryResource> query)
+    static void AddQuery(const std::string &name, std::unique_ptr<IGpuTimer> query)
     {
         std::lock_guard<std::mutex> lock(getQueryMutex());
         if (getQueries(name).size() >= MAX_QUERIES)
@@ -226,7 +236,7 @@ class Profiler
     {
         struct QueryItem
         {
-            std::unique_ptr<IGPUTimestampQueryResource> query;
+            std::unique_ptr<IGpuTimer> query;
         };
 
         std::queue<QueryItem> queries;
