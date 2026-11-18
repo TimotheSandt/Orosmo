@@ -1,9 +1,6 @@
 #include "Window.h"
 
-#include "Graphics/Core/GraphicsDiagnostics.h"
-#include "Graphics/Core/RenderState.h"
-#include "Graphics/Core/GraphicsRuntime.h"
-#include "Graphics/Core/WindowContext.h"
+#include "Graphics/Presentation/WindowGraphicsBinding.h"
 #include "InputManager.h"
 #include "Profiler.h"
 #include "Logger.h"
@@ -11,6 +8,19 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#endif
+
+// Le graphique passe par l'interface IWindowGraphicsBinding (installée par le runtime graphique) : Window n'inclut aucun
+// en-tête du RHI. Sans binding, ces opérations sont sans effet (Init() échoue avant, comme sans backend lié).
+#ifdef DEBUG
+#define WINDOW_CHECK_ERRORS(context)                                                                                                       \
+    do                                                                                                                                     \
+    {                                                                                                                                      \
+        if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())                                                    \
+            graphicsBinding->CheckErrors(context);                                                                                         \
+    } while (false)
+#else
+#define WINDOW_CHECK_ERRORS(context) ((void)0)
 #endif
 
 Window::Window()
@@ -65,7 +75,8 @@ void Window::Swap(Window &other) noexcept
 
 int Window::Init()
 {
-    if (!IsGraphicsAPIActive(GraphicsAPI::OpenGL) && !IsGraphicsAPIActive(GraphicsAPI::Vulkan))
+    const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding();
+    if (graphicsBinding == nullptr || !graphicsBinding->IsRuntimeSupported())
     {
         LOG_ERROR(1, "Window currently supports only the OpenGL or Vulkan runtime backends");
         return -1;
@@ -79,17 +90,17 @@ int Window::Init()
         return -1;
     }
 
-    if (!GraphicsWindowContext::Initialize(this->window, this->parameters.vsync, this->parameters.width, this->parameters.height))
+    if (!graphicsBinding->Initialize(this->window, this->parameters.vsync, this->parameters.width, this->parameters.height))
     {
         this->Close();
         return -1;
     }
 
     glfwGetWindowPos(this->window, &this->parameters.posX, &this->parameters.posY);
-    GRAPHICS_CHECK_ERRORS_M("glfwGetWindowPos");
+    WINDOW_CHECK_ERRORS("glfwGetWindowPos");
 
     glfwSetWindowUserPointer(this->window, this);
-    GRAPHICS_CHECK_ERRORS_M("glfwSetWindowUserPointer");
+    WINDOW_CHECK_ERRORS("glfwSetWindowUserPointer");
 
     this->SetupCallbacks();
 
@@ -111,7 +122,8 @@ void Window::Close()
     InputManager::RemoveInstance(this->window);
     this->inputManager = nullptr;
 
-    GraphicsWindowContext::Shutdown(this->window);
+    if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())
+        graphicsBinding->Shutdown(this->window);
     glfwDestroyWindow(this->window);
     this->window = nullptr;
 
@@ -136,7 +148,8 @@ bool Window::NewFrame()
     // swapchain image and open the render pass at the start of each frame.
     if (this->window != nullptr)
     {
-        GraphicsWindowContext::ApplyDefaultFramebufferState(this->window, this->parameters.vsync, this->parameters.clearColor);
+        if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())
+            graphicsBinding->ApplyDefaultFramebufferState(this->window, this->parameters.vsync, this->parameters.clearColor);
     }
 
     this->fpsCounter.newFrame(this->parameters.maxFPS);
@@ -165,7 +178,8 @@ void Window::SwapBuffers()
         return;
     }
 
-    GraphicsWindowContext::Present(this->window);
+    if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())
+        graphicsBinding->Present(this->window);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -250,7 +264,7 @@ void Window::ActivateFullscreen()
 
     // Switch to fullscreen
     glfwSetWindowMonitor(this->window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-    GRAPHICS_CHECK_ERRORS_M("glfwSetWindowMonitor");
+    WINDOW_CHECK_ERRORS("glfwSetWindowMonitor");
 
     // Update internal parameters
     this->parameters.width = mode->width;
@@ -280,9 +294,9 @@ void Window::ActivateWindowed()
 
     glfwSetWindowMonitor(this->window, nullptr, this->parameters.windowedPosX, this->parameters.windowedPosY,
                          this->parameters.windowedWidth, this->parameters.windowedHeight, GLFW_DONT_CARE);
-    GRAPHICS_CHECK_ERRORS_M("glfwSetWindowMonitor");
+    WINDOW_CHECK_ERRORS("glfwSetWindowMonitor");
     glfwSetWindowAttrib(this->window, GLFW_DECORATED, GLFW_TRUE);
-    GRAPHICS_CHECK_ERRORS_M("glfwSetWindowAttrib");
+    WINDOW_CHECK_ERRORS("glfwSetWindowAttrib");
 
     // Update internal parameters
     this->parameters.width = this->parameters.windowedWidth;
@@ -335,9 +349,9 @@ void Window::ActivateBorderless()
 #endif
 
     glfwSetWindowAttrib(this->window, GLFW_DECORATED, GLFW_FALSE);
-    GRAPHICS_CHECK_ERRORS_M("glfwSetWindowAttrib");
+    WINDOW_CHECK_ERRORS("glfwSetWindowAttrib");
     glfwSetWindowMonitor(this->window, nullptr, 0, 0, width, height, GLFW_DONT_CARE);
-    GRAPHICS_CHECK_ERRORS_M("glfwSetWindowMonitor");
+    WINDOW_CHECK_ERRORS("glfwSetWindowMonitor");
 
     // Update internal parameters
     this->parameters.width = width;
@@ -356,9 +370,9 @@ void Window::SaveWindowedParameters()
     }
 
     glfwGetWindowSize(this->window, &this->parameters.windowedWidth, &this->parameters.windowedHeight);
-    GRAPHICS_CHECK_ERRORS_M("glfwGetWindowSize");
+    WINDOW_CHECK_ERRORS("glfwGetWindowSize");
     glfwGetWindowPos(this->window, &this->parameters.windowedPosX, &this->parameters.windowedPosY);
-    GRAPHICS_CHECK_ERRORS_M("glfwGetWindowPos");
+    WINDOW_CHECK_ERRORS("glfwGetWindowPos");
 }
 
 void Window::PostWindowStateChange() const
@@ -368,7 +382,8 @@ void Window::PostWindowStateChange() const
         return;
     }
 
-    GraphicsWindowContext::ApplyDefaultFramebufferState(this->window, this->parameters.vsync, this->parameters.clearColor);
+    if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())
+        graphicsBinding->ApplyDefaultFramebufferState(this->window, this->parameters.vsync, this->parameters.clearColor);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -439,7 +454,8 @@ void Window::CallbackResize(GLFWwindow *window, int width, int height)
 
     this->parameters.width = width;
     this->parameters.height = height;
-    GraphicsRenderState::SetViewport(0, 0, this->parameters.width, this->parameters.height);
+    if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())
+        graphicsBinding->SetViewport(0, 0, this->parameters.width, this->parameters.height);
 }
 
 void Window::CallbackPosition(GLFWwindow *window, int x, int y)
@@ -490,13 +506,14 @@ bool Window::IsWindowHealthy() const
     }
 
     // Vérifier si le contexte OpenGL est toujours valide
-    if (IsGraphicsAPIActive(GraphicsAPI::OpenGL))
+    const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding();
+    if (graphicsBinding != nullptr && graphicsBinding->RequiresCurrentContext())
     {
         GLFWwindow *currentContext = glfwGetCurrentContext();
         if (currentContext != this->window)
         {
             LOG_WARNING("OpenGL context mismatch");
-            GraphicsWindowContext::EnsureContextReady(this->window);
+            graphicsBinding->EnsureContextReady(this->window);
         }
     }
 

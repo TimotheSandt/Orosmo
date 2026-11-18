@@ -1,6 +1,8 @@
 #include "Graphics/Core/GraphicsRuntime.h"
 
 #include "Graphics/Core/GraphicsResources.h"
+#include "Graphics/Core/WindowContext.h"
+#include "Graphics/Presentation/WindowGraphicsBinding.h"
 #include "Profiler/Profiler.h"
 
 #include <memory>
@@ -51,6 +53,8 @@ void BindGraphicsRuntime(const GraphicsRuntimeBindings &bindings) noexcept
     runtimeBindings = bindings;
     // Le fournisseur reste installé après ClearGraphicsRuntime : il ne produit simplement plus de minuteur sans périphérique.
     Profiler::SetGpuTimerFactory(&gpuTimerFactory);
+    // Idem pour la fenêtre : l'adaptateur reste installé (Window::Close doit pouvoir libérer le contexte après Clear).
+    SetWindowGraphicsBinding(&GraphicsWindowContext::RuntimeBinding());
 }
 
 void ClearGraphicsRuntime() noexcept { runtimeBindings = {}; }
