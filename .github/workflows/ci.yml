@@ -124,9 +124,9 @@ jobs:
       - name: Repository checks
         run: |
           sh tools/check-repo.sh
-          python3 tools/check_layers.py --baseline tools/baseline/layers.txt
+          python3 tools/check_layers.py --strict
           python3 tools/check_api_isolation.py --baseline tools/baseline/api_isolation.txt
-          python3 tools/check_headers.py
+          python3 tools/check_headers.py --strict
 
       - name: Build (debug, -Werror)
         run: make -j"$(nproc)" all-debug
