@@ -5,36 +5,82 @@
 
 #include <utility>
 
-#include "Graphics/Core/GraphicsRuntime.h"
-#include "Graphics/Core/WindowContext.h"
+#include "Utilities.h"
 #include "UI/Views/PerformanceView.gen.h"
+#include "engine/renderer/image.hpp"
+
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+
+namespace rd = engine::renderer;
+namespace rhi = engine::rhi;
+
+namespace
+{
+constexpr const char *kShaderDirectory = GET_RESOURCE_PATH("shader/rhi");
+} // namespace
 
 Game::Game()
 {
-    if (!IsGraphicsAPIActive(GraphicsAPI::OpenGL) && !IsGraphicsAPIActive(GraphicsAPI::Vulkan))
-    {
-        throw std::runtime_error("Game currently requires the OpenGL or Vulkan runtime backend");
-    }
-
     LOG_TRACE("Initializing window");
-    if (window.Init() != 0)
+    rhi::DeviceDesc desc;
+    desc.backend = rhi::Backend::kOpenGL;
+#ifdef DEBUG
+    desc.validation = true;
+#else
+    desc.validation = false;
+#endif
+    if (window.Init([&]() { (void)rhi::prepareWindowHints(desc); }) != 0)
     {
         throw std::runtime_error("Failed to initialize window");
     }
+
+    desc.surface.nativeWindow = window.GetWindow();
+    auto created = rhi::createDevice(desc);
+    if (!created)
+    {
+        window.Close();
+        throw std::runtime_error("Failed to create the graphics device: " + created.error().message);
+    }
+    device = std::move(*created);
+    LOG_INFO("Graphics device: ", device->capabilities().deviceName, " (", device->capabilities().driverVersion, ")");
+
+    shaders = std::make_unique<rd::ShaderLibrary>(*device);
+    pipelines = std::make_unique<rd::PipelineCache>(*device);
+    auto scene = rd::SceneRenderer::create(*device, *shaders, *pipelines, {.shaderDirectory = kShaderDirectory});
+    if (!scene)
+    {
+        throw std::runtime_error("Failed to create the scene renderer: " + scene.error().message);
+    }
+    sceneRenderer = std::move(*scene);
+    auto canvasCreated = rd::CanvasRenderer::create(*device, *shaders, *pipelines, kShaderDirectory);
+    if (!canvasCreated)
+    {
+        throw std::runtime_error("Failed to create the 2D renderer: " + canvasCreated.error().message);
+    }
+    canvas = std::move(*canvasCreated);
+
+    gpuTimers = std::make_unique<rd::ProfilerGpuTimerFactory>(*device);
+    Profiler::SetGpuTimerFactory(gpuTimers.get());
 }
+
 Game::~Game() { this->stop(); }
 
 void Game::init()
 {
     this->refreshViewSize();
 
-    this->camera.Initialize(&this->viewWidth, &this->viewHeight, glm::vec3(0.0f, 1.0f, 0.0f));
-    this->camera.SetFOV(75.0f);
-    this->camera.SetNearPlane(0.1f);
-    this->camera.SetFarPlane(1000.0f);
+    this->camera.setPosition(glm::vec3(0.0f, 1.0f, 0.0f));
+    this->camera.setFovDegrees(75.0f);
+    this->camera.setNearPlane(0.1f);
+    this->camera.setFarPlane(1000.0f);
+    this->camera.setAspect(static_cast<unsigned>(this->viewWidth), static_cast<unsigned>(this->viewHeight));
 
     this->world = std::make_unique<World>();
-    this->world->Init(this->terrainSeed);
+    if (auto ready = this->world->Init(*device, *shaders, kShaderDirectory, this->terrainSeed); !ready)
+    {
+        throw std::runtime_error("Failed to initialize the world: " + ready.error().message);
+    }
 
     // Initialize UI system
     UI::Manager::Instance().Init(this->viewWidth, this->viewHeight);
@@ -51,17 +97,27 @@ void Game::stop()
     }
     this->stopped = true;
 
-    if (this->window.GetWindow() != nullptr)
+    if (device)
     {
-        GraphicsWindowContext::EnsureContextReady(this->window.GetWindow());
+        device->waitIdle();
     }
+    Profiler::SetGpuTimerFactory(nullptr);
+    Profiler::ClearGpuQueries(); // les minuteurs en attente référencent le périphérique
     if (this->world)
     {
         this->world->Destroy();
         this->world.reset();
     }
     UI::Manager::Instance().Shutdown();
-    this->camera.Destroy();
+    // Ordre inverse de la création : tout ce qui référence le périphérique avant lui, la fenêtre en dernier.
+    composed.reset();
+    uiTarget.reset();
+    canvas.reset();
+    sceneRenderer.reset();
+    pipelines.reset();
+    shaders.reset();
+    gpuTimers.reset();
+    device.reset();
     this->window.Close();
 }
 
@@ -79,8 +135,6 @@ void Game::enableCapture(std::string directory, std::uint32_t frames)
 {
     this->captureDirectory = std::move(directory);
     this->captureFrames = frames;
-    this->renderer3D.SetForceRenderTarget(true);
-    this->rendererUI.SetForceRenderTarget(true);
 }
 
 void Game::run()
@@ -93,8 +147,12 @@ void Game::run()
         }
 
         this->update();
+        if (!this->beginFrame())
+        {
+            continue;
+        }
         Profiler::ProfileGPU("Render", &Game::render, this);
-        Profiler::ProfileGPU("SwapBuffers", &Window::SwapBuffers, window);
+        this->endFrame();
     }
 }
 
@@ -116,38 +174,41 @@ void Game::processInput()
     }
     if (inputManager.IsKeyJustPressed(KeyButton::NUM_1))
     {
-        renderer3D.SetRenderScale(0.25f);
-        renderer3D.SetUpscalingEnabled(true);
+        sceneRenderer->setRenderScale(0.25f);
+        sceneRenderer->setUpscalingEnabled(true);
     }
     if (inputManager.IsKeyJustPressed(KeyButton::NUM_2))
     {
-        renderer3D.SetRenderScale(0.5f);
-        renderer3D.SetUpscalingEnabled(true);
+        sceneRenderer->setRenderScale(0.5f);
+        sceneRenderer->setUpscalingEnabled(true);
     }
     if (inputManager.IsKeyJustPressed(KeyButton::NUM_3))
     {
-        renderer3D.SetRenderScale(0.75f);
-        renderer3D.SetUpscalingEnabled(true);
+        sceneRenderer->setRenderScale(0.75f);
+        sceneRenderer->setUpscalingEnabled(true);
     }
     if (inputManager.IsKeyJustPressed(KeyButton::NUM_4))
     {
-        renderer3D.SetUpscalingEnabled(!renderer3D.IsUpscalingEnabled());
+        sceneRenderer->setUpscalingEnabled(!sceneRenderer->upscalingEnabled());
     }
     if (inputManager.IsKeyJustPressed(KeyButton::NUM_5))
     {
-        UI::Manager::Instance().SetRenderScale(0.25f);
+        uiRenderScale = 0.25f;
+        uiUpscaling = true;
     }
     if (inputManager.IsKeyJustPressed(KeyButton::NUM_6))
     {
-        UI::Manager::Instance().SetRenderScale(0.5f);
+        uiRenderScale = 0.5f;
+        uiUpscaling = true;
     }
     if (inputManager.IsKeyJustPressed(KeyButton::NUM_7))
     {
-        UI::Manager::Instance().SetRenderScale(0.75f);
+        uiRenderScale = 0.75f;
+        uiUpscaling = true;
     }
     if (inputManager.IsKeyJustPressed(KeyButton::NUM_8))
     {
-        UI::Manager::Instance().ToggleUpscaling();
+        uiUpscaling = !uiUpscaling;
     }
 #endif
 }
@@ -158,38 +219,128 @@ void Game::update()
 
     const double fps = this->window.GetFPS();
     const float deltaTime = fps > 0.0 ? static_cast<float>(1.0 / fps) : 1.0f / 60.0f;
-    this->camera.Inputs(this->window.GetWindow(), deltaTime);
+    this->refreshViewSize();
+    this->cameraController.update(this->window.GetWindow(), this->camera, deltaTime, this->viewWidth, this->viewHeight);
 
     this->world->Update();
-    this->refreshViewSize();
     UI::Manager::Instance().Update(deltaTime, this->viewWidth, this->viewHeight);
+}
+
+// L'interface se pose sur l'image composée : directement, ou à échelle réduite puis agrandie (touches de debug 5 à 8, ancien
+// `Renderer2D::SetRenderScale`).
+bool Game::renderUi(rhi::CommandEncoder &encoder, const rhi::TextureHandle &composedTexture)
+{
+    rd::DrawList list;
+    UI::Manager::Instance().Collect(list, this->viewWidth, this->viewHeight);
+
+    const bool scaled = uiUpscaling && uiRenderScale < 1.0f;
+    if (!scaled)
+    {
+        auto drawn = canvas->render(encoder, list, {composedTexture, rhi::Format::kRGBA8Unorm, {static_cast<std::uint32_t>(viewWidth), static_cast<std::uint32_t>(viewHeight)}}, true);
+        if (!drawn)
+        {
+            LOG_ERROR(1, "UI: ", drawn.error().message);
+        }
+        return static_cast<bool>(drawn);
+    }
+
+    const auto w = static_cast<std::uint32_t>(std::max(1.0f, static_cast<float>(viewWidth) * uiRenderScale));
+    const auto h = static_cast<std::uint32_t>(std::max(1.0f, static_cast<float>(viewHeight) * uiRenderScale));
+    if (!uiTarget.valid())
+    {
+        auto target = rd::RenderTarget::create(*device, {.size = {w, h}, .depth = false, .debugName = "ui"});
+        if (!target)
+        {
+            LOG_ERROR(1, "UI target: ", target.error().message);
+            return false;
+        }
+        uiTarget = std::move(*target);
+    }
+    else if (auto resized = uiTarget.resize(w, h); !resized)
+    {
+        LOG_ERROR(1, "UI target: ", resized.error().message);
+        return false;
+    }
+    rd::FullscreenBlit &blit = sceneRenderer->blit();
+    bool ok = blit.copy(encoder, composedTexture, blit.linearSampler(), uiTarget.color(0), rhi::Format::kRGBA8Unorm, "ui.copy").has_value();
+    ok = ok && canvas->render(encoder, list, {uiTarget.color(0), rhi::Format::kRGBA8Unorm, {w, h}}, true).has_value();
+    ok = ok && blit.copy(encoder, uiTarget.color(0), blit.linearSampler(), composedTexture, rhi::Format::kRGBA8Unorm, "ui.upscale").has_value();
+    return ok;
+}
+
+// Prépare l'image : backbuffer, image composée à la taille de la vue, encodeur. Faux : on saute l'image (fenêtre réduite, erreur).
+bool Game::beginFrame()
+{
+    this->refreshViewSize();
+    auto frame = device->beginFrame();
+    if (!frame)
+    {
+        return false; // fenêtre réduite
+    }
+    backbuffer = *frame;
+    const auto viewW = static_cast<std::uint32_t>(this->viewWidth);
+    const auto viewH = static_cast<std::uint32_t>(this->viewHeight);
+    if (viewW == 0 || viewH == 0)
+    {
+        return false;
+    }
+    if (!composed.valid())
+    {
+        auto target = rd::RenderTarget::create(*device, {.size = {viewW, viewH}, .depth = false, .debugName = "composed"});
+        if (!target)
+        {
+            LOG_ERROR(1, "Composed target: ", target.error().message);
+            return false;
+        }
+        composed = std::move(*target);
+    }
+    else if (auto resized = composed.resize(viewW, viewH); !resized)
+    {
+        LOG_ERROR(1, "Composed target: ", resized.error().message);
+        return false;
+    }
+    frameEncoder = device->createCommandEncoder();
+    gpuTimers->setEncoder(frameEncoder.get()); // les minuteries GPU du Profiler écrivent dans cet encodeur
+    return true;
 }
 
 void Game::render()
 {
-    this->refreshViewSize();
-    const int windowWidth = this->viewWidth;
-    const int windowHeight = this->viewHeight;
+    rhi::CommandEncoder &encoder = *frameEncoder;
+    const auto viewW = static_cast<std::uint32_t>(this->viewWidth);
+    const auto viewH = static_cast<std::uint32_t>(this->viewHeight);
 
-    renderer3D.SetOutputResolution(windowWidth, windowHeight);
-    renderer3D.BeginPass();
-    Profiler::ProfileGPU("Clear", &Renderer3D::Clear, &renderer3D, window.GetClearColor(), true);
-    renderer3D.SetCamera(this->camera);
-    Profiler::ProfileGPU("RenderWorld", &World::Render, this->world.get(), std::ref(renderer3D), std::ref(this->camera));
-    Profiler::ProfileGPU("Upscale", &Renderer3D::EndPass, &renderer3D);
+    this->camera.setAspect(viewW, viewH);
+    sceneRenderer->setOutputResolution(this->viewWidth, this->viewHeight);
+    const glm::vec4 clear = window.GetClearColor();
+    Profiler::ProfileGPU("Clear", [&]() { (void)sceneRenderer->beginFrame(encoder, {.clearColor = {clear.r, clear.g, clear.b, clear.a}}); });
+    (void)sceneRenderer->setCamera(this->camera);
+    Profiler::ProfileGPU("RenderWorld", &World::Render, this->world.get(), std::ref(*sceneRenderer), std::cref(this->camera));
+    Profiler::ProfileGPU("Upscale", [&]() { (void)sceneRenderer->endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}); });
 
-    rendererUI.SetOutputResolution(windowWidth, windowHeight);
-    rendererUI.BeginPass();
-    UI::Manager::Instance().Render(rendererUI, windowWidth, windowHeight);
-    Profiler::ProfileGPU("UIUpscale", &Renderer2D::EndPass, &rendererUI);
+    Profiler::ProfileGPU("UIUpscale", [&]() { (void)renderUi(encoder, composed.color(0)); });
+
+    // Présentation : l'image composée est copiée (étirée si la vue n'a pas la taille de la fenêtre) sur le backbuffer.
+    (void)sceneRenderer->blit().copy(encoder, composed.color(0), sceneRenderer->blit().linearSampler(), backbuffer, rhi::Format::kRGBA8Unorm, "present");
+}
+
+void Game::endFrame()
+{
+    gpuTimers->setEncoder(nullptr);
+    if (auto submitted = device->submit(std::move(frameEncoder)); !submitted)
+    {
+        LOG_ERROR(1, "Frame: ", submitted.error().message);
+    }
 
     ++this->renderedFrames;
     if (!this->captureDirectory.empty() && !this->captureDone && this->renderedFrames >= this->captureFrames)
     {
-        const bool sceneSaved = renderer3D.SaveColorPng(this->captureDirectory + "/scene.png");
-        const bool uiSaved = rendererUI.SaveColorPng(this->captureDirectory + "/ui.png");
+        // scene.png : couleur de la scène à la résolution de rendu ; ui.png : image composée (scène + interface), comme avant.
+        const bool sceneSaved = sceneRenderer->saveColorPng(this->captureDirectory + "/scene.png").has_value();
+        const bool uiSaved = rd::savePng(*device, composed.color(0), this->captureDirectory + "/ui.png").has_value();
         this->captureDone = sceneSaved && uiSaved;
         glfwSetWindowShouldClose(this->window.GetWindow(), true);
     }
-}
 
+    Profiler::Profile("SwapBuffers", [&]() { (void)device->present(); });
+}

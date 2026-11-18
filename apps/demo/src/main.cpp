@@ -1,8 +1,7 @@
 #include "Game/Game.h"
 #include "Graphics/Backends/GraphicsAPI.h"
-#include "Graphics/Core/GraphicsBackend.h"
-#include "Graphics/Core/GraphicsRuntime.h"
 #include "Logger.h"
+#include "Window.h"
 
 #include <random>
 #include <cstdlib>
@@ -15,10 +14,6 @@
 
 int main(int argc, char **argv)
 {
-    GraphicsAPI selectedApi = GraphicsAPI::OpenGL;
-    std::unique_ptr<IGraphicsBackend> graphicsBackend;
-    std::unique_ptr<IGraphicsDevice> graphicsDevice;
-
     try
     {
         const std::filesystem::path launchDirectory = std::filesystem::current_path();
@@ -51,7 +46,7 @@ int main(int argc, char **argv)
         const std::string captureDirectory =
             launchOptions.captureDirectory.empty() ? std::string() : (launchDirectory / launchOptions.captureDirectory).string();
 
-        selectedApi = launchOptions.api;
+        GraphicsAPI selectedApi = launchOptions.api;
         const bool shouldPromptForApi = launchOptions.chooseApiInteractively;
         if (shouldPromptForApi && !PromptForGraphicsAPI(std::cin, std::cout, selectedApi))
         {
@@ -61,30 +56,21 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
-        if (!launchOptions.captureDirectory.empty() && selectedApi != GraphicsAPI::OpenGL)
+        // Seul le backend OpenGL du RHI existe avant M4 (Vulkan) et M9 (Metal) : refus clair avec la raison (RHI-04).
+        if (!IsGraphicsAPIAvailable(selectedApi))
         {
-            // Observed on Vulkan (M0 audit): the offscreen path raises validation errors (image layout) and the
-            // image differs from OpenGL. Vulkan is reworked in M4 (docs/05); no capture is offered before that.
-            LOG_ERROR(1, "--capture is only supported with the OpenGL backend until M4 (Vulkan)");
-            FLUSH_LOG_TO_FILE;
-            return EXIT_FAILURE;
-        }
-
-        graphicsBackend = CreateGraphicsBackend({selectedApi});
-        if (!graphicsBackend->IsAvailable())
-        {
-            LOG_ERROR(1, graphicsBackend->DescribeAvailability());
+            LOG_ERROR(1, GetGraphicsAPIAvailabilityMessage(selectedApi));
+            std::cerr << GetGraphicsAPIAvailabilityMessage(selectedApi) << '\n';
             PrintGraphicsAPIUsage(std::cout);
             FLUSH_LOG_TO_FILE;
             return EXIT_FAILURE;
         }
 
         const std::vector<std::string> requiredAssets = {
-            GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"),      GET_RESOURCE_PATH("shader/default.vert"),
-            GET_RESOURCE_PATH("shader/default.frag"),           GET_RESOURCE_PATH("shader/upscaling/upscale.vert"),
-            GET_RESOURCE_PATH("shader/upscaling/upscale.frag"), GET_RESOURCE_PATH("shader/UI/default.vert"),
-            GET_RESOURCE_PATH("shader/UI/default.frag"),        GET_RESOURCE_PATH("shader/UI/container.vert"),
-            GET_RESOURCE_PATH("shader/UI/container.frag")};
+            GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"),   GET_RESOURCE_PATH("shader/rhi/mesh.vert"),     GET_RESOURCE_PATH("shader/rhi/mesh.frag"),
+            GET_RESOURCE_PATH("shader/rhi/blit.vert"),       GET_RESOURCE_PATH("shader/rhi/blit.frag"),     GET_RESOURCE_PATH("shader/rhi/ui_rect.vert"),
+            GET_RESOURCE_PATH("shader/rhi/ui_rect.frag"),    GET_RESOURCE_PATH("shader/rhi/ui_glyph.vert"), GET_RESOURCE_PATH("shader/rhi/ui_glyph.frag"),
+            GET_RESOURCE_PATH("shader/rhi/ui_layer.vert"),   GET_RESOURCE_PATH("shader/rhi/ui_layer.frag")};
 
         if (!ValidateAssets(requiredAssets))
         {
@@ -93,18 +79,9 @@ int main(int argc, char **argv)
         }
 
         int exitCode = EXIT_SUCCESS;
-
-        if (!graphicsBackend->Initialize())
         {
-            exitCode = EXIT_FAILURE;
-        }
-        else
-        {
-            graphicsDevice = graphicsBackend->CreateDevice({});
-            BindGraphicsRuntime({.api = selectedApi, .backend = graphicsBackend.get(), .device = graphicsDevice.get()});
-            LOG_INFO("Starting game with graphics API: ", GraphicsAPIToString(selectedApi));
-
             Game game;
+            LOG_INFO("Starting game with graphics API: ", GraphicsAPIToString(selectedApi));
             // The seed is chosen HERE, explicitly (rule 9: no clock inside the generation). Captures use seed 1 unless
             // given; otherwise a random seed is drawn and logged so that the terrain can be replayed with --seed N.
             std::uint32_t terrainSeed = 1u;
@@ -133,37 +110,19 @@ int main(int argc, char **argv)
                 LOG_ERROR(1, "Capture requested but not completed");
                 exitCode = EXIT_FAILURE;
             }
-        }
-
-        if (graphicsBackend)
-        {
-            ClearGraphicsRuntime();
-            graphicsDevice.reset();
-            graphicsBackend->Shutdown();
-        }
+        } // `Game` libère le périphérique graphique puis la fenêtre
+        Window::Terminate();
         FLUSH_LOG_TO_FILE;
         return exitCode;
     }
     catch (const std::exception &e)
     {
-        if (graphicsBackend)
-        {
-            ClearGraphicsRuntime();
-            graphicsDevice.reset();
-            graphicsBackend->Shutdown();
-        }
         LOG_ERROR(1, "Unhandled exception: ", e.what());
         FLUSH_LOG_TO_FILE;
         return EXIT_FAILURE;
     }
     catch (...)
     {
-        if (graphicsBackend)
-        {
-            ClearGraphicsRuntime();
-            graphicsDevice.reset();
-            graphicsBackend->Shutdown();
-        }
         LOG_ERROR(1, "Unhandled non-standard exception");
         FLUSH_LOG_TO_FILE;
         return EXIT_FAILURE;

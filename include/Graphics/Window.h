@@ -3,6 +3,7 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <chrono>
+#include <functional>
 #include <cstdint>
 #include <string>
 
@@ -11,7 +12,6 @@
 #include "FPSCounter.h"
 
 class InputManager;
-class IWindowGraphicsBinding;
 
 enum WindowState : std::uint8_t
 {
@@ -60,10 +60,13 @@ class Window
 
     ~Window();
 
-    int Init();
+    // Crée la fenêtre. `beforeCreate` (facultatif) pose les attributs de contexte du graphique juste avant la création (RHI :
+    // `rhi::prepareWindowHints`) : la fenêtre elle-même ne connaît aucune API graphique.
+    int Init(const std::function<void()> &beforeCreate = {});
     bool NewFrame();
-    void SwapBuffers();
     void Close();
+    // Termine GLFW (à la fin du programme, après la destruction de toutes les fenêtres et du périphérique graphique).
+    static void Terminate();
 
     // Window state
     void ChangeWindowState(WindowState state);
@@ -130,7 +133,6 @@ class Window
     InputManager *inputManager;
 
     // Binding utilisé à Init() : Close() libère le contexte avec le même, même si le binding global a changé entretemps.
-    const IWindowGraphicsBinding *graphicsBinding = nullptr;
 
     FPSCounter fpsCounter;
 

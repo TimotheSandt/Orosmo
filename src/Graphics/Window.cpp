@@ -1,6 +1,5 @@
 #include "Window.h"
 
-#include "Graphics/Presentation/WindowGraphicsBinding.h"
 #include "InputManager.h"
 #include "Profiler.h"
 #include "Logger.h"
@@ -10,18 +9,41 @@
 #include <windows.h>
 #endif
 
-// Le graphique passe par l'interface IWindowGraphicsBinding (installée par le runtime graphique) : Window n'inclut aucun
-// en-tête du RHI. Sans binding, ces opérations sont sans effet (Init() échoue avant, comme sans backend lié).
+// Fenêtre : ne connaît aucune API graphique. Le graphique s'y accroche de l'extérieur : l'appelant fournit un rappel qui pose les
+// attributs de contexte avant la création (`Init`), puis le RHI adopte la fenêtre (`SurfaceDesc::nativeWindow`) et la présente.
 #ifdef DEBUG
 #define WINDOW_CHECK_ERRORS(context)                                                                                                       \
     do                                                                                                                                     \
     {                                                                                                                                      \
-        if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())                                                    \
-            graphicsBinding->CheckErrors(context);                                                                                         \
+        const char *glfwErrorDescription = nullptr;                                                                                        \
+        if (const int glfwErrorCode = glfwGetError(&glfwErrorDescription); glfwErrorCode != GLFW_NO_ERROR)                                \
+            LOG_ERROR(glfwErrorCode, context, ": ", glfwErrorDescription != nullptr ? glfwErrorDescription : "");                         \
     } while (false)
 #else
 #define WINDOW_CHECK_ERRORS(context) ((void)0)
 #endif
+
+namespace
+{
+// Initialise GLFW une fois : rappel d'erreur journalisé (reprend celui de l'ancien backend OpenGL).
+bool InitializeGlfw()
+{
+    static const bool initialized = []()
+    {
+#ifdef _WIN32
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOALIGNMENTFAULTEXCEPT | SEM_NOOPENFILEERRORBOX);
+#endif
+        glfwSetErrorCallback([](int errorCode, const char *description) { LOG_ERROR(errorCode, "GLFW Error: ", description); });
+        if (!glfwInit())
+        {
+            LOG_FATAL(-1, "Failed to initialize GLFW");
+            return false;
+        }
+        return true;
+    }();
+    return initialized;
+}
+} // namespace
 
 Window::Window()
 {
@@ -69,32 +91,32 @@ void Window::Swap(Window &other) noexcept
     std::swap(this->window, other.window);
     std::swap(this->parameters, other.parameters);
     std::swap(this->inputManager, other.inputManager);
-    std::swap(this->graphicsBinding, other.graphicsBinding);
     std::swap(this->fpsCounter, other.fpsCounter);
     std::swap(this->lastTime, other.lastTime);
 }
 
-int Window::Init()
+int Window::Init(const std::function<void()> &beforeCreate)
 {
-    const IWindowGraphicsBinding *binding = GetWindowGraphicsBinding();
-    if (binding == nullptr || !binding->IsRuntimeSupported())
+    if (!InitializeGlfw())
     {
-        LOG_ERROR(1, "Window currently supports only the OpenGL or Vulkan runtime backends");
         return -1;
     }
+    glfwDefaultWindowHints();
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_CENTER_CURSOR, GLFW_TRUE);
+    glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
+    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
+    glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_TRUE);
+    if (beforeCreate)
+    {
+        beforeCreate(); // attributs de contexte du graphique (RHI : prepareWindowHints)
+    }
 
-    // Create a window for the active graphics runtime.
     this->window = glfwCreateWindow(this->parameters.width, this->parameters.height, this->parameters.title.c_str(), nullptr, nullptr);
     if (!this->window)
     {
         LOG_ERROR(1, "Failed to create GLFW window");
-        return -1;
-    }
-
-    this->graphicsBinding = binding;
-    if (!this->graphicsBinding->Initialize(this->window, this->parameters.vsync, this->parameters.width, this->parameters.height))
-    {
-        this->Close();
         return -1;
     }
 
@@ -124,9 +146,6 @@ void Window::Close()
     InputManager::RemoveInstance(this->window);
     this->inputManager = nullptr;
 
-    if (this->graphicsBinding != nullptr)
-        this->graphicsBinding->Shutdown(this->window);
-    this->graphicsBinding = nullptr;
     glfwDestroyWindow(this->window);
     this->window = nullptr;
 
@@ -134,6 +153,8 @@ void Window::Close()
     ShowWindow(FindWindowA("Shell_TrayWnd", nullptr), SW_SHOW);
 #endif
 }
+
+void Window::Terminate() { glfwTerminate(); }
 
 bool Window::NewFrame()
 {
@@ -145,14 +166,6 @@ bool Window::NewFrame()
     {
         LOG_WARNING("Window is not healthy");
         return false;
-    }
-
-    // For Vulkan (and other APIs that require per-frame state setup), acquire the
-    // swapchain image and open the render pass at the start of each frame.
-    if (this->window != nullptr)
-    {
-        if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())
-            graphicsBinding->ApplyDefaultFramebufferState(this->window, this->parameters.vsync, this->parameters.clearColor);
     }
 
     this->fpsCounter.newFrame(this->parameters.maxFPS);
@@ -172,17 +185,6 @@ bool Window::NewFrame()
     }
 
     return true;
-}
-
-void Window::SwapBuffers()
-{
-    if (!this->window)
-    {
-        return;
-    }
-
-    if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())
-        graphicsBinding->Present(this->window);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -380,13 +382,7 @@ void Window::SaveWindowedParameters()
 
 void Window::PostWindowStateChange() const
 {
-    if (!this->window)
-    {
-        return;
-    }
-
-    if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())
-        graphicsBinding->ApplyDefaultFramebufferState(this->window, this->parameters.vsync, this->parameters.clearColor);
+    // Rien à reconfigurer côté graphique : le RHI relit la taille du framebuffer au début de chaque image.
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -457,8 +453,6 @@ void Window::CallbackResize(GLFWwindow *window, int width, int height)
 
     this->parameters.width = width;
     this->parameters.height = height;
-    if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())
-        graphicsBinding->SetViewport(0, 0, this->parameters.width, this->parameters.height);
 }
 
 void Window::CallbackPosition(GLFWwindow *window, int x, int y)
@@ -506,18 +500,6 @@ bool Window::IsWindowHealthy() const
     if (!this->window)
     {
         return false;
-    }
-
-    // Vérifier si le contexte OpenGL est toujours valide
-    const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding();
-    if (graphicsBinding != nullptr && graphicsBinding->RequiresCurrentContext())
-    {
-        GLFWwindow *currentContext = glfwGetCurrentContext();
-        if (currentContext != this->window)
-        {
-            LOG_WARNING("OpenGL context mismatch");
-            graphicsBinding->EnsureContextReady(this->window);
-        }
     }
 
     return true;

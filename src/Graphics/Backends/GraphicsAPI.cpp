@@ -248,8 +248,8 @@ GraphicsAPIAvailability GetGraphicsAPIAvailability(GraphicsAPI api) noexcept
     {
         case GraphicsAPI::OpenGL:
             return GraphicsAPIAvailability::Available;
-        case GraphicsAPI::Vulkan:
-            return GraphicsAPIAvailability::Available;
+        case GraphicsAPI::Vulkan: // l'ancien backend est retiré (A1) ; réécrit sur le RHI en M4
+            return GraphicsAPIAvailability::NotBuilt;
         case GraphicsAPI::Metal:
 #ifdef __APPLE__
             return GraphicsAPIAvailability::NotBuilt;
@@ -270,7 +270,7 @@ std::string GetGraphicsAPIAvailabilityMessage(GraphicsAPI api)
         case GraphicsAPIAvailability::Available:
             return std::string(GraphicsAPIToString(api)) + " backend is available.";
         case GraphicsAPIAvailability::NotBuilt:
-            return std::string(GraphicsAPIToString(api)) + " backend selection is recognized, but this backend is not implemented yet.";
+            return std::string(GraphicsAPIToString(api)) + " backend selection is recognized, but this backend is not available yet (Vulkan: M4, Metal: M9).";
         case GraphicsAPIAvailability::UnsupportedPlatform:
             return std::string(GraphicsAPIToString(api)) + " backend is not supported on this platform.";
     }

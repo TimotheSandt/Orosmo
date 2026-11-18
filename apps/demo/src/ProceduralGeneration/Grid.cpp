@@ -58,7 +58,7 @@ void Grid::Destroy()
 {
     this->points.clear();
     this->triangles.clear();
-    this->mesh.Destroy();
+    this->meshData = {};
 }
 
 void Grid::init(float size_x, float size_z, int resolution_x, int resolution_z)
@@ -148,8 +148,6 @@ void Grid::GenerateNormals()
 
 void Grid::GenerateMesh()
 {
-    this->mesh.Destroy();
-
     std::vector<float> vertices;
     vertices.reserve(this->points.size() * 9);
     for (const auto &vec : this->points)
@@ -166,9 +164,11 @@ void Grid::GenerateMesh()
         indices.push_back(triangle[2]);
     }
 
-    this->mesh.Initialize(vertices, indices, {3, 3, 3});
-    this->mesh.SetShader(GET_RESOURCE_PATH("shader/default.vert"), GET_RESOURCE_PATH("shader/default.frag"));
-    this->mesh.UploadTransform();
+    this->meshData = {};
+    this->meshData.vertices = std::move(vertices);
+    this->meshData.indices = std::move(indices);
+    this->meshData.attributeSizes = {3, 3, 3};
+    this->meshData.name = "terrain";
 }
 
 void Grid::TransformPoints(const std::function<void(Vertex &, unsigned int)> &func)
@@ -180,4 +180,3 @@ void Grid::TransformPoints(const std::function<void(Vertex &, unsigned int)> &fu
     GenerateNormals();
 }
 
-void Grid::Render(const Renderer3D &renderer3D, Camera &camera) { renderer3D.DrawMesh(this->mesh, camera); }
