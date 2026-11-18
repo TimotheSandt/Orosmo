@@ -69,14 +69,15 @@ void Window::Swap(Window &other) noexcept
     std::swap(this->window, other.window);
     std::swap(this->parameters, other.parameters);
     std::swap(this->inputManager, other.inputManager);
+    std::swap(this->graphicsBinding, other.graphicsBinding);
     std::swap(this->fpsCounter, other.fpsCounter);
     std::swap(this->lastTime, other.lastTime);
 }
 
 int Window::Init()
 {
-    const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding();
-    if (graphicsBinding == nullptr || !graphicsBinding->IsRuntimeSupported())
+    const IWindowGraphicsBinding *binding = GetWindowGraphicsBinding();
+    if (binding == nullptr || !binding->IsRuntimeSupported())
     {
         LOG_ERROR(1, "Window currently supports only the OpenGL or Vulkan runtime backends");
         return -1;
@@ -90,7 +91,8 @@ int Window::Init()
         return -1;
     }
 
-    if (!graphicsBinding->Initialize(this->window, this->parameters.vsync, this->parameters.width, this->parameters.height))
+    this->graphicsBinding = binding;
+    if (!this->graphicsBinding->Initialize(this->window, this->parameters.vsync, this->parameters.width, this->parameters.height))
     {
         this->Close();
         return -1;
@@ -122,8 +124,9 @@ void Window::Close()
     InputManager::RemoveInstance(this->window);
     this->inputManager = nullptr;
 
-    if (const IWindowGraphicsBinding *graphicsBinding = GetWindowGraphicsBinding())
-        graphicsBinding->Shutdown(this->window);
+    if (this->graphicsBinding != nullptr)
+        this->graphicsBinding->Shutdown(this->window);
+    this->graphicsBinding = nullptr;
     glfwDestroyWindow(this->window);
     this->window = nullptr;
 

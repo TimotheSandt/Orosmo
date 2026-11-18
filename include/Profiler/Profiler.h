@@ -8,7 +8,6 @@
 #include <mutex>
 #include <queue>
 #include <vector>
-#include <atomic>
 #include <memory>
 #include "GpuTimer.h"
 #include "RingBuffer.h"
@@ -75,8 +74,9 @@ class Profiler
     }
 
     // Fournisseur de minuteries GPU (installé par le runtime graphique, voir Profiler/GpuTimer.h). nullptr : mesure CPU.
-    static void SetGpuTimerFactory(const IGpuTimerFactory *factory) noexcept { gpuTimerFactory().store(factory); }
-    static const IGpuTimerFactory *GetGpuTimerFactory() noexcept { return gpuTimerFactory().load(); }
+    // Le stockage de ce pointeur est dans src/Profiler/Profiler.cpp (pas d'état global défini dans un en-tête).
+    static void SetGpuTimerFactory(const IGpuTimerFactory *factory) noexcept;
+    static const IGpuTimerFactory *GetGpuTimerFactory() noexcept;
 
     static void ProfileGPU(const std::string &name, const std::function<void()> &func)
     {
@@ -151,12 +151,6 @@ class Profiler
     static double GetAverageTimeMs(const std::string &name) { return static_cast<double>(GetAverageTime(name).count()) * 1e-6; }
 
   private:
-    static std::atomic<const IGpuTimerFactory *> &gpuTimerFactory() noexcept
-    {
-        static std::atomic<const IGpuTimerFactory *> factory{nullptr};
-        return factory;
-    }
-
     static std::unique_ptr<IGpuTimer> CreateGpuTimer(const std::string &name)
     {
         const IGpuTimerFactory *factory = GetGpuTimerFactory();

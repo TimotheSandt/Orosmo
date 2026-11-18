@@ -44,7 +44,7 @@ python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720
 
 ```
 make demo-test                              -> 224 cas, 3348 assertions, 0 échec (docs/BASELINE/tests-M1bis.txt)
-make demo-test SANITIZE=address,undefined   -> 224 cas verts, aucun rapport ASan/UBSan
+make fclean demo-fclean && make demo-test SANITIZE=address,undefined   -> 224 cas verts, aucun rapport ASan/UBSan (partir d'un arbre propre : `SANITIZE` n'invalide pas les objets déjà compilés, G66)
 make all-debug                              -> 0 avertissement (-Wall -Wextra -Wpedantic -Werror)
 check_layers --strict / check_headers --strict -> sortie 0
 capture OpenGL graine 1                     -> identique à la référence (écart max 0/255)

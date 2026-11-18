@@ -11,6 +11,7 @@
 #include "FPSCounter.h"
 
 class InputManager;
+class IWindowGraphicsBinding;
 
 enum WindowState : std::uint8_t
 {
@@ -127,6 +128,9 @@ class Window
     WindowParameters parameters;
 
     InputManager *inputManager;
+
+    // Binding utilisé à Init() : Close() libère le contexte avec le même, même si le binding global a changé entretemps.
+    const IWindowGraphicsBinding *graphicsBinding = nullptr;
 
     FPSCounter fpsCounter;
 
