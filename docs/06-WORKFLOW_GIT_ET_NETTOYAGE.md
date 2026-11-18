@@ -44,6 +44,21 @@ Quand tous les identifiants du jalon sont `Fait` avec preuve et que `dev` est ve
 4. **S'arrêter** et le dire. L'auteur teste, ouvre la merge request vers `main`, la fusionne, puis pose le tag `<jalon>` (ex. `M2`). L'IA ne pose pas ce tag.
    **Mode de fusion `dev` → `main` : « Create a merge commit », jamais « Squash and merge ».** Un squash met le jalon dans un seul commit de `main` que `dev` ne contient pas : la base commune de GitHub reste en arrière, et la merge request suivante recompte tout le jalon précédent (cela a donné 345 fichiers au lieu de 69 en M1 et bloqué la revue CodeRabbit, limitée à 300 fichiers). Si un squash a quand même eu lieu : avant de commencer le jalon suivant, l'IA fait sur `chore/sync-main-squash` `git merge -s ours origin/main` (arbre de `dev` inchangé, après avoir vérifié que `main` n'a rien que `dev` n'ait pas) puis fusionne dans `dev` avec `--no-ff`.
 
+### Publier une release (SDK du moteur)
+
+Le workflow `.github/workflows/build-engine.yml` construit l'outil `engine` et le paquet du moteur (`engine-pkg-<plateforme>.zip`) pour Windows x64, Linux x64, macOS arm64 et macOS x64, puis crée la release GitHub. Il ne publie **pas** la démo.
+
+1. **Répétition, sans rien publier** (à faire avant le premier tag, et après toute modification du workflow) :
+   `gh workflow run build-engine.yml --ref main` puis `gh run watch`. Les builds tournent et déposent leurs artefacts ; aucune release n'est créée car le job `release` exige un tag.
+2. **Release** : la merge request est fusionnée dans `main`, puis, sur `main` à jour :
+   ```bash
+   git checkout main && git pull
+   git tag -a v0.1.0 -m "M1 : noyau (core)"
+   git push origin v0.1.0
+   ```
+   Le workflow se déclenche sur les tags `v*` (un tag de jalon comme `M1` ne le déclenche pas) et **refuse un tag qui n'est pas contenu dans `main`**. Ne pas utiliser `gh release create` : le workflow crée la release lui-même.
+3. Linux est vérifié depuis un clone propre (G64). Windows et macOS ne l'ont été que par la CI de build et de tests, jamais par `engine-tool` : la répétition de l'étape 1 est leur première preuve.
+
 ## 4. Bugs signalés par l'auteur
 
 1. L'auteur décrit le bug sur `dev`.
