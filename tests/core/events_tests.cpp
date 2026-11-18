@@ -106,4 +106,26 @@ TEST_SUITE("core/events")
         CHECK(gAllocations.load() == before);
         CHECK(sum == 2001);
     }
+
+    TEST_CASE("a handler may subscribe many others without invalidating its own captures")
+    {
+        struct Ctx
+        {
+            EventBus bus;
+            std::vector<Subscription> subs;
+            int seen = 0;
+        } ctx;
+        Ctx *c = &ctx;
+        const int probe = 42;
+        // 16 octets, trivialement copiable : la capture est stockée dans le std::function lui-même, donc dans le
+        // tableau des abonnés. Si ce tableau se réalloue pendant l'appel, elle serait déplacée sous les pieds du handler.
+        auto first = ctx.bus.subscribe<Damage>([c, probe](const Damage &) {
+            for (int i = 0; i < 200; ++i)
+                c->subs.push_back(c->bus.subscribe<Damage>([](const Damage &) {}));
+            c->seen = probe; // lu après les abonnements : doit toujours valoir 42
+        });
+        ctx.bus.publish(Damage{1});
+        CHECK(ctx.seen == 42);
+        CHECK(ctx.bus.subscriberCount<Damage>() == 201);
+    }
 }

@@ -2,7 +2,9 @@
 
 #include <engine/core/memory.hpp>
 
+#include <cstdint>
 #include <set>
+#include <stdexcept>
 
 using namespace engine::core;
 
@@ -84,5 +86,35 @@ TEST_SUITE("core/memory")
         CHECK(t->value == 7);
         pool.destroy(t);
         CHECK(pool.liveCount() == 0);
+    }
+
+    TEST_CASE("ArenaAllocator: a huge request cannot wrap around and overlap earlier allocations")
+    {
+        ArenaAllocator arena(64);
+        void *first = arena.allocate(1, 1);
+        REQUIRE(first != nullptr);
+        CHECK(arena.allocate(SIZE_MAX, 1) == nullptr);
+        CHECK(arena.allocate(SIZE_MAX - 8, 16) == nullptr);
+        CHECK(arena.used() == 1); // le refus ne modifie pas l'état
+        void *second = arena.allocate(1, 1);
+        REQUIRE(second != nullptr);
+        CHECK(second != first);
+    }
+
+    TEST_CASE("ObjectPool: a throwing constructor leaves the pool unchanged")
+    {
+        struct Thrower
+        {
+            explicit Thrower(bool fail) { if (fail) throw std::runtime_error("ctor"); }
+        };
+        ObjectPool<Thrower> pool(2);
+        Thrower *ok = pool.create(false);
+        CHECK_THROWS_AS(pool.create(true), std::runtime_error);
+        CHECK(pool.liveCount() == 1);
+        Thrower *again = pool.create(false); // l'emplacement du constructeur raté est rendu
+        CHECK(pool.liveCount() == 2);
+        CHECK(pool.capacity() == 2); // aucun bloc de plus : le slot libéré a été réutilisé
+        pool.destroy(ok);
+        pool.destroy(again);
     }
 }

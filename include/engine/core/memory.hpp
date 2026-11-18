@@ -26,9 +26,11 @@ class ArenaAllocator
     {
         const auto base = reinterpret_cast<std::uintptr_t>(mBuffer.get());
         const std::uintptr_t aligned = (base + mUsed + alignment - 1) & ~(static_cast<std::uintptr_t>(alignment) - 1);
-        const std::size_t newUsed = static_cast<std::size_t>(aligned - base) + size;
-        if (newUsed > mCapacity)
+        const std::size_t padding = static_cast<std::size_t>(aligned - base) - mUsed;
+        // Contrôles sans addition qui puisse déborder : size est comparée à ce qu'il reste, pas ajoutée à mUsed.
+        if (padding > mCapacity - mUsed || size > mCapacity - mUsed - padding)
             return nullptr;
+        const std::size_t newUsed = mUsed + padding + size;
         mUsed = newUsed;
         if (mUsed > mPeak)
             mPeak = mUsed;
@@ -69,9 +71,13 @@ template <typename T> class ObjectPool
         if (!mFree)
             grow();
         Slot *slot = mFree;
-        mFree = slot->next;
+        Slot *const next = slot->next;
+        // Le slot ne quitte la liste libre qu'après une construction réussie : si le constructeur de T lève, le pool
+        // reste intact (liveCount() et liste libre inchangés).
+        T *object = new (static_cast<void *>(slot->storage)) T(std::forward<Args>(args)...);
+        mFree = next;
         ++mLive;
-        return new (static_cast<void *>(slot->storage)) T(std::forward<Args>(args)...);
+        return object;
     }
 
     void destroy(T *object) noexcept
@@ -98,12 +104,13 @@ template <typename T> class ObjectPool
     void grow()
     {
         auto block = std::make_unique<Slot[]>(mBlockSize);
+        Slot *const raw = block.get();
+        mBlocks.push_back(std::move(block)); // d'abord le bloc : si push_back lève, la liste libre n'a pas bougé
         for (std::size_t i = 0; i < mBlockSize; ++i)
         {
-            block[i].next = mFree;
-            mFree = &block[i];
+            raw[i].next = mFree;
+            mFree = &raw[i];
         }
-        mBlocks.push_back(std::move(block));
     }
 
     std::size_t mBlockSize;
