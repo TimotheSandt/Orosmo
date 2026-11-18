@@ -127,10 +127,12 @@ class GlDevice final : public Device
     void destroy(BindGroupHandle handle) override;
     void destroy(QueryPoolHandle handle) override;
 
+    Result<TextureDesc> textureDesc(TextureHandle texture) const override;
     Result<> updateBuffer(BufferHandle buffer, std::uint64_t offset, std::span<const std::byte> data) override;
     Result<> updateTexture(TextureHandle texture, const TextureCopy &region, std::span<const std::byte> data) override;
     Result<std::vector<std::byte>> readBuffer(BufferHandle buffer, std::uint64_t offset, std::uint64_t size) override;
     Result<std::vector<std::byte>> readTexture(TextureHandle texture, const TextureCopy &region) override;
+    Result<bool> timestampsReady(QueryPoolHandle pool, std::uint32_t first, std::uint32_t count) override;
     Result<std::vector<std::uint64_t>> readTimestamps(QueryPoolHandle pool, std::uint32_t first, std::uint32_t count) override;
 
     std::unique_ptr<CommandEncoder> createCommandEncoder() override;

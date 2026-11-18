@@ -97,6 +97,9 @@ class ShaderCache
 core::Result<ShaderHandle> createShaderFromGlsl(Device &device, ShaderStage stage, std::string_view source, const CompileOptions &options = {},
                                                 ShaderCache *cache = nullptr);
 
+// Même chose à partir d'un shader déjà compilé (rechargement à chaud, cache).
+core::Result<ShaderHandle> createShaderFromCompiled(Device &device, const CompiledShader &compiled, const std::string &name);
+
 // Rechargement à chaud : surveille des fichiers shader (et leurs #include), recompile à chaque modification et appelle le
 // rappel. Une compilation qui échoue est signalée (le rappel reçoit l'erreur) ; l'appelant garde alors l'ancien shader.
 class ShaderHotReloader
@@ -104,7 +107,8 @@ class ShaderHotReloader
   public:
     using Callback = std::function<void(const std::filesystem::path &file, const core::Result<CompiledShader> &result)>;
 
-    explicit ShaderHotReloader(IncludeResolver resolver = {}) : mResolver(std::move(resolver)) {}
+    // `cache` (facultatif, non possédé) sert les compilations, y compris les rechargements : une source déjà vue ne se recompile pas.
+    explicit ShaderHotReloader(IncludeResolver resolver = {}, ShaderCache *cache = nullptr) : mResolver(std::move(resolver)), mCache(cache) {}
 
     // Compile `file` tout de suite (premier résultat renvoyé) et la surveille ensuite.
     core::Result<CompiledShader> add(const std::filesystem::path &file, ShaderStage stage, Callback onReload,
@@ -127,6 +131,7 @@ class ShaderHotReloader
     void watchFiles(std::size_t index, const CompiledShader &shader);
 
     IncludeResolver mResolver;
+    ShaderCache *mCache = nullptr;
     core::FileWatcher mWatcher;
     std::vector<Entry> mEntries;
 };

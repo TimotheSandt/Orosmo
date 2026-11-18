@@ -11,6 +11,8 @@
     ["src/platform/*", "platform"],
     ["include/engine/rhi/*", "rhi"],
     ["src/rhi/*", "rhi"],
+    ["include/engine/renderer/*", "renderer"],
+    ["src/renderer/*", "renderer"],
     ["include/Utilities/InputManager.h", "platform"],
     ["src/Utilities/InputManager.cpp", "platform"],
     ["include/Utilities/*", "core"],

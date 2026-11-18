@@ -375,21 +375,15 @@ core::Result<CompiledShader> ShaderCache::compile(ShaderStage stage, std::string
 
 // ── Création côté périphérique ─────────────────────────────────────────────────────────────────────────────────────────
 
-core::Result<ShaderHandle> createShaderFromGlsl(Device &device, ShaderStage stage, std::string_view source, const CompileOptions &options,
-                                                ShaderCache *cache)
+core::Result<ShaderHandle> createShaderFromCompiled(Device &device, const CompiledShader &compiled, const std::string &name)
 {
-    auto compiled = cache != nullptr ? cache->compile(stage, source, options) : compileGlsl(stage, source, options);
-    if (!compiled)
-    {
-        return std::unexpected(compiled.error());
-    }
     ShaderDesc desc;
-    desc.stage = stage;
-    desc.debugName = options.name;
+    desc.stage = compiled.stage;
+    desc.debugName = name;
     std::string glsl;
     if (device.capabilities().backend == Backend::kOpenGL)
     {
-        auto translated = translateToGlsl430(*compiled);
+        auto translated = translateToGlsl430(compiled);
         if (!translated)
         {
             return std::unexpected(translated.error());
@@ -401,9 +395,20 @@ core::Result<ShaderHandle> createShaderFromGlsl(Device &device, ShaderStage stag
     else
     {
         desc.language = ShaderLanguage::kSpirv;
-        desc.code = std::as_bytes(std::span(compiled->spirv));
+        desc.code = std::as_bytes(std::span(compiled.spirv));
     }
     return device.createShader(desc);
+}
+
+core::Result<ShaderHandle> createShaderFromGlsl(Device &device, ShaderStage stage, std::string_view source, const CompileOptions &options,
+                                                ShaderCache *cache)
+{
+    auto compiled = cache != nullptr ? cache->compile(stage, source, options) : compileGlsl(stage, source, options);
+    if (!compiled)
+    {
+        return std::unexpected(compiled.error());
+    }
+    return createShaderFromCompiled(device, *compiled, options.name);
 }
 
 // ── Rechargement à chaud ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -422,7 +427,7 @@ core::Result<CompiledShader> ShaderHotReloader::build(const Entry &entry) const
     options.defines = entry.defines;
     options.includeResolver = mResolver;
     // Les includes relatifs se résolvent par rapport au fichier : on l'indique comme demandeur initial via le nom.
-    return compileGlsl(entry.stage, text.str(), options);
+    return mCache != nullptr ? mCache->compile(entry.stage, text.str(), options) : compileGlsl(entry.stage, text.str(), options);
 }
 
 void ShaderHotReloader::watchFiles(std::size_t index, const CompiledShader &shader)
