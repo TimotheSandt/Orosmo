@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour à la fin du sous-lot B4 de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour à la fin du sous-lot B5 de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -15,6 +15,20 @@ Mis à jour à la fin du sous-lot B4 de M2 (2026-11-18). États détaillés et p
 | **M2 lot B1 + B2 : pipeline de shaders, fenêtre du RHI** | **B1 et B2 livrés côté code ; B3 à B6 et lot C à faire** | `docs/releases/M2-B2.md` : `include/engine/rhi/shader_compiler.hpp`, adoption d'une fenêtre par le périphérique OpenGL ; 269 cas doctest verts (+13), ASan+UBSan propres, capture de référence identique ; plan : `docs/05` (tableau des sous-lots) |
 | **M2 lot B3 : couche de ressources `engine::renderer`** | **B3 livré côté code ; B4 à B6 et lot C à faire** | `docs/releases/M2-B3.md` : `GpuBuffer`, `Texture`, `RenderTarget`, `ShaderLibrary`, `PipelineCache`, `Image`, `GpuTimer` sur le RHI ; 280 cas doctest verts (+11), ASan+UBSan propres, capture de référence identique (code hérité non touché) |
 | **M2 lot B4 : couche de scène `engine::renderer`** | **B4 livré côté code ; B5, B6 et lot C à faire** | `docs/releases/M2-B4.md` : `Camera`, `LightManager`, `Mesh`, `SceneRenderer`, shaders `shaders/rhi/` ; la scène de terrain graine 1 rendue par la nouvelle couche est **identique pixel pour pixel** à l'image de référence du rendu hérité (tolérance 0, Intel Arc) ; 290 cas doctest verts (+10) |
+| **M2 lot B5 : dessin 2D et interface par listes de dessin** | **B5 livré côté code ; B6 et lot C à faire** | `docs/releases/M2-B5.md` : `DrawList`, `CanvasRenderer`, `UI::Manager::Collect` ; **`ui.png` de l'ancien rendu (scène + panneau + boîtes + texte figé) reproduit sans aucun pixel d'écart** ; 304 cas doctest verts (+14) |
+
+## Identifiants de `docs/02` touchés par M2 B5
+
+Preuves sous Linux (g++ 13.3, Mesa 26.1.6, Intel Arc ; la CI exécute aussi sous llvmpipe + xvfb). La démo n'utilise pas encore ce chemin (bascule en B6).
+
+| ID | Avant | Maintenant | Fichier / symbole, test, résultat |
+| --- | --- | --- | --- |
+| UI-02 | Absent | Partiel | `include/engine/renderer/draw_list.hpp` `DrawList` (données pures) ; `ComponentBase::Collect`, `ContainerBase::Collect` (couches, découpage, défilement), `TextWidgetBase::Collect`, `Manager::Collect` ; `tests/renderer/ui_collect_tests.cpp` (6 cas, sans GPU) ; `CanvasRenderer` : `tests/renderer/canvas_tests.cpp` (7 cas). **Manque** : l'interface connaît encore le chemin hérité (`Draw`, `Sprite`, `RenderTarget`, G84) ; pas de batch R2D-01 (M5, A21) |
+| REN-36 | Partiel | Partiel | texte par RHI : `TextRenderer::setDrawListSink`, shader MSDF en GLSL 450 (`ui_glyph`), atlas mis en cache ; `tests/renderer/parity_tests.cpp` : six lignes de texte identiques à la référence (0 pixel d'écart). **Manque** : UTF-8 (G27), mise en page avancée non testée par liste (G87) |
+| UI-01 | Partiel | Partiel | `Manager::Collect` ; le singleton et l'ancien chemin restent (G84, G85) |
+| RHI-02 | Partiel | Partiel | parité de `ui.png` (en plus de `scene.png`, B4) : `docs/BASELINE/reference/ui-opengl-fixedtext-1280x720.png` ; reste la bascule de la démo |
+
+Totaux après B5 : Fait 14, Partiel 48, Absent 89, Incompatible 1 (UI-02 : Absent → Partiel ; avant : 14 / 47 / 90 / 1).
 
 ## Identifiants de `docs/02` touchés par M2 B4
 

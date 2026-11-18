@@ -172,7 +172,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
 | UI-01 | UIManager | P0 | Existe (UIComponent, UIContainer, VBox, `DeferredValue<T>` à double tampon, mixin CRTP). Migré sur le RHI ; comportement identique. | Partiel |
-| UI-02 | Rendu indépendant du backend | P0 | L'interface produit des listes de dessin (rectangles, texte, images, découpage, ordre `z`) ; un adaptateur les envoie au batch 2D (R2D-01). | Absent |
+| UI-02 | Rendu indépendant du backend | P0 | L'interface produit des listes de dessin (rectangles, texte, images, découpage, ordre `z`) ; un adaptateur les envoie au batch 2D (R2D-01). | Partiel |
 | UI-03 | Widgets de base | P0 | Bouton, curseur, case à cocher, liste déroulante, champ de texte, sélecteur de couleur, graphique simple, onglets, défilement, infobulles. | Absent |
 | UI-04 | Outils de debug | P1 | Dear ImGui (ou équivalent) sur le RHI, réservé aux outils : profileur, console. | Absent |
 | UI-05 | Langage d'interface : compilateur vers C++ | P0 | Description déclarative de l'arbre, compilée en C++ sans coût d'exécution ; événements (`onClick`, `onChange`, `onHover`, `onFocus`) liés à des fonctions externes, **aucune logique métier dans le langage** ; liaison de données typée dans les deux sens ; C++ embarqué possible ; erreurs avec **fichier, ligne et colonne du source du langage** ; intégration au build avec dépendances correctes. | Partiel |
