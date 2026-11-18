@@ -110,4 +110,16 @@ TEST_SUITE("core/trace")
         for (const auto &s : rec.samples())
             CHECK(s.threadId >= 1);
     }
+
+#ifdef __linux__
+    TEST_CASE("writeChromeTrace reports a write that only fails when the file is closed")
+    {
+        ManualClock clock;
+        TraceRecorder rec(clock);
+        rec.addSample("x", microseconds(1), microseconds(2));
+        auto r = rec.writeChromeTrace("/dev/full"); // ouvre sans erreur, ENOSPC au vidage
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kIo));
+    }
+#endif
 }

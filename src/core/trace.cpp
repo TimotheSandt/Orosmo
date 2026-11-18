@@ -104,6 +104,7 @@ Result<> TraceRecorder::writeChromeTrace(const std::filesystem::path &path) cons
     if (!out)
         return makeError(ErrorCode::kIo, "cannot write trace: " + path.string());
     out << chromeTraceJson();
+    out.close(); // une erreur de vidage n'apparaît qu'à la fermeture
     return out ? Result<>{} : makeError(ErrorCode::kIo, "trace write failed: " + path.string());
 }
 

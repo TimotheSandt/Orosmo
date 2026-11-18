@@ -11,6 +11,30 @@ namespace engine::core
 
 namespace fs = std::filesystem;
 
+namespace
+{
+// Segments normalisés d'un chemin logique : '.' et segments vides ignorés ; '..' et noms de lecteur refusés.
+Result<std::vector<std::string>> segmentsOf(const std::string &relative, std::string_view logicalPath)
+{
+    std::vector<std::string> segments;
+    std::stringstream ss(relative);
+    for (std::string seg; std::getline(ss, seg, '/');)
+    {
+        if (seg.empty() || seg == ".")
+            continue;
+        // Refuse toute remontée au-dessus de la racine : ".." est refusé tel quel (pas de normalisation indulgente).
+        if (seg == "..")
+            return makeError(ErrorCode::kInvalidArgument, "'..' is not allowed in a logical path: " + std::string(logicalPath));
+        // Un nom de lecteur ("C:", "C:x") ferait remplacer le montage par un autre volume sous Windows : refusé partout,
+        // pour que le même chemin logique ait le même sens sur toutes les plateformes.
+        if (seg.find(':') != std::string::npos)
+            return makeError(ErrorCode::kInvalidArgument, "':' (drive name) is not allowed in a logical path: " + std::string(logicalPath));
+        segments.push_back(std::move(seg));
+    }
+    return segments;
+}
+} // namespace
+
 Result<Vfs::Parts> Vfs::split(std::string_view p)
 {
     const auto pos = p.find("://");
@@ -38,20 +62,12 @@ Result<std::vector<fs::path>> Vfs::candidates(std::string_view logicalPath) cons
     if (it == mMounts.end() || it->second.empty())
         return makeError(ErrorCode::kNotFound, "no mount for scheme '" + parts->scheme + "'");
 
-    // Refuse toute remontée au-dessus de la racine : ".." est refusé tel quel (pas de normalisation indulgente).
-    std::vector<std::string> segments;
-    std::stringstream ss(parts->relative);
-    for (std::string seg; std::getline(ss, seg, '/');)
-    {
-        if (seg.empty() || seg == ".")
-            continue;
-        if (seg == "..")
-            return makeError(ErrorCode::kInvalidArgument, "'..' is not allowed in a logical path: " + std::string(logicalPath));
-        segments.push_back(seg);
-    }
+    auto segments = segmentsOf(parts->relative, logicalPath);
+    if (!segments)
+        return std::unexpected(segments.error());
     fs::path relative;
-    for (const auto &s : segments)
-        relative /= s;
+    for (const auto &seg : *segments)
+        relative /= seg;
 
     std::vector<fs::path> out;
     for (auto m = it->second.rbegin(); m != it->second.rend(); ++m) // le plus récent d'abord
@@ -64,10 +80,15 @@ Result<fs::path> Vfs::resolve(std::string_view logicalPath) const
     auto c = candidates(logicalPath);
     if (!c)
         return std::unexpected(c.error());
-    std::error_code ec;
     for (const auto &p : *c)
-        if (fs::exists(p, ec))
+    {
+        std::error_code ec;
+        const bool found = fs::exists(p, ec);
+        if (ec) // erreur d'accès (permission, E/S) : ne pas retomber silencieusement sur un montage plus ancien
+            return makeError(ErrorCode::kIo, "cannot access " + p.string() + ": " + ec.message());
+        if (found)
             return p;
+    }
     return c->front();
 }
 
@@ -117,6 +138,7 @@ Result<> Vfs::writeBytes(std::string_view logicalPath, const std::vector<std::ui
     if (!out)
         return makeError(ErrorCode::kIo, "cannot write: " + std::string(logicalPath));
     out.write(reinterpret_cast<const char *>(content.data()), static_cast<std::streamsize>(content.size()));
+    out.close(); // le vidage peut échouer à la fermeture (disque plein) : seul l'état après close() le révèle
     if (!out)
         return makeError(ErrorCode::kIo, "write failed: " + std::string(logicalPath));
     return {};
@@ -135,21 +157,38 @@ Result<std::vector<std::string>> Vfs::list(std::string_view logicalDirectory) co
     auto c = candidates(logicalDirectory);
     if (!c)
         return std::unexpected(c.error());
-    std::string prefix = std::string(logicalDirectory);
-    while (!prefix.empty() && prefix.back() == '/')
-        prefix.pop_back();
-    if (parts->relative.empty())
-        prefix = parts->scheme + ":/"; // "res://" + nom => "res://nom"
+    auto segments = segmentsOf(parts->relative, logicalDirectory);
+    if (!segments)
+        return std::unexpected(segments.error());
+    // Préfixe construit depuis le chemin normalisé ("res://a//./b/" donne le même résultat que "res://a/b").
+    std::string prefix = parts->scheme + ":/"; // "res://" + nom => "res://nom"
+    if (!segments->empty())
+    {
+        prefix += "/";
+        for (std::size_t i = 0; i < segments->size(); ++i)
+            prefix += (i ? "/" : "") + (*segments)[i];
+    }
 
     std::set<std::string> names;
     std::error_code ec;
     for (const auto &dir : *c)
     {
+        ec.clear();
         if (!fs::is_directory(dir, ec))
+        {
+            if (ec)
+                return makeError(ErrorCode::kIo, "cannot access " + dir.string() + ": " + ec.message());
             continue;
-        for (const auto &entry : fs::directory_iterator(dir, ec))
-            if (entry.is_regular_file(ec))
-                names.insert(prefix + "/" + entry.path().filename().generic_string());
+        }
+        fs::directory_iterator it(dir, ec), end;
+        for (; !ec && it != end; it.increment(ec))
+        {
+            std::error_code e2;
+            if (it->is_regular_file(e2))
+                names.insert(prefix + "/" + it->path().filename().generic_string());
+        }
+        if (ec) // énumération interrompue : une liste partielle serait trompeuse
+            return makeError(ErrorCode::kIo, "cannot list " + dir.string() + ": " + ec.message());
     }
     return std::vector<std::string>(names.begin(), names.end());
 }
