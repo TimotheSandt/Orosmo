@@ -20,7 +20,7 @@ make core-demo
 
 ## Tests
 
-`make demo-test` : 189 cas verts ; `make demo-test SANITIZE=address,undefined` : verts, aucun rapport ; capture OpenGL identique à la référence.
+`make demo-test` : 208 cas verts (3076 assertions) ; `make demo-test SANITIZE=address,undefined` : 208 cas verts, aucun rapport ; capture OpenGL identique à la référence.
 
 ## À vérifier à la relecture
 
