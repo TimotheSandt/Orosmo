@@ -116,8 +116,6 @@ class FPSCounter
     RingBuffer<double> fpsBuffer;
     RingBuffer<double> elapseTimeBuffer;
 
-    // Platform-specific data
-#ifdef _WIN32
+    // Résolution du minuteur système demandée (voir engine/core/system.hpp) ; toujours faux hors Windows.
     bool timerInitialized{false};
-#endif
 };

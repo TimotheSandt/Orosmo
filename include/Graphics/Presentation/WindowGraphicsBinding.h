@@ -1,9 +1,8 @@
 #pragma once
 
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
-
 #include <glm/vec4.hpp>
+
+struct GLFWwindow;
 
 // Ce que la fenêtre (couche platform) demande au graphique (couche rhi) : créer le contexte ou la surface, présenter,
 // reconfigurer l'état du framebuffer par défaut. Définie ici, du côté platform, pour que Window n'inclue aucun en-tête du

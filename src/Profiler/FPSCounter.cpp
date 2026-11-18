@@ -1,14 +1,7 @@
 #include "FPSCounter.h"
 #include <algorithm>
 
-// Platform-specific includes for high-resolution sleep
-#ifdef _WIN32
-#include <windows.h>
-#include <mmsystem.h>
-#elif defined(__linux__)
-#include <time.h>
-#include <unistd.h>
-#endif
+#include <engine/core/system.hpp>
 
 FPSCounter::FPSCounter()
     : lastTime(std::chrono::high_resolution_clock::now()), frameStartTime(std::chrono::high_resolution_clock::now()),
@@ -242,84 +235,26 @@ void FPSCounter::vsyncLikePacing(unsigned int maxFPS)
 
 void FPSCounter::platformOptimizedSleep(std::chrono::nanoseconds sleepTime)
 {
-#ifdef _WIN32
-    // Windows: Use high-resolution timers
-    if (sleepTime >= std::chrono::milliseconds(1))
-    {
-        // For longer sleeps, use Sleep() with 1ms resolution
-        DWORD sleepMs = static_cast<DWORD>(std::chrono::duration_cast<std::chrono::milliseconds>(sleepTime).count());
-        Sleep(sleepMs);
-    }
-    else
-    {
-        // For sub-millisecond sleeps, use busy-wait with QueryPerformanceCounter
-        LARGE_INTEGER frequency, start, current;
-        QueryPerformanceFrequency(&frequency);
-        QueryPerformanceCounter(&start);
-
-        LONGLONG targetTicks = start.QuadPart + (sleepTime.count() * frequency.QuadPart) / 1000000000LL;
-
-        do
-        {
-            std::this_thread::yield();
-            QueryPerformanceCounter(&current);
-        } while (current.QuadPart < targetTicks);
-    }
-#elif defined(__linux__)
-    // Linux: Use nanosleep for better precision
-    if (sleepTime >= std::chrono::microseconds(100))
-    {
-        struct timespec ts;
-        ts.tv_sec = sleepTime.count() / 1000000000LL;
-        ts.tv_nsec = sleepTime.count() % 1000000000LL;
-        nanosleep(&ts, nullptr);
-    }
-    else
-    {
-        // For very short sleeps, use busy-wait
-        auto targetTime = this->getTime() + sleepTime;
-        while (this->getTime() < targetTime)
-        {
-            std::this_thread::yield();
-        }
-    }
-#else
-    // Other platforms: fallback to standard sleep_for
-    if (sleepTime >= std::chrono::microseconds(100))
-    {
-        std::this_thread::sleep_for(sleepTime);
-    }
-    else
-    {
-        auto targetTime = this->getTime() + sleepTime;
-        while (this->getTime() < targetTime)
-        {
-            std::this_thread::yield();
-        }
-    }
-#endif
+    // Attente précise propre à chaque système : src/platform/system.cpp
+    engine::core::system::preciseSleep(sleepTime);
 }
 
 void FPSCounter::initializePlatformTimer()
 {
-#ifdef _WIN32
-    // Set Windows timer resolution to 1ms for better sleep precision
-    if (timeBeginPeriod(1) == TIMERR_NOERROR)
+    // Windows : résolution du minuteur à 1 ms pour une attente plus précise (src/platform/system.cpp) ; sans effet ailleurs.
+    if (engine::core::system::beginHighResolutionTimer())
     {
         this->timerInitialized = true;
     }
-#endif
 }
 
 void FPSCounter::cleanupPlatformTimer()
 {
-#ifdef _WIN32
     if (this->timerInitialized)
     {
-        timeEndPeriod(1);
+        engine::core::system::endHighResolutionTimer();
         this->timerInitialized = false;
     }
-#endif
 }
 
 void FPSCounter::updateBuffers()

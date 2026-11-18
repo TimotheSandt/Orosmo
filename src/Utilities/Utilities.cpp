@@ -7,22 +7,13 @@
 #include <glm/gtx/quaternion.hpp>
 
 #include "Logger.h"
+#include <engine/core/system.hpp>
 
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <system_error>
 #include <vector>
-
-#ifdef _WIN32
-#include <windows.h>
-#include <shlobj.h>
-#elif defined(__APPLE__)
-#include <mach-o/dyld.h>
-#include <unistd.h>
-#else
-#include <unistd.h>
-#endif
 
 namespace fs = std::filesystem;
 
@@ -78,55 +69,7 @@ void rotate(float &x, float &y, float &z, float &w, float angle)
     w = rotatedCombined.w;
 }
 
-std::string GetExecutablePath()
-{
-#ifdef _WIN32
-    std::vector<char> buffer(MAX_PATH, '\0');
-
-    while (true)
-    {
-        DWORD length = GetModuleFileNameA(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-        if (length == 0)
-        {
-            return {};
-        }
-        if (length < buffer.size() - 1)
-        {
-            return std::string(buffer.data(), length);
-        }
-        buffer.resize(buffer.size() * 2, '\0');
-    }
-#elif defined(__APPLE__)
-    uint32_t bufferSize = 0;
-    char probeBuffer[1];
-    _NSGetExecutablePath(probeBuffer, &bufferSize);
-    std::vector<char> buffer(bufferSize, '\0');
-    if (_NSGetExecutablePath(buffer.data(), &bufferSize) != 0)
-    {
-        return {};
-    }
-
-    std::error_code ec;
-    fs::path canonicalPath = fs::weakly_canonical(fs::path(buffer.data()), ec);
-    return ec ? std::string(buffer.data()) : canonicalPath.string();
-#else
-    std::vector<char> buffer(1024, '\0');
-
-    while (true)
-    {
-        const ssize_t length = readlink("/proc/self/exe", buffer.data(), buffer.size());
-        if (length < 0)
-        {
-            return {};
-        }
-        if (static_cast<size_t>(length) < buffer.size())
-        {
-            return std::string(buffer.data(), static_cast<size_t>(length));
-        }
-        buffer.resize(buffer.size() * 2, '\0');
-    }
-#endif
-}
+std::string GetExecutablePath() { return engine::core::system::executablePath().string(); } // OS : src/platform/system.cpp
 
 std::string GetExecutableDirectory()
 {
@@ -158,27 +101,11 @@ std::string GetUserDataPath()
 {
     fs::path dataDirectory;
 
-#ifdef _WIN32
-    char path[MAX_PATH];
-    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_APPDATA, nullptr, 0, path)))
+    // Dossier de données de la plateforme (APPDATA, Application Support, XDG_DATA_HOME) : src/platform/system.cpp
+    if (const fs::path base = engine::core::system::userDataDirectory(); !base.empty())
     {
-        dataDirectory = EnsureAppDirectory(fs::path(path));
+        dataDirectory = EnsureAppDirectory(base);
     }
-#elif defined(__APPLE__)
-    if (const char *home = std::getenv("HOME"))
-    {
-        dataDirectory = EnsureAppDirectory(fs::path(home) / "Library" / "Application Support");
-    }
-#else
-    if (const char *xdgDataHome = std::getenv("XDG_DATA_HOME"))
-    {
-        dataDirectory = EnsureAppDirectory(fs::path(xdgDataHome));
-    }
-    else if (const char *home = std::getenv("HOME"))
-    {
-        dataDirectory = EnsureAppDirectory(fs::path(home) / ".local" / "share");
-    }
-#endif
 
     if (dataDirectory.empty())
     {
