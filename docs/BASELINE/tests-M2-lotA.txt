@@ -1,0 +1,6 @@
+# make demo-test, clone propre de dev (0d1a016), Linux g++ 13.3, Mesa 26.1.6 Intel Arc (OpenGL 4.6)
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+[doctest] test cases:  256 |  256 passed | 0 failed | 0 skipped
+[doctest] assertions: 3882 | 3882 passed | 0 failed |
+[doctest] Status: SUCCESS!

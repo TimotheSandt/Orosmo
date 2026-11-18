@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour à la fin de M1 (2026-11-17). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour à la fin du lot A de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -11,6 +11,29 @@ Mis à jour à la fin de M1 (2026-11-17). États détaillés et preuves de l'aud
 | **M0 Audit et base solide** | **Livré côté code ; CI jamais observée sur GitHub** | `docs/releases/M0.md` : clone propre de `dev`, build sans avertissement, 118 cas doctest verts, ASan+UBSan propres, contrôles, capture identique à la référence |
 | **M1 Noyau** | **Livré côté code ; CI Windows/macOS à observer au push** | `docs/releases/M1.md` : module `core` (13 fichiers), 208 cas doctest verts (90 de plus qu'en M0), ASan+UBSan propres (208 cas), capture identique à la référence (écart max 0/255), `make core-demo` |
 | **M1 bis Remise en ordre des couches** | **Livré côté code ; Windows/macOS à observer à la CI** | `docs/releases/M1bis.md` : `check_layers.py --strict` : 0 violation (5 avant), `check_headers.py --strict` : 0 (1 avant), `<windows.h>` et `getenv` hors de `core`, G12 et G13 traités, 224 cas doctest verts (10 de plus qu'en M1), ASan+UBSan propres, capture identique à la référence (écart max 0/255) |
+| **M2 lot A : interface RHI et backend OpenGL** | **Lot A livré côté code ; M2 en cours (lots B et C à faire)** | `docs/releases/M2-lotA.md` : `include/engine/rhi/` + `src/rhi/opengl/`, 256 cas doctest verts (32 de plus), ASan+UBSan propres, `make rhi-demo` (calcul + MRT + instanciation, 0 message de validation) ; Windows/macOS : tests GPU non exécutés (G67) |
+
+## Identifiants de `docs/02` touchés par M2 lot A
+
+Preuves mesurées sous Linux (g++ 13.3, Mesa 26.1.6, Intel Arc, OpenGL 4.6 core ; la CI exécute aussi les tests sous Mesa llvmpipe + xvfb). Le RHI n'est branché sur **aucun** code de rendu existant : la migration (éclairage, texte, UI) est le lot B, donc RHI-02 et les identifiants de migration restent inchangés. Windows et macOS : tests GPU non exécutés (G67).
+
+| ID | Avant | Maintenant | Fichier / symbole, test, résultat |
+| --- | --- | --- | --- |
+| RHI-01 | Incompatible | Partiel | `include/engine/rhi/{handle,types,capabilities,device}.hpp` : `Device`, `CommandEncoder`, handles opaques ; `check_headers --strict` (102 en-têtes, 0 non autonome) ; `tests/rhi/handle_tests.cpp`. **Manque** : aucune façade (`Mesh`, `Texture`…) ne l'utilise encore (lot B) |
+| RHI-04 | Partiel | Partiel | `createDevice`, `isBackendCompiled` (`src/rhi/device.cpp`) : Vulkan et Metal refusés avec `kUnsupported` (testé). **Manque** : l'option `--backend` de la démo, le repli documenté |
+| RHI-05 | Partiel | Partiel | `createTexture` 2D/tableau/cube/3D, mips (`generateMips`), échantillonneur ; `tests/rhi/opengl_device_tests.cpp` : 12 formats aller-retour octet pour octet, régions, niveaux, erreurs. **Manque** : cube et tableau jamais échantillonnés dans un shader (seulement cibles de rendu) |
+| RHI-06 | Partiel | Partiel | `createGraphicsPipeline` / `createComputePipeline` : état explicite par pipeline, validé contre la passe (testé). **Manque** : cache de pipelines **sur disque** (lot B) |
+| RHI-07 | Absent | Partiel | `BindGroupDesc`, `setBindGroup` ; groupes 0/1/2 aplatis `groupe × 8 + binding` ; tests : UBO à décalage dynamique, texture + échantillonneur, SSBO, image de stockage, erreurs. **Manque** : table de réflexion des shaders (lot B), traduction Vulkan (M4) |
+| RHI-08 | Partiel | Partiel | `beginRenderPass`, `LoadOp`/`StoreOp`, `beginFrame`/`present`/`resize` (handle conservé) ; testé hors écran. **Manque** : swapchain de fenêtre et vsync (lot C) |
+| RHI-09 | Absent | **Fait** (OpenGL) | `CommandEncoder::dispatch`, `Capabilities::maxComputeWorkGroup*` ; `tests/rhi/opengl_device_tests.cpp` « compute writes a storage buffer… » : 64 éléments exacts ; barrières calculées par le RHI (conservatrices, G70) |
+| RHI-10 | Partiel | Partiel | `draw`/`drawIndexed` instanciés avec `firstInstance`, `drawIndirect`/`drawIndexedIndirect` multi-draw (testés). **Manque** : compteur lu sur le GPU (G71) |
+| RHI-11 | Partiel | Partiel | `writeTimestamp`, `readTimestamps` (testé : valeurs croissantes) ; `glObjectLabel`/`glPushDebugGroup` appelés. **Manque** : noms non relus ni observés dans RenderDoc (G69) ; Vulkan (M4) |
+| RHI-15 | Partiel | **Fait** (OpenGL) | `RenderPassDesc` : cibles RGBA8 + RG16F + R32UI dans un seul shader, `LoadOp`/`StoreOp` par cible, limite lue dans `Capabilities::maxColorAttachments` (test) ; seules 3 cibles ont été rendues, la limite (8 ici) est vérifiée par refus |
+| RHI-16 | Absent | Partiel | Texture 3D R32F écrite par un shader de calcul et relue tranche par tranche (testé) ; RG16F, RGBA16F, R32F, R32UI créables et aller-retour exacts. **Manque** : `imageLoad` en compute, chaque format garanti utilisé comme image de stockage |
+| RHI-17 | Absent | **Fait** (OpenGL) | `dispatchIndirect` (test : 2 groupes lus dans un tampon), décalages dynamiques de tampons uniformes (test) |
+| RHI-18 | Incompatible | Partiel | `Capabilities` du RHI : `rayQuery`, `accelerationStructure`, `bindless`, `meshShader`, `bufferDeviceAddress`, `sparseResources` toutes `false` (testé). **Manque** : l'ancien backend Vulkan annonce encore `true` à tort jusqu'à son retrait (lot B) |
+
+Total après M2 lot A : Fait 14, Partiel 47, Absent 90, Incompatible 1 (après M1 : 11 / 44 / 94 / 3).
 
 ## Identifiants de `docs/02` touchés par M1
 
