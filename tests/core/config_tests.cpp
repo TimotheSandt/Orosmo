@@ -150,4 +150,45 @@ TEST_SUITE("core/config")
         CHECK(help.find("window width in pixels") != std::string::npos);
         CHECK(help.find("--debug (default false)") != std::string::npos);
     }
+
+    TEST_CASE("get() of an object reads the same merged view as applyTo()")
+    {
+        Config c = makeConfig();
+        TempFile f("merged.json");
+        f.write(R"({"terrain":{"octaves":6}})"); // le fichier ne dit rien de terrain.name ni terrain.frequency
+        REQUIRE(c.loadFile(f.path).has_value());
+        auto terrain = c.get("terrain");
+        REQUIRE(terrain.has_value());
+        CHECK((*terrain)["octaves"] == 6);
+        CHECK((*terrain)["name"] == "default"); // vient des défauts, comme pour applyTo
+        Terrain t;
+        REQUIRE(c.applyTo(t, "terrain").has_value());
+        CHECK(t.name == "default");
+        CHECK(t.octaves == 6);
+    }
+
+    TEST_CASE("command line: --no-x is only for booleans, a float is refused for an integer setting")
+    {
+        Config c = makeConfig();
+        auto r = c.parseArgs({"--no-window.width"});
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kInvalidArgument));
+        CHECK(*c.get<int>("window.width") == 1280); // rien n'a été écrit
+
+        r = c.parseArgs({"--window.width=2.5"});
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kParse));
+        CHECK(*c.get<int>("window.width") == 1280);
+        REQUIRE(c.parseArgs({"--terrain.frequency=3"}).has_value()); // entier pour un flottant : accepté
+    }
+
+#ifdef __linux__
+    TEST_CASE("saveFile reports a write that fails when the buffer is flushed")
+    {
+        Config c = makeConfig();
+        auto r = c.saveFile("/dev/full"); // ouvre sans erreur, échoue (ENOSPC) au vidage / à la fermeture
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kIo));
+    }
+#endif
 }
