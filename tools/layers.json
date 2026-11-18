@@ -9,6 +9,8 @@
     ["src/core/*", "core"],
     ["include/engine/platform/*", "platform"],
     ["src/platform/*", "platform"],
+    ["include/engine/rhi/*", "rhi"],
+    ["src/rhi/*", "rhi"],
     ["include/Utilities/InputManager.h", "platform"],
     ["src/Utilities/InputManager.cpp", "platform"],
     ["include/Utilities/*", "core"],
