@@ -142,7 +142,7 @@ jobs:
         run: make -j"$(nproc)" all-debug
 
       - name: Tests
-        run: make demo-test
+        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test
 
       - name: Capture reference images (OpenGL, Mesa llvmpipe under Xvfb)
         run: |
@@ -202,7 +202,8 @@ jobs:
             autoconf autoconf-archive automake libtool \
             libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
             libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
-            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            xvfb libgl1-mesa-dri
 
       - name: Bootstrap vcpkg
         run: |
@@ -235,7 +236,7 @@ jobs:
         run: make -j"$(nproc)" all-debug WERROR=0
 
       - name: Tests
-        run: make demo-test WERROR=0
+        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test WERROR=0
 
   # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
   sanitizers:
@@ -256,7 +257,8 @@ jobs:
             autoconf autoconf-archive automake libtool \
             libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
             libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
-            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            xvfb libgl1-mesa-dri
       - name: Bootstrap vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
@@ -284,7 +286,7 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: make demo-test SANITIZE=address,undefined
+        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test SANITIZE=address,undefined
 
   # ── Windows and macOS: same entry points through vcpkg manifest mode. ─────────────────────
   # `continue-on-error`: these two jobs have never been observed green (no Windows/macOS machine was
