@@ -9,6 +9,8 @@
 #include <engine/core/error.hpp>
 #include <engine/core/tasks.hpp>
 
+#include <algorithm>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -46,33 +48,39 @@ template <typename T> class ResourceCache
     explicit ResourceCache(Loader loader, TaskSystem *tasks = nullptr) : mLoader(std::move(loader)), mTasks(tasks) {}
     ~ResourceCache()
     {
+        // Aucun chargement lancé par CE cache ne doit lui survivre. On n'attend que ceux-là (pas waitIdle()) : un cache
+        // détruit depuis une tâche du même TaskSystem ne doit pas attendre cette tâche elle-même.
+        std::vector<TaskHandle> pending;
+        {
+            std::lock_guard lock(mMutex);
+            pending.swap(mPending);
+        }
         if (mTasks)
-            mTasks->waitIdle(); // aucun chargement en vol ne doit survivre au cache
+            for (const TaskHandle &t : pending)
+                mTasks->wait(t);
     }
     ResourceCache(const ResourceCache &) = delete;
     ResourceCache &operator=(const ResourceCache &) = delete;
 
-    // Charge (ou retrouve) la ressource : même chemin = même poignée, compteur +1. Bloquant.
+    // Charge (ou retrouve) la ressource : même chemin = même poignée, compteur +1. Bloquant : si un chargement de ce
+    // chemin est déjà en cours (loadAsync, autre thread), attend sa fin ; au retour l'état est kReady ou kFailed.
     Handle<T> load(const std::string &path)
     {
-        auto [handle, needsLoad] = acquire(path);
-        if (needsLoad)
-            runLoad(handle, path);
-        return handle;
+        Acquired a = acquire(path, false);
+        if (a.needsLoad)
+            runLoad(a.handle, path, a.op);
+        else
+            waitLoaded(a);
+        return a.handle;
     }
 
     // Comme load(), mais le chargement se fait sur le TaskSystem. state() passe de kLoading à kReady/kFailed.
     Handle<T> loadAsync(const std::string &path)
     {
-        auto [handle, needsLoad] = acquire(path);
-        if (needsLoad)
-        {
-            if (mTasks)
-                mTasks->submit([this, handle, path] { runLoad(handle, path); });
-            else
-                runLoad(handle, path);
-        }
-        return handle;
+        Acquired a = acquire(path, true); // avec un TaskSystem, la tâche est soumise sous le verrou (voir acquire)
+        if (a.needsLoad)
+            runLoad(a.handle, path, a.op);
+        return a.handle;
     }
 
     // Compteur -1 ; à 0 l'emplacement est libéré et sa génération change (les anciennes poignées deviennent périmées).
@@ -92,6 +100,7 @@ template <typename T> class ResourceCache
         ++s->generation;
         if (s->generation == 0)
             s->generation = 1;
+        s->task = TaskHandle();
         mFree.push_back(handle.index);
     }
 
@@ -130,12 +139,14 @@ template <typename T> class ResourceCache
     Result<> reload(const std::string &path)
     {
         Handle<T> handle;
+        std::uint64_t op = 0;
         {
             std::lock_guard lock(mMutex);
             auto it = mByPath.find(path);
             if (it == mByPath.end())
                 return makeError(ErrorCode::kNotFound, "resource not loaded: " + path);
             handle = Handle<T>{it->second, mSlots[it->second].generation};
+            op = ++mSlots[it->second].lastOp; // numéro d'opération : une complétion plus ancienne ne le remplacera pas
         }
         Result<T> loaded = mLoader(path);
         std::shared_ptr<T> previous;
@@ -145,14 +156,19 @@ template <typename T> class ResourceCache
             return makeError(ErrorCode::kCancelled, "resource released during reload: " + path);
         if (!loaded)
         {
-            s->error = loaded.error().describe();
+            if (op > s->publishedOp)
+                s->error = loaded.error().describe();
             return std::unexpected(loaded.error());
         }
+        if (op < s->publishedOp)
+            return {}; // un chargement plus récent a déjà publié son résultat
         previous = std::move(s->object);
         s->object = std::make_shared<T>(std::move(*loaded));
+        s->publishedOp = op;
         s->state = ResourceState::kReady;
         s->error.clear();
         ++s->version;
+        mLoaded.notify_all();
         return {};
     }
 
@@ -180,20 +196,32 @@ template <typename T> class ResourceCache
         std::string error;
         ResourceState state = ResourceState::kInvalid;
         std::shared_ptr<T> object;
+        std::uint64_t lastOp = 0;      // dernier numéro d'opération (chargement initial ou rechargement) attribué
+        std::uint64_t publishedOp = 0; // numéro de l'opération dont le résultat est publié
+        TaskHandle task;               // chargement asynchrone initial (vide si synchrone)
+    };
+
+    struct Acquired
+    {
+        Handle<T> handle;
+        bool needsLoad;     // l'appelant doit appeler runLoad lui-même
+        std::uint64_t op;   // numéro de l'opération de chargement initial
+        TaskHandle task;    // chargement déjà en cours à attendre (load() sur un chemin déjà demandé)
     };
 
     Slot *slot(Handle<T> h) { return (h.valid() && h.index < mSlots.size() && mSlots[h.index].generation == h.generation) ? &mSlots[h.index] : nullptr; }
     const Slot *slot(Handle<T> h) const { return const_cast<ResourceCache *>(this)->slot(h); }
 
-    // Renvoie la poignée et si l'appelant doit lancer le chargement (première demande de ce chemin).
-    std::pair<Handle<T>, bool> acquire(const std::string &path)
+    // Retrouve ou crée l'emplacement du chemin. Avec async et un TaskSystem, la tâche de chargement est soumise ici,
+    // sous le verrou, et rangée dans l'emplacement : un load() concurrent la trouve toujours pour l'attendre.
+    Acquired acquire(const std::string &path, bool async)
     {
         std::lock_guard lock(mMutex);
         if (auto it = mByPath.find(path); it != mByPath.end())
         {
             Slot &s = mSlots[it->second];
             ++s.refCount;
-            return {Handle<T>{it->second, s.generation}, false};
+            return {Handle<T>{it->second, s.generation}, false, 0, s.task};
         }
         std::uint32_t index;
         if (!mFree.empty())
@@ -212,27 +240,63 @@ template <typename T> class ResourceCache
         s.state = ResourceState::kLoading;
         s.error.clear();
         s.version = 0;
+        s.lastOp = 0;
+        s.publishedOp = 0;
+        const std::uint64_t op = ++s.lastOp;
         mByPath[path] = index;
-        return {Handle<T>{index, s.generation}, true};
+        const Handle<T> handle{index, s.generation};
+        if (async && mTasks)
+        {
+            std::erase_if(mPending, [](const TaskHandle &t) { return t.done(); });
+            s.task = mTasks->submit([this, handle, path, op] { runLoad(handle, path, op); });
+            mPending.push_back(s.task);
+            return {handle, false, op, s.task};
+        }
+        return {handle, true, op, TaskHandle()};
     }
 
-    void runLoad(Handle<T> handle, const std::string &path)
+    // Attend la fin du chargement initial d'une ressource déjà demandée. Avec une tâche : TaskSystem::wait (le thread
+    // aide, donc pas d'interblocage même depuis un worker) ; sans tâche (autre thread en train de charger) : variable
+    // de condition.
+    void waitLoaded(const Acquired &a)
+    {
+        if (a.task.valid() && mTasks)
+            mTasks->wait(a.task);
+        std::unique_lock lock(mMutex);
+        mLoaded.wait(lock, [&] {
+            const Slot *s = slot(a.handle);
+            return !s || s->state != ResourceState::kLoading;
+        });
+    }
+
+    void runLoad(Handle<T> handle, const std::string &path, std::uint64_t op)
     {
         Result<T> loaded = mLoader(path);
         std::lock_guard lock(mMutex);
         Slot *s = slot(handle);
         if (!s)
+        {
+            mLoaded.notify_all();
             return; // libérée pendant le chargement
-        if (loaded)
-        {
-            s->object = std::make_shared<T>(std::move(*loaded));
-            s->state = ResourceState::kReady;
         }
-        else
+        if (op >= s->publishedOp)
         {
-            s->error = loaded.error().describe();
-            s->state = ResourceState::kFailed;
+            // Sinon un rechargement plus récent a déjà publié : cette complétion tardive est ignorée.
+            if (loaded)
+            {
+                s->object = std::make_shared<T>(std::move(*loaded));
+                s->state = ResourceState::kReady;
+                s->error.clear();
+                s->publishedOp = op;
+            }
+            else
+            {
+                s->error = loaded.error().describe();
+                s->state = ResourceState::kFailed;
+                s->publishedOp = op;
+            }
         }
+        mLoaded.notify_all();
     }
 
     Loader mLoader;
@@ -241,6 +305,8 @@ template <typename T> class ResourceCache
     std::vector<Slot> mSlots;
     std::vector<std::uint32_t> mFree;
     std::unordered_map<std::string, std::uint32_t> mByPath;
+    std::vector<TaskHandle> mPending; // chargements asynchrones lancés par ce cache (attendus par le destructeur)
+    std::condition_variable mLoaded;
 };
 
 } // namespace engine::core
