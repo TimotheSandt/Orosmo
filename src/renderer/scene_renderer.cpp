@@ -1,0 +1,486 @@
+#include "engine/renderer/scene_renderer.hpp"
+
+#include "engine/renderer/image.hpp"
+
+#include <cstring>
+
+namespace engine::renderer
+{
+
+using core::ErrorCode;
+using core::makeError;
+
+namespace
+{
+float halton(std::uint32_t index, std::uint32_t base)
+{
+    float result = 0.0f;
+    float denominator = 1.0f;
+    while (index > 0)
+    {
+        denominator *= static_cast<float>(base);
+        result += static_cast<float>(index % base) / denominator;
+        index /= base;
+    }
+    return result;
+}
+
+glm::vec2 haltonJitter(std::uint32_t index, std::uint32_t sequenceLength, int renderWidth, int renderHeight)
+{
+    const std::uint32_t sampleIndex = (index % sequenceLength) + 1;
+    return {(halton(sampleIndex, 2) - 0.5f) * 2.0f / static_cast<float>(renderWidth),
+            (halton(sampleIndex, 3) - 0.5f) * 2.0f / static_cast<float>(renderHeight)};
+}
+} // namespace
+
+core::Result<std::unique_ptr<SceneRenderer>> SceneRenderer::create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
+                                                                   const SceneRendererConfig &config)
+{
+    std::unique_ptr<SceneRenderer> renderer(new SceneRenderer(device, library, pipelines));
+    auto blit = FullscreenBlit::create(device, library, pipelines, config.shaderDirectory);
+    if (!blit)
+    {
+        return std::unexpected(blit.error());
+    }
+    renderer->blit_ = std::move(*blit);
+    auto program = library.loadGraphics(config.shaderDirectory / "mesh.vert", config.shaderDirectory / "mesh.frag");
+    if (!program)
+    {
+        return std::unexpected(program.error());
+    }
+    renderer->meshProgram_ = *program;
+    rhi::BufferDesc cb;
+    cb.size = sizeof(CameraData);
+    cb.usage = rhi::BufferUsage::kUniform | rhi::BufferUsage::kCopyDst;
+    cb.debugName = "camera";
+    auto camera = GpuBuffer::create(device, cb);
+    if (!camera)
+    {
+        return std::unexpected(camera.error());
+    }
+    renderer->cameraBuffer_ = std::move(*camera);
+    auto lights = LightManager::create(device, 1);
+    if (!lights)
+    {
+        return std::unexpected(lights.error());
+    }
+    renderer->defaultLights_ = std::move(*lights);
+    if (auto r = renderer->defaultLights_.upload(); !r)
+    {
+        return std::unexpected(r.error());
+    }
+    renderer->registerUpscaleMode(std::make_unique<BilinearBlitUpscaleMode>());
+    renderer->setActiveUpscaleMode("bilinear-blit");
+    return renderer;
+}
+
+SceneRenderer::~SceneRenderer()
+{
+    if (frameGenMode_)
+    {
+        frameGenMode_->shutdown();
+    }
+    device_.destroy(frameGroup_);
+}
+
+void SceneRenderer::setOutputResolution(int width, int height) noexcept
+{
+    outputWidth_ = width;
+    outputHeight_ = height;
+}
+
+void SceneRenderer::setRenderScale(float scale) noexcept
+{
+    if (scale <= 0.0f || scale > 1.0f)
+    {
+        return;
+    }
+    renderScale_ = scale;
+    upscalingEnabled_ = scale < 1.0f;
+}
+
+void SceneRenderer::setJitterSequenceLength(std::uint32_t length) noexcept
+{
+    jitterSequenceLength_ = length > 0 ? length : 1;
+    jitterIndex_ = jitterIndex_ % jitterSequenceLength_;
+}
+
+void SceneRenderer::registerUpscaleMode(std::unique_ptr<IUpscaleMode> mode)
+{
+    if (mode != nullptr)
+    {
+        upscaleModes_.push_back(std::move(mode));
+    }
+}
+
+bool SceneRenderer::setActiveUpscaleMode(const std::string &name)
+{
+    if (name == "disabled")
+    {
+        activeUpscaleMode_ = nullptr;
+        return true;
+    }
+    for (auto &mode : upscaleModes_)
+    {
+        if (mode && mode->name() == name && mode->supports(device_.capabilities()))
+        {
+            activeUpscaleMode_ = mode.get();
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string SceneRenderer::activeUpscaleMode() const { return activeUpscaleMode_ == nullptr ? std::string("disabled") : activeUpscaleMode_->name(); }
+
+std::vector<std::string> SceneRenderer::registeredUpscaleModes() const
+{
+    std::vector<std::string> names;
+    for (const auto &mode : upscaleModes_)
+    {
+        if (mode)
+        {
+            names.push_back(mode->name());
+        }
+    }
+    return names;
+}
+
+UpscaleRequirements SceneRenderer::activeUpscaleModeRequirements() const noexcept
+{
+    return activeUpscaleMode_ != nullptr ? activeUpscaleMode_->requirements() : UpscaleRequirements{};
+}
+
+void SceneRenderer::addPostProcessPass(std::unique_ptr<IPostProcessPass> pass)
+{
+    if (pass)
+    {
+        postProcessPasses_.push_back(std::move(pass));
+    }
+}
+
+void SceneRenderer::removePostProcessPass(const std::string &name)
+{
+    std::erase_if(postProcessPasses_, [&](const std::unique_ptr<IPostProcessPass> &p) { return p && p->name() == name; });
+}
+
+void SceneRenderer::setFrameGenerationMode(std::unique_ptr<IFrameGenerationMode> mode)
+{
+    if (frameGenMode_)
+    {
+        frameGenMode_->shutdown();
+    }
+    frameGenMode_ = std::move(mode);
+    if (frameGenMode_ && !frameGenMode_->initialize(device_))
+    {
+        frameGenMode_.reset();
+    }
+}
+
+bool SceneRenderer::needsTemporalResources() const noexcept
+{
+    if (frameGenMode_ != nullptr)
+    {
+        return true;
+    }
+    const UpscaleRequirements req = activeUpscaleModeRequirements();
+    return req.needsHistory || req.needsDepth || req.needsMotionVectors;
+}
+
+core::Result<> SceneRenderer::rebuildFrameGroup()
+{
+    LightManager &lights = lights_ != nullptr ? *lights_ : defaultLights_;
+    if (!frameGroup_.isNull() && groupCamera_ == cameraBuffer_.handle() && groupLights_ == lights.buffer().handle())
+    {
+        return {};
+    }
+    rhi::BindGroupDesc desc;
+    desc.entries = {{.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = cameraBuffer_.handle(), .size = sizeof(CameraData)},
+                    {.binding = 1, .type = rhi::BindingType::kStorageBuffer, .buffer = lights.buffer().handle()}};
+    desc.debugName = "scene.frame";
+    auto group = device_.createBindGroup(desc);
+    if (!group)
+    {
+        return std::unexpected(group.error());
+    }
+    device_.destroy(frameGroup_);
+    frameGroup_ = *group;
+    groupCamera_ = cameraBuffer_.handle();
+    groupLights_ = lights.buffer().handle();
+    return {};
+}
+
+core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const FrameOptions &options)
+{
+    if (passOpen_)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::beginFrame: the previous frame was not ended");
+    }
+    if (outputWidth_ <= 0 || outputHeight_ <= 0)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::beginFrame: set a non-empty output resolution first");
+    }
+    if (scaled())
+    {
+        frameWidth_ = std::max(1, static_cast<int>(static_cast<float>(outputWidth_) * renderScale_));
+        frameHeight_ = std::max(1, static_cast<int>(static_cast<float>(outputHeight_) * renderScale_));
+    }
+    else
+    {
+        frameWidth_ = outputWidth_;
+        frameHeight_ = outputHeight_;
+    }
+    if (jitterMode_ == JitterMode::kAuto)
+    {
+        if (needsTemporalResources())
+        {
+            currentJitter_ = haltonJitter(jitterIndex_, jitterSequenceLength_, frameWidth_, frameHeight_);
+            jitterIndex_ = (jitterIndex_ + 1) % jitterSequenceLength_;
+        }
+        else
+        {
+            currentJitter_ = {0.0f, 0.0f};
+            jitterIndex_ = 0;
+        }
+    }
+
+    RenderTargetInfo info;
+    info.size = {static_cast<std::uint32_t>(frameWidth_), static_cast<std::uint32_t>(frameHeight_)};
+    info.colorFormats = {rhi::Format::kRGBA8Unorm};
+    if (motionVectorsEnabled_)
+    {
+        info.colorFormats.push_back(rhi::Format::kRG16Float);
+    }
+    info.depth = true;
+    info.depthSampled = depthAsTextureEnabled_;
+    info.debugName = "scene";
+    if (!sceneTarget_.valid())
+    {
+        auto target = RenderTarget::create(device_, info);
+        if (!target)
+        {
+            return std::unexpected(target.error());
+        }
+        sceneTarget_ = std::move(*target);
+    }
+    else
+    {
+        const RenderTargetInfo &now = sceneTarget_.info();
+        if (now.colorFormats != info.colorFormats || now.depthSampled != info.depthSampled || now.size.width != info.size.width ||
+            now.size.height != info.size.height)
+        {
+            if (auto r = sceneTarget_.reconfigure(info); !r)
+            {
+                return r;
+            }
+        }
+    }
+    if (auto r = rebuildFrameGroup(); !r)
+    {
+        return r;
+    }
+    PassOptions pass;
+    pass.clearColor = options.clearColor;
+    pass.depthLoad = options.clearDepth ? rhi::LoadOp::kClear : rhi::LoadOp::kLoad;
+    encoder_ = &encoder;
+    encoder.beginRenderPass(sceneTarget_.passDesc(pass));
+    passOpen_ = true;
+    return {};
+}
+
+core::Result<> SceneRenderer::setCamera(Camera &camera)
+{
+    if (!cameraBuffer_.valid())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::setCamera: not created");
+    }
+    camera.setJitter(currentJitter_);
+    const CameraData data = camera.data();
+    return cameraBuffer_.update(0, std::as_bytes(std::span(&data, 1)));
+}
+
+core::Result<> SceneRenderer::draw(Mesh &mesh, const Camera &, bool lines)
+{
+    GraphicsState state;
+    state.vertexBuffers = mesh.vertexBuffers();
+    state.vertexAttributes = mesh.vertexAttributes();
+    state.raster.cull = rhi::CullMode::kNone;
+    state.raster.fill = lines ? rhi::FillMode::kLine : rhi::FillMode::kFill;
+    state.depth = {true, true, rhi::CompareOp::kLess};
+    state.depthFormat = rhi::Format::kD32Float;
+    state.colorTargets.clear();
+    for (std::size_t i = 0; i < sceneTarget_.info().colorFormats.size(); ++i)
+    {
+        rhi::ColorTargetState t;
+        t.format = sceneTarget_.info().colorFormats[i];
+        // Les shaders de maillage n'écrivent que la couleur : les cibles supplémentaires (vecteurs de mouvement) restent intactes.
+        t.writeMask = i == 0 ? rhi::ColorWriteMask::kAll : rhi::ColorWriteMask::kNone;
+        state.colorTargets.push_back(t);
+    }
+    state.debugName = mesh.program()->name() + (lines ? ".lines" : "");
+    auto pipeline = pipelines_.graphics(*mesh.program(), state);
+    if (!pipeline)
+    {
+        return std::unexpected(pipeline.error());
+    }
+    rhi::CommandEncoder &e = *encoder_;
+    e.setPipeline(*pipeline);
+    e.setBindGroup(0, frameGroup_);
+    if (!mesh.textureGroup().isNull())
+    {
+        e.setBindGroup(1, mesh.textureGroup());
+    }
+    e.setBindGroup(2, mesh.modelGroup());
+    const std::uint32_t pushSize = mesh.program()->reflection().pushConstantSize;
+    if (pushSize > 0)
+    {
+        std::vector<std::byte> push(pushSize, std::byte{0});
+        std::memcpy(push.data(), mesh.pushConstants().data(), std::min<std::size_t>(pushSize, mesh.pushConstants().size()));
+        if (pushSize >= sizeof(std::int32_t))
+        {
+            const std::int32_t flag = lines ? 1 : 0; // convention mesh.frag : premier entier = fil de fer
+            std::memcpy(push.data(), &flag, sizeof flag);
+        }
+        e.setPushConstants(push);
+    }
+    e.setVertexBuffer(0, mesh.vertexBuffer());
+    if (mesh.instanced())
+    {
+        e.setVertexBuffer(1, mesh.instanceBuffer());
+    }
+    e.setIndexBuffer(mesh.indexBuffer(), rhi::IndexType::kUint32);
+    e.drawIndexed(mesh.indexCount(), mesh.instanceCount());
+    return {};
+}
+
+core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
+{
+    if (!passOpen_)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: no frame is open");
+    }
+    if (!mesh.valid() || !mesh.program() || mesh.program()->isCompute())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: the mesh is empty or has no graphics program");
+    }
+    if (auto r = mesh.uploadTransform(); !r)
+    {
+        return r;
+    }
+    if (auto r = draw(mesh, camera, false); !r)
+    {
+        return r;
+    }
+    return camera.wireframe() ? draw(mesh, camera, true) : core::Result<>{};
+}
+
+core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
+{
+    if (!passOpen_)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::endFrame: no frame is open");
+    }
+    encoder_->endRenderPass();
+    passOpen_ = false;
+    FrameContext context{device_, *encoder_, *blit_};
+
+    for (const auto &pass : postProcessPasses_)
+    {
+        if (auto r = pass->process(context, sceneTarget_); !r)
+        {
+            return r;
+        }
+    }
+    const bool needsHistory = needsTemporalResources();
+    if (needsHistory)
+    {
+        RenderTargetInfo info;
+        info.size = {static_cast<std::uint32_t>(frameWidth_), static_cast<std::uint32_t>(frameHeight_)};
+        info.colorFormats = {rhi::Format::kRGBA8Unorm};
+        info.depth = false;
+        info.debugName = "scene.history";
+        if (!historyTarget_.valid())
+        {
+            auto target = RenderTarget::create(device_, info);
+            if (!target)
+            {
+                return std::unexpected(target.error());
+            }
+            historyTarget_ = std::move(*target);
+        }
+        else if (auto r = historyTarget_.resize(info.size.width, info.size.height); !r)
+        {
+            return r;
+        }
+        if (auto r = blit_->copy(*encoder_, sceneTarget_.color(0), blit_->nearestSampler(), historyTarget_.color(0), rhi::Format::kRGBA8Unorm, "history"); !r)
+        {
+            return r;
+        }
+    }
+    if (activeUpscaleMode_ != nullptr)
+    {
+        if (auto *advanced = dynamic_cast<IAdvancedUpscaleMode *>(activeUpscaleMode_))
+        {
+            UpscaleInput input;
+            input.color = sceneTarget_.color(0);
+            input.depth = sceneTarget_.depth();
+            input.motionVectors = (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1) ? sceneTarget_.color(1) : rhi::TextureHandle{};
+            input.historyColor = historyTarget_.valid() ? historyTarget_.color(0) : rhi::TextureHandle{};
+            input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
+            input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+            input.jitter = currentJitter_;
+            input.deltaTimeSeconds = deltaTime_;
+            input.resetHistory = resetHistoryNextFrame_;
+            UpscaleOutput out;
+            out.output = output.texture;
+            if (auto r = advanced->execute(context, input, out); !r)
+            {
+                return r;
+            }
+        }
+        else if (auto r = activeUpscaleMode_->upscale(context, sceneTarget_, output); !r)
+        {
+            return r;
+        }
+    }
+    else if (!scaled())
+    {
+        // Sans mise à l'échelle et sans mode, l'ancien rendu allait droit à l'écran : on garde une copie 1:1.
+        if (auto r = blit_->copy(*encoder_, sceneTarget_.color(0), blit_->nearestSampler(), output.texture, output.format, "present"); !r)
+        {
+            return r;
+        }
+    }
+    if (frameGenMode_ != nullptr)
+    {
+        FrameGenerationInput input;
+        input.currentColor = sceneTarget_.color(0);
+        input.previousColor = historyTarget_.valid() ? historyTarget_.color(0) : rhi::TextureHandle{};
+        input.depth = sceneTarget_.depth();
+        input.motionVectors = (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1) ? sceneTarget_.color(1) : rhi::TextureHandle{};
+        input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
+        input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+        input.jitter = currentJitter_;
+        input.deltaTimeSeconds = deltaTime_;
+        input.resetHistory = resetHistoryNextFrame_;
+        FrameGenerationOutput out;
+        if (auto r = frameGenMode_->generateFrame(context, input, out); !r)
+        {
+            return r;
+        }
+    }
+    resetHistoryNextFrame_ = false;
+    encoder_ = nullptr;
+    return {};
+}
+
+core::Result<> SceneRenderer::saveColorPng(const std::filesystem::path &path) const
+{
+    if (!sceneTarget_.valid())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::saveColorPng: nothing was rendered yet");
+    }
+    return savePng(device_, sceneTarget_.color(0), path);
+}
+
+} // namespace engine::renderer
