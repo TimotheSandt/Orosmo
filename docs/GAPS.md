@@ -335,3 +335,13 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | G85 | Singleton `UI::Manager::Instance()` | Conservé : les textes y trouvent leur `TextRenderer`. Remplacement par un contexte explicite (A10 pour ce module) avec la bascule. | B6 |
 | G86 | Pas de batch 2D | Un rectangle, une série de glyphes ou une image de couche = un dessin. Le batch par instances (R2D-01) arrive en M5 (A21). | M5 |
 | G87 | Texte | Pas d'UTF-8 (G27), un atlas MSDF par taille de police ; `TextRenderer::init` compile encore le shader hérité (inutile pour la liste de dessin). La parité du texte est prouvée sur une police et six chaînes, pas sur tous les cas de mise en page (retour à la ligne, ellipse, défilement : `renderTextAdvanced` passe par `renderText`, non testé par liste de dessin). | B6, M3 |
+
+## Ajouts de M2 lot B6 (G88 à G91)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G88 | GLFW hors de `platform` | `Window`, `InputManager` et la démo (`Game.cpp`, nouveau `CameraController`) incluent encore GLFW : baseline `tools/baseline/api_isolation.txt` (7 fichiers). L'isolation est **bloquante** pour `gl*`, `Vk*`, `MTL*` (0 infraction) mais pas encore pour GLFW et `<windows.h>`. | C |
+| G89 | Dépendances Vulkan inutilisées | Le paquet `vulkan` (vcpkg hors Linux, `libvulkan-dev` et `vulkan-validationlayers` en CI et dans le README) n'est plus lié ; il reste installé jusqu'à M4. | M4 |
+| G90 | Touches de debug non testées | Les touches 1 à 8 (échelle de rendu de la scène et de l'interface) sont reprises dans `Game` (l'échelle de l'interface passe par une cible réduite) ; seule la scène à l'échelle est couverte par des tests (`renderer/scene`). | C |
+| G91 | Démo sous Windows, macOS et CI non observée | La démo adopte maintenant sa fenêtre par le RHI ; le pas « capture de la démo comparée à la référence » de la CI (llvmpipe + xvfb) n'a pas encore tourné avec ce chemin, ni la démo sous Windows et macOS (G67). | prochain push |
+| G92 | Tests de l'ancienne couche retirés | Avec les classes, ~45 cas (`graphics_core`, `graphics_foundation`, `renderers`, `shader`, `window_graphics_binding`, une partie de `profiler_gpu_timer`) ont été supprimés ; leurs comportements sont couverts par `tests/rhi/` et `tests/renderer/` (tampons, textures, cibles, shaders et rechargement, pipelines, scène, dessinateur 2D, minuteries, fenêtre). Le test de la liaison `Window` / backend n'a plus d'objet. | — |

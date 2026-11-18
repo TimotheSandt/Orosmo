@@ -43,7 +43,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
 | RHI-01 | Interface RHI | P0 | Interface décrite en `03` ; aucun type d'API (`GLuint`, `VkBuffer`…) dans les en-têtes publics. | Partiel |
-| RHI-02 | Backend OpenGL 4.3+ | P0 | Reprend le rendu existant derrière le RHI ; images de référence identiques à l'ancien rendu (tolérance définie). | Partiel |
+| RHI-02 | Backend OpenGL 4.3+ | P0 | Reprend le rendu existant derrière le RHI ; images de référence identiques à l'ancien rendu (tolérance définie). | Fait (OpenGL) |
 | RHI-03 | Backend Vulkan | P0 | Parité de fonctionnalités avec OpenGL ; couches de validation silencieuses ; mémoire via VMA. | Partiel |
 | RHI-04 | Choix du backend à l'exécution | P0 | `--backend=vulkan|opengl|metal`, repli documenté, `Capabilities` interrogeable. | Partiel |
 | RHI-05 | Buffers, textures (2D, tableau, cube, 3D, mips), échantillonneurs | P0 | Création, mise à jour, copie, génération de mips ; formats portables listés. | Partiel |
@@ -55,11 +55,11 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | RHI-11 | Minuteries GPU et noms de debug | P1 | Requêtes de temps par passe ; noms visibles dans RenderDoc. | Partiel |
 | RHI-12 | Pipeline de shaders | P0 | GLSL → SPIR-V hors ligne → SPIRV-Cross (MSL, GLSL) ; réflexion des liaisons ; inclusions ; rechargement à chaud. | Partiel |
 | RHI-13 | Backend Metal | P2 | Via MoltenVK validé d'abord ; backend natif seulement si les mesures le justifient. | Absent |
-| RHI-14 | Tests de rendu | P0 | Images de référence par backend, comparaison automatisée, rapport de différence. | Absent |
+| RHI-14 | Tests de rendu | P0 | Images de référence par backend, comparaison automatisée, rapport de différence. | Partiel |
 | RHI-15 | Rendu vers plusieurs cibles (MRT) | P0 | Jusqu'à 8 attachements couleur (lus dans `Capabilities`) + profondeur, format et opérations par cible ; sorties distinctes dans un même shader. | Fait (OpenGL) |
 | RHI-16 | Textures 3D et images de stockage | P0 | Lecture/écriture en compute ; formats flottants 16 et 32 bits, `RG16F`, `RGBA16F`, `R32F`, `R32UI` garantis. | Partiel |
 | RHI-17 | Dispatch indirect et groupes dynamiques | P1 | `dispatchIndirect` ; offsets dynamiques des tampons. | Fait (OpenGL) |
-| RHI-18 | Capacités optionnelles réservées | P1 | `Capabilities` expose `rayQuery`, `accelerationStructure`, `bindless`, `meshShader`, `bufferDeviceAddress`, `sparseResources` (toutes à `false` tant que non implémentées) ; le moteur ne suppose jamais leur présence. | Partiel |
+| RHI-18 | Capacités optionnelles réservées | P1 | `Capabilities` expose `rayQuery`, `accelerationStructure`, `bindless`, `meshShader`, `bufferDeviceAddress`, `sparseResources` (toutes à `false` tant que non implémentées) ; le moteur ne suppose jamais leur présence. | Fait |
 | RHI-19 | Transferts asynchrones | P2 | File de transfert séparée quand disponible ; chargement sans saccade. | Absent |
 
 ## D. Rendu 3D (`renderer`)

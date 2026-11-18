@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour à la fin du sous-lot B5 de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour à la fin du sous-lot B6 de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -16,6 +16,26 @@ Mis à jour à la fin du sous-lot B5 de M2 (2026-11-18). États détaillés et p
 | **M2 lot B3 : couche de ressources `engine::renderer`** | **B3 livré côté code ; B4 à B6 et lot C à faire** | `docs/releases/M2-B3.md` : `GpuBuffer`, `Texture`, `RenderTarget`, `ShaderLibrary`, `PipelineCache`, `Image`, `GpuTimer` sur le RHI ; 280 cas doctest verts (+11), ASan+UBSan propres, capture de référence identique (code hérité non touché) |
 | **M2 lot B4 : couche de scène `engine::renderer`** | **B4 livré côté code ; B5, B6 et lot C à faire** | `docs/releases/M2-B4.md` : `Camera`, `LightManager`, `Mesh`, `SceneRenderer`, shaders `shaders/rhi/` ; la scène de terrain graine 1 rendue par la nouvelle couche est **identique pixel pour pixel** à l'image de référence du rendu hérité (tolérance 0, Intel Arc) ; 290 cas doctest verts (+10) |
 | **M2 lot B5 : dessin 2D et interface par listes de dessin** | **B5 livré côté code ; B6 et lot C à faire** | `docs/releases/M2-B5.md` : `DrawList`, `CanvasRenderer`, `UI::Manager::Collect` ; **`ui.png` de l'ancien rendu (scène + panneau + boîtes + texte figé) reproduit sans aucun pixel d'écart** ; 304 cas doctest verts (+14) |
+| **M2 lot B6 : bascule de la démo, retrait de l'ancien rendu, isolation bloquante** | **Lot B livré côté code ; lot C à faire** | `docs/releases/M2-B6.md` : la démo présente via le RHI (`scene.png` identique à la référence, écart max 0/255) ; `IGraphicsDevice`, backends OpenGL/Vulkan/Metal et façades supprimés (−16 800 lignes, étiquette `archive/pre-M2-B6-legacy-graphics`) ; `check_api_isolation.py --graphics-only --strict` : **0 infraction** ; 259 cas doctest verts |
+
+## Identifiants de `docs/02` touchés par M2 B6
+
+Preuves sous Linux (g++ 13.3, Mesa 26.1.6, Intel Arc ; la CI exécute aussi sous llvmpipe + xvfb). Windows et macOS : tests GPU et démo non exécutés (G67).
+
+| ID | Avant | Maintenant | Fichier / symbole, test, résultat |
+| --- | --- | --- | --- |
+| RHI-02 | Partiel | **Fait** (OpenGL) | la démo tourne sur le RHI : `apps/demo/src/Game/Game.cpp` (`SceneRenderer`, `CanvasRenderer`, périphérique adoptant la fenêtre) ; `apps/demo/bin/debug/main --api opengl --capture <dir>` : `scene.png` **identique à `docs/BASELINE/reference/scene-opengl-seed1-1280x720.png`** (0 pixel d'écart) ; `tests/renderer/parity_tests.cpp` (scène et `ui.png`, 0 pixel d'écart) ; plus aucun `gl*`/`GL_*` hors `src/rhi/opengl/` |
+| RHI-14 | Absent | Partiel | tests d'images de référence : `Image`, `compareImages`, `parity_tests.cpp` (scène, interface), capture de la démo comparée en CI (`tools/compare_png.py`, tolérance pour llvmpipe). **Manque** : référence par backend (Vulkan M4), rapport de différence publié en CI |
+| RHI-04 | Partiel | Partiel | `--api opengl` seul disponible, `--api vulkan` / `metal` refusés avec la raison (`GraphicsAPI.cpp`, test `GraphicsAPI`) ; `--list-apis`, `--choose-api`. **Manque** : option `--backend`, repli documenté, Vulkan (M4) |
+| RHI-18 | Partiel | **Fait** | l'ancien backend Vulkan, qui annonçait `rayQuery = true` à tort, est supprimé ; `Capabilities` du RHI : toutes les capacités optionnelles `false`, testé (`tests/rhi/opengl_device_tests.cpp`) |
+| RHI-11 | Partiel | Partiel | `ProfilerGpuTimerFactory` : le `Profiler` de la démo mesure en GPU par horodatages du RHI (testé : `tests/renderer/resources_tests.cpp` ; démo : durées non nulles après 200 images). **Manque** : noms de debug non relus (G69), Vulkan (M4) |
+| REN-05 | Partiel | Partiel | l'éclairage de la démo passe par `LightManager` (parité de `scene.png`) ; ponctuelles et projecteurs non rendus (G82) |
+| REN-36 | Partiel | Partiel | le texte de la démo passe par la liste de dessin et le RHI (parité de `ui.png`) ; UTF-8 (G27) |
+| UI-01 | Partiel | Partiel | la démo utilise `Manager::Collect` ; le singleton `UI::Manager::Instance()` reste (G85) |
+| UI-02 | Partiel | Partiel | l'interface ne contient plus aucun chemin de dessin immédiat (`Draw`, `Sprite`, `RenderTarget` supprimés) ; **manque** : batch 2D (R2D-01, M5), contexte explicite à la place du singleton (G85) |
+| PLAT-01 | Partiel | Partiel | `Window` ne connaît plus aucune API graphique (rappel `beforeCreate`) ; **manque** : `platform::Window`, GLFW encore dans `Window`, `InputManager`, la démo (lot C) |
+
+Totaux après B6 : Fait 16, Partiel 47, Absent 88, Incompatible 1 (après B5 : 14 / 48 / 89 / 1 ; RHI-02 et RHI-18 passent à Fait, RHI-14 d'Absent à Partiel).
 
 ## Identifiants de `docs/02` touchés par M2 B5
 
