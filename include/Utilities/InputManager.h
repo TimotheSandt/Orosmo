@@ -4,6 +4,7 @@
 #include <GLFW/glfw3.h>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -213,8 +214,17 @@ class InputManager
     void Init();
     void Update();
 
+    // Détecte la disposition du clavier et la sélectionne. Windows : disposition active du système. Ailleurs (Linux,
+    // macOS) : noms que le système donne aux touches physiques (glfwGetKeyName) ; GLFW doit être initialisé.
     static void AutoDetectKeyLayout();
+    // Reconnaît la disposition depuis `keyName(code GLFW de la touche à la position US)` = caractère imprimé sur cette
+    // touche (nullptr si inconnu). Disposition non reconnue ou noms indisponibles : QWERTY. Sans effet de bord (testable).
+    static KeyLayout DetectKeyLayoutFromKeyNames(const std::function<const char *(int)> &keyName);
     static void SetKeyLayout(KeyLayout layout);
+    static KeyLayout GetKeyLayout() { return keyLayout; }
+    // Code GLFW de la touche physique qui porte la touche logique `key` dans la disposition active ; GLFW_KEY_UNKNOWN
+    // si la touche n'a pas de correspondance.
+    static int GetKeyCode(KeyButton key);
 
 #pragma region Getters
   public:
