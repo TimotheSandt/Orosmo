@@ -5,6 +5,12 @@
 
 #include <doctest/doctest.h>
 
+// GCC 13 signale à tort -Warray-bounds sur les copies de listes d'initialisation (`v = {Struct{...}}`) sous ASan -O3 (G34) :
+// faux positif de la bibliothèque standard, constaté plusieurs fois dans les tests du RHI. Limité aux tests, à GCC.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
+
 #include <cmath>
 #include <string>
 
