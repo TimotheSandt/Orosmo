@@ -335,7 +335,10 @@ core::Result<> SceneRenderer::draw(Mesh &mesh, const Camera &, bool lines)
     if (pushSize > 0)
     {
         std::vector<std::byte> push(pushSize, std::byte{0});
-        std::memcpy(push.data(), mesh.pushConstants().data(), std::min<std::size_t>(pushSize, mesh.pushConstants().size()));
+        if (const std::size_t n = std::min<std::size_t>(pushSize, mesh.pushConstants().size()); n > 0) // memcpy(…, nullptr, 0) est un comportement indéfini
+        {
+            std::memcpy(push.data(), mesh.pushConstants().data(), n);
+        }
         if (pushSize >= sizeof(std::int32_t))
         {
             const std::int32_t flag = lines ? 1 : 0; // convention mesh.frag : premier entier = fil de fer
