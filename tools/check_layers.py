@@ -9,7 +9,8 @@ n'échoue que sur les violations absentes du fichier (liste de non-régression).
 import argparse, fnmatch, json, os, re, sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-INC = re.compile(r'^\s*#\s*include\s*"([^"]+)"')
+# Les deux formes : "x.h" et <engine/x.hpp> (les en-têtes du projet sont résolus par `resolve`, les autres sont ignorés).
+INC = re.compile(r'^\s*#\s*include\s*(?:"([^"]+)"|<([^>]+)>)')
 
 
 def load():
@@ -48,7 +49,8 @@ def main():
                 if not n.endswith((".h", ".hpp", ".cpp", ".c")):
                     continue
                 rel = os.path.relpath(os.path.join(dp, n), ROOT).replace(os.sep, "/")
-                if "/Generated/" in rel or "/engine/" in rel:
+                # Copies générées ou installées du moteur dans une application (apps/<nom>/engine/) : pas include/engine/.
+                if "/Generated/" in rel or (rel.startswith("apps/") and "/engine/" in rel):
                     continue
                 src_layer = layer_of(cfg, rel)
                 files += 1
@@ -59,7 +61,7 @@ def main():
                         m = INC.match(line)
                         if not m:
                             continue
-                        tgt = resolve(cfg, rel, m.group(1))
+                        tgt = resolve(cfg, rel, m.group(1) or m.group(2))
                         if tgt is None:
                             continue
                         tl = layer_of(cfg, tgt)
