@@ -184,6 +184,25 @@ viewer-capture: viewer
 	python3 tools/compare_png.py build/viewer-capture/dark/viewer.png build/viewer-capture/light/viewer.png > /dev/null \
 	    && { echo "viewer-capture : les deux thèmes donnent la même image"; exit 1; } || echo "viewer-capture : OK (deux thèmes, deux images)"
 
+# ── Galerie de l'interface (exemple : tous les widgets, conteneurs, événements et thèmes d'engine::ui) ──
+#   make gallery-run ARGS="--theme framed"   lance la galerie
+#   make gallery-capture                     images sans fenêtre de chaque onglet : build/gallery-capture/<thème>-<onglet>/gallery.png
+GALLERY := apps/ui_gallery/bin/ui-gallery$(if $(filter Windows_NT,$(OS)),.exe)
+.PHONY: gallery gallery-run gallery-capture
+gallery:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/ui_gallery BUILD_TYPE=release
+gallery-run: gallery
+	./$(GALLERY) $(ARGS)
+gallery-capture: gallery
+	for tab in widgets layout parameters themes; do \
+	    ./$(GALLERY) --headless --theme dark --tab $$tab --capture build/gallery-capture/dark-$$tab || exit 1; done
+	./$(GALLERY) --headless --theme light --tab widgets --capture build/gallery-capture/light-widgets
+	./$(GALLERY) --headless --theme dark --tab widgets --click fruit --capture build/gallery-capture/dark-dropdown-open
+	./$(GALLERY) --headless --theme light --tab widgets --hover volume --capture-frames 60 --capture build/gallery-capture/light-tooltip
+	./$(GALLERY) --headless --theme framed --tab themes --capture build/gallery-capture/framed-themes
+
 # ── BLD-02 : de bout en bout depuis le paquet (sans les sources du moteur) ──
 #   make e2e-init   paquet + outil `engine` construits ; `engine init --package` d'un projet neuf dans build/e2e/<date>/mygame ;
 #                   compilation et lancement sans fenêtre (capture) ; exemples terrain-gen (somme de contrôle de référence) et
@@ -212,6 +231,9 @@ e2e-init:
 	$(MAKE) -C $(E2E_RUN)/mygame/engine/examples/terrain_viewer
 	$(E2E_RUN)/mygame/engine/examples/terrain_viewer/bin/terrain-viewer$(E2E_EXE) --headless --seed 42 --capture $(E2E_RUN)/viewer --capture-frames 3
 	test -s $(E2E_RUN)/viewer/viewer.png
+	$(MAKE) -C $(E2E_RUN)/mygame/engine/examples/ui_gallery
+	$(E2E_RUN)/mygame/engine/examples/ui_gallery/bin/ui-gallery$(E2E_EXE) --headless --capture $(E2E_RUN)/gallery --capture-frames 3
+	test -s $(E2E_RUN)/gallery/gallery.png
 	@echo "e2e-init : OK ($(E2E_RUN) : engine init, compilation, lancement, exemples depuis le paquet)"
 
 # ── UI-11 : tests du compilateur du langage d'interface ──

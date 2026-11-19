@@ -2,6 +2,7 @@
     "name": "dark",
     "extends": "base.json",
     "tokens": {
+        "color.background": "#121419",
         "color.surface": "#1d2028e8",
         "color.surfaceRaised": "#272b35",
         "color.outline": "#3a3f4d",

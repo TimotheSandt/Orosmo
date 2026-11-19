@@ -60,6 +60,7 @@ make all-debug
 | `make dist` / `make engine-tool` | Paquet du moteur / outil `engine init` |
 | `make terrain-gen` / `make terrain-gen-check` | Générateur en ligne de commande (TOOL-02) / son déterminisme et ses codes de retour |
 | `make viewer-run ARGS="--seed 42 --preset mountains"` / `make viewer-capture` | Visualiseur de terrain (TOOL-01) / images sans fenêtre, thèmes sombre et clair |
+| `make gallery-run` / `make gallery-capture` | Galerie de l'interface : chaque widget, conteneur, événement et thème (exemple) |
 | `make cui-test` | Tests du compilateur du langage d'interface (cargo test + entrées invalides de bout en bout) |
 | `make e2e-init` | De bout en bout depuis le paquet : `engine init`, compilation, lancement, exemples (BLD-02) |
 | `make clean` / `make fclean` / `make demo-fclean` | Nettoyage |

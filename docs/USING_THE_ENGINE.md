@@ -99,7 +99,8 @@ Résultat (Linux x64) : `4225 samples, height at the centre = -6.899 m, checksum
 plateformes (TEST-03).
 
 Deux exemples plus complets sont dans le paquet : `examples/terrain_gen` (ligne de commande, exports) et
-`examples/terrain_viewer` (fenêtre, rendu, panneau en langage d'interface ; voir son `README.md`).
+`examples/terrain_viewer` (fenêtre, rendu, panneau en langage d'interface ; voir son `README.md`). Pour l'interface,
+`examples/ui_gallery` montre chaque widget, conteneur, événement et thème dans une seule fenêtre.
 
 ## 5. Ressources à l'exécution
 
