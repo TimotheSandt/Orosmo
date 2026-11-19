@@ -47,16 +47,6 @@ TEST_SUITE("rhi/opengl/device")
         gpu.expectNoValidationErrors();
     }
 
-    TEST_CASE("a window surface is not available before platform::Window (lot C)")
-    {
-        int dummy = 0;
-        DeviceDesc desc;
-        desc.surface.nativeWindow = &dummy;
-        auto device = createDevice(desc);
-        REQUIRE_FALSE(device.has_value());
-        CHECK((device.error().code == ErrorCode::kUnsupported));
-    }
-
     TEST_CASE("buffers: create with data, update, read back, range and stale-handle errors")
     {
         Gpu gpu;
