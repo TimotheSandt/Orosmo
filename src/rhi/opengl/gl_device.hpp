@@ -62,6 +62,7 @@ struct ShaderRes
 struct PipelineRes
 {
     bool compute = false;
+    bool usesStorage = false; // le programme déclare un bloc de stockage ou une image (lu à l'édition de liens)
     GLuint program = 0;
     GLuint vao = 0;
     GLenum topology = GL_TRIANGLES;
@@ -171,6 +172,14 @@ class GlDevice final : public Device
     // Lie une texture sur l'unité réservée (kScratchTextureUnit) pour la créer, l'envoyer ou en générer les mips.
     static void bindScratchTexture(GLenum target, GLuint id);
     static void labelQuery(const QueryPoolRes &pool, std::uint32_t index);
+
+    // Tests du backend : liaisons du VAO d'un pipeline (tampon de sommets 0, tampon d'indices), lues dans l'état GL.
+    struct VertexArrayBindings
+    {
+        GLuint vertexBuffer0 = 0;
+        GLuint indexBuffer = 0;
+    };
+    Result<VertexArrayBindings> inspectVertexArray(PipelineHandle pipeline);
     void onValidationMessage(bool isError) noexcept;
 
   private:
@@ -189,6 +198,7 @@ class GlDevice final : public Device
     bool ownsWindow_ = true;  // false : fenêtre adoptée, détruite par son créateur
     bool windowed_ = false;
     bool glReady_ = false;
+    bool debugCallbackInstalled_ = false;
     Capabilities caps_;
     Extent2D backbufferSize_{1, 1};
     TextureHandle backbuffer_;

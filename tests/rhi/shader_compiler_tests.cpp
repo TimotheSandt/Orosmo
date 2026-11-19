@@ -330,6 +330,27 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
         CHECK(seen == dir.path / "a.frag");
     }
 
+    TEST_CASE("hot reload: the SAME callback object is invoked at each notification (a mutable lambda keeps its state)")
+    {
+        TempDir dir;
+        const std::string body = "#version 450\nlayout(location = 0) out vec4 c;\nvoid main() { c = vec4(1.0); }\n";
+        dir.write("a.frag", body);
+        ShaderHotReloader reloader;
+        int seenBySecondCall = -1;
+        auto first = reloader.add(dir.path / "a.frag", ShaderStage::kFragment,
+                                  [&, calls = 0](const fs::path &, const engine::core::Result<CompiledShader> &) mutable
+                                  {
+                                      ++calls;
+                                      seenBySecondCall = calls;
+                                  });
+        REQUIRE(first.has_value());
+        dir.write("a.frag", body + "// 1\n");
+        CHECK(reloader.poll() == 1);
+        dir.write("a.frag", body + "// 22\n");
+        CHECK(reloader.poll() == 1);
+        CHECK(seenBySecondCall == 2); // une copie par appel donnerait 1
+    }
+
     TEST_CASE("ShaderHotReloader is neither copyable nor movable (its watch callbacks capture this)")
     {
         static_assert(!std::is_copy_constructible_v<ShaderHotReloader>);

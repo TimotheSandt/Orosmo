@@ -2,8 +2,9 @@
 """En-têtes publics autonomes (docs/03 §8.3) : chaque en-tête de include/ doit se compiler seul.
 
 Compile chaque fichier avec `$CXX -std=c++23 -fsyntax-only` (en-tête inclus par un fichier minimal).
-Mode avertissement par défaut (exit 0) ; `--strict` sort avec 1 ; `--vcpkg DIR` ajoute -isystem DIR/include
-(par défaut vcpkg_installed/x64-linux si présent).
+Mode avertissement par défaut (exit 0) ; `--strict` sort avec 1 ; `--vcpkg DIR` ajoute -isystem DIR/include.
+Sans `--vcpkg` : chaque triplet installé (`vcpkg_installed/<triplet>/include`, ou `$VCPKG_INSTALLED_ROOT/<triplet>`) est
+ajouté, si bien que Linux, MSYS2/MinGW (x64-mingw-static) et macOS trouvent leurs dépendances sans option.
 """
 import argparse, concurrent.futures, os, shutil, subprocess, sys, tempfile
 
@@ -23,9 +24,15 @@ def main():
     inc = os.path.join(ROOT, "include")
     flags = ["-std=c++23", "-fsyntax-only", "-DGLM_ENABLE_EXPERIMENTAL", "-Wall", "-Wextra", "-I" + inc]
     flags += ["-I" + os.path.join(inc, d) for d in sorted(os.listdir(inc)) if os.path.isdir(os.path.join(inc, d))]
-    vc = a.vcpkg or os.path.join(ROOT, "vcpkg_installed", "x64-linux")
-    if os.path.isdir(os.path.join(vc, "include")):
-        flags += ["-isystem", os.path.join(vc, "include")]
+    if a.vcpkg:
+        roots = [a.vcpkg]
+    else:
+        base = os.environ.get("VCPKG_INSTALLED_ROOT") or os.path.join(ROOT, "vcpkg_installed")
+        base = base if os.path.isabs(base) else os.path.join(ROOT, base)
+        roots = sorted(os.path.join(base, d) for d in os.listdir(base)) if os.path.isdir(base) else []
+    for vc in roots:
+        if os.path.isdir(os.path.join(vc, "include")):
+            flags += ["-isystem", os.path.join(vc, "include")]
     headers = []
     for dp, _, names in os.walk(inc):
         headers += [os.path.relpath(os.path.join(dp, n), inc).replace(os.sep, "/") for n in names if n.endswith((".h", ".hpp"))]

@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <map>
 #include <string>
 #include <string_view>
@@ -136,7 +137,7 @@ class ShaderHotReloader
     {
         std::filesystem::path file;
         ShaderStage stage;
-        Callback callback;
+        std::shared_ptr<Callback> callback; // partagé : poll() garde CE rappel en vie pendant l'appel (état d'un lambda mutable conservé)
         std::vector<std::pair<std::string, std::string>> defines;
         std::vector<std::pair<std::string, core::FileWatcher::WatchId>> watches; // fichier surveillé -> surveillance
         bool dirty = false;

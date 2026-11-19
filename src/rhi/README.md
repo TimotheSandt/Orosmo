@@ -39,14 +39,18 @@ auto done = (*device)->submit(std::move(encoder));   // renvoie la première err
   (24, `kScratchTextureUnit`) et n'écrasent jamais une texture liée par `setBindGroup` ; les liaisons de tampons de sommets et
   d'indices sont retirées du VAO au changement de pipeline et en fin de passe (un tampon détruit n'est plus retenu) ; la plage de
   profondeur est remise à [0, 1] à chaque passe ; une lecture synchrone rend la liaison de framebuffer trouvée.
-- **Erreurs** : `Result<T>`. Un encodeur ne lance rien : une commande invalide est ignorée, journalisée, et la **première** erreur
-  est renvoyée par `Device::submit` ; une passe ou un groupe de debug laissé ouvert est aussi une erreur (refermé quand même).
+- **Erreurs** : `Result<T>`, jamais d'exception. Sur OpenGL, l'encodeur **exécute chaque commande à l'appel** : une commande
+  valide (un `draw`) a déjà agi quand `submit` est appelé, et abandonner l'encodeur ou constater l'échec de `submit` ne l'annule
+  pas. Une commande invalide, elle, est refusée avant tout appel GL, journalisée, et la **première** erreur est renvoyée par
+  `Device::submit` ; une passe ou un groupe de debug laissé ouvert est aussi une erreur (refermé quand même). Une passe dont une
+  valeur d'effacement est refusée ne touche à aucune de ses cibles (toutes validées avant le premier effacement).
   Les plages (copies, commandes indirectes) sont vérifiées sans débordement arithmétique ; les décalages et pas indirects doivent
   être multiples de 4. Une copie tampon <-> texture n'exige que les octets réellement touchés (pas de remplissage après la
   dernière ligne) ; `updateTexture` lit des lignes serrées (`bufferRowLength` ne vaut que pour les copies tampon <-> texture).
 - **Barrières** : le RHI les calcule. Le backend OpenGL est conservateur : `glMemoryBarrier(GL_ALL_BARRIER_BITS)` après chaque
-  `dispatch` et à la fin d'une passe qui a lié un tampon de stockage ou une image ; dans une telle passe, une barrière de stockage
-  précède aussi chaque dessin après le premier (un dessin peut lire ce qu'un précédent a écrit).
+  `dispatch` et à la fin d'une passe qui a lié ou utilisé du stockage ; dans une passe, une barrière de stockage précède chaque
+  dessin dont le programme accède au stockage (SSBO ou image, lu à l'édition de liens) quand un dessin précédent de la passe y
+  accédait aussi — que la liaison ait été faite avant ou pendant la passe. Les passes sans stockage (interface) n'en paient rien.
 - **Noms de debug** : `glObjectLabel` sur chaque objet, `glPushDebugGroup` par passe nommée et par `beginDebugGroup`.
 - **Validation** : contexte de debug (`GL_KHR_debug`) ; `Device::validationErrorCount()` compte les messages d'erreur, les tests
   exigent 0.
@@ -57,8 +61,9 @@ Trois groupes (0 image, 1 matériau/passe, 2 objet), `kBindingsPerGroup` = 8 lia
 **emplacement = groupe × 8 + binding**, pour les UBO, SSBO, unités de texture et unités d'image. Les shaders OpenGL écrits à la main
 utilisent ces numéros (`layout(binding = 8) uniform sampler2D tex;` = groupe 1, binding 0) ; le pipeline de shaders du lot B
 convertira `set`/`binding` du GLSL 450 commun vers cet emplacement. L'**UBO 24** (`kGroupCount * kBindingsPerGroup`) porte les push
-constants (128 octets, émulés). Les images de stockage exigent un emplacement `< GL_MAX_IMAGE_UNITS` (8 sur certains pilotes) :
-utiliser le groupe 0 pour elles ; `setBindGroup` refuse sinon, avec ce message. Même règle pour les tampons de stockage :
+constants (128 octets, émulés). Une image de stockage est refusée par `setBindGroup` si son emplacement plat (groupe × 8 + binding)
+atteint `GL_MAX_IMAGE_UNITS`. Ce minimum vaut 8 sur certains pilotes : le groupe 0 est donc le choix **portable** pour les images
+(il marche partout), pas une obligation là où le pilote en offre plus. Même règle pour les tampons de stockage :
 OpenGL 4.3 n'en garantit que 8 emplacements, la limite réelle est `Capabilities::maxStorageBufferBindings` (le périphérique se
 crée même si elle est inférieure à 24).
 
