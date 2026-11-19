@@ -148,8 +148,21 @@ par **état**. Un thème peut en étendre un autre ; les variantes claire et som
 ```
 
 - **Jeton** : couleur `"#rrggbb"` / `"#rrggbbaa"`, nombre, ou nom d'un autre jeton (alias).
-- **Propriétés** : `background`, `foreground`, `border`, `accent`, `muted`, `shadowColor` (couleurs) ; `borderWidth`, `radius`,
-  `padding`, `spacing`, `fontSize`, `shadowSize`, `shadowOffset`, `width` (pixels).
+- **Images en neuf parties** (section `images`) : un fond qui n'est pas une simple couleur, valable pour toutes les tailles sans
+  rien déformer. L'image est découpée par `slice` (un nombre, ou `[gauche, haut, droite, bas]` en texels) en quatre coins (taille
+  fixe), quatre bords et un centre ; `edges` et `center` valent `"stretch"` (étiré), `"repeat"` (répété à sa taille, la dernière
+  répétition est coupée) ou `"none"` (supprimé : un cadre sans centre, ou des coins seuls) ; `scale` = pixels par texel. Si le
+  widget est plus petit que deux coins, ils sont réduits ensemble. Un widget la prend par `"image": "<nom>"` (par état ;
+  `"none"` la retire), teintée par `"imageTint"` ; elle se dessine par-dessus `background` (souvent transparent). Exemple livré :
+  `res/themes/framed.json` (cadres biseautés, `res/themes/images/`).
+
+```json
+"images": { "frame.button": { "file": "images/button.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1 } },
+"widgets": { "button": { "background": "#00000000", "image": "frame.button",
+                         "states": { "hover": { "image": "frame.buttonHover" }, "disabled": { "imageTint": "#ffffff80" } } } }
+```
+- **Propriétés** : `background`, `foreground`, `border`, `accent`, `muted`, `shadowColor`, `imageTint` (couleurs) ; `borderWidth`,
+  `radius`, `padding`, `spacing`, `fontSize`, `shadowSize`, `shadowOffset`, `width` (pixels) ; `image` (nom d'image ou `"none"`).
 - **États** : `normal`, `hover`, `pressed`, `disabled`, `focus`. Ordre d'application : `default`, le widget, l'état de
   `default`, l'état du widget.
 - **Types de widget** : `panel`, `box`, `label`, `title`, `caption`, `button`, `checkbox`, `slider`, `textField`, `dropdown`, `popup`,

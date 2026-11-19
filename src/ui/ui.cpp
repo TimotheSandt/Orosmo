@@ -102,7 +102,8 @@ bool blocksMouse(const Ui &ui, const Widget *w)
 {
     for (const Widget *p = w; p != nullptr; p = p->parent())
     {
-        if (p->interactive() || p->style(ui.theme()).background.a > 0.0f)
+        const Style s = p->style(ui.theme());
+        if (p->interactive() || s.background.a > 0.0f || s.image)
         {
             return true;
         }

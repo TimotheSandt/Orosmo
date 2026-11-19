@@ -44,10 +44,12 @@ core::Result<std::unique_ptr<CanvasRenderer>> CanvasRenderer::create(rhi::Device
     auto rect = library.loadGraphics(shaderDirectory / "ui_rect.vert", shaderDirectory / "ui_rect.frag");
     auto glyph = library.loadGraphics(shaderDirectory / "ui_glyph.vert", shaderDirectory / "ui_glyph.frag");
     auto layer = library.loadGraphics(shaderDirectory / "ui_layer.vert", shaderDirectory / "ui_layer.frag");
-    if (!rect || !glyph || !layer)
+    auto image = library.loadGraphics(shaderDirectory / "ui_image.vert", shaderDirectory / "ui_image.frag");
+    if (!rect || !glyph || !layer || !image)
     {
-        return std::unexpected(!rect ? rect.error() : (!glyph ? glyph.error() : layer.error()));
+        return std::unexpected(!rect ? rect.error() : (!glyph ? glyph.error() : (!layer ? layer.error() : image.error())));
     }
+    canvas->image_ = *image;
     canvas->rect_ = *rect;
     canvas->glyph_ = *glyph;
     canvas->layerImage_ = *layer;
@@ -129,7 +131,7 @@ core::Result<CanvasRenderer::Atlas *> CanvasRenderer::atlasFor(const AtlasImage 
     }
     if (image.width == 0 || image.height == 0 || image.rgba.size() != static_cast<std::size_t>(image.width) * image.height * 4)
     {
-        return makeError(ErrorCode::kInvalidArgument, "CanvasRenderer: invalid glyph atlas");
+        return makeError(ErrorCode::kInvalidArgument, "CanvasRenderer: invalid glyph atlas or image");
     }
     TextureInfo info;
     info.width = image.width;
@@ -228,6 +230,10 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         {
             glyphFloats += g->vertices.size();
         }
+        else if (const auto *i = std::get_if<DrawImage>(&c))
+        {
+            glyphFloats += i->vertices.size();
+        }
     }
     if (glyphFloats > 0)
     {
@@ -252,6 +258,10 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
             if (const auto *g = std::get_if<DrawGlyphs>(&c))
             {
                 all.insert(all.end(), g->vertices.begin(), g->vertices.end());
+            }
+            else if (const auto *i = std::get_if<DrawImage>(&c))
+            {
+                all.insert(all.end(), i->vertices.begin(), i->vertices.end()); // même tampon, dans l'ordre des commandes
             }
         }
         if (auto r = glyphBuffer_.update(0, std::as_bytes(std::span(all))); !r)
@@ -339,6 +349,28 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
             encoder.setPushConstants(bytesOf(push));
             encoder.setVertexBuffer(0, glyphBuffer_.handle(), offset);
             encoder.draw(static_cast<std::uint32_t>(g->vertices.size() / 4));
+        }
+        else if (const auto *img = std::get_if<DrawImage>(&command))
+        {
+            const std::uint64_t offset = glyphOffset;
+            glyphOffset += img->vertices.size() * sizeof(float);
+            if (img->vertices.empty() || !img->image || (!surface.clips.empty() && surface.clips.back().empty()))
+            {
+                continue;
+            }
+            auto texture = atlasFor(*img->image);
+            auto pipe = pipeline(*image_, surface.format, Blend::kStraight, true);
+            if (!texture || !pipe)
+            {
+                status = std::unexpected(!texture ? texture.error() : pipe.error());
+                continue;
+            }
+            GlyphPush push{{surface.logical.x, surface.logical.y, 0, 0}, {img->tint.r, img->tint.g, img->tint.b, img->tint.a}};
+            encoder.setPipeline(*pipe);
+            encoder.setBindGroup(1, (*texture)->group);
+            encoder.setPushConstants(bytesOf(push));
+            encoder.setVertexBuffer(0, glyphBuffer_.handle(), offset);
+            encoder.draw(static_cast<std::uint32_t>(img->vertices.size() / 4));
         }
         else if (const auto *image = std::get_if<DrawLayerImage>(&command))
         {

@@ -137,6 +137,37 @@ TEST_SUITE("renderer/canvas")
         c.gpu.expectNoValidationErrors();
     }
 
+    TEST_CASE("UI-07: images are sampled and multiplied by the tint; one command holds several quads")
+    {
+        Canvas c(16);
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        auto image = std::make_shared<rd::AtlasImage>();
+        image->id = rd::newAtlasId();
+        image->width = 2;
+        image->height = 1;
+        image->rgba = {255, 0, 0, 255, 0, 0, 255, 255}; // rouge | bleu
+        rd::DrawImage cmd;
+        cmd.image = image;
+        cmd.tint = {1, 1, 1, 1};
+        // Deux quadrilatères : la moitié gauche de l'image (rouge) en (0,0), la moitié droite (bleu) en (8,8), au centre des texels.
+        const float q[] = {0, 0, 0.25f, 0.5f, 0, 8, 0.25f, 0.5f, 8, 8, 0.25f, 0.5f, 0, 0, 0.25f, 0.5f, 8, 8, 0.25f, 0.5f, 8, 0, 0.25f, 0.5f,
+                           8, 8, 0.75f, 0.5f, 8, 16, 0.75f, 0.5f, 16, 16, 0.75f, 0.5f, 8, 8, 0.75f, 0.5f, 16, 16, 0.75f, 0.5f, 16, 8, 0.75f, 0.5f};
+        cmd.vertices.assign(std::begin(q), std::end(q));
+        rd::DrawList l = listOf();
+        l.image(cmd);
+        cmd.tint = {0, 1, 0, 1}; // teinte verte sur le rouge : noir
+        cmd.vertices.resize(24);
+        for (std::size_t i = 0; i < 24; i += 4)
+            cmd.vertices[i + 1] += 8.0f; // en (0, 8)
+        l.image(cmd);
+        REQUIRE(c.render(l, false).has_value());
+        CHECK(c.px(3, 3) == Px{255, 0, 0, 255});
+        CHECK(c.px(12, 12) == Px{0, 0, 255, 255});
+        CHECK(c.px(3, 12) == Px{0, 0, 0, 255});
+        CHECK(c.px(12, 3) == Px{0, 0, 0, 0});
+        c.gpu.expectNoValidationErrors();
+    }
+
     TEST_CASE("the logical size is independent of the target size (HiDPI, render scale)")
     {
         Canvas c(32);

@@ -1,5 +1,6 @@
 #include "engine/ui/widget.hpp"
 
+#include "engine/ui/nine_slice.hpp"
 #include "engine/ui/ui.hpp"
 
 #include "Logger.h"
@@ -205,7 +206,7 @@ void Widget::drawChildren(const Ui &ui, renderer::DrawList &list) const
 
 void Widget::drawBox(renderer::DrawList &list, const Rect &r, const Style &style)
 {
-    if (style.shadowSize > 0.0f && style.shadowColor.a > 0.0f && style.background.a > 0.0f)
+    if (style.shadowSize > 0.0f && style.shadowColor.a > 0.0f && (style.background.a > 0.0f || style.image))
     {
         const float s = style.shadowSize;
         list.rect(renderer::DrawRect{.position = r.position + glm::vec2(-s, -s + style.shadowOffset),
@@ -216,6 +217,10 @@ void Widget::drawBox(renderer::DrawList &list, const Rect &r, const Style &style
     }
     if (style.background.a <= 0.0f && (style.borderWidth <= 0.0f || style.border.a <= 0.0f))
     {
+        if (style.image)
+        {
+            appendNineSlice(list, *style.image, r, style.imageTint);
+        }
         return;
     }
     renderer::DrawRect box{.position = r.position, .size = r.size, .color = style.background, .radius = style.radius};
@@ -225,6 +230,10 @@ void Widget::drawBox(renderer::DrawList &list, const Rect &r, const Style &style
         box.borderColor = style.border;
     }
     list.rect(box);
+    if (style.image)
+    {
+        appendNineSlice(list, *style.image, r, style.imageTint); // l'image par-dessus le fond (qui peut être transparent)
+    }
 }
 
 void Widget::drawText(const Ui &ui, renderer::DrawList &list, std::string_view text, const Rect &r, const Style &style, Align align,

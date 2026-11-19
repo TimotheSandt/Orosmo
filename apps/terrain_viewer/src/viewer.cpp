@@ -130,7 +130,7 @@ engine::core::Result<> Viewer::init()
     const auto themes = state_.themeNames();
     const auto theme = std::find(themes.begin(), themes.end(), options_.theme);
     if (theme == themes.end())
-        return makeError(ErrorCode::kInvalidArgument, "unknown theme '" + options_.theme + "' (dark, light)");
+        return makeError(ErrorCode::kInvalidArgument, "unknown theme '" + options_.theme + "' (dark, light, framed)");
     state_.theme = static_cast<int>(theme - themes.begin());
     loadTheme();
     ui_->themes().watch(watcher_);
@@ -149,7 +149,7 @@ engine::core::Result<> Viewer::init()
 
 void Viewer::loadTheme()
 {
-    const std::string name = state_.themeNames()[static_cast<std::size_t>(std::clamp(state_.theme, 0, 1))];
+    const std::string name = state_.themeNames()[static_cast<std::size_t>(std::clamp(state_.theme, 0, static_cast<int>(state_.themeNames().size()) - 1))];
     const auto path = options_.resources / "themes" / (name + ".json");
     if (auto r = ui_->themes().load(path); !r)
     {

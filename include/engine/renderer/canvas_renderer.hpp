@@ -104,6 +104,7 @@ class CanvasRenderer
     std::shared_ptr<ShaderProgram> rect_;
     std::shared_ptr<ShaderProgram> glyph_;
     std::shared_ptr<ShaderProgram> layerImage_;
+    std::shared_ptr<ShaderProgram> image_;
     rhi::SamplerHandle atlasSampler_;
     GpuBuffer glyphBuffer_;
     std::map<std::uint64_t, Layer> layers_;

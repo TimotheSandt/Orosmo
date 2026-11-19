@@ -168,7 +168,7 @@ demo-test-gpu:
 # ── TOOL-01 : terrain-viewer ──
 #   make viewer           construit apps/terrain_viewer/bin/terrain-viewer (et copie ses ressources dans bin/res)
 #   make viewer-run       lance le visualiseur (ARGS="--seed 42 --preset mountains --theme light")
-#   make viewer-capture   images sans fenêtre, thème sombre puis clair : build/viewer-capture/{dark,light}/viewer.png
+#   make viewer-capture   images sans fenêtre, thèmes sombre, clair et à cadres : build/viewer-capture/{dark,light,framed}/viewer.png
 VIEWER := apps/terrain_viewer/bin/terrain-viewer$(if $(filter Windows_NT,$(OS)),.exe)
 .PHONY: viewer viewer-run viewer-capture
 viewer:
@@ -180,6 +180,7 @@ viewer-run: viewer
 viewer-capture: viewer
 	./$(VIEWER) --headless --seed 42 --preset mountains --theme dark --capture build/viewer-capture/dark --capture-frames 5
 	./$(VIEWER) --headless --seed 42 --preset mountains --theme light --capture build/viewer-capture/light --capture-frames 5
+	./$(VIEWER) --headless --seed 42 --preset mountains --theme framed --capture build/viewer-capture/framed --capture-frames 5
 	python3 tools/compare_png.py build/viewer-capture/dark/viewer.png build/viewer-capture/light/viewer.png > /dev/null \
 	    && { echo "viewer-capture : les deux thèmes donnent la même image"; exit 1; } || echo "viewer-capture : OK (deux thèmes, deux images)"
 
