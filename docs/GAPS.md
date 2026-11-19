@@ -20,7 +20,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | PLAT-02 | InputManager | Partiel | Dispositions QWERTY/QWERTZ/AZERTY/DVORAK, remappage par actions, états `Release/PressBegin/Pressed/PressEnd` : présents. Détection de la disposition : Windows (`GetKeyboardLayout`, non vérifié ici) et, depuis `fix/keyboard-layout-detection`, Linux/macOS par les noms de touches de GLFW (`DetectKeyLayoutFromKeyNames`, testé ; vérifié sur AZERTY/Linux) ; autres dispositions (Colemak...) : QWERTY ; molette « … | M2 |
 | R2D-01 | Batch de sprites | Partiel | Un sprite = un dessin ; pas de batch instancié, d'atlas, de tri par couche et matériau. | M5 |
 | R2D-02 | Caméra 2D | Partiel | Passe en coordonnées pixel et filtrage « plus proche » disponible ; pas de classe de caméra 2D ni d'échelle entière. | M5 |
-| REN-02 | Caméra | Partiel | Perspective seule ; jitter présent. Pas d'orthographique, pas de reverse-Z/plan lointain infini, pas de rendu relatif à la caméra (flottants). | M3 |
+| REN-02 | Caméra | Fait (M3) | Reverse-Z, plan lointain infini, perspective et orthographique, rendu relatif à la caméra : voir STATUS « M3 ». | — |
 | REN-03 | Données par image (groupe 0) | Partiel | Un UBO par caméra avec position et viewProj seulement ; pas de matrices inverses, image précédente, temps, résolution, graine, soleil, atmosphère. Pas de `static_assert` sur tailles/offsets. | M5 |
 | REN-05 | Types de lumières | Partiel | Ambiante, directionnelle, ponctuelle, spot via SSBO : oui, sur l'abstraction actuelle (pas le RHI cible). Pas de `static_assert` de disposition (un commentaire documente un bug de décalage corrigé). `LightManager::SetLight` … | M2 (migration) ; M5 |
 | REN-28 | Instancing | Partiel | Données par instance possibles dans un maillage ; un draw call par `Mesh`, pas de regroupement par (maillage, matériau). | M5 |
@@ -34,16 +34,16 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | RHI-10 | Dessin instancié et indirect | Partiel | Dessin instancié (attributs par instance) oui ; `drawIndirect` / multi-draw : grep `DrawIndirect\|MultiDraw` : 0. | M2 (instancié) ; M5 (indirect) |
 | RHI-12 | Pipeline de shaders | Partiel | Source GLSL 430 compilée directement par OpenGL ; pour Vulkan : réécriture par chaînes (`#version 450`, `set = 0`) puis shaderc **à l'exécution**. Absents : compilation hors ligne, SPIRV-Cross (grep : 0), réflexion des … | M2 |
 | RHI-15 | Rendu vers plusieurs cibles (MRT) | Partiel | Plusieurs cibles couleur (jusqu'à `maxColorAttachments`) et profondeur lisible : oui (vecteurs de mouvement RG16F ajoutés à la demande). Pas d'opérations load/store par cible ; limite 8 codée en dur côté Vulkan … | M2 |
-| TER-01 | Bruit | Partiel | Bruit blanc, bruit lissé (interpolation de valeurs hachées), fBm : oui (CPU, `float`). `PerlinNoise` n'est pas un bruit de Perlin à gradients. Pas de Simplex, Worley, distorsion de domaine ; **pas de version GPU** ni de … | M3 |
-| TER-02 | Génération par tuiles | Partiel | Une grille unique déterministe pour une graine. Pas de tuiles, pas d'asynchronisme, pas de dépendance (graine, coordonnées, paramètres). Le code est dans l'**application de démo**, et `TerrainGenerator` possède un `Mesh` … | M3 |
+| TER-01 | Bruit | Fait (M3) | `engine::world` : Perlin, Simplex, Worley, fBm, distorsion ; GPU égal au CPU dans la tolérance : voir STATUS « M3 ». | — |
+| TER-02 | Génération par tuiles | Fait (M3) | Tuiles déterministes, génération asynchrone : voir STATUS « M3 ». | — |
 | TEST-01 | Tests unitaires | Partiel | doctest en place (117 cas verts, clone propre) ; CI écrite mais jamais observée sur GitHub ; couverture de `core` partielle (Logger, InputManager, Light, TextRenderer, compilateur `.cui` : 0 test). | M0 (observer la CI) puis continu |
-| TEST-03 | Tests de déterminisme | Partiel | Séquence PCG figée par des valeurs d'or (`noise_tests.cpp`) et image de terrain reproductible (3 captures identiques, `docs/BASELINE/reference/`) ; pas de somme de contrôle des sorties de génération sur 3 systèmes ; `Noise()` sans graine reste lié à l'horloge. | M3 |
-| TOOL-01 | Visualiseur de terrain | Partiel | Caméra libre et terrain affichés ; pas de réglages (pas de widgets) ni d'export. Ce n'est pas un `terrain-viewer`. | M3 |
+| TEST-03 | Tests de déterminisme | Partiel | Sommes de contrôle de référence (bruit, tuile, région, terrain-gen) vérifiées en CI Linux ; Windows et macOS jamais observés (G110). | M4 |
+| TOOL-01 | Visualiseur de terrain | Partiel | `apps/terrain_viewer` livré (M3) ; caméra et export vérifiés à la main seulement (G109). | M4 |
 | UI-01 | UIManager | Partiel | Composant, conteneur, VBox/HBox, `DeferredValue<T>` à double tampon, mixin CRTP : présents et testés. « Migré sur le RHI » : non (dépend de `Graphics` actuel, cycle `UI`↔`Graphics`). `Manager` est un singleton … | M2 |
-| UI-05 | Langage d'interface : compilateur vers C++ | Partiel | Compilation vers C++ sans coût d'exécution supplémentaire, dépendances de build, `@cui-cpp` : oui. Erreurs **ligne:colonne** du source : oui (nom du fichier présent à l'exécution `run`, absent du JSON `check`). **Manque** : … | M3 |
-| UI-06 | Mise en page complète | Partiel | VBox, HBox, marges, alignement, tailles px/% : oui. Pas de grille, de superposition (ZStack), de tailles flexibles/minimales. | M3 |
-| UI-07 | Thèmes en JSON | Partiel | Thème en C++ (11 couleurs nommées, préréglages clair/sombre, états `HOVER/PRESSED/DISABLED`). Pas de JSON (grep `json` dans src/UI : 0), pas de jetons de rayon/police/ombre, pas de changement à chaud. Des couleurs sont aussi … | M3 |
-| UI-11 | Spécification et tests du langage | Partiel | Une spécification existe (exigences, grammaire, plan) mais pas `docs/UI_LANGUAGE.md`, et **aucun test de compilation** (valides/invalides). | M3 |
+| UI-05 | Langage d'interface : compilateur vers C++ | Fait (M3) | Cible `engine/ui` du compilateur `cui` : voir STATUS « M3 » et `docs/UI_LANGUAGE.md`. | — |
+| UI-06 | Mise en page complète | Fait (M3) | `engine::ui` : VBox, HBox, Grid, Overlay, ScrollView, tailles fit/fixed/fill, marges, alignement. | — |
+| UI-07 | Thèmes en JSON | Partiel | Thèmes JSON livrés (M3) ; manque un jeton de famille de police (G111). | M5 |
+| UI-11 | Spécification et tests du langage | Fait (M3) | `docs/UI_LANGUAGE.md`, cargo test, `make cui-test`. | — |
 | ASSET-01 | Import glTF 2.0 | Absent | Aucun import de modèle. | M6 |
 | CORE-02 | Gestion d'erreurs | Absent | Aucune erreur attendue ne passe par `std::expected` ; plusieurs `throw` dans le flux normal (violation de la règle 10). Pas d'assertion avec message. | M1 |
 | CORE-04 | Système de tâches | Absent | Pas de pool, de dépendances ni d'attente de groupe. | M1 |
@@ -54,20 +54,20 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | REN-10 | Matériaux PBR | Absent | Pas de PBR (grep `metallic\|roughness\|albedo` : 0) ; textures sur `Mesh::AddTexture` mais pas de modèle de matériau. | M6 |
 | REN-17 | HDR et tonemapping | Absent | Pas de cible HDR ni de tonemapping. | M5 |
 | REN-30 | Culling CPU | Absent | Absent. | M5 |
-| REN-34 | Dessin de debug | Absent | Absent. | M3 |
+| REN-34 | Dessin de debug | Fait (M3) | `DebugDraw`, `SceneRenderer::drawDebug`. | — |
 | REN-37 | Modes de fusion des matériaux | Absent | Pas de `BlendMode` par matériau ; seulement deux interrupteurs d'état global. | M5 |
 | RHI-07 | Groupes de liaison | Absent | Pas de groupes 0/1/2 ; le Vulkan « patche » `layout(binding)` en `set = 0` (une seule table). | M2 |
 | RHI-09 | Compute | Absent | Aucun appel de calcul, aucun tampon de stockage utilisé hors SSBO des lumières. | M2 |
 | RHI-14 | Tests de rendu | Absent | Outil de comparaison (`tools/compare_png.py`) et image de référence OpenGL existent (M0) ; pas encore de test automatisé « image de référence par backend » ni de rapport de différence dans la CI. | M2 |
 | RHI-16 | Textures 3D et images de stockage | Absent | Pas de textures 3D, d'images de stockage ; RGBA16F/R32F absents des formats (seuls R32UI et RG16F). | M2 |
-| TER-03 | Maillage à niveaux de détail | Absent | Absent (grille régulière de 498 002 triangles). | M3 |
-| TER-04 | Streaming | Absent | Absent. | M3 |
-| TER-07 | Texturage du terrain | Absent | Pas de mélange pente/altitude ni texturage triplanaire. | M3 |
-| TER-11 | Export | Absent | Aucun export. | M3 |
-| TER-12 | Interface de réglage | Absent | Aucune interface de réglage. | M3 |
-| TOOL-02 | Générateur en ligne de commande | Absent | Absent (nécessite PLAT-04). | M3 |
+| TER-03 | Maillage à niveaux de détail | Fait (M3) | Quadtree équilibré, bords cousus. | — |
+| TER-04 | Streaming | Partiel | Streaming asynchrone sous budget (M3) ; absence de saccade non mesurée (G108). | M4 |
+| TER-07 | Texturage du terrain | Fait (M3) | `TerrainRenderer` : pente/altitude, triplanaire, tableau de textures. | — |
+| TER-11 | Export | Fait (M3) | PNG 16 bits, EXR, OBJ, glTF, STL fermé, biomes, relus par les tests. | — |
+| TER-12 | Interface de réglage | Fait (M3) | Panneau du visualiseur en langage d'interface, préréglages enregistrables, réflexion. | — |
+| TOOL-02 | Générateur en ligne de commande | Fait (M3) | `apps/terrain_gen`, `make terrain-gen-check`. | — |
 | UI-02 | Rendu indépendant du backend | Absent | Les composants dessinent directement via sprites ; aucune liste de dessin intermédiaire, pas d'adaptateur vers un batch 2D. | M2 |
-| UI-03 | Widgets de base | Absent | Aucun bouton, curseur, case à cocher, liste, champ de texte, etc. Seuls `Text` et `Label` (alias) existent. | M3 |
+| UI-03 | Widgets de base | Fait (M3) | `engine::ui` : tous les widgets de la liste, infobulles. | — |
 | TOOL-03 | Capture d'écran | Partiel | Fait en M0 pour OpenGL (`--capture`, `Screenshot::SavePng`, `tools/compare_png.py`) ; Vulkan refusé jusqu'en M4 ; `ui.png` non reproductible (FPS affichés) ; pas de capture sans fenêtre (PLAT-04). | M0 (fait) ; M2 (usage RHI-14) |
 
 ## P1
@@ -106,7 +106,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | GAME-05 | Paramètres de gameplay en JSON | Absent | Absent. | M8 |
 | GAME-06 | Construction incrémentale | Absent | Absent. | M8 |
 | GAME-07 | Version finale | Absent | Absent. | M8 |
-| PLAT-05 | Saisie de texte | Absent | Pas de saisie de texte, d'IME, de presse-papiers ; pas de décodage UTF-8 vers points de code. | M3 (proposé : champ de texte, UI-03) |
+| PLAT-05 | Saisie de texte | Partiel | Texte Unicode en UTF-8 (`InputManager::GetTextInput`, M3) ; ni IME ni presse-papiers (G107). | M5 |
 | R2D-04 | Cartes de tuiles | Absent | Absent. | M5 (proposé : non cité dans docs/05) |
 | R2D-06 | Plusieurs vues | Absent | Absent (un `Renderer3D` et un `Renderer2D` par fenêtre). | M5 |
 | REN-01 | Graphe de passes et plugins de rendu | Absent | Pas de graphe de passes, de ressources transitoires ni de plugins : le pipeline est une classe `Renderer` avec `Renderer2D`/`Renderer3D` dérivés. Points d'extension existants : passes de post-traitement et modes d'upscaling … | M5 |
@@ -132,12 +132,12 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | TER-06 | Biomes | Absent | Absent. | M7 |
 | TER-08 | Végétation et dispersion | Absent | Absent. | M7 |
 | TER-09 | Planètes sphériques | Absent | Absent. | M7 |
-| TER-13 | Lancer de rayon sur le terrain | Absent | Absent. | M3 |
+| TER-13 | Lancer de rayon sur le terrain | Fait (M3) | `raycastTerrain`, cohérent avec la profondeur rendue. | — |
 | UI-04 | Outils de debug | Absent | Absent. | M8 |
 | UI-08 | Rechargement à chaud de l'interface | Absent | Absent. | M8 |
 | UI-09 | Navigation et accessibilité de base | Absent | Absent. | M8 |
 | UI-10 | Inspecteur d'interface | Absent | Absent. | M8 |
-| UI-12 | Paramètres réfléchis → curseurs | Absent | Absent. | M3 |
+| UI-12 | Paramètres réfléchis → curseurs | Fait (M3) | `reflectedPanel`, `ParamPanel` du langage. | — |
 
 ## P2
 
@@ -356,3 +356,37 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | G101 | Fichiers hors de `platform` | Le compilateur de shaders (résolveur d'includes, cache disque, rechargement) et `savePng`/`loadPng` ouvrent les fichiers par la bibliothèque standard (`std::ifstream`, `std::filesystem`, stb) et non par un service de fichiers de `platform`/VFS (docs/03 §6, revue CodeRabbit). Ce ne sont pas des appels système directs, mais le passage par le VFS (CORE-08) est à faire avec les assets (M3+) : l'`IncludeResolver` est déjà le point d'injection. | M3 (assets) |
 | G102 | Revue CodeRabbit PR #7, 2e passe : reporté ou refusé, avec raison | (a) **Rechargement à chaud** : seul le fichier finalement choisi par le résolveur d'includes est surveillé (ou, s'il n'y en a aucun, le chemin relatif au fichier qui inclut) ; créer un include plus prioritaire dans une autre racine ne relance pas la compilation. Corriger demande que `IncludeResolver` expose les chemins examinés : changement de contrat, à décider avec les assets (M3). (b) **Entrées retirées du rechargeur** gardées dans son tableau (un booléen testé par entrée et par image) : coût négligeable devant la complexité d'identifiants découplés de l'indice ; refusé. (c) **Test de la clôture GPU** qui échouerait si l'attente disparaissait : il faudrait garder une clôture non signalée de façon déterministe, ce qu'OpenGL ne permet pas ; la libération reste prouvée par le seuil en images et par le code (`flushReleases`). | M3 / refusé |
 | G103 | Revue CodeRabbit PR #7, 2e passe : corrigé | RHI (`fix/M2-review2-rhi`) : toute erreur GL de création est un échec, clôture ou attente en échec -> `glFinish`, rappel de validation retiré seulement s'il est à nous, barrière entre dessins selon le programme (stockage), effacements validés avant le premier, `bufferRowLength` borné, rappel de rechargement conservé (`shared_ptr`), `check_headers` multi-triplet, `TempDir` sans boucle infinie, tests sans appel `gl*`. Rendu (`fix/M2-review2-renderer`) : un étage en échec n'installe aucun autre étage, reprise en recompilant tous les étages, push constants de la révision du pipeline dessiné, bloc `ModelBlock` vérifié par `static_assert`, échec de la scène = image non comptée ni capturée, couleur de remplacement prémultipliée dans une couche, découpage dans un parent vide, aucune éviction après une liste en erreur, premier mode supporté d'un nom, `generatedFrame()` et historique invalidés par un échec, erreurs d'encodeur de `FullscreenBlit`, redessin partiel avec les descendants débordants, `docs/RHI.md` traite les erreurs, test de `Manager::InvalidateLayers`. | fait |
+
+## Revue CodeRabbit de la PR #7, 3e passe (2026-11-19, commit `b1462ae`) : relevé, non traité
+
+Relevé à la demande de l'auteur avant la fin de M3 ; **aucune correction faite** (les constats ne sont pas encore vérifiés sur le
+code). Chemins de M2 ; depuis M3, `src/UI/` est `src/ui/legacy/`. À traiter sur une branche `fix/M2-review3-*` depuis `dev`.
+
+| ID | Constat (gravité CodeRabbit) | Fichier | Proposition |
+| --- | --- | --- | --- |
+| G104a | **Majeur** : en mode sans fenêtre SANS dossier de capture, une erreur de scène est effacée (`sceneError.reset()`) sans positionner `captureFailed` : `captureSucceeded()` vaut vrai et le processus réussit sans avoir produit d'image | `apps/demo/src/Game/Game.cpp:412` | mémoriser l'échec dès que `headless`, arrêter la boucle sans fenêtre ; garder la reprise en mode fenêtré |
+| G104b | **Majeur** : barrière de stockage omise quand un dessin qui ÉCRIT par `imageStore` est suivi, dans la même passe, d'un dessin qui LIT la texture par `sampler2D` (`p->usesStorage` faux pour le second) | `src/rhi/opengl/gl_encoder.cpp:627` | barrière avant tout dessin qui suit un dessin de stockage de la passe ; test producteur `imageStore` → consommateur `sampler2D` |
+| G104c | Mineur : `FullscreenBlit::copy` / `compose` dessinent même si `beginRenderPass` a échoué (une passe déjà ouverte reste ouverte) | `src/renderer/fullscreen_blit.cpp:123, 140` | rendre l'erreur de l'encodeur avant toute commande, puis vérifier `encoder.error()` après `beginRenderPass` |
+| G104d | Mineur : `historyValid_` reste vrai si un post-traitement échoue après une image réussie : l'image suivante réutilise un historique périmé | `src/renderer/scene_renderer.cpp:470` | invalider avant les post-traitements, ne revalider qu'après la copie finale |
+| G104e | Mineur : le contrat d'erreur du README du RHI promet qu'aucun appel GL ne suit une commande invalide ; `setBindGroup` lie les entrées une à une (effets partiels) | `src/rhi/README.md:44` | documenter les effets partiels ; garder à part la garantie vérifiée des valeurs d'effacement |
+| G104f | Mineur : la zone redessinée d'un conteneur suit ses bornes, pas celles de son contenu qui déborde : un enfant qui déborde peut garder une ancienne couleur | `src/ui/legacy/Core/Container.cpp:157` | zone = bornes du contenu visible, sinon redessiner toute la couche du sous-arbre |
+| G104g | Mineur : le test G99 passerait aussi avec un redessin complet | `tests/renderer/ui_collect_tests.cpp:233` | exiger `BeginLayer{clear = false}` et un `PushClip` couvrant `back` |
+| G104h | Mineur : `check_headers.py` cherche les dépendances dans tous les triplets vcpkg installés, le build dans un seul | `tools/check_headers.py:32` | utiliser `VCPKG_TRIPLET`, exiger `--vcpkg` si plusieurs triplets sans choix |
+| G104i | Détail : la disposition de `ModelBlock` n'est vérifiée que côté C++ ; un ordre différent des matrices dans `mesh.vert` passerait | `src/renderer/mesh.cpp:18` | en-tête commun C++/GLSL ou vérification des offsets par réflexion (docs/03 §4) |
+| G104j | Contrôle « règles de CLAUDE.md » en échec : des tests incluent GLFW (`tests/suites/input_layout_tests.cpp`, `tests/platform/window_input_tests.cpp`, `tests/rhi/window_surface_tests.cpp`) | `tests/` | (A) passer par l'API de `platform` (rappels injectables, `Window`) ; ou (B) exception écrite de l'auteur dans `docs/QUESTIONS.md` et `tests/` autorisé par le contrôle d'isolation |
+
+## Ajouts de M3 (G105 à G115)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G105 | API de `platform` en `PascalCase` | `Window`, `InputManager` : noms hors de `docs/03` §7 et hors de `engine::platform` (suite de G96). Non renommés en M3 lot F : le langage hérité (`generator.rs`, convention `Get` + nom) et la démo les nomment ; le guide les déclare **provisoires**. Proposition : renommer avec la bascule de la démo vers `engine::ui` (A30, A31) | M5 |
+| G106 | Texte ASCII | `TextRendererFont` passe par `UI::TextRenderer`, qui charge les caractères 0 à 127 et lit le texte octet par octet : les accents d'un libellé ne s'affichent pas (REN-36). Les champs de texte gardent l'UTF-8 entier | M5 (REN-36) |
+| G107 | Saisie de texte partielle | Ni IME, ni presse-papiers, ni sélection dans `TextField` ; Retour arrière et flèches sans répétition (le visualiseur lit `IsKeyJustPressed`) | M5 |
+| G108 | Streaming non mesuré | Pas de mesure de saccade (TER-04) ; un changement de paramètre recrée le `TileStreamer` (toutes les tuiles régénérées) ; le jeu de tuiles affiché change d'un coup quand la sélection est prête | M4 |
+| G109 | Visualiseur vérifié à la main | `make viewer-capture` (CI) prouve le rendu, le panneau et le changement de thème ; caméra libre, export PNG et préréglage « Save » ne sont pas exercés automatiquement (lancement fenêtré de 6 s sans erreur sous Linux, X11) | M4 |
+| G110 | Windows et macOS | `make e2e-init`, `terrain-gen-check`, `cui-test` en CI Windows et macOS jamais observés verts ; **macOS : aucun rendu avant M4** (OpenGL 4.1, le RHI demande 4.3) | M4 |
+| G111 | Thème : police | Pas de jeton de famille de police (un seul fichier de police) ; quelques constantes de comportement dans le code (décalage de l'infobulle, pas de défilement = 3 lignes du thème, largeur minimale d'un champ = 10 caractères) | M5 |
+| G112 | Deux modules d'interface | `engine::ui` (neuf) et `UI::` (hérité, démo, `PerformanceView.cui`) coexistent (A30) ; `once` n'est pas figé par la cible `engine/ui` ; les erreurs d'argument sont placées sur l'élément ou le modificateur ; la coloration de l'extension VS Code ne connaît pas `$` | M5 |
+| G113 | Cache du code généré | Le hachage en tête des `.gen.h` couvre le source et `OUTPUT_FORMAT_VERSION`, pas la version du compilateur `cui` : changer le générateur sans incrémenter cette constante garde d'anciens fichiers | M4 |
+| G114 | Projet d'`engine init` | Le modèle de projet est la démo complète (terrain, interface héritée) ; un modèle minimal (`apps/minimal`) existe dans le paquet mais `engine init` ne le propose pas | M4 |
+| G115 | Correction de `InputManager` | `glfwGetCursorPos` écrivait des `double` dans les `float` de `MouseMoveData` (position fausse, `delta.x` écrasé) : corrigé en M3 (lot E) ; aucun test automatisé (pas de souris simulée, comme G95) | — |

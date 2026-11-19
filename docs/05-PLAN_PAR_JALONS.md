@@ -101,6 +101,10 @@ de `renderer` (génération sans GPU) ; le calcul GPU passe par le RHI (`src/wor
 | E | **Interface** : widgets, compilateur du langage (erreurs fichier:ligne:colonne, événements nommés), mise en page complète, thèmes JSON à jetons et états rechargés à chaud, spécification `docs/UI_LANGUAGE.md` et tests, paramètres réfléchis → curseurs ; panneau de réglage du terrain (graine, préréglages) ; visualiseur | UI-03, UI-05, UI-06, UI-07, UI-11, UI-12, TER-12, TOOL-01 |
 | F | **Release utilisable** : API publique figée et nommée selon `docs/03` §7, `docs/USING_THE_ENGINE.md`, paquet et corps de release à jour, test de bout en bout `engine init` + compilation en CI sur les trois systèmes, exemples compilables depuis le paquet | DOC-01, BLD-01, BLD-02 |
 
+**État (2026-11-19)** : les six lots sont fusionnés dans `dev` (branches `feat/TER-01-noise` … `docs/DOC-01-using-the-engine`) ;
+bilan, preuves et écarts dans `docs/releases/M3.md`. Écarts au plan : l'API de `platform` reste en `PascalCase` (A31, G105) ;
+l'interface héritée `UI::` reste pour la démo (A30) ; Windows et macOS ne sont pas observés (G110).
+
 **Démo** : visualiseur avec graine et paramètres modifiables en direct dans une interface décrite dans le langage maison, thème changeable ; `terrain-gen --seed 42 --size 4096 --out relief.png` produit une carte de hauteur identique à chaque lancement.
 **Terminé** : somme de contrôle de référence ; pas de fissure entre niveaux de détail ; budget mémoire respecté ; exports vérifiés en les rouvrant ; tests de compilation du langage verts ; `docs/UI_LANGUAGE.md` écrit. La release de fin de M3 est utilisable : `docs/USING_THE_ENGINE.md` écrit, `engine init` + compilation vérifiés en CI sur les trois systèmes, API publique figée.
 
