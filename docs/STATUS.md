@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour à la fin du sous-lot B6 de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour à la fin du lot C de M2, donc de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -17,6 +17,17 @@ Mis à jour à la fin du sous-lot B6 de M2 (2026-11-18). États détaillés et p
 | **M2 lot B4 : couche de scène `engine::renderer`** | **B4 livré côté code ; B5, B6 et lot C à faire** | `docs/releases/M2-B4.md` : `Camera`, `LightManager`, `Mesh`, `SceneRenderer`, shaders `shaders/rhi/` ; la scène de terrain graine 1 rendue par la nouvelle couche est **identique pixel pour pixel** à l'image de référence du rendu hérité (tolérance 0, Intel Arc) ; 290 cas doctest verts (+10) |
 | **M2 lot B5 : dessin 2D et interface par listes de dessin** | **B5 livré côté code ; B6 et lot C à faire** | `docs/releases/M2-B5.md` : `DrawList`, `CanvasRenderer`, `UI::Manager::Collect` ; **`ui.png` de l'ancien rendu (scène + panneau + boîtes + texte figé) reproduit sans aucun pixel d'écart** ; 304 cas doctest verts (+14) |
 | **M2 lot B6 : bascule de la démo, retrait de l'ancien rendu, isolation bloquante** | **Lot B livré côté code ; lot C à faire** | `docs/releases/M2-B6.md` : la démo présente via le RHI (`scene.png` identique à la référence, écart max 0/255) ; `IGraphicsDevice`, backends OpenGL/Vulkan/Metal et façades supprimés (−16 800 lignes, étiquette `archive/pre-M2-B6-legacy-graphics`) ; `check_api_isolation.py --graphics-only --strict` : **0 infraction** ; 259 cas doctest verts |
+| **M2 lot C : plateforme (fenêtre, entrées, mode sans fenêtre), isolation totale** | **Lot C livré côté code ; M2 terminé côté code, à proposer à `main`** | `docs/releases/M2.md` : `Window` et `InputManager` dans `src/platform/` avec GLFW caché (poignée `void *`), DPI (`GetContentScale`, tampon en pixels réels), molette (le `TODO` disparaît), `--headless`, `--vsync` ; `check_api_isolation.py --strict` **sans baseline : 0 infraction** (GLFW et `<windows.h>` compris) ; capture sans fenêtre **identique** à la référence ; 264 cas doctest verts |
+
+## Identifiants de `docs/02` touchés par M2 lot C
+
+| ID | Avant | Après | Preuve |
+| --- | --- | --- | --- |
+| PLAT-01 | Partiel | Partiel | `include/engine/platform/window.hpp`, `src/platform/window.cpp` : poignée opaque, `GetFramebufferSize`, `GetContentScale`, `RequestClose`, curseur ; `tests/platform/window_input_tests.cpp` (3 cas fenêtre). **Manque** : DPI ×2 non observé (G94), plein écran et sans bordure non testés, `Window` pas encore dans `engine::platform` |
+| PLAT-02 | Partiel | Partiel | molette cumulée par rappel et exposée par `GetMouseScroll` (cas `PLAT-02 the mouse wheel…`, `TODO` retiré) ; `InputManager` dans `src/platform/`. **Manque** : manettes (PLAT-03), remappage persistant, nommage `engine::platform` |
+| PLAT-04 | Absent | Partiel | `--headless` (`GraphicsLaunchOptions::headless`, `Game(bool)`) : aucune fenêtre créée par la démo, `scene.png` **identique** à la référence (0/255) ; cas `launch options parse --headless`. **Manque** : exige encore un serveur d'affichage (GLFW crée un contexte caché, G93), vérifié sous Linux seulement |
+| RHI-08 | Partiel | Partiel | `--vsync` règle `Device::setVSync` ; **manque** : swapchain Vulkan (M4) |
+| TEST-05 | (inchangé) | (inchangé) | isolation des API : bloquante pour toutes les API, baseline supprimée |
 
 ## Identifiants de `docs/02` touchés par M2 B6
 

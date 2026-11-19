@@ -32,10 +32,10 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
-| PLAT-01 | Fenêtre | P0 | Abstraction au-dessus de GLFW : création, redimensionnement, plein écran, DPI élevé, surface pour le RHI. | Partiel |
-| PLAT-02 | InputManager | P0 | Existe déjà. Dispositions QWERTY/AZERTY/DVORAK, remappage, état par image. | Partiel |
+| PLAT-01 | Fenêtre | P0 | Abstraction au-dessus de GLFW : création, redimensionnement, plein écran, DPI élevé, surface pour le RHI. | Partiel (GLFW caché, DPI lisible ; ×2 non observé) |
+| PLAT-02 | InputManager | P0 | Existe déjà. Dispositions QWERTY/AZERTY/DVORAK, remappage, état par image. | Partiel (molette faite) |
 | PLAT-03 | Manettes | P2 | Axes, boutons, hot-plug. | Absent |
-| PLAT-04 | Mode sans fenêtre | P0 | Démarrage sans fenêtre (génération et export en ligne de commande) sur les trois systèmes. | Absent |
+| PLAT-04 | Mode sans fenêtre | P0 | Démarrage sans fenêtre (génération et export en ligne de commande) sur les trois systèmes. | Partiel (`--headless` sous Linux) |
 | PLAT-05 | Saisie de texte | P1 | Texte Unicode, composition IME, presse-papiers. | Absent |
 
 ## C. Couche graphique (`rhi`) : voir `03-ARCHITECTURE_ET_PORTABILITE.md`
