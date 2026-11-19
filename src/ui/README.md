@@ -15,7 +15,10 @@ reste dans `src/ui/legacy/` tant que la démo l'utilise.
 | `widget.hpp` | `Widget` (arbre, identifiant, type de style et surcharges locales, tailles `fit` / `fixed` / `fill` avec min et max, marges, alignement, `columnSpan`, visibilité et activation liées, infobulle, événements `onClick` / `onChange` / `onHover` / `onFocus`), `Binding<T>` (liaison dans les deux sens, écriture différée), `numberBinding`, `handler` |
 | `layout.hpp` | UI-06 : `VBox`, `HBox`, `Panel`, `Grid` (colonnes, `fill`, `columnSpan`), `Overlay`, `ScrollView` (molette, barre, découpage) |
 | `widgets.hpp` | UI-03 : `Label`, `Button`, `Checkbox`, `Slider`, `Dropdown` (fenêtre surgissante), `TextField`, `NumberField`, `ColorPicker`, `Plot`, `Tabs`, `Section`, `Separator` ; infobulles par `Widget::setTooltip` |
-| `ui.hpp` | `Ui` : racine, thème, police, `ActionRegistry` (actions par nom), entrées de l'image (`InputFrame`, `Key`), survol / appui / focus / tabulation, fenêtre surgissante, infobulle, `wantsMouse` / `wantsKeyboard`, écritures et événements différés |
+| `controls.hpp` | UI-03 : `RadioButton`, `RangeSlider` (deux poignées), `SpinBox` (champ numérique à − / +), `TextArea` (éditeur multiligne, numéros de ligne, lecture seule) ; `TextEditState` (sélection, presse-papiers) partagé avec `TextField` |
+| `color.hpp` | UI-03 : conversions RGB / HSV / HSL / hexadécimal ; `Gradient`, `Curve` (données évaluables par le jeu) ; `ColorWheel`, `ColorEditor` (formats, alpha, hexadécimal), `GradientEditor`, `CurveEditor` |
+| `menus.hpp` | UI-03 : `Dialog` (fenêtre modale), `MenuBar`, `Menu` (sous-menus), `MenuItem` (raccourci, case cochée), `ContextMenu` (clic droit), `Notifications` (nombre et hauteur maximaux), `DynamicImage` + `ImageView` (image produite par le jeu : mini-carte, boussole) |
+| `ui.hpp` | `Ui` : racine, thème, police, `ActionRegistry` (actions par nom), entrées de l'image (`InputFrame`, `Key`), survol / appui / focus / tabulation, pile de fenêtres surgissantes (menus, sous-menus), fenêtres modales, notifications (`notify`), presse-papiers (`setClipboard`), infobulle, `wantsMouse` / `wantsKeyboard`, écritures et événements différés |
 | `font.hpp` | `Font` ; `FixedFont` (tests, sans GPU) ; `TextRendererFont` (FreeType + MSDF de `UI::TextRenderer`) |
 | `nine_slice.hpp` | UI-07 : fonds en neuf parties (`ImageStyle` du thème : coins fixes, bords et centre étirés, répétés ou supprimés) → `DrawImage` |
 | `reflect.hpp` | UI-12 : `reflectedPanel(objet)` : une structure `core::Reflect<T>` en widgets adaptés au type et à la plage ; `fieldLabel` ; `core::EnumNames<E>` pour les listes |
@@ -43,5 +46,16 @@ ui.setRoot(std::move(panel));
 // chaque image : ui.update(input, viewport) ; ui.draw(list)
 ```
 
-Limites (docs/GAPS.md) : texte ASCII avec `TextRendererFont` (REN-36) ; pas de presse-papiers ni de sélection dans les champs de
-texte ; pas de navigation à la manette (UI-09) ; une seule fenêtre surgissante à la fois ; `Plot` en barres seulement.
+Image du jeu : le jeu écrit les pixels d'une `DynamicImage` puis appelle `commit()` ; la texture est mise à jour en place à la
+prochaine image (même taille). Le presse-papiers du système est branché par l'application (`ui.setClipboard(get, set)`, par
+exemple `Window::GetClipboardText` / `SetClipboardText`) ; sans lui, un presse-papiers interne.
+
+```cpp
+engine::ui::DynamicImage minimap(128, 128);
+root->emplace<engine::ui::ImageView>([&] { return minimap.image(); }, engine::ui::ImageFit::kContain);
+// chaque image : minimap.setPixel(x, y, couleur)... ; minimap.commit();
+ui.notify("Terrain enregistré", engine::ui::NotificationKind::kSuccess);   // affichée par un widget Notifications
+```
+
+Limites (docs/GAPS.md) : pas de navigation à la manette (UI-09) ; `Plot` en barres seulement ; `TextArea` sans retour à la ligne
+automatique ni annulation ; menus sans navigation au clavier (flèches) ; `MenuItem` affiche le raccourci sans l'installer.

@@ -106,7 +106,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | GAME-05 | Paramètres de gameplay en JSON | Absent | Absent. | M8 |
 | GAME-06 | Construction incrémentale | Absent | Absent. | M8 |
 | GAME-07 | Version finale | Absent | Absent. | M8 |
-| PLAT-05 | Saisie de texte | Partiel | Texte Unicode en UTF-8 (`InputManager::GetTextInput`, M3) ; ni IME ni presse-papiers (G107). | M5 |
+| PLAT-05 | Saisie de texte | Partiel | Texte Unicode en UTF-8 (`InputManager::GetTextInput`, M3) ; presse-papiers du système (`Window::GetClipboardText` / `SetClipboardText`, branche `feat/UI-03-widgets-more`) ; pas d'IME (G107). | M5 |
 | R2D-04 | Cartes de tuiles | Absent | Absent. | M5 (proposé : non cité dans docs/05) |
 | R2D-06 | Plusieurs vues | Absent | Absent (un `Renderer3D` et un `Renderer2D` par fenêtre). | M5 |
 | REN-01 | Graphe de passes et plugins de rendu | Absent | Pas de graphe de passes, de ressources transitoires ni de plugins : le pipeline est une classe `Renderer` avec `Renderer2D`/`Renderer3D` dérivés. Points d'extension existants : passes de post-traitement et modes d'upscaling … | M5 |
@@ -381,7 +381,7 @@ code). Chemins de M2 ; depuis M3, `src/UI/` est `src/ui/legacy/`. À traiter sur
 | --- | --- | --- | --- |
 | G105 | API de `platform` en `PascalCase` | `Window`, `InputManager` : noms hors de `docs/03` §7 et hors de `engine::platform` (suite de G96). Non renommés en M3 lot F : le langage hérité (`generator.rs`, convention `Get` + nom) et la démo les nomment ; le guide les déclare **provisoires**. Proposition : renommer avec la bascule de la démo vers `engine::ui` (A30, A31) | M5 |
 | G106 | Texte hors de l'alphabet latin | **Accents traités** (branche `feat/REN-36-text-unicode-fonts`) : UTF-8 décodé, Latin-1, Latin étendu A et ponctuation typographique chargés à la demande (`tests/ui/text_tests.cpp`). **Reste** : autres écritures (grec, cyrillique, CJK, emoji), mise en forme complexe (arabe, ligatures : HarfBuzz) | M5 (REN-36) |
-| G107 | Saisie de texte partielle | Ni IME, ni presse-papiers, ni sélection dans `TextField` ; Retour arrière et flèches sans répétition (le visualiseur lit `IsKeyJustPressed`) | M5 |
+| G107 | Saisie de texte partielle | **Sélection et presse-papiers traités** (branche `feat/UI-03-widgets-more` : `TextEditState`, Ctrl+A / C / X / V dans la galerie, `tests/ui/controls_tests.cpp`). **Reste** : IME ; Retour arrière et flèches sans répétition (les applications lisent `IsKeyJustPressed`) ; `TextArea` sans retour à la ligne automatique ni annulation ; Ctrl+A / C / X / V branchés dans la galerie, pas encore dans le visualiseur ; menus sans navigation au clavier | M5 |
 | G108 | Streaming non mesuré | Pas de mesure de saccade (TER-04) ; un changement de paramètre recrée le `TileStreamer` (toutes les tuiles régénérées) ; le jeu de tuiles affiché change d'un coup quand la sélection est prête | M4 |
 | G109 | Visualiseur vérifié à la main | `make viewer-capture` (CI) prouve le rendu, le panneau et le changement de thème ; caméra libre, export PNG et préréglage « Save » ne sont pas exercés automatiquement (lancement fenêtré de 6 s sans erreur sous Linux, X11) | M4 |
 | G110 | Windows et macOS | `make e2e-init`, `terrain-gen-check`, `cui-test` en CI Windows et macOS jamais observés verts ; **macOS : aucun rendu avant M4** (OpenGL 4.1, le RHI demande 4.3) | M4 |
