@@ -251,8 +251,8 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | G39 | Chaque programme compilé doit avoir une identité de cache distincte | `src/Graphics/ShaderProgram.cpp:139` | M2 (RHI-06, RHI-12) |
 | G40 | Les cas d'énumération (`.topLeft`) doivent être résolus selon le type du paramètre du modificateur | `tools/cui-rs/src/generator.rs:902` | M3 (UI-05) |
 | G41 | `Renderer::Clear` est un no-op sous Vulkan : contenu périmé | `src/Graphics/Backends/Vulkan/VulkanRenderState.cpp:136` | M4 |
-| G42 | Appliquer la limitation de fréquence (`throttle`) avant d'évaluer le contenu du texte | `src/UI/Widgets/Text.cpp:191` | M3 |
-| G43 | Appliquer les réglages du renderer avant `BeginPass()` | `src/UI/Manager.cpp:90` | M3 |
+| G42 | Appliquer la limitation de fréquence (`throttle`) avant d'évaluer le contenu du texte | `src/ui/legacy/Widgets/Text.cpp:191` | M3 |
+| G43 | Appliquer les réglages du renderer avant `BeginPass()` | `src/ui/legacy/Manager.cpp:90` | M3 |
 | G44 | `Buffer::Initialize` : signaler l'échec et garder `desc` cohérent avec l'absence de ressource | `src/Graphics/Buffer.cpp:36-58` | M2 |
 | G45 | Fichier temporaire de `cui check` non unique (`cui_check_${Date.now()}.cui`) : collision à l'ouverture de plusieurs documents | `tools/vscode-cui/main.js:110-120` | M3 (outillage UI) |
 | G46 | `LogErrors(std::string context)` copie `context` : `performance-unnecessary-value-param` (clang-tidy) | `src/Graphics/Backends/OpenGL/OpenGLDiagnostics.*`, `Vulkan/VulkanDiagnostics.*` | M2 |
