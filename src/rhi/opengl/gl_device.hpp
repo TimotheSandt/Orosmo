@@ -6,6 +6,7 @@
 #include <glad/glad.h>
 
 #include <array>
+#include <string>
 #include <cstdint>
 #include <atomic>
 #include <functional>
@@ -21,6 +22,9 @@ namespace engine::rhi::gl
 // Les shaders OpenGL écrits à la main utilisent ces numéros dans `layout(binding = N)` ; le pipeline de shaders (lot B)
 // convertit `set`/`binding` du GLSL 450 commun vers cet emplacement.
 inline constexpr std::uint32_t kFramesInFlight = 2;
+// Unité de texture réservée aux opérations du périphérique (création, envoi, mips) : juste après les emplacements du modèle
+// de liaison, elle n'écrase jamais une texture liée par `setBindGroup` (unités 0 à 23).
+inline constexpr GLuint kScratchTextureUnit = kGroupCount * kBindingsPerGroup;
 inline constexpr std::uint32_t kMaxAttachments = 8;
 
 constexpr std::uint32_t flatBinding(std::uint32_t group, std::uint32_t binding) noexcept
@@ -78,6 +82,7 @@ struct QueryPoolRes
 {
     std::vector<GLuint> ids;
     std::vector<bool> written;
+    std::string debugName; // posé sur chaque requête à sa première écriture (l'objet GL n'existe qu'à ce moment)
 };
 
 struct FboKey
@@ -162,6 +167,10 @@ class GlDevice final : public Device
     GLuint framebufferFor(const FboKey &key, std::uint32_t colorCount, const std::array<const TextureRes *, kMaxAttachments + 1> &attachments);
     GLuint scratchFramebuffer() const noexcept { return scratchFbo_; }
     GLuint pushConstantBuffer() const noexcept { return pushBuffer_; }
+    GLuint emptyVertexArray() const noexcept { return emptyVao_; }
+    // Lie une texture sur l'unité réservée (kScratchTextureUnit) pour la créer, l'envoyer ou en générer les mips.
+    static void bindScratchTexture(GLenum target, GLuint id);
+    static void labelQuery(const QueryPoolRes &pool, std::uint32_t index);
     void onValidationMessage(bool isError) noexcept;
 
   private:
@@ -200,6 +209,14 @@ class GlDevice final : public Device
         std::function<void()> release;
     };
     std::vector<Pending> pending_;
+    // Une clôture par image présentée : une ressource détruite pendant l'image N n'est libérée qu'une fois les
+    // kFramesInFlight images suivantes présentées ET la clôture de l'image N franchie par le GPU (docs/03 §3, règle 2).
+    struct FrameFence
+    {
+        std::uint64_t frame;
+        GLsync sync;
+    };
+    std::vector<FrameFence> fences_;
     std::vector<std::pair<FboKey, GLuint>> framebuffers_;
     GLuint scratchFbo_ = 0;
     GLuint pushBuffer_ = 0;

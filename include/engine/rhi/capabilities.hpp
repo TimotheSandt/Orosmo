@@ -27,6 +27,9 @@ struct Capabilities
     std::uint64_t minStorageAlignment = 16;
     std::uint64_t maxUniformBufferSize = 0;
     std::uint32_t maxPushConstantSize = 128; // émulé par un petit tampon sur OpenGL
+    // Emplacements de tampons de stockage (OpenGL 4.3 : au moins 8). Un groupe/binding dont l'emplacement plat
+    // (groupe * 8 + binding) dépasse cette limite est refusé par `setBindGroup`.
+    std::uint32_t maxStorageBufferBindings = 0;
 
     // Fonctions courantes
     bool compute = false;

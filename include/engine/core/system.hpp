@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 
 namespace engine::core::system
@@ -29,6 +30,10 @@ std::filesystem::path userDataDirectory();
 // donc tronquée à la milliseconde (1,9 ms attend 1 ms) ; c'était déjà le comportement du limiteur d'images avant M1 bis, qui
 // compense avec son propre seuil d'attente active (`FPSCounter::spinThreshold`).
 void preciseSleep(std::chrono::nanoseconds duration);
+
+// Identifiant du processus en cours (getpid, GetCurrentProcessId) : sert à nommer des fichiers temporaires propres au
+// processus (cache de shaders écrit par plusieurs programmes à la fois).
+std::uint64_t processId();
 
 // Demande une résolution de minuteur système de 1 ms (Windows : timeBeginPeriod(1)). Renvoie true si la demande a été
 // acceptée ; à appairer avec endHighResolutionTimer(). Sans effet (false) sur les autres systèmes.
