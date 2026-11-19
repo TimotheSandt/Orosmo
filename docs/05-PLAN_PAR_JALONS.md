@@ -86,6 +86,21 @@ Les identifiants de `docs/02` restent ceux de la table de rattachement (M2). Un 
   - **Stabilité de l'API** : figer les en-têtes publics `include/engine/…` (migration `PascalCase` → `camelCase` terminée pour les modules livrés), table des changements incompatibles dans `docs/releases/`, numéro de version sémantique ; les identifiants de `docs/02` livrés doivent être `Fait` ou limités dans le guide.
   - **Exemple fourni** : le visualiseur et `terrain-gen` compilables depuis le paquet comme exemples de projet.
 
+### Découpage de M3 en lots (proposé et appliqué par l'IA le 2026-11-19, `docs/QUESTIONS.md` A29 ; même portée, ordre explicite)
+
+Chaque lot est fusionné dans `dev` quand il est vert ; le rapport de fin de jalon est fait après le lot F. Nouveau module
+`engine::world` (`include/engine/world/`, `src/world/`, archive `libworld.a`, couche `world` de `docs/03`) : il ne dépend pas
+de `renderer` (génération sans GPU) ; le calcul GPU passe par le RHI (`src/world/gpu/`).
+
+| Lot | Contenu | IDs |
+| --- | --- | --- |
+| A | **Bruit déterministe** : Perlin, Simplex, Worley, fBm, distorsion de domaine, sur des entiers hachés et des opérations IEEE de base (pas de `sin`/`exp` de la bibliothèque, pas de contraction FMA) ; sommes de contrôle de référence versionnées | TER-01 (CPU), TEST-03 |
+| B | **Tuiles, niveaux de détail, streaming** : hauteur par tuile (graine, coordonnées, paramètres), génération asynchrone (tâches de `core`), quadtree à niveaux de détail sans fissure (bords cousus), chargement/déchargement par distance sous un budget mémoire | TER-02, TER-03, TER-04 |
+| C | **Rendu** : repère Vulkan du RHI (A26 : `glClipControl`, origine en haut, profondeur 0..1), caméra reverse-Z à plan lointain infini, dessin de debug, rendu du terrain (mélange pente/altitude, triplanaire, tableau de textures), bruit sur GPU identique au CPU dans une tolérance fixée | REN-02, REN-34, TER-07, TER-01 (GPU) |
+| D | **Export et outils** : carte de hauteur PNG 16 bits et EXR, maillage OBJ, glTF, STL, carte de biomes, relus par les tests ; lancer de rayon sur le terrain ; `terrain-gen` (ligne de commande, sans fenêtre, code de retour fiable) | TER-11, TER-13, TOOL-02 |
+| E | **Interface** : widgets, compilateur du langage (erreurs fichier:ligne:colonne, événements nommés), mise en page complète, thèmes JSON à jetons et états rechargés à chaud, spécification `docs/UI_LANGUAGE.md` et tests, paramètres réfléchis → curseurs ; panneau de réglage du terrain (graine, préréglages) ; visualiseur | UI-03, UI-05, UI-06, UI-07, UI-11, UI-12, TER-12, TOOL-01 |
+| F | **Release utilisable** : API publique figée et nommée selon `docs/03` §7, `docs/USING_THE_ENGINE.md`, paquet et corps de release à jour, test de bout en bout `engine init` + compilation en CI sur les trois systèmes, exemples compilables depuis le paquet | DOC-01, BLD-01, BLD-02 |
+
 **Démo** : visualiseur avec graine et paramètres modifiables en direct dans une interface décrite dans le langage maison, thème changeable ; `terrain-gen --seed 42 --size 4096 --out relief.png` produit une carte de hauteur identique à chaque lancement.
 **Terminé** : somme de contrôle de référence ; pas de fissure entre niveaux de détail ; budget mémoire respecté ; exports vérifiés en les rouvrant ; tests de compilation du langage verts ; `docs/UI_LANGUAGE.md` écrit. La release de fin de M3 est utilisable : `docs/USING_THE_ENGINE.md` écrit, `engine init` + compilation vérifiés en CI sur les trois systèmes, API publique figée.
 

@@ -124,3 +124,11 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 **Décision de l'auteur (2026-11-19) : option (2), repère Vulkan** (origine en haut, profondeur 0..1). À appliquer en M3, pas avant : le backend OpenGL passera par `glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE)` (OpenGL 4.5 ou `GL_ARB_clip_control`, à lire dans `Capabilities`, règle 11 ; le minimum 4.3 est relevé ou un repli est écrit), les shaders, les images de référence (`scene.png`, `ui.png`) et les tests de parité devront être régénérés avec la nouvelle orientation, et `docs/RHI.md` et `docs/03` mis à jour. Le lot A à C (M2) suit encore le repère OpenGL : c'est l'état livré.
 
 **A28. Migration du rendu hérité : décidé par l'auteur le 2026-11-18** : **réécriture explicite** des façades (`Mesh`, `Texture`, `ShaderProgram`, `RenderTarget`, `Renderer`, `Sprite`, texte, interface) sur `Device` / `CommandEncoder`, **sans adaptateur d'état implicite** (l'option « adaptateur provisoire » a été écartée : elle n'aurait pas été rattachée à un jalon et risquait de devenir permanente). L'API publique des façades change ; la démo peut être incomplète entre sous-lots ; plan en B1-B6 dans `docs/05`.
+
+**A29. Découpage de M3 (proposé et appliqué par l'IA le 2026-11-19).** M3 regroupe le terrain, le rendu, les outils,
+l'interface et la release utilisable. Comme pour M2 (A27), il est découpé en six lots A à F (`docs/05`), dans l'ordre des
+dépendances : bruit → tuiles → rendu → export/outils → interface et visualiseur → release. La portée ne change pas ; l'ordre et
+le découpage sont une organisation du travail. Conséquence de A26 (repère Vulkan) appliquée au lot C : le backend OpenGL exige
+`glClipControl` (OpenGL 4.5 ou `GL_ARB_clip_control`, lu dans les extensions) ; sans lui, la création du périphérique est
+refusée avec un message clair (CLAUDE.md règle 11 : refus propre). *À contester si l'auteur préfère un autre ordre.*
+
