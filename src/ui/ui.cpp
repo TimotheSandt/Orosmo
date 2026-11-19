@@ -338,8 +338,20 @@ void Ui::layout(glm::vec2 viewport)
     viewport_ = viewport;
     if (root_)
     {
-        root_->measure(*this, viewport);
-        root_->layout(*this, {{0.0f, 0.0f}, viewport});
+        // La racine est placée dans la vue comme l'enfant d'une superposition : étirée par défaut, ou à sa taille et alignée.
+        const glm::vec2 m = root_->measure(*this, viewport);
+        auto axis = [](Align align, const SizeSpec &spec, float avail, float measured) -> std::pair<float, float>
+        {
+            const float size = spec.mode == SizeMode::kFill || (align == Align::kStretch && spec.mode == SizeMode::kFit) ? spec.clamp(avail) : measured;
+            if (align == Align::kCenter)
+                return {(avail - size) * 0.5f, size};
+            if (align == Align::kEnd)
+                return {avail - size, size};
+            return {0.0f, size};
+        };
+        auto [x, w] = axis(root_->alignX, root_->width, viewport.x - root_->margin.horizontal(), m.x);
+        auto [y, h] = axis(root_->alignY, root_->height, viewport.y - root_->margin.vertical(), m.y);
+        root_->layout(*this, {{x + root_->margin.left, y + root_->margin.top}, {w, h}});
     }
     layoutPopup();
 }

@@ -36,7 +36,54 @@ pub enum TokenType {
     Star,
     Slash,
     Semicolon,
+    Dollar,
     Eof,
+}
+
+impl TokenType {
+    // Nom lisible dans les messages d'erreur.
+    pub fn describe(self) -> &'static str {
+        match self {
+            TokenType::KwView => "'view'",
+            TokenType::KwLet => "'let'",
+            TokenType::KwFunc => "'func'",
+            TokenType::KwOnce => "'once'",
+            TokenType::KwAlways => "'always'",
+            TokenType::KwVar => "'var'",
+            TokenType::KwImport => "'import'",
+            TokenType::KwTrue => "'true'",
+            TokenType::KwFalse => "'false'",
+            TokenType::KwReturn => "'return'",
+            TokenType::AtObserved => "'@Observed'",
+            TokenType::AtMutable => "'@Mutable'",
+            TokenType::AtSnapshot => "'@Snapshot'",
+            TokenType::AtState => "'@State'",
+            TokenType::AtBinding => "'@Binding'",
+            TokenType::AtCuiCpp => "'@cui-cpp'",
+            TokenType::Ident => "a name",
+            TokenType::IntLit => "an integer",
+            TokenType::FloatLit => "a number",
+            TokenType::String => "a string",
+            TokenType::Arrow => "'->'",
+            TokenType::Eq => "'='",
+            TokenType::Colon => "':'",
+            TokenType::Comma => "','",
+            TokenType::Dot => "'.'",
+            TokenType::DColon => "'::'",
+            TokenType::LParen => "'('",
+            TokenType::RParen => "')'",
+            TokenType::LBrace => "'{'",
+            TokenType::RBrace => "'}'",
+            TokenType::Question => "'?'",
+            TokenType::Plus => "'+'",
+            TokenType::Minus => "'-'",
+            TokenType::Star => "'*'",
+            TokenType::Slash => "'/'",
+            TokenType::Semicolon => "';'",
+            TokenType::Dollar => "'$'",
+            TokenType::Eof => "the end of the file",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -64,6 +111,9 @@ pub struct Token {
     pub value: TokenValue,
     pub line: usize,
     pub col: usize,
+    // Position juste après le jeton (pour une erreur « X attendu » placée après le jeton précédent).
+    pub end_line: usize,
+    pub end_col: usize,
 }
 
 impl Token {
@@ -73,6 +123,8 @@ impl Token {
             value,
             line,
             col,
+            end_line: line,
+            end_col: col,
         }
     }
 
@@ -96,11 +148,7 @@ pub struct LexError {
 
 impl std::fmt::Display for LexError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Lex error at {}:{}: {}",
-            self.line, self.col, self.message
-        )
+        write!(f, "{}:{}: {}", self.line, self.col, self.message)
     }
 }
 
@@ -135,6 +183,15 @@ impl Lexer {
     }
 
     fn next_token(&mut self) -> Result<Token, LexError> {
+        let mut token = self.next_token_inner()?;
+        if token.ty != TokenType::Eof {
+            token.end_line = self.line;
+            token.end_col = self.col;
+        }
+        Ok(token)
+    }
+
+    fn next_token_inner(&mut self) -> Result<Token, LexError> {
         self.skip_whitespace_and_comments();
         let line = self.line;
         let col = self.col;
@@ -192,6 +249,7 @@ impl Lexer {
             '*' => TokenType::Star,
             '/' => TokenType::Slash,
             ';' => TokenType::Semicolon,
+            '$' => TokenType::Dollar,
             other => {
                 return Err(self.error_at(format!("Unexpected character {other:?}"), line, col));
             }

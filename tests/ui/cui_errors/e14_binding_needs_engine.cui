@@ -1,0 +1,8 @@
+// expect: 6:9: error: two-way bindings ($...) need `import "engine/ui"`
+// Cible héritée (UI::View) : pas de liaison dans les deux sens.
+view V {
+    @Mutable var window: Window
+    VBox {
+        Text($window.title)
+    }
+}

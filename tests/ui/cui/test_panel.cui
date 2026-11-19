@@ -1,0 +1,46 @@
+// UI-11 : vue de test (compilée par cui vers engine::ui, puis par le compilateur C++, puis exécutée par tests/ui/cui_tests.cpp).
+import "engine/ui"
+import "ui/cui_test_state.hpp"
+
+view TestPanel {
+    @Mutable var state: CuiTestState
+    @Observed var stats: CuiTestStats
+    let panelWidth = 240
+    func percent(v: double) -> double = v * 100.0
+
+    Panel {
+        Label("Terrain").variant("title").id("title")
+        Label("FPS \(stats.fps) - \(percent(stats.load)) %").id("fps")
+        HBox {
+            Label("Seed")
+            NumberField($state.seed, integer: true, min: 0, max: 4294967295).width(.fill).id("seed")
+            Button("Random").onClick(state.randomize).tooltip("new seed").id("random")
+        }
+        Slider($state.scale, min: 0, max: 500, step: 1).onChange(state.changed).id("scale")
+        Checkbox("Snow", checked: $state.snow).id("snow")
+        Dropdown(options: state.presetNames(), selected: $state.preset).onChange(applyPreset).id("preset")
+        TextField($state.name).id("name")
+        ColorPicker($state.tint).id("tint")
+        Tabs {
+            Page("Params") {
+                ParamPanel($state.params).onChange(state.changed).id("params")
+            }
+            Page("Stats") {
+                Plot(values: stats.history).height(40).id("plot")
+                Label("unused").visible(false)
+            }
+        }
+        Section("More", expanded: false) {
+            Button("Export").enabled(state.canExport).onClick(Tools::exportNow).id("export")
+        }
+        Separator()
+        Button("Apply")
+            .style(background: "accent", radius: 4)
+            .margin(top: 2, horizontal: 3)
+            .align(x: .end)
+            .onClick(state.apply)
+            .id("apply")
+    }
+    .width(panelWidth)
+    .align(.start)
+}

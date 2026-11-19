@@ -165,6 +165,16 @@ demo-test-gpu:
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
 	$(MAKE) -C apps/demo $(DEMO_ARGS) TEST_ARGS='--test-suite=$(GPU_TEST_SUITES)' test
 
+# ── UI-11 : tests du compilateur du langage d'interface ──
+#   make cui-test   tests unitaires (cargo test) + entrées invalides de bout en bout (binaire cui : messages fichier:ligne:colonne ;
+#                   une erreur du C++ généré ramenée à la ligne du .cui par #line). Les vues valides sont compilées avec `make demo-test`.
+CUI_BIN := tools/cui$(if $(filter Windows_NT,$(OS)),.exe)
+.PHONY: cui-test
+cui-test:
+	$(MAKE) -f $(ENGINE_MK) cui-tool
+	cargo test --manifest-path tools/Cargo.toml -p cui
+	python3 tools/check_cui_errors.py --cui $(CUI_BIN) --headers include --cases tests/ui/cui_errors --out build/cui-errors --cxx auto
+
 # ── TOOL-02 : terrain-gen (sans fenêtre ni GPU) ──
 #   make terrain-gen         construit apps/terrain_gen/bin/terrain-gen
 #   make terrain-gen-check   déterminisme : deux exports identiques (1 et 4 threads), somme de contrôle de référence, codes de retour

@@ -9,15 +9,13 @@ use std::collections::BTreeMap;
 pub struct ParseError {
     pub message: String,
     pub token: Token,
+    pub line: usize,
+    pub col: usize,
 }
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Parse error at {}:{}: {} (got {:?})",
-            self.token.line, self.token.col, self.message, self.token.ty
-        )
+        write!(f, "{}:{}: {}", self.line, self.col, self.message)
     }
 }
 
@@ -75,7 +73,10 @@ impl Parser {
                 ViewStmt::Field(field) => fields.push(field),
                 ViewStmt::Element(element) => {
                     if root.is_some() {
-                        return Err(self.error("A view may only have one root element"));
+                        let mut err = self.error("A view may only have one root element");
+                        err.line = element.line;
+                        err.col = element.col;
+                        return Err(err);
                     }
                     root = Some(element);
                 }
@@ -344,6 +345,15 @@ impl Parser {
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        if self.at(TokenType::Dollar) {
+            self.advance();
+            let target = self.parse_postfix()?;
+            return match target {
+                Expr::Identifier(name) => Ok(Expr::Binding(name)),
+                Expr::PropertyAccess { obj, prop } => Ok(Expr::Binding(format!("{obj}.{prop}"))),
+                _ => Err(self.error_at_previous("'$' must be followed by a field path (for example $state.seed)")),
+            };
+        }
         if self.at(TokenType::KwOnce) || self.at(TokenType::KwAlways) {
             let mode = if self.advance().ty == TokenType::KwOnce {
                 "once"
@@ -428,7 +438,7 @@ impl Parser {
                 self.expect(TokenType::RParen)?;
                 Ok(expr)
             }
-            _ => Err(self.error("Expected expression")),
+            _ => Err(self.error(&format!("expected an expression, found {}", token.ty.describe()))),
         }
     }
 
@@ -471,7 +481,9 @@ impl Parser {
 
     fn expect(&mut self, ty: TokenType) -> Result<Token, ParseError> {
         if self.peek().ty != ty {
-            return Err(self.error(&format!("expected {ty:?}")));
+            // Un symbole manquant est signalé juste après le jeton précédent (là où il manque), pas sur le jeton suivant.
+            let found = self.peek().ty.describe();
+            return Err(self.error_at_previous(&format!("expected {} (found {found})", ty.describe())));
         }
         Ok(self.advance().clone())
     }
@@ -507,9 +519,31 @@ impl Parser {
     }
 
     fn error(&self, message: &str) -> ParseError {
+        let token = self.peek().clone();
+        let (line, col) = if token.ty == TokenType::Eof && self.pos > 0 {
+            let prev = &self.tokens[self.pos - 1];
+            (prev.end_line, prev.end_col)
+        } else {
+            (token.line, token.col)
+        };
+        ParseError {
+            message: message.to_string(),
+            token,
+            line,
+            col,
+        }
+    }
+
+    fn error_at_previous(&self, message: &str) -> ParseError {
+        if self.pos == 0 {
+            return self.error(message);
+        }
+        let prev = &self.tokens[self.pos - 1];
         ParseError {
             message: message.to_string(),
             token: self.peek().clone(),
+            line: prev.end_line,
+            col: prev.end_col,
         }
     }
 }

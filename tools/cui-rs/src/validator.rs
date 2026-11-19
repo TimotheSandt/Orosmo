@@ -11,6 +11,7 @@ pub struct ValidationError {
 }
 
 impl ValidationError {
+    #[allow(dead_code)]
     pub fn fatal(&self) -> bool {
         !self.is_warning
     }

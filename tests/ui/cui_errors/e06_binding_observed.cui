@@ -1,0 +1,8 @@
+// expect: 7:5: error: '$stats.fps': 'stats' is @Observed (read only); a two-way binding needs a @Mutable field
+import "engine/ui"
+import "state.hpp"
+
+view V {
+    @Observed var stats: Stats
+    Slider($stats.fps, min: 0, max: 200)
+}

@@ -1,0 +1,8 @@
+// expect: 6:9: error: unknown component 'Buton' (components: VBox, HBox, Panel, Overlay, Grid, ScrollView, Tabs, Section, Label, Button, Checkbox, Slider, Dropdown, TextField, NumberField, ColorPicker, Plot, Separator, ParamPanel)
+import "engine/ui"
+
+view V {
+    VBox {
+        Buton("x")
+    }
+}
