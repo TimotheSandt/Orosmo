@@ -137,15 +137,16 @@ endif
 WERROR     ?= 1
 WARNFLAGS  ?= -Wall -Wextra -Wpedantic $(if $(filter 1,$(WERROR)),-Werror)
 SANFLAGS   := $(if $(SANITIZE),-fsanitize=$(SANITIZE) -fno-omit-frame-pointer)
+FPFLAGS    := -ffp-contract=off # déterminisme de la génération procédurale (même réglage que le moteur)
 
 ifeq ($(BUILD_TYPE),debug)
-    ENGINE_CXXFLAGS := -std=c++23 $(WARNFLAGS) $(SANFLAGS) $(ENGINE_ARCH_FLAG) -O1 -g -DDEBUG \
+    ENGINE_CXXFLAGS := -std=c++23 $(WARNFLAGS) $(SANFLAGS) $(FPFLAGS) $(ENGINE_ARCH_FLAG) -O1 -g -DDEBUG \
                        $(ENGINE_PLATFORM_DEFS) -DGLM_ENABLE_EXPERIMENTAL
 else ifeq ($(BUILD_TYPE),dev)
-    ENGINE_CXXFLAGS := -std=c++23 $(WARNFLAGS) $(SANFLAGS) $(ENGINE_ARCH_FLAG) -g3 -O0 -DDEBUG \
+    ENGINE_CXXFLAGS := -std=c++23 $(WARNFLAGS) $(SANFLAGS) $(FPFLAGS) $(ENGINE_ARCH_FLAG) -g3 -O0 -DDEBUG \
                        $(ENGINE_PLATFORM_DEFS) -DGLM_ENABLE_EXPERIMENTAL
 else
-    ENGINE_CXXFLAGS := -std=c++23 $(WARNFLAGS) $(SANFLAGS) $(ENGINE_ARCH_FLAG) -O3 -DNDEBUG \
+    ENGINE_CXXFLAGS := -std=c++23 $(WARNFLAGS) $(SANFLAGS) $(FPFLAGS) $(ENGINE_ARCH_FLAG) -O3 -DNDEBUG \
                        $(ENGINE_PLATFORM_DEFS) -DGLM_ENABLE_EXPERIMENTAL
 endif
 
@@ -191,6 +192,7 @@ ENGINE_LIBS := \
     $(_ENG_LIB_DIR)/libplatform.a \
     $(_ENG_LIB_DIR)/librhi.a \
     $(_ENG_LIB_DIR)/librenderer.a \
+    $(_ENG_LIB_DIR)/libworld.a \
     $(_ENG_LIB_DIR)/libthirdparty.a
 
 # Wrap archives for cross-archive symbol resolution (--start-group / --end-group).

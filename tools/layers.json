@@ -13,6 +13,8 @@
     ["src/rhi/*", "rhi"],
     ["include/engine/renderer/*", "renderer"],
     ["src/renderer/*", "renderer"],
+    ["include/engine/world/*", "world"],
+    ["src/world/*", "world"],
     ["include/Utilities/*", "core"],
     ["src/Utilities/*", "core"],
     ["include/Profiler/*", "core"],
