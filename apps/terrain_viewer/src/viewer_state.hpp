@@ -37,7 +37,7 @@ struct ViewerState
     void applyTheme() { themeRequested = true; }
     void exportHeightmap() { exportRequested = true; }
     std::vector<std::string> presetNames() const { return names; }
-    std::vector<std::string> themeNames() const { return {"dark", "light"}; }
+    std::vector<std::string> themeNames() const { return {"dark", "light", "framed"}; }
 
     // ── Côté C++ ──
     // Lit les préréglages (`<dossier>/*.json`, documents {"version", "data"} de TerrainParams), triés par nom.

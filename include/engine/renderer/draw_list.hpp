@@ -5,6 +5,7 @@
 
 #include <glm/glm.hpp>
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -24,6 +25,13 @@ struct AtlasImage
     std::uint32_t height = 0;
     std::vector<std::uint8_t> rgba; // width * height * 4 ; la ligne i correspond à v = i / height (la ligne 0 à v = 0)
 };
+
+// Identifiant neuf pour une `AtlasImage` (atlas de glyphes, images de thème) : unique dans le processus.
+inline std::uint64_t newAtlasId() noexcept
+{
+    static std::atomic<std::uint64_t> next{1};
+    return next.fetch_add(1);
+}
 
 // Rectangle plein. Forme facultative (UI-07) : coins arrondis (`radius`), bordure intérieure (`borderWidth`, `borderColor`) et
 // bord adouci sur `softness` pixels (ombre portée : rectangle agrandi de `softness`, plein au centre, transparent au bord). Sans
@@ -55,6 +63,15 @@ struct DrawGlyphs
     glm::vec3 color{1.0f};
     float msdfPixelRange = 8.0f;
     float msdfWeight = 0.0f;
+};
+
+// Image texturée (UI-07, fonds en neuf parties) : 4 flottants par sommet (x, y en pixels logiques ; u, v dans l'image), 6 sommets
+// par quadrilatère ; couleur = texel × `tint`. Une commande peut porter beaucoup de quadrilatères (un seul dessin).
+struct DrawImage
+{
+    std::shared_ptr<const AtlasImage> image;
+    std::vector<float> vertices;
+    glm::vec4 tint{1.0f};
 };
 
 // Dessine une couche (voir BeginLayer) : `scrollOffset` / `contentSize` choisissent la partie visible du contenu de la couche, `color`
@@ -91,7 +108,7 @@ struct PopClip
 {
 };
 
-using DrawCommand = std::variant<DrawRect, DrawClearRect, DrawGlyphs, DrawLayerImage, BeginLayer, EndLayer, PushClip, PopClip>;
+using DrawCommand = std::variant<DrawRect, DrawClearRect, DrawGlyphs, DrawLayerImage, BeginLayer, EndLayer, PushClip, PopClip, DrawImage>;
 
 class DrawList
 {
@@ -111,6 +128,7 @@ class DrawList
     void rect(const DrawRect &shape) { commands.emplace_back(shape); }
     void clearRect(const glm::vec2 &position, const glm::vec2 &size) { commands.emplace_back(DrawClearRect{position, size, glm::vec4(0.0f)}); }
     void glyphs(DrawGlyphs run) { commands.emplace_back(std::move(run)); }
+    void image(DrawImage image) { commands.emplace_back(std::move(image)); }
     void layerImage(const DrawLayerImage &image) { commands.emplace_back(image); }
     void beginLayer(std::uint64_t id, const glm::vec2 &size, bool clear = true) { commands.emplace_back(BeginLayer{id, size, clear}); }
     void endLayer() { commands.emplace_back(EndLayer{}); }

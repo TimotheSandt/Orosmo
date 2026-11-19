@@ -130,6 +130,14 @@ TEST_SUITE("ui/theme")
         }
         CHECK_FALSE(near(dark->style("panel", ui::WidgetState::kNormal).background, light->style("panel", ui::WidgetState::kNormal).background));
         CHECK(dark->style("button", ui::WidgetState::kFocus).borderWidth > 0.0f);
+        // Variante à images (neuf parties) : elle étend le thème sombre.
+        auto framed = ui::Theme::load(root / "framed.json");
+        INFO((framed ? std::string() : framed.error().message));
+        REQUIRE(framed.has_value());
+        REQUIRE(framed->style("button", ui::WidgetState::kNormal).image != nullptr);
+        CHECK(framed->style("button", ui::WidgetState::kHover).image->name == "frame.buttonHover");
+        CHECK(framed->style("panel", ui::WidgetState::kNormal).image->edges == ui::SliceFill::kRepeat);
+        CHECK(framed->style("slider", ui::WidgetState::kNormal).image == nullptr);
     }
 
     TEST_CASE("hot reload: a modified file installs the new theme; an invalid file keeps the previous one")

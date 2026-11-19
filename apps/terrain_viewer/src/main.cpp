@@ -20,7 +20,7 @@ void usage(std::ostream &out)
     out << "terrain-viewer [options]\n"
            "  --seed N              graine du terrain (défaut 1)\n"
            "  --preset NAME         préréglage de presets/ (hills, mountains, islands, dunes, custom)\n"
-           "  --theme dark|light    thème de l'interface (changeable dans le panneau)\n"
+           "  --theme dark|light|framed  thème de l'interface (changeable dans le panneau ; framed : cadres en images)\n"
            "  --res DIR             ressources (fonts/, themes/, shader/rhi/, presets/) ; défaut : res à côté de l'exécutable\n"
            "  --capture DIR         écrit DIR/viewer.png après --capture-frames images (défaut 30), puis quitte\n"
            "  --capture-frames N\n"

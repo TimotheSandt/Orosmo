@@ -35,7 +35,7 @@ obj/gen/%.o: $(ENGINE_GEN_DIR)/%.gen.cpp
 resources:
 	@mkdir -p $(RES_OUT)/fonts $(RES_OUT)/themes $(RES_OUT)/shader/rhi $(RES_OUT)/presets
 	cp $(ENGINE_RES)/fonts/Roboto-Regular.ttf $(RES_OUT)/fonts/
-	cp $(ENGINE_RES)/themes/*.json $(RES_OUT)/themes/
+	cp -r $(ENGINE_RES)/themes/. $(RES_OUT)/themes/
 	cp $(ENGINE_SHADERS)/rhi/* $(RES_OUT)/shader/rhi/
 	cp presets/*.json $(RES_OUT)/presets/
 

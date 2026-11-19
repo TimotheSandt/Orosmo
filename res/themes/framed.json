@@ -1,0 +1,28 @@
+{
+    "name": "framed",
+    "description": "Variante à images en neuf parties : le panneau et les boutons ont un cadre biseauté (coins fixes, bords répétés, centre répété), sur les jetons du thème sombre.",
+    "extends": "dark.json",
+    "images": {
+        "frame.panel": {"file": "images/panel.png", "slice": 8, "edges": "repeat", "center": "repeat", "scale": 2},
+        "frame.button": {"file": "images/button.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1},
+        "frame.buttonHover": {"file": "images/button_hover.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1},
+        "frame.buttonPressed": {"file": "images/button_pressed.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1}
+    },
+    "tokens": {
+        "color.text": "#f1e6d2",
+        "color.primary": "#c8a46e",
+        "color.primaryHover": "#e0bf86",
+        "color.focus": "#e0bf86"
+    },
+    "widgets": {
+        "panel": {"background": "#00000000", "borderWidth": 0, "image": "frame.panel", "padding": 18},
+        "button": {
+            "background": "#00000000", "borderWidth": 0, "image": "frame.button", "padding": 8,
+            "states": {
+                "hover": {"background": "#00000000", "image": "frame.buttonHover"},
+                "pressed": {"background": "#00000000", "image": "frame.buttonPressed", "foreground": "color.text"},
+                "disabled": {"background": "#00000000", "imageTint": "#ffffff80"}
+            }
+        }
+    }
+}

@@ -2,6 +2,8 @@
 
 #include "engine/core/file_watcher.hpp"
 
+#include "engine/renderer/image.hpp"
+
 #include "Logger.h"
 #include <nlohmann/json.hpp>
 
@@ -22,7 +24,7 @@ namespace
 constexpr std::array<std::string_view, kWidgetStateCount> kStateNames = {"normal", "hover", "pressed", "disabled", "focus"};
 constexpr std::array<std::string_view, kStylePropertyCount> kPropertyNames = {
     "background", "foreground", "border",  "accent",   "muted",      "shadowColor",  "borderWidth",
-    "radius",     "padding",    "spacing", "fontSize", "shadowSize", "shadowOffset", "width",
+    "radius",     "padding",    "spacing", "fontSize", "shadowSize", "shadowOffset", "width",       "image",       "imageTint",
 };
 
 std::optional<WidgetState> stateFromName(std::string_view name)
@@ -82,6 +84,7 @@ struct RawTheme
     std::string name;
     std::map<std::string, Json, std::less<>> tokens;
     std::map<std::string, RawWidget> widgets;
+    std::map<std::string, std::pair<Json, std::filesystem::path>> images; // définition, dossier du fichier qui la donne
     std::vector<std::filesystem::path> sources;
 };
 
@@ -149,9 +152,9 @@ core::Result<> mergeDocument(RawTheme &raw, std::string_view text, const std::fi
     for (auto it = doc.begin(); it != doc.end(); ++it)
     {
         if (it.key() != "name" && it.key() != "extends" && it.key() != "tokens" && it.key() != "widgets" && it.key() != "$schema" &&
-            it.key() != "description")
+            it.key() != "description" && it.key() != "images")
         {
-            return fail(it.key(), "unknown key (expected name, extends, tokens, widgets)");
+            return fail(it.key(), "unknown key (expected name, extends, tokens, images, widgets)");
         }
     }
     if (auto it = doc.find("name"); it != doc.end())
@@ -175,6 +178,21 @@ core::Result<> mergeDocument(RawTheme &raw, std::string_view text, const std::fi
                 return fail("tokens." + t.key(), "expected a color \"#rrggbb[aa]\", a number or another token's name");
             }
             raw.tokens[t.key()] = *t;
+        }
+    }
+    if (auto it = doc.find("images"); it != doc.end())
+    {
+        if (!it->is_object())
+        {
+            return fail("images", "expected an object");
+        }
+        for (auto i = it->begin(); i != it->end(); ++i)
+        {
+            if (!i->is_object())
+            {
+                return fail("images." + i.key(), "expected an object {\"file\", \"slice\", \"edges\", \"center\", \"scale\"}");
+            }
+            raw.images[i.key()] = {*i, baseDirectory};
         }
     }
     if (auto it = doc.find("widgets"); it != doc.end())
@@ -240,10 +258,25 @@ std::optional<StyleProperty> propertyFromName(std::string_view name) noexcept
     return std::nullopt;
 }
 
-bool isColorProperty(StyleProperty property) noexcept { return property <= StyleProperty::kShadowColor; }
-
-void Style::set(StyleProperty property, const std::variant<Color, float> &value) noexcept
+bool isColorProperty(StyleProperty property) noexcept
 {
+    return property <= StyleProperty::kShadowColor || property == StyleProperty::kImageTint;
+}
+
+void Style::set(StyleProperty property, const TokenValue &value) noexcept
+{
+    if (property == StyleProperty::kImage)
+    {
+        if (const ImageRef *i = std::get_if<ImageRef>(&value))
+            image = *i;
+        return;
+    }
+    if (property == StyleProperty::kImageTint)
+    {
+        if (const Color *c = std::get_if<Color>(&value))
+            imageTint = *c;
+        return;
+    }
     if (isColorProperty(property))
     {
         const Color *c = std::get_if<Color>(&value);
@@ -352,6 +385,91 @@ struct ThemeBuilder
             }
         }
 
+        // Images en neuf parties : fichier PNG (relatif au thème qui le nomme), coins, remplissage des bords et du centre, échelle.
+        for (const auto &[name, entry] : raw.images)
+        {
+            const auto &[def, baseDir] = entry;
+            const std::string path = "images." + name;
+            auto style = std::make_shared<ImageStyle>();
+            style->name = name;
+            auto file = def.find("file");
+            if (file == def.end() || !file->is_string())
+            {
+                return fail(path + ".file", "expected the PNG file name");
+            }
+            const std::filesystem::path png = baseDir / file->get<std::string>();
+            auto loaded = renderer::loadPng(png);
+            if (!loaded)
+            {
+                return makeError(ErrorCode::kIo, source + ": " + path + ".file: cannot read " + png.generic_string());
+            }
+            auto atlas = std::make_shared<renderer::AtlasImage>();
+            atlas->id = renderer::newAtlasId();
+            atlas->width = loaded->width;
+            atlas->height = loaded->height;
+            atlas->rgba = std::move(loaded->rgba);
+            style->image = atlas;
+            theme.sources_.push_back(png);
+            if (auto slice = def.find("slice"); slice != def.end())
+            {
+                std::array<float, 4> v{};
+                if (slice->is_number())
+                {
+                    v.fill(slice->get<float>());
+                }
+                else if (slice->is_array() && slice->size() == 4 && std::all_of(slice->begin(), slice->end(), [](const Json &j) { return j.is_number(); }))
+                {
+                    for (std::size_t k = 0; k < 4; ++k)
+                        v[k] = (*slice)[k].get<float>();
+                }
+                else
+                {
+                    return fail(path + ".slice", "expected a number or [left, top, right, bottom] (texels)");
+                }
+                style->left = v[0];
+                style->top = v[1];
+                style->right = v[2];
+                style->bottom = v[3];
+            }
+            if (style->left < 0 || style->top < 0 || style->right < 0 || style->bottom < 0 ||
+                style->left + style->right > static_cast<float>(atlas->width) || style->top + style->bottom > static_cast<float>(atlas->height))
+            {
+                return fail(path + ".slice", "the corners do not fit in the " + std::to_string(atlas->width) + "x" + std::to_string(atlas->height) + " image");
+            }
+            auto fillOf = [&](const char *key, SliceFill &out) -> core::Result<>
+            {
+                auto it = def.find(key);
+                if (it == def.end())
+                    return {};
+                const std::string mode = it->is_string() ? it->get<std::string>() : "";
+                if (mode == "stretch")
+                    out = SliceFill::kStretch;
+                else if (mode == "repeat")
+                    out = SliceFill::kRepeat;
+                else if (mode == "none")
+                    out = SliceFill::kNone;
+                else
+                    return fail(path + "." + key, "expected \"stretch\", \"repeat\" or \"none\"");
+                return {};
+            };
+            if (auto r = fillOf("edges", style->edges); !r)
+                return std::unexpected(r.error());
+            if (auto r = fillOf("center", style->center); !r)
+                return std::unexpected(r.error());
+            if (auto s = def.find("scale"); s != def.end())
+            {
+                if (!s->is_number() || s->get<float>() <= 0.0f)
+                    return fail(path + ".scale", "expected a positive number");
+                style->scale = s->get<float>();
+            }
+            for (auto k = def.begin(); k != def.end(); ++k)
+            {
+                if (k.key() != "file" && k.key() != "slice" && k.key() != "edges" && k.key() != "center" && k.key() != "scale")
+                    return fail(path + "." + k.key(), "unknown key (expected file, slice, edges, center, scale)");
+            }
+            theme.images_[name] = std::move(style);
+        }
+
         using Props = std::vector<std::pair<StyleProperty, TokenValue>>;
         auto resolveProps = [&](const std::map<std::string, Json> &props, const std::string &where) -> core::Result<Props>
         {
@@ -364,6 +482,16 @@ struct ThemeBuilder
                 {
                     return fail(path, "unknown property (known: " + knownList(kPropertyNames) + ")");
                 }
+                if (*property == StyleProperty::kImage && value.is_string())
+                {
+                    // Une image se nomme directement (pas de jeton) : "none" retire l'image héritée.
+                    const std::string name = value.get<std::string>();
+                    ImageRef i = theme.image(name);
+                    if (!i && name != "none")
+                        return fail(path, "unknown image '" + name + "' (section \"images\")");
+                    out.emplace_back(*property, TokenValue(i));
+                    continue;
+                }
                 core::Result<TokenValue> resolved = value.is_number()   ? core::Result<TokenValue>(value.get<float>())
                                                     : value.is_string() ? theme.resolve(value.get<std::string>())
                                                                         : makeError(ErrorCode::kParse, "expected a token name, a color or a number");
@@ -371,10 +499,18 @@ struct ThemeBuilder
                 {
                     return fail(path, resolved.error().message);
                 }
-                const bool isColor = std::holds_alternative<Color>(*resolved);
-                if (isColor != isColorProperty(*property))
+                if (*property == StyleProperty::kImage)
                 {
-                    return fail(path, isColorProperty(*property) ? "expects a color" : "expects a number");
+                    if (!std::holds_alternative<ImageRef>(*resolved))
+                        return fail(path, "expects an image name (section \"images\") or \"none\"");
+                }
+                else
+                {
+                    const bool isColor = std::holds_alternative<Color>(*resolved);
+                    if (std::holds_alternative<ImageRef>(*resolved) || isColor != isColorProperty(*property))
+                    {
+                        return fail(path, isColorProperty(*property) ? "expects a color" : "expects a number");
+                    }
                 }
                 out.emplace_back(*property, *resolved);
             }
@@ -510,7 +646,21 @@ core::Result<TokenValue> Theme::resolve(std::string_view value) const
     {
         return *t;
     }
+    if (value == "none")
+    {
+        return ImageRef{};
+    }
+    if (ImageRef i = image(value))
+    {
+        return i;
+    }
     return makeError(ErrorCode::kNotFound, "unknown token '" + std::string(value) + "'");
+}
+
+ImageRef Theme::image(std::string_view name) const
+{
+    auto it = images_.find(name);
+    return it == images_.end() ? ImageRef{} : it->second;
 }
 
 const Style &Theme::style(std::string_view widget, WidgetState state) const

@@ -504,9 +504,8 @@ bool TextRenderer::ensureFontLoaded(const std::string &fontName, unsigned int fo
 
     computeFontMetrics(fontData);
     {
-        static std::atomic<std::uint64_t> nextAtlasId{1};
         auto atlas = std::make_shared<engine::renderer::AtlasImage>();
-        atlas->id = nextAtlasId.fetch_add(1);
+        atlas->id = engine::renderer::newAtlasId();
         atlas->width = static_cast<std::uint32_t>(fontData.atlasWidth);
         atlas->height = static_cast<std::uint32_t>(fontData.atlasHeight);
         atlas->rgba.assign(atlasPixels.begin(), atlasPixels.end());

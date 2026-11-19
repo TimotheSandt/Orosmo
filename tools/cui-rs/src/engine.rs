@@ -154,6 +154,8 @@ const STYLE_PROPERTIES: &[(&str, &str)] = &[
     ("shadowSize", "kShadowSize"),
     ("shadowOffset", "kShadowOffset"),
     ("width", "kWidth"),
+    ("image", "kImage"),
+    ("imageTint", "kImageTint"),
 ];
 
 fn component(name: &str) -> Option<&'static Component> {
