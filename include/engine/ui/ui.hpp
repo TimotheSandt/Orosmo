@@ -46,6 +46,7 @@ struct InputFrame
 {
     glm::vec2 mouse{-1.0e9f};
     bool mouseDown = false;     // bouton principal enfoncé (l'appui et le relâchement sont déduits de l'image précédente)
+    bool secondaryDown = false; // bouton secondaire (droit) enfoncé
     glm::vec2 wheel{0.0f};      // molette (y > 0 : vers le haut)
     std::string text;           // texte saisi pendant l'image (UTF-8)
     std::vector<int> keys;      // touches appuyées pendant l'image (Key)
@@ -128,6 +129,8 @@ class Ui
     void forget(const Widget &widget) noexcept;
 
     glm::vec2 viewport() const noexcept { return viewport_; }
+    // Maj enfoncée pendant l'image (réglage fin d'un curseur).
+    bool shiftHeld() const noexcept { return shift_; }
     glm::vec2 mouse() const noexcept { return mouse_; }
     float time() const noexcept { return time_; }
 
@@ -157,6 +160,8 @@ class Ui
     glm::vec2 viewport_{0.0f};
     glm::vec2 mouse_{-1.0e9f};
     bool mouseWasDown_ = false;
+    bool secondaryWasDown_ = false;
+    bool shift_ = false;
     bool wantsMouse_ = false;
     float time_ = 0.0f;
     float hoverTime_ = 0.0f;

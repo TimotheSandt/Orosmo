@@ -79,6 +79,22 @@ struct UiHarness
         down = false;
         frame();
     }
+    void secondaryClick(glm::vec2 p)
+    {
+        mouse = p;
+        engine::ui::InputFrame in = input();
+        in.secondaryDown = true;
+        ui.update(in, viewport);
+        frame();
+    }
+    // Déplacement avec le bouton principal enfoncé et Maj (glissement fin).
+    void dragShift(glm::vec2 p)
+    {
+        mouse = p;
+        engine::ui::InputFrame in = input();
+        in.shift = true;
+        ui.update(in, viewport);
+    }
     void click(glm::vec2 p)
     {
         press(p);

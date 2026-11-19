@@ -144,6 +144,11 @@ TEST_SUITE("ui/reflect")
         h.click(UiHarness::center(*octaves));
         CHECK(params.relief.octaves == 9);
         CHECK(changes == 1);
+        // Clic droit : valeur par défaut de TerrainParams{} (6 octaves), pas celle du moment.
+        h.secondaryClick(UiHarness::center(*octaves));
+        CHECK(params.relief.octaves == 6);
+        CHECK(changes == 2);
+        changes = 1;
         // Choix de Worley dans la liste.
         h.click(UiHarness::center(*basis));
         REQUIRE(h.ui.popup() != nullptr);

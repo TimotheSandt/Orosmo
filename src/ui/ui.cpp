@@ -382,6 +382,9 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
     const bool pressed = input.mouseDown && !mouseWasDown_;
     const bool released = !input.mouseDown && mouseWasDown_;
     mouseWasDown_ = input.mouseDown;
+    const bool secondaryPressed = input.secondaryDown && !secondaryWasDown_;
+    secondaryWasDown_ = input.secondaryDown;
+    shift_ = input.shift;
 
     Widget *hit = hitTest(mouse_);
     Widget *target = interactiveAncestor(hit);
@@ -440,6 +443,14 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         active_ = nullptr;
         a->pressed_ = false;
         a->onRelease(*this, mouse_, target == a && a->rect().contains(mouse_));
+    }
+
+    if (secondaryPressed && active_ == nullptr)
+    {
+        if (popup_ && !inSubtree(popup_.get(), hit))
+            closePopup();
+        else if (target != nullptr)
+            target->onSecondaryClick(*this, mouse_);
     }
 
     if (input.wheel != glm::vec2(0.0f))

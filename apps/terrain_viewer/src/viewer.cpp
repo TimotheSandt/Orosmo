@@ -232,6 +232,7 @@ ui::InputFrame Viewer::readInput(float deltaTime)
     const glm::dvec2 cursor = window_.GetCursorPosition();
     in.mouse = glm::vec2(cursor);
     in.mouseDown = input.IsMouseButtonPressed(MouseButton::LEFT) || input.IsMouseButtonJustPressed(MouseButton::LEFT);
+    in.secondaryDown = input.IsMouseButtonPressed(MouseButton::RIGHT) || input.IsMouseButtonJustPressed(MouseButton::RIGHT);
     in.wheel = input.GetMouseScroll();
     in.text = input.GetTextInput();
     in.shift = input.IsKeyPressed(KeyButton::LEFT_SHIFT) || input.IsKeyPressed(KeyButton::RIGHT_SHIFT);

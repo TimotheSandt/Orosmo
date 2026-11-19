@@ -101,6 +101,7 @@ static COMPONENTS: &[Component] = &[
             p("min", Kind::Number, Default::Required),
             p("max", Kind::Number, Default::Required),
             p("step", Kind::Number, Default::Value("0.0")),
+            p("default", Kind::Number, Default::Omit),
         ],
         children: Children::None,
         events: EV_CHANGE,
@@ -516,6 +517,9 @@ impl<'a> Gen<'a> {
             other => format!("std::make_unique<engine::ui::{other}>()"),
         };
         self.emit(format!("auto {var} = {ctor};"));
+        if comp.name == "Slider" && args[4].is_some() {
+            self.emit(format!("{var}->setDefault({});", a[4]));
+        }
         if comp.name == "Label" || comp.name == "Button" {
             let text_expr = args[0];
             match text_expr {

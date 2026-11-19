@@ -78,7 +78,7 @@ Arguments positionnels dans l'ordre du tableau, ou nommés (`min: 0`). Un argume
 | `Label` | `text` (texte, = "") | — | onHover, onFocus |
 | `Button` | `text` (texte) | — | onClick |
 | `Checkbox` | `text` (texte), `checked` (booléen lié) | — | onClick, onChange |
-| `Slider` | `value` (nombre lié), `min`, `max`, `step` (= 0 : continu) | — | onChange |
+| `Slider` | `value` (nombre lié), `min`, `max`, `step` (= 0 : continu), `default` (clic droit ; = la valeur liée à la construction) | — | onChange |
 | `Dropdown` | `options` (expression → `std::vector<std::string>`), `selected` (entier lié) | — | onChange |
 | `TextField` | `text` (chaîne liée) | — | onChange |
 | `NumberField` | `value` (nombre lié), `integer` (= false), `min`, `max` | — | onChange |
@@ -91,6 +91,9 @@ onHover et onFocus sont acceptés partout sauf sur `Page`.
 
 **Texte** : une chaîne (`"Graine"`), une chaîne interpolée (`"FPS \(stats.fps)"`, relue à chaque image : un flottant s'affiche
 avec au plus deux décimales, `engine::ui::text`) ou une expression C++ (`state.title`).
+
+**Curseur** (`Slider`) : un clic sans glisser place la valeur sous le pointeur ; un glissement part de la valeur courante et la
+déplace de la distance parcourue (toute la largeur = toute la plage ; Maj : dix fois plus fin) ; clic droit : valeur par défaut.
 
 **Valeur liée** : `$chemin` (deux sens : le widget écrit dans `state->chemin`, écriture différée à la fin de `Ui::update`) ou une
 expression (lecture seule). Le chemin commence par un champ `@Mutable`.

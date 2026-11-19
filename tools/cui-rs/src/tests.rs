@@ -118,3 +118,9 @@ fn the_legacy_target_refuses_two_way_bindings() {
     let err = compile_source("view F {\n    VBox($x)\n}\n", "f.cui", "f", Some(&registry)).unwrap_err();
     assert_eq!(err, vec!["f.cui:2:5: error: two-way bindings ($...) need `import \"engine/ui\"`".to_string()]);
 }
+
+#[test]
+fn a_slider_default_is_set_after_construction() {
+    let (_, source) = engine("view V {\n    @Mutable var s: S\n    Slider($s.v, min: 0, max: 10, default: 3)\n}\n").unwrap();
+    assert!(source.contains("->setDefault(static_cast<double>(3.0));"), "{source}");
+}

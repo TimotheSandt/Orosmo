@@ -94,7 +94,13 @@ class Slider : public Widget
 {
   public:
     // `step` > 0 : valeurs arrondies au pas (entières si le pas est entier).
+    //
+    // Souris : un clic SANS glisser place la valeur sous le pointeur (au relâchement) ; un glissement part de la valeur COURANTE
+    // et la déplace de la distance parcourue (le point de départ du clic n'est pas imposé : réglage précis) ; Maj pendant le
+    // glissement : dix fois plus fin. Clic droit : valeur par défaut (celle de la liaison à la construction, ou `setDefault`).
     Slider(Binding<double> value, double min, double max, double step = 0.0);
+    Slider &setDefault(double value) { default_ = value; return *this; }
+    double defaultValue() const noexcept { return default_; }
     double value() const;
     double min() const noexcept { return min_; }
     double max() const noexcept { return max_; }
@@ -106,7 +112,11 @@ class Slider : public Widget
     bool focusable() const override { return true; }
     void onPress(Ui &ui, glm::vec2 mouse) override;
     void onDrag(Ui &ui, glm::vec2 mouse) override;
+    void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
+    void onSecondaryClick(Ui &ui, glm::vec2 mouse) override;
     void onKey(Ui &ui, int key) override;
+    // Distance (pixels) au-delà de laquelle un appui devient un glissement.
+    static constexpr float kDragThreshold = 3.0f;
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
@@ -122,6 +132,11 @@ class Slider : public Widget
     double max_;
     double step_;
     std::string prefix_;
+    double default_ = 0.0;
+    bool dragging_ = false;
+    float pressX_ = 0.0f;   // abscisse de l'appui
+    float lastX_ = 0.0f;    // abscisse de la dernière position prise en compte
+    double dragValue_ = 0.0; // valeur non arrondie pendant le glissement (le pas ne bloque pas les petits déplacements)
     bool hasPending_ = false;
     double pending_ = 0.0; // valeur écrite pendant l'image (affichée avant que l'écriture différée soit appliquée)
 };
