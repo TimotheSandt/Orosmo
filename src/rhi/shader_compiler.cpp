@@ -4,7 +4,10 @@
 #include <spirv_cross/spirv_cross.hpp>
 #include <spirv_cross/spirv_glsl.hpp>
 
+#include "engine/core/system.hpp"
+
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -151,10 +154,25 @@ core::Result<ShaderReflection> reflect(const std::vector<std::uint32_t> &spirv, 
                 b.binding = compiler.get_decoration(r.id, spv::DecorationBinding);
                 b.type = type;
                 b.name = r.name;
-                if (b.set >= kGroupCount || b.binding >= kBindingsPerGroup)
+                // Un tableau de ressources occupe un binding par élément (OpenGL : emplacements plats consécutifs).
+                const spirv_cross::SPIRType &t = compiler.get_type(r.type_id);
+                std::uint64_t count = 1;
+                for (std::size_t d = 0; d < t.array.size(); ++d)
                 {
-                    problem = "'" + r.name + "' uses set " + std::to_string(b.set) + ", binding " + std::to_string(b.binding) + ": the RHI has " +
-                              std::to_string(kGroupCount) + " groups of " + std::to_string(kBindingsPerGroup) + " bindings";
+                    if (t.array[d] == 0 || !t.array_size_literal[d])
+                    {
+                        problem = "'" + r.name + "' is an unsized or specialization-sized array of resources: not supported by the RHI binding model";
+                        count = 0;
+                        break;
+                    }
+                    count *= t.array[d];
+                }
+                b.count = static_cast<std::uint32_t>(std::min<std::uint64_t>(count, kBindingsPerGroup + 1u));
+                if (b.set >= kGroupCount || b.binding >= kBindingsPerGroup || (count != 0 && b.binding + count > kBindingsPerGroup))
+                {
+                    problem = "'" + r.name + "' uses set " + std::to_string(b.set) + ", bindings " + std::to_string(b.binding) + ".." +
+                              std::to_string(b.binding + count - 1) + ": the RHI has " + std::to_string(kGroupCount) + " groups of " +
+                              std::to_string(kBindingsPerGroup) + " bindings";
                 }
                 out.bindings.push_back(std::move(b));
             }
@@ -173,13 +191,18 @@ core::Result<ShaderReflection> reflect(const std::vector<std::uint32_t> &spirv, 
         }
         std::ranges::sort(out.bindings, [](const ReflectedBinding &a, const ReflectedBinding &b)
                           { return a.set != b.set ? a.set < b.set : a.binding < b.binding; });
+        // Chevauchement : une ressource commence avant la fin (binding + count) de la précédente du même groupe. Les groupes ne
+        // se chevauchent pas (chaque binding + count est borné par kBindingsPerGroup ci-dessus).
         for (std::size_t i = 1; i < out.bindings.size(); ++i)
         {
-            if (out.bindings[i].set == out.bindings[i - 1].set && out.bindings[i].binding == out.bindings[i - 1].binding)
+            const ReflectedBinding &a = out.bindings[i - 1];
+            const ReflectedBinding &b = out.bindings[i];
+            if (b.set == a.set && b.binding < a.binding + a.count)
             {
-                return makeError(ErrorCode::kInvalidArgument, name + ": '" + out.bindings[i].name + "' and '" + out.bindings[i - 1].name +
-                                                                   "' share set " + std::to_string(out.bindings[i].set) + ", binding " +
-                                                                   std::to_string(out.bindings[i].binding));
+                return makeError(ErrorCode::kInvalidArgument, name + ": '" + b.name + "' and '" + a.name + "' overlap in set " +
+                                                                   std::to_string(b.set) + " (binding " + std::to_string(b.binding) +
+                                                                   " is used by '" + a.name + "', which spans " + std::to_string(a.count) +
+                                                                   " binding(s) from " + std::to_string(a.binding) + ")");
             }
         }
         if (!resources.push_constant_buffers.empty())
@@ -252,8 +275,19 @@ IncludeResolver fileIncludeResolver(std::vector<std::filesystem::path> roots)
                 continue;
             }
             std::ifstream in(candidate, std::ios::binary);
+            if (!in)
+            {
+                return makeError(ErrorCode::kIo, "include cannot be read: " + candidate.generic_string());
+            }
             std::ostringstream text;
-            text << in.rdbuf();
+            if (in.peek() != std::ifstream::traits_type::eof()) // un fichier vide lisible reste un include valide
+            {
+                text << in.rdbuf();
+            }
+            if (in.bad())
+            {
+                return makeError(ErrorCode::kIo, "include cannot be read: " + candidate.generic_string());
+            }
             return IncludedSource{fs::weakly_canonical(candidate, ec).generic_string(), text.str()};
         }
         return makeError(ErrorCode::kNotFound, "include not found: " + std::string(requested));
@@ -368,12 +402,26 @@ core::Result<CompiledShader> ShaderCache::compile(ShaderStage stage, std::string
     {
         std::error_code ec;
         std::filesystem::create_directories(mDirectory, ec);
-        const std::filesystem::path temp = file.string() + ".tmp";
+        // Fichier temporaire propre au processus et à l'écriture : deux programmes qui compilent la même clé n'écrivent jamais
+        // le même fichier ; le renommage (atomique) ne publie qu'un fichier complet et bien fermé.
+        static std::atomic<std::uint64_t> writes{0};
+        const std::filesystem::path temp =
+            file.string() + "." + std::to_string(core::system::processId()) + "." + std::to_string(writes.fetch_add(1)) + ".tmp";
+        bool written = false;
         {
             std::ofstream out(temp, std::ios::binary | std::ios::trunc);
             out.write(reinterpret_cast<const char *>(spirv->data()), static_cast<std::streamsize>(spirv->size() * 4));
+            out.close();
+            written = static_cast<bool>(out);
         }
-        std::filesystem::rename(temp, file, ec); // échec d'écriture : le cache disque est facultatif
+        if (written)
+        {
+            std::filesystem::rename(temp, file, ec); // échec : le cache disque est facultatif
+        }
+        if (!written || ec)
+        {
+            std::filesystem::remove(temp, ec);
+        }
     }
     return finish(stage, std::move(*spirv), std::move(included), options.name);
 }
@@ -418,8 +466,10 @@ core::Result<ShaderHandle> createShaderFromGlsl(Device &device, ShaderStage stag
 
 // ── Rechargement à chaud ───────────────────────────────────────────────────────────────────────────────────────────────
 
-core::Result<CompiledShader> ShaderHotReloader::build(const Entry &entry) const
+core::Result<CompiledShader> ShaderHotReloader::build(const Entry &entry, std::vector<std::string> &dependencies) const
 {
+    dependencies.clear();
+    dependencies.push_back(entry.file.generic_string());
     std::ifstream in(entry.file, std::ios::binary);
     if (!in)
     {
@@ -430,25 +480,49 @@ core::Result<CompiledShader> ShaderHotReloader::build(const Entry &entry) const
     CompileOptions options;
     options.name = entry.file.generic_string();
     options.defines = entry.defines;
-    options.includeResolver = mResolver;
+    // Chaque include tenté devient une dépendance, même absent : le créer plus tard relance la compilation.
+    if (mResolver)
+    {
+        options.includeResolver = [&dependencies, resolver = mResolver](std::string_view requested, std::string_view requester) -> core::Result<IncludedSource>
+        {
+            auto found = resolver(requested, requester);
+            const std::string path = found ? found->path
+                                           : (requester.empty() ? std::filesystem::path(requested)
+                                                                : std::filesystem::path(requester).parent_path() / requested)
+                                                 .generic_string();
+            if (std::ranges::find(dependencies, path) == dependencies.end())
+            {
+                dependencies.push_back(path);
+            }
+            return found;
+        };
+    }
     // Les includes relatifs se résolvent par rapport au fichier : on l'indique comme demandeur initial via le nom.
     return mCache != nullptr ? mCache->compile(entry.stage, text.str(), options) : compileGlsl(entry.stage, text.str(), options);
 }
 
-void ShaderHotReloader::watchFiles(std::size_t index, const CompiledShader &shader)
+// Met à jour les surveillances d'une entrée : celles des fichiers qui restent des dépendances sont CONSERVÉES (leur instantané
+// date d'avant la compilation : une modification enregistrée pendant celle-ci sera vue au prochain poll), celles qui ne le sont
+// plus sont retirées, les nouvelles ajoutées.
+void ShaderHotReloader::watchFiles(std::size_t index, const std::vector<std::string> &dependencies)
 {
     Entry &entry = mEntries[index];
-    for (core::FileWatcher::WatchId id : entry.watchIds)
+    std::erase_if(entry.watches,
+                  [&](const auto &watch)
+                  {
+                      if (std::ranges::find(dependencies, watch.first) != dependencies.end())
+                      {
+                          return false;
+                      }
+                      mWatcher.unwatch(watch.second);
+                      return true;
+                  });
+    for (const std::string &path : dependencies)
     {
-        mWatcher.unwatch(id);
-    }
-    entry.watchIds.clear();
-    auto watch = [&](const std::filesystem::path &path)
-    { entry.watchIds.push_back(mWatcher.watch(path, [this, index](const core::FileEvent &) { mEntries[index].dirty = true; })); };
-    watch(entry.file);
-    for (const std::string &include : shader.includedFiles)
-    {
-        watch(include);
+        if (std::ranges::find_if(entry.watches, [&](const auto &watch) { return watch.first == path; }) == entry.watches.end())
+        {
+            entry.watches.emplace_back(path, mWatcher.watch(path, [this, index](const core::FileEvent &) { mEntries[index].dirty = true; }));
+        }
     }
 }
 
@@ -457,8 +531,9 @@ core::Result<CompiledShader> ShaderHotReloader::add(const std::filesystem::path 
 {
     mEntries.push_back(Entry{file, stage, std::move(onReload), std::move(defines), {}, false});
     const std::size_t index = mEntries.size() - 1;
-    auto first = build(mEntries[index]);
-    watchFiles(index, first ? *first : CompiledShader{});
+    std::vector<std::string> dependencies;
+    auto first = build(mEntries[index], dependencies);
+    watchFiles(index, dependencies);
     return first;
 }
 
@@ -474,12 +549,13 @@ std::size_t ShaderHotReloader::poll()
         }
         mEntries[i].dirty = false;
         ++attempts;
-        auto result = build(mEntries[i]);
-        if (result)
-        {
-            watchFiles(i, *result); // les includes ont pu changer
-        }
-        mEntries[i].callback(mEntries[i].file, result);
+        std::vector<std::string> dependencies;
+        auto result = build(mEntries[i], dependencies);
+        watchFiles(i, dependencies); // les includes ont pu changer, y compris après un échec (include encore absent)
+        // Copies : le rappel peut appeler add(), qui réalloue mEntries.
+        const std::filesystem::path file = mEntries[i].file;
+        const Callback callback = mEntries[i].callback;
+        callback(file, result);
     }
     return attempts;
 }

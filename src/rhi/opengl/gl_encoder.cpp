@@ -33,6 +33,7 @@ class GlEncoder final : public CommandEncoder
     }
 
     const std::optional<Error> &error() const noexcept override { return error_; }
+    bool hasOpenScope() const noexcept { return inPass_ || debugDepth_ > 0; }
 
     void beginRenderPass(const RenderPassDesc &desc) override;
     void endRenderPass() override;
@@ -75,6 +76,9 @@ class GlEncoder final : public CommandEncoder
 
     bool beforeDraw(bool indexed);
     void applyState(const PipelineRes &pipeline);
+    void detachVertexBuffers();
+    // Vérifie `offset + count * stride` contre `size` sans débordement (offset, pas et taille déjà bornés à 64 bits).
+    static bool rangeFits(std::uint64_t offset, std::uint64_t required, std::uint64_t size) { return offset <= size && required <= size - offset; }
 
     GlDevice &device_;
     std::optional<Error> error_;
@@ -101,6 +105,7 @@ class GlEncoder final : public CommandEncoder
     IndexType indexType_ = IndexType::kUint32;
     std::uint64_t indexOffset_ = 0;
     bool storageTouched_ = false;
+    bool drawnInPass_ = false;
 };
 
 std::unique_ptr<CommandEncoder> GlDevice::createCommandEncoder() { return std::make_unique<GlEncoder>(*this); }
@@ -113,7 +118,11 @@ Result<> GlDevice::submit(std::unique_ptr<CommandEncoder> encoder)
     }
     auto *glEncoder = static_cast<GlEncoder *>(encoder.get()); // seuls les encodeurs de ce périphérique existent
     std::optional<Error> error = glEncoder->error();
-    encoder.reset(); // referme une passe laissée ouverte
+    if (!error && glEncoder->hasOpenScope())
+    {
+        error = makeError(ErrorCode::kInvalidArgument, "submit: a render pass or a debug group is still open").error();
+    }
+    encoder.reset(); // referme quand même la passe ou le groupe laissé ouvert, pour ne rien laisser dans le contexte
     if (error)
     {
         return std::unexpected(*error);
@@ -148,7 +157,10 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
                    "beginRenderPass: attachment lacks the RenderTarget usage (" + t->desc.debugName + ")") ||
             !check(formatInfo(t->desc.format).isDepth() == depth, ErrorCode::kInvalidArgument,
                    "beginRenderPass: wrong attachment kind for format " + std::string(toString(t->desc.format))) ||
-            !check(mip < t->levels && layer < t->layers, ErrorCode::kOutOfRange, "beginRenderPass: mip or layer out of range"))
+            !check(mip < t->levels, ErrorCode::kOutOfRange, "beginRenderPass: mip level out of range") ||
+            // Texture 3D : la « couche » est une tranche du niveau choisi ; tableau et cube : une couche.
+            !check(layer < (t->desc.dimension == TextureDimension::k3D ? mipDim(t->desc.size.depth, mip) : t->layers), ErrorCode::kOutOfRange,
+                   "beginRenderPass: layer or 3D slice out of range"))
         {
             return false;
         }
@@ -257,7 +269,20 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
         {
             if (formatInfo(formats[i]).kind == FormatKind::kUint)
             {
-                const GLuint value[4] = {static_cast<GLuint>(std::max(c.clearColor[0], 0.0f)), 0, 0, 0};
+                // Seule une valeur représentable se convertit sans comportement indéfini (NaN, négatif, >= 2^32 refusés).
+                const float v = c.clearColor[0];
+                if (!check(v >= 0.0f && v < 4294967296.0f, ErrorCode::kInvalidArgument,
+                           "beginRenderPass: the clear value of an integer target must be in [0, 2^32)"))
+                {
+                    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                    if (passGroupPushed_)
+                    {
+                        glPopDebugGroup();
+                        passGroupPushed_ = false;
+                    }
+                    return;
+                }
+                const GLuint value[4] = {static_cast<GLuint>(v), 0, 0, 0};
                 glClearBufferuiv(GL_COLOR, static_cast<GLint>(i), value);
             }
             else
@@ -300,6 +325,7 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
     passExtent_ = extent;
     pipeline_ = {};
     storageTouched_ = false;
+    drawnInPass_ = false;
 }
 
 void GlEncoder::endRenderPass()
@@ -308,6 +334,7 @@ void GlEncoder::endRenderPass()
     {
         return;
     }
+    detachVertexBuffers();
     if (!invalidate_.empty())
     {
         glInvalidateFramebuffer(GL_FRAMEBUFFER, static_cast<GLsizei>(invalidate_.size()), invalidate_.data());
@@ -379,6 +406,27 @@ void GlEncoder::applyState(const PipelineRes &p)
     }
 }
 
+// Les liaisons de tampons (sommets, indices) sont un état du VAO du pipeline : laissées en place, elles retiendraient un tampon
+// détruit tant que ce VAO vit. On les retire quand le pipeline change et à la fin de la passe.
+void GlEncoder::detachVertexBuffers()
+{
+    const PipelineRes *p = device_.get(pipeline_);
+    if (p == nullptr)
+    {
+        return;
+    }
+    glBindVertexArray(p->vao);
+    for (std::uint32_t binding = 0; binding < vertexBuffers_.size(); ++binding)
+    {
+        if (p->bindingUsed[binding])
+        {
+            glBindVertexBuffer(binding, 0, 0, static_cast<GLsizei>(p->strides[binding]));
+        }
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindVertexArray(device_.emptyVertexArray());
+}
+
 void GlEncoder::setPipeline(PipelineHandle handle)
 {
     if (!check(inPass_, ErrorCode::kInvalidArgument, "setPipeline: outside a render pass"))
@@ -399,6 +447,7 @@ void GlEncoder::setPipeline(PipelineHandle handle)
     {
         return;
     }
+    detachVertexBuffers();
     applyState(*p);
     pipeline_ = handle;
 }
@@ -442,6 +491,11 @@ void GlEncoder::setBindGroup(std::uint32_t slot, BindGroupHandle handle, std::sp
                 if (!check(offset % align == 0, ErrorCode::kInvalidArgument, "setBindGroup: dynamic offset is not aligned") ||
                     !check(offset <= b->desc.size && size <= b->desc.size - offset && size > 0, ErrorCode::kOutOfRange,
                            "setBindGroup: range exceeds the buffer (" + b->desc.debugName + ")"))
+                {
+                    return;
+                }
+                if (!check(e.type != BindingType::kStorageBuffer || unit < caps.maxStorageBufferBindings, ErrorCode::kOutOfRange,
+                           "setBindGroup: the flat storage buffer binding exceeds the device limit (Capabilities::maxStorageBufferBindings)"))
                 {
                     return;
                 }
@@ -567,6 +621,14 @@ bool GlEncoder::beforeDraw(bool indexed)
         }
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->id);
     }
+    // Un dessin précédent de la passe a pu écrire un tampon ou une image de stockage que celui-ci lit : sans barrière, OpenGL
+    // n'en garantit pas l'ordre (RHI-09, barrière conservatrice tant que le RHI ne suit pas les accès en écriture).
+    if (storageTouched_ && drawnInPass_)
+    {
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT |
+                        GL_ELEMENT_ARRAY_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_UNIFORM_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    }
+    drawnInPass_ = true;
     return true;
 }
 
@@ -601,7 +663,9 @@ void GlEncoder::drawIndirect(BufferHandle args, std::uint64_t offset, std::uint3
     const std::uint64_t step = stride != 0 ? stride : sizeof(DrawIndirectCommand);
     if (!check(b != nullptr && hasFlag(b->desc.usage, BufferUsage::kIndirect), ErrorCode::kInvalidArgument,
                "drawIndirect: args buffer is stale or lacks the Indirect usage") ||
-        !check(drawCount > 0 && offset + step * (drawCount - 1) + sizeof(DrawIndirectCommand) <= b->desc.size, ErrorCode::kOutOfRange,
+        !check(offset % 4 == 0 && stride % 4 == 0 && (stride == 0 || stride >= sizeof(DrawIndirectCommand)), ErrorCode::kInvalidArgument,
+               "drawIndirect: offset and stride must be multiples of 4, stride 0 or at least one command") ||
+        !check(drawCount > 0 && rangeFits(offset, step * (drawCount - 1) + sizeof(DrawIndirectCommand), b->desc.size), ErrorCode::kOutOfRange,
                "drawIndirect: commands exceed the buffer") ||
         !beforeDraw(false))
     {
@@ -618,8 +682,10 @@ void GlEncoder::drawIndexedIndirect(BufferHandle args, std::uint64_t offset, std
     const std::uint64_t step = stride != 0 ? stride : sizeof(DrawIndexedIndirectCommand);
     if (!check(b != nullptr && hasFlag(b->desc.usage, BufferUsage::kIndirect), ErrorCode::kInvalidArgument,
                "drawIndexedIndirect: args buffer is stale or lacks the Indirect usage") ||
-        !check(drawCount > 0 && offset + step * (drawCount - 1) + sizeof(DrawIndexedIndirectCommand) <= b->desc.size, ErrorCode::kOutOfRange,
-               "drawIndexedIndirect: commands exceed the buffer") ||
+        !check(offset % 4 == 0 && stride % 4 == 0 && (stride == 0 || stride >= sizeof(DrawIndexedIndirectCommand)), ErrorCode::kInvalidArgument,
+               "drawIndexedIndirect: offset and stride must be multiples of 4, stride 0 or at least one command") ||
+        !check(drawCount > 0 && rangeFits(offset, step * (drawCount - 1) + sizeof(DrawIndexedIndirectCommand), b->desc.size),
+               ErrorCode::kOutOfRange, "drawIndexedIndirect: commands exceed the buffer") ||
         !check(indexOffset_ == 0, ErrorCode::kUnsupported,
                "drawIndexedIndirect: a non-zero index buffer offset is not supported (GL reads indices from byte 0 plus firstIndex)") ||
         !beforeDraw(true))
@@ -665,7 +731,7 @@ void GlEncoder::dispatchIndirect(BufferHandle args, std::uint64_t offset)
         check(device_.get(computePipeline_) != nullptr, ErrorCode::kInvalidArgument, "dispatchIndirect: no compute pipeline bound") &&
         check(b != nullptr && hasFlag(b->desc.usage, BufferUsage::kIndirect), ErrorCode::kInvalidArgument,
               "dispatchIndirect: args buffer is stale or lacks the Indirect usage") &&
-        check(offset + sizeof(DispatchIndirectCommand) <= b->desc.size && offset % 4 == 0, ErrorCode::kOutOfRange,
+        check(rangeFits(offset, sizeof(DispatchIndirectCommand), b->desc.size) && offset % 4 == 0, ErrorCode::kOutOfRange,
               "dispatchIndirect: offset out of range or unaligned"))
     {
         glUseProgram(device_.get(computePipeline_)->program);
@@ -677,6 +743,18 @@ void GlEncoder::dispatchIndirect(BufferHandle args, std::uint64_t offset)
 
 // ── Copies ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+namespace
+{
+// Octets réellement touchés dans le tampon : toutes les tranches et lignes au pas `rowLength` (texels, 0 : serrées), sauf le
+// remplissage après la dernière ligne de la dernière tranche.
+std::uint64_t transferBytes(const SliceRegion &region, std::uint32_t rowLength, std::uint32_t bytesPerTexel)
+{
+    const std::uint64_t row = rowLength != 0 ? rowLength : region.size.width;
+    const std::uint64_t slice = row * region.size.height;
+    return ((region.size.depth - 1) * slice + (region.size.height - 1) * row + region.size.width) * bytesPerTexel;
+}
+} // namespace
+
 void GlEncoder::copyBuffer(BufferHandle src, BufferHandle dst, const BufferCopy &r)
 {
     const BufferRes *s = device_.get(src);
@@ -685,8 +763,8 @@ void GlEncoder::copyBuffer(BufferHandle src, BufferHandle dst, const BufferCopy 
         check(s != nullptr && d != nullptr, ErrorCode::kNotFound, "copyBuffer: stale or null buffer") &&
         check(hasFlag(s->desc.usage, BufferUsage::kCopySrc) && hasFlag(d->desc.usage, BufferUsage::kCopyDst), ErrorCode::kInvalidArgument,
               "copyBuffer: source needs CopySrc and destination CopyDst") &&
-        check(r.srcOffset + r.size <= s->desc.size && r.dstOffset + r.size <= d->desc.size, ErrorCode::kOutOfRange,
-              "copyBuffer: range exceeds a buffer") &&
+        check(r.size > 0 && rangeFits(r.srcOffset, r.size, s->desc.size) && rangeFits(r.dstOffset, r.size, d->desc.size), ErrorCode::kOutOfRange,
+              "copyBuffer: empty range or range exceeds a buffer") &&
         check(src != dst || r.srcOffset + r.size <= r.dstOffset || r.dstOffset + r.size <= r.srcOffset, ErrorCode::kInvalidArgument,
               "copyBuffer: overlapping ranges in the same buffer"))
     {
@@ -714,9 +792,10 @@ void GlEncoder::copyBufferToTexture(BufferHandle src, TextureHandle dst, const T
     {
         return;
     }
-    const std::uint64_t rowTexels = copy.bufferRowLength != 0 ? copy.bufferRowLength : region->size.width;
-    const std::uint64_t bytes = rowTexels * region->size.height * region->size.depth * formatInfo(t->desc.format).bytesPerTexel;
-    if (!check(copy.bufferOffset + bytes <= b->desc.size, ErrorCode::kOutOfRange, "copyBufferToTexture: region exceeds the buffer"))
+    const std::uint64_t bytes = transferBytes(*region, copy.bufferRowLength, formatInfo(t->desc.format).bytesPerTexel);
+    if (!check(copy.bufferRowLength == 0 || copy.bufferRowLength >= region->size.width, ErrorCode::kInvalidArgument,
+               "copyBufferToTexture: bufferRowLength is shorter than the region") ||
+        !check(rangeFits(copy.bufferOffset, bytes, b->desc.size), ErrorCode::kOutOfRange, "copyBufferToTexture: region exceeds the buffer"))
     {
         return;
     }
@@ -741,9 +820,10 @@ void GlEncoder::copyTextureToBuffer(TextureHandle src, BufferHandle dst, const T
     {
         return;
     }
-    const std::uint64_t rowTexels = copy.bufferRowLength != 0 ? copy.bufferRowLength : region->size.width;
-    const std::uint64_t bytes = rowTexels * region->size.height * region->size.depth * formatInfo(t->desc.format).bytesPerTexel;
-    if (!check(copy.bufferOffset + bytes <= b->desc.size, ErrorCode::kOutOfRange, "copyTextureToBuffer: region exceeds the buffer"))
+    const std::uint64_t bytes = transferBytes(*region, copy.bufferRowLength, formatInfo(t->desc.format).bytesPerTexel);
+    if (!check(copy.bufferRowLength == 0 || copy.bufferRowLength >= region->size.width, ErrorCode::kInvalidArgument,
+               "copyTextureToBuffer: bufferRowLength is shorter than the region") ||
+        !check(rangeFits(copy.bufferOffset, bytes, b->desc.size), ErrorCode::kOutOfRange, "copyTextureToBuffer: region exceeds the buffer"))
     {
         return;
     }
@@ -762,7 +842,7 @@ void GlEncoder::generateMips(TextureHandle handle)
         check(!formatInfo(t->desc.format).isDepth() && formatInfo(t->desc.format).kind != FormatKind::kUint, ErrorCode::kInvalidArgument,
               "generateMips: depth and integer formats have no mip generation"))
     {
-        glBindTexture(t->target, t->id);
+        GlDevice::bindScratchTexture(t->target, t->id); // n'écrase pas une texture liée par setBindGroup
         glGenerateMipmap(t->target);
     }
 }
@@ -791,6 +871,10 @@ void GlEncoder::writeTimestamp(QueryPoolHandle handle, std::uint32_t index)
         check(index < pool->ids.size(), ErrorCode::kOutOfRange, "writeTimestamp: index exceeds the pool"))
     {
         glQueryCounter(pool->ids[index], GL_TIMESTAMP);
+        if (!pool->written[index])
+        {
+            GlDevice::labelQuery(*pool, index); // l'objet existe maintenant
+        }
         pool->written[index] = true;
     }
 }

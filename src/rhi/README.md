@@ -32,11 +32,21 @@ auto done = (*device)->submit(std::move(encoder));   // renvoie la première err
 
 ## Règles appliquées (docs/03 §3)
 
-- **Handles opaques**, destruction **différée** de 2 images (`present()` libère) : `destroy` rend le handle périmé tout de suite.
+- **Handles opaques**, destruction **différée** : `destroy` rend le handle périmé tout de suite ; l'objet GL n'est libéré qu'une
+  fois 2 images présentées après celle de sa destruction **et** la clôture GPU de cette image franchie (`glFenceSync` posée par
+  `present()`, attendue au besoin). `DeviceStats::pendingDestruction` compte ces libérations en attente.
+- **État implicite contenu** : les opérations du périphérique (création, envoi, mips) lient leur texture sur une unité réservée
+  (24, `kScratchTextureUnit`) et n'écrasent jamais une texture liée par `setBindGroup` ; les liaisons de tampons de sommets et
+  d'indices sont retirées du VAO au changement de pipeline et en fin de passe (un tampon détruit n'est plus retenu) ; la plage de
+  profondeur est remise à [0, 1] à chaque passe ; une lecture synchrone rend la liaison de framebuffer trouvée.
 - **Erreurs** : `Result<T>`. Un encodeur ne lance rien : une commande invalide est ignorée, journalisée, et la **première** erreur
-  est renvoyée par `Device::submit`.
+  est renvoyée par `Device::submit` ; une passe ou un groupe de debug laissé ouvert est aussi une erreur (refermé quand même).
+  Les plages (copies, commandes indirectes) sont vérifiées sans débordement arithmétique ; les décalages et pas indirects doivent
+  être multiples de 4. Une copie tampon <-> texture n'exige que les octets réellement touchés (pas de remplissage après la
+  dernière ligne) ; `updateTexture` lit des lignes serrées (`bufferRowLength` ne vaut que pour les copies tampon <-> texture).
 - **Barrières** : le RHI les calcule. Le backend OpenGL est conservateur : `glMemoryBarrier(GL_ALL_BARRIER_BITS)` après chaque
-  `dispatch` et à la fin d'une passe qui a lié un tampon de stockage ou une image.
+  `dispatch` et à la fin d'une passe qui a lié un tampon de stockage ou une image ; dans une telle passe, une barrière de stockage
+  précède aussi chaque dessin après le premier (un dessin peut lire ce qu'un précédent a écrit).
 - **Noms de debug** : `glObjectLabel` sur chaque objet, `glPushDebugGroup` par passe nommée et par `beginDebugGroup`.
 - **Validation** : contexte de debug (`GL_KHR_debug`) ; `Device::validationErrorCount()` compte les messages d'erreur, les tests
   exigent 0.
@@ -48,7 +58,9 @@ Trois groupes (0 image, 1 matériau/passe, 2 objet), `kBindingsPerGroup` = 8 lia
 utilisent ces numéros (`layout(binding = 8) uniform sampler2D tex;` = groupe 1, binding 0) ; le pipeline de shaders du lot B
 convertira `set`/`binding` du GLSL 450 commun vers cet emplacement. L'**UBO 24** (`kGroupCount * kBindingsPerGroup`) porte les push
 constants (128 octets, émulés). Les images de stockage exigent un emplacement `< GL_MAX_IMAGE_UNITS` (8 sur certains pilotes) :
-utiliser le groupe 0 pour elles ; `setBindGroup` refuse sinon, avec ce message.
+utiliser le groupe 0 pour elles ; `setBindGroup` refuse sinon, avec ce message. Même règle pour les tampons de stockage :
+OpenGL 4.3 n'en garantit que 8 emplacements, la limite réelle est `Capabilities::maxStorageBufferBindings` (le périphérique se
+crée même si elle est inférieure à 24).
 
 ## Pipeline de shaders (RHI-12)
 
@@ -56,14 +68,18 @@ Source unique en **GLSL 450** « style Vulkan » : `layout(set = N, binding = M)
 `#include` (`#extension GL_GOOGLE_include_directive : enable`), textures **combinées** (`sampler2D`). Chaîne :
 shaderc → SPIR-V (sans optimisation : stable, noms conservés) → réflexion SPIRV-Cross (liaisons par `(set, binding)`, taille des push
 constants, taille de groupe de calcul, sorties couleur ; refus d'une liaison hors des 3 groupes × 8, de textures et échantillonneurs
-séparés, de deux ressources sur la même liaison) → pour OpenGL, GLSL 430 avec **liaison = set × 8 + binding** et push constants en UBO 24.
+séparés, de ressources qui se chevauchent : un tableau `sampler2D t[N]` occupe N liaisons consécutives, qui doivent tenir dans
+son groupe ; `ReflectedBinding::count` donne N) → pour OpenGL, GLSL 430 avec **liaison = set × 8 + binding** et push constants en UBO 24.
 Pas de correction d'espace de clipping (A26). Le choix « SPIRV-Cross plutôt que `GL_ARB_gl_spirv` » vient du minimum OpenGL 4.3 ;
 `GL_ARB_gl_spirv` (4.6) pourra être ajouté derrière `Capabilities::spirvShaders`.
 
 - **Cache** (`ShaderCache`) : clé = hachage du source *prétraité* (includes et macros développés) + étage + version du cache ; mémoire
-  puis disque (`<dossier>/<hash>.spv`, écriture atomique, fichier corrompu ignoré). Cache de **pipelines** natifs du pilote : non fait.
-- **Rechargement à chaud** (`ShaderHotReloader`) : surveille le fichier et ses `#include`, recompile, appelle le rappel (résultat ou
-  erreur) ; l'appelant recrée le pipeline et garde l'ancien si la compilation échoue.
+  puis disque (`<dossier>/<hash>.spv`, écriture dans un fichier temporaire propre au processus puis renommage atomique ; fichier
+corrompu ou rejeté par la réflexion : recompilé). Cache de **pipelines** natifs du pilote : non fait.
+- **Rechargement à chaud** (`ShaderHotReloader`) : surveille le fichier et ses `#include` — y compris un include **absent** ou
+  ajouté par une édition qui ne compile pas encore —, recompile, appelle le rappel (résultat ou erreur) ; l'appelant recrée le
+  pipeline et garde l'ancien si la compilation échoue. Les surveillances des fichiers qui restent des dépendances sont
+  conservées (une modification enregistrée pendant une compilation n'est pas perdue). Ni copiable ni déplaçable.
 - Dépendance : `spirv-cross` (vcpkg, toutes plateformes), `shaderc` (apt sous Linux).
 
 ## Conventions (choix du lot A, à confirmer : `docs/QUESTIONS.md` A26)

@@ -26,6 +26,7 @@ struct ReflectedBinding
     std::uint32_t binding = 0;
     BindingType type = BindingType::kUniformBuffer;
     std::string name;
+    std::uint32_t count = 1; // tableau de ressources : occupe les bindings [binding, binding + count)
 };
 
 struct ShaderReflection
@@ -130,11 +131,12 @@ class ShaderHotReloader
         ShaderStage stage;
         Callback callback;
         std::vector<std::pair<std::string, std::string>> defines;
-        std::vector<core::FileWatcher::WatchId> watchIds;
+        std::vector<std::pair<std::string, core::FileWatcher::WatchId>> watches; // fichier surveillé -> surveillance
         bool dirty = false;
     };
-    core::Result<CompiledShader> build(const Entry &entry) const;
-    void watchFiles(std::size_t index, const CompiledShader &shader);
+    // Compile l'entrée ; `dependencies` reçoit le fichier et chaque include tenté, trouvé ou non, même si la compilation échoue.
+    core::Result<CompiledShader> build(const Entry &entry, std::vector<std::string> &dependencies) const;
+    void watchFiles(std::size_t index, const std::vector<std::string> &dependencies);
 
     IncludeResolver mResolver;
     ShaderCache *mCache = nullptr;

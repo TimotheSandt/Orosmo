@@ -231,10 +231,13 @@ Result<> GlDevice::init(const DeviceDesc &desc)
     caps_.spirvShaders = false; // GL_ARB_gl_spirv : non utilisé avant le lot B
     maxImageUnits_ = getInt(GL_MAX_IMAGE_UNITS);
 
-    if (getInt(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS) < static_cast<GLint>(kGroupCount * kBindingsPerGroup) ||
-        getInt(GL_MAX_UNIFORM_BUFFER_BINDINGS) < static_cast<GLint>(kGroupCount * kBindingsPerGroup + 1))
+    // Tampons de stockage : OpenGL 4.3 n'en garantit que 8 ; la limite est exposée et vérifiée à la liaison (setBindGroup), un
+    // périphérique qui n'en offre que 8 reste utilisable pour tout ce qui n'en lie pas au-delà.
+    caps_.maxStorageBufferBindings = static_cast<std::uint32_t>(getInt(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS));
+    if (getInt(GL_MAX_UNIFORM_BUFFER_BINDINGS) < static_cast<GLint>(kPushConstantBinding + 1) ||
+        getInt(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS) < static_cast<GLint>(kScratchTextureUnit + 1))
     {
-        return makeError(ErrorCode::kUnsupported, "OpenGL RHI: the driver offers too few uniform/storage buffer binding points");
+        return makeError(ErrorCode::kUnsupported, "OpenGL RHI: the driver offers too few uniform buffer or texture binding points");
     }
 
     // ── État global fixe ─────────────────────────────────────────────────────────────────────────────────────────
@@ -301,6 +304,11 @@ GlDevice::~GlDevice()
     glfwMakeContextCurrent(window_);
     glFinish();
     flushReleases(true);
+    for (const FrameFence &f : fences_)
+    {
+        glDeleteSync(f.sync);
+    }
+    fences_.clear();
     if (!ownsWindow_)
     {
         // Le contexte retourne à son créateur : le rappel de validation retient `this`, il ne doit pas lui survivre.
@@ -359,16 +367,58 @@ void GlDevice::queueRelease(std::function<void()> release) { pending_.push_back(
 
 void GlDevice::flushReleases(bool all)
 {
+    if (all)
+    {
+        // Appelé après glFinish (destructeur) : plus rien n'est en vol.
+        for (Pending &p : pending_)
+        {
+            p.release();
+        }
+        pending_.clear();
+        return;
+    }
+    if (frame_ < kFramesInFlight)
+    {
+        return;
+    }
+    // Images dont les ressources peuvent partir : celles qui ont au moins kFramesInFlight images présentées après elles. Leur
+    // clôture est attendue (normalement déjà franchie : c'est la limite d'avance du processeur sur le GPU).
+    const std::uint64_t retired = frame_ - kFramesInFlight;
+    std::erase_if(fences_,
+                  [&](const FrameFence &f)
+                  {
+                      if (f.frame > retired)
+                      {
+                          return false;
+                      }
+                      glClientWaitSync(f.sync, GL_SYNC_FLUSH_COMMANDS_BIT, ~GLuint64{0});
+                      glDeleteSync(f.sync);
+                      return true;
+                  });
     std::erase_if(pending_,
                   [&](Pending &p)
                   {
-                      if (all || p.frame + kFramesInFlight <= frame_)
+                      if (p.frame <= retired)
                       {
                           p.release();
                           return true;
                       }
                       return false;
                   });
+}
+
+void GlDevice::bindScratchTexture(GLenum target, GLuint id)
+{
+    glActiveTexture(GL_TEXTURE0 + kScratchTextureUnit);
+    glBindTexture(target, id);
+}
+
+void GlDevice::labelQuery(const QueryPoolRes &pool, std::uint32_t index)
+{
+    if (!pool.debugName.empty())
+    {
+        label(GL_QUERY, pool.ids[index], pool.debugName + "[" + std::to_string(index) + "]");
+    }
 }
 
 void GlDevice::eraseFramebuffersUsing(GLuint textureId)
@@ -556,7 +606,7 @@ Result<TextureHandle> GlDevice::createTextureImpl(const TextureDesc &requested)
     res.levels = levels;
     res.layers = layers;
     glGenTextures(1, &res.id);
-    glBindTexture(res.target, res.id);
+    bindScratchTexture(res.target, res.id);
     clearGlErrors();
     const auto w = static_cast<GLsizei>(desc.size.width);
     const auto h = static_cast<GLsizei>(desc.size.height);
@@ -645,15 +695,16 @@ Result<> GlDevice::updateTexture(TextureHandle handle, const TextureCopy &copy, 
     {
         return makeError(ErrorCode::kInvalidArgument, "updateTexture: the window backbuffer cannot be written by upload; render into it");
     }
+    // Depuis la mémoire du processeur, les lignes sont serrées : `bufferRowLength` et `bufferOffset` ne concernent que les
+    // copies tampon <-> texture (contrat de TextureCopy).
     const std::uint32_t bpt = formatInfo(texture->desc.format).bytesPerTexel;
-    const std::uint64_t rowLength = copy.bufferRowLength != 0 ? copy.bufferRowLength : region->size.width;
-    const std::uint64_t required = rowLength * region->size.height * region->size.depth * bpt;
+    const std::uint64_t required = static_cast<std::uint64_t>(region->size.width) * region->size.height * region->size.depth * bpt;
     if (data.size() < required)
     {
         return makeError(ErrorCode::kInvalidArgument, "updateTexture: not enough data for the region (" + texture->desc.debugName + ")");
     }
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    uploadRegion(*texture, *region, copy.bufferRowLength, reinterpret_cast<std::uintptr_t>(data.data()));
+    uploadRegion(*texture, *region, 0, reinterpret_cast<std::uintptr_t>(data.data()));
     return {};
 }
 
@@ -663,7 +714,7 @@ void GlDevice::uploadRegion(const TextureRes &texture, const SliceRegion &region
     const std::uint32_t bpt = formatInfo(texture.desc.format).bytesPerTexel;
     const std::uint64_t rowTexels = rowLength != 0 ? rowLength : region.size.width;
     glPixelStorei(GL_UNPACK_ROW_LENGTH, static_cast<GLint>(rowLength));
-    glBindTexture(texture.target, texture.id);
+    bindScratchTexture(texture.target, texture.id); // n'écrase pas une texture liée par setBindGroup
     const auto mip = static_cast<GLint>(region.mip);
     const auto x = region.offset.x, y = region.offset.y;
     const auto w = static_cast<GLsizei>(region.size.width), h = static_cast<GLsizei>(region.size.height);
@@ -1039,7 +1090,8 @@ Result<QueryPoolHandle> GlDevice::createQueryPool(std::uint32_t count, const cha
     res.ids.resize(count);
     res.written.assign(count, false);
     glGenQueries(static_cast<GLsizei>(count), res.ids.data());
-    (void)debugName; // un objet de requête n'existe qu'après son premier usage : pas de glObjectLabel avant
+    // Un objet de requête n'existe qu'après son premier usage : le nom est posé par writeTimestamp (labelQuery).
+    res.debugName = debugName != nullptr ? debugName : "";
     return queryPools_.add(std::move(res));
 }
 
@@ -1199,6 +1251,7 @@ Result<> GlDevice::present()
     {
         glfwSwapBuffers(window_);
     }
+    fences_.push_back({frame_, glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0)});
     ++frame_;
     flushReleases(false);
     return {};
@@ -1233,7 +1286,7 @@ Result<> GlDevice::resize(Extent2D size)
         return makeError(ErrorCode::kOutOfRange, "resize: size exceeds the device limit"); // le backbuffer actuel reste intact
     }
     glGenTextures(1, &fresh.id);
-    glBindTexture(fresh.target, fresh.id);
+    bindScratchTexture(fresh.target, fresh.id);
     clearGlErrors();
     glTexStorage2D(fresh.target, 1, GL_RGBA8, static_cast<GLsizei>(size.width), static_cast<GLsizei>(size.height));
     if (allocationFailed())

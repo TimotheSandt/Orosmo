@@ -4,8 +4,10 @@
 #include "support/test_support.hpp"
 #include "rhi/gpu_fixture.hpp"
 
+#include <engine/core/system.hpp>
 #include <engine/rhi/shader_compiler.hpp>
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 
@@ -33,14 +35,24 @@ layout(set = 0, binding = 1, std430) buffer Out { uint data[]; };
 layout(set = 2, binding = 0, rgba8) uniform image2D img;
 void main() { data[gl_GlobalInvocationID.x] = 1u; })";
 
+// Dossier temporaire propre au processus et à l'instance, créé de façon exclusive : deux exécutions des tests en parallèle
+// ne nettoient jamais le dossier de l'autre (G100).
 struct TempDir
 {
     fs::path path;
     TempDir()
     {
-        path = fs::temp_directory_path() / ("engine_shader_" + std::to_string(reinterpret_cast<std::uintptr_t>(this)));
-        fs::remove_all(path);
-        fs::create_directories(path);
+        static std::atomic<std::uint64_t> counter{0};
+        for (;;)
+        {
+            path = fs::temp_directory_path() /
+                   ("engine_shader_" + std::to_string(engine::core::system::processId()) + "_" + std::to_string(counter.fetch_add(1)));
+            std::error_code ec;
+            if (fs::create_directory(path, ec))
+            {
+                break; // créé par nous : il n'existait pas
+            }
+        }
     }
     ~TempDir()
     {
@@ -226,6 +238,121 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
         // ... et la compilation suivante est servie sans erreur depuis la mémoire.
         CHECK(broken.compile(ShaderStage::kFragment, src, options).has_value());
         CHECK(broken.hits() == 1);
+    }
+
+    TEST_CASE("reflection: an array of resources spans one binding per element; overflow and overlap are refused (G98 d)")
+    {
+        const std::string head = "#version 450\nlayout(location = 0) out vec4 c;\n";
+        // Tableau qui dépasse le groupe : bindings 7 et 8, or un groupe n'en a que 8 (0 à 7).
+        auto overflow = compileGlsl(ShaderStage::kFragment, head + "layout(set = 0, binding = 7) uniform sampler2D t[2];\n"
+                                                                   "void main() { c = texture(t[0], vec2(0)) + texture(t[1], vec2(0)); }\n");
+        REQUIRE_FALSE(overflow.has_value());
+        CHECK((overflow.error().code == ErrorCode::kInvalidArgument));
+        // Chevauchement : t[2] occupe 0 et 1, u est en 1.
+        auto overlap = compileGlsl(ShaderStage::kFragment, head + "layout(set = 0, binding = 0) uniform sampler2D t[2];\n"
+                                                                  "layout(set = 0, binding = 1) uniform sampler2D u;\n"
+                                                                  "void main() { c = texture(t[0], vec2(0)) + texture(t[1], vec2(0)) + texture(u, vec2(0)); }\n");
+        REQUIRE_FALSE(overlap.has_value());
+        CHECK((overlap.error().code == ErrorCode::kInvalidArgument));
+        CHECK(overlap.error().message.find("'t'") != std::string::npos);
+        CHECK(overlap.error().message.find("'u'") != std::string::npos);
+        // Sans chevauchement : accepté, et la réflexion donne la taille du tableau.
+        auto fine = compileGlsl(ShaderStage::kFragment, head + "layout(set = 0, binding = 0) uniform sampler2D t[2];\n"
+                                                               "layout(set = 0, binding = 2) uniform sampler2D u;\n"
+                                                               "void main() { c = texture(t[0], vec2(0)) + texture(t[1], vec2(0)) + texture(u, vec2(0)); }\n");
+        REQUIRE(fine.has_value());
+        REQUIRE(fine->reflection.bindings.size() == 2);
+        CHECK(fine->reflection.bindings[0].count == 2u);
+        CHECK(fine->reflection.bindings[1].count == 1u);
+    }
+
+    TEST_CASE("an include that exists but cannot be read is an I/O error, not an empty file")
+    {
+        TempDir dir;
+        dir.write("secret.glsl", "const float K = 1.0;\n");
+        dir.write("empty.glsl", "");
+        fs::permissions(dir.path / "secret.glsl", fs::perms::none);
+        const bool readable = static_cast<bool>(std::ifstream(dir.path / "secret.glsl"));
+        auto resolver = fileIncludeResolver({dir.path});
+        auto empty = resolver("empty.glsl", "");
+        REQUIRE(empty.has_value()); // un fichier vide lisible reste valide
+        CHECK(empty->content.empty());
+        auto secret = resolver("secret.glsl", "");
+        fs::permissions(dir.path / "secret.glsl", fs::perms::owner_all);
+        if (readable)
+        {
+            MESSAGE("the process can read a file without permissions (root?): the I/O error is not exercised");
+            return;
+        }
+        REQUIRE_FALSE(secret.has_value());
+        CHECK((secret.error().code == ErrorCode::kIo));
+    }
+
+    TEST_CASE("the disk cache publishes complete files only: no temporary file is left behind")
+    {
+        TempDir dir;
+        ShaderCache cache(dir.path / "cache");
+        REQUIRE(cache.compile(ShaderStage::kFragment, kFragment, {.name = "a.frag"}).has_value());
+        std::size_t spv = 0;
+        std::size_t other = 0;
+        for (const auto &entry : fs::directory_iterator(dir.path / "cache"))
+        {
+            (entry.path().extension() == ".spv" ? spv : other) += 1;
+        }
+        CHECK(spv == 1);
+        CHECK(other == 0);
+    }
+
+    TEST_CASE("hot reload: an include that does not exist yet is watched; creating it recompiles (G98 e)")
+    {
+        TempDir dir;
+        dir.write("m.frag", "#version 450\n#extension GL_GOOGLE_include_directive : enable\n#include \"later.glsl\"\n"
+                            "layout(location = 0) out vec4 c;\nvoid main() { c = vec4(L); }\n");
+        int reloads = 0;
+        bool lastOk = false;
+        ShaderHotReloader reloader(fileIncludeResolver({dir.path}));
+        auto first = reloader.add(dir.path / "m.frag", ShaderStage::kFragment,
+                                  [&](const fs::path &, const engine::core::Result<CompiledShader> &r)
+                                  {
+                                      ++reloads;
+                                      lastOk = r.has_value();
+                                  });
+        REQUIRE_FALSE(first.has_value()); // l'include manque encore
+        CHECK(reloader.poll() == 0);
+        dir.write("later.glsl", "const float L = 0.5;\n");
+        CHECK(reloader.poll() == 1);
+        CHECK(reloads == 1);
+        CHECK(lastOk);
+    }
+
+    TEST_CASE("hot reload: a callback may add() new shaders while poll() runs (no dangling reference)")
+    {
+        TempDir dir;
+        const std::string body = "#version 450\nlayout(location = 0) out vec4 c;\nvoid main() { c = vec4(1.0); }\n";
+        dir.write("a.frag", body);
+        for (int i = 0; i < 8; ++i)
+        {
+            dir.write("extra" + std::to_string(i) + ".frag", body);
+        }
+        ShaderHotReloader reloader;
+        int added = 0;
+        fs::path seen;
+        auto first = reloader.add(dir.path / "a.frag", ShaderStage::kFragment,
+                                  [&](const fs::path &file, const engine::core::Result<CompiledShader> &)
+                                  {
+                                      for (int i = 0; i < 8; ++i) // réalloue le tableau des entrées pendant l'appel
+                                      {
+                                          (void)reloader.add(dir.path / ("extra" + std::to_string(i) + ".frag"), ShaderStage::kFragment,
+                                                             [](const fs::path &, const engine::core::Result<CompiledShader> &) {});
+                                          ++added;
+                                      }
+                                      seen = file; // lu après les ajouts : doit rester valide
+                                  });
+        REQUIRE(first.has_value());
+        dir.write("a.frag", body + "// modifié\n");
+        CHECK(reloader.poll() == 1);
+        CHECK(added == 8);
+        CHECK(seen == dir.path / "a.frag");
     }
 
     TEST_CASE("ShaderHotReloader is neither copyable nor movable (its watch callbacks capture this)")
