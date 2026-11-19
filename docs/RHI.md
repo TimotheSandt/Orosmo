@@ -63,7 +63,7 @@ Exemple complet et compilé : `apps/demo/src/Game/Game.cpp` (`Game::createGraphi
 - **Pas d'état implicite** : chaque passe déclare ses attachements, chaque pipeline porte tout son état fixe (`PipelineCache` les construit).
 - **Liaison** : trois groupes (0 image, 1 matériau, 2 objet) × 8 liaisons ; OpenGL les aplatit en `groupe × 8 + binding`. Push constants : jusqu'à 128 octets.
 - **Shaders** : GLSL 450 « style Vulkan » dans `shaders/rhi/`, compilés (shaderc) puis traduits (SPIRV-Cross) en GLSL 430 pour OpenGL ; rechargement à chaud : `ShaderLibrary::pollHotReload`.
-- **Repère** : celui d'OpenGL en M2 ; l'auteur a choisi le repère Vulkan (QUESTIONS A26), appliqué en M3. Les octets envoyés ou lus commencent par le bas de l'image ; `Image` et `readPixel*` retournent explicitement.
+- **Repère** (QUESTIONS A26, appliqué en M3) : origine en haut à gauche (ligne 0 = haut, viewport et ciseau depuis le haut), NDC y = +1 en haut, profondeur [0, 1], caméra en reverse-Z. OpenGL l'obtient par `glClipControl` (4.5 ou `GL_ARB_clip_control`).
 - **Capacités optionnelles** : toujours lues dans `Capabilities`, jamais supposées (`rayQuery`, `bindless`, `meshShader`... toutes `false`).
 
 ## Preuves et images de référence

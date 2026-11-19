@@ -172,8 +172,9 @@ TEST_SUITE("renderer/texture")
         auto bytes = texture->readback();
         REQUIRE(bytes.has_value());
         const auto *p = reinterpret_cast<const std::uint8_t *>(bytes->data());
-        CHECK((p[0] == 0 && p[1] == 0 && p[2] == 255));   // première ligne lue = bas de l'image : bleu
-        CHECK((p[8] == 255 && p[9] == 0 && p[10] == 0));  // puis le haut : rouge
+        // Repère du RHI (A26) : la première ligne de la texture est le haut de l'image, comme dans le fichier.
+        CHECK((p[0] == 255 && p[1] == 0 && p[2] == 0));   // première ligne lue = haut de l'image : rouge
+        CHECK((p[8] == 0 && p[9] == 0 && p[10] == 255));  // puis le bas : bleu
         CHECK_FALSE(rd::Texture::fromFile(*gpu.device, dir.path / "absent.png").has_value());
         gpu.expectNoValidationErrors();
     }
@@ -215,12 +216,12 @@ void main() { color = vec4(1.0, 0.0, 0.0, 1.0); id = 9u; })";
         pd.raster.cull = CullMode::kNone;
         auto pipe = gpu->createGraphicsPipeline(pd);
         REQUIRE(pipe.has_value());
-        drawFullscreen(gpu, *target, *pipe, true); // ciseau : coin BAS gauche (repère du RHI)
-        // Lecture depuis le coin HAUT gauche : y = hauteur - 1 est la ligne du bas.
-        CHECK(tests::valueOf(target->readPixelRgba8(0, 0, 7)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
-        CHECK(tests::valueOf(target->readPixelRgba8(0, 0, 0)) == std::array<std::uint8_t, 4>{0, 0, 0, 255});
-        CHECK(tests::valueOf(target->readPixelUInt(1, 1, 6)) == 9);
-        CHECK(tests::valueOf(target->readPixelUInt(1, 7, 0)) == 0);
+        drawFullscreen(gpu, *target, *pipe, true); // ciseau {0, 0, 2, 2} : coin HAUT gauche (repère du RHI, A26)
+        // Lecture depuis le coin haut gauche : y = 0 est la ligne du haut.
+        CHECK(tests::valueOf(target->readPixelRgba8(0, 0, 0)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
+        CHECK(tests::valueOf(target->readPixelRgba8(0, 0, 7)) == std::array<std::uint8_t, 4>{0, 0, 0, 255});
+        CHECK(tests::valueOf(target->readPixelUInt(1, 1, 1)) == 9);
+        CHECK(tests::valueOf(target->readPixelUInt(1, 7, 7)) == 0);
         CHECK((tests::errorOf(target->readPixelUInt(0, 0, 0)) == ErrorCode::kInvalidArgument)); // pas R32Uint
         CHECK((tests::errorOf(target->readPixelRgba8(1, 0, 0)) == ErrorCode::kInvalidArgument));
         CHECK((tests::errorOf(target->readPixelUInt(1, 8, 0)) == ErrorCode::kOutOfRange));
@@ -252,7 +253,7 @@ void main() { color = vec4(1.0, 0.0, 0.0, 1.0); id = 9u; })";
 
 TEST_SUITE("renderer/image")
 {
-    TEST_CASE("readImage flips rows to a top-left origin; PNG round-trips; compareImages reports differences")
+    TEST_CASE("readImage keeps the RHI's top-left origin; PNG round-trips; compareImages reports differences")
     {
         Gpu gpu;
         SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
@@ -264,7 +265,7 @@ TEST_SUITE("renderer/image")
             {
                 e.beginRenderPass(passOn(color, {0, 0, 1, 1}));
                 e.setPipeline(pipe);
-                e.setScissor({0, 0, 2, 2}); // coin bas gauche en rouge
+                e.setScissor({0, 0, 2, 2}); // coin haut gauche en rouge (repère du RHI, A26)
                 e.draw(3);
                 e.endRenderPass();
             });
@@ -273,8 +274,8 @@ TEST_SUITE("renderer/image")
         CHECK(image->width == 4);
         CHECK(image->height == 4);
         auto at = [&](int x, int y) { return std::array<std::uint8_t, 4>{image->rgba[(y * 4 + x) * 4], image->rgba[(y * 4 + x) * 4 + 1], image->rgba[(y * 4 + x) * 4 + 2], image->rgba[(y * 4 + x) * 4 + 3]}; };
-        CHECK((at(0, 3) == std::array<std::uint8_t, 4>{255, 0, 0, 255})); // bas de l'image
-        CHECK((at(0, 0) == std::array<std::uint8_t, 4>{0, 0, 255, 255})); // haut de l'image
+        CHECK((at(0, 0) == std::array<std::uint8_t, 4>{255, 0, 0, 255})); // haut de l'image
+        CHECK((at(0, 3) == std::array<std::uint8_t, 4>{0, 0, 255, 255})); // bas de l'image
 
         const fs::path png = dir.path / "out" / "shot.png";
         REQUIRE(rd::savePng(*gpu.device, color, png).has_value()); // crée le dossier
@@ -287,8 +288,8 @@ TEST_SUITE("renderer/image")
         CHECK(same->outOfTolerance == 0);
         CHECK(same->maxDelta == 0);
         rd::Image changed = *loaded;
-        changed.rgba[48] = 250; // pixel (0, 3) : rouge 255 -> 250
-        changed.rgba[49] = 3;
+        changed.rgba[0] = 250; // pixel (0, 0) : rouge 255 -> 250
+        changed.rgba[1] = 5;
         auto diff = rd::compareImages(*image, changed, 4);
         REQUIRE(diff.has_value());
         CHECK(diff->outOfTolerance == 1);

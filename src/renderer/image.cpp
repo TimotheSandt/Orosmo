@@ -38,12 +38,8 @@ core::Result<Image> readImage(rhi::Device &device, rhi::TextureHandle texture)
     image.height = desc->size.height;
     const std::size_t rowBytes = static_cast<std::size_t>(image.width) * 4;
     image.rgba.resize(rowBytes * image.height);
-    for (std::uint32_t y = 0; y < image.height; ++y)
-    {
-        // Le RHI renvoie la ligne du bas en premier : on retourne pour obtenir une image qui commence par le haut.
-        std::memcpy(image.rgba.data() + y * rowBytes, reinterpret_cast<const std::uint8_t *>(raw->data()) + (image.height - 1 - y) * rowBytes,
-                    rowBytes);
-    }
+    // Repère du RHI (A26) : la ligne 0 est le haut de la texture, comme celle d'une image : copie directe.
+    std::memcpy(image.rgba.data(), raw->data(), rowBytes * image.height);
     if (bgra)
     {
         for (std::size_t i = 0; i < image.rgba.size(); i += 4)

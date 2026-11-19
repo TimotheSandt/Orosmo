@@ -70,7 +70,8 @@ class Mesh
     const glm::vec3 &scale() const noexcept { return scale_; }
     glm::mat4 modelMatrix() const;
     // Envoie la matrice au GPU si la transformation a changé.
-    core::Result<> uploadTransform();
+    // `origin` : rendu relatif à la caméra (REN-02) : la translation envoyée est position - origin (origin = position de la caméra).
+    core::Result<> uploadTransform(const glm::vec3 &origin = glm::vec3(0.0f));
 
     // Écrit `data` à partir du flottant `offsetFloats` ; ne change ni la taille ni les index.
     core::Result<> updateVertices(std::span<const float> data, std::size_t offsetFloats = 0);
@@ -112,6 +113,7 @@ class Mesh
     glm::vec3 rotation_{0.0f};
     glm::vec3 scale_{1.0f};
     bool transformDirty_ = true;
+    glm::vec3 uploadedOrigin_{0.0f};
 };
 
 } // namespace engine::renderer

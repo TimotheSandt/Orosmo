@@ -199,6 +199,7 @@ CanvasRenderer::Clip CanvasRenderer::fullClip(const Surface &s) const { return {
 void CanvasRenderer::applyClip(rhi::CommandEncoder &encoder, const Surface &surface)
 {
     const Clip c = surface.clips.empty() ? fullClip(surface) : surface.clips.back();
+    // Repère du RHI (A26) : le rectangle de ciseau part du haut de la cible, comme l'interface. `bottom` < `top` en pixels depuis le haut.
     encoder.setScissor({c.left, c.bottom, static_cast<std::uint32_t>(std::max(c.right - c.left, 0)), static_cast<std::uint32_t>(std::max(c.top - c.bottom, 0))});
 }
 
@@ -420,9 +421,10 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
             const glm::vec2 k = scaleOf(surface);
             const Clip parent = surface.clips.empty() ? fullClip(surface) : surface.clips.back();
             const float left = std::floor(clip->position.x * k.x);
-            const float bottom = std::floor((surface.logical.y - (clip->position.y + clip->size.y)) * k.y);
+            // Bornes verticales depuis le HAUT (repère du RHI) : `bottom` = première ligne, `top` = ligne après la dernière.
+            const float bottom = std::floor(clip->position.y * k.y);
             const float right = std::ceil((clip->position.x + clip->size.x) * k.x);
-            const float top = std::ceil((surface.logical.y - clip->position.y) * k.y);
+            const float top = std::ceil((clip->position.y + clip->size.y) * k.y);
             Clip c{};
             // Parent vide : le découpage reste vide (et std::clamp n'est jamais appelé avec des bornes inversées).
             if (!parent.empty() && std::isfinite(left) && std::isfinite(bottom) && std::isfinite(right) && std::isfinite(top))

@@ -1,5 +1,5 @@
 // UI-02 (lot B5) : exécution d'une liste de dessin 2D sur le RHI : rectangles, mélange alpha, découpages, glyphes, couches hors écran.
-// Repère de lecture du RHI : première ligne = bas ; les listes de dessin ont l'origine en haut (une position y logique petite = haut).
+// Repère du RHI (A26) : première ligne = haut, comme les listes de dessin (une position y logique petite = haut).
 #include <doctest/doctest.h>
 
 #include "support/test_support.hpp"
@@ -53,8 +53,12 @@ struct Canvas
         auto submitted = gpu->submit(std::move(encoder));
         return r ? submitted : r;
     }
-    // Texel en coordonnées de l'interface (origine en haut).
-    std::array<std::uint8_t, 4> px(int x, int yTop, std::uint32_t size = 16) { return rgba(gpu.pixel(target, x, static_cast<int>(size) - 1 - yTop)); }
+    // Texel en coordonnées de l'interface (origine en haut) : depuis A26, c'est aussi le repère du RHI (ligne 0 = haut).
+    std::array<std::uint8_t, 4> px(int x, int yTop, std::uint32_t size = 16)
+    {
+        (void)size;
+        return rgba(gpu.pixel(target, x, yTop));
+    }
 };
 
 rd::DrawList listOf(float size = 16.0f)

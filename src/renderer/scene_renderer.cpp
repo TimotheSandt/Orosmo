@@ -311,6 +311,7 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
     PassOptions pass;
     pass.clearColor = options.clearColor;
     pass.depthLoad = options.clearDepth ? rhi::LoadOp::kClear : rhi::LoadOp::kLoad;
+    pass.clearDepth = 0.0f; // reverse-Z (REN-02) : 0 est le plus lointain
     encoder_ = &encoder;
     encoder.beginRenderPass(sceneTarget_.passDesc(pass));
     passOpen_ = true;
@@ -324,7 +325,8 @@ core::Result<> SceneRenderer::setCamera(Camera &camera)
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::setCamera: not created");
     }
     camera.setJitter(currentJitter_);
-    const CameraData data = camera.data();
+    cameraOrigin_ = cameraRelative_ ? camera.position() : glm::vec3(0.0f);
+    const CameraData data = camera.data(cameraRelative_);
     return cameraBuffer_.update(0, std::as_bytes(std::span(&data, 1)));
 }
 
@@ -335,8 +337,9 @@ core::Result<> SceneRenderer::draw(Mesh &mesh, const Camera &, bool lines)
     state.vertexAttributes = mesh.vertexAttributes();
     state.raster.cull = rhi::CullMode::kNone;
     state.raster.fill = lines ? rhi::FillMode::kLine : rhi::FillMode::kFill;
-    // Le passage fil de fer redessine la même géométrie : à profondeur égale, ses arêtes doivent passer.
-    state.depth = {true, true, lines ? rhi::CompareOp::kLessEqual : rhi::CompareOp::kLess};
+    // Reverse-Z (REN-02) : le plus proche a la plus GRANDE profondeur. Le passage fil de fer redessine la même géométrie : à
+    // profondeur égale, ses arêtes doivent passer.
+    state.depth = {true, true, lines ? rhi::CompareOp::kGreaterEqual : rhi::CompareOp::kGreater};
     state.depthFormat = rhi::Format::kD32Float;
     state.colorTargets.clear();
     for (std::size_t i = 0; i < sceneTarget_.info().colorFormats.size(); ++i)
@@ -402,7 +405,7 @@ core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: the mesh is empty or has no graphics program");
     }
-    if (auto r = mesh.uploadTransform(); !r)
+    if (auto r = mesh.uploadTransform(cameraOrigin_); !r)
     {
         return r;
     }

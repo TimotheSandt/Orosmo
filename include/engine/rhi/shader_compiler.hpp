@@ -70,7 +70,7 @@ struct CompileOptions
 core::Result<CompiledShader> compileGlsl(ShaderStage stage, std::string_view source, const CompileOptions &options = {});
 
 // SPIR-V -> GLSL 430 pour OpenGL : (set, binding) -> set * kBindingsPerGroup + binding ; push constants -> UBO
-// kPushConstantBinding. Pas de correction d'espace de clipping (repère OpenGL du RHI, QUESTIONS A26).
+// kPushConstantBinding. Pas de correction d'espace de clipping : le backend applique le repère du RHI (A26).
 core::Result<std::string> translateToGlsl430(const CompiledShader &shader);
 
 // Cache de SPIR-V compilés : en mémoire et, si `directory` n'est pas vide, sur disque (RHI-06). La clé est un hachage du

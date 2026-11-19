@@ -431,8 +431,9 @@ void main() { color = vColor; })";
                 e.drawIndirect(args, 0, 2);
                 e.endRenderPass();
             });
-        CHECK(rgba(gpu.pixel(color, 1, 1)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
-        CHECK(rgba(gpu.pixel(color, 4, 4)) == std::array<std::uint8_t, 4>{0, 0, 255, 255});
+        // Repère du RHI (A26) : NDC y = +1 est la ligne 0 (haut) ; A est en bas à gauche, B au centre vers le haut à droite.
+        CHECK(rgba(gpu.pixel(color, 1, 6)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
+        CHECK(rgba(gpu.pixel(color, 4, 3)) == std::array<std::uint8_t, 4>{0, 0, 255, 255});
         CHECK(rgba(gpu.pixel(color, 7, 0)) == std::array<std::uint8_t, 4>{0, 0, 0, 255});
 
         // Les commandes ne tiennent pas dans le tampon : refusé.
@@ -518,8 +519,9 @@ void main() { outColor = pc.color; })";
             float z;
             float pad[3];
         };
-        const Push green{{0, 1, 0, 1}, -0.5f, {}};
-        const Push red{{1, 0, 0, 1}, 0.5f, {}};
+        // Repère du RHI (A26) : profondeur NDC dans [0, 1] (z hors de [0, 1] est découpé).
+        const Push green{{0, 1, 0, 1}, 0.25f, {}};
+        const Push red{{1, 0, 0, 1}, 0.75f, {}};
         gpu.run(
             [&](CommandEncoder &e)
             {

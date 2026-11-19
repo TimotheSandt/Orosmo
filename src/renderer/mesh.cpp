@@ -169,19 +169,20 @@ glm::mat4 Mesh::modelMatrix() const
     return glm::scale(model, scale_);
 }
 
-core::Result<> Mesh::uploadTransform()
+core::Result<> Mesh::uploadTransform(const glm::vec3 &origin)
 {
     if (!valid())
     {
         return makeError(ErrorCode::kInvalidArgument, "Mesh::uploadTransform: empty mesh");
     }
-    if (!transformDirty_)
+    if (!transformDirty_ && origin == uploadedOrigin_)
     {
         return {};
     }
     // Les normales se transforment par l'inverse transposée de la partie 3x3 (juste aussi avec une échelle non uniforme) ; calculée
     // une fois par objet ici plutôt qu'à chaque sommet. Matrice non inversible (échelle nulle) : identité, la normale est inutile.
     ModelBlock block{modelMatrix(), glm::mat4(1.0f)};
+    block.model[3] -= glm::vec4(origin, 0.0f); // translation relative à `origin` (0 : repère monde)
     const glm::mat3 linear(block.model);
     if (glm::determinant(linear) != 0.0f)
     {
@@ -192,6 +193,7 @@ core::Result<> Mesh::uploadTransform()
         return r;
     }
     transformDirty_ = false;
+    uploadedOrigin_ = origin;
     return {};
 }
 
