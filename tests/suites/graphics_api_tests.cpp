@@ -125,6 +125,14 @@ Assert(!ParseGraphicsAPI("directx").has_value(), "Unknown API should be rejected
         Assert(!ParseGraphicsLaunchOptions(1, none).headless, "a window is the default");
     }
 
+    TEST_CASE("launch options parse --vsync")
+    {
+        const char *argv[] = {"program", "--vsync"};
+        Assert(ParseGraphicsLaunchOptions(2, argv).vsync, "--vsync should be parsed");
+        const char *none[] = {"program"};
+        Assert(!ParseGraphicsLaunchOptions(1, none).vsync, "vsync is off by default, as before");
+    }
+
     TEST_CASE("launch options reject invalid capture arguments")
     {
         const char *missingValue[] = {"program", "--capture"};

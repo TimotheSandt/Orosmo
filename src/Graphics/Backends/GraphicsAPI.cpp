@@ -99,6 +99,11 @@ GraphicsLaunchOptions ParseGraphicsLaunchOptions(int argc, const char *const *ar
             options.listApis = true;
             continue;
         }
+        if (argument == "--vsync")
+        {
+            options.vsync = true;
+            continue;
+        }
         if (argument == "--headless")
         {
             options.headless = true;
@@ -203,7 +208,7 @@ GraphicsLaunchOptions ParseGraphicsLaunchOptions(int argc, const char *const *ar
 
 void PrintGraphicsAPIUsage(std::ostream &out)
 {
-    out << "Usage: ProceduralGeneration [--api <name>] [--choose-api] [--list-apis] [--seed N] [--headless] [--capture <dir> [--capture-frames N]] [--help]\n";
+    out << "Usage: ProceduralGeneration [--api <name>] [--choose-api] [--list-apis] [--seed N] [--headless] [--vsync] [--capture <dir> [--capture-frames N]] [--help]\n";
     out << "Available API names: " << JoinAvailableApis() << '\n';
     out << "Example: ProceduralGeneration --api opengl\n";
     out << "Capture : renders N frames (default 10) at 1280x720 with seed 1 (unless --seed), writes <dir>/scene.png and\n";
