@@ -45,6 +45,10 @@ class PipelineCache
     std::size_t misses() const noexcept { return misses_; }
     // Dernier échec de reconstruction après un rechargement (le pipeline précédent a été rendu à la place).
     const std::optional<core::Error> &lastError() const noexcept { return lastError_; }
+    // Taille des push constants de la révision qui a CONSTRUIT ce pipeline (après un repli sur l'ancien pipeline, la réflexion
+    // courante du programme décrit une autre révision : c'est celle-ci qu'il faut suivre pour envoyer les constantes). 0 si
+    // le handle n'est pas dans le cache.
+    std::uint32_t pushConstantSize(rhi::PipelineHandle pipeline) const noexcept;
 
   private:
     struct Entry
@@ -52,6 +56,7 @@ class PipelineCache
         rhi::PipelineHandle pipeline;
         std::uint64_t revision = 0;       // révision du programme pour laquelle `pipeline` a été construit
         std::uint64_t failedRevision = 0; // révision qui n'a pas pu être construite (pas de nouvel essai pour elle)
+        std::uint32_t pushConstantSize = 0; // de la révision `revision`
     };
     template <typename Build> core::Result<rhi::PipelineHandle> lookup(std::string key, const ShaderProgram &program, Build &&build);
 

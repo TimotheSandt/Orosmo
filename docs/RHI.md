@@ -35,13 +35,23 @@ auto frame = device->beginFrame();                             // backbuffer ; k
 if (!frame) { return skipFrame(); }
 auto encoder = device->createCommandEncoder();
 if (auto r = scene->beginFrame(*encoder, {.clearColor = {0.07f, 0.13f, 0.17f, 1}}); !r) { return fail(r.error()); }
-scene->setCamera(camera);
-scene->drawMesh(mesh, camera);
-scene->endFrame({composed, rhi::Format::kRGBA8Unorm, {w, h}});  // post-traitements, mise à l'échelle -> image composée
+bool sceneOk = scene->setCamera(camera).has_value();
+sceneOk = sceneOk && scene->drawMesh(mesh, camera).has_value();            // un pipeline qui ne se lie pas échoue ici
+sceneOk = scene->endFrame({composed, rhi::Format::kRGBA8Unorm, {w, h}}).has_value() && sceneOk; // ferme la passe dans tous les cas
 ui.Collect(list, w, h);
-canvas->render(*encoder, list, {composed, rhi::Format::kRGBA8Unorm, {w, h}}); // l'interface se pose sur la scène
-scene->blit().copy(*encoder, composed, scene->blit().linearSampler(), *frame, rhi::Format::kRGBA8Unorm); // présentation
-device->submit(std::move(encoder));
+if (auto drawn = canvas->render(*encoder, list, {composed, rhi::Format::kRGBA8Unorm, {w, h}}); !drawn)
+{
+    log(drawn.error());       // kNotFound : une couche en cache a disparu ; toute autre erreur : liste ou cible invalide
+    ui.InvalidateLayers();    // la prochaine liste redessine toutes les couches en entier
+}
+if (auto shown = scene->blit().copy(*encoder, composed, scene->blit().linearSampler(), *frame, rhi::Format::kRGBA8Unorm); !shown)
+{
+    log(shown.error());
+}
+if (auto submitted = device->submit(std::move(encoder)); !submitted || !sceneOk)
+{
+    // Image fausse (scène incomplète, commande refusée) : ne pas la compter ni la capturer (Game::endFrame).
+}
 device->present();
 ```
 

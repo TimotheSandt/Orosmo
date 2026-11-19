@@ -115,9 +115,15 @@ core::Result<> FullscreenBlit::copy(rhi::CommandEncoder &encoder, rhi::TextureHa
     rhi::RenderPassDesc pass;
     pass.colors.push_back({.texture = destination, .load = rhi::LoadOp::kDontCare});
     pass.debugName = passName;
+    const bool encoderFailedBefore = encoder.error().has_value();
     encoder.beginRenderPass(pass);
     auto r = draw(encoder, source, sampler, destinationFormat);
     encoder.endRenderPass();
+    // Destination périmée, passe refusée... : l'erreur de l'encodeur est renvoyée tout de suite, pas seulement à submit.
+    if (r && !encoderFailedBefore && encoder.error())
+    {
+        return std::unexpected(*encoder.error());
+    }
     return r;
 }
 
@@ -127,9 +133,14 @@ core::Result<> FullscreenBlit::compose(rhi::CommandEncoder &encoder, rhi::Textur
     rhi::RenderPassDesc pass;
     pass.colors.push_back({.texture = destination, .load = rhi::LoadOp::kLoad});
     pass.debugName = passName;
+    const bool encoderFailedBefore = encoder.error().has_value();
     encoder.beginRenderPass(pass);
     auto r = draw(encoder, source, sampler, destinationFormat, true);
     encoder.endRenderPass();
+    if (r && !encoderFailedBefore && encoder.error())
+    {
+        return std::unexpected(*encoder.error());
+    }
     return r;
 }
 

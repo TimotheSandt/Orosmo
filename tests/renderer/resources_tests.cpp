@@ -3,9 +3,11 @@
 #include <doctest/doctest.h>
 
 #include "support/test_support.hpp"
+#include "renderer/repo_paths.hpp"
 #include "rhi/gpu_fixture.hpp"
 #include "support/temp_dir.hpp"
 
+#include <engine/renderer/fullscreen_blit.hpp>
 #include <engine/renderer/gpu_buffer.hpp>
 #include <engine/renderer/gpu_timer.hpp>
 #include <engine/renderer/image.hpp>
@@ -389,7 +391,7 @@ void main() { c = texture(albedo, vec2(0.5)) * pc.tint; })";
         CHECK(tests::valueOf(target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{0, 255, 0, 255}); // l'ancien shader tourne encore
 
         dir.write("c.frag", redFs("vec4(0.0, 0.0, 1.0, 1.0)")); // corrigé : bleu
-        CHECK(library.pollHotReload() == 1);
+        CHECK(library.pollHotReload() == 2); // après un échec, tous les étages sont recompilés et installés ensemble
         CHECK_FALSE(library.lastError().has_value());
         drawFullscreen(gpu, target, tests::valueOf(cache.graphics(**program, state)));
         CHECK(tests::valueOf(target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{0, 0, 255, 255});
@@ -493,6 +495,42 @@ void main() { c = texture(albedo, vec2(0.5)) * pc.tint; })";
         gpu.expectNoValidationErrors();
     }
 
+    TEST_CASE("ShaderLibrary: a stage that fails to compile keeps the whole program; fixing it reinstalls every stage together")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        TempDir dir;
+        const std::string place = "void place() { vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
+        const std::string uboVs = "#version 450\nlayout(set = 0, binding = 0) uniform U { vec4 k; } u;\n" + place + "void main() { place(); gl_Position.w += u.k.w * 0.0; }\n";
+        const std::string uboFs = "#version 450\nlayout(set = 0, binding = 0) uniform U { vec4 k; } u;\nlayout(location = 0) out vec4 c;\nvoid main() { c = u.k; }\n";
+        const std::string texVs = "#version 450\nlayout(set = 0, binding = 0) uniform sampler2D u;\n" + place +
+                                  "void main() { place(); gl_Position.w += textureLod(u, vec2(0.5), 0.0).w * 0.0; }\n";
+        const std::string texFs = "#version 450\nlayout(set = 0, binding = 0) uniform sampler2D u;\nlayout(location = 0) out vec4 c;\nvoid main() { c = texture(u, vec2(0.5)); }\n";
+        dir.write("v.vert", uboVs);
+        dir.write("f.frag", uboFs);
+        rd::ShaderLibrary library(*gpu.device, {.cacheDirectory = {}, .includeRoots = {dir.path}});
+        auto program = library.loadGraphics(dir.path / "v.vert", dir.path / "f.frag");
+        REQUIRE(program.has_value());
+        const ShaderHandle oldVertex = (*program)->vertex();
+
+        // Les deux étages passent à une texture, mais le fragment contient une faute : rien n'est installé (pas d'état mixte).
+        dir.write("v.vert", texVs);
+        dir.write("f.frag", "#version 450\nvoid main() { nonsense }\n");
+        CHECK(library.pollHotReload() == 0);
+        CHECK(library.lastError().has_value());
+        CHECK((*program)->revision() == 1);
+        CHECK((*program)->vertex() == oldVertex);
+
+        // Seul le fragment est corrigé : le vertex (déjà modifié) est recompilé depuis son fichier et validé avec lui.
+        dir.write("f.frag", texFs);
+        CHECK(library.pollHotReload() == 2);
+        CHECK_FALSE(library.lastError().has_value());
+        CHECK((*program)->revision() == 2);
+        REQUIRE((*program)->reflection().bindings.size() == 1);
+        CHECK(((*program)->reflection().bindings[0].type == BindingType::kSampledTexture));
+        gpu.expectNoValidationErrors();
+    }
+
     TEST_CASE("ShaderLibrary stops watching the files of released programs and of failed loads (G99)")
     {
         Gpu gpu;
@@ -531,6 +569,25 @@ void main() { c = texture(albedo, vec2(0.5)) * pc.tint; })";
         CHECK(library.lastError().has_value());
         CHECK((*b)->revision() == 2);
         CHECK((*a)->revision() == 1);
+    }
+
+    TEST_CASE("FullscreenBlit::copy and compose return the encoder error for a stale destination")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        rd::ShaderLibrary library(*gpu.device);
+        rd::PipelineCache cache(*gpu.device);
+        auto blit = rd::FullscreenBlit::create(*gpu.device, library, cache, tests::repoRoot(__FILE__) / "shaders" / "rhi");
+        REQUIRE(blit.has_value());
+        const TextureHandle source = gpu.target(Format::kRGBA8Unorm, {4, 4}, "source");
+        const TextureHandle stale = gpu.target(Format::kRGBA8Unorm, {4, 4}, "stale");
+        gpu->destroy(stale);
+        auto e = gpu->createCommandEncoder();
+        CHECK((tests::errorOf((*blit)->copy(*e, source, (*blit)->linearSampler(), stale, Format::kRGBA8Unorm)) == ErrorCode::kNotFound));
+        CHECK_FALSE(gpu->submit(std::move(e)).has_value());
+        auto f = gpu->createCommandEncoder();
+        CHECK((tests::errorOf((*blit)->compose(*f, source, (*blit)->linearSampler(), stale, Format::kRGBA8Unorm)) == ErrorCode::kNotFound));
+        CHECK_FALSE(gpu->submit(std::move(f)).has_value());
     }
 
     TEST_CASE("RenderTarget refuses a depth format among the color formats and keeps its previous attachments (G99)")

@@ -64,11 +64,11 @@ core::Result<rhi::PipelineHandle> PipelineCache::lookup(std::string key, const S
     if (it != entries_.end())
     {
         device_.destroy(it->second.pipeline);
-        it->second = Entry{*pipeline, program.revision(), 0};
+        it->second = Entry{*pipeline, program.revision(), 0, program.reflection().pushConstantSize};
     }
     else
     {
-        entries_.emplace(std::move(key), Entry{*pipeline, program.revision(), 0});
+        entries_.emplace(std::move(key), Entry{*pipeline, program.revision(), 0, program.reflection().pushConstantSize});
     }
     return *pipeline;
 }
@@ -146,6 +146,18 @@ core::Result<rhi::PipelineHandle> PipelineCache::compute(const ShaderProgram &pr
                       desc.debugName = program.name();
                       return device_.createComputePipeline(desc);
                   });
+}
+
+std::uint32_t PipelineCache::pushConstantSize(rhi::PipelineHandle pipeline) const noexcept
+{
+    for (const auto &[key, entry] : entries_)
+    {
+        if (entry.pipeline == pipeline)
+        {
+            return entry.pushConstantSize;
+        }
+    }
+    return 0;
 }
 
 void PipelineCache::clear()

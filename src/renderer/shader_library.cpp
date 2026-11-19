@@ -3,6 +3,8 @@
 #include "Logger.h"
 
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 #include <atomic>
 #include <iterator>
 
@@ -139,7 +141,7 @@ rhi::CompileOptions ShaderLibrary::options(const std::string &name, const std::v
 core::Result<std::shared_ptr<ShaderProgram>> ShaderLibrary::newProgram(const std::string &name)
 {
     std::shared_ptr<ShaderProgram> program(new ShaderProgram(device_, name, nextProgramId()));
-    programs_.push_back({program, program->id(), {}});
+    programs_.push_back({program, program->id(), {}, {}, false});
     return program;
 }
 
@@ -185,6 +187,7 @@ core::Result<rhi::CompiledShader> ShaderLibrary::watch(const std::shared_ptr<Sha
             if (!result)
             {
                 reportFailure(result.error());
+                failedThisPoll_.push_back(id);
                 LOG_ERROR(1, "Shader reload failed (", changed.generic_string(), "), keeping the previous version: ", result.error().message);
                 return;
             }
@@ -192,6 +195,7 @@ core::Result<rhi::CompiledShader> ShaderLibrary::watch(const std::shared_ptr<Sha
             if (!handle)
             {
                 reportFailure(handle.error());
+                failedThisPoll_.push_back(id);
                 LOG_ERROR(1, "Shader reload failed (", changed.generic_string(), "): ", handle.error().message);
                 return;
             }
@@ -208,8 +212,31 @@ core::Result<rhi::CompiledShader> ShaderLibrary::watch(const std::shared_ptr<Sha
     if (auto it = std::ranges::find_if(programs_, [&](const Tracked &t) { return t.id == id; }); it != programs_.end())
     {
         it->entries.push_back(reloader_.lastAdded());
+        it->sources.push_back({file, stage, defines});
     }
     return first;
+}
+
+core::Result<ShaderProgram::StageUpdate> ShaderLibrary::compileStage(const StageSource &source)
+{
+    std::ifstream in(source.file, std::ios::binary);
+    if (!in)
+    {
+        return makeError(ErrorCode::kIo, "cannot read " + source.file.generic_string());
+    }
+    std::ostringstream text;
+    text << in.rdbuf();
+    auto compiled = cache_.compile(source.stage, text.str(), options(source.file.generic_string(), source.defines));
+    if (!compiled)
+    {
+        return std::unexpected(compiled.error());
+    }
+    auto handle = rhi::createShaderFromCompiled(device_, *compiled, source.file.generic_string());
+    if (!handle)
+    {
+        return std::unexpected(handle.error());
+    }
+    return ShaderProgram::StageUpdate{std::move(*compiled), *handle};
 }
 
 core::Result<std::shared_ptr<ShaderProgram>> ShaderLibrary::loadGraphics(const std::filesystem::path &vertexFile, const std::filesystem::path &fragmentFile,
@@ -320,24 +347,74 @@ std::size_t ShaderLibrary::pollHotReload()
     const std::size_t before = reloaded_;
     batchError_.reset();
     pending_.clear();
+    failedThisPoll_.clear();
     reloader_.poll();
+    auto destroyAll = [&](const std::vector<ShaderProgram::StageUpdate> &updates)
+    {
+        for (const ShaderProgram::StageUpdate &u : updates)
+        {
+            device_.destroy(u.handle);
+        }
+    };
+    // Un programme dont un étage n'a pas compilé ne reçoit aucun de ses autres candidats : à reprendre en entier plus tard.
+    for (std::uint64_t id : failedThisPoll_)
+    {
+        if (auto t = std::ranges::find_if(programs_, [&](const Tracked &x) { return x.id == id; }); t != programs_.end())
+        {
+            t->retry = true;
+        }
+    }
     for (auto &[id, pending] : pending_)
     {
         const auto program = pending.program.lock();
-        if (!program)
+        auto tracked = std::ranges::find_if(programs_, [&](const Tracked &x) { return x.id == id; });
+        if (!program || std::ranges::find(failedThisPoll_, id) != failedThisPoll_.end())
         {
-            for (const ShaderProgram::StageUpdate &u : pending.updates)
-            {
-                device_.destroy(u.handle);
-            }
+            destroyAll(pending.updates);
             continue;
+        }
+        // Après un échec, tous les étages du programme sont recompilés depuis leurs fichiers et validés ensemble : une édition
+        // qui touchait deux étages se reprend quand on corrige l'un d'eux.
+        if (tracked != programs_.end() && tracked->retry)
+        {
+            bool complete = true;
+            for (const StageSource &source : tracked->sources)
+            {
+                const bool present = std::ranges::any_of(pending.updates, [&](const ShaderProgram::StageUpdate &u) { return u.compiled.stage == source.stage; });
+                if (present)
+                {
+                    continue;
+                }
+                auto update = compileStage(source);
+                if (!update)
+                {
+                    reportFailure(update.error());
+                    LOG_ERROR(1, "Shader reload of '", program->name(), "' failed (", source.file.generic_string(), "): ", update.error().message);
+                    complete = false;
+                    break;
+                }
+                pending.updates.push_back(std::move(*update));
+            }
+            if (!complete)
+            {
+                destroyAll(pending.updates);
+                continue;
+            }
         }
         const std::size_t count = pending.updates.size();
         if (auto r = program->setStages(std::move(pending.updates)); !r)
         {
             reportFailure(r.error());
+            if (tracked != programs_.end())
+            {
+                tracked->retry = true;
+            }
             LOG_ERROR(1, "Shader reload of '", program->name(), "' refused, keeping the previous version: ", r.error().message);
             continue;
+        }
+        if (tracked != programs_.end())
+        {
+            tracked->retry = false;
         }
         ++program->revision_;
         reloaded_ += count;

@@ -146,8 +146,9 @@ void ContainerBase::Collect(engine::renderer::DrawList &list, glm::vec2 containe
         }
         else if (hasAppearanceDirty)
         {
-            // Redessin partiel : chaque zone d'un enfant modifié est effacée puis TOUS les enfants qui la touchent y sont redessinés,
-            // dans l'ordre de la liste et sous un découpage limité à la zone. Un enfant qui recouvre le modifié reste donc devant.
+            // Redessin partiel : chaque zone d'un enfant modifié est effacée puis TOUS les enfants y sont redessinés, dans l'ordre de
+            // la liste et sous un découpage limité à la zone (le découpage écarte ce qui tombe dehors). On ne filtre pas sur les
+            // bornes des enfants : un descendant peut déborder de son conteneur. Un enfant qui recouvre le modifié reste devant.
             std::vector<glm::vec4> zones;
             for (auto &child : children)
             {
@@ -156,8 +157,6 @@ void ContainerBase::Collect(engine::renderer::DrawList &list, glm::vec2 containe
                     zones.push_back(child->GetCachedBoundsInParent());
                 }
             }
-            auto overlaps = [](const glm::vec4 &a, const glm::vec4 &b)
-            { return a.x < b.x + b.z && b.x < a.x + a.z && a.y < b.y + b.w && b.y < a.y + a.w; };
             list.beginLayer(layerId, contentSize, false);
             for (const glm::vec4 &zone : zones)
             {
@@ -166,10 +165,7 @@ void ContainerBase::Collect(engine::renderer::DrawList &list, glm::vec2 containe
                 for (auto &child : children)
                 {
                     const glm::vec4 childBounds = child->GetCachedBoundsInParent();
-                    if (overlaps(childBounds, zone))
-                    {
-                        child->Collect(list, contentSize, {childBounds.x, childBounds.y});
-                    }
+                    child->Collect(list, contentSize, {childBounds.x, childBounds.y});
                 }
                 list.popClip();
             }

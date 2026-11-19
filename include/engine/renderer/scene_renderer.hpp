@@ -152,6 +152,7 @@ class SceneRenderer
     std::vector<std::unique_ptr<IPostProcessPass>> postProcessPasses_;
     std::unique_ptr<IFrameGenerationMode> frameGenMode_;
     rhi::TextureHandle generatedFrame_;
+    bool historyValid_ = false; // historyTarget_ contient l'image précédente (écrite avec succès à l'image précédente)
 
     bool motionVectorsEnabled_ = false;
     bool depthAsTextureEnabled_ = false;

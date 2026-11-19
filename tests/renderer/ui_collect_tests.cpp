@@ -197,19 +197,51 @@ TEST_SUITE("UI/collect")
         root->SetRenderToTexture(true);
         root->Initialize();
         root->Update();
+        // Le point d'entrée réel : Manager (racine injectée, sans Init, donc sans police).
+        Manager &manager = Manager::Instance();
+        manager.SetRootContainer(root);
+        rd::DrawList first;
+        manager.Collect(first, 64, 64);
+        REQUIRE(first.count<rd::BeginLayer>() == 1);
+        rd::DrawList quiet;
+        manager.Collect(quiet, 64, 64);
+        REQUIRE(quiet.count<rd::BeginLayer>() == 0);
+        manager.InvalidateLayers();
+        rd::DrawList again;
+        manager.Collect(again, 64, 64);
+        REQUIRE(again.count<rd::BeginLayer>() == 1);
+        CHECK(firstOf<rd::BeginLayer>(again)->clear);
+        manager.Shutdown();
+    }
+
+    TEST_CASE("a partial redraw also redraws a descendant that overflows its container into the cleared zone (G99)")
+    {
+        auto back = CreateBox(Bounds(20_px, 20_px, Anchor::TOP_RIGHT), {1.0f, 0.0f, 0.0f, 1.0f}); // x = 44..64
+        auto wide = CreateBox(Bounds(64_px, 20_px), {0.0f, 0.0f, 1.0f, 1.0f});                   // déborde de son conteneur
+        auto narrow = CreateContainer(Bounds(20_px, 20_px), {wide});                             // x = 0..20
+        auto root = CreateContainer(Bounds(64_px, 64_px), {back, narrow});
+        root->SetRenderToTexture(true);
+        root->Initialize();
+        root->Update();
         rd::DrawList first;
         first.logicalSize = {64, 64};
         root->Collect(first, {64, 64});
-        rd::DrawList quiet;
-        quiet.logicalSize = {64, 64};
-        root->Collect(quiet, {64, 64});
-        REQUIRE(quiet.count<rd::BeginLayer>() == 0);
-        root->MarkFullDirty(); // ce que fait Manager::InvalidateLayers sur la racine
-        rd::DrawList again;
-        again.logicalSize = {64, 64};
-        root->Collect(again, {64, 64});
-        REQUIRE(again.count<rd::BeginLayer>() == 1);
-        CHECK(firstOf<rd::BeginLayer>(again)->clear);
+        back->SetColor(0.0f, 1.0f, 0.0f, 1.0f);
+        root->Update();
+        rd::DrawList partial;
+        partial.logicalSize = {64, 64};
+        root->Collect(partial, {64, 64});
+        std::vector<glm::vec4> colors;
+        for (const auto &command : partial.commands)
+        {
+            if (const auto *r = std::get_if<rd::DrawRect>(&command))
+            {
+                colors.push_back(r->color);
+            }
+        }
+        REQUIRE(colors.size() == 2); // le modifié, puis le descendant débordant du conteneur suivant (bornes du conteneur hors zone)
+        CHECK(colors[0] == glm::vec4(0, 1, 0, 1));
+        CHECK(colors[1] == glm::vec4(0, 0, 1, 1));
     }
 
     TEST_CASE("text widgets produce glyph runs through the text renderer (atlas shared, vertices in logical pixels)")

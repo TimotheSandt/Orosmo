@@ -17,7 +17,9 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <cmath>
+#include <fstream>
 #include <limits>
+#include <sstream>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -690,6 +692,132 @@ TEST_SUITE("renderer/scene")
                 REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {4, 4}}).has_value());
             });
         CHECK(rgba(scene.gpu.pixel(out, 2, 2))[0] > 200); // éclairé dès la première image (l'ambiante nulle donnerait du noir)
+        scene.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("SceneRenderer sends the push constants of the revision that built the pipeline it draws with (fallback after a failed link)")
+    {
+        Scene scene;
+        SKIP_TEST_IF_NULL(scene.gpu.device.get(), "OpenGL 4.3 context");
+        tests::TempDir dir("engine_scene_push");
+        // Même interface que mesh.vert ; le fragment lit sa couleur dans les push constants (premier entier : fil de fer).
+        std::ifstream meshVs(shaderDir() / "mesh.vert");
+        std::stringstream vs;
+        vs << meshVs.rdbuf();
+        dir.write("m.vert", vs.str());
+        dir.write("m.frag", "#version 450\nlayout(location = 0) in vec3 normal;\nlayout(location = 1) in vec3 crntPos;\nlayout(location = 2) in vec3 color;\n"
+                            "layout(push_constant) uniform Push { int wire; int pad0; int pad1; int pad2; vec4 tint; } pc;\n"
+                            "layout(location = 0) out vec4 FragColor;\nvoid main() { FragColor = pc.tint; }\n");
+        auto program = scene.library->loadGraphics(dir.path / "m.vert", dir.path / "m.frag");
+        REQUIRE(program.has_value());
+        auto mesh = rd::Mesh::create(*scene.gpu.device, triangleData({1, 1, 1}));
+        REQUIRE(mesh.has_value());
+        mesh->setProgram(*program);
+        rd::Camera camera;
+        camera.setAspect(4, 4);
+        camera.setFarPlane(100.0f);
+        const TextureHandle out = scene.output(4, 4);
+        scene.renderer->setOutputResolution(4, 4);
+        auto drawWithTint = [&](const glm::vec4 &tint)
+        {
+            std::array<std::byte, 32> push{};
+            std::memcpy(push.data() + 16, &tint, 16);
+            mesh->setPushConstants(push);
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e).has_value());
+                    REQUIRE(scene.renderer->setCamera(camera).has_value());
+                    REQUIRE(scene.renderer->drawMesh(*mesh, camera).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {4, 4}}).has_value());
+                });
+            return rgba(scene.gpu.pixel(out, 2, 2));
+        };
+        CHECK(drawWithTint({1, 0, 0, 1}) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
+
+        // Nouvelle révision : plus de push constants et une interface qui ne se lie plus (vec4 au lieu de vec3).
+        dir.write("m.frag", "#version 450\nlayout(location = 0) in vec4 normal;\nlayout(location = 0) out vec4 FragColor;\nvoid main() { FragColor = normal; }\n");
+        REQUIRE(scene.library->pollHotReload() == 1);
+        CHECK((*program)->reflection().pushConstantSize == 0u);
+        // L'ancien pipeline continue ; ses constantes doivent être celles de CE dessin (vert), pas celles du précédent (rouge).
+        CHECK(drawWithTint({0, 1, 0, 1}) == std::array<std::uint8_t, 4>{0, 255, 0, 255});
+        CHECK(scene.pipelines->lastError().has_value());
+    }
+
+    TEST_CASE("SceneRenderer: the first SUPPORTED mode of a name is chosen; a failing end of frame leaves no stale generated image nor history")
+    {
+        Scene scene;
+        SKIP_TEST_IF_NULL(scene.gpu.device.get(), "OpenGL 4.3 context");
+        struct Named final : rd::IUpscaleMode
+        {
+            bool supported = true;
+            int inits = 0;
+            std::string name() const noexcept override { return "dup"; }
+            bool supports(const rhi::Capabilities &) const noexcept override { return supported; }
+            bool initialize(rhi::Device &) override
+            {
+                ++inits;
+                return true;
+            }
+            engine::core::Result<> upscale(rd::FrameContext &, const rd::RenderTarget &, const rd::UpscaleTarget &) override { return {}; }
+        };
+        auto unsupported = std::make_unique<Named>();
+        unsupported->supported = false;
+        auto supported = std::make_unique<Named>();
+        Named *chosen = supported.get();
+        scene.renderer->registerUpscaleMode(std::move(unsupported));
+        scene.renderer->registerUpscaleMode(std::move(supported));
+        REQUIRE(scene.renderer->setActiveUpscaleMode("dup"));
+        CHECK(chosen->inits == 1);
+
+        struct Flaky final : rd::IFrameGenerationMode
+        {
+            rd::FrameGenerationModeDesc desc{.name = "flaky"};
+            bool fail = false;
+            bool reset = false;
+            bool hadPrevious = false;
+            rhi::TextureHandle produce;
+            const rd::FrameGenerationModeDesc &description() const noexcept override { return desc; }
+            bool isSupported(const rhi::Capabilities &) const noexcept override { return true; }
+            bool initialize(rhi::Device &) override { return true; }
+            void shutdown() override {}
+            engine::core::Result<> generateFrame(rd::FrameContext &, const rd::FrameGenerationInput &input, rd::FrameGenerationOutput &output) override
+            {
+                reset = input.resetHistory;
+                hadPrevious = !input.previousColor.isNull();
+                if (fail)
+                {
+                    return engine::core::makeError(ErrorCode::kUnknown, "flaky");
+                }
+                output.generatedFrame = produce;
+                return {};
+            }
+        };
+        auto mode = std::make_unique<Flaky>();
+        Flaky *flaky = mode.get();
+        flaky->produce = scene.output(4, 4);
+        REQUIRE(scene.renderer->setFrameGenerationMode(std::move(mode)).has_value());
+        scene.renderer->setOutputResolution(4, 4);
+        const TextureHandle out = scene.output(4, 4);
+        auto frame = [&]()
+        {
+            auto e = scene.gpu->createCommandEncoder();
+            REQUIRE(scene.renderer->beginFrame(*e).has_value());
+            auto ended = scene.renderer->endFrame({out, Format::kRGBA8Unorm, {4, 4}});
+            REQUIRE(scene.gpu->submit(std::move(e)).has_value());
+            return ended.has_value();
+        };
+        REQUIRE(frame());
+        CHECK_FALSE(scene.renderer->generatedFrame().isNull());
+        REQUIRE(frame());
+        CHECK(flaky->hadPrevious); // historique écrit à l'image 1
+        flaky->fail = true;
+        CHECK_FALSE(frame()); // l'image 3 échoue avant d'écrire l'historique
+        CHECK(scene.renderer->generatedFrame().isNull()); // pas le handle d'une image précédente
+        flaky->fail = false;
+        REQUIRE(frame());
+        CHECK_FALSE(flaky->hadPrevious); // l'historique n'a pas été écrit à l'image 3 : pas d'image précédente valide...
+        CHECK(flaky->reset);              // ...et une réinitialisation est signalée
         scene.gpu.expectNoValidationErrors();
     }
 }

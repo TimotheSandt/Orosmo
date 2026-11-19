@@ -84,6 +84,7 @@ class Game
     std::uint32_t captureFrames = 0;
     std::uint32_t renderedFrames = 0;
     bool captureDone = false;
-    bool captureFailed = false; // une image de la capture a été refusée (submit) : la capture ne serait pas fiable
+    bool captureFailed = false; // une image de la capture a été refusée (submit ou scène) : la capture ne serait pas fiable
+    std::optional<engine::core::Error> sceneError; // premier échec de la scène pendant l'image en cours
     bool headless = false;
 };
