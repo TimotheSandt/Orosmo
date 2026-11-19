@@ -19,7 +19,7 @@ apps/terrain_viewer/bin/terrain-viewer --help
 | `src/viewer.hpp/.cpp` | fenêtre, RHI, rendu, streaming, entrées, capture |
 | `presets/*.json` | préréglages (`{"version": 1, "data": TerrainParams}`) ; « Save » écrit `bin/res/presets/custom.json` |
 
-- Caméra : clic droit + souris pour tourner ; ZQSD / WASD ou flèches ; Espace / Ctrl : monter, descendre ; Maj : plus vite. Échap
+- Caméra : clic droit + souris pour tourner ; ZQSD (AZERTY) ou WASD (autres dispositions) et flèches ; Espace / Maj : monter, descendre ; A (Q en QWERTY) : plus vite, E : plus lentement. Échap
   quitte (sauf pendant une saisie). La souris sur le panneau ne bouge pas la caméra (`Ui::wantsMouse`).
 - Régénération : à chaque changement de graine ou de préréglage, et 0,2 s après le dernier changement d'un paramètre (« Live
   update »). Le jeu de tuiles affiché change d'un coup quand toute la nouvelle sélection est prête (pas de trou).

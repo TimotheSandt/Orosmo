@@ -27,7 +27,7 @@ void usage(std::ostream &out)
            "  --headless            sans fenêtre (image hors écran ; avec --capture)\n"
            "  --size WxH            taille de la vue (défaut 1280x720)\n"
            "  --backend opengl      seul backend disponible avant M4 (vulkan : refusé)\n"
-           "Caméra : clic droit + souris pour tourner, ZQSD/WASD ou flèches, Espace / Ctrl pour monter et descendre, Maj : vite.\n";
+           "Caméra : clic droit + souris pour tourner, ZQSD (AZERTY) ou WASD, flèches ; Espace / Maj : monter, descendre ; A (Q en QWERTY) : vite, E : lent.\n";
 }
 
 template <typename T> std::optional<T> number(std::string_view s)

@@ -251,8 +251,9 @@ ui::InputFrame Viewer::readInput(float deltaTime)
     return in;
 }
 
-// Caméra libre : clic droit pour tourner (hors de l'interface), ZQSD / WASD et flèches pour avancer, Espace / Ctrl pour monter
-// et descendre, Maj pour aller plus vite ; la vitesse suit l'altitude au-dessus du sol.
+// Caméra libre (mêmes touches que la démo) : clic droit pour tourner (hors de l'interface) ; ZQSD en AZERTY, WASD sinon, et les
+// flèches pour avancer ; Espace / Maj pour monter et descendre ; A (Q en QWERTY) plus vite, E plus lentement ; la vitesse suit
+// l'altitude au-dessus du sol.
 void Viewer::moveCamera(float deltaTime)
 {
     if (options_.headless)
@@ -280,24 +281,32 @@ void Viewer::moveCamera(float deltaTime)
     {
         return;
     }
+    // Touches selon la disposition détectée (une seule à la fois) : les mêmes positions physiques que ZQSD en AZERTY.
+    const bool azerty = InputManager::GetKeyLayout() == KeyLayout::AZERTY;
+    const KeyButton forward = azerty ? KeyButton::Z : KeyButton::W;
+    const KeyButton left = azerty ? KeyButton::Q : KeyButton::A;
+    const KeyButton faster = azerty ? KeyButton::A : KeyButton::Q; // à gauche de l'avance
+    const KeyButton slower = KeyButton::E;                         // à droite de l'avance
     const glm::vec3 p = camera_.position();
     const float ground = w::heightAt(state_.params, state_.seed, p.x, p.z);
     float speed = std::clamp(std::abs(p.y - ground), 10.0f, 2000.0f) * 0.8f;
-    if (input.IsKeyPressed(KeyButton::LEFT_SHIFT))
+    if (input.IsKeyPressed(faster))
         speed *= 4.0f;
+    else if (input.IsKeyPressed(slower))
+        speed *= 0.25f;
     const float step = speed * deltaTime;
-    auto held = [&](std::initializer_list<KeyButton> k) { return std::any_of(k.begin(), k.end(), [&](KeyButton b) { return input.IsKeyPressed(b); }); };
-    if (held({KeyButton::W, KeyButton::Z, KeyButton::UP}))
+    auto held = [&](KeyButton a, KeyButton b) { return input.IsKeyPressed(a) || input.IsKeyPressed(b); };
+    if (held(forward, KeyButton::UP))
         camera_.moveForward(step);
-    if (held({KeyButton::S, KeyButton::DOWN}))
+    if (held(KeyButton::S, KeyButton::DOWN))
         camera_.moveForward(-step);
-    if (held({KeyButton::A, KeyButton::Q, KeyButton::LEFT}))
+    if (held(left, KeyButton::LEFT))
         camera_.moveRight(-step);
-    if (held({KeyButton::D, KeyButton::RIGHT}))
+    if (held(KeyButton::D, KeyButton::RIGHT))
         camera_.moveRight(step);
-    if (held({KeyButton::SPACE}))
+    if (input.IsKeyPressed(KeyButton::SPACE))
         camera_.moveUp(step);
-    if (held({KeyButton::LEFT_CONTROL}))
+    if (held(KeyButton::LEFT_SHIFT, KeyButton::RIGHT_SHIFT))
         camera_.moveUp(-step);
 }
 
