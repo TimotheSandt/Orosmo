@@ -35,6 +35,19 @@ std::unordered_map<void *, std::string> &pendingText()
     return pending;
 }
 
+// Appuis et répétitions du clavier (rappel de touches de GLFW : code GLFW, répétition, modificateurs), jusqu'au prochain `Update`.
+struct RawKeyPress
+{
+    int key;
+    bool repeat;
+    int mods;
+};
+std::unordered_map<void *, std::vector<RawKeyPress>> &pendingKeys()
+{
+    static std::unordered_map<void *, std::vector<RawKeyPress>> pending;
+    return pending;
+}
+
 GLFWwindow *native(void *handle) { return static_cast<GLFWwindow *>(handle); }
 } // namespace
 
@@ -78,6 +91,12 @@ InputManager::InputManager(void *nativeWindow) : window(nativeWindow)
                                   pendingScroll()[w] += glm::vec2(static_cast<float>(dx), static_cast<float>(dy));
                               });
         glfwSetCharCallback(native(nativeWindow), [](GLFWwindow *w, unsigned int codepoint) { AppendUtf8(pendingText()[w], codepoint); });
+        glfwSetKeyCallback(native(nativeWindow),
+                           [](GLFWwindow *w, int key, int, int action, int mods)
+                           {
+                               if (action == GLFW_PRESS || action == GLFW_REPEAT)
+                                   pendingKeys()[w].push_back({key, action == GLFW_REPEAT, mods});
+                           });
     }
     Init();
 }
@@ -107,9 +126,11 @@ void InputManager::RemoveInstance(void *window)
     {
         glfwSetScrollCallback(native(window), nullptr);
         glfwSetCharCallback(native(window), nullptr);
+        glfwSetKeyCallback(native(window), nullptr);
     }
     pendingScroll().erase(window);
     pendingText().erase(window);
+    pendingKeys().erase(window);
     inputManagers.erase(window);
 }
 
@@ -190,7 +211,100 @@ void InputManager::Update()
             this->textInput.swap(found->second);
         }
     }
+    {
+        // Code GLFW -> touche logique de la disposition active.
+        this->keyPresses.clear();
+        auto &pending = pendingKeys();
+        if (const auto found = pending.find(window); found != pending.end())
+        {
+            for (const RawKeyPress &raw : found->second)
+            {
+                for (const auto &[button, code] : keyMap)
+                {
+                    if (code == raw.key)
+                    {
+                        this->keyPresses.push_back({button, raw.repeat, (raw.mods & GLFW_MOD_SHIFT) != 0, (raw.mods & GLFW_MOD_CONTROL) != 0,
+                                                    (raw.mods & GLFW_MOD_ALT) != 0, (raw.mods & GLFW_MOD_SUPER) != 0});
+                        break;
+                    }
+                }
+            }
+            found->second.clear();
+        }
+    }
     UpdateInputEvent();
+}
+
+const char *InputManager::KeyName(KeyButton key)
+{
+    static const char *const kLetters[] = {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+                                           "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"};
+    static const char *const kFunctions[] = {"F1",  "F2",  "F3",  "F4",  "F5",  "F6",  "F7",  "F8",  "F9",  "F10", "F11", "F12", "F13",
+                                             "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", "F24", "F25"};
+    static const char *const kDigits[] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+    const auto k = static_cast<int>(key);
+    if (k >= static_cast<int>(KeyButton::A) && k <= static_cast<int>(KeyButton::Z))
+        return kLetters[k - static_cast<int>(KeyButton::A)];
+    if (k >= static_cast<int>(KeyButton::F1) && k <= static_cast<int>(KeyButton::F25))
+        return kFunctions[k - static_cast<int>(KeyButton::F1)];
+    if (k >= static_cast<int>(KeyButton::NUM_0) && k <= static_cast<int>(KeyButton::NUM_9))
+        return kDigits[k - static_cast<int>(KeyButton::NUM_0)];
+    if (k >= static_cast<int>(KeyButton::NUMPAD_0) && k <= static_cast<int>(KeyButton::NUMPAD_9))
+        return kDigits[k - static_cast<int>(KeyButton::NUMPAD_0)];
+    switch (key)
+    {
+    case KeyButton::SPACE: return "Space";
+    case KeyButton::ENTER:
+    case KeyButton::NUMPAD_ENTER: return "Enter";
+    case KeyButton::TAB: return "Tab";
+    case KeyButton::ESCAPE: return "Escape";
+    case KeyButton::BACKSPACE: return "Backspace";
+    case KeyButton::INSERT: return "Insert";
+    case KeyButton::DELETE: return "Delete";
+    case KeyButton::HOME: return "Home";
+    case KeyButton::END: return "End";
+    case KeyButton::PAGE_UP: return "PageUp";
+    case KeyButton::PAGE_DOWN: return "PageDown";
+    case KeyButton::LEFT: return "Left";
+    case KeyButton::RIGHT: return "Right";
+    case KeyButton::UP: return "Up";
+    case KeyButton::DOWN: return "Down";
+    case KeyButton::MINUS:
+    case KeyButton::NUMPAD_SUBTRACT: return "-";
+    case KeyButton::EQUALS: return "=";
+    case KeyButton::NUMPAD_ADD: return "+";
+    default: return nullptr;
+    }
+}
+
+std::string InputManager::ShortcutName(const KeyPress &press)
+{
+    const char *name = KeyName(press.key);
+    if (name == nullptr)
+        return {};
+    const bool function = press.key >= KeyButton::F1 && press.key <= KeyButton::F25;
+    if (!press.ctrl && !press.alt && !press.super && !function)
+        return {}; // une lettre seule est du texte, une flèche seule une touche d'édition
+    std::string out;
+    if (press.ctrl)
+        out += "Ctrl+";
+    if (press.alt)
+        out += "Alt+";
+    if (press.shift)
+        out += "Shift+";
+    if (press.super)
+        out += "Super+";
+    return out + name;
+}
+
+std::vector<std::string> InputManager::GetShortcuts() const
+{
+    std::vector<std::string> out;
+    for (const KeyPress &press : keyPresses)
+        if (!press.repeat)
+            if (std::string name = ShortcutName(press); !name.empty())
+                out.push_back(std::move(name));
+    return out;
 }
 
 void InputManager::AutoDetectKeyLayout()

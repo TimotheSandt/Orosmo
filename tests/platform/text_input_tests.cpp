@@ -17,4 +17,17 @@ TEST_SUITE("platform/text")
         InputManager::AppendUtf8(out, 0x110000); // hors d'Unicode
         CHECK(out.size() == 1 + 2 + 3 + 4);
     }
+
+    TEST_CASE("shortcut names: a key with Ctrl, Alt or Super, or a function key; letters and arrows alone are not shortcuts")
+    {
+        CHECK(InputManager::ShortcutName({KeyButton::S, false, false, true}) == "Ctrl+S");
+        CHECK(InputManager::ShortcutName({KeyButton::Z, false, true, true}) == "Ctrl+Shift+Z");
+        CHECK(InputManager::ShortcutName({KeyButton::F5}) == "F5");
+        CHECK(InputManager::ShortcutName({KeyButton::DELETE, false, false, false, true}) == "Alt+Delete");
+        CHECK(InputManager::ShortcutName({KeyButton::A}).empty());
+        CHECK(InputManager::ShortcutName({KeyButton::LEFT, false, true}).empty());
+        CHECK(InputManager::ShortcutName({KeyButton::LEFT_CONTROL, false, false, true}).empty());
+        CHECK(InputManager::KeyName(KeyButton::PAGE_DOWN) == std::string("PageDown"));
+        CHECK(InputManager::KeyName(KeyButton::LEFT_SHIFT) == nullptr);
+    }
 }

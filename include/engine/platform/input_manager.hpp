@@ -174,6 +174,17 @@ struct KeyButtonEvent
     KeyButton key;
 };
 
+// Appui d'une touche pendant l'image, répétition automatique du système comprise (`repeat`), avec les modificateurs tenus.
+struct KeyPress
+{
+    KeyButton key;
+    bool repeat = false;
+    bool shift = false;
+    bool ctrl = false;
+    bool alt = false;
+    bool super = false;
+};
+
 struct MouseButtonEvent
 {
     InputState state;
@@ -259,6 +270,15 @@ class InputManager
     // PLAT-05 : texte saisi depuis le `Update` précédent, en UTF-8 (caractères Unicode, répétition du clavier comprise ; pas
     // de composition IME ni de presse-papiers : docs/GAPS.md).
     const std::string &GetTextInput() const { return textInput; }
+    // Appuis depuis le `Update` précédent, dans l'ordre, répétitions du clavier comprises (Retour arrière ou flèche tenus).
+    const std::vector<KeyPress> &GetKeyPresses() const { return keyPresses; }
+    // Raccourcis appuyés depuis le `Update` précédent ("Ctrl+S", "Ctrl+Shift+Z", "F5") : une touche avec Ctrl, Alt ou Super, ou
+    // une touche de fonction. La lettre est celle de la disposition active (AZERTY : Ctrl + la touche marquée A donne "Ctrl+A").
+    std::vector<std::string> GetShortcuts() const;
+    // Nom d'une touche dans un raccourci ("A", "F5", "Delete", "PageUp"...) ; nullptr pour un modificateur ou une touche sans nom.
+    static const char *KeyName(KeyButton key);
+    // Raccourci d'un appui (vide s'il n'en est pas un) ; sans effet de bord (testable).
+    static std::string ShortcutName(const KeyPress &press);
     // Ajoute le point de code `codepoint` à `out` en UTF-8 (ignoré s'il n'est pas un caractère Unicode valide).
     static void AppendUtf8(std::string &out, unsigned int codepoint);
 
@@ -313,6 +333,7 @@ class InputManager
     std::unordered_map<MouseButton, InputState> mouseButtonStateMap;
     MouseMoveData mouseMoveData;
     std::string textInput;
+    std::vector<KeyPress> keyPresses;
 
   private:
     static std::unordered_map<std::string, InputAction> mapActionToInputAction;
