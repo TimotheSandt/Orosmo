@@ -168,11 +168,14 @@ double Slider::quantize(double v) const
 
 std::string Slider::formatted() const
 {
-    int decimals = 3;
-    if (step_ > 0.0)
+    if (step_ <= 0.0)
     {
-        decimals = std::abs(step_ - std::round(step_)) < 1e-9 ? 0 : std::clamp(static_cast<int>(std::ceil(-std::log10(step_) - 1e-9)), 0, 6);
+        // Continu : quatre chiffres significatifs (« 260 », « 2.1 », « 0.0011 »).
+        char buffer[64];
+        std::snprintf(buffer, sizeof buffer, "%.4g", value());
+        return prefix_ + buffer;
     }
+    const int decimals = std::abs(step_ - std::round(step_)) < 1e-9 ? 0 : std::clamp(static_cast<int>(std::ceil(-std::log10(step_) - 1e-9)), 0, 6);
     return prefix_ + formatNumber(value(), decimals);
 }
 

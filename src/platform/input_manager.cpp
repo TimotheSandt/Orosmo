@@ -28,8 +28,45 @@ std::unordered_map<void *, glm::vec2> &pendingScroll()
     return pending;
 }
 
+// PLAT-05 : texte saisi (rappel de caractères de GLFW, répétition du clavier comprise), cumulé jusqu'au prochain `Update`.
+std::unordered_map<void *, std::string> &pendingText()
+{
+    static std::unordered_map<void *, std::string> pending;
+    return pending;
+}
+
 GLFWwindow *native(void *handle) { return static_cast<GLFWwindow *>(handle); }
 } // namespace
+
+void InputManager::AppendUtf8(std::string &out, unsigned int codepoint)
+{
+    if (codepoint > 0x10FFFFU || (codepoint >= 0xD800U && codepoint <= 0xDFFFU))
+    {
+        return; // hors d'Unicode ou demi-code de substitution : ignoré
+    }
+    if (codepoint < 0x80U)
+    {
+        out.push_back(static_cast<char>(codepoint));
+    }
+    else if (codepoint < 0x800U)
+    {
+        out.push_back(static_cast<char>(0xC0U | (codepoint >> 6U)));
+        out.push_back(static_cast<char>(0x80U | (codepoint & 0x3FU)));
+    }
+    else if (codepoint < 0x10000U)
+    {
+        out.push_back(static_cast<char>(0xE0U | (codepoint >> 12U)));
+        out.push_back(static_cast<char>(0x80U | ((codepoint >> 6U) & 0x3FU)));
+        out.push_back(static_cast<char>(0x80U | (codepoint & 0x3FU)));
+    }
+    else
+    {
+        out.push_back(static_cast<char>(0xF0U | (codepoint >> 18U)));
+        out.push_back(static_cast<char>(0x80U | ((codepoint >> 12U) & 0x3FU)));
+        out.push_back(static_cast<char>(0x80U | ((codepoint >> 6U) & 0x3FU)));
+        out.push_back(static_cast<char>(0x80U | (codepoint & 0x3FU)));
+    }
+}
 
 InputManager::InputManager(void *nativeWindow) : window(nativeWindow)
 {
@@ -40,6 +77,7 @@ InputManager::InputManager(void *nativeWindow) : window(nativeWindow)
                               {
                                   pendingScroll()[w] += glm::vec2(static_cast<float>(dx), static_cast<float>(dy));
                               });
+        glfwSetCharCallback(native(nativeWindow), [](GLFWwindow *w, unsigned int codepoint) { AppendUtf8(pendingText()[w], codepoint); });
     }
     Init();
 }
@@ -68,8 +106,10 @@ void InputManager::RemoveInstance(void *window)
     if (inputManagers.find(window) != inputManagers.end())
     {
         glfwSetScrollCallback(native(window), nullptr);
+        glfwSetCharCallback(native(window), nullptr);
     }
     pendingScroll().erase(window);
+    pendingText().erase(window);
     inputManagers.erase(window);
 }
 
@@ -87,8 +127,11 @@ void InputManager::Init()
     }
 
     // Mouse position
-    glfwGetCursorPos(native(window), reinterpret_cast<double *>(&this->mouseMoveData.position.x),
-                     reinterpret_cast<double *>(&this->mouseMoveData.position.y));
+    // GLFW écrit des double : lus dans des double puis convertis (écrire un double dans un float débordait sur le champ suivant).
+    double cursorX = 0.0;
+    double cursorY = 0.0;
+    glfwGetCursorPos(native(window), &cursorX, &cursorY);
+    this->mouseMoveData.position = glm::vec2(static_cast<float>(cursorX), static_cast<float>(cursorY));
 
     // Mouse delta
     this->mouseMoveData.delta = glm::vec2(0.0f, 0.0f);
@@ -119,8 +162,11 @@ void InputManager::Update()
 
     // Mouse Position
     glm::vec2 lastMousePos = this->mouseMoveData.position;
-    glfwGetCursorPos(native(window), reinterpret_cast<double *>(&this->mouseMoveData.position.x),
-                     reinterpret_cast<double *>(&this->mouseMoveData.position.y));
+    // GLFW écrit des double : lus dans des double puis convertis (écrire un double dans un float débordait sur le champ suivant).
+    double cursorX = 0.0;
+    double cursorY = 0.0;
+    glfwGetCursorPos(native(window), &cursorX, &cursorY);
+    this->mouseMoveData.position = glm::vec2(static_cast<float>(cursorX), static_cast<float>(cursorY));
 
     // Mouse delta
     this->mouseMoveData.delta = this->mouseMoveData.position - lastMousePos;
@@ -133,6 +179,15 @@ void InputManager::Update()
         if (found != pending.end())
         {
             found->second = glm::vec2(0.0f, 0.0f);
+        }
+    }
+    {
+        auto &pending = pendingText();
+        const auto found = pending.find(window);
+        this->textInput.clear();
+        if (found != pending.end())
+        {
+            this->textInput.swap(found->second);
         }
     }
     UpdateInputEvent();

@@ -185,6 +185,7 @@ struct InputEvent
     std::vector<KeyButtonEvent> keys;
     std::vector<MouseButtonEvent> mouseButtons;
     MouseMoveData mouseMoveData;
+    std::string textInput;
 };
 
 struct InputAction
@@ -255,6 +256,11 @@ class InputManager
     glm::vec2 GetMousePosition() const { return mouseMoveData.position; }
     glm::vec2 GetMouseDelta() const { return mouseMoveData.delta; }
     glm::vec2 GetMouseScroll() const { return mouseMoveData.scroll; }
+    // PLAT-05 : texte saisi depuis le `Update` précédent, en UTF-8 (caractères Unicode, répétition du clavier comprise ; pas
+    // de composition IME ni de presse-papiers : docs/GAPS.md).
+    const std::string &GetTextInput() const { return textInput; }
+    // Ajoute le point de code `codepoint` à `out` en UTF-8 (ignoré s'il n'est pas un caractère Unicode valide).
+    static void AppendUtf8(std::string &out, unsigned int codepoint);
 
     InputEvent GetCurrentInputEvent() const { return inputEvent; };
     bool IsCurrentInputEventEmpty();
@@ -306,6 +312,7 @@ class InputManager
     std::unordered_map<KeyButton, InputState> keyStateMap;
     std::unordered_map<MouseButton, InputState> mouseButtonStateMap;
     MouseMoveData mouseMoveData;
+    std::string textInput;
 
   private:
     static std::unordered_map<std::string, InputAction> mapActionToInputAction;

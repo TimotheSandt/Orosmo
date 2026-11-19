@@ -165,6 +165,24 @@ demo-test-gpu:
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
 	$(MAKE) -C apps/demo $(DEMO_ARGS) TEST_ARGS='--test-suite=$(GPU_TEST_SUITES)' test
 
+# ── TOOL-01 : terrain-viewer ──
+#   make viewer           construit apps/terrain_viewer/bin/terrain-viewer (et copie ses ressources dans bin/res)
+#   make viewer-run       lance le visualiseur (ARGS="--seed 42 --preset mountains --theme light")
+#   make viewer-capture   images sans fenêtre, thème sombre puis clair : build/viewer-capture/{dark,light}/viewer.png
+VIEWER := apps/terrain_viewer/bin/terrain-viewer$(if $(filter Windows_NT,$(OS)),.exe)
+.PHONY: viewer viewer-run viewer-capture
+viewer:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/terrain_viewer BUILD_TYPE=release
+viewer-run: viewer
+	./$(VIEWER) $(ARGS)
+viewer-capture: viewer
+	./$(VIEWER) --headless --seed 42 --preset mountains --theme dark --capture build/viewer-capture/dark --capture-frames 5
+	./$(VIEWER) --headless --seed 42 --preset mountains --theme light --capture build/viewer-capture/light --capture-frames 5
+	python3 tools/compare_png.py build/viewer-capture/dark/viewer.png build/viewer-capture/light/viewer.png > /dev/null \
+	    && { echo "viewer-capture : les deux thèmes donnent la même image"; exit 1; } || echo "viewer-capture : OK (deux thèmes, deux images)"
+
 # ── UI-11 : tests du compilateur du langage d'interface ──
 #   make cui-test   tests unitaires (cargo test) + entrées invalides de bout en bout (binaire cui : messages fichier:ligne:colonne ;
 #                   une erreur du C++ généré ramenée à la ligne du .cui par #line). Les vues valides sont compilées avec `make demo-test`.

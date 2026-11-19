@@ -168,7 +168,7 @@ TEST_SUITE("ui/widgets")
         auto &ro = place(h, std::move(s3));
         h.click({90, 10});
         CHECK(ro.value() == doctest::Approx(0.25));
-        CHECK(ro.formatted() == "0.250");
+        CHECK(ro.formatted() == "0.25"); // continu : chiffres significatifs
     }
 
     TEST_CASE("Dropdown: a click opens the list above everything; choosing writes and closes; a click outside closes without change")
