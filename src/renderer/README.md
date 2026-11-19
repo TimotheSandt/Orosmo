@@ -49,7 +49,7 @@ l'écran » n'existe plus, ce qui supprime la profondeur du framebuffer par déf
 - **Le périphérique survit aux objets** qui le référencent (pointeur non possédé) ; la destruction des handles est différée par le RHI.
 - **Erreurs** : `Result<T>`, jamais d'exception. Une recréation qui échoue (`resize`, `reconfigure`, rechargement de shader) laisse
   l'objet dans son état précédent.
-- **Repère** du RHI (A26) : les octets envoyés ou lus commencent par le **bas** de l'image ; `Image` et `readPixel*` utilisent
+- **Repère** du RHI (A26) : les octets envoyés ou lus commencent par le **haut** de l'image, comme les fichiers ; `Image` et `readPixel*` utilisent
   l'origine en **haut**, avec retournement explicite.
 - **Pas d'état global, pas de singleton** : ni `GraphicsRenderState`, ni `ShaderLibrary::Instance()`.
 

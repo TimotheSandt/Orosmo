@@ -132,3 +132,9 @@ le découpage sont une organisation du travail. Conséquence de A26 (repère Vul
 `glClipControl` (OpenGL 4.5 ou `GL_ARB_clip_control`, lu dans les extensions) ; sans lui, la création du périphérique est
 refusée avec un message clair (CLAUDE.md règle 11 : refus propre). *À contester si l'auteur préfère un autre ordre.*
 
+**A26 : appliqué en M3 lot C (2026-11-19).** Repère du RHI : origine en haut à gauche (ligne 0 = haut), NDC y = +1 en haut,
+profondeur [0, 1] ; OpenGL par `glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE)`, la fenêtre étant traitée à part par le backend ;
+caméra en reverse-Z (plan lointain infini par défaut). Précision sur « repère Vulkan » : la profondeur [0, 1] et l'origine en haut
+sont celles de Vulkan ; pour le sens de y en NDC, le RHI garde y = +1 en haut (projections usuelles de glm), et le backend Vulkan
+retournera le viewport (hauteur négative, cœur 1.1). Les images de référence sont restées identiques au pixel près.
+

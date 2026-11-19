@@ -20,7 +20,8 @@ struct Image
     bool empty() const noexcept { return width == 0 || height == 0 || rgba.size() != static_cast<std::size_t>(width) * height * 4; }
 };
 
-// Lit toute la texture (RGBA8Unorm, RGBA8Srgb ou BGRA8Unorm) et retourne les lignes : le RHI renvoie le bas en premier (A26).
+// Lit toute la texture (RGBA8Unorm, RGBA8Srgb ou BGRA8Unorm). Repère du RHI (A26) : la première ligne est le haut, comme dans
+// l'image produite (aucun retournement).
 core::Result<Image> readImage(rhi::Device &device, rhi::TextureHandle texture);
 
 core::Result<> savePng(const Image &image, const std::filesystem::path &path);
