@@ -1,5 +1,5 @@
 // G98 (revue CodeRabbit de la PR #7) : état implicite d'OpenGL que le RHI doit contenir, validations sans débordement,
-// fermeture des portées à `submit`, régions de copie. Chaque cas échouait avant sa correction.
+// fermeture des portées à `submit`, régions de copie. Chaque cas vise un défaut relevé par la revue.
 #include <doctest/doctest.h>
 
 #include "support/test_support.hpp"
