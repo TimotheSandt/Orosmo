@@ -144,6 +144,9 @@ jobs:
       - name: Tests
         run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test
 
+      - name: terrain-gen determinism (TOOL-02, TEST-03)
+        run: make terrain-gen-check
+
       - name: Capture reference images (OpenGL, Mesa llvmpipe under Xvfb)
         run: |
           xvfb-run -a -s "-screen 0 1280x720x24" \
@@ -243,6 +246,9 @@ jobs:
 
       - name: Tests
         run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test WERROR=0
+
+      - name: terrain-gen determinism (TOOL-02, TEST-03)
+        run: make terrain-gen-check WERROR=0
 
   # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
   sanitizers:
@@ -383,6 +389,7 @@ jobs:
         run: |
           make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
           make demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
@@ -390,3 +397,4 @@ jobs:
         run: |
           mingw32-make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
           mingw32-make demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed

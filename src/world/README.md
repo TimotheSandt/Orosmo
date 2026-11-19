@@ -11,6 +11,8 @@ isolé dans `src/world/gpu/`.
 | `lod.hpp` | TER-03 : `selectTiles` (quadtree découpé selon la distance, puis équilibré : voisines à un niveau près), `coarserNeighbors`, `buildTileMesh` (sommets position + normale, triangles ; bords cousus vers une voisine plus grossière : pas de fissure) |
 | `streaming.hpp` | TER-04 : `TileStreamer` : sélection à chaque image, génération en tâches de fond (CORE-04), maillage refait quand les voisines changent de niveau, éviction LRU sous un budget mémoire (la sélection courante n'est jamais évincée ; `overBudget` si elle dépasse seule le budget) |
 | `gpu_noise.hpp` | TER-01 (GPU) : `GpuNoise::generateTile` : les mêmes hauteurs calculées en compute par le RHI (GLSL traduit ligne pour ligne, `precise` contre la fusion en FMA, positions en double) ; écart borné par `kGpuTolerance` (1e-4 de l'amplitude), mesuré à 0,5 mm pour 150 m |
+| `export.hpp` | TER-11 : `HeightField` / `generateRegion` (mêmes échantillons que les tuiles, parallélisable), `writeHeightPng16` (PNG 16 bits, zlib en blocs stockés : octets identiques partout), `writeHeightExr` / `readHeightExr` (OpenEXR float sans compression), `writeObj`, `writeGltf` (glTF 2.0, tampon intégré), `writeStl` (binaire, solide fermé imprimable), `classify` / `biomeMap` / `writeBiomePng` (`BiomeParams` réfléchi) |
+| `raycast.hpp` | TER-13 : `meshHeightAt` (surface maillée du niveau 0, même triangulation que les tuiles), `raycastTerrain` (pas d'un quart d'espacement puis dichotomie) ; cohérent avec le rendu (test : profondeur rendue au centre de l'image = point du rayon à 5 cm près) |
 | `checksum.hpp` | TEST-03 : `checksum64` (FNV-1a 64 bits, octets en petit-boutiste) des sorties de génération |
 
 ## Déterminisme (règle 9, TEST-03)
@@ -32,6 +34,8 @@ const float h = w::warpedFbm2(x, z, seed, relief, {.amplitude = 20.0f, .frequenc
 ```
 
 ## Limites
+
+- Le PNG 16 bits n'est pas compressé (déterminisme sans dépendance) : 32 Mo pour 4096 x 4096. L'EXR non plus.
 
 - Domaine : |coordonnée| < 2^23 (précision du float). Les planètes (coordonnées mondiales en `double`, CORE-09) passeront par
   des coordonnées locales à la tuile.
