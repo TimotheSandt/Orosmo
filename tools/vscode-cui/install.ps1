@@ -10,7 +10,7 @@ param(
     [switch]$List
 )
 
-$extDirName  = "proceduralgeneration.cui-language-0.2.0"
+$extDirName  = "proceduralgeneration.cui-language-0.3.0"
 $profilesDir = "$env:APPDATA\Code\User\profiles"
 $storageJson = "$env:APPDATA\Code\User\globalStorage\storage.json"
 

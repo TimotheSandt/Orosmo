@@ -183,7 +183,8 @@ tests/ui/cui_errors/e03_unknown_modifier.cui:5:19: error: 'Label' has no modifie
 
 La colonne est celle de l'élément (son nom) ou du modificateur (son point) ; un symbole manquant est signalé juste après le jeton
 qui le précède (`5:18: error: expected ')' (found '}')`). `cui check [--stdin] fichier.cui` écrit les mêmes diagnostics en JSON
-(`file`, `line`, `col`, `endLine`, `endCol`, `message`, `severity`) pour l'extension VS Code (`tools/vscode-cui/`).
+(`file`, `line`, `col`, `endLine`, `endCol`, `message`, `severity`) pour l'extension VS Code (`tools/vscode-cui/` : diagnostics pendant la frappe, complétion et survol tirés de `cui spec`, la
+description JSON des composants, modificateurs et propriétés de thème).
 
 Chaque instruction C++ générée est précédée d'une directive `#line` vers le `.cui` : une erreur du **compilateur C++** (méthode
 inexistante, type faux) désigne la ligne du langage d'interface qui l'a produite (`tests/ui/cui_errors/e18_cxx_error_points_to_cui.cui`).

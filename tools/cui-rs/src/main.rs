@@ -46,6 +46,10 @@ fn run_cli() -> Result<(), String> {
         "run" => cmd_run(&args),
         "redirect" => cmd_redirect(&args),
         "check" => cmd_check(&args),
+        "spec" => {
+            println!("{}", engine::spec_json());
+            Ok(())
+        }
         "-h" | "--help" | "help" => {
             print_usage();
             Ok(())
@@ -475,6 +479,6 @@ fn file_name(path: &Path) -> String {
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  cui scan --headers <dir> --output <registry.json>\n  cui build --registry <registry.json> --output <dir> <file.cui>...\n  cui run [--headers <dir>] --output <dir> <file.cui>...   (--headers: UI::View target only; `import \"engine/ui\"` needs none)\n  cui redirect --output <dir> <file.cui>...\n  cui check [--registry <registry.json>] [--stdin] <file.cui>"
+        "Usage:\n  cui scan --headers <dir> --output <registry.json>\n  cui build --registry <registry.json> --output <dir> <file.cui>...\n  cui run [--headers <dir>] --output <dir> <file.cui>...   (--headers: UI::View target only; `import \"engine/ui\"` needs none)\n  cui redirect --output <dir> <file.cui>...\n  cui check [--registry <registry.json>] [--stdin] <file.cui>\n  cui spec        components, modifiers and theme properties of the engine/ui target (JSON, for editors)"
     );
 }

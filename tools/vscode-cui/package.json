@@ -1,19 +1,30 @@
 {
   "name": "cui-language",
   "displayName": "CUI Language Support",
-  "description": "Syntax highlighting and diagnostics for .cui declarative UI DSL files",
-  "version": "0.2.0",
+  "description": "Interface language (.cui) of the ProceduralGeneration engine: highlighting, compiler diagnostics (file:line:column), completion and hover from `cui spec`",
+  "version": "0.3.0",
   "publisher": "proceduralgeneration",
-  "engines": { "vscode": "^1.80.0" },
-  "categories": ["Programming Languages"],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
   "main": "./main.js",
-  "activationEvents": ["*"],
+  "activationEvents": [
+    "onLanguage:cui"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "cui",
-        "aliases": ["CUI", "cui"],
-        "extensions": [".cui"],
+        "aliases": [
+          "CUI",
+          "cui"
+        ],
+        "extensions": [
+          ".cui"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -30,14 +41,20 @@
         "cui.toolPath": {
           "type": "string",
           "default": "",
-          "description": "Absolute path to the native CUI checker binary. If empty, the extension searches the workspace for tools/cui-rs/target/release/cui automatically."
+          "description": "Path to the cui compiler. Empty: tools/cui, tools/target/release/cui, engine/tools/cui (projects made by `engine init`) in the workspace, then the PATH."
         },
         "cui.registryPath": {
           "type": "string",
           "default": "",
-          "description": "Path to registry.json produced by 'cui scan'. Relative paths are resolved from the workspace root. Leave empty to skip semantic validation."
+          "description": "registry.json from `cui scan` (legacy UI::View target only; files with `import \"engine/ui\"` need none)."
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "cui.showOutput",
+        "title": "CUI: Show the extension log"
+      }
+    ]
   }
 }
