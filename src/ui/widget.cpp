@@ -281,6 +281,7 @@ void Widget::onRelease(Ui &ui, glm::vec2, bool inside)
 bool Widget::onSecondaryClick(Ui &, glm::vec2) { return false; }
 bool Widget::openContextMenu(Ui &, glm::vec2) { return false; }
 void Widget::onOutsideClick(Ui &) {}
+void Widget::onHoverChanged(Ui &, bool) {}
 bool Widget::onWheel(Ui &, glm::vec2) { return false; }
 void Widget::onKey(Ui &, int) {}
 void Widget::onText(Ui &, std::string_view) {}

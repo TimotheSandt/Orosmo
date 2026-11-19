@@ -306,6 +306,8 @@ class Widget
     virtual bool onSecondaryClick(Ui &ui, glm::vec2 mouse);
     // Ouvre le menu contextuel que ce widget représente (ContextMenu) ; faux pour les autres widgets.
     virtual bool openContextMenu(Ui &ui, glm::vec2 mouse);
+    // Le pointeur entre sur le widget ou en sort (après l'état « survolé », avant l'événement onHover).
+    virtual void onHoverChanged(Ui &ui, bool hovered);
     // Clic hors de la fenêtre modale que ce widget possède (Dialog).
     virtual void onOutsideClick(Ui &ui);
     // Sous-arbre possédé par le widget mais hors de ses enfants (corps d'une boîte de dialogue, éléments d'un menu) : parcouru par

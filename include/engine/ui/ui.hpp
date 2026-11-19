@@ -167,6 +167,7 @@ class Ui
     // Notifications temporaires : affichées par les widgets `Notifications` de l'arbre, retirées après leur durée (ou au clic).
     void notify(std::string text, NotificationKind kind = NotificationKind::kInfo, float seconds = 4.0f);
     std::deque<Notification> &notifications() noexcept { return notifications_; }
+    const std::deque<Notification> &notifications() const noexcept { return notifications_; }
     void dismissNotification(std::uint64_t id);
 
     // Presse-papiers (champs de texte : Ctrl+C, X, V). Par défaut, un presse-papiers interne ; l'application branche celui du

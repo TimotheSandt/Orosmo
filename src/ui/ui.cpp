@@ -202,12 +202,14 @@ void Ui::setHovered(Widget *target)
     if (hovered_ != nullptr)
     {
         hovered_->hovered_ = false;
+        hovered_->onHoverChanged(*this, false);
         hovered_->emit(*this, EventKind::kHover, false);
     }
     hovered_ = target;
     if (hovered_ != nullptr)
     {
         hovered_->hovered_ = true;
+        hovered_->onHoverChanged(*this, true);
         hovered_->emit(*this, EventKind::kHover, true);
     }
 }
@@ -644,7 +646,11 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         }
         else if (focused_ != nullptr)
         {
+            // Échap : un champ de saisie le prend (perte du focus) ; sinon il remonte à la fenêtre modale ouverte.
+            Widget *before = focused_;
             focused_->onKey(*this, key);
+            if (key == kKeyEscape && focused_ == before && !modals_.empty())
+                modals_.back().owner->onKey(*this, kKeyEscape);
         }
         else if (key == kKeyEscape && !modals_.empty())
         {

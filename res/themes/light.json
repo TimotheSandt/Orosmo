@@ -22,6 +22,10 @@
         "color.scrollbar": "#9aa1b2",
         "color.tooltip": "#1c1f26",
         "color.onTooltip": "#f5f6f9",
+        "color.success": "#1a7f37",
+        "color.warning": "#9a6700",
+        "color.error": "#cf222e",
+        "color.backdrop": "#1c1f2666",
         "color.shadow": "#00000040"
     }
 }
