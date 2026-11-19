@@ -138,7 +138,7 @@ fn the_spec_lists_every_component_as_json() {
 #[test]
 fn ui03_components_generate_their_widgets_and_check_their_children() {
     let (header, source) = engine(
-        "view V {\n    @Mutable var s: S\n    VBox {\n        MenuBar {\n            Menu(\"File\") {\n                MenuItem(\"Grid\", checked: $s.grid)\n            }\n        }\n        Dialog(\"D\", open: $s.open) {\n            Label(\"in\")\n        }\n        .width(200)\n        GradientEditor($s.gradient)\n        ImageView(s.map).fit(.cover)\n    }\n}\n",
+        "view V {\n    @Mutable var s: S\n    VBox {\n        MenuBar {\n            Menu(\"File\") {\n                MenuItem(\"Grid\", checked: $s.grid)\n            }\n        }\n        Dialog(\"D\", open: $s.open) {\n            Label(\"in\")\n        }\n        .width(200)\n        GradientEditor($s.gradient)\n        ImageView(s.map).fit(.cover)\n        Button(\"Go\").shortcut(\"Ctrl+G\")\n        TextArea($s.notes, wrap: false)\n    }\n}\n",
     )
     .unwrap();
     assert!(header.contains("#include \"engine/ui/menus.hpp\""));
@@ -149,6 +149,8 @@ fn ui03_components_generate_their_widgets_and_check_their_children() {
     assert!(source.contains("engine::ui::Binding<engine::ui::Gradient>::ref(s->gradient)"));
     assert!(source.contains("[=] { return engine::ui::imageOf(s->map); }"));
     assert!(source.contains("setFit(engine::ui::ImageFit::kCover);"));
+    assert!(source.contains("->setShortcut(std::string(\"Ctrl+G\"));"));
+    assert!(source.contains("->setLineNumbers(false).setReadOnly(false).setWrap(static_cast<bool>(false));"));
     assert_eq!(
         errors("view V {\n    MenuBar {\n        Label(\"x\")\n    }\n}\n"),
         vec!["v.cui:4:9: error: 'MenuBar' only contains 'Menu' elements, not 'Label'".to_string()]
