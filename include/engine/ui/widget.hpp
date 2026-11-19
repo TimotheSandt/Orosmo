@@ -301,8 +301,20 @@ class Widget
     virtual void onPress(Ui &ui, glm::vec2 mouse);
     virtual void onDrag(Ui &ui, glm::vec2 mouse);
     virtual void onRelease(Ui &ui, glm::vec2 mouse, bool inside);
-    // Clic du bouton secondaire (droit) sur le widget : rien par défaut (curseur : valeur par défaut).
-    virtual void onSecondaryClick(Ui &ui, glm::vec2 mouse);
+    // Clic du bouton secondaire (droit) sur le widget ; vrai s'il l'a utilisé (curseur : valeur par défaut). Sinon, l'interface
+    // cherche un menu contextuel (ContextMenu) parmi les enfants du widget et de ses parents.
+    virtual bool onSecondaryClick(Ui &ui, glm::vec2 mouse);
+    // Ouvre le menu contextuel que ce widget représente (ContextMenu) ; faux pour les autres widgets.
+    virtual bool openContextMenu(Ui &ui, glm::vec2 mouse);
+    // Le pointeur entre sur le widget ou en sort (après l'état « survolé », avant l'événement onHover).
+    virtual void onHoverChanged(Ui &ui, bool hovered);
+    // Clic hors de la fenêtre modale que ce widget possède (Dialog).
+    virtual void onOutsideClick(Ui &ui);
+    // Sous-arbre possédé par le widget mais hors de ses enfants (corps d'une boîte de dialogue, éléments d'un menu) : parcouru par
+    // `find` et par le suivi des pointeurs, dessiné par l'interface à part (fenêtre modale, menu).
+    virtual Widget *detached() const noexcept { return nullptr; }
+    // Le widget garde la touche Tab pour lui (éditeur de texte) au lieu de passer le focus.
+    virtual bool wantsTab() const { return false; }
     virtual bool onWheel(Ui &ui, glm::vec2 wheel);
     virtual void onKey(Ui &ui, int key);                // engine::ui::Key
     virtual void onText(Ui &ui, std::string_view text); // UTF-8 saisi

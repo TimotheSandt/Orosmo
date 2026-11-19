@@ -8,6 +8,30 @@ view Gallery {
     let sideWidth = 300
 
     Overlay {
+        VBox {
+        // ── Barre de menus (UI-03) : survoler un autre titre pendant qu'un menu est ouvert passe à lui ──
+        MenuBar {
+            Menu("File") {
+                MenuItem("Open dialog...", shortcut: "Ctrl+O").onClick(state.openDialog).id("menuDialog")
+                Menu("Notify") {
+                    MenuItem("Information").onClick(state.notifyInfo)
+                    MenuItem("Success").onClick(state.notifySuccess)
+                    MenuItem("Warning").onClick(state.notifyWarning)
+                    MenuItem("Error").onClick(state.notifyError)
+                }
+                Separator()
+                MenuItem("Clear the log").onClick(state.clearLog)
+            }
+            .id("menuFile")
+            Menu("View") {
+                MenuItem("Player on the minimap", checked: $state.showPlayer).id("menuPlayer")
+                MenuItem("Enabled", checked: $state.enabled)
+            }
+            Menu("Help") {
+                MenuItem("About the gallery").onClick(state.openDialog)
+            }
+        }
+        .id("menuBar")
         HBox {
             // ── Colonne de gauche : présentation, thème, journal des événements ──
             Panel {
@@ -90,6 +114,101 @@ view Gallery {
                             .width(.fill)
                         }
                         .height(.fill)
+                    }
+                    Page("Controls") {
+                        ScrollView {
+                            Grid(2) {
+                                Label("Radio buttons")
+                                HBox {
+                                    RadioButton("Low", value: 0, selected: $state.detail).onChange(state.changed).id("detailLow")
+                                    RadioButton("Medium", value: 1, selected: $state.detail).onChange(state.changed).id("detailMedium")
+                                    RadioButton("High", value: 2, selected: $state.detail).onChange(state.changed).id("detailHigh")
+                                }
+                                Label("Range slider")
+                                RangeSlider($state.heightLow, $state.heightHigh, min: 0, max: 100, step: 1).onChange(state.changed).width(.fill).id("heights")
+                                    .tooltip("two handles that cannot cross; they reshape the minimap of the Windows page")
+                                Label("Spin box")
+                                SpinBox($state.octaves, min: 1, max: 8).onChange(state.changed).width(160).id("octaves")
+                                    .tooltip("- / + buttons, the wheel, or type a number")
+                                Label("Text field")
+                                TextField($state.name).width(.fill).id("name2")
+                                    .tooltip("focus selects all; Shift + arrows or drag select; Ctrl+A, C, X, V")
+                                Label("Text editor")
+                                TextArea($state.notes, lineNumbers: true).width(.fill).height(120).id("notes")
+                                Label("Values").variant("caption")
+                                Label("\(state.controlsSummary())").variant("caption").id("controlsSummary")
+                            }
+                            .width(.fill)
+                        }
+                        .height(.fill)
+                    }
+                    Page("Color") {
+                        ScrollView {
+                            VBox {
+                                Label("Colour editor: wheel, RGB / HSV / HSL sliders, alpha, hexadecimal; before / after").variant("caption")
+                                HBox {
+                                    ColorEditor($state.accent, alpha: true).onChange(state.changed).width(420).id("accent")
+                                    VBox {
+                                        Label("A bare wheel on the same colour").variant("caption")
+                                        ColorWheel($state.accent).width(140).height(140).id("wheel")
+                                    }
+                                }
+                                Label("Gradient editor: click the bar to add a stop, drag to move, right click to remove").variant("caption")
+                                GradientEditor($state.terrainColors).onChange(state.changed).width(.fill).id("gradient")
+                                Label("Curve editor: click to add a point, drag to move, right click to remove").variant("caption")
+                                CurveEditor($state.heightCurve).onChange(state.changed).width(260).height(180).id("curve")
+                                Label("The gradient colours the minimap; the curve reshapes its heights (Windows page)").variant("caption")
+                            }
+                            .width(.fill)
+                        }
+                        .height(.fill)
+                    }
+                    Page("Windows") {
+                        VBox {
+                            Label("Modal dialog: Escape, its close button or a click outside closes it").variant("caption")
+                            Button("Open the dialog").onClick(state.openDialog).id("openDialog")
+                            Dialog("Settings", open: $state.dialogOpen) {
+                                Label("A modal window: the rest of the interface receives nothing.")
+                                TextField($state.name).width(.fill)
+                                Checkbox("Enabled", checked: $state.enabled)
+                                HBox {
+                                    Button("OK").onClick(state.closeDialog).id("dialogOk")
+                                }
+                                .align(x: .end)
+                            }
+                            .width(380)
+                            .id("dialog")
+                            Label("Context menu: right click in the box below").variant("caption")
+                            Panel {
+                                Label("Right click here")
+                                ContextMenu {
+                                    MenuItem("Copy", shortcut: "Ctrl+C").onClick(state.clicked).id("ctxCopy")
+                                    MenuItem("Paste", shortcut: "Ctrl+V").onClick(state.clicked).id("ctxPaste")
+                                    Separator()
+                                    Menu("Notify") {
+                                        MenuItem("Information").onClick(state.notifyInfo)
+                                        MenuItem("Error").onClick(state.notifyError)
+                                    }
+                                }
+                            }
+                            .height(60)
+                            .id("contextArea")
+                            Label("Notifications: at most 4 or 300 px; the oldest go; a click closes one").variant("caption")
+                            HBox {
+                                Button("Information").onClick(state.notifyInfo).id("notifyInfo")
+                                Button("Success").onClick(state.notifySuccess).id("notifySuccess")
+                                Button("Warning").onClick(state.notifyWarning).id("notifyWarning")
+                                Button("Error").onClick(state.notifyError).id("notifyError")
+                            }
+                            Label("Images made by the game every frame (DynamicImage): a minimap and a compass").variant("caption")
+                            HBox {
+                                ImageView(state.minimap).width(192).height(192).id("minimap")
+                                    .tooltip("heights -> curve -> gradient (Color page); range slider and spin box (Controls page)")
+                                ImageView(state.compass).width(96).height(96).id("compass")
+                                ImageView(state.minimap).fit(.cover).width(192).height(64).id("minimapCover")
+                                    .tooltip(".fit(.cover): fills the widget, the edges are cut")
+                            }
+                        }
                     }
                     Page("Layout") {
                         VBox {
@@ -201,8 +320,13 @@ view Gallery {
             .width(.fill)
             .height(.fill)
         }
+        .height(.fill)
+        }
         .margin(12)
         .height(.fill)
+
+        // ── Notifications (Ui::notify) : au plus 4, et au plus 300 px de haut ; les plus anciennes partent ──
+        Notifications(max: 4, maxHeight: 300, width: 280).align(.end).margin(20).id("toasts")
     }
     .style(background: "color.background")
 }

@@ -83,6 +83,10 @@ void collect(const Widget &w, std::unordered_set<const Widget *> &out)
     {
         collect(*child, out);
     }
+    if (const Widget *d = w.detached())
+    {
+        collect(*d, out);
+    }
 }
 
 Widget *interactiveAncestor(Widget *w)
@@ -123,6 +127,7 @@ void Ui::setRoot(std::unique_ptr<Widget> root)
         return;
     }
     closePopup();
+    modals_.clear();
     hovered_ = active_ = focused_ = nullptr;
     tooltipText_.clear();
     root_ = std::move(root);
@@ -137,7 +142,14 @@ Widget *Ui::find(std::string_view id) const noexcept
             return w;
         }
     }
-    return popup_ ? popup_->find(id) : nullptr;
+    for (const PopupEntry &p : popups_)
+    {
+        if (Widget *w = p.view->find(id))
+        {
+            return w;
+        }
+    }
+    return nullptr;
 }
 
 bool Ui::wantsKeyboard() const noexcept { return focused_ != nullptr && focused_->acceptsText(); }
@@ -167,12 +179,16 @@ Widget *Ui::hitTestIn(Widget &w, glm::vec2 p)
 
 Widget *Ui::hitTest(glm::vec2 p) const
 {
-    if (popup_)
+    for (auto it = popups_.rbegin(); it != popups_.rend(); ++it)
     {
-        if (Widget *hit = hitTestIn(*popup_, p))
+        if (Widget *hit = hitTestIn(*it->view, p))
         {
             return hit;
         }
+    }
+    if (!modals_.empty())
+    {
+        return hitTestIn(*modals_.back().panel, p); // une fenêtre modale masque le reste de l'interface
     }
     return root_ ? hitTestIn(*root_, p) : nullptr;
 }
@@ -186,12 +202,14 @@ void Ui::setHovered(Widget *target)
     if (hovered_ != nullptr)
     {
         hovered_->hovered_ = false;
+        hovered_->onHoverChanged(*this, false);
         hovered_->emit(*this, EventKind::kHover, false);
     }
     hovered_ = target;
     if (hovered_ != nullptr)
     {
         hovered_->hovered_ = true;
+        hovered_->onHoverChanged(*this, true);
         hovered_->emit(*this, EventKind::kHover, true);
     }
 }
@@ -235,7 +253,11 @@ void Ui::collectFocusable(Widget &w, std::vector<Widget *> &out) const
 void Ui::focusNext(bool backwards)
 {
     std::vector<Widget *> order;
-    if (root_)
+    if (!modals_.empty())
+    {
+        collectFocusable(*modals_.back().panel, order); // le focus reste dans la fenêtre modale
+    }
+    else if (root_)
     {
         collectFocusable(*root_, order);
     }
@@ -275,42 +297,83 @@ void Ui::flushDeferred()
     deferred_.clear();
 }
 
-void Ui::openPopup(Widget &owner, std::unique_ptr<Widget> content, const Rect &anchor)
+// ── Fenêtres surgissantes ─────────────────────────────────────────────────────────────────────────────────────────────
+
+void Ui::pushPopup(Widget &owner, std::unique_ptr<Widget> owned, Widget &view, const Rect &anchor, PopupPlacement placement)
 {
-    closePopup();
-    popup_ = std::move(content);
-    popupOwner_ = &owner;
-    popupAnchor_ = anchor;
-    layoutPopup();
+    // Ouverte depuis une fenêtre déjà ouverte (sous-menu) : celles au-dessus du propriétaire se ferment ; sinon, toutes.
+    std::size_t keep = 0;
+    for (std::size_t i = popups_.size(); i-- > 0;)
+    {
+        if (inSubtree(popups_[i].view, &owner))
+        {
+            keep = i + 1;
+            break;
+        }
+    }
+    closePopupsFrom(keep);
+    PopupEntry entry;
+    entry.owner = &owner;
+    entry.owned = std::move(owned);
+    entry.view = &view;
+    entry.anchor = anchor;
+    entry.placement = placement;
+    popups_.push_back(std::move(entry));
+    layoutPopups();
 }
 
-void Ui::closePopup()
+void Ui::openPopup(Widget &owner, std::unique_ptr<Widget> content, const Rect &anchor, PopupPlacement placement)
 {
-    if (!popup_)
+    Widget &view = *content;
+    pushPopup(owner, std::move(content), view, anchor, placement);
+}
+
+void Ui::openPopup(Widget &owner, Widget &content, const Rect &anchor, PopupPlacement placement)
+{
+    pushPopup(owner, nullptr, content, anchor, placement);
+}
+
+bool Ui::popupOpenFor(const Widget &owner) const noexcept
+{
+    return std::any_of(popups_.begin(), popups_.end(), [&](const PopupEntry &p) { return p.owner == &owner; });
+}
+
+Widget *Ui::popup() const noexcept { return popups_.empty() ? nullptr : popups_.back().view; }
+
+void Ui::forgetSubtree(const Widget *root)
+{
+    for (Widget **p : {&hovered_, &active_, &focused_})
     {
-        return;
+        if (*p != nullptr && inSubtree(root, *p))
+        {
+            if (*p == hovered_)
+                hovered_->hovered_ = false;
+            *p = nullptr;
+        }
     }
-    if (inSubtree(popup_.get(), hovered_))
+}
+
+void Ui::closePopupsFrom(std::size_t level)
+{
+    while (popups_.size() > level)
     {
-        hovered_ = nullptr;
+        PopupEntry entry = std::move(popups_.back());
+        popups_.pop_back();
+        forgetSubtree(entry.view);
+        if (entry.owned)
+        {
+            // Détruit après l'image : un événement en attente peut encore viser un widget de la fenêtre.
+            Widget *raw = entry.owned.release();
+            defer([raw] { delete raw; });
+        }
     }
-    if (inSubtree(popup_.get(), active_))
-    {
-        active_ = nullptr;
-    }
-    if (inSubtree(popup_.get(), focused_))
-    {
-        focused_ = nullptr;
-    }
-    // Détruit après l'image : un événement en attente peut encore viser un widget de la fenêtre.
-    Widget *raw = popup_.release();
-    popupOwner_ = nullptr;
-    defer([raw] { delete raw; });
     if (!updating_)
     {
         flushDeferred();
     }
 }
+
+void Ui::closePopup() { closePopupsFrom(0); }
 
 void Ui::forget(const Widget &widget) noexcept
 {
@@ -322,27 +385,81 @@ void Ui::forget(const Widget &widget) noexcept
         focused_ = nullptr;
 }
 
-void Ui::layoutPopup()
+void Ui::layoutPopups()
 {
-    if (!popup_)
+    for (PopupEntry &p : popups_)
     {
-        return;
+        const glm::vec2 m = p.view->measure(*this, viewport_);
+        const Rect &a = p.anchor;
+        float w = std::min(m.x, viewport_.x);
+        const float h = std::min(m.y, viewport_.y);
+        float x = a.position.x;
+        float y = a.position.y;
+        if (p.placement == PopupPlacement::kBelow)
+        {
+            w = std::min(std::max(m.x, a.size.x), viewport_.x);
+            y = a.end().y;
+            if (y + h > viewport_.y && a.position.y - h >= 0.0f)
+                y = a.position.y - h;
+        }
+        else if (p.placement == PopupPlacement::kRight)
+        {
+            x = a.end().x;
+            if (x + w > viewport_.x && a.position.x - w >= 0.0f)
+                x = a.position.x - w;
+        }
+        x = std::clamp(x, 0.0f, std::max(0.0f, viewport_.x - w));
+        y = std::clamp(y, 0.0f, std::max(0.0f, viewport_.y - h));
+        p.view->layout(*this, {{x, y}, {w, h}});
     }
-    const glm::vec2 m = popup_->measure(*this, viewport_);
-    const float w = std::min(std::max(m.x, popupAnchor_.size.x), viewport_.x);
-    const float h = std::min(m.y, viewport_.y);
-    float y = popupAnchor_.end().y;
-    if (y + h > viewport_.y && popupAnchor_.position.y - h >= 0.0f)
-    {
-        y = popupAnchor_.position.y - h;
-    }
-    const float x = std::clamp(popupAnchor_.position.x, 0.0f, std::max(0.0f, viewport_.x - w));
-    popup_->layout(*this, {{x, y}, {w, h}});
 }
+
+// ── Fenêtres modales, notifications, presse-papiers ───────────────────────────────────────────────────────────────────
+
+void Ui::showModal(Widget &owner, Widget &panel)
+{
+    if (std::none_of(modals_.begin(), modals_.end(), [&](const ModalEntry &m) { return m.panel == &panel; }))
+    {
+        modals_.push_back({&owner, &panel});
+    }
+}
+
+void Ui::notify(std::string text, NotificationKind kind, float seconds)
+{
+    Notification n;
+    n.id = nextNotification_++;
+    n.text = std::move(text);
+    n.kind = kind;
+    n.duration = n.remaining = std::max(seconds, 0.1f);
+    notifications_.push_back(std::move(n));
+}
+
+void Ui::dismissNotification(std::uint64_t id)
+{
+    std::erase_if(notifications_, [id](const Notification &n) { return n.id == id; });
+}
+
+void Ui::setClipboard(std::function<std::string()> get, std::function<void(const std::string &)> set)
+{
+    clipboardGet_ = std::move(get);
+    clipboardSet_ = std::move(set);
+}
+
+std::string Ui::clipboardText() const { return clipboardGet_ ? clipboardGet_() : clipboard_; }
+
+void Ui::setClipboardText(const std::string &text)
+{
+    clipboard_ = text;
+    if (clipboardSet_)
+        clipboardSet_(text);
+}
+
+// ── Image ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 void Ui::layout(glm::vec2 viewport)
 {
     viewport_ = viewport;
+    modals_.clear(); // les boîtes de dialogue ouvertes s'inscrivent pendant la mise en page
     if (root_)
     {
         // La racine est placée dans la vue comme l'enfant d'une superposition : étirée par défaut, ou à sa taille et alignée.
@@ -360,7 +477,13 @@ void Ui::layout(glm::vec2 viewport)
         auto [y, h] = axis(root_->alignY, root_->height, viewport.y - root_->margin.vertical(), m.y);
         root_->layout(*this, {{x + root_->margin.left, y + root_->margin.top}, {w, h}});
     }
-    layoutPopup();
+    for (const ModalEntry &modal : modals_)
+    {
+        Widget &panel = *modal.panel;
+        const glm::vec2 m = glm::min(panel.measure(*this, viewport * 0.9f), viewport);
+        panel.layout(*this, {glm::round((viewport - m) * 0.5f), m});
+    }
+    layoutPopups();
 }
 
 void Ui::update(const InputFrame &input, glm::vec2 viewport)
@@ -374,8 +497,9 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         std::unordered_set<const Widget *> alive;
         if (root_)
             collect(*root_, alive);
-        if (popup_)
-            collect(*popup_, alive);
+        for (const PopupEntry &p : popups_)
+            if (p.owned)
+                collect(*p.owned, alive);
         for (Widget **p : {&hovered_, &active_, &focused_})
         {
             if (*p != nullptr && !alive.contains(*p))
@@ -383,7 +507,22 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
                 *p = nullptr;
             }
         }
+        // Fenêtre dont le propriétaire a disparu (menu d'un arbre remplacé) : fermée.
+        for (std::size_t i = 0; i < popups_.size(); ++i)
+        {
+            if (!alive.contains(popups_[i].owner) || (!popups_[i].owned && !alive.contains(popups_[i].view)))
+            {
+                popups_.resize(i); // contenus empruntés à un arbre disparu : rien à détruire
+                break;
+            }
+        }
+        std::erase_if(modals_, [&](const ModalEntry &m) { return !alive.contains(m.owner); });
     }
+
+    // Notifications : le temps passe ; celles qui ont fini disparaissent.
+    for (Notification &n : notifications_)
+        n.remaining -= input.deltaTime;
+    std::erase_if(notifications_, [](const Notification &n) { return n.remaining <= 0.0f; });
 
     mouse_ = input.mouse;
     const bool pressed = input.mouseDown && !mouseWasDown_;
@@ -420,14 +559,22 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         tooltipAt_ = mouse_;
     }
 
+    const auto inAnyPopup = [&](const Widget *w)
+    { return std::any_of(popups_.begin(), popups_.end(), [&](const PopupEntry &p) { return inSubtree(p.view, w); }); };
+
     if (pressed)
     {
-        if (popup_ && !inSubtree(popup_.get(), hit))
+        if (!popups_.empty() && !inAnyPopup(hit))
         {
-            // Clic hors de la fenêtre surgissante : elle se ferme et le clic s'arrête là.
+            // Clic hors des fenêtres surgissantes : elles se ferment et le clic s'arrête là.
             closePopup();
             target = nullptr;
             setHovered(nullptr);
+        }
+        else if (!modals_.empty() && popups_.empty() && !inSubtree(modals_.back().panel, hit))
+        {
+            modals_.back().owner->onOutsideClick(*this); // clic sur le voile
+            target = nullptr;
         }
         else
         {
@@ -454,10 +601,26 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
 
     if (secondaryPressed && active_ == nullptr)
     {
-        if (popup_ && !inSubtree(popup_.get(), hit))
+        if (!popups_.empty() && !inAnyPopup(hit))
+        {
             closePopup();
-        else if (target != nullptr)
-            target->onSecondaryClick(*this, mouse_);
+        }
+        else if (target == nullptr || !target->onSecondaryClick(*this, mouse_))
+        {
+            // Menu contextuel : parmi les enfants du widget sous le pointeur, puis de ses parents.
+            bool opened = false;
+            for (Widget *p = hit; p != nullptr && !opened; p = p->parent())
+            {
+                for (const auto &child : p->children())
+                {
+                    if (child->openContextMenu(*this, mouse_))
+                    {
+                        opened = true;
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     if (input.wheel != glm::vec2(0.0f))
@@ -473,17 +636,25 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
 
     for (int key : input.keys)
     {
-        if (key == kKeyTab)
+        if (key == kKeyTab && !(focused_ != nullptr && focused_->wantsTab()))
         {
             focusNext(input.shift);
         }
+        else if (key == kKeyEscape && !popups_.empty() && !(focused_ != nullptr && inAnyPopup(focused_)))
+        {
+            closePopupsFrom(popups_.size() - 1); // la fenêtre du dessus
+        }
         else if (focused_ != nullptr)
         {
+            // Échap : un champ de saisie le prend (perte du focus) ; sinon il remonte à la fenêtre modale ouverte.
+            Widget *before = focused_;
             focused_->onKey(*this, key);
+            if (key == kKeyEscape && focused_ == before && !modals_.empty())
+                modals_.back().owner->onKey(*this, kKeyEscape);
         }
-        else if (key == kKeyEscape)
+        else if (key == kKeyEscape && !modals_.empty())
         {
-            closePopup();
+            modals_.back().owner->onKey(*this, kKeyEscape);
         }
     }
     if (!input.text.empty() && focused_ != nullptr)
@@ -491,7 +662,7 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         focused_->onText(*this, input.text);
     }
 
-    wantsMouse_ = active_ != nullptr || (hit != nullptr && (blocksMouse(*this, hit) || inSubtree(popup_.get(), hit)));
+    wantsMouse_ = active_ != nullptr || !modals_.empty() || (hit != nullptr && (blocksMouse(*this, hit) || inAnyPopup(hit)));
 
     flushDeferred();
     updating_ = false;
@@ -509,9 +680,18 @@ void Ui::draw(renderer::DrawList &list) const
     {
         root_->draw(*this, list);
     }
-    if (popup_)
+    for (const ModalEntry &modal : modals_)
     {
-        popup_->draw(*this, list);
+        const Style &veil = theme().style("modalBackdrop", WidgetState::kNormal);
+        if (veil.background.a > 0.0f)
+        {
+            list.rect({0.0f, 0.0f}, viewport_, veil.background);
+        }
+        modal.panel->draw(*this, list);
+    }
+    for (const PopupEntry &p : popups_)
+    {
+        p.view->draw(*this, list);
     }
     if (!tooltipText_.empty())
     {

@@ -125,13 +125,30 @@ core::Result<rhi::PipelineHandle> CanvasRenderer::pipeline(const ShaderProgram &
 
 core::Result<CanvasRenderer::Atlas *> CanvasRenderer::atlasFor(const AtlasImage &image)
 {
-    if (auto it = atlases_.find(image.id); it != atlases_.end())
-    {
-        return &it->second;
-    }
     if (image.width == 0 || image.height == 0 || image.rgba.size() != static_cast<std::size_t>(image.width) * image.height * 4)
     {
         return makeError(ErrorCode::kInvalidArgument, "CanvasRenderer: invalid glyph atlas or image");
+    }
+    if (auto it = atlases_.find(image.id); it != atlases_.end())
+    {
+        Atlas &cached = it->second;
+        cached.lastUsed = renderCount_;
+        if (cached.version == image.version)
+        {
+            return &cached;
+        }
+        if (cached.width == image.width && cached.height == image.height)
+        {
+            // Nouvelle version des pixels : envoyée dans la même texture.
+            if (auto r = device_.updateTexture(cached.texture.handle(), rhi::TextureCopy{}, std::as_bytes(std::span(image.rgba))); !r)
+            {
+                return std::unexpected(r.error());
+            }
+            cached.version = image.version;
+            return &cached;
+        }
+        device_.destroy(cached.group);
+        atlases_.erase(it); // nouvelle taille : texture recréée
     }
     TextureInfo info;
     info.width = image.width;
@@ -156,6 +173,10 @@ core::Result<CanvasRenderer::Atlas *> CanvasRenderer::atlasFor(const AtlasImage 
     Atlas atlas;
     atlas.texture = std::move(*texture);
     atlas.group = *group;
+    atlas.version = image.version;
+    atlas.width = image.width;
+    atlas.height = image.height;
+    atlas.lastUsed = renderCount_;
     return &atlases_.emplace(image.id, std::move(atlas)).first->second;
 }
 
@@ -218,6 +239,7 @@ void CanvasRenderer::beginPass(rhi::CommandEncoder &encoder, const Surface &surf
 
 core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawList &list, const CanvasTarget &target, bool loadExisting)
 {
+    ++renderCount_;
     if (target.size.width == 0 || target.size.height == 0 || list.logicalSize.x <= 0.0f || list.logicalSize.y <= 0.0f)
     {
         return makeError(ErrorCode::kInvalidArgument, "CanvasRenderer::render: the target and the list's logical size must be non-empty");
@@ -541,6 +563,19 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         {
             releaseLayer(it->second);
             it = layers_.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    // Images qui ne servent plus (image du jeu remplacée, thème changé) : libérées après un délai.
+    for (auto it = atlases_.begin(); it != atlases_.end();)
+    {
+        if (renderCount_ - it->second.lastUsed > kAtlasIdleRenders)
+        {
+            device_.destroy(it->second.group);
+            it = atlases_.erase(it);
         }
         else
         {

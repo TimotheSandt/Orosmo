@@ -88,6 +88,21 @@ Arguments positionnels dans l'ordre du tableau, ou nommés (`min: 0`). Un argume
 | `Plot` | `values` (expression → suite de nombres, relue à chaque image) | — | onHover, onFocus |
 | `Separator` | — | — | onHover, onFocus |
 | `ParamPanel` | `target` : `$chemin` vers une structure réfléchie (`core::Reflect<T>`, UI-12) | — | onChange (tout champ) |
+| `RadioButton` | `text`, `value` (nombre), `selected` (entier lié : les boutons d'un groupe lient le même entier) | — | onClick, onChange |
+| `RangeSlider` | `low`, `high` (nombres liés), `min`, `max`, `step` (= 0) | — | onChange |
+| `SpinBox` | `value` (nombre lié), `min`, `max` (= sans borne), `step` (= 1), `integer` (= true) | — | onChange |
+| `TextArea` | `text` (chaîne liée), `lineNumbers` (= false), `readOnly` (= false) | — | onChange |
+| `ColorWheel` | `color` (couleur liée) | — | onChange |
+| `ColorEditor` | `color` (couleur liée), `alpha` (= false) | — | onChange |
+| `GradientEditor` | `gradient` (`engine::ui::Gradient` lié) | — | onChange |
+| `CurveEditor` | `curve` (`engine::ui::Curve` lié) | — | onChange |
+| `Dialog` | `title`, `open` (booléen lié : ouverte tant qu'il vaut vrai), `dismiss` (= true : un clic dehors ferme) | le contenu de la fenêtre | onChange (fermeture) |
+| `MenuBar` | — | des `Menu` seulement | onHover, onFocus |
+| `Menu` | `title` | `MenuItem`, `Menu` (sous-menu), `Separator` | onHover, onFocus |
+| `MenuItem` | `text`, `shortcut` (texte affiché, = ""), `checked` (booléen lié, facultatif) | — (dans `Menu` ou `ContextMenu`) | onClick |
+| `ContextMenu` | — | comme `Menu` ; ouvert par un clic droit sur son parent | — |
+| `Notifications` | `max` (= 5), `maxHeight` (pixels, = 0 : sans limite), `width` (= 0 : celle du texte) | — | — |
+| `ImageView` | `image` (expression → `engine::ui::DynamicImage` ou `std::shared_ptr<const renderer::AtlasImage>`, relue à chaque image) | — | onHover, onFocus |
 
 onHover et onFocus sont acceptés partout sauf sur `Page`.
 
@@ -96,6 +111,11 @@ avec au plus deux décimales, `engine::ui::text`) ou une expression C++ (`state.
 
 **Curseur** (`Slider`) : un clic sans glisser place la valeur sous le pointeur ; un glissement part de la valeur courante et la
 déplace de la distance parcourue (toute la largeur = toute la plage ; Maj : dix fois plus fin) ; clic droit : valeur par défaut.
+
+**Fenêtres et menus** : `.width` / `.height` d'un `Dialog` règlent la fenêtre (le `Dialog` ne prend pas de place dans l'arbre).
+Échap ferme le menu ouvert, sinon la fenêtre modale (un champ de saisie prend d'abord Échap pour perdre le focus). Les
+notifications viennent de `Ui::notify(texte, genre, secondes)` côté C++ ; au-delà de `max` ou de `maxHeight`, les plus anciennes
+sont retirées.
 
 **Valeur liée** : `$chemin` (deux sens : le widget écrit dans `state->chemin`, écriture différée à la fin de `Ui::update`) ou une
 expression (lecture seule). Le chemin commence par un champ `@Mutable`.
@@ -116,6 +136,7 @@ expression (lecture seule). Le chemin commence par un champ `@Mutable`.
 | `.style(background: "color.danger", radius: 4)` | surcharge locale : jeton, couleur `"#rrggbb[aa]"` ou nombre (§7) |
 | `.textAlign(.center)` | `Label` seulement |
 | `.range(0, 100)` | `Plot` seulement : bornes fixes |
+| `.fit(.contain)`, `.fit(.cover)`, `.fit(.stretch)` | `ImageView` seulement : image entière, remplissage coupé, ou déformée |
 | `.onClick(f)`, `.onChange(f)`, `.onHover(f)`, `.onFocus(f)` | événements (§6) |
 
 ## 6. Événements
@@ -174,7 +195,9 @@ par **état**. Un thème peut en étendre un autre ; les variantes claire et som
 - **États** : `normal`, `hover`, `pressed`, `disabled`, `focus`. Ordre d'application : `default`, le widget, l'état de
   `default`, l'état du widget.
 - **Types de widget** : `panel`, `box`, `label`, `title`, `caption`, `button`, `checkbox`, `slider`, `textField`, `dropdown`, `popup`,
-  `item`, `tabs`, `tab`, `scroll`, `tooltip`, `plot`, `section`, `sectionHeader`, `colorPicker`, `separator` (et tout nom choisi par
+  `item`, `tabs`, `tab`, `scroll`, `tooltip`, `plot`, `section`, `sectionHeader`, `colorPicker`, `separator`, `radio`, `textArea`,
+  `colorWheel`, `gradient`, `curve`, `image`, `modalBackdrop`, `dialog`, `dialogTitle`, `dialogClose`, `menuBar`, `menu`, `menuItem`,
+  `toast`, `toastSuccess`, `toastWarning`, `toastError` (et tout nom choisi par
   `.variant`).
 - **Rechargement à chaud** : `ThemeHost::watch(fileWatcher)` ; un fichier invalide laisse le thème précédent en place, avec l'erreur
   `fichier: widgets.button.radius: expects a number` dans le journal.

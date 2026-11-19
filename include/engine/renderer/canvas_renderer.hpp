@@ -48,6 +48,8 @@ class CanvasRenderer
     void clear();
     std::size_t layerCount() const noexcept { return layers_.size(); }
     std::size_t atlasCount() const noexcept { return atlases_.size(); }
+    // Une image (atlas de glyphes, image de thème ou du jeu) absente de ce nombre de rendus successifs est libérée.
+    static constexpr std::uint64_t kAtlasIdleRenders = 240;
 
   private:
     struct Layer
@@ -63,6 +65,10 @@ class CanvasRenderer
     {
         Texture texture;
         rhi::BindGroupHandle group;
+        std::uint64_t version = 0;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+        std::uint64_t lastUsed = 0; // numéro du dernier rendu qui l'a dessinée (éviction des images qui ne servent plus)
     };
     // Découpage en pixels de la cible. Repère du RHI (A26) : `bottom` est la PREMIÈRE ligne (depuis le haut), `top` la ligne qui
     // suit la dernière ; les noms viennent de l'ancien repère OpenGL (ligne 0 en bas).
@@ -109,6 +115,7 @@ class CanvasRenderer
     GpuBuffer glyphBuffer_;
     std::map<std::uint64_t, Layer> layers_;
     std::map<std::uint64_t, Atlas> atlases_;
+    std::uint64_t renderCount_ = 0;
 };
 
 } // namespace engine::renderer

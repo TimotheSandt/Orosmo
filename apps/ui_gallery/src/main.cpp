@@ -49,7 +49,7 @@ struct Options
 
 void usage(std::ostream &out)
 {
-    out << "ui-gallery [--theme dark|light|framed] [--tab widgets|layout|parameters|themes] [--res DIR]\n"
+    out << "ui-gallery [--theme dark|light|framed] [--tab widgets|controls|color|windows|layout|parameters|themes] [--res DIR]\n"
            "           [--capture DIR [--capture-frames N] [--headless] [--hover ID] [--click ID]] [--size WxH]\n"
            "  --hover ID / --click ID : during a capture, the pointer rests on / clicks the widget with this id\n"
            "                            (a tooltip appears after 0.6 s: use --capture-frames 60)\n";
@@ -75,6 +75,20 @@ ui::InputFrame readInput(Window &window, float dt)
     for (const auto &[button, key] : keys)
         if (input.IsKeyJustPressed(button))
             in.keys.push_back(key);
+    if (input.IsKeyJustPressed(KeyButton::PAGE_UP))
+        in.keys.push_back(ui::kKeyPageUp);
+    if (input.IsKeyJustPressed(KeyButton::PAGE_DOWN))
+        in.keys.push_back(ui::kKeyPageDown);
+    // Raccourcis Ctrl+A / C / X / V (touches physiques : sur AZERTY, le « A » est à la place du Q d'un clavier QWERTY).
+    if (input.IsKeyPressed(KeyButton::LEFT_CONTROL) || input.IsKeyPressed(KeyButton::RIGHT_CONTROL))
+    {
+        const KeyButton selectAll = InputManager::GetKeyLayout() == KeyLayout::AZERTY ? KeyButton::Q : KeyButton::A;
+        const std::pair<KeyButton, int> shortcuts[] = {
+            {selectAll, ui::kKeySelectAll}, {KeyButton::C, ui::kKeyCopy}, {KeyButton::X, ui::kKeyCut}, {KeyButton::V, ui::kKeyPaste}};
+        for (const auto &[button, key] : shortcuts)
+            if (input.IsKeyJustPressed(button))
+                in.keys.push_back(key);
+    }
     return in;
 }
 
@@ -123,8 +137,11 @@ int run(const Options &o)
     ui::TextRendererFont font(text);
     engine::core::FileWatcher watcher; // avant l'interface : son ThemeHost s'en désinscrit à sa destruction
     ui::Ui interface(font);
+    if (!o.headless) // presse-papiers du système (champs de texte : Ctrl+C / X / V)
+        interface.setClipboard([&] { return window.GetClipboardText(); }, [&](const std::string &t) { window.SetClipboardText(t); });
 
     GalleryState state;
+    state.ui = &interface;
     const auto themes = state.themes();
     const auto found = std::find(themes.begin(), themes.end(), o.theme);
     if (found == themes.end())
@@ -143,7 +160,7 @@ int run(const Options &o)
         interface.themes().watch(watcher); // rechargé à chaud quand le fichier ou une de ses images change
     };
     loadTheme();
-    const std::vector<std::string> tabs = {"widgets", "layout", "parameters", "themes"};
+    const std::vector<std::string> tabs = {"widgets", "controls", "color", "windows", "layout", "parameters", "themes"};
     if (!o.tab.empty())
     {
         const auto t = std::find(tabs.begin(), tabs.end(), o.tab);

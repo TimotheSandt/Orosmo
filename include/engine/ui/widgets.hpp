@@ -113,7 +113,7 @@ class Slider : public Widget
     void onPress(Ui &ui, glm::vec2 mouse) override;
     void onDrag(Ui &ui, glm::vec2 mouse) override;
     void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
-    void onSecondaryClick(Ui &ui, glm::vec2 mouse) override;
+    bool onSecondaryClick(Ui &ui, glm::vec2 mouse) override;
     void onKey(Ui &ui, int key) override;
     // Distance (pixels) au-delà de laquelle un appui devient un glissement.
     static constexpr float kDragThreshold = 3.0f;
@@ -166,19 +166,38 @@ class Dropdown : public Widget
     Binding<int> selected_;
 };
 
+// Édition de texte partagée par les champs : tampon, curseur (octet), ancre de sélection.
+struct TextEditState
+{
+    std::string text;
+    std::size_t caret = 0;
+    std::size_t anchor = 0; // sélection = [min(caret, anchor), max(...)) ; vide si égaux
+
+    bool hasSelection() const noexcept { return caret != anchor; }
+    std::size_t selectionStart() const noexcept { return std::min(caret, anchor); }
+    std::size_t selectionEnd() const noexcept { return std::max(caret, anchor); }
+    std::string selected() const { return text.substr(selectionStart(), selectionEnd() - selectionStart()); }
+    void eraseSelection();
+    void insert(std::string_view s); // remplace la sélection
+    void moveTo(std::size_t position, bool extend);
+    void selectAll();
+};
+
 class TextField : public Widget
 {
   public:
     explicit TextField(Binding<std::string> value, std::string styleName = "textField");
     // Texte affiché : la saisie en cours avec le focus, sinon la valeur liée.
     std::string text() const;
-    std::size_t caret() const noexcept { return caret_; }
+    std::size_t caret() const noexcept { return edit_.caret; }
+    const TextEditState &edit() const noexcept { return edit_; }
     bool editing() const noexcept { return editing_; }
 
     bool interactive() const override { return true; }
     bool focusable() const override { return true; }
     bool acceptsText() const override { return true; }
     void onPress(Ui &ui, glm::vec2 mouse) override;
+    void onDrag(Ui &ui, glm::vec2 mouse) override;
     void onKey(Ui &ui, int key) override;
     void onText(Ui &ui, std::string_view text) override;
     void onFocusChanged(Ui &ui, bool focused) override;
@@ -186,14 +205,14 @@ class TextField : public Widget
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
     void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
+    std::size_t positionAt(const Ui &ui, glm::vec2 mouse) const;
     // Valide la saisie : faux pour la refuser (la valeur liée est alors gardée).
     virtual bool commit(Ui &ui, const std::string &text);
     virtual std::string current() const;
 
   private:
     Binding<std::string> value_;
-    std::string buffer_;
-    std::size_t caret_ = 0;
+    TextEditState edit_;
     bool editing_ = false;
 };
 

@@ -86,6 +86,15 @@
             "padding": "space.small",
             "states": {"hover": {"border": "color.outlineHover"}}
         },
+        "textArea": {
+            "background": "color.field",
+            "border": "color.outline",
+            "borderWidth": "border.width",
+            "radius": "radius.small",
+            "padding": "space.small",
+            "spacing": "space.large",
+            "states": {"hover": {"border": "color.outlineHover"}}
+        },
         "dropdown": {
             "background": "color.control",
             "border": "color.outline",
@@ -123,6 +132,26 @@
         "section": {"padding": 0, "spacing": "space.small", "width": "space.medium"},
         "sectionHeader": {"padding": "space.small", "radius": "radius.small", "foreground": "color.textMuted", "states": {"hover": {"background": "color.controlHover"}}},
         "colorPicker": {"radius": "radius.small", "border": "color.outline", "borderWidth": "border.width", "width": 28},
-        "separator": {"background": "color.outline", "width": 1, "padding": 0}
+        "separator": {"background": "color.outline", "width": 1, "padding": 0},
+        "radio": {"background": "color.control", "border": "color.outline", "borderWidth": "border.width", "states": {"hover": {"background": "color.controlHover"}}},
+        "colorWheel": {"foreground": "#ffffff", "padding": 0},
+        "gradient": {"border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": 0},
+        "curve": {"background": "color.field", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": 0},
+        "image": {"padding": 0},
+        "modalBackdrop": {"background": "color.backdrop"},
+        "dialog": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.medium",
+                   "padding": "space.large", "spacing": "space.medium", "shadowColor": "color.shadow", "shadowSize": "shadow.size", "shadowOffset": "shadow.offset"},
+        "dialogTitle": {"fontSize": "font.size.title", "padding": 0},
+        "dialogClose": {"padding": "space.small", "radius": "radius.small", "states": {"hover": {"background": "color.controlHover"}}},
+        "menuBar": {"background": "color.surface", "padding": 0, "spacing": 0},
+        "menu": {"padding": "space.medium", "radius": "radius.small", "states": {"hover": {"background": "color.controlHover"}, "pressed": {"background": "color.controlHover"}}},
+        "menuItem": {"padding": "space.small", "radius": "radius.small", "spacing": "space.small", "width": "control.size",
+                     "states": {"hover": {"background": "color.primary", "foreground": "color.onPrimary"}}},
+        "toast": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small",
+                  "padding": "space.medium", "accent": "color.primary", "width": "control.size",
+                  "shadowColor": "color.shadow", "shadowSize": "shadow.size", "shadowOffset": "shadow.offset"},
+        "toastSuccess": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": "space.medium", "accent": "color.success", "width": "control.size", "shadowColor": "color.shadow", "shadowSize": "shadow.size"},
+        "toastWarning": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": "space.medium", "accent": "color.warning", "width": "control.size", "shadowColor": "color.shadow", "shadowSize": "shadow.size"},
+        "toastError": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": "space.medium", "accent": "color.error", "width": "control.size", "shadowColor": "color.shadow", "shadowSize": "shadow.size"}
     }
 }

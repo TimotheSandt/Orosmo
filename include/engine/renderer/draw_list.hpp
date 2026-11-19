@@ -21,6 +21,9 @@ namespace engine::renderer
 struct AtlasImage
 {
     std::uint64_t id = 0;
+    // Incrémentée par le producteur quand les pixels changent (image produite par le jeu à chaque image : mini-carte…) : le
+    // dessinateur renvoie alors les pixels dans la même texture (même taille) au lieu d'en créer une.
+    std::uint64_t version = 0;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     std::vector<std::uint8_t> rgba; // width * height * 4 ; la ligne i correspond à v = i / height (la ligne 0 à v = 0)
