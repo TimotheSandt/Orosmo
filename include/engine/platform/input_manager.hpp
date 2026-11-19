@@ -1,7 +1,5 @@
 #pragma once
 
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
 
 #include <cstdint>
 #include <functional>
@@ -199,7 +197,7 @@ class InputManager
 {
 
   private:
-    InputManager(GLFWwindow *window);
+    InputManager(void *nativeWindow);
     ~InputManager();
 
     InputManager(const InputManager &) = delete;
@@ -208,8 +206,8 @@ class InputManager
     friend struct std::default_delete<InputManager>;
 
   public:
-    static InputManager &GetInstance(GLFWwindow *window);
-    static void RemoveInstance(GLFWwindow *window);
+    static InputManager &GetInstance(void *nativeWindow);
+    static void RemoveInstance(void *nativeWindow);
 
     void Init();
     void Update();
@@ -302,13 +300,12 @@ class InputManager
 #pragma endregion Actions
 
   private:
-    GLFWwindow *window;
+    void *window; // GLFWwindow*, opaque hors de src/platform/
 
     InputEvent inputEvent;
     std::unordered_map<KeyButton, InputState> keyStateMap;
     std::unordered_map<MouseButton, InputState> mouseButtonStateMap;
     MouseMoveData mouseMoveData;
-    // TODO: Scroll
 
   private:
     static std::unordered_map<std::string, InputAction> mapActionToInputAction;
@@ -318,5 +315,5 @@ class InputManager
     static std::unordered_map<KeyButton, int> keyMap;
     static std::unordered_map<MouseButton, int> mouseButtonMap;
 
-    static std::unordered_map<GLFWwindow *, std::unique_ptr<InputManager>> inputManagers;
+    static std::unordered_map<void *, std::unique_ptr<InputManager>> inputManagers;
 };

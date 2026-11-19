@@ -1,7 +1,7 @@
 #include "Manager.h"
 #include "Layout/VBox.h"
 #include "Widgets.h"
-#include "Window.h"
+#include <engine/platform/window.hpp>
 
 #include <utility>
 

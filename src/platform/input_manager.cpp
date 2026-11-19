@@ -1,4 +1,7 @@
-#include "Utilities/InputManager.h"
+#include <engine/platform/input_manager.hpp>
+
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -14,13 +17,36 @@ std::unordered_map<KeyButton, int> InputManager::keyMap;
 std::unordered_map<MouseButton, int> InputManager::mouseButtonMap;
 std::unordered_map<std::string, InputAction> InputManager::mapActionToInputAction;
 
-std::unordered_map<GLFWwindow *, std::unique_ptr<InputManager>> InputManager::inputManagers;
+std::unordered_map<void *, std::unique_ptr<InputManager>> InputManager::inputManagers;
 
-InputManager::InputManager(GLFWwindow *window) : window(window) { Init(); }
+namespace
+{
+// Molette : GLFW la livre par rappel ; on cumule jusqu'au prochain `Update`, qui l'expose dans `MouseMoveData::scroll`.
+std::unordered_map<void *, glm::vec2> &pendingScroll()
+{
+    static std::unordered_map<void *, glm::vec2> pending;
+    return pending;
+}
+
+GLFWwindow *native(void *handle) { return static_cast<GLFWwindow *>(handle); }
+} // namespace
+
+InputManager::InputManager(void *nativeWindow) : window(nativeWindow)
+{
+    if (nativeWindow != nullptr)
+    {
+        glfwSetScrollCallback(native(nativeWindow),
+                              [](GLFWwindow *w, double dx, double dy)
+                              {
+                                  pendingScroll()[w] += glm::vec2(static_cast<float>(dx), static_cast<float>(dy));
+                              });
+    }
+    Init();
+}
 
 InputManager::~InputManager() = default;
 
-InputManager &InputManager::GetInstance(GLFWwindow *window)
+InputManager &InputManager::GetInstance(void *window)
 {
     if (keyLayout == KeyLayout::UNDEFINED)
     {
@@ -33,12 +59,17 @@ InputManager &InputManager::GetInstance(GLFWwindow *window)
     return *inputManagers[window];
 }
 
-void InputManager::RemoveInstance(GLFWwindow *window)
+void InputManager::RemoveInstance(void *window)
 {
     if (window == nullptr)
     {
         return;
     }
+    if (inputManagers.find(window) != inputManagers.end())
+    {
+        glfwSetScrollCallback(native(window), nullptr);
+    }
+    pendingScroll().erase(window);
     inputManagers.erase(window);
 }
 
@@ -56,7 +87,7 @@ void InputManager::Init()
     }
 
     // Mouse position
-    glfwGetCursorPos(window, reinterpret_cast<double *>(&this->mouseMoveData.position.x),
+    glfwGetCursorPos(native(window), reinterpret_cast<double *>(&this->mouseMoveData.position.x),
                      reinterpret_cast<double *>(&this->mouseMoveData.position.y));
 
     // Mouse delta
@@ -69,7 +100,7 @@ void InputManager::Update()
     // Keyboard
     for (auto it = keyStateMap.begin(); it != keyStateMap.end(); ++it)
     {
-        bool isPressed = glfwGetKey(window, keyMap[it->first]) == GLFW_PRESS;
+        bool isPressed = glfwGetKey(native(window), keyMap[it->first]) == GLFW_PRESS;
         it->second = isPressed ? ((it->second == InputState::Release || it->second == InputState::PressEnd) ? InputState::PressBegin
                                                                                                             : InputState::Pressed)
                                : ((it->second == InputState::Pressed || it->second == InputState::PressBegin) ? InputState::PressEnd
@@ -79,7 +110,7 @@ void InputManager::Update()
     // Mouse
     for (auto it = mouseButtonStateMap.begin(); it != mouseButtonStateMap.end(); ++it)
     {
-        bool isPressed = glfwGetMouseButton(window, mouseButtonMap[it->first]) == GLFW_PRESS;
+        bool isPressed = glfwGetMouseButton(native(window), mouseButtonMap[it->first]) == GLFW_PRESS;
         it->second = isPressed ? ((it->second == InputState::Release || it->second == InputState::PressEnd) ? InputState::PressBegin
                                                                                                             : InputState::Pressed)
                                : ((it->second == InputState::Pressed || it->second == InputState::PressBegin) ? InputState::PressEnd
@@ -88,14 +119,22 @@ void InputManager::Update()
 
     // Mouse Position
     glm::vec2 lastMousePos = this->mouseMoveData.position;
-    glfwGetCursorPos(window, reinterpret_cast<double *>(&this->mouseMoveData.position.x),
+    glfwGetCursorPos(native(window), reinterpret_cast<double *>(&this->mouseMoveData.position.x),
                      reinterpret_cast<double *>(&this->mouseMoveData.position.y));
 
     // Mouse delta
     this->mouseMoveData.delta = this->mouseMoveData.position - lastMousePos;
 
     // Mouse scroll
-    this->mouseMoveData.scroll = glm::vec2(0.0f, 0.0f); // TODO
+    {
+        auto &pending = pendingScroll();
+        const auto found = pending.find(window);
+        this->mouseMoveData.scroll = found != pending.end() ? found->second : glm::vec2(0.0f, 0.0f);
+        if (found != pending.end())
+        {
+            found->second = glm::vec2(0.0f, 0.0f);
+        }
+    }
     UpdateInputEvent();
 }
 

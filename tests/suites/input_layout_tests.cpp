@@ -3,7 +3,10 @@
 // fonction « code de touche -> caractère imprimé », ici des tables écrites à la main.
 #include <doctest/doctest.h>
 
-#include "Utilities/InputManager.h"
+#include <engine/platform/input_manager.hpp>
+
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
 
 #include <GLFW/glfw3.h>
 

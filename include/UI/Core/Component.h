@@ -7,7 +7,7 @@
 #include <utility>
 #include <chrono>
 
-#include "InputManager.h"
+#include <engine/platform/input_manager.hpp>
 #include "engine/renderer/draw_list.hpp"
 
 #include "Bounds.h"

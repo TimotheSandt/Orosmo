@@ -478,7 +478,7 @@ impl<'a> Generator<'a> {
             includes.insert("chrono".to_string());
         }
         if type_name.contains("Window") {
-            includes.insert("Graphics/Window.h".to_string());
+            includes.insert("engine/platform/window.hpp".to_string());
         }
         if type_name.contains("Profiler") {
             includes.insert("Profiler/Profiler.h".to_string());
