@@ -12,6 +12,7 @@
 
 #include <glm/glm.hpp>
 
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
@@ -39,6 +40,38 @@ enum Key : int
     kKeyHome,
     kKeyEnd,
     kKeySpace,
+    kKeyPageUp,
+    kKeyPageDown,
+    kKeySelectAll, // Ctrl+A : l'application traduit les raccourcis
+    kKeyCopy,      // Ctrl+C
+    kKeyCut,       // Ctrl+X
+    kKeyPaste,     // Ctrl+V
+};
+
+// Où s'ouvre une fenêtre surgissante par rapport à son ancre.
+enum class PopupPlacement : std::uint8_t
+{
+    kBelow,   // sous l'ancre (au-dessus s'il n'y a pas la place), au moins aussi large (liste déroulante, menu)
+    kRight,   // à droite de l'ancre (sous-menu)
+    kAtPoint, // au coin haut gauche de l'ancre (menu contextuel au pointeur)
+};
+
+enum class NotificationKind : std::uint8_t
+{
+    kInfo,
+    kSuccess,
+    kWarning,
+    kError,
+};
+
+// Notification temporaire (Ui::notify), affichée par un widget `Notifications`.
+struct Notification
+{
+    std::uint64_t id = 0;
+    std::string text;
+    NotificationKind kind = NotificationKind::kInfo;
+    float duration = 4.0f;  // secondes
+    float remaining = 4.0f; // secondes avant disparition
 };
 
 // Entrées d'une image, en pixels logiques de l'interface.
@@ -113,12 +146,34 @@ class Ui
     // Écriture différée (liaison) ou événement : appelé à la fin de `update`, dans l'ordre.
     void defer(std::function<void()> action);
 
-    // Fenêtre surgissante (liste d'une liste déroulante) : dessinée au-dessus de l'arbre, sous `anchor` (ou au-dessus s'il n'y a pas
-    // la place), au moins aussi large que lui. Un clic en dehors la ferme. Une seule à la fois.
-    void openPopup(Widget &owner, std::unique_ptr<Widget> content, const Rect &anchor);
-    void closePopup();
-    bool popupOpenFor(const Widget &owner) const noexcept { return popupOwner_ == &owner; }
-    Widget *popup() const noexcept { return popup_.get(); }
+    // Fenêtres surgissantes (liste déroulante, menus, sous-menus) : dessinées au-dessus de tout, en pile. Ouvrir depuis un widget
+    // situé DANS une fenêtre ouverte (sous-menu) ferme celles au-dessus de lui ; depuis ailleurs, ferme toutes les autres. Un clic
+    // hors de toutes les ferme. `content` est possédée par l'interface ; la version par référence affiche un sous-arbre que
+    // `owner` possède (menus déclarés dans la vue).
+    void openPopup(Widget &owner, std::unique_ptr<Widget> content, const Rect &anchor, PopupPlacement placement = PopupPlacement::kBelow);
+    void openPopup(Widget &owner, Widget &content, const Rect &anchor, PopupPlacement placement = PopupPlacement::kBelow);
+    void closePopup(); // toutes
+    bool popupOpenFor(const Widget &owner) const noexcept;
+    bool anyPopupOpen() const noexcept { return !popups_.empty(); }
+    // Fenêtre du dessus (nulle : aucune).
+    Widget *popup() const noexcept;
+
+    // Fenêtre modale (Dialog) : appelé pendant la mise en page par le widget qui la possède ; centrée, au-dessus de l'arbre, sur un
+    // voile ; seule elle reçoit la souris et le clavier (Tab reste dedans). Échap ou un clic en dehors sont transmis à `owner`
+    // (onKey(kKeyEscape), onOutsideClick).
+    void showModal(Widget &owner, Widget &panel);
+    bool modalOpen() const noexcept { return !modals_.empty(); }
+
+    // Notifications temporaires : affichées par les widgets `Notifications` de l'arbre, retirées après leur durée (ou au clic).
+    void notify(std::string text, NotificationKind kind = NotificationKind::kInfo, float seconds = 4.0f);
+    std::deque<Notification> &notifications() noexcept { return notifications_; }
+    void dismissNotification(std::uint64_t id);
+
+    // Presse-papiers (champs de texte : Ctrl+C, X, V). Par défaut, un presse-papiers interne ; l'application branche celui du
+    // système (platform : Window::GetClipboard / SetClipboard).
+    void setClipboard(std::function<std::string()> get, std::function<void(const std::string &)> set);
+    std::string clipboardText() const;
+    void setClipboardText(const std::string &text);
 
     // Délai avant l'affichage d'une infobulle (secondes).
     void setTooltipDelay(float seconds) noexcept { tooltipDelay_ = seconds; }
@@ -140,7 +195,23 @@ class Ui
     void setHovered(Widget *target);
     void flushDeferred();
     void collectFocusable(Widget &w, std::vector<Widget *> &out) const;
-    void layoutPopup();
+    void layoutPopups();
+    struct PopupEntry
+    {
+        Widget *owner = nullptr;
+        std::unique_ptr<Widget> owned; // nulle : contenu emprunté (`view` appartient à `owner`)
+        Widget *view = nullptr;
+        Rect anchor;
+        PopupPlacement placement = PopupPlacement::kBelow;
+    };
+    struct ModalEntry
+    {
+        Widget *owner = nullptr;
+        Widget *panel = nullptr;
+    };
+    void pushPopup(Widget &owner, std::unique_ptr<Widget> owned, Widget &view, const Rect &anchor, PopupPlacement placement);
+    void closePopupsFrom(std::size_t level);
+    void forgetSubtree(const Widget *root);
 
     const Font *font_;
     ThemeHost themes_;
@@ -153,9 +224,13 @@ class Ui
     Widget *hovered_ = nullptr;
     Widget *active_ = nullptr;
     Widget *focused_ = nullptr;
-    std::unique_ptr<Widget> popup_;
-    Widget *popupOwner_ = nullptr;
-    Rect popupAnchor_;
+    std::vector<PopupEntry> popups_;
+    std::vector<ModalEntry> modals_;
+    std::deque<Notification> notifications_;
+    std::uint64_t nextNotification_ = 1;
+    std::function<std::string()> clipboardGet_;
+    std::function<void(const std::string &)> clipboardSet_;
+    std::string clipboard_;
 
     glm::vec2 viewport_{0.0f};
     glm::vec2 mouse_{-1.0e9f};

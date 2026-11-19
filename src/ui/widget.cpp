@@ -53,6 +53,10 @@ Widget *Widget::find(std::string_view id) noexcept
             return found;
         }
     }
+    if (Widget *d = detached())
+    {
+        return d->find(id);
+    }
     return nullptr;
 }
 
@@ -274,7 +278,9 @@ void Widget::onRelease(Ui &ui, glm::vec2, bool inside)
         emit(ui, EventKind::kClick);
     }
 }
-void Widget::onSecondaryClick(Ui &, glm::vec2) {}
+bool Widget::onSecondaryClick(Ui &, glm::vec2) { return false; }
+bool Widget::openContextMenu(Ui &, glm::vec2) { return false; }
+void Widget::onOutsideClick(Ui &) {}
 bool Widget::onWheel(Ui &, glm::vec2) { return false; }
 void Widget::onKey(Ui &, int) {}
 void Widget::onText(Ui &, std::string_view) {}

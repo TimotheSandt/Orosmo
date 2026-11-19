@@ -243,7 +243,11 @@ void Slider::onRelease(Ui &ui, glm::vec2 mouse, bool inside)
     dragging_ = false;
 }
 
-void Slider::onSecondaryClick(Ui &ui, glm::vec2) { write(ui, default_); }
+bool Slider::onSecondaryClick(Ui &ui, glm::vec2)
+{
+    write(ui, default_);
+    return true;
+}
 
 void Slider::onKey(Ui &ui, int key)
 {
@@ -398,7 +402,7 @@ void Dropdown::drawContent(const Ui &ui, renderer::DrawList &list, const Style &
 TextField::TextField(Binding<std::string> value, std::string styleName) : Widget(std::move(styleName)), value_(std::move(value)) {}
 
 std::string TextField::current() const { return value_.value(); }
-std::string TextField::text() const { return editing_ ? buffer_ : current(); }
+std::string TextField::text() const { return editing_ ? edit_.text : current(); }
 
 bool TextField::commit(Ui &ui, const std::string &text)
 {
@@ -420,16 +424,25 @@ void TextField::onFocusChanged(Ui &ui, bool focused)
     Widget::onFocusChanged(ui, focused);
     if (focused)
     {
-        buffer_ = current();
-        caret_ = buffer_.size();
+        edit_.text = current();
+        edit_.selectAll(); // prendre le focus sélectionne tout : la frappe remplace la valeur
         editing_ = true;
         return;
     }
     if (editing_)
     {
         editing_ = false;
-        (void)commit(ui, buffer_);
+        (void)commit(ui, edit_.text);
     }
+}
+
+std::size_t TextField::positionAt(const Ui &ui, glm::vec2 mouse) const
+{
+    const Style s = style(ui.theme());
+    const Rect content = inset(rect_, s.padding);
+    const float caretX = ui.font().measure(std::string_view(edit_.text).substr(0, edit_.caret), s.fontSize, s.font.get()).x;
+    const float offset = std::max(0.0f, caretX - content.size.x + 2.0f);
+    return ui.font().caretIndex(edit_.text, s.fontSize, mouse.x - content.position.x + offset, s.font.get());
 }
 
 void TextField::onPress(Ui &ui, glm::vec2 mouse)
@@ -438,8 +451,15 @@ void TextField::onPress(Ui &ui, glm::vec2 mouse)
     {
         return;
     }
-    const Style s = style(ui.theme());
-    caret_ = ui.font().caretIndex(buffer_, s.fontSize, mouse.x - (rect_.position.x + s.padding), s.font.get());
+    edit_.moveTo(positionAt(ui, mouse), ui.shiftHeld());
+}
+
+void TextField::onDrag(Ui &ui, glm::vec2 mouse)
+{
+    if (editing_)
+    {
+        edit_.moveTo(positionAt(ui, mouse), true); // glisser sélectionne
+    }
 }
 
 void TextField::onText(Ui &, std::string_view text)
@@ -456,8 +476,7 @@ void TextField::onText(Ui &, std::string_view text)
             clean.push_back(c);
         }
     }
-    buffer_.insert(caret_, clean);
-    caret_ += clean.size();
+    edit_.insert(clean);
 }
 
 void TextField::onKey(Ui &ui, int key)
@@ -466,36 +485,58 @@ void TextField::onKey(Ui &ui, int key)
     {
         return;
     }
+    const bool extend = ui.shiftHeld();
     switch (key)
     {
     case kKeyBackspace:
-        if (caret_ > 0)
-        {
-            const std::size_t start = utf8Previous(buffer_, caret_);
-            buffer_.erase(start, caret_ - start);
-            caret_ = start;
-        }
+        if (!edit_.hasSelection() && edit_.caret > 0)
+            edit_.anchor = utf8Previous(edit_.text, edit_.caret);
+        edit_.eraseSelection();
         break;
     case kKeyDelete:
-        if (caret_ < buffer_.size())
+        if (!edit_.hasSelection() && edit_.caret < edit_.text.size())
+            edit_.anchor = edit_.caret + utf8Length(edit_.text, edit_.caret);
+        edit_.eraseSelection();
+        break;
+    case kKeyLeft:
+        edit_.moveTo(edit_.hasSelection() && !extend ? edit_.selectionStart() : utf8Previous(edit_.text, edit_.caret), extend);
+        break;
+    case kKeyRight:
+        edit_.moveTo(edit_.hasSelection() && !extend ? edit_.selectionEnd()
+                                                     : (edit_.caret < edit_.text.size() ? edit_.caret + utf8Length(edit_.text, edit_.caret) : edit_.caret),
+                     extend);
+        break;
+    case kKeyHome: edit_.moveTo(0, extend); break;
+    case kKeyEnd: edit_.moveTo(edit_.text.size(), extend); break;
+    case kKeySelectAll: edit_.selectAll(); break;
+    case kKeyCopy:
+        if (edit_.hasSelection())
+            ui.setClipboardText(edit_.selected());
+        break;
+    case kKeyCut:
+        if (edit_.hasSelection())
         {
-            buffer_.erase(caret_, utf8Length(buffer_, caret_));
+            ui.setClipboardText(edit_.selected());
+            edit_.eraseSelection();
         }
         break;
-    case kKeyLeft: caret_ = utf8Previous(buffer_, caret_); break;
-    case kKeyRight: caret_ = caret_ < buffer_.size() ? caret_ + utf8Length(buffer_, caret_) : caret_; break;
-    case kKeyHome: caret_ = 0; break;
-    case kKeyEnd: caret_ = buffer_.size(); break;
+    case kKeyPaste:
+    {
+        std::string pasted = ui.clipboardText();
+        std::erase_if(pasted, [](char c) { return c == '\n' || c == '\r'; }); // une seule ligne
+        edit_.insert(pasted);
+        break;
+    }
     case kKeyEnter:
-        if (!commit(ui, buffer_))
+        if (!commit(ui, edit_.text))
         {
-            buffer_ = current();
-            caret_ = buffer_.size();
+            edit_.text = current();
         }
+        edit_.moveTo(edit_.text.size(), false);
         break;
     case kKeyEscape:
-        buffer_ = current(); // annule : la perte du focus ne change rien
-        caret_ = buffer_.size();
+        edit_.text = current(); // annule : la perte du focus ne change rien
+        edit_.moveTo(edit_.text.size(), false);
         ui.focus(nullptr);
         break;
     default: break;
@@ -514,17 +555,27 @@ void TextField::drawContent(const Ui &ui, renderer::DrawList &list, const Style 
     const std::string shown = text();
     float offset = 0.0f;
     float caretX = 0.0f;
+    const float h = lineHeight(ui, style);
+    const float top = content.position.y + (content.size.y - h) * 0.5f;
     if (editing_)
     {
-        caretX = ui.font().measure(std::string_view(buffer_).substr(0, caret_), style.fontSize, style.font.get()).x;
+        caretX = ui.font().measure(std::string_view(edit_.text).substr(0, edit_.caret), style.fontSize, style.font.get()).x;
         offset = std::max(0.0f, caretX - content.size.x + 2.0f);
     }
     list.pushClip(content.position, content.size);
+    if (editing_ && edit_.hasSelection())
+    {
+        auto xAt = [&](std::size_t pos) { return ui.font().measure(std::string_view(edit_.text).substr(0, pos), style.fontSize, style.font.get()).x; };
+        Color selection = style.accent;
+        selection.a *= 0.35f;
+        const float a = xAt(edit_.selectionStart());
+        const float b = xAt(edit_.selectionEnd());
+        list.rect({content.position.x + a - offset, top}, {b - a, h}, selection);
+    }
     drawText(ui, list, shown, {{content.position.x - offset, content.position.y}, {content.size.x + offset, content.size.y}}, style, Align::kStart);
     if (editing_ && std::fmod(ui.time(), 1.0f) < 0.6f)
     {
-        const float h = lineHeight(ui, style);
-        list.rect(renderer::DrawRect{.position = {std::round(content.position.x + caretX - offset), content.position.y + (content.size.y - h) * 0.5f},
+        list.rect(renderer::DrawRect{.position = {std::round(content.position.x + caretX - offset), top},
                                      .size = {std::max(1.0f, style.borderWidth), h},
                                      .color = style.foreground});
     }
