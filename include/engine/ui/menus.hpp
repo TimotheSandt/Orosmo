@@ -164,6 +164,10 @@ class DynamicImage
     std::shared_ptr<renderer::AtlasImage> image_;
 };
 
+// Source d'une ImageView (langage d'interface : `ImageView(state.minimap)`).
+inline std::shared_ptr<const renderer::AtlasImage> imageOf(const DynamicImage &image) { return image.image(); }
+inline std::shared_ptr<const renderer::AtlasImage> imageOf(std::shared_ptr<const renderer::AtlasImage> image) { return image; }
+
 enum class ImageFit : std::uint8_t
 {
     kContain, // entière, proportions gardées (bandes vides)
@@ -177,6 +181,7 @@ class ImageView : public Widget
     // `source` est relue à chaque image (une DynamicImage du jeu, ou n'importe quelle AtlasImage).
     explicit ImageView(std::function<std::shared_ptr<const renderer::AtlasImage>()> source, ImageFit fit = ImageFit::kContain);
     ImageView &setTint(const Color &c) { tint_ = c; return *this; }
+    ImageView &setFit(ImageFit fit) { fit_ = fit; return *this; }
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;

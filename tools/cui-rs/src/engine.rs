@@ -25,6 +25,9 @@ enum Kind {
     BindInt,
     BindString,
     BindColor,
+    BindGradient, // engine::ui::Gradient
+    BindCurve,    // engine::ui::Curve
+    Image,      // expression -> DynamicImage ou std::shared_ptr<const AtlasImage>, relue à chaque image
     Number,     // nombre évalué à la construction
     Bool,       // booléen évalué à la construction
     Options,    // expression -> std::vector<std::string>, relue à chaque image
@@ -53,6 +56,8 @@ enum Children {
     Body,  // Section : enfants dans body()
     Pages, // Tabs : seulement des Page
     Page,  // Page : contenu d'un onglet
+    Items, // Menu, ContextMenu : enfants dans items()
+    Menus, // MenuBar : seulement des Menu
 }
 
 struct Component {
@@ -133,6 +138,78 @@ static COMPONENTS: &[Component] = &[
     Component { name: "Plot", params: &[p("values", Kind::Values, Default::Required)], children: Children::None, events: EV_BASIC },
     Component { name: "Separator", params: &[], children: Children::None, events: EV_BASIC },
     Component { name: "ParamPanel", params: &[p("target", Kind::Reflected, Default::Required)], children: Children::None, events: EV_CHANGE },
+    // UI-03 : contrôles supplémentaires (controls.hpp), couleur (color.hpp), fenêtres et menus (menus.hpp).
+    Component {
+        name: "RadioButton",
+        params: &[p("text", Kind::Text, Default::Required), p("value", Kind::Number, Default::Required), p("selected", Kind::BindInt, Default::Required)],
+        children: Children::None,
+        events: EV_ALL,
+    },
+    Component {
+        name: "RangeSlider",
+        params: &[
+            p("low", Kind::BindNumber, Default::Required),
+            p("high", Kind::BindNumber, Default::Required),
+            p("min", Kind::Number, Default::Required),
+            p("max", Kind::Number, Default::Required),
+            p("step", Kind::Number, Default::Value("0.0")),
+        ],
+        children: Children::None,
+        events: EV_CHANGE,
+    },
+    Component {
+        name: "SpinBox",
+        params: &[
+            p("value", Kind::BindNumber, Default::Required),
+            p("min", Kind::Number, Default::Value("-engine::ui::NumberField::kUnboundedNumber")),
+            p("max", Kind::Number, Default::Value("engine::ui::NumberField::kUnboundedNumber")),
+            p("step", Kind::Number, Default::Value("1.0")),
+            p("integer", Kind::Bool, Default::Value("true")),
+        ],
+        children: Children::None,
+        events: EV_CHANGE,
+    },
+    Component {
+        name: "TextArea",
+        params: &[
+            p("text", Kind::BindString, Default::Required),
+            p("lineNumbers", Kind::Bool, Default::Value("false")),
+            p("readOnly", Kind::Bool, Default::Value("false")),
+        ],
+        children: Children::None,
+        events: EV_CHANGE,
+    },
+    Component { name: "ColorWheel", params: &[p("color", Kind::BindColor, Default::Required)], children: Children::None, events: EV_CHANGE },
+    Component {
+        name: "ColorEditor",
+        params: &[p("color", Kind::BindColor, Default::Required), p("alpha", Kind::Bool, Default::Value("false"))],
+        children: Children::None,
+        events: EV_CHANGE,
+    },
+    Component { name: "GradientEditor", params: &[p("gradient", Kind::BindGradient, Default::Required)], children: Children::None, events: EV_CHANGE },
+    Component { name: "CurveEditor", params: &[p("curve", Kind::BindCurve, Default::Required)], children: Children::None, events: EV_CHANGE },
+    Component {
+        name: "Dialog",
+        params: &[p("title", Kind::Text, Default::Required), p("open", Kind::BindBool, Default::Required), p("dismiss", Kind::Bool, Default::Value("true"))],
+        children: Children::Body,
+        events: EV_CHANGE,
+    },
+    Component { name: "MenuBar", params: &[], children: Children::Menus, events: EV_BASIC },
+    Component { name: "Menu", params: &[p("title", Kind::Text, Default::Required)], children: Children::Items, events: EV_BASIC },
+    Component {
+        name: "MenuItem",
+        params: &[p("text", Kind::Text, Default::Required), p("shortcut", Kind::Text, Default::Value("std::string()")), p("checked", Kind::BindBool, Default::Omit)],
+        children: Children::None,
+        events: EV_CLICK,
+    },
+    Component { name: "ContextMenu", params: &[], children: Children::Items, events: &[] },
+    Component {
+        name: "Notifications",
+        params: &[p("max", Kind::Number, Default::Value("5.0")), p("maxHeight", Kind::Number, Default::Value("0.0")), p("width", Kind::Number, Default::Value("0.0"))],
+        children: Children::None,
+        events: &[],
+    },
+    Component { name: "ImageView", params: &[p("image", Kind::Image, Default::Required)], children: Children::None, events: EV_BASIC },
 ];
 
 const COMMON_MODIFIERS: &[&str] =
@@ -167,6 +244,7 @@ fn extra_modifiers(component: &str) -> &'static [&'static str] {
     match component {
         "Label" => &["textAlign"],
         "Plot" => &["range"],
+        "ImageView" => &["fit"],
         _ => &[],
     }
 }
@@ -393,12 +471,16 @@ impl<'a> Gen<'a> {
             (Kind::Values, Expr::StringLit(_)) | (Kind::Values, Expr::Number(_)) => Err(format!("{what} expects an expression that gives a sequence of numbers")),
             (Kind::Values, e) => expr_cpp(e, scope).map(|v| format!("[=] {{ const auto &values = {v}; return std::vector<float>(std::begin(values), std::end(values)); }}")),
             (Kind::Reflected, Expr::Binding(path)) => self.binding_target(path).map(|lv| format!("engine::ui::reflectedPanel({lv})")),
+            (Kind::Image, Expr::StringLit(_)) | (Kind::Image, Expr::Number(_)) | (Kind::Image, Expr::Binding(_)) => Err(format!("{what} expects an expression that gives an engine::ui::DynamicImage or a std::shared_ptr<const AtlasImage> (for example state.minimap)")),
+            (Kind::Image, e) => expr_cpp(e, scope).map(|v| format!("[=] {{ return engine::ui::imageOf({v}); }}")),
             (Kind::Reflected, _) => Err(format!("{what} must be a two-way binding to a reflected structure (for example ParamPanel($state.params))")),
             (kind, Expr::Binding(path)) => self.binding_target(path).map(|lv| match kind {
                 Kind::BindBool => format!("engine::ui::Binding<bool>::ref({lv})"),
                 Kind::BindNumber => format!("engine::ui::numberBinding({lv})"),
                 Kind::BindInt => format!("engine::ui::intBinding({lv})"),
                 Kind::BindString => format!("engine::ui::Binding<std::string>::ref({lv})"),
+                Kind::BindGradient => format!("engine::ui::Binding<engine::ui::Gradient>::ref({lv})"),
+                Kind::BindCurve => format!("engine::ui::Binding<engine::ui::Curve>::ref({lv})"),
                 _ => format!("engine::ui::colorBinding({lv})"),
             }),
             (kind, e) => {
@@ -407,6 +489,8 @@ impl<'a> Gen<'a> {
                     Kind::BindNumber => ("double", "static_cast<double>"),
                     Kind::BindInt => ("int", "static_cast<int>"),
                     Kind::BindString => ("std::string", "engine::ui::text"),
+                    Kind::BindGradient => ("engine::ui::Gradient", "engine::ui::Gradient"),
+                    Kind::BindCurve => ("engine::ui::Curve", "engine::ui::Curve"),
                     _ => ("engine::ui::Color", "engine::ui::Color"),
                 };
                 expr_cpp(e, scope).map(|v| format!("engine::ui::Binding<{}>{{[=] {{ return {}({v}); }}, {{}}}}", read.0, read.1))
@@ -444,6 +528,10 @@ impl<'a> Gen<'a> {
             self.err(element.line, element.col, "'Page' is only allowed directly inside 'Tabs'");
             return None;
         }
+        if comp.name == "MenuItem" && parent != Some("Menu") && parent != Some("ContextMenu") {
+            self.err(element.line, element.col, "'MenuItem' is only allowed inside 'Menu' or 'ContextMenu'");
+            return None;
+        }
         let args = self.bind_args(element, comp)?;
         let mut cpp_args = Vec::new();
         for (param, value) in comp.params.iter().zip(&args) {
@@ -473,6 +561,12 @@ impl<'a> Gen<'a> {
             Children::Pages => {
                 if let Some(bad) = element.children.iter().find(|c| c.name != "Page") {
                     self.err(bad.line, bad.col, format!("'Tabs' only contains 'Page' elements, not '{}'", bad.name));
+                    return None;
+                }
+            }
+            Children::Menus => {
+                if let Some(bad) = element.children.iter().find(|c| c.name != "Menu") {
+                    self.err(bad.line, bad.col, format!("'MenuBar' only contains 'Menu' elements, not '{}'", bad.name));
                     return None;
                 }
             }
@@ -516,12 +610,27 @@ impl<'a> Gen<'a> {
             "NumberField" => format!("std::make_unique<engine::ui::NumberField>({}, {}, {}, {})", a[0], a[1], a[2], a[3]),
             "ColorPicker" => format!("std::make_unique<engine::ui::ColorPicker>({}, {})", a[0], a[1]),
             "Plot" => format!("std::make_unique<engine::ui::Plot>({})", a[0]),
+            "RadioButton" => format!("std::make_unique<engine::ui::RadioButton>({}, static_cast<int>({}), {})", a[0], a[1], a[2]),
+            "RangeSlider" => format!("std::make_unique<engine::ui::RangeSlider>({}, {}, {}, {}, {})", a[0], a[1], a[2], a[3], a[4]),
+            "SpinBox" => format!("std::make_unique<engine::ui::SpinBox>({}, {}, {}, {}, {})", a[0], a[1], a[2], a[3], a[4]),
+            "TextArea" => format!("std::make_unique<engine::ui::TextArea>({})", a[0]),
+            "ColorWheel" | "GradientEditor" | "CurveEditor" => format!("std::make_unique<engine::ui::{}>({})", comp.name, a[0]),
+            "ColorEditor" => format!("std::make_unique<engine::ui::ColorEditor>({}, {})", a[0], a[1]),
+            "Dialog" => format!("std::make_unique<engine::ui::Dialog>({}, {}, {})", a[0], a[1], a[2]),
+            "Menu" => format!("std::make_unique<engine::ui::Menu>({})", a[0]),
+            "MenuItem" if args[2].is_some() => format!("std::make_unique<engine::ui::MenuItem>({}, {}, {})", a[0], a[1], a[2]),
+            "MenuItem" => format!("std::make_unique<engine::ui::MenuItem>({}, {})", a[0], a[1]),
+            "Notifications" => format!("std::make_unique<engine::ui::Notifications>(static_cast<int>({}), static_cast<float>({}), static_cast<float>({}))", a[0], a[1], a[2]),
+            "ImageView" => format!("std::make_unique<engine::ui::ImageView>({})", a[0]),
             "ParamPanel" => a[0].clone(),
             other => format!("std::make_unique<engine::ui::{other}>()"),
         };
         self.emit(format!("auto {var} = {ctor};"));
         if comp.name == "Slider" && args[4].is_some() {
             self.emit(format!("{var}->setDefault({});", a[4]));
+        }
+        if comp.name == "TextArea" {
+            self.emit(format!("{var}->setLineNumbers({}).setReadOnly({});", a[1], a[2]));
         }
         if comp.name == "Label" || comp.name == "Button" {
             let text_expr = args[0];
@@ -540,6 +649,7 @@ impl<'a> Gen<'a> {
                 self.line_directive(child.line);
                 match comp.children {
                     Children::Body => self.emit(format!("{var}->body().add(std::move({c}));")),
+                    Children::Items => self.emit(format!("{var}->items().add(std::move({c}));")),
                     Children::Pages => {
                         let title = self.page_titles.remove(&c).unwrap_or_default();
                         self.emit(format!("{var}->addPage({title}, std::move({c}));"));
@@ -574,6 +684,14 @@ impl<'a> Gen<'a> {
         };
         match name {
             "width" | "height" => {
+                // Dialog : la taille est celle de la fenêtre (le widget lui-même ne prend pas de place dans l'arbre).
+                let panel;
+                let var = if comp.name == "Dialog" {
+                    panel = format!("(&{var}->panel())");
+                    panel.as_str()
+                } else {
+                    var
+                };
                 let member = name;
                 let setter = if name == "width" { "setWidth" } else { "setHeight" };
                 if m.args.len() > 1 {
@@ -764,6 +882,21 @@ impl<'a> Gen<'a> {
                     }
                 }
             }
+            "fit" => {
+                if let Some(e) = one(self) {
+                    match e {
+                        Expr::EnumCase(c) if ["contain", "cover", "stretch"].contains(&c.as_str()) => {
+                            let f = match c.as_str() {
+                                "contain" => "kContain",
+                                "cover" => "kCover",
+                                _ => "kStretch",
+                            };
+                            self.emit(format!("{var}->setFit(engine::ui::ImageFit::{f});"));
+                        }
+                        _ => self.err(line, col, "'.fit' expects .contain, .cover or .stretch"),
+                    }
+                }
+            }
             "range" => {
                 if m.args.len() != 2 {
                     return self.err(line, col, "'.range' takes two numbers (min, max)");
@@ -854,6 +987,9 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Vali
     header.push("#include \"engine/ui/reflect.hpp\"".into());
     header.push("#include \"engine/ui/ui.hpp\"".into());
     header.push("#include \"engine/ui/widgets.hpp\"".into());
+    header.push("#include \"engine/ui/controls.hpp\"".into());
+    header.push("#include \"engine/ui/color.hpp\"".into());
+    header.push("#include \"engine/ui/menus.hpp\"".into());
     for import in ast.imports.iter().filter(|i| i.path != IMPORT) {
         header.push(format!("#include \"{}\"", import.path));
     }
@@ -1031,6 +1167,21 @@ fn component_doc(name: &str) -> &'static str {
         "Plot" => "Bars of a sequence of numbers re-read every frame.",
         "Separator" => "Thin line.",
         "ParamPanel" => "Every field of a reflected structure as a widget chosen from its type and range (UI-12).",
+        "RadioButton" => "One choice of a group: the buttons bound to the same int; selected when it equals `value`.",
+        "RangeSlider" => "Two handles (low, high) on one track; the handles cannot cross.",
+        "SpinBox" => "Number field with - and + buttons (and the wheel).",
+        "TextArea" => "Multi-line text editor: selection, clipboard, optional line numbers, read only.",
+        "ColorWheel" => "Hue ring and saturation-value square.",
+        "ColorEditor" => "Wheel, format (RGB, HSV, HSL) with its sliders, alpha, hexadecimal field, before / after preview.",
+        "GradientEditor" => "Gradient bar: click adds a stop, drag moves it, right click removes it; the chosen stop is edited below.",
+        "CurveEditor" => "Curve in [0, 1]: click adds a point, drag moves it, right click removes it.",
+        "Dialog" => "Modal window, open while `open` is true; Escape, its close button or a click outside (dismiss) closes it. .width / .height size the window.",
+        "MenuBar" => "Row of Menu; hovering another title while a menu is open switches to it.",
+        "Menu" => "Title that opens its items (MenuItem, Menu for a submenu, Separator).",
+        "MenuItem" => "Menu entry: click runs onClick; optional shortcut text and checked binding.",
+        "ContextMenu" => "Invisible child of a widget: a right click on that widget opens its items at the pointer.",
+        "Notifications" => "Stack of Ui::notify messages: at most `max` and `maxHeight` pixels (0: no limit), the oldest go.",
+        "ImageView" => "Image produced by the game (DynamicImage: minimap, compass...), re-read every frame; .fit(.contain|.cover|.stretch).",
         _ => "",
     }
 }
@@ -1043,6 +1194,9 @@ fn kind_name(kind: Kind) -> &'static str {
         Kind::BindInt => "int ($binding or expression)",
         Kind::BindString => "string ($binding or expression)",
         Kind::BindColor => "color ($binding or expression)",
+        Kind::BindGradient => "gradient ($binding or expression)",
+        Kind::BindCurve => "curve ($binding or expression)",
+        Kind::Image => "expression -> DynamicImage or std::shared_ptr<const AtlasImage>",
         Kind::Number => "number",
         Kind::Bool => "bool",
         Kind::Options => "expression -> std::vector<std::string>",
@@ -1064,6 +1218,7 @@ fn modifier_doc(name: &str) -> &'static str {
         "variant" => "Theme style name (widgets.<name> of the theme).",
         "textAlign" => "Label text alignment: .start, .center, .end.",
         "range" => "Plot: fixed bounds (min, max).",
+        "fit" => "ImageView: .contain (whole image), .cover (fills, cropped), .stretch (fills, distorted).",
         "overflow" => "What goes beyond the widget: .visible (default, still clickable) or .hidden (clipped).",
         "font" => "",
         "onClick" | "onChange" | "onHover" | "onFocus" => "Event: names a C++ function (state.method, Ns::function) or a registered action name.",
@@ -1096,6 +1251,8 @@ pub fn spec_json() -> String {
             Children::Body => "many",
             Children::Pages => "pages",
             Children::Page => "many",
+            Children::Items => "many",
+            Children::Menus => "menus",
         };
         let events = c.events.iter().map(|ev| format!("\"{ev}\"")).collect::<Vec<_>>().join(",");
         let extra = extra_modifiers(c.name).iter().map(|m| format!("\"{m}\"")).collect::<Vec<_>>().join(",");
@@ -1107,13 +1264,13 @@ pub fn spec_json() -> String {
     }
     let mods = COMMON_MODIFIERS
         .iter()
-        .chain(["textAlign", "range", "onClick", "onChange", "onHover", "onFocus"].iter())
+        .chain(["textAlign", "range", "fit", "onClick", "onChange", "onHover", "onFocus"].iter())
         .map(|m| format!("{{\"name\":\"{m}\",\"doc\":\"{}\"}}", e(modifier_doc(m))))
         .collect::<Vec<_>>()
         .join(",");
     let props = STYLE_PROPERTIES.iter().map(|(n, _)| format!("\"{n}\"")).collect::<Vec<_>>().join(",");
     format!(
-        "{{\"import\":\"{IMPORT}\",\"components\":[{}],\"modifiers\":[{mods}],\"styleProperties\":[{props}],\"alignments\":[\"start\",\"center\",\"end\",\"stretch\"],\"sizes\":[\"fit\",\"fill\"],\"overflows\":[\"visible\",\"hidden\"],\"wrappers\":[\"@Mutable\",\"@Observed\",\"@Snapshot\"]}}",
+        "{{\"import\":\"{IMPORT}\",\"components\":[{}],\"modifiers\":[{mods}],\"styleProperties\":[{props}],\"alignments\":[\"start\",\"center\",\"end\",\"stretch\"],\"sizes\":[\"fit\",\"fill\"],\"overflows\":[\"visible\",\"hidden\"],\"fits\":[\"contain\",\"cover\",\"stretch\"],\"wrappers\":[\"@Mutable\",\"@Observed\",\"@Snapshot\"]}}",
         comps.join(",")
     )
 }
