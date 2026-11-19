@@ -1,0 +1,281 @@
+// UI-03 : widgets de base. Chacun lit son apparence dans le thème (type de style entre parenthèses), signale ses changements par
+// `onChange` et ses clics par `onClick`, et lit / écrit sa valeur par une `Binding` (écriture différée, voir widget.hpp).
+//
+//   Label (label)            texte fixe ou lu à chaque image
+//   Button (button)          clic à la souris, ou Entrée / Espace avec le focus
+//   Checkbox (checkbox)      booléen
+//   Slider (slider)          nombre borné, glisser ou flèches ; entier si `step` >= 1
+//   Dropdown (dropdown)      choix dans une liste (fenêtre surgissante : popup, item)
+//   TextField (textField)    texte modifiable ; validé par Entrée ou la perte du focus, Échap annule
+//   NumberField (textField)  nombre saisi au clavier (refus d'une saisie invalide)
+//   ColorPicker (colorPicker) couleur : aperçu et curseurs R, G, B (A)
+//   Plot (plot)              graphique simple : barres d'une série de valeurs
+//   Tabs (tabs, tab)         onglets : une page visible à la fois
+//   Section (section)        bloc repliable avec un titre
+//   Separator (separator)    trait
+//   ScrollView (scroll)      défilement : voir layout.hpp ; infobulles : Widget::setTooltip (tooltip)
+#pragma once
+
+#include "engine/ui/layout.hpp"
+#include "engine/ui/widget.hpp"
+
+#include <functional>
+#include <string>
+#include <vector>
+
+namespace engine::ui
+{
+
+class Label : public Widget
+{
+  public:
+    explicit Label(std::string text = {}, std::string styleName = "label");
+    Label &setText(std::string text);
+    // Texte relu à chaque image (interpolation du langage d'interface).
+    Label &bindText(std::function<std::string()> text);
+    std::string text() const;
+    Label &setTextAlign(Align align) { textAlign_ = align; return *this; }
+
+  protected:
+    glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
+    void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
+
+  private:
+    std::string text_;
+    std::function<std::string()> source_;
+    Align textAlign_ = Align::kStart;
+};
+
+class Button : public Widget
+{
+  public:
+    explicit Button(std::string text = {}, std::string styleName = "button");
+    Button &setText(std::string text) { text_ = std::move(text); return *this; }
+    Button &bindText(std::function<std::string()> text) { source_ = std::move(text); return *this; }
+    std::string text() const { return source_ ? source_() : text_; }
+
+    bool interactive() const override { return true; }
+    bool focusable() const override { return true; }
+    void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
+    void onKey(Ui &ui, int key) override;
+
+  protected:
+    glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
+    void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
+
+  private:
+    std::string text_;
+    std::function<std::string()> source_;
+};
+
+class Checkbox : public Widget
+{
+  public:
+    Checkbox(std::string text, Binding<bool> value);
+    bool checked() const { return value_.value(); }
+
+    bool interactive() const override { return true; }
+    bool focusable() const override { return true; }
+    void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
+    void onKey(Ui &ui, int key) override;
+
+  protected:
+    glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
+    void drawBackground(const Ui &, renderer::DrawList &, const Style &) const override {} // la case seule a le fond du style
+    void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
+
+  private:
+    void toggle(Ui &ui);
+    std::string text_;
+    Binding<bool> value_;
+};
+
+class Slider : public Widget
+{
+  public:
+    // `step` > 0 : valeurs arrondies au pas (entières si le pas est entier).
+    Slider(Binding<double> value, double min, double max, double step = 0.0);
+    double value() const;
+    double min() const noexcept { return min_; }
+    double max() const noexcept { return max_; }
+    // Texte affiché ("12", "0.350") : décimales selon le pas, précédé du préfixe.
+    std::string formatted() const;
+    Slider &setPrefix(std::string prefix) { prefix_ = std::move(prefix); return *this; }
+
+    bool interactive() const override { return true; }
+    bool focusable() const override { return true; }
+    void onPress(Ui &ui, glm::vec2 mouse) override;
+    void onDrag(Ui &ui, glm::vec2 mouse) override;
+    void onKey(Ui &ui, int key) override;
+
+  protected:
+    glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
+    void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
+
+  private:
+    void setFromMouse(Ui &ui, float x);
+    void write(Ui &ui, double v);
+    double quantize(double v) const;
+
+    Binding<double> value_;
+    double min_;
+    double max_;
+    double step_;
+    std::string prefix_;
+    bool hasPending_ = false;
+    double pending_ = 0.0; // valeur écrite pendant l'image (affichée avant que l'écriture différée soit appliquée)
+};
+
+class Dropdown : public Widget
+{
+  public:
+    Dropdown(std::function<std::vector<std::string>()> options, Binding<int> selected);
+    Dropdown(std::vector<std::string> options, Binding<int> selected);
+    int selected() const { return selected_.value(); }
+    std::vector<std::string> options() const { return options_ ? options_() : std::vector<std::string>{}; }
+
+    bool interactive() const override { return true; }
+    bool focusable() const override { return true; }
+    void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
+    void onKey(Ui &ui, int key) override;
+    // Choix d'une option (clic dans la liste) : écrit la valeur, ferme la liste, émet onChange.
+    void choose(Ui &ui, int index);
+
+  protected:
+    glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
+    void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
+
+  private:
+    void open(Ui &ui);
+    std::function<std::vector<std::string>()> options_;
+    Binding<int> selected_;
+};
+
+class TextField : public Widget
+{
+  public:
+    explicit TextField(Binding<std::string> value, std::string styleName = "textField");
+    // Texte affiché : la saisie en cours avec le focus, sinon la valeur liée.
+    std::string text() const;
+    std::size_t caret() const noexcept { return caret_; }
+    bool editing() const noexcept { return editing_; }
+
+    bool interactive() const override { return true; }
+    bool focusable() const override { return true; }
+    bool acceptsText() const override { return true; }
+    void onPress(Ui &ui, glm::vec2 mouse) override;
+    void onKey(Ui &ui, int key) override;
+    void onText(Ui &ui, std::string_view text) override;
+    void onFocusChanged(Ui &ui, bool focused) override;
+
+  protected:
+    glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
+    void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
+    // Valide la saisie : faux pour la refuser (la valeur liée est alors gardée).
+    virtual bool commit(Ui &ui, const std::string &text);
+    virtual std::string current() const;
+
+  private:
+    Binding<std::string> value_;
+    std::string buffer_;
+    std::size_t caret_ = 0;
+    bool editing_ = false;
+};
+
+class NumberField : public TextField
+{
+  public:
+    NumberField(Binding<double> value, bool integer, double min = -kUnboundedNumber, double max = kUnboundedNumber);
+    static constexpr double kUnboundedNumber = 1.0e300;
+
+  protected:
+    bool commit(Ui &ui, const std::string &text) override;
+    std::string current() const override;
+
+  private:
+    Binding<double> number_;
+    bool integer_;
+    double min_;
+    double max_;
+};
+
+class ColorPicker : public Widget
+{
+  public:
+    ColorPicker(Binding<Color> value, bool alpha = false);
+    Color color() const { return value_.value(); }
+
+  protected:
+    glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
+    void arrange(Ui &ui, const Rect &content, const Style &style) override;
+    void drawBackground(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
+    void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
+
+  private:
+    Binding<Color> value_;
+};
+
+class Plot : public Widget
+{
+  public:
+    // Valeurs lues à chaque image ; bornes automatiques (min et max de la série, 0 compris) sauf `setRange`.
+    explicit Plot(std::function<std::vector<float>()> values);
+    Plot &setRange(float min, float max) { min_ = min; max_ = max; fixedRange_ = true; return *this; }
+
+  protected:
+    glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
+    void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
+
+  private:
+    std::function<std::vector<float>()> values_;
+    float min_ = 0.0f;
+    float max_ = 1.0f;
+    bool fixedRange_ = false;
+};
+
+class Tabs : public VBox
+{
+  public:
+    Tabs();
+    explicit Tabs(Binding<int> selected);
+    // Ajoute une page et son onglet ; renvoie la page.
+    Widget &addPage(std::string title, std::unique_ptr<Widget> page);
+    int selected() const;
+    void select(Ui &ui, int index);
+    std::size_t pageCount() const noexcept { return pages_.size(); }
+
+  private:
+    HBox *header_;
+    std::vector<Widget *> pages_;
+    Binding<int> selected_;
+    int local_ = 0;
+};
+
+class Section : public VBox
+{
+  public:
+    explicit Section(std::string title, bool expanded = true);
+    // Contenu du bloc (masqué quand le bloc est replié).
+    VBox &body() noexcept { return *body_; }
+    bool expanded() const noexcept { return expanded_; }
+    void setExpanded(bool expanded) noexcept { expanded_ = expanded; }
+
+  protected:
+    glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
+
+  private:
+    VBox *body_;
+    bool expanded_;
+};
+
+class Separator : public Widget
+{
+  public:
+    Separator() : Widget("separator") {}
+
+  protected:
+    glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
+    void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
+};
+
+} // namespace engine::ui

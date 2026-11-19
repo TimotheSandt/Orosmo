@@ -24,6 +24,13 @@ namespace engine::core
 
 template <typename T> struct Reflect; // à spécialiser ; sans spécialisation, T n'est pas réfléchi
 
+// Noms des valeurs d'une énumération continue à partir de 0 (interface automatique : liste déroulante, UI-12). À spécialiser :
+//   template <> struct engine::core::EnumNames<Basis> { static constexpr std::array<const char *, 2> names{"perlin", "simplex"}; };
+// La sérialisation garde la valeur numérique (format inchangé).
+template <typename E> struct EnumNames;
+template <typename E>
+concept NamedEnum = std::is_enum_v<E> && requires { EnumNames<E>::names; };
+
 template <typename T>
 concept Reflected = requires { Reflect<T>::fields(); };
 
