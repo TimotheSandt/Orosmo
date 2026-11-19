@@ -10,3 +10,9 @@
 # make demo-test-unit (sans DISPLAY) : 208 cas verts ; make demo-test-gpu : 96 cas verts
 # make check (bloquant) : couches 0 violation (136 fichiers), isolation des API 0, en-têtes autonomes 0
 # capture fenêtrée et capture --headless vs reference/scene-opengl-seed1-1280x720.png : 0 pixel d'écart, écart max 0/255
+
+# 2e passe de la revue (G102, G103) : clone propre de fix/M2-review2-renderer (1a4e1e2, contient fix/M2-review2-rhi)
+[doctest] test cases:  316 |  316 passed | 0 failed | 0 skipped
+[doctest] assertions: 5142 | 5142 passed | 0 failed |
+# ASan + UBSan (après fclean) : 316 cas verts, aucun rapport
+# make check : 0 violation (couches, isolation des API, en-têtes) ; captures fenêtrée et --headless : 0/255 contre la référence
