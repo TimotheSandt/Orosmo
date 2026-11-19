@@ -7,6 +7,9 @@ isolé dans `src/world/gpu/`.
 | En-tête | Rôle |
 | --- | --- |
 | `noise.hpp` | TER-01 : `perlin2/3`, `simplex2/3`, `worley2/3` (f1, f2), `fbm2/3` (`FbmParams` : base, octaves, fréquence, lacunarité, gain), `warpedFbm2` (distorsion de domaine, `WarpParams`) ; hachage entier `hashMix`, `hash2`, `hash3`, `deriveSeed` |
+| `terrain.hpp` | TER-02 : `TerrainParams` (réfléchi : relief, distorsion, échelle, espacement, résolution), `heightAt`, `TileKey`, `Heightmap`, `generateTile` (pur, appelable depuis n'importe quel thread) ; positions d'échantillons depuis des indices entiers globaux : voisines et niveaux de détail partagent les échantillons au bit près |
+| `lod.hpp` | TER-03 : `selectTiles` (quadtree découpé selon la distance, puis équilibré : voisines à un niveau près), `coarserNeighbors`, `buildTileMesh` (sommets position + normale, triangles ; bords cousus vers une voisine plus grossière : pas de fissure) |
+| `streaming.hpp` | TER-04 : `TileStreamer` : sélection à chaque image, génération en tâches de fond (CORE-04), maillage refait quand les voisines changent de niveau, éviction LRU sous un budget mémoire (la sélection courante n'est jamais évincée ; `overBudget` si elle dépasse seule le budget) |
 | `checksum.hpp` | TEST-03 : `checksum64` (FNV-1a 64 bits, octets en petit-boutiste) des sorties de génération |
 
 ## Déterminisme (règle 9, TEST-03)
