@@ -27,4 +27,6 @@ apps/ui_gallery/bin/ui-gallery --headless --tab widgets --click fruit --capture 
 ```
 
 Clavier : Tab / Maj+Tab pour le focus, Entrée / Espace pour activer, Échap pour quitter (hors saisie) ou fermer un menu, une
-fenêtre ; Ctrl+A / C / X / V dans les champs de texte (presse-papiers du système), Page précédente / suivante dans l'éditeur.
+fenêtre ; Ctrl+A / C / X / V / Z / Y dans les champs de texte (presse-papiers du système, annuler, rétablir), Page précédente /
+suivante dans l'éditeur ; touches répétées quand elles sont tenues. Menus : Tab jusqu'à « File », puis flèches, Entrée, Échap.
+Raccourcis installés : Ctrl+O (dialogue), Ctrl+I (notification), Ctrl+L (vider le journal), F5 (« Click me »).

@@ -86,7 +86,7 @@ struct GalleryState
     double heightLow = 20.0;
     double heightHigh = 70.0;
     int octaves = 4;
-    std::string notes = "Multi-line text editor.\nSelect with Shift or the mouse; Ctrl+A, C, X, V.\nLine numbers on the left.";
+    std::string notes = "Multi-line text editor.\nSelect with Shift or the mouse; Ctrl+A, C, X, V; Ctrl+Z to undo, Ctrl+Y to redo. A line longer than the editor wraps at the last space that fits, and its number is shown once.\nLine numbers on the left.";
     glm::vec4 accent{0.95f, 0.55f, 0.20f, 1.0f};
     engine::ui::Gradient terrainColors{{{0.0f, {0.10f, 0.25f, 0.60f, 1.0f}}, {0.38f, {0.25f, 0.55f, 0.85f, 1.0f}},
                                         {0.42f, {0.85f, 0.80f, 0.55f, 1.0f}}, {0.50f, {0.30f, 0.60f, 0.25f, 1.0f}},
