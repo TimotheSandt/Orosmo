@@ -183,6 +183,34 @@ viewer-capture: viewer
 	python3 tools/compare_png.py build/viewer-capture/dark/viewer.png build/viewer-capture/light/viewer.png > /dev/null \
 	    && { echo "viewer-capture : les deux thèmes donnent la même image"; exit 1; } || echo "viewer-capture : OK (deux thèmes, deux images)"
 
+# ── BLD-02 : de bout en bout depuis le paquet (sans les sources du moteur) ──
+#   make e2e-init   paquet + outil `engine` construits ; `engine init --package` d'un projet neuf dans build/e2e/<date>/mygame ;
+#                   compilation et lancement sans fenêtre (capture) ; exemples terrain-gen (somme de contrôle de référence) et
+#                   terrain-viewer compilés depuis le paquet extrait par `engine init` (mygame/engine/examples/).
+#   Chaque lancement a son dossier (rien n'est effacé). Les dépendances vcpkg du dépôt sont reliées au projet (équivalent de
+#   `make install` dans le projet, sans le réseau).
+E2E_RUN      := build/e2e/$(shell date +%Y%m%d-%H%M%S)
+E2E_PLATFORM  = $(shell $(MAKE) -s -f $(ENGINE_MK) print-platform)
+E2E_EXE       = $(if $(filter Windows_NT,$(OS)),.exe)
+E2E_VCPKG    ?= $(abspath vcpkg_installed)
+E2E_CHECKSUM  = $(shell sed -n 's/^checksum: //p' docs/BASELINE/terrain-gen-seed42-256.txt)
+.PHONY: e2e-init
+e2e-init:
+	$(MAKE) -f $(ENGINE_MK) engine-tool
+	mkdir -p $(E2E_RUN)
+	cd $(E2E_RUN) && "$(abspath dist)/engine-$(E2E_PLATFORM)$(E2E_EXE)" init --package "$(abspath dist)/engine-pkg-$(E2E_PLATFORM).zip" mygame
+	ln -sfn "$(E2E_VCPKG)" $(E2E_RUN)/mygame/engine/vcpkg_installed
+	$(MAKE) -C $(E2E_RUN)/mygame debug
+	cd $(E2E_RUN)/mygame && ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3
+	test -s $(E2E_RUN)/capture/scene.png
+	$(MAKE) -C $(E2E_RUN)/mygame/engine/examples/terrain_gen
+	$(E2E_RUN)/mygame/engine/examples/terrain_gen/bin/terrain-gen$(E2E_EXE) --seed 42 --size 256 --out $(E2E_RUN)/tg.png > $(E2E_RUN)/tg.txt
+	grep -q "$(E2E_CHECKSUM)" $(E2E_RUN)/tg.txt
+	$(MAKE) -C $(E2E_RUN)/mygame/engine/examples/terrain_viewer
+	$(E2E_RUN)/mygame/engine/examples/terrain_viewer/bin/terrain-viewer$(E2E_EXE) --headless --seed 42 --capture $(E2E_RUN)/viewer --capture-frames 3
+	test -s $(E2E_RUN)/viewer/viewer.png
+	@echo "e2e-init : OK ($(E2E_RUN) : engine init, compilation, lancement, exemples depuis le paquet)"
+
 # ── UI-11 : tests du compilateur du langage d'interface ──
 #   make cui-test   tests unitaires (cargo test) + entrées invalides de bout en bout (binaire cui : messages fichier:ligne:colonne ;
 #                   une erreur du C++ généré ramenée à la ligne du .cui par #line). Les vues valides sont compilées avec `make demo-test`.

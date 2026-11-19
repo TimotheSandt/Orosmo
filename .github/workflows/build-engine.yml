@@ -276,7 +276,14 @@ jobs:
             cd myproject && ./engine update
             ```
 
-            **Engine package** — headers, pre-built libs (debug + release), `engine.mk`, CUI tools, and `vcpkg.json`.
-            Downloaded automatically by `engine init` / `engine update`. Run `make install` to populate `vcpkg_installed/`.
+            **Engine package** — public headers (`include/engine/{core,platform,rhi,renderer,world,ui}`), pre-built static
+            libraries (debug + release: `libcore`, `libplatform`, `librhi`, `librenderer`, `libworld`, `libui`, …), `engine.mk`,
+            the interface language compiler `cui`, the RHI shaders (`shaders/rhi`), the default font and themes (`res/`),
+            two examples buildable from the package (`examples/terrain_gen`, `examples/terrain_viewer`) and `vcpkg.json`.
+            Downloaded automatically by `engine init` / `engine update`, or used offline: `engine init --package engine-pkg-<platform>.zip myproject`.
+            Run `make install` in the project to populate `vcpkg_installed/`.
+
+            **Graphics API**: the RHI has an OpenGL 4.3+ backend (with `glClipControl`: OpenGL 4.5 or `GL_ARB_clip_control`);
+            Vulkan arrives in M4, Metal later. **Guide**: `docs/USING_THE_ENGINE.md`; incompatible changes: `docs/releases/`.
           generate_release_notes: true
           files: dist/*

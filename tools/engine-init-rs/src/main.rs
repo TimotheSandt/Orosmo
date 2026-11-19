@@ -3,6 +3,10 @@ use std::io::{self, Cursor, Read};
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
+thread_local! {
+    static LOCAL_PACKAGE: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
 // ── Embedded payloads (set by build.rs) ──────────────────────────────────────
 // ENGINE_ZIP may be a zero-byte stub (dev build without ENGINE_PAYLOAD_ZIP).
 // Use has_embedded_engine() before relying on it; GitHub is always tried first.
@@ -50,6 +54,8 @@ fn platform() -> &'static str {
         "macos-arm64"
     } else if cfg!(target_os = "macos") {
         "macos-x64"
+    } else if cfg!(target_arch = "aarch64") {
+        "linux-arm64"
     } else {
         "linux-x64"
     }
@@ -76,8 +82,26 @@ fn main() {
     }
 }
 
+// `--package <zip>` : paquet local (téléchargé à la main, ou construit par `make engine-tool`) au lieu de la dernière release.
+fn take_package_option(args: &mut Vec<String>) -> Result<Option<PathBuf>, String> {
+    if let Some(i) = args.iter().position(|a| a == "--package") {
+        if i + 1 >= args.len() {
+            return Err("--package expects the path of an engine-pkg-<platform>.zip".to_string());
+        }
+        let path = PathBuf::from(args.remove(i + 1));
+        args.remove(i);
+        if !path.is_file() {
+            return Err(format!("package not found: {}", path.display()));
+        }
+        return Ok(Some(path));
+    }
+    Ok(None)
+}
+
 fn run() -> Result<(), String> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let package = take_package_option(&mut args)?;
+    LOCAL_PACKAGE.with(|p| *p.borrow_mut() = package);
     let cmd = args.first().map(String::as_str).unwrap_or("");
 
     match cmd {
@@ -172,6 +196,9 @@ fn cmd_update(args: &[String]) -> Result<(), String> {
 // ── GitHub release ────────────────────────────────────────────────────────────
 
 fn fetch_release_or_warn() -> Option<Release> {
+    if LOCAL_PACKAGE.with(|p| p.borrow().is_some()) {
+        return None; // paquet local : pas de réseau
+    }
     println!("Fetching latest engine release from GitHub...");
     match Release::fetch_latest() {
         Ok(r) => Some(r),
@@ -303,6 +330,11 @@ fn is_newer(remote_tag: &str, local: &str) -> bool {
 // ── Engine extraction ─────────────────────────────────────────────────────────
 
 fn extract_engine(project_dir: &Path, release: Option<&Release>) -> Result<(), String> {
+    if let Some(path) = LOCAL_PACKAGE.with(|p| p.borrow().clone()) {
+        println!("  Using local package {}...", path.display());
+        let bytes = fs::read(&path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+        return extract_zip_bytes(project_dir, &bytes, "engine/");
+    }
     // Try GitHub first if a release is available.
     if let Some(r) = release {
         let pkg_name = engine_pkg_name();
@@ -660,6 +692,7 @@ fn print_usage() {
     eprintln!("Usage:");
     eprintln!("  engine init [project-name]   create a new project");
     eprintln!("  engine update [path]         update engine package and template files");
+    eprintln!("  --package <engine-pkg.zip>   use this local package instead of downloading the latest release");
     eprintln!();
     eprintln!("'engine init' with no argument initialises the current directory,");
     eprintln!("using the directory name as the project name.");
