@@ -105,6 +105,9 @@ class Window
     void SetCursorMode(CursorMode mode);
     glm::dvec2 GetCursorPosition() const;
     void SetCursorPosition(glm::dvec2 position);
+    // Presse-papiers du système (texte UTF-8) ; vide sans fenêtre.
+    std::string GetClipboardText() const;
+    void SetClipboardText(const std::string &text) const;
 
     // Performance
     int GetFrame() const { return this->fpsCounter.getFrame(); }

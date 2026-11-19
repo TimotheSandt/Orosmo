@@ -306,7 +306,7 @@ void SpinBox::arrange(Ui &ui, const Rect &content, const Style &style)
 
 // ── TextArea ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-TextArea::TextArea(Binding<std::string> value) : Widget("textField"), value_(std::move(value)) {}
+TextArea::TextArea(Binding<std::string> value) : Widget("textArea"), value_(std::move(value)) {}
 
 std::string TextArea::text() const { return syncing_ ? value_.value() : edit_.text; }
 
@@ -594,15 +594,15 @@ void TextArea::drawContent(const Ui &ui, renderer::DrawList &list, const Style &
         }
         if (lineNumbers_)
         {
-            Color muted = style.foreground;
-            muted.a *= 0.45f;
-            drawText(ui, list, std::to_string(i + 1), {{content.position.x, y}, {g - style.spacing, lh}}, style, Align::kEnd, &muted);
+            drawText(ui, list, std::to_string(i + 1), {{content.position.x, y}, {g - style.spacing, lh}}, style, Align::kEnd, &style.muted);
         }
         if (!line.empty())
             ui.font().draw(list, line, {x0, y}, style.fontSize, style.foreground, style.font.get());
         if (editing && edit_.caret >= l.begin && edit_.caret <= l.end && lineOf(edit_.caret) == i && std::fmod(ui.time(), 1.0f) < 0.6f)
             list.rect({std::round(xAt(edit_.caret)), y}, {std::max(1.0f, style.borderWidth), lh}, style.foreground);
     }
+    if (lineNumbers_) // séparation entre les numéros et le texte
+        list.rect({content.position.x + g - style.spacing * 0.5f, content.position.y}, {std::max(1.0f, style.borderWidth), content.size.y}, style.border);
     list.popClip();
 }
 

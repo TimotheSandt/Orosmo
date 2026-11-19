@@ -86,6 +86,15 @@
             "padding": "space.small",
             "states": {"hover": {"border": "color.outlineHover"}}
         },
+        "textArea": {
+            "background": "color.field",
+            "border": "color.outline",
+            "borderWidth": "border.width",
+            "radius": "radius.small",
+            "padding": "space.small",
+            "spacing": "space.large",
+            "states": {"hover": {"border": "color.outlineHover"}}
+        },
         "dropdown": {
             "background": "color.control",
             "border": "color.outline",

@@ -196,12 +196,15 @@ gallery:
 gallery-run: gallery
 	./$(GALLERY) $(ARGS)
 gallery-capture: gallery
-	for tab in widgets layout parameters themes; do \
+	for tab in widgets controls color windows layout parameters themes; do \
 	    ./$(GALLERY) --headless --theme dark --tab $$tab --capture build/gallery-capture/dark-$$tab || exit 1; done
 	./$(GALLERY) --headless --theme light --tab widgets --capture build/gallery-capture/light-widgets
 	./$(GALLERY) --headless --theme dark --tab widgets --click fruit --capture build/gallery-capture/dark-dropdown-open
 	./$(GALLERY) --headless --theme light --tab widgets --hover volume --capture-frames 60 --capture build/gallery-capture/light-tooltip
 	./$(GALLERY) --headless --theme framed --tab themes --capture build/gallery-capture/framed-themes
+	./$(GALLERY) --headless --theme dark --tab windows --click openDialog --capture build/gallery-capture/dark-dialog
+	./$(GALLERY) --headless --theme dark --tab windows --click menuFile --capture build/gallery-capture/dark-menu
+	./$(GALLERY) --headless --theme light --tab windows --click notifyWarning --capture build/gallery-capture/light-notification
 
 # ── BLD-02 : de bout en bout depuis le paquet (sans les sources du moteur) ──
 #   make e2e-init   paquet + outil `engine` construits ; `engine init --package` d'un projet neuf dans build/e2e/<date>/mygame ;

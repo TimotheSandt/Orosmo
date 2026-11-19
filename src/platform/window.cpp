@@ -224,6 +224,20 @@ void Window::SetCursorMode(CursorMode mode)
     glfwSetInputMode(native(this->window), GLFW_CURSOR, value);
 }
 
+std::string Window::GetClipboardText() const
+{
+    if (!this->window)
+        return {};
+    const char *text = glfwGetClipboardString(native(this->window));
+    return text != nullptr ? std::string(text) : std::string();
+}
+
+void Window::SetClipboardText(const std::string &text) const
+{
+    if (this->window)
+        glfwSetClipboardString(native(this->window), text.c_str());
+}
+
 glm::dvec2 Window::GetCursorPosition() const
 {
     glm::dvec2 position{0.0, 0.0};
