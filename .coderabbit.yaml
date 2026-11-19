@@ -117,7 +117,7 @@ reviews:
         mode: warning
         instructions: >-
           Ne signaler que les violations NOUVELLES (lignes ajoutées après le tag pre-cleanup / M00). Les violations
-          historiques sont connues et suivies : fichiers listés dans tools/baseline/api_isolation.txt et
+          historiques sont connues et suivies : fichiers listés dans
           tools/baseline/layers.txt, docs/GAPS.md (G5, G19, G47) ; elles migrent aux jalons M1-M4 et ne doivent pas faire
           échouer ce contrôle. Échouer si la PR ajoute un appel gl*/Vk*/MTL* hors de src/Graphics/Backends/ (ou src/rhi/),
           un include GLFW ou <windows.h> hors des backends et de src/platform/, une exception dans le flux normal, rand() ou l'horloge dans de la génération procédurale,

@@ -1,7 +1,7 @@
 #include "Game/Game.h"
 #include "Graphics/Backends/GraphicsAPI.h"
 #include "Logger.h"
-#include "Window.h"
+#include <engine/platform/window.hpp>
 
 #include <random>
 #include <cstdlib>

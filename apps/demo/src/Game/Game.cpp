@@ -9,8 +9,6 @@
 #include "UI/Views/PerformanceView.gen.h"
 #include "engine/renderer/image.hpp"
 
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
 
 namespace rd = engine::renderer;
 namespace rhi = engine::rhi;
@@ -161,7 +159,7 @@ void Game::processInput()
     InputManager &inputManager = InputManager::GetInstance(this->window.GetWindow());
     if (inputManager.IsKeyJustPressed(KeyButton::ESCAPE))
     {
-        glfwSetWindowShouldClose(this->window.GetWindow(), true);
+        this->window.RequestClose();
     }
     if (inputManager.IsKeyJustPressed(KeyButton::F11))
     {
@@ -220,7 +218,7 @@ void Game::update()
     const double fps = this->window.GetFPS();
     const float deltaTime = fps > 0.0 ? static_cast<float>(1.0 / fps) : 1.0f / 60.0f;
     this->refreshViewSize();
-    this->cameraController.update(this->window.GetWindow(), this->camera, deltaTime, this->viewWidth, this->viewHeight);
+    this->cameraController.update(this->window, this->camera, deltaTime, this->viewWidth, this->viewHeight);
 
     this->world->Update();
     UI::Manager::Instance().Update(deltaTime, this->viewWidth, this->viewHeight);
@@ -339,7 +337,7 @@ void Game::endFrame()
         const bool sceneSaved = sceneRenderer->saveColorPng(this->captureDirectory + "/scene.png").has_value();
         const bool uiSaved = rd::savePng(*device, composed.color(0), this->captureDirectory + "/ui.png").has_value();
         this->captureDone = sceneSaved && uiSaved;
-        glfwSetWindowShouldClose(this->window.GetWindow(), true);
+        this->window.RequestClose();
     }
 
     Profiler::Profile("SwapBuffers", [&]() { (void)device->present(); });

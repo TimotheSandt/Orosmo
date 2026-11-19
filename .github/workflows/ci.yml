@@ -135,8 +135,7 @@ jobs:
         run: |
           sh tools/check-repo.sh
           python3 tools/check_layers.py --strict
-          python3 tools/check_api_isolation.py --graphics-only --strict   # gl*, Vk*, MTL* : bloquant (M2 B6)
-          python3 tools/check_api_isolation.py --baseline tools/baseline/api_isolation.txt   # GLFW, <windows.h> : baseline jusqu'au lot C
+          python3 tools/check_api_isolation.py --strict   # gl*, Vk*, MTL*, GLFW, <windows.h> hors de src/rhi/ et src/platform/ : bloquant (M2 lot C)
           python3 tools/check_headers.py --strict
 
       - name: Build (debug, -Werror)

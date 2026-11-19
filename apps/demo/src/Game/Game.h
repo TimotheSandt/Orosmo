@@ -6,10 +6,10 @@
 #include <string>
 
 #include "CameraController.h"
-#include "InputManager.h"
+#include <engine/platform/input_manager.hpp>
 #include "Profiler.h"
 #include "UIManager.h"
-#include "Window.h"
+#include <engine/platform/window.hpp>
 #include "World.h"
 
 #include "engine/renderer/camera.hpp"

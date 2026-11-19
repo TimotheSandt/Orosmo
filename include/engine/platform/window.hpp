@@ -1,17 +1,24 @@
 #pragma once
 
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
 #include <chrono>
 #include <functional>
 #include <cstdint>
 #include <string>
 
+#include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 
 #include "FPSCounter.h"
 
 class InputManager;
+
+// Mode du curseur (le GLFW sous-jacent reste caché dans src/platform/).
+enum class CursorMode : std::uint8_t
+{
+    Normal,
+    Hidden,
+    Disabled
+};
 
 enum WindowState : std::uint8_t
 {
@@ -84,9 +91,20 @@ class Window
     glm::vec4 GetClearColor() const { return this->parameters.clearColor; }
     int *GetWidthptr() { return &this->parameters.width; }
     int *GetHeightptr() { return &this->parameters.height; }
-    bool ShouldClose() const { return glfwWindowShouldClose(this->window); }
+    bool ShouldClose() const;
+    // Demande la fermeture (la boucle principale sort au prochain `ShouldClose`).
+    void RequestClose();
     double GetAspectRatio() const { return (double)this->parameters.width / (double)this->parameters.height; }
-    GLFWwindow *GetWindow() const { return this->window; }
+    // Poignée native opaque, à passer telle quelle à `rhi::SurfaceDesc::nativeWindow` et à `InputManager::GetInstance`.
+    void *GetWindow() const { return this->window; }
+    // Taille réelle en pixels du tampon d'image (≠ taille de la fenêtre sur les écrans à échelle).
+    void GetFramebufferSize(int &width, int &height) const;
+    // Facteur d'échelle de contenu (DPI) : 1 = 96 dpi ; 2 sur un écran « Retina ». (1, 1) sans fenêtre.
+    glm::vec2 GetContentScale() const;
+    // Curseur (coordonnées en pixels de la fenêtre, origine en haut à gauche).
+    void SetCursorMode(CursorMode mode);
+    glm::dvec2 GetCursorPosition() const;
+    void SetCursorPosition(glm::dvec2 position);
 
     // Performance
     int GetFrame() const { return this->fpsCounter.getFrame(); }
@@ -118,15 +136,15 @@ class Window
 
     // Callbacks
     void SetupCallbacks();
-    void CallbackFocus(GLFWwindow *window, int focused);
-    void CallbackResize(GLFWwindow *window, int width, int height);
-    void CallbackPosition(GLFWwindow *window, int x, int y);
+    void CallbackFocus(int focused);
+    void CallbackResize(int width, int height);
+    void CallbackPosition(int x, int y);
 
     void ClearCallbacks();
     bool IsWindowHealthy() const;
 
   private:
-    GLFWwindow *window = nullptr;
+    void *window = nullptr; // GLFWwindow*, opaque hors de src/platform/
 
     WindowParameters parameters;
 

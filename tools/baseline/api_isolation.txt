@@ -1,7 +1,0 @@
-apps/demo/src/Game/CameraController.cpp
-apps/demo/src/Game/CameraController.h
-apps/demo/src/Game/Game.cpp
-include/Graphics/Window.h
-include/Utilities/InputManager.h
-src/Graphics/Window.cpp
-src/Utilities/InputManager.cpp

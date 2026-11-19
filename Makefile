@@ -37,8 +37,7 @@ check-layers:
 	@python3 tools/check_layers.py $(CHECK_ARGS)
 
 check-api:
-	@python3 tools/check_api_isolation.py --graphics-only --strict
-	@python3 tools/check_api_isolation.py $(CHECK_ARGS)
+	@python3 tools/check_api_isolation.py --strict
 
 check-headers:
 	@python3 tools/check_headers.py $(CHECK_ARGS)

@@ -1,9 +1,7 @@
 #include "CameraController.h"
 
-#include "InputManager.h"
-
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
+#include <engine/platform/input_manager.hpp>
+#include <engine/platform/window.hpp>
 
 CameraController::CameraController()
 {
@@ -19,10 +17,10 @@ CameraController::CameraController()
     InputManager::BindActionToInput("Camera::ToggleWireframe", KeyButton::W);
 }
 
-void CameraController::update(GLFWwindow *window, engine::renderer::Camera &camera, float elapsedSeconds, int viewWidth, int viewHeight)
+void CameraController::update(Window &window, engine::renderer::Camera &camera, float elapsedSeconds, int viewWidth, int viewHeight)
 {
     const float distance = speed_ * elapsedSeconds;
-    InputManager &input = InputManager::GetInstance(window);
+    InputManager &input = InputManager::GetInstance(window.GetWindow());
 
     if (input.IsActionActive("Camera::MoveForward"))
     {
@@ -64,28 +62,28 @@ void CameraController::update(GLFWwindow *window, engine::renderer::Camera &came
 
     if (input.IsActionActive("Camera::Rotate") && viewWidth > 0 && viewHeight > 0)
     {
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+        window.SetCursorMode(CursorMode::Hidden);
 
         const double centerX = static_cast<double>(viewWidth) / 2.0;
         const double centerY = static_cast<double>(viewHeight) / 2.0;
         if (firstClick_)
         {
-            glfwSetCursorPos(window, centerX, centerY);
+            window.SetCursorPosition({centerX, centerY});
             firstClick_ = false;
         }
 
-        double mouseX = 0.0;
-        double mouseY = 0.0;
-        glfwGetCursorPos(window, &mouseX, &mouseY);
+        const glm::dvec2 mouse = window.GetCursorPosition();
+        const double mouseX = mouse.x;
+        const double mouseY = mouse.y;
         const float rotX = sensitivity_ * static_cast<float>(mouseX - centerX) / static_cast<float>(viewWidth);
         const float rotY = sensitivity_ * static_cast<float>(mouseY - centerY) / static_cast<float>(viewHeight);
         camera.rotatePitch(-rotY);
         camera.rotateYaw(-rotX);
-        glfwSetCursorPos(window, centerX, centerY);
+        window.SetCursorPosition({centerX, centerY});
     }
     else
     {
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        window.SetCursorMode(CursorMode::Normal);
         firstClick_ = true;
     }
 

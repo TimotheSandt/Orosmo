@@ -4,7 +4,7 @@
 
 #include "engine/renderer/camera.hpp"
 
-struct GLFWwindow;
+class Window;
 
 class CameraController
 {
@@ -13,7 +13,7 @@ class CameraController
 
     // Déplace et oriente `camera` selon les actions actives de l'InputManager (clavier, clic droit pour tourner). `viewWidth` et
     // `viewHeight` : taille de la vue en pixels (centre de rotation de la souris).
-    void update(GLFWwindow *window, engine::renderer::Camera &camera, float elapsedSeconds, int viewWidth, int viewHeight);
+    void update(Window &window, engine::renderer::Camera &camera, float elapsedSeconds, int viewWidth, int viewHeight);
     // Fil de fer (touche W, en debug seulement) : l'état voulu après `update`.
     bool wireframeRequested() const noexcept { return wireframe_; }
 

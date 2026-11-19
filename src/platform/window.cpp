@@ -1,6 +1,9 @@
-#include "Window.h"
+#include <engine/platform/window.hpp>
 
-#include "InputManager.h"
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+
+#include <engine/platform/input_manager.hpp>
 #include "Profiler.h"
 #include "Logger.h"
 #include "Utilities.h"
@@ -25,6 +28,7 @@
 
 namespace
 {
+GLFWwindow *native(void *handle) { return static_cast<GLFWwindow *>(handle); }
 // Initialise GLFW une fois : rappel d'erreur journalisé (reprend celui de l'ancien backend OpenGL).
 bool InitializeGlfw()
 {
@@ -66,6 +70,29 @@ Window::Window()
     this->lastTime = this->fpsCounter.getLastTime();
 
     // Windowed
+    this->parameters.windowedWidth = this->parameters.width;
+    this->parameters.windowedHeight = this->parameters.height;
+    this->parameters.windowedPosX = this->parameters.posX;
+    this->parameters.windowedPosY = this->parameters.posY;
+}
+
+Window::Window(std::string title, int width, int height) : Window()
+{
+    this->parameters.title = std::move(title);
+    this->parameters.width = width;
+    this->parameters.height = height;
+    this->parameters.windowedWidth = width;
+    this->parameters.windowedHeight = height;
+}
+
+Window::Window(std::string title, int width, int height, WindowState windowState) : Window(std::move(title), width, height)
+{
+    this->parameters.windowState = windowState;
+}
+
+Window::Window(WindowParameters parameters) : Window()
+{
+    this->parameters = std::move(parameters);
     this->parameters.windowedWidth = this->parameters.width;
     this->parameters.windowedHeight = this->parameters.height;
     this->parameters.windowedPosX = this->parameters.posX;
@@ -120,10 +147,10 @@ int Window::Init(const std::function<void()> &beforeCreate)
         return -1;
     }
 
-    glfwGetWindowPos(this->window, &this->parameters.posX, &this->parameters.posY);
+    glfwGetWindowPos(native(this->window), &this->parameters.posX, &this->parameters.posY);
     WINDOW_CHECK_ERRORS("glfwGetWindowPos");
 
-    glfwSetWindowUserPointer(this->window, this);
+    glfwSetWindowUserPointer(native(this->window), this);
     WINDOW_CHECK_ERRORS("glfwSetWindowUserPointer");
 
     this->SetupCallbacks();
@@ -146,7 +173,7 @@ void Window::Close()
     InputManager::RemoveInstance(this->window);
     this->inputManager = nullptr;
 
-    glfwDestroyWindow(this->window);
+    glfwDestroyWindow(native(this->window));
     this->window = nullptr;
 
 #ifdef _WIN32
@@ -155,6 +182,65 @@ void Window::Close()
 }
 
 void Window::Terminate() { glfwTerminate(); }
+
+bool Window::ShouldClose() const { return this->window == nullptr || glfwWindowShouldClose(native(this->window)) != 0; }
+
+void Window::RequestClose()
+{
+    if (this->window)
+    {
+        glfwSetWindowShouldClose(native(this->window), GLFW_TRUE);
+    }
+}
+
+void Window::GetFramebufferSize(int &width, int &height) const
+{
+    width = this->parameters.width;
+    height = this->parameters.height;
+    if (this->window)
+    {
+        glfwGetFramebufferSize(native(this->window), &width, &height);
+    }
+}
+
+glm::vec2 Window::GetContentScale() const
+{
+    float x = 1.0f;
+    float y = 1.0f;
+    if (this->window)
+    {
+        glfwGetWindowContentScale(native(this->window), &x, &y);
+    }
+    return {x, y};
+}
+
+void Window::SetCursorMode(CursorMode mode)
+{
+    if (!this->window)
+    {
+        return;
+    }
+    const int value = mode == CursorMode::Hidden ? GLFW_CURSOR_HIDDEN : mode == CursorMode::Disabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL;
+    glfwSetInputMode(native(this->window), GLFW_CURSOR, value);
+}
+
+glm::dvec2 Window::GetCursorPosition() const
+{
+    glm::dvec2 position{0.0, 0.0};
+    if (this->window)
+    {
+        glfwGetCursorPos(native(this->window), &position.x, &position.y);
+    }
+    return position;
+}
+
+void Window::SetCursorPosition(glm::dvec2 position)
+{
+    if (this->window)
+    {
+        glfwSetCursorPos(native(this->window), position.x, position.y);
+    }
+}
 
 bool Window::NewFrame()
 {
@@ -268,7 +354,7 @@ void Window::ActivateFullscreen()
     }
 
     // Switch to fullscreen
-    glfwSetWindowMonitor(this->window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+    glfwSetWindowMonitor(native(this->window), monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
     WINDOW_CHECK_ERRORS("glfwSetWindowMonitor");
 
     // Update internal parameters
@@ -297,10 +383,10 @@ void Window::ActivateWindowed()
     ShowWindow(FindWindowA("Shell_TrayWnd", nullptr), SW_SHOW);
 #endif
 
-    glfwSetWindowMonitor(this->window, nullptr, this->parameters.windowedPosX, this->parameters.windowedPosY,
+    glfwSetWindowMonitor(native(this->window), nullptr, this->parameters.windowedPosX, this->parameters.windowedPosY,
                          this->parameters.windowedWidth, this->parameters.windowedHeight, GLFW_DONT_CARE);
     WINDOW_CHECK_ERRORS("glfwSetWindowMonitor");
-    glfwSetWindowAttrib(this->window, GLFW_DECORATED, GLFW_TRUE);
+    glfwSetWindowAttrib(native(this->window), GLFW_DECORATED, GLFW_TRUE);
     WINDOW_CHECK_ERRORS("glfwSetWindowAttrib");
 
     // Update internal parameters
@@ -353,9 +439,9 @@ void Window::ActivateBorderless()
     ShowWindow(FindWindowA("Shell_TrayWnd", nullptr), SW_HIDE);
 #endif
 
-    glfwSetWindowAttrib(this->window, GLFW_DECORATED, GLFW_FALSE);
+    glfwSetWindowAttrib(native(this->window), GLFW_DECORATED, GLFW_FALSE);
     WINDOW_CHECK_ERRORS("glfwSetWindowAttrib");
-    glfwSetWindowMonitor(this->window, nullptr, 0, 0, width, height, GLFW_DONT_CARE);
+    glfwSetWindowMonitor(native(this->window), nullptr, 0, 0, width, height, GLFW_DONT_CARE);
     WINDOW_CHECK_ERRORS("glfwSetWindowMonitor");
 
     // Update internal parameters
@@ -374,9 +460,9 @@ void Window::SaveWindowedParameters()
         return;
     }
 
-    glfwGetWindowSize(this->window, &this->parameters.windowedWidth, &this->parameters.windowedHeight);
+    glfwGetWindowSize(native(this->window), &this->parameters.windowedWidth, &this->parameters.windowedHeight);
     WINDOW_CHECK_ERRORS("glfwGetWindowSize");
-    glfwGetWindowPos(this->window, &this->parameters.windowedPosX, &this->parameters.windowedPosY);
+    glfwGetWindowPos(native(this->window), &this->parameters.windowedPosX, &this->parameters.windowedPosY);
     WINDOW_CHECK_ERRORS("glfwGetWindowPos");
 }
 
@@ -392,7 +478,7 @@ void Window::PostWindowStateChange() const
 void Window::SetupCallbacks()
 {
     // Callback pour gérer la perte de focus (peut aider avec la touche Windows)
-    glfwSetWindowFocusCallback(this->window,
+    glfwSetWindowFocusCallback(native(this->window),
                                [](GLFWwindow *window, int focused)
                                {
                                    try
@@ -402,7 +488,7 @@ void Window::SetupCallbacks()
                                        {
                                            return;
                                        }
-                                       windowObj->CallbackFocus(window, focused);
+                                       windowObj->CallbackFocus(focused);
                                    }
                                    catch (...)
                                    {
@@ -410,7 +496,7 @@ void Window::SetupCallbacks()
                                    }
                                });
 
-    glfwSetWindowSizeCallback(this->window,
+    glfwSetWindowSizeCallback(native(this->window),
                               [](GLFWwindow *window, int width, int height)
                               {
                                   try
@@ -420,7 +506,7 @@ void Window::SetupCallbacks()
                                       {
                                           return;
                                       }
-                                      windowObj->CallbackResize(window, width, height);
+                                      windowObj->CallbackResize(width, height);
                                   }
                                   catch (...)
                                   {
@@ -428,7 +514,7 @@ void Window::SetupCallbacks()
                                   }
                               });
 
-    glfwSetWindowPosCallback(this->window,
+    glfwSetWindowPosCallback(native(this->window),
                              [](GLFWwindow *window, int x, int y)
                              {
                                  try
@@ -438,7 +524,7 @@ void Window::SetupCallbacks()
                                      {
                                          return;
                                      }
-                                     windowObj->CallbackPosition(window, x, y);
+                                     windowObj->CallbackPosition(x, y);
                                  }
                                  catch (...)
                                  {
@@ -447,25 +533,20 @@ void Window::SetupCallbacks()
                              });
 }
 
-void Window::CallbackResize(GLFWwindow *window, int width, int height)
+void Window::CallbackResize(int width, int height)
 {
-    UNUSED(window);
-
     this->parameters.width = width;
     this->parameters.height = height;
 }
 
-void Window::CallbackPosition(GLFWwindow *window, int x, int y)
+void Window::CallbackPosition(int x, int y)
 {
-    UNUSED(window);
-
     this->parameters.posX = x;
     this->parameters.posY = y;
 }
 
-void Window::CallbackFocus(GLFWwindow *window, int focused)
+void Window::CallbackFocus(int focused)
 {
-    UNUSED(window);
     UNUSED(focused);
 
     LOG_DEBUGGING("Window focus changed");
@@ -484,14 +565,14 @@ void Window::CallbackFocus(GLFWwindow *window, int focused)
 
 void Window::ClearCallbacks()
 {
-    glfwSetWindowFocusCallback(this->window, nullptr);
-    glfwSetWindowSizeCallback(this->window, nullptr);
-    glfwSetWindowPosCallback(this->window, nullptr);
-    glfwSetKeyCallback(this->window, nullptr);
-    glfwSetFramebufferSizeCallback(this->window, nullptr);
-    glfwSetWindowIconifyCallback(this->window, nullptr);
-    glfwSetWindowMaximizeCallback(this->window, nullptr);
-    glfwSetWindowCloseCallback(this->window, nullptr);
+    glfwSetWindowFocusCallback(native(this->window), nullptr);
+    glfwSetWindowSizeCallback(native(this->window), nullptr);
+    glfwSetWindowPosCallback(native(this->window), nullptr);
+    glfwSetKeyCallback(native(this->window), nullptr);
+    glfwSetFramebufferSizeCallback(native(this->window), nullptr);
+    glfwSetWindowIconifyCallback(native(this->window), nullptr);
+    glfwSetWindowMaximizeCallback(native(this->window), nullptr);
+    glfwSetWindowCloseCallback(native(this->window), nullptr);
 }
 
 // Fonction pour vérifier l'état de la fenêtre
