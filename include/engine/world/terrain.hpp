@@ -6,6 +6,7 @@
 #include "engine/core/reflection.hpp"
 #include "engine/world/noise.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -69,6 +70,11 @@ Heightmap generateTile(const TerrainParams &params, std::uint32_t seed, const Ti
 } // namespace engine::world
 
 // Réflexion (CORE-12) : les paramètres du terrain s'affichent et se sauvegardent automatiquement (UI-12, préréglages).
+template <> struct engine::core::EnumNames<engine::world::NoiseBasis>
+{
+    static constexpr std::array<const char *, 3> names{"Perlin", "Simplex", "Worley"};
+};
+
 template <> struct engine::core::Reflect<engine::world::FbmParams>
 {
     static constexpr int kVersion = 1;
