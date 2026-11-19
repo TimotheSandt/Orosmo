@@ -80,6 +80,10 @@ SceneRenderer::~SceneRenderer()
     {
         frameGenMode_->shutdown();
     }
+    if (activeUpscaleMode_ != nullptr)
+    {
+        activeUpscaleMode_->shutdown();
+    }
     device_.destroy(frameGroup_);
 }
 
@@ -115,20 +119,37 @@ void SceneRenderer::registerUpscaleMode(std::unique_ptr<IUpscaleMode> mode)
 
 bool SceneRenderer::setActiveUpscaleMode(const std::string &name)
 {
-    if (name == "disabled")
+    IUpscaleMode *candidate = nullptr;
+    if (name != "disabled")
     {
-        activeUpscaleMode_ = nullptr;
-        return true;
-    }
-    for (auto &mode : upscaleModes_)
-    {
-        if (mode && mode->name() == name && mode->supports(device_.capabilities()))
+        for (auto &mode : upscaleModes_)
         {
-            activeUpscaleMode_ = mode.get();
+            if (mode && mode->name() == name)
+            {
+                candidate = mode.get();
+                break;
+            }
+        }
+        // Inconnu, non supporté ou qui ne s'initialise pas : refusé, le mode actif reste en place.
+        if (candidate == nullptr || !candidate->supports(device_.capabilities()))
+        {
+            return false;
+        }
+        if (candidate == activeUpscaleMode_)
+        {
             return true;
         }
+        if (!candidate->initialize(device_))
+        {
+            return false;
+        }
     }
-    return false;
+    if (activeUpscaleMode_ != nullptr && activeUpscaleMode_ != candidate)
+    {
+        activeUpscaleMode_->shutdown();
+    }
+    activeUpscaleMode_ = candidate;
+    return true;
 }
 
 std::string SceneRenderer::activeUpscaleMode() const { return activeUpscaleMode_ == nullptr ? std::string("disabled") : activeUpscaleMode_->name(); }
@@ -164,27 +185,34 @@ void SceneRenderer::removePostProcessPass(const std::string &name)
     std::erase_if(postProcessPasses_, [&](const std::unique_ptr<IPostProcessPass> &p) { return p && p->name() == name; });
 }
 
-void SceneRenderer::setFrameGenerationMode(std::unique_ptr<IFrameGenerationMode> mode)
+core::Result<> SceneRenderer::setFrameGenerationMode(std::unique_ptr<IFrameGenerationMode> mode)
 {
+    // Le candidat est vérifié et initialisé AVANT d'arrêter le mode actif : un refus ne laisse pas le renderer sans mode.
+    if (mode != nullptr)
+    {
+        if (!mode->isSupported(device_.capabilities()))
+        {
+            return makeError(ErrorCode::kUnsupported, "setFrameGenerationMode: '" + mode->description().name + "' is not supported by this device");
+        }
+        if (!mode->initialize(device_))
+        {
+            return makeError(ErrorCode::kUnsupported, "setFrameGenerationMode: '" + mode->description().name + "' failed to initialize");
+        }
+    }
     if (frameGenMode_)
     {
         frameGenMode_->shutdown();
     }
     frameGenMode_ = std::move(mode);
-    if (frameGenMode_ && !frameGenMode_->initialize(device_))
-    {
-        frameGenMode_.reset();
-    }
+    generatedFrame_ = {};
+    return {};
 }
 
-bool SceneRenderer::needsTemporalResources() const noexcept
+bool SceneRenderer::needsJitter() const noexcept { return modeRuns() && activeUpscaleMode_->requirements().needsJitter; }
+
+bool SceneRenderer::needsHistory() const noexcept
 {
-    if (frameGenMode_ != nullptr)
-    {
-        return true;
-    }
-    const UpscaleRequirements req = activeUpscaleModeRequirements();
-    return req.needsHistory || req.needsDepth || req.needsMotionVectors;
+    return (modeRuns() && activeUpscaleMode_->requirements().needsHistory) || (frameGenMode_ != nullptr && frameGenMode_->description().needsHistory);
 }
 
 core::Result<> SceneRenderer::rebuildFrameGroup()
@@ -232,7 +260,7 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
     }
     if (jitterMode_ == JitterMode::kAuto)
     {
-        if (needsTemporalResources())
+        if (needsJitter()) // seul un mode exécuté qui demande le jitter le reçoit
         {
             currentJitter_ = haltonJitter(jitterIndex_, jitterSequenceLength_, frameWidth_, frameHeight_);
             jitterIndex_ = (jitterIndex_ + 1) % jitterSequenceLength_;
@@ -306,7 +334,8 @@ core::Result<> SceneRenderer::draw(Mesh &mesh, const Camera &, bool lines)
     state.vertexAttributes = mesh.vertexAttributes();
     state.raster.cull = rhi::CullMode::kNone;
     state.raster.fill = lines ? rhi::FillMode::kLine : rhi::FillMode::kFill;
-    state.depth = {true, true, rhi::CompareOp::kLess};
+    // Le passage fil de fer redessine la même géométrie : à profondeur égale, ses arêtes doivent passer.
+    state.depth = {true, true, lines ? rhi::CompareOp::kLessEqual : rhi::CompareOp::kLess};
     state.depthFormat = rhi::Format::kD32Float;
     state.colorTargets.clear();
     for (std::size_t i = 0; i < sceneTarget_.info().colorFormats.size(); ++i)
@@ -322,6 +351,11 @@ core::Result<> SceneRenderer::draw(Mesh &mesh, const Camera &, bool lines)
     if (!pipeline)
     {
         return std::unexpected(pipeline.error());
+    }
+    // Les lumières ont pu changer depuis beginFrame (setLights pendant l'image) : le groupe suit avant chaque dessin.
+    if (auto r = rebuildFrameGroup(); !r)
+    {
+        return r;
     }
     rhi::CommandEncoder &e = *encoder_;
     e.setPipeline(*pipeline);
@@ -394,46 +428,56 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
             return r;
         }
     }
-    const bool needsHistory = needsTemporalResources();
-    if (needsHistory)
+    // Historique : alloué (ou redimensionné) AVANT ses consommateurs, qui y lisent l'image précédente ; la couleur courante n'y
+    // est copiée qu'après eux. Une cible neuve ou redimensionnée ne contient pas d'image précédente : resetHistory.
+    const bool history = needsHistory();
+    bool historyFresh = false;
+    if (history)
     {
-        RenderTargetInfo info;
-        info.size = {static_cast<std::uint32_t>(frameWidth_), static_cast<std::uint32_t>(frameHeight_)};
-        info.colorFormats = {rhi::Format::kRGBA8Unorm};
-        info.depth = false;
-        info.debugName = "scene.history";
+        const std::uint32_t w = static_cast<std::uint32_t>(frameWidth_);
+        const std::uint32_t h = static_cast<std::uint32_t>(frameHeight_);
         if (!historyTarget_.valid())
         {
+            RenderTargetInfo info;
+            info.size = {w, h};
+            info.colorFormats = {rhi::Format::kRGBA8Unorm};
+            info.depth = false;
+            info.debugName = "scene.history";
             auto target = RenderTarget::create(device_, info);
             if (!target)
             {
                 return std::unexpected(target.error());
             }
             historyTarget_ = std::move(*target);
+            historyFresh = true;
         }
-        else if (auto r = historyTarget_.resize(info.size.width, info.size.height); !r)
+        else if (historyTarget_.width() != w || historyTarget_.height() != h)
         {
-            return r;
-        }
-        if (auto r = blit_->copy(*encoder_, sceneTarget_.color(0), blit_->nearestSampler(), historyTarget_.color(0), rhi::Format::kRGBA8Unorm, "history"); !r)
-        {
-            return r;
+            if (auto r = historyTarget_.resize(w, h); !r)
+            {
+                return r;
+            }
+            historyFresh = true;
         }
     }
-    if (activeUpscaleMode_ != nullptr)
+    const bool resetHistory = resetHistoryNextFrame_ || historyFresh;
+    const rhi::TextureHandle previous = history && !historyFresh ? historyTarget_.color(0) : rhi::TextureHandle{};
+
+    if (modeRuns())
     {
-        if (auto *advanced = dynamic_cast<IAdvancedUpscaleMode *>(activeUpscaleMode_))
+        if (activeUpscaleMode_->advanced())
         {
+            auto *advanced = static_cast<IAdvancedUpscaleMode *>(activeUpscaleMode_); // advanced() : pas de RTTI
             UpscaleInput input;
             input.color = sceneTarget_.color(0);
             input.depth = sceneTarget_.depth();
             input.motionVectors = (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1) ? sceneTarget_.color(1) : rhi::TextureHandle{};
-            input.historyColor = historyTarget_.valid() ? historyTarget_.color(0) : rhi::TextureHandle{};
+            input.historyColor = previous;
             input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
             input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
             input.jitter = currentJitter_;
             input.deltaTimeSeconds = deltaTime_;
-            input.resetHistory = resetHistoryNextFrame_;
+            input.resetHistory = resetHistory;
             UpscaleOutput out;
             out.output = output.texture;
             if (auto r = advanced->execute(context, input, out); !r)
@@ -448,26 +492,36 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
     }
     else if (!scaled())
     {
-        // Sans mise à l'échelle et sans mode, l'ancien rendu allait droit à l'écran : on garde une copie 1:1.
+        // Sans mise à l'échelle (ou sans mode), l'ancien rendu allait droit à l'écran : on garde une copie 1:1.
         if (auto r = blit_->copy(*encoder_, sceneTarget_.color(0), blit_->nearestSampler(), output.texture, output.format, "present"); !r)
         {
             return r;
         }
     }
+    generatedFrame_ = {};
     if (frameGenMode_ != nullptr)
     {
         FrameGenerationInput input;
         input.currentColor = sceneTarget_.color(0);
-        input.previousColor = historyTarget_.valid() ? historyTarget_.color(0) : rhi::TextureHandle{};
+        input.previousColor = previous;
         input.depth = sceneTarget_.depth();
         input.motionVectors = (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1) ? sceneTarget_.color(1) : rhi::TextureHandle{};
         input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
         input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
         input.jitter = currentJitter_;
         input.deltaTimeSeconds = deltaTime_;
-        input.resetHistory = resetHistoryNextFrame_;
+        input.resetHistory = resetHistory;
         FrameGenerationOutput out;
         if (auto r = frameGenMode_->generateFrame(context, input, out); !r)
+        {
+            return r;
+        }
+        generatedFrame_ = out.generatedFrame;
+    }
+    if (history)
+    {
+        if (auto r = blit_->copy(*encoder_, sceneTarget_.color(0), blit_->nearestSampler(), historyTarget_.color(0), rhi::Format::kRGBA8Unorm, "history");
+            !r)
         {
             return r;
         }

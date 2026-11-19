@@ -80,12 +80,19 @@ core::Result<rhi::BindGroupHandle> FullscreenBlit::groupFor(rhi::TextureHandle s
     return *group;
 }
 
-core::Result<> FullscreenBlit::draw(rhi::CommandEncoder &encoder, rhi::TextureHandle source, rhi::SamplerHandle sampler, rhi::Format destinationFormat)
+core::Result<> FullscreenBlit::draw(rhi::CommandEncoder &encoder, rhi::TextureHandle source, rhi::SamplerHandle sampler, rhi::Format destinationFormat,
+                                    bool premultiplied)
 {
     GraphicsState state;
     state.raster.cull = rhi::CullMode::kNone;
-    state.colorTargets.assign(1, rhi::ColorTargetState{.format = destinationFormat});
-    state.debugName = "blit";
+    rhi::ColorTargetState target{.format = destinationFormat};
+    if (premultiplied)
+    {
+        target.blend = {true, rhi::BlendFactor::kOne, rhi::BlendFactor::kOneMinusSrcAlpha, rhi::BlendOp::kAdd,
+                        rhi::BlendFactor::kOne, rhi::BlendFactor::kOneMinusSrcAlpha, rhi::BlendOp::kAdd};
+    }
+    state.colorTargets.assign(1, target);
+    state.debugName = premultiplied ? "blit.compose" : "blit";
     auto pipeline = pipelines_.graphics(*program_, state);
     if (!pipeline)
     {
@@ -110,6 +117,18 @@ core::Result<> FullscreenBlit::copy(rhi::CommandEncoder &encoder, rhi::TextureHa
     pass.debugName = passName;
     encoder.beginRenderPass(pass);
     auto r = draw(encoder, source, sampler, destinationFormat);
+    encoder.endRenderPass();
+    return r;
+}
+
+core::Result<> FullscreenBlit::compose(rhi::CommandEncoder &encoder, rhi::TextureHandle source, rhi::SamplerHandle sampler, rhi::TextureHandle destination,
+                                       rhi::Format destinationFormat, const std::string &passName)
+{
+    rhi::RenderPassDesc pass;
+    pass.colors.push_back({.texture = destination, .load = rhi::LoadOp::kLoad});
+    pass.debugName = passName;
+    encoder.beginRenderPass(pass);
+    auto r = draw(encoder, source, sampler, destinationFormat, true);
     encoder.endRenderPass();
     return r;
 }

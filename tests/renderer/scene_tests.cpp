@@ -16,6 +16,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <cmath>
+#include <limits>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -182,13 +183,85 @@ TEST_SUITE("renderer/light")
         CHECK(lights.lights().size() == 9);
         lights.resetAmbientLight();
         CHECK(lights.ambient().strength == 0.0f);
-        CHECK_THROWS(lights.light(50));
+        CHECK(lights.light(50) == nullptr); // hors limites : aucune exception (CLAUDE.md règle 10)
+        CHECK((lights.setLight(50, rd::ambientLight({1, 1, 1}, 1.0f)).error().code == ErrorCode::kOutOfRange));
+        REQUIRE(lights.upload().has_value());
+        CHECK_FALSE(lights.dirty());
+        REQUIRE(lights.setLight(0, rd::ambientLight({1, 1, 1}, 0.5f)).has_value());
+        CHECK(lights.dirty()); // la seule écriture passe par setLight, qui marque le tampon
+        CHECK(lights.light(0)->strength == 0.5f);
         gpu.expectNoValidationErrors();
     }
 }
 
 TEST_SUITE("renderer/mesh")
 {
+    TEST_CASE("Mesh: an index past the last vertex and an update offset that would overflow are refused (G99)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        rd::MeshData bad = triangleData({1, 0, 0});
+        bad.indices = {0, 1, 3}; // 3 sommets : l'index 3 n'existe pas
+        auto refused = rd::Mesh::create(*gpu.device, bad);
+        REQUIRE_FALSE(refused.has_value());
+        CHECK((refused.error().code == ErrorCode::kOutOfRange));
+        auto mesh = rd::Mesh::create(*gpu.device, triangleData({1, 0, 0}));
+        REQUIRE(mesh.has_value());
+        const std::vector<float> patch{1, 2, 3};
+        auto wrapped = mesh->updateVertices(patch, std::numeric_limits<std::size_t>::max() / sizeof(float) + 1); // * 4 reboucle à 0
+        REQUIRE_FALSE(wrapped.has_value());
+        CHECK((wrapped.error().code == ErrorCode::kOutOfRange));
+        gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("Mesh: normals follow the model rotation (normal matrix computed per object) (G99)")
+    {
+        Scene scene;
+        SKIP_TEST_IF_NULL(scene.gpu.device.get(), "OpenGL 4.3 context");
+        auto program = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag");
+        REQUIRE(program.has_value());
+        // Triangle plein écran de normale +X, tourné de 90° autour de Z : la normale devient +Y, alignée sur la direction de la
+        // lumière directionnelle (+Y, convention de mesh.frag : diffuse = dot(normale, direction)). Sans rotation de la normale, la
+        // diffuse serait nulle (normale perpendiculaire).
+        rd::MeshData data = triangleData({1, 1, 1});
+        for (std::size_t v = 0; v < 3; ++v)
+        {
+            data.vertices[v * 9 + 3] = 1.0f;
+            data.vertices[v * 9 + 4] = 0.0f;
+            data.vertices[v * 9 + 5] = 0.0f;
+        }
+        auto mesh = rd::Mesh::create(*scene.gpu.device, data);
+        REQUIRE(mesh.has_value());
+        mesh->setProgram(*program);
+        auto lights = rd::LightManager::create(*scene.gpu.device);
+        REQUIRE(lights.has_value());
+        lights->addLight(rd::directionalLight({0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, 1.0f));
+        REQUIRE(lights->upload().has_value());
+        scene.renderer->setLights(&*lights);
+        rd::Camera camera;
+        camera.setAspect(8, 8);
+        camera.setFarPlane(100.0f);
+        const TextureHandle out = scene.output(8, 8);
+        scene.renderer->setOutputResolution(8, 8);
+        auto brightness = [&]()
+        {
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e).has_value());
+                    REQUIRE(scene.renderer->setCamera(camera).has_value());
+                    REQUIRE(scene.renderer->drawMesh(*mesh, camera).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
+                });
+            return static_cast<int>(rgba(scene.gpu.pixel(out, 4, 4))[0]);
+        };
+        const int sideways = brightness();
+        mesh->setRotation({0.0f, 0.0f, 90.0f}); // le triangle reste dans le plan z = -1 vu de face ; seule la normale tourne
+        const int facing = brightness();
+        CHECK(facing > sideways + 20);
+        scene.gpu.expectNoValidationErrors();
+    }
+
     TEST_CASE("Mesh: vertex layout from attribute sizes, instancing, transform, updates, RAII release")
     {
         Gpu gpu;
@@ -382,6 +455,7 @@ TEST_SUITE("renderer/scene")
         };
         scene.renderer->registerUpscaleMode(std::make_unique<TemporalMode>());
         REQUIRE(scene.renderer->setActiveUpscaleMode("temporal"));
+        scene.renderer->setUpscalingEnabled(true); // un mode n'est exécuté (et ne reçoit le jitter) que si la mise à l'échelle est active
         scene.renderer->setOutputResolution(8, 4);
         scene.renderer->setMotionVectorsEnabled(true);
         scene.renderer->setDepthAsTextureEnabled(true);
@@ -448,5 +522,170 @@ TEST_SUITE("renderer/scene")
         CHECK_FALSE(scene.renderer->saveColorPng("/nonexistent-dir-xyz/forbidden/shot.png").has_value());
         scene.gpu.expectNoValidationErrors();
     }
-}
 
+    TEST_CASE("SceneRenderer: upscale modes are initialized before activation and shut down when replaced; a refusal keeps the active mode; a mode does not run while upscaling is disabled (G99)")
+    {
+        Scene scene;
+        SKIP_TEST_IF_NULL(scene.gpu.device.get(), "OpenGL 4.3 context");
+        struct Counting final : rd::IUpscaleMode
+        {
+            std::string id;
+            bool accept = true;
+            int inits = 0, shutdowns = 0, runs = 0;
+            std::string name() const noexcept override { return id; }
+            bool initialize(rhi::Device &) override
+            {
+                ++inits;
+                return accept;
+            }
+            void shutdown() override { ++shutdowns; }
+            engine::core::Result<> upscale(rd::FrameContext &, const rd::RenderTarget &, const rd::UpscaleTarget &) override
+            {
+                ++runs;
+                return {};
+            }
+        };
+        auto first = std::make_unique<Counting>();
+        first->id = "first";
+        auto broken = std::make_unique<Counting>();
+        broken->id = "broken";
+        broken->accept = false;
+        Counting *a = first.get();
+        Counting *b = broken.get();
+        scene.renderer->registerUpscaleMode(std::move(first));
+        scene.renderer->registerUpscaleMode(std::move(broken));
+        REQUIRE(scene.renderer->setActiveUpscaleMode("first"));
+        CHECK(a->inits == 1);
+        CHECK_FALSE(scene.renderer->setActiveUpscaleMode("broken")); // initialize échoue
+        CHECK(b->inits == 1);
+        CHECK(scene.renderer->activeUpscaleMode() == "first"); // l'ancien reste actif, pas arrêté
+        CHECK(a->shutdowns == 0);
+
+        scene.renderer->setOutputResolution(4, 4);
+        const TextureHandle out = scene.output(4, 4);
+        auto frame = [&]()
+        {
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 1, 1}}).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {4, 4}}).has_value());
+                });
+        };
+        frame(); // mise à l'échelle désactivée : le mode ne tourne pas, la scène est copiée 1:1
+        CHECK(a->runs == 0);
+        CHECK(rgba(scene.gpu.pixel(out, 1, 1)) == std::array<std::uint8_t, 4>{0, 0, 255, 255});
+        scene.renderer->setUpscalingEnabled(true);
+        frame();
+        CHECK(a->runs == 1);
+
+        REQUIRE(scene.renderer->setActiveUpscaleMode("bilinear-blit"));
+        CHECK(a->shutdowns == 1); // remplacé : arrêté
+        REQUIRE(scene.renderer->setActiveUpscaleMode("first"));
+        CHECK(a->inits == 2);
+        REQUIRE(scene.renderer->setActiveUpscaleMode("disabled"));
+        CHECK(a->shutdowns == 2);
+        scene.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("SceneRenderer: frame generation reads the PREVIOUS image as history, resets it on the first frame, exposes its output; an unsupported mode is refused (G99)")
+    {
+        Scene scene;
+        SKIP_TEST_IF_NULL(scene.gpu.device.get(), "OpenGL 4.3 context");
+        struct Recording final : rd::IFrameGenerationMode
+        {
+            rd::FrameGenerationModeDesc desc{.name = "recording"};
+            bool supported = true;
+            bool hadPrevious = false;
+            bool reset = false;
+            std::array<std::uint8_t, 4> previous{};
+            rhi::TextureHandle produce;
+            int shutdowns = 0;
+            const rd::FrameGenerationModeDesc &description() const noexcept override { return desc; }
+            bool isSupported(const rhi::Capabilities &) const noexcept override { return supported; }
+            bool initialize(rhi::Device &) override { return true; }
+            void shutdown() override { ++shutdowns; }
+            engine::core::Result<> generateFrame(rd::FrameContext &context, const rd::FrameGenerationInput &input, rd::FrameGenerationOutput &output) override
+            {
+                hadPrevious = !input.previousColor.isNull();
+                reset = input.resetHistory;
+                if (hadPrevious)
+                {
+                    auto px = context.device.readTexture(input.previousColor, {.offset = {1, 1, 0}, .size = {1, 1, 1}});
+                    REQUIRE(px.has_value());
+                    previous = rgba(*px);
+                }
+                output.generatedFrame = produce;
+                return {};
+            }
+        };
+        auto unsupported = std::make_unique<Recording>();
+        unsupported->supported = false;
+        auto refused = scene.renderer->setFrameGenerationMode(std::move(unsupported));
+        REQUIRE_FALSE(refused.has_value());
+        CHECK((refused.error().code == ErrorCode::kUnsupported));
+
+        auto mode = std::make_unique<Recording>();
+        Recording *rec = mode.get();
+        rec->produce = scene.output(4, 4);
+        REQUIRE(scene.renderer->setFrameGenerationMode(std::move(mode)).has_value());
+        auto other = std::make_unique<Recording>();
+        other->supported = false;
+        CHECK_FALSE(scene.renderer->setFrameGenerationMode(std::move(other)).has_value());
+        CHECK(rec->shutdowns == 0); // le mode actif n'a pas été arrêté par le refus
+
+        scene.renderer->setOutputResolution(4, 4);
+        const TextureHandle out = scene.output(4, 4);
+        auto frame = [&](std::array<float, 4> clear)
+        {
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e, {.clearColor = clear}).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {4, 4}}).has_value());
+                });
+        };
+        frame({1, 0, 0, 1}); // rouge
+        CHECK_FALSE(rec->hadPrevious);
+        CHECK(rec->reset);
+        CHECK(scene.renderer->generatedFrame() == rec->produce);
+        frame({0, 1, 0, 1}); // vert : le mode doit voir le rouge de l'image précédente
+        REQUIRE(rec->hadPrevious);
+        CHECK_FALSE(rec->reset);
+        CHECK(rec->previous == std::array<std::uint8_t, 4>{255, 0, 0, 255});
+        REQUIRE(scene.renderer->setFrameGenerationMode(nullptr).has_value());
+        CHECK(scene.renderer->generatedFrame().isNull());
+        scene.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("SceneRenderer: lights selected after beginFrame light the first draw (G99)")
+    {
+        Scene scene;
+        SKIP_TEST_IF_NULL(scene.gpu.device.get(), "OpenGL 4.3 context");
+        auto program = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag");
+        REQUIRE(program.has_value());
+        auto mesh = rd::Mesh::create(*scene.gpu.device, triangleData({1, 1, 1}));
+        REQUIRE(mesh.has_value());
+        mesh->setProgram(*program);
+        auto lights = rd::LightManager::create(*scene.gpu.device);
+        REQUIRE(lights.has_value());
+        lights->setAmbientLight({1, 1, 1}, 1.0f);
+        REQUIRE(lights->upload().has_value());
+        rd::Camera camera;
+        camera.setAspect(4, 4);
+        camera.setFarPlane(100.0f);
+        const TextureHandle out = scene.output(4, 4);
+        scene.renderer->setOutputResolution(4, 4);
+        scene.gpu.run(
+            [&](CommandEncoder &e)
+            {
+                REQUIRE(scene.renderer->beginFrame(e).has_value());
+                scene.renderer->setLights(&*lights); // comme World::Render : après beginFrame
+                REQUIRE(scene.renderer->setCamera(camera).has_value());
+                REQUIRE(scene.renderer->drawMesh(*mesh, camera).has_value());
+                REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {4, 4}}).has_value());
+            });
+        CHECK(rgba(scene.gpu.pixel(out, 2, 2))[0] > 200); // éclairé dès la première image (l'ambiante nulle donnerait du noir)
+        scene.gpu.expectNoValidationErrors();
+    }
+}

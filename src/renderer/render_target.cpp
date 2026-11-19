@@ -14,6 +14,16 @@ core::Result<> RenderTarget::allocate()
     {
         return makeError(ErrorCode::kInvalidArgument, "RenderTarget: needs a color format and a non-empty size (" + info_.debugName + ")");
     }
+    // Un format de profondeur (ou indéfini) n'est pas un attachement couleur : refusé ici, avant toute allocation, plutôt que par
+    // la passe plus tard (reconfigure garde alors la cible précédente intacte).
+    for (const rhi::Format format : info_.colorFormats)
+    {
+        if (format == rhi::Format::kUndefined || rhi::formatInfo(format).isDepth())
+        {
+            return makeError(ErrorCode::kInvalidArgument, std::string("RenderTarget: ") + rhi::toString(format) +
+                                                              " is not a color format (" + info_.debugName + ")");
+        }
+    }
     rhi::SamplerDesc sd;
     sd.mipFilter = std::nullopt;
     sd.addressU = rhi::AddressMode::kClampToEdge;

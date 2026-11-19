@@ -3,7 +3,10 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
+#include <array>
 #include <numeric>
+#include <string>
 
 namespace engine::renderer
 {
@@ -62,6 +65,13 @@ core::Result<Mesh> Mesh::create(rhi::Device &device, const MeshData &data)
         return makeError(ErrorCode::kInvalidArgument, "Mesh::create: the vertex array is not a whole number of vertices (" + data.name + ")");
     }
     mesh.layouts_.push_back({.binding = 0, .stride = vertexStride, .stepRate = rhi::VertexStepRate::kVertex});
+    // Chaque index doit désigner un sommet existant : sinon le dessin lirait hors du tampon de sommets.
+    const std::size_t vertexCount = data.vertices.size() / (vertexStride / 4);
+    if (auto bad = std::ranges::find_if(data.indices, [&](std::uint32_t i) { return i >= vertexCount; }); bad != data.indices.end())
+    {
+        return makeError(ErrorCode::kOutOfRange, "Mesh::create: index " + std::to_string(*bad) + " refers to vertex " + std::to_string(*bad) +
+                                                     " but there are only " + std::to_string(vertexCount) + " vertices (" + data.name + ")");
+    }
 
     std::uint32_t instanceStride = 0;
     if (!data.instanceAttributeSizes.empty())
@@ -104,8 +114,9 @@ core::Result<Mesh> Mesh::create(rhi::Device &device, const MeshData &data)
         }
         mesh.instanceBuffer_ = std::move(*inst);
     }
+    // Bloc ModelBlock de mesh.vert (std140) : matrice du modèle puis matrice des normales (inverse transposée, en mat4).
     rhi::BufferDesc md;
-    md.size = sizeof(glm::mat4);
+    md.size = 2 * sizeof(glm::mat4);
     md.usage = rhi::BufferUsage::kUniform | rhi::BufferUsage::kCopyDst;
     md.debugName = data.name + ".model";
     auto model = GpuBuffer::create(device, md);
@@ -115,7 +126,7 @@ core::Result<Mesh> Mesh::create(rhi::Device &device, const MeshData &data)
     }
     mesh.modelBuffer_ = std::move(*model);
     rhi::BindGroupDesc bg;
-    bg.entries.push_back({.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = mesh.modelBuffer_.handle(), .size = sizeof(glm::mat4)});
+    bg.entries.push_back({.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = mesh.modelBuffer_.handle(), .size = 2 * sizeof(glm::mat4)});
     bg.debugName = data.name + ".modelGroup";
     auto group = device.createBindGroup(bg);
     if (!group)
@@ -152,8 +163,15 @@ core::Result<> Mesh::uploadTransform()
     {
         return {};
     }
-    const glm::mat4 model = modelMatrix();
-    if (auto r = modelBuffer_.update(0, std::as_bytes(std::span(glm::value_ptr(model), 16))); !r)
+    // Les normales se transforment par l'inverse transposée de la partie 3x3 (juste aussi avec une échelle non uniforme) ; calculée
+    // une fois par objet ici plutôt qu'à chaque sommet. Matrice non inversible (échelle nulle) : identité, la normale est inutile.
+    std::array<glm::mat4, 2> block{modelMatrix(), glm::mat4(1.0f)};
+    const glm::mat3 linear(block[0]);
+    if (glm::determinant(linear) != 0.0f)
+    {
+        block[1] = glm::mat4(glm::transpose(glm::inverse(linear)));
+    }
+    if (auto r = modelBuffer_.update(0, std::as_bytes(std::span(glm::value_ptr(block[0]), 32))); !r)
     {
         return r;
     }
@@ -195,6 +213,11 @@ core::Result<> Mesh::updateVertices(std::span<const float> data, std::size_t off
     {
         return makeError(ErrorCode::kInvalidArgument, "Mesh::updateVertices: empty mesh");
     }
+    // Décalage vérifié AVANT la conversion en octets (une multiplication qui déborde reviendrait au début du tampon).
+    if (offsetFloats > vertexBuffer_.size() / sizeof(float))
+    {
+        return makeError(ErrorCode::kOutOfRange, "Mesh::updateVertices: offset beyond the vertex buffer");
+    }
     return vertexBuffer_.update(offsetFloats * sizeof(float), std::as_bytes(data));
 }
 
@@ -203,6 +226,10 @@ core::Result<> Mesh::updateInstances(std::span<const float> data, std::size_t of
     if (!instanceBuffer_.valid())
     {
         return makeError(ErrorCode::kInvalidArgument, "Mesh::updateInstances: the mesh has no instance data");
+    }
+    if (offsetFloats > instanceBuffer_.size() / sizeof(float))
+    {
+        return makeError(ErrorCode::kOutOfRange, "Mesh::updateInstances: offset beyond the instance buffer");
     }
     return instanceBuffer_.update(offsetFloats * sizeof(float), std::as_bytes(data));
 }

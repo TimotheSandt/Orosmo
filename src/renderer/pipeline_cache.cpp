@@ -1,5 +1,7 @@
 #include "engine/renderer/pipeline_cache.hpp"
 
+#include "Logger.h"
+
 #include <type_traits>
 
 namespace engine::renderer
@@ -33,20 +35,42 @@ void putBlend(std::string &key, const rhi::BlendState &b)
 }
 } // namespace
 
-void PipelineCache::dropStale(const ShaderProgram &program)
+// Une entrée par (programme, état) : l'identifiant de programme est unique dans le processus (ShaderLibrary), la révision n'est
+// pas dans la clé. Aucune recherche n'a donc à parcourir la table.
+template <typename Build>
+core::Result<rhi::PipelineHandle> PipelineCache::lookup(std::string key, const ShaderProgram &program, Build &&build)
 {
-    for (auto it = entries_.begin(); it != entries_.end();)
+    auto it = entries_.find(key);
+    if (it != entries_.end() && (it->second.revision == program.revision() || it->second.failedRevision == program.revision()))
     {
-        if (it->second.programId == program.id() && it->second.revision != program.revision())
-        {
-            device_.destroy(it->second.pipeline);
-            it = entries_.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
+        ++hits_;
+        return it->second.pipeline; // à jour, ou dernière version utilisable d'une révision qui ne se lie pas
     }
+    ++misses_;
+    auto pipeline = build();
+    if (!pipeline)
+    {
+        if (it == entries_.end())
+        {
+            return std::unexpected(pipeline.error());
+        }
+        // Rechargement qui ne se lie pas : on garde l'ancien pipeline (ShaderLibrary garde aussi ses anciens étages en cas d'échec).
+        it->second.failedRevision = program.revision();
+        lastError_ = pipeline.error();
+        LOG_ERROR(1, "Pipeline rebuild failed for '", program.name(), "' (revision ", program.revision(), "), keeping the previous one: ",
+                  pipeline.error().message);
+        return it->second.pipeline;
+    }
+    if (it != entries_.end())
+    {
+        device_.destroy(it->second.pipeline);
+        it->second = Entry{*pipeline, program.revision(), 0};
+    }
+    else
+    {
+        entries_.emplace(std::move(key), Entry{*pipeline, program.revision(), 0});
+    }
+    return *pipeline;
 }
 
 core::Result<rhi::PipelineHandle> PipelineCache::graphics(const ShaderProgram &program, const GraphicsState &state)
@@ -55,10 +79,8 @@ core::Result<rhi::PipelineHandle> PipelineCache::graphics(const ShaderProgram &p
     {
         return core::makeError(core::ErrorCode::kInvalidArgument, "PipelineCache::graphics: '" + program.name() + "' is a compute program");
     }
-    dropStale(program);
     std::string key = "g";
     put(key, program.id());
-    put(key, program.revision());
     put(key, state.vertexBuffers.size());
     for (const auto &b : state.vertexBuffers)
     {
@@ -90,30 +112,22 @@ core::Result<rhi::PipelineHandle> PipelineCache::graphics(const ShaderProgram &p
     }
     put(key, state.depthFormat);
 
-    if (auto it = entries_.find(key); it != entries_.end())
-    {
-        ++hits_;
-        return it->second.pipeline;
-    }
-    ++misses_;
-    rhi::GraphicsPipelineDesc desc;
-    desc.vertex = program.vertex();
-    desc.fragment = program.fragment();
-    desc.vertexBuffers = state.vertexBuffers;
-    desc.vertexAttributes = state.vertexAttributes;
-    desc.topology = state.topology;
-    desc.raster = state.raster;
-    desc.depth = state.depth;
-    desc.colorTargets = state.colorTargets;
-    desc.depthFormat = state.depthFormat;
-    desc.debugName = state.debugName.empty() ? program.name() : state.debugName;
-    auto pipeline = device_.createGraphicsPipeline(desc);
-    if (!pipeline)
-    {
-        return std::unexpected(pipeline.error());
-    }
-    entries_.emplace(std::move(key), Entry{*pipeline, program.id(), program.revision()});
-    return *pipeline;
+    return lookup(std::move(key), program,
+                  [&]() -> core::Result<rhi::PipelineHandle>
+                  {
+                      rhi::GraphicsPipelineDesc desc;
+                      desc.vertex = program.vertex();
+                      desc.fragment = program.fragment();
+                      desc.vertexBuffers = state.vertexBuffers;
+                      desc.vertexAttributes = state.vertexAttributes;
+                      desc.topology = state.topology;
+                      desc.raster = state.raster;
+                      desc.depth = state.depth;
+                      desc.colorTargets = state.colorTargets;
+                      desc.depthFormat = state.depthFormat;
+                      desc.debugName = state.debugName.empty() ? program.name() : state.debugName;
+                      return device_.createGraphicsPipeline(desc);
+                  });
 }
 
 core::Result<rhi::PipelineHandle> PipelineCache::compute(const ShaderProgram &program)
@@ -122,26 +136,16 @@ core::Result<rhi::PipelineHandle> PipelineCache::compute(const ShaderProgram &pr
     {
         return core::makeError(core::ErrorCode::kInvalidArgument, "PipelineCache::compute: '" + program.name() + "' is not a compute program");
     }
-    dropStale(program);
     std::string key = "c";
     put(key, program.id());
-    put(key, program.revision());
-    if (auto it = entries_.find(key); it != entries_.end())
-    {
-        ++hits_;
-        return it->second.pipeline;
-    }
-    ++misses_;
-    rhi::ComputePipelineDesc desc;
-    desc.compute = program.compute();
-    desc.debugName = program.name();
-    auto pipeline = device_.createComputePipeline(desc);
-    if (!pipeline)
-    {
-        return std::unexpected(pipeline.error());
-    }
-    entries_.emplace(std::move(key), Entry{*pipeline, program.id(), program.revision()});
-    return *pipeline;
+    return lookup(std::move(key), program,
+                  [&]() -> core::Result<rhi::PipelineHandle>
+                  {
+                      rhi::ComputePipelineDesc desc;
+                      desc.compute = program.compute();
+                      desc.debugName = program.name();
+                      return device_.createComputePipeline(desc);
+                  });
 }
 
 void PipelineCache::clear()

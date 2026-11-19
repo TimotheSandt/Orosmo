@@ -156,6 +156,62 @@ TEST_SUITE("UI/collect")
         CHECK(firstOf<rd::BeginLayer>(resized)->size == glm::vec2(32, 32));
     }
 
+    TEST_CASE("a partial redraw keeps the drawing order: an overlapping later child is redrawn over the changed one, under a clip (G99)")
+    {
+        auto back = CreateBox(Bounds(20_px, 20_px), {1.0f, 0.0f, 0.0f, 1.0f});
+        auto front = CreateBox(Bounds(20_px, 20_px), {0.0f, 0.0f, 1.0f, 1.0f}); // au même endroit, devant
+        auto root = CreateContainer(Bounds(64_px, 64_px), {back, front});
+        root->SetRenderToTexture(true);
+        root->Initialize();
+        root->Update();
+        rd::DrawList first;
+        first.logicalSize = {64, 64};
+        root->Collect(first, {64, 64});
+
+        back->SetColor(0.0f, 1.0f, 0.0f, 1.0f); // seul celui de derrière change
+        root->Update();
+        rd::DrawList partial;
+        partial.logicalSize = {64, 64};
+        root->Collect(partial, {64, 64});
+        REQUIRE(partial.count<rd::BeginLayer>() == 1);
+        CHECK_FALSE(firstOf<rd::BeginLayer>(partial)->clear);
+        CHECK(partial.count<rd::PushClip>() == 1);
+        CHECK(partial.count<rd::DrawClearRect>() == 1);
+        REQUIRE(partial.count<rd::DrawRect>() == 2); // les deux enfants qui touchent la zone, dans l'ordre
+        std::vector<glm::vec4> colors;
+        for (const auto &command : partial.commands)
+        {
+            if (const auto *r = std::get_if<rd::DrawRect>(&command))
+            {
+                colors.push_back(r->color);
+            }
+        }
+        CHECK(colors[0] == glm::vec4(0, 1, 0, 1)); // derrière (modifié) d'abord
+        CHECK(colors[1] == glm::vec4(0, 0, 1, 1)); // puis celui de devant : il reste devant
+    }
+
+    TEST_CASE("Manager::InvalidateLayers makes the next list redraw every cached layer in full (G99)")
+    {
+        auto child = CreateBox(Bounds(20_px, 20_px), {1.0f, 0.0f, 0.0f, 1.0f});
+        auto root = CreateContainer(Bounds(64_px, 64_px), {child});
+        root->SetRenderToTexture(true);
+        root->Initialize();
+        root->Update();
+        rd::DrawList first;
+        first.logicalSize = {64, 64};
+        root->Collect(first, {64, 64});
+        rd::DrawList quiet;
+        quiet.logicalSize = {64, 64};
+        root->Collect(quiet, {64, 64});
+        REQUIRE(quiet.count<rd::BeginLayer>() == 0);
+        root->MarkFullDirty(); // ce que fait Manager::InvalidateLayers sur la racine
+        rd::DrawList again;
+        again.logicalSize = {64, 64};
+        root->Collect(again, {64, 64});
+        REQUIRE(again.count<rd::BeginLayer>() == 1);
+        CHECK(firstOf<rd::BeginLayer>(again)->clear);
+    }
+
     TEST_CASE("text widgets produce glyph runs through the text renderer (atlas shared, vertices in logical pixels)")
     {
         const CurrentDirectory cwd(tests::repoRoot(__FILE__));

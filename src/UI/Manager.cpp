@@ -80,6 +80,14 @@ void Manager::Update(float dt, int w, int h)
     rootContainer->Update();
 }
 
+void Manager::InvalidateLayers()
+{
+    if (rootContainer)
+    {
+        rootContainer->MarkFullDirty();
+    }
+}
+
 void Manager::Collect(engine::renderer::DrawList &list, int w, int h)
 {
     if (!active)

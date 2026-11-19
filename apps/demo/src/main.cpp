@@ -80,7 +80,16 @@ int main(int argc, char **argv)
 
         int exitCode = EXIT_SUCCESS;
         {
-            Game game(launchOptions.headless);
+            auto created = Game::create(launchOptions.headless);
+            if (!created)
+            {
+                LOG_ERROR(1, created.error().message);
+                std::cerr << created.error().message << '\n';
+                Window::Terminate();
+                FLUSH_LOG_TO_FILE;
+                return EXIT_FAILURE;
+            }
+            Game &game = **created;
             LOG_INFO("Starting game with graphics API: ", GraphicsAPIToString(selectedApi));
             // The seed is chosen HERE, explicitly (rule 9: no clock inside the generation). Captures use seed 1 unless
             // given; otherwise a random seed is drawn and logged so that the terrain can be replayed with --seed N.
@@ -107,14 +116,22 @@ int main(int argc, char **argv)
             game.setSeed(terrainSeed);
             game.setVSync(launchOptions.vsync);
             LOG_TRACE("Game created");
-            game.init();
-            LOG_TRACE("Game initialized");
-            game.run();
-            LOG_INFO("Game stopped");
-            if (!game.captureSucceeded())
+            if (auto ready = game.init(); !ready)
             {
-                LOG_ERROR(1, "Capture requested but not completed");
+                LOG_ERROR(1, ready.error().message);
+                std::cerr << ready.error().message << '\n';
                 exitCode = EXIT_FAILURE;
+            }
+            else
+            {
+                LOG_TRACE("Game initialized");
+                game.run();
+                LOG_INFO("Game stopped");
+                if (!game.captureSucceeded())
+                {
+                    LOG_ERROR(1, "Capture requested but not completed");
+                    exitCode = EXIT_FAILURE;
+                }
             }
         } // `Game` libère le périphérique graphique puis la fenêtre
         Window::Terminate();

@@ -24,11 +24,14 @@
 class Game
 {
   public:
-    // `headless` (PLAT-04) : aucune fenêtre ; périphérique hors écran 1280x720, pas de temps fixe, pas d'entrées.
-    explicit Game(bool headless = false);
+    // `headless` (PLAT-04) : aucune fenêtre ; périphérique hors écran 1280x720, pas de temps fixe, pas d'entrées. Les échecs
+    // normaux (pas d'affichage, pas d'OpenGL 4.3, shaders absents) reviennent en `Result`, pas en exception (CLAUDE.md règle 10).
+    static engine::core::Result<std::unique_ptr<Game>> create(bool headless = false);
     ~Game();
+    Game(const Game &) = delete;
+    Game &operator=(const Game &) = delete;
 
-    void init();
+    engine::core::Result<> init();
     void stop();
 
     void run();
@@ -37,9 +40,12 @@ class Game
     void enableCapture(std::string directory, std::uint32_t frames);
     void setSeed(std::uint32_t seed) { terrainSeed = seed; }
     void setVSync(bool enabled) { if (device) { device->setVSync(enabled); } }
-    bool captureSucceeded() const noexcept { return captureDirectory.empty() || captureDone; }
+    // Faux si une capture était demandée et n'a pas été faite, ou si une image de la capture a été refusée par le périphérique.
+    bool captureSucceeded() const noexcept { return !captureFailed && (captureDirectory.empty() || captureDone); }
 
   private:
+    explicit Game(bool headless);
+    engine::core::Result<> createGraphics();
     void processInput();
     void update();
     bool beginFrame();
@@ -78,5 +84,6 @@ class Game
     std::uint32_t captureFrames = 0;
     std::uint32_t renderedFrames = 0;
     bool captureDone = false;
+    bool captureFailed = false; // une image de la capture a été refusée (submit) : la capture ne serait pas fiable
     bool headless = false;
 };

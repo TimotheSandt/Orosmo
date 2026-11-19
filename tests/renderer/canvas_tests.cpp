@@ -8,6 +8,8 @@
 
 #include <engine/renderer/canvas_renderer.hpp>
 
+#include <limits>
+
 namespace rd = engine::renderer;
 namespace fs = std::filesystem;
 
@@ -262,5 +264,145 @@ TEST_SUITE("renderer/canvas")
         REQUIRE(c.render(ok).has_value());
         CHECK(c.px(1, 1) == Px{255, 0, 0, 255});
         c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("layers hold premultiplied color: a 50 % layer composes like the same rectangle drawn directly (no double alpha) (G99)")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList l = listOf();
+        l.rect({0, 0}, {16, 16}, {0, 0, 0, 1}); // fond noir opaque
+        l.beginLayer(5, {8, 8});
+        l.rect({0, 0}, {8, 8}, {1, 0, 0, 0.5f}); // rouge à 50 % sur une couche transparente
+        l.endLayer();
+        l.layerImage({.layerId = 5, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        l.rect({8, 8}, {8, 8}, {1, 0, 0, 0.5f}); // le même rectangle, dessiné directement
+        REQUIRE(c.render(l).has_value());
+        const Px viaLayer = c.px(2, 2);
+        const Px direct = c.px(12, 12);
+        CHECK(near(viaLayer[0], 128, 2));
+        CHECK(near(viaLayer[0], direct[0], 2));
+        CHECK(viaLayer[3] == 255);
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("an opaque layer background stays opaque under half-transparent content (G99)")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList l = listOf();
+        l.beginLayer(6, {8, 8});
+        l.rect({0, 0}, {8, 8}, {1, 0, 0, 0.5f});
+        l.endLayer();
+        l.layerImage({.layerId = 6, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}, .color = {0, 0, 1, 1}});
+        REQUIRE(c.render(l, false).has_value()); // cible transparente : l'alpha lu est celui de la couche composée
+        const Px px = c.px(2, 2);
+        CHECK(near(px[0], 128, 2));
+        CHECK(near(px[2], 128, 2));
+        CHECK(px[3] == 255);
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("a layer whose image is clipped out is kept, so it can reappear without being redrawn (G99)")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList first = listOf();
+        first.beginLayer(7, {8, 8});
+        first.rect({0, 0}, {8, 8}, {1, 0, 0, 1});
+        first.endLayer();
+        first.layerImage({.layerId = 7, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        REQUIRE(c.render(first, false).has_value());
+        rd::DrawList hidden = listOf();
+        hidden.pushClip({0, 0}, {0, 0}); // défilée hors de la vue
+        hidden.layerImage({.layerId = 7, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        hidden.popClip();
+        REQUIRE(c.render(hidden, false).has_value());
+        CHECK(c.canvas->layerCount() == 1);
+        rd::DrawList back = listOf();
+        back.layerImage({.layerId = 7, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        REQUIRE(c.render(back, false).has_value());
+        CHECK(c.px(2, 2) == Px{255, 0, 0, 255});
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("a layer drawn inside a cached layer is kept as its dependency (G99)")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList first = listOf();
+        first.beginLayer(1, {8, 8});
+        first.beginLayer(2, {4, 4});
+        first.rect({0, 0}, {4, 4}, {0, 1, 0, 1});
+        first.endLayer();
+        first.layerImage({.layerId = 2, .position = {0, 0}, .size = {4, 4}, .contentSize = {4, 4}});
+        first.endLayer();
+        first.layerImage({.layerId = 1, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        REQUIRE(c.render(first, false).has_value());
+        rd::DrawList quiet = listOf(); // rien n'a changé : seule l'image de la couche 1 est demandée
+        quiet.layerImage({.layerId = 1, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        REQUIRE(c.render(quiet, false).has_value());
+        CHECK(c.canvas->layerCount() == 2); // la couche 2 vit dans le contenu de la 1 : gardée
+        rd::DrawList partial = listOf(); // la 1 se redessine en partie et réaffiche la 2 sans la redessiner
+        partial.beginLayer(1, {8, 8}, false);
+        partial.clearRect({0, 0}, {4, 4});
+        partial.layerImage({.layerId = 2, .position = {0, 0}, .size = {4, 4}, .contentSize = {4, 4}, .color = {0, 0, 1, 1}});
+        partial.endLayer();
+        partial.layerImage({.layerId = 1, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        REQUIRE(c.render(partial, false).has_value());
+        CHECK(c.px(1, 1) == Px{0, 255, 0, 255});
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("an image of a missing layer is reported (kNotFound) after the rest of the list is drawn (G99)")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList l = listOf();
+        l.layerImage({.layerId = 99, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        l.rect({8, 8}, {4, 4}, {1, 0, 0, 1});
+        auto r = c.render(l, false);
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kNotFound));
+        CHECK(c.px(9, 9) == Px{255, 0, 0, 255});
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("non-finite or huge sizes and clips are refused or emptied before any integer conversion (G99)")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        for (const float size : {std::numeric_limits<float>::quiet_NaN(), 4294967296.0f})
+        {
+            rd::DrawList l = listOf();
+            l.beginLayer(3, {size, 4});
+            l.endLayer();
+            auto r = c.render(l);
+            REQUIRE_FALSE(r.has_value());
+            CHECK((r.error().code == ErrorCode::kOutOfRange));
+        }
+        rd::DrawList far = listOf();
+        far.pushClip({3e9f, 0}, {10, 10}); // hors de la surface : découpage vide, sans dépassement d'entier (UBSan)
+        far.rect({0, 0}, {16, 16}, {1, 0, 0, 1});
+        far.popClip();
+        far.pushClip({std::numeric_limits<float>::infinity(), 0}, {1, 1});
+        far.rect({0, 0}, {16, 16}, {1, 0, 0, 1});
+        far.popClip();
+        REQUIRE(c.render(far, false).has_value());
+        CHECK(c.px(4, 4) == Px{0, 0, 0, 0});
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("an encoder error during the render is returned by render, not only by submit (G99)")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        const TextureHandle stale = c.gpu.target(Format::kRGBA8Unorm, {4, 4}, "stale");
+        c.gpu->destroy(stale);
+        auto encoder = c.gpu->createCommandEncoder();
+        auto r = c.canvas->render(*encoder, listOf(4), {stale, Format::kRGBA8Unorm, {4, 4}});
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kNotFound));
+        CHECK_FALSE(c.gpu->submit(std::move(encoder)).has_value());
     }
 }

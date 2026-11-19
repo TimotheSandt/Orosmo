@@ -5,8 +5,10 @@
 
 #include <glm/glm.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <variant>
 #include <vector>
 

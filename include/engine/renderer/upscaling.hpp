@@ -76,7 +76,7 @@ struct UpscaleOutput
 struct FrameGenerationInput
 {
     rhi::TextureHandle currentColor;
-    rhi::TextureHandle previousColor; // couleur de l'image précédente à la résolution de rendu
+    rhi::TextureHandle previousColor; // couleur de l'image PRÉCÉDENTE à la résolution de rendu (l'historique est mis à jour après)
     rhi::TextureHandle depth;         // exige depthAsTexture
     rhi::TextureHandle motionVectors; // exige la cible de vecteurs de mouvement
     glm::vec2 renderResolution{0.0f};
@@ -88,6 +88,8 @@ struct FrameGenerationInput
 
 struct FrameGenerationOutput
 {
+    // Image intermédiaire produite (nulle : le mode n'en a pas produit, ou l'a présentée lui-même). Exposée par
+    // `SceneRenderer::generatedFrame()` jusqu'à l'image suivante ; le mode en reste propriétaire.
     rhi::TextureHandle generatedFrame;
 };
 
@@ -139,6 +141,16 @@ class IUpscaleMode
     }
     virtual core::Result<> upscale(FrameContext &context, const RenderTarget &source, const UpscaleTarget &destination) = 0;
     virtual UpscaleRequirements requirements() const noexcept { return {}; }
+    // Appelé par `SceneRenderer::setActiveUpscaleMode` avant que le mode devienne actif (faux : refusé, l'ancien mode reste), et
+    // `shutdown` quand il cesse de l'être (remplacé, désactivé, renderer détruit). Un mode simple n'a rien à faire.
+    virtual bool initialize(rhi::Device &device)
+    {
+        (void)device;
+        return true;
+    }
+    virtual void shutdown() {}
+    // Vrai pour un IAdvancedUpscaleMode : le renderer lui passe toutes les entrées (`execute`) sans RTTI.
+    virtual bool advanced() const noexcept { return false; }
 };
 
 class IAdvancedUpscaleMode : public IUpscaleMode
@@ -146,10 +158,11 @@ class IAdvancedUpscaleMode : public IUpscaleMode
   public:
     virtual const UpscaleModeDesc &description() const noexcept = 0;
     virtual bool isSupported(const rhi::Capabilities &capabilities) const noexcept = 0;
-    virtual bool initialize(rhi::Device &device) = 0;
-    virtual void shutdown() = 0;
+    bool initialize(rhi::Device &device) override = 0;
+    void shutdown() override = 0;
     virtual core::Result<> execute(FrameContext &context, const UpscaleInput &input, UpscaleOutput &output) = 0;
 
+    bool advanced() const noexcept final { return true; }
     UpscaleRequirements requirements() const noexcept override { return description().requirements; }
     bool supports(const rhi::Capabilities &capabilities) const noexcept override { return isSupported(capabilities); }
     core::Result<> upscale(FrameContext &context, const RenderTarget &source, const UpscaleTarget &destination) override

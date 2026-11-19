@@ -124,6 +124,13 @@ class ShaderHotReloader
     // À appeler une fois par image : détecte les changements et recompile. Renvoie le nombre de rechargements tentés.
     std::size_t poll();
 
+    using EntryId = std::size_t;
+    // Identifiant de l'entrée créée par le dernier `add` (y compris quand sa première compilation a échoué).
+    EntryId lastAdded() const noexcept { return mEntries.empty() ? 0 : mEntries.size() - 1; }
+    // Cesse de surveiller une entrée (son consommateur a disparu) : ni recompilation ni rappel ensuite.
+    void remove(EntryId id);
+    std::size_t activeCount() const noexcept;
+
   private:
     struct Entry
     {
@@ -133,6 +140,7 @@ class ShaderHotReloader
         std::vector<std::pair<std::string, std::string>> defines;
         std::vector<std::pair<std::string, core::FileWatcher::WatchId>> watches; // fichier surveillé -> surveillance
         bool dirty = false;
+        bool active = true;
     };
     // Compile l'entrée ; `dependencies` reçoit le fichier et chaque include tenté, trouvé ou non, même si la compilation échoue.
     core::Result<CompiledShader> build(const Entry &entry, std::vector<std::string> &dependencies) const;
