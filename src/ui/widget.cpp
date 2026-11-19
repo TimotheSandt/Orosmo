@@ -170,6 +170,13 @@ void Widget::draw(const Ui &ui, renderer::DrawList &list) const
     }
     const Style s = style(ui.theme());
     drawBackground(ui, list, s);
+    if (overflow == Overflow::kHidden)
+    {
+        list.pushClip(rect_.position, rect_.size); // ce qui dépasse n'est pas dessiné
+        drawContent(ui, list, s);
+        list.popClip();
+        return;
+    }
     drawContent(ui, list, s);
 }
 
@@ -243,14 +250,14 @@ void Widget::drawText(const Ui &ui, renderer::DrawList &list, std::string_view t
     {
         return;
     }
-    const glm::vec2 size = ui.font().measure(text, style.fontSize);
+    const glm::vec2 size = ui.font().measure(text, style.fontSize, style.font.get());
     float x = r.position.x;
     if (align == Align::kCenter)
         x += (r.size.x - size.x) * 0.5f;
     else if (align == Align::kEnd)
         x += r.size.x - size.x;
     const float y = r.position.y + (r.size.y - size.y) * 0.5f;
-    ui.font().draw(list, text, {std::round(x), std::round(y)}, style.fontSize, color != nullptr ? *color : style.foreground);
+    ui.font().draw(list, text, {std::round(x), std::round(y)}, style.fontSize, color != nullptr ? *color : style.foreground, style.font.get());
 }
 
 Rect Widget::inset(const Rect &r, float padding) noexcept

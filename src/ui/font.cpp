@@ -1,5 +1,8 @@
 #include "engine/ui/font.hpp"
 
+#include "engine/ui/theme.hpp"
+
+#include "Logger.h"
 #include "Rendering/TextRenderer.h"
 
 #include <cmath>
@@ -38,14 +41,14 @@ std::size_t utf8Previous(std::string_view text, std::size_t i) noexcept
     return j;
 }
 
-std::size_t Font::caretIndex(std::string_view text, float size, float x) const
+std::size_t Font::caretIndex(std::string_view text, float size, float x, const FontFace *face) const
 {
     std::size_t best = 0;
     float bestDistance = std::abs(x);
     for (std::size_t i = 0; i < text.size();)
     {
         i += utf8Length(text, i);
-        const float d = std::abs(measure(text.substr(0, i), size).x - x);
+        const float d = std::abs(measure(text.substr(0, i), size, face).x - x);
         if (d < bestDistance)
         {
             bestDistance = d;
@@ -57,7 +60,7 @@ std::size_t Font::caretIndex(std::string_view text, float size, float x) const
 
 // ── FixedFont ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-glm::vec2 FixedFont::measure(std::string_view text, float size) const
+glm::vec2 FixedFont::measure(std::string_view text, float size, const FontFace *) const
 {
     std::size_t count = 0;
     for (std::size_t i = 0; i < text.size(); i += utf8Length(text, i))
@@ -65,7 +68,8 @@ glm::vec2 FixedFont::measure(std::string_view text, float size) const
     return {static_cast<float>(count) * advance_ * size, size};
 }
 
-void FixedFont::draw(renderer::DrawList &list, std::string_view text, glm::vec2 position, float size, const glm::vec4 &color) const
+void FixedFont::draw(renderer::DrawList &list, std::string_view text, glm::vec2 position, float size, const glm::vec4 &color,
+                     const FontFace *) const
 {
     renderer::DrawGlyphs run;
     run.color = glm::vec3(color);
@@ -88,8 +92,30 @@ void FixedFont::draw(renderer::DrawList &list, std::string_view text, glm::vec2 
 
 // ── TextRendererFont ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-glm::vec2 TextRendererFont::measure(std::string_view text, float size) const
+void TextRendererFont::select(const FontFace *face) const
 {
+    if (face == nullptr)
+    {
+        renderer_->setActiveFont(defaultName_);
+        return;
+    }
+    const std::string key = face->path.generic_string();
+    auto it = loaded_.find(key);
+    if (it == loaded_.end())
+    {
+        const bool ok = renderer_->loadFont(key, key, static_cast<unsigned int>(baseSize_));
+        if (!ok)
+        {
+            LOG_WARNING("UI: font '", face->name, "' (", key, ") cannot be loaded; the default font is used");
+        }
+        it = loaded_.emplace(key, ok).first;
+    }
+    renderer_->setActiveFont(it->second ? key : defaultName_);
+}
+
+glm::vec2 TextRendererFont::measure(std::string_view text, float size, const FontFace *face) const
+{
+    select(face);
     const float scale = size / baseSize_;
     glm::vec2 m = renderer_->measureText(std::string(text), scale);
     // Hauteur de ligne constante (indépendante des caractères présents) : les lignes d'un panneau s'alignent.
@@ -97,8 +123,10 @@ glm::vec2 TextRendererFont::measure(std::string_view text, float size) const
     return m;
 }
 
-void TextRendererFont::draw(renderer::DrawList &list, std::string_view text, glm::vec2 position, float size, const glm::vec4 &color) const
+void TextRendererFont::draw(renderer::DrawList &list, std::string_view text, glm::vec2 position, float size, const glm::vec4 &color,
+                            const FontFace *face) const
 {
+    select(face);
     renderer_->setDrawListSink(&list);
     renderer_->renderText(std::string(text), position.x, position.y, size / baseSize_, glm::vec3(color), ::UI::TextAnchor::TopLeft);
     renderer_->setDrawListSink(nullptr);

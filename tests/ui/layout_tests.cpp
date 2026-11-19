@@ -187,4 +187,33 @@ TEST_SUITE("ui/layout")
         h.frame();
         CHECK(label.rect().position == glm::vec2(9, 9));
     }
+
+    TEST_CASE("overflow: a child larger than its parent is drawn and clickable outside it, unless the parent hides the overflow")
+    {
+        UiHarness h;
+        auto root = std::make_unique<ui::Overlay>();
+        auto &parent = root->emplace<ui::Overlay>();
+        parent.setAlign(ui::Align::kStart, ui::Align::kStart);
+        parent.setWidth(ui::SizeSpec::fixed(20)).setHeight(ui::SizeSpec::fixed(20));
+        auto &child = parent.emplace<ui::Button>("wide");
+        child.setAlign(ui::Align::kStart, ui::Align::kStart);
+        child.setWidth(ui::SizeSpec::fixed(80)).setHeight(ui::SizeSpec::fixed(20));
+        h.ui.setRoot(std::move(root));
+        h.frame();
+        CHECK(child.rect().size.x == doctest::Approx(80)); // dépasse le parent de 60 px
+        h.moveTo({60, 10});
+        CHECK(h.ui.hovered() == &child); // visible : cliquable là où il est dessiné
+        engine::renderer::DrawList visible;
+        h.ui.draw(visible);
+        CHECK(visible.count<engine::renderer::PushClip>() == 0);
+
+        parent.overflow = ui::Overflow::kHidden;
+        h.moveTo({61, 10});
+        CHECK(h.ui.hovered() == nullptr); // coupé : hors du parent, plus touchable
+        h.moveTo({10, 10});
+        CHECK(h.ui.hovered() == &child);
+        engine::renderer::DrawList hidden;
+        h.ui.draw(hidden);
+        CHECK(hidden.count<engine::renderer::PushClip>() == 1);
+    }
 }

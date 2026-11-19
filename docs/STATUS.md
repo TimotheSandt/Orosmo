@@ -51,7 +51,10 @@ Preuves sous Linux (g++ 13.3, Mesa 26.1.6, Intel Arc ; la CI exécute aussi sous
 | BLD-01 | Partiel | Partiel | `docs/USING_THE_ENGINE.md` (prérequis par système, `engine init`, `ENGINE_DIR`) ; Windows et macOS non vérifiés |
 | DOC-01 | Partiel | Partiel | `docs/USING_THE_ENGINE.md`, `docs/UI_LANGUAGE.md`, README de `src/world`, `src/ui`, `apps/terrain_gen`, `apps/terrain_viewer` ; manquent toujours le schéma des modules et `ADD_A_BACKEND.md` |
 
-Totaux après M3 : Fait 31, Partiel 43, Absent 77, Incompatible 1 (avant : 16 / 47 / 88 / 1).
+| UI-07 (ajouts) | Partiel | **Fait** | polices par thème (section `fonts`, propriété `font`, `.style(font:)`) : `tests/ui/text_tests.cpp` ; images en neuf parties : `tests/ui/nine_slice_tests.cpp` ; le reste comme ci-dessus |
+| REN-36 (ajouts) | Partiel | Partiel | texte UTF-8 (Latin-1, Latin étendu A, ponctuation) : `tests/ui/text_tests.cpp` ; parité `ui.png` inchangée ; **manque** : autres écritures, mise en forme complexe (G106) |
+
+Totaux après M3 et ses ajouts : Fait 32, Partiel 42, Absent 77, Incompatible 1 (avant M3 : 16 / 47 / 88 / 1).
 
 ## Identifiants de `docs/02` touchés par la revue de la PR #7 (G97 à G100)
 

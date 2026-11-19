@@ -202,7 +202,7 @@ async function provideCompletion(doc, pos) {
     if (/\.\w*$/.test(line)) {
         const call = enclosingCall(before);
         if (call && /\(\s*\.\w*$|[:,]\s*\.\w*$/.test(line)) {
-            const values = call.name === "width" || call.name === "height" ? s.sizes : s.alignments;
+            const values = call.name === "width" || call.name === "height" ? s.sizes : call.name === "overflow" ? s.overflows || [] : s.alignments;
             return values.map(v => new vscode.CompletionItem(v, K.EnumMember));
         }
         return s.modifiers.map(m => {

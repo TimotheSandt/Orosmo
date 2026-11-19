@@ -48,7 +48,7 @@ struct TextLineMetrics
 
 struct GlyphBitmap
 {
-    char character = '\0';
+    char32_t character = 0;
     int width = 0;
     int height = 0;
     int bearingX = 0;
@@ -80,6 +80,63 @@ float GetVisibleDescenderPixels(const Character &character)
     return std::max(0.0f, static_cast<float>(character.size.y - character.bearing.y - MsdfPaddingPixels));
 }
 
+// Point de code UTF-8 qui commence à `index` ; `index` avance après lui. Une séquence invalide donne U+FFFD sur un octet.
+char32_t NextCodepoint(const std::string &text, std::size_t &index)
+{
+    const auto b0 = static_cast<unsigned char>(text[index]);
+    std::size_t n = 1;
+    char32_t cp = b0;
+    if (b0 >= 0xF0U && b0 < 0xF8U)
+    {
+        n = 4;
+        cp = b0 & 0x07U;
+    }
+    else if (b0 >= 0xE0U)
+    {
+        n = 3;
+        cp = b0 & 0x0FU;
+    }
+    else if (b0 >= 0xC0U)
+    {
+        n = 2;
+        cp = b0 & 0x1FU;
+    }
+    else if (b0 >= 0x80U)
+    {
+        ++index;
+        return 0xFFFD;
+    }
+    if (index + n > text.size())
+    {
+        ++index;
+        return 0xFFFD;
+    }
+    for (std::size_t k = 1; k < n; ++k)
+    {
+        const auto b = static_cast<unsigned char>(text[index + k]);
+        if ((b & 0xC0U) != 0x80U)
+        {
+            ++index;
+            return 0xFFFD;
+        }
+        cp = (cp << 6U) | (b & 0x3FU);
+    }
+    index += n;
+    return cp;
+}
+
+// Glyphes chargés en plus de l'ASCII quand un texte en a besoin : Latin-1 (accents français, ç, œ…), Latin étendu A, et la
+// ponctuation typographique courante (guillemets, tirets, points de suspension, euro, puce).
+std::vector<char32_t> ExtendedCodepoints()
+{
+    std::vector<char32_t> out;
+    for (char32_t c = 0xA0; c <= 0x17F; ++c)
+        out.push_back(c);
+    for (char32_t c : {0x2013, 0x2014, 0x2018, 0x2019, 0x201A, 0x201C, 0x201D, 0x201E, 0x2022, 0x2026, 0x2030, 0x2039, 0x203A, 0x20AC, 0x2122})
+        out.push_back(c);
+    return out;
+}
+
 std::size_t FindLineEnd(const std::string &text, std::size_t lineStart)
 {
     const std::size_t newline = text.find('\n', lineStart);
@@ -102,16 +159,16 @@ float GetKerningPixels(FT_Face face, unsigned int previousGlyphIndex, unsigned i
     return static_cast<float>(kerning.x) / 64.0f;
 }
 
-TextLineMetrics MeasureLineMetrics(FT_Face face, const std::unordered_map<char, Character> &characters, const std::string &text,
+TextLineMetrics MeasureLineMetrics(FT_Face face, const std::unordered_map<char32_t, Character> &characters, const std::string &text,
                                    std::size_t lineStart, std::size_t lineEnd)
 {
     TextLineMetrics metrics;
     const std::size_t clampedEnd = std::min(lineEnd, text.size());
     unsigned int previousGlyphIndex = 0;
 
-    for (std::size_t index = lineStart; index < clampedEnd; ++index)
+    for (std::size_t index = lineStart; index < clampedEnd;)
     {
-        const auto characterIt = characters.find(text[index]);
+        const auto characterIt = characters.find(NextCodepoint(text, index));
         if (characterIt == characters.end())
         {
             continue;
@@ -299,14 +356,14 @@ std::vector<std::uint8_t> GenerateMtsdfBitmap(msdfgen::Shape shape, int width, i
     return bitmap;
 }
 
-GlyphBitmap BuildMtsdfGlyphBitmap(FT_Face face, unsigned char c)
+GlyphBitmap BuildMtsdfGlyphBitmap(FT_Face face, char32_t c)
 {
     GlyphBitmap glyph;
-    glyph.character = static_cast<char>(c);
+    glyph.character = c;
 
-    if (FT_Load_Char(face, c, FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING) != 0)
+    if (FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING) != 0)
     {
-        LOG_ERROR(1, "ERROR::FREETYPE: Failed to load glyph '", static_cast<char>(c), "'");
+        LOG_ERROR(1, "ERROR::FREETYPE: Failed to load glyph U+", static_cast<unsigned>(c));
         return glyph;
     }
 
@@ -377,10 +434,11 @@ void TextRenderer::computeFontMetrics(FontData &fontData)
     float ascender = 0.0f;
     float descender = 0.0f;
 
+    // Mesures de ligne prises sur l'ASCII seulement : charger des capitales accentuées ne change pas la hauteur ni la ligne de base
+    // des textes (la mise en page reste la même ; les accents dépassent un peu au-dessus, comme dans les autres moteurs).
     for (const auto &[glyph, character] : fontData.characters)
     {
-        static_cast<void>(glyph);
-        if (character.size.y <= 0)
+        if (glyph >= 128 || character.size.y <= 0)
         {
             continue;
         }
@@ -444,12 +502,32 @@ bool TextRenderer::ensureFontLoaded(const std::string &fontName, unsigned int fo
     fontData.face = face;
     fontData.fontSize = fontSize;
 
+    buildAtlas(fontData, false);
+    fonts[cacheKey] = std::move(fontData);
+    return true;
+}
+
+void TextRenderer::buildAtlas(FontData &fontData, bool extended)
+{
+    // L'ASCII d'abord, toujours au même endroit de l'atlas (l'atlas étendu ne fait que s'allonger vers le bas).
     std::vector<GlyphBitmap> glyphs;
-    glyphs.reserve(128);
-    for (unsigned char c = 0; c < 128; ++c)
+    glyphs.reserve(extended ? 400 : 128);
+    for (char32_t c = 0; c < 128; ++c)
     {
-        glyphs.push_back(BuildMtsdfGlyphBitmap(face, c));
+        glyphs.push_back(BuildMtsdfGlyphBitmap(fontData.face, c));
     }
+    if (extended)
+    {
+        for (char32_t c : ExtendedCodepoints())
+        {
+            if (FT_Get_Char_Index(fontData.face, static_cast<FT_ULong>(c)) != 0) // absent de la police : non chargé
+            {
+                glyphs.push_back(BuildMtsdfGlyphBitmap(fontData.face, c));
+            }
+        }
+    }
+    fontData.characters.clear();
+    fontData.extended = extended;
 
     int cursorX = GlyphAtlasPadding;
     int cursorY = GlyphAtlasPadding;
@@ -512,8 +590,22 @@ bool TextRenderer::ensureFontLoaded(const std::string &fontName, unsigned int fo
         fontData.atlas = std::move(atlas);
     }
 
-    fonts[cacheKey] = std::move(fontData);
-    return true;
+}
+
+void TextRenderer::ensureGlyphs(FontData &fontData, const std::string &text)
+{
+    if (fontData.extended)
+    {
+        return;
+    }
+    for (char c : text)
+    {
+        if (static_cast<unsigned char>(c) >= 0x80U)
+        {
+            buildAtlas(fontData, true); // nouvel atlas (nouvel identifiant) : le canevas l'envoie au GPU
+            return;
+        }
+    }
 }
 
 void TextRenderer::setActiveFont(const std::string &fontName)
@@ -646,6 +738,7 @@ void TextRenderer::renderText(const std::string &text, float x, float y, float s
     }
 
     auto &fontData = *resolvedFont.data;
+    ensureGlyphs(fontData, text);
     const float renderScale = resolvedFont.scale;
     const float lineHeight = static_cast<float>(fontData.fontSize) * renderScale;
     const float lineAscender = fontData.visibleAscender * renderScale;
@@ -668,10 +761,10 @@ void TextRenderer::renderText(const std::string &text, float x, float y, float s
     float cursorY = maybeRound(startY);
     unsigned int previousGlyphIndex = 0;
 
-    for (std::size_t index = 0; index < text.size(); ++index)
+    for (std::size_t index = 0; index < text.size();)
     {
-        const char c = text[index];
-        if (c == '\n')
+        const char32_t c = NextCodepoint(text, index);
+        if (c == U'\n')
         {
             cursorY = maybeRound(cursorY + lineAdvance);
             cursorX = maybeRound(startX);
@@ -746,13 +839,15 @@ float TextRenderer::measureTextWidth(const std::string &text, float scale)
     }
 
     auto &fontData = *resolvedFont.data;
+    ensureGlyphs(fontData, text);
     const float renderScale = resolvedFont.scale;
     float width = 0.0f;
     unsigned int previousGlyphIndex = 0;
 
-    for (char c : text)
+    for (std::size_t index = 0; index < text.size();)
     {
-        if (c == '\n')
+        const char32_t c = NextCodepoint(text, index);
+        if (c == U'\n')
         {
             break;
         }
@@ -786,6 +881,7 @@ glm::vec2 TextRenderer::measureText(const std::string &text, float scale)
     }
 
     auto &fontData = *resolvedFont.data;
+    ensureGlyphs(fontData, text);
     const float renderScale = resolvedFont.scale;
     float maxWidth = 0.0f;
     int lineCount = 0;
@@ -827,6 +923,7 @@ std::vector<std::string> TextRenderer::wrapText(const std::string &text, float s
     }
 
     auto &fontData = *resolvedFont.data;
+    ensureGlyphs(fontData, text);
     const float renderScale = resolvedFont.scale;
     std::size_t start = 0;
     std::size_t newlinePos = 0;
@@ -841,10 +938,11 @@ std::vector<std::string> TextRenderer::wrapText(const std::string &text, float s
             std::size_t i = 0;
             std::size_t lastSpace = 0;
 
-            for (; i < segment.length(); ++i)
+            for (std::size_t next = 0; i < segment.length(); i = next)
             {
-                const char c = segment[i];
-                if (c == ' ')
+                next = i;
+                const char32_t c = NextCodepoint(segment, next);
+                if (c == U' ')
                 {
                     lastSpace = i;
                 }
@@ -863,7 +961,7 @@ std::vector<std::string> TextRenderer::wrapText(const std::string &text, float s
 
             if (i == 0)
             {
-                i = 1;
+                NextCodepoint(segment, i); // au moins un caractère entier par ligne
             }
 
             if (i < segment.length() && lastSpace > 0)
@@ -890,10 +988,11 @@ std::vector<std::string> TextRenderer::wrapText(const std::string &text, float s
         std::size_t i = 0;
         std::size_t lastSpace = 0;
 
-        for (; i < remaining.length(); ++i)
+        for (std::size_t next = 0; i < remaining.length(); i = next)
         {
-            const char c = remaining[i];
-            if (c == ' ')
+            next = i;
+            const char32_t c = NextCodepoint(remaining, next);
+            if (c == U' ')
             {
                 lastSpace = i;
             }
@@ -912,7 +1011,7 @@ std::vector<std::string> TextRenderer::wrapText(const std::string &text, float s
 
         if (i == 0)
         {
-            i = 1;
+            NextCodepoint(remaining, i);
         }
 
         if (i < remaining.length() && lastSpace > 0)
@@ -1035,6 +1134,7 @@ TextLayout TextRenderer::calculateLayout(const std::string &text, float scale, c
     }
 
     auto &fontData = *resolvedFont.data;
+    ensureGlyphs(fontData, text);
     const float lineHeight = static_cast<float>(fontData.fontSize) * resolvedFont.scale * params.lineSpacing;
 
     std::vector<std::string> textLines;

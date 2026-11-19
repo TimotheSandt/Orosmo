@@ -42,7 +42,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | UI-01 | UIManager | Partiel | Composant, conteneur, VBox/HBox, `DeferredValue<T>` à double tampon, mixin CRTP : présents et testés. « Migré sur le RHI » : non (dépend de `Graphics` actuel, cycle `UI`↔`Graphics`). `Manager` est un singleton … | M2 |
 | UI-05 | Langage d'interface : compilateur vers C++ | Fait (M3) | Cible `engine/ui` du compilateur `cui` : voir STATUS « M3 » et `docs/UI_LANGUAGE.md`. | — |
 | UI-06 | Mise en page complète | Fait (M3) | `engine::ui` : VBox, HBox, Grid, Overlay, ScrollView, tailles fit/fixed/fill, marges, alignement. | — |
-| UI-07 | Thèmes en JSON | Partiel | Thèmes JSON livrés (M3) ; manque un jeton de famille de police (G111). | M5 |
+| UI-07 | Thèmes en JSON | Fait (M3) | Jetons, états, variantes, polices, images en neuf parties, rechargement, surcharge locale. | — |
 | UI-11 | Spécification et tests du langage | Fait (M3) | `docs/UI_LANGUAGE.md`, cargo test, `make cui-test`. | — |
 | ASSET-01 | Import glTF 2.0 | Absent | Aucun import de modèle. | M6 |
 | CORE-02 | Gestion d'erreurs | Absent | Aucune erreur attendue ne passe par `std::expected` ; plusieurs `throw` dans le flux normal (violation de la règle 10). Pas d'assertion avec message. | M1 |
@@ -380,12 +380,12 @@ code). Chemins de M2 ; depuis M3, `src/UI/` est `src/ui/legacy/`. À traiter sur
 | ID | Sujet | Détail | Jalon |
 | --- | --- | --- | --- |
 | G105 | API de `platform` en `PascalCase` | `Window`, `InputManager` : noms hors de `docs/03` §7 et hors de `engine::platform` (suite de G96). Non renommés en M3 lot F : le langage hérité (`generator.rs`, convention `Get` + nom) et la démo les nomment ; le guide les déclare **provisoires**. Proposition : renommer avec la bascule de la démo vers `engine::ui` (A30, A31) | M5 |
-| G106 | Texte ASCII | `TextRendererFont` passe par `UI::TextRenderer`, qui charge les caractères 0 à 127 et lit le texte octet par octet : les accents d'un libellé ne s'affichent pas (REN-36). Les champs de texte gardent l'UTF-8 entier | M5 (REN-36) |
+| G106 | Texte hors de l'alphabet latin | **Accents traités** (branche `feat/REN-36-text-unicode-fonts`) : UTF-8 décodé, Latin-1, Latin étendu A et ponctuation typographique chargés à la demande (`tests/ui/text_tests.cpp`). **Reste** : autres écritures (grec, cyrillique, CJK, emoji), mise en forme complexe (arabe, ligatures : HarfBuzz) | M5 (REN-36) |
 | G107 | Saisie de texte partielle | Ni IME, ni presse-papiers, ni sélection dans `TextField` ; Retour arrière et flèches sans répétition (le visualiseur lit `IsKeyJustPressed`) | M5 |
 | G108 | Streaming non mesuré | Pas de mesure de saccade (TER-04) ; un changement de paramètre recrée le `TileStreamer` (toutes les tuiles régénérées) ; le jeu de tuiles affiché change d'un coup quand la sélection est prête | M4 |
 | G109 | Visualiseur vérifié à la main | `make viewer-capture` (CI) prouve le rendu, le panneau et le changement de thème ; caméra libre, export PNG et préréglage « Save » ne sont pas exercés automatiquement (lancement fenêtré de 6 s sans erreur sous Linux, X11) | M4 |
 | G110 | Windows et macOS | `make e2e-init`, `terrain-gen-check`, `cui-test` en CI Windows et macOS jamais observés verts ; **macOS : aucun rendu avant M4** (OpenGL 4.1, le RHI demande 4.3) | M4 |
-| G111 | Thème : police | Pas de jeton de famille de police (un seul fichier de police) ; quelques constantes de comportement dans le code (décalage de l'infobulle, pas de défilement = 3 lignes du thème, largeur minimale d'un champ = 10 caractères) | M5 |
+| G111 | Thème : constantes | **Police traitée** (section `fonts`, propriété `font`). Reste : quelques constantes de comportement dans le code (décalage de l'infobulle, pas de défilement = 3 lignes du thème, largeur minimale d'un champ = 10 caractères) | M5 |
 | G112 | Deux modules d'interface | `engine::ui` (neuf) et `UI::` (hérité, démo, `PerformanceView.cui`) coexistent (A30) ; `once` n'est pas figé par la cible `engine/ui` ; les erreurs d'argument sont placées sur l'élément ou le modificateur ; la coloration de l'extension VS Code ne connaît pas `$` | M5 |
 | G113 | Cache du code généré | Le hachage en tête des `.gen.h` couvre le source et `OUTPUT_FORMAT_VERSION`, pas la version du compilateur `cui` : changer le générateur sans incrémenter cette constante garde d'anciens fichiers | M4 |
 | G114 | Projet d'`engine init` | Le modèle de projet est la démo complète (terrain, interface héritée) ; un modèle minimal (`apps/minimal`) existe dans le paquet mais `engine init` ne le propose pas | M4 |
