@@ -79,7 +79,7 @@ rd::MeshData triangleData(const std::array<float, 3> &color)
 
 TEST_SUITE("renderer/camera")
 {
-    TEST_CASE("Camera: matrices follow the legacy formulas; data() has the std140 layout; jitter shifts the projection")
+    TEST_CASE("Camera (REN-02): reverse-Z projections in [0, 1]; data() has the std140 layout; jitter shifts the projection")
     {
         rd::Camera camera;
         camera.setPosition({1.0f, 2.0f, 3.0f});
@@ -88,7 +88,8 @@ TEST_SUITE("renderer/camera")
         camera.setFarPlane(1000.0f);
         camera.setAspect(1280, 720);
         const glm::mat4 view = glm::lookAt(glm::vec3(1, 2, 3), glm::vec3(1, 2, 3) + glm::vec3(0, 0, -1), glm::vec3(0, 1, 0));
-        const glm::mat4 proj = glm::perspective(glm::radians(75.0f), 1280.0f / 720.0f, 0.1f, 1000.0f);
+        // Reverse-Z borné : la projection [0, 1] de glm avec les plans échangés.
+        const glm::mat4 proj = glm::perspectiveRH_ZO(glm::radians(75.0f), 1280.0f / 720.0f, 1000.0f, 0.1f);
         CHECK(camera.matrix() == proj * view);
         const rd::CameraData data = camera.data();
         CHECK(data.position[0] == 1.0f);
@@ -100,6 +101,46 @@ TEST_SUITE("renderer/camera")
         CHECK(camera.projectionMatrix()[2][1] == doctest::Approx(proj[2][1] - 0.02f));
         camera.setAspect(10, 0); // hauteur nulle : pas de division par zéro
         CHECK(camera.aspect() == 1.0f);
+
+        // Profondeur : 1 au plan proche, 0 au plan lointain (reverse-Z) ; plan lointain infini : profondeur = proche / distance.
+        rd::Camera depthCam;
+        depthCam.setNearPlane(0.5f);
+        depthCam.setFarPlane(100.0f);
+        auto depthAt = [&](const rd::Camera &c, float distance)
+        {
+            const glm::vec4 clip = c.projectionMatrix() * glm::vec4(0.0f, 0.0f, -distance, 1.0f);
+            return clip.z / clip.w;
+        };
+        CHECK(depthAt(depthCam, 0.5f) == doctest::Approx(1.0f));
+        CHECK(depthAt(depthCam, 100.0f) == doctest::Approx(0.0f).epsilon(1e-6));
+        CHECK(depthAt(depthCam, 10.0f) > depthAt(depthCam, 20.0f)); // le plus proche a la plus grande profondeur
+        rd::Camera infinite; // défaut : plan lointain infini
+        infinite.setNearPlane(0.5f);
+        CHECK_FALSE(std::isfinite(infinite.farPlane()));
+        CHECK(depthAt(infinite, 0.5f) == doctest::Approx(1.0f));
+        CHECK(depthAt(infinite, 50.0f) == doctest::Approx(0.01f));
+        CHECK(depthAt(infinite, 1e7f) > 0.0f); // jamais découpé au loin
+        // Orthographique : hauteur visible, aspect, reverse-Z aussi.
+        rd::Camera ortho;
+        ortho.setAspect(2.0f);
+        ortho.setNearPlane(1.0f);
+        ortho.setFarPlane(101.0f);
+        ortho.setOrthographic(10.0f);
+        CHECK((ortho.projection() == rd::Camera::Projection::kOrthographic));
+        const glm::vec4 corner = ortho.projectionMatrix() * glm::vec4(10.0f, 5.0f, -1.0f, 1.0f);
+        CHECK(corner.x == doctest::Approx(1.0f));
+        CHECK(corner.y == doctest::Approx(1.0f));
+        CHECK(corner.z == doctest::Approx(1.0f));
+        CHECK(depthAt(ortho, 101.0f) == doctest::Approx(0.0f).epsilon(1e-6));
+        // Rendu relatif à la caméra : la vue n'a plus de translation, data(true) envoie la position (0, 0, 0).
+        const glm::vec4 world = camera.matrix() * glm::vec4(5.0f, 6.0f, 7.0f, 1.0f);
+        const glm::vec4 relative = camera.relativeMatrix() * glm::vec4(glm::vec3(5.0f, 6.0f, 7.0f) - camera.position(), 1.0f);
+        for (int c = 0; c < 4; ++c)
+        {
+            CHECK(relative[c] == doctest::Approx(world[c]).epsilon(1e-5));
+        }
+        CHECK(camera.data(true).position[0] == 0.0f);
+
     }
 
     TEST_CASE("Camera: movement and rotation; the pitch cannot go within 10 degrees of the vertical")

@@ -25,8 +25,8 @@ void main()
         discard;
     }
 
-    // L'interface a l'origine en haut ; la couche est lue avec la convention bas-gauche : on retourne Y.
-    vec2 sampleUV = vec2(scrolledUV.x, 1.0 - scrolledUV.y);
+    // Repère du RHI (A26) : la ligne 0 de la couche est son haut, comme l'interface : pas de retournement.
+    vec2 sampleUV = scrolledUV;
     vec4 texColor = texture(textureSampler, sampleUV);
 
     // La couche contient une couleur prémultipliée (rgb déjà multiplié par a). La couleur de fond du conteneur (non

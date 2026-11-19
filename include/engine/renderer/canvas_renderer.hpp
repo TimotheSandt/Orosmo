@@ -64,6 +64,8 @@ class CanvasRenderer
         Texture texture;
         rhi::BindGroupHandle group;
     };
+    // Découpage en pixels de la cible. Repère du RHI (A26) : `bottom` est la PREMIÈRE ligne (depuis le haut), `top` la ligne qui
+    // suit la dernière ; les noms viennent de l'ancien repère OpenGL (ligne 0 en bas).
     struct Clip
     {
         int left = 0;

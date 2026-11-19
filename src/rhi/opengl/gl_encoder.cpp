@@ -107,6 +107,7 @@ class GlEncoder final : public CommandEncoder
     std::uint64_t indexOffset_ = 0;
     bool storageTouched_ = false;
     bool storageDrawInPass_ = false; // un dessin de la passe a utilisé un programme qui accède au stockage
+    bool passToWindow_ = false;      // passe sur le framebuffer de la fenêtre (origine basse : rectangles retournés)
 };
 
 std::unique_ptr<CommandEncoder> GlDevice::createCommandEncoder() { return std::make_unique<GlEncoder>(*this); }
@@ -223,6 +224,10 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
     }
     const GLuint fbo = toWindow ? 0 : device_.framebufferFor(key, static_cast<std::uint32_t>(desc.colors.size()), attachments);
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    // Repère du RHI : ligne 0 = haut de la cible (GL_UPPER_LEFT). Le framebuffer de la fenêtre est affiché ligne 0 EN BAS de l'écran :
+    // pour lui, l'origine basse remet le haut du dessin en haut de l'écran (et viewport/ciseau sont retournés, voir windowRect).
+    glClipControl(toWindow ? GL_LOWER_LEFT : GL_UPPER_LEFT, GL_ZERO_TO_ONE);
+    passToWindow_ = toWindow;
     // Le backbuffer d'une fenêtre est RGBA8 linéaire par convention : le framebuffer par défaut peut être sRGB selon le visuel
     // choisi par le système (l'attribut GLFW n'est qu'une préférence), on coupe donc la conversion pour lui.
     if (toWindow)
@@ -347,6 +352,11 @@ void GlEncoder::endRenderPass()
     {
         glPopDebugGroup();
         passGroupPushed_ = false;
+    }
+    if (passToWindow_)
+    {
+        glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE); // repère par défaut du RHI hors de la passe de fenêtre
+        passToWindow_ = false;
     }
     inPass_ = false;
     pipeline_ = {};
@@ -576,7 +586,9 @@ void GlEncoder::setViewport(const Viewport &v)
 {
     if (check(inPass_, ErrorCode::kInvalidArgument, "setViewport: outside a render pass"))
     {
-        glViewport(static_cast<GLint>(v.x), static_cast<GLint>(v.y), static_cast<GLsizei>(v.width), static_cast<GLsizei>(v.height));
+        // Rectangle du RHI (y depuis le haut) -> coordonnées de fenêtre OpenGL (y depuis la ligne 0).
+        const float y = passToWindow_ ? static_cast<float>(passExtent_.height) - (v.y + v.height) : v.y;
+        glViewport(static_cast<GLint>(v.x), static_cast<GLint>(y), static_cast<GLsizei>(v.width), static_cast<GLsizei>(v.height));
         glDepthRangef(v.minDepth, v.maxDepth);
     }
 }
@@ -585,7 +597,8 @@ void GlEncoder::setScissor(const Rect &r)
 {
     if (check(inPass_, ErrorCode::kInvalidArgument, "setScissor: outside a render pass"))
     {
-        glScissor(r.x, r.y, static_cast<GLsizei>(r.width), static_cast<GLsizei>(r.height));
+        const GLint y = passToWindow_ ? static_cast<GLint>(passExtent_.height) - (r.y + static_cast<GLint>(r.height)) : r.y;
+        glScissor(r.x, y, static_cast<GLsizei>(r.width), static_cast<GLsizei>(r.height));
     }
 }
 

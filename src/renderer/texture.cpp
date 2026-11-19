@@ -101,19 +101,13 @@ core::Result<Texture> Texture::create(rhi::Device &device, const TextureInfo &in
 
 core::Result<Texture> Texture::fromFile(rhi::Device &device, const std::filesystem::path &file, FilterMode filter, rhi::AddressMode address)
 {
-    // Réglage global de stb jamais modifié (deux chargements simultanés se le disputeraient) : lecture telle quelle, puis lignes
-    // retournées ici (convention des textures : première ligne envoyée = bas de l'image).
+    // Réglage global de stb jamais modifié (deux chargements simultanés se le disputeraient). Repère du RHI (A26) : la première
+    // ligne envoyée est le HAUT de la texture, comme la première ligne d'un fichier image : aucun retournement.
     int w = 0, h = 0, channels = 0;
     std::unique_ptr<unsigned char, decltype(&stbi_image_free)> data(stbi_load(file.string().c_str(), &w, &h, &channels, 4), &stbi_image_free);
     if (!data)
     {
         return makeError(ErrorCode::kIo, "Texture::fromFile: cannot read " + file.generic_string() + ": " + stbi_failure_reason());
-    }
-    const std::size_t rowBytes = static_cast<std::size_t>(w) * 4;
-    for (int top = 0, bottom = h - 1; top < bottom; ++top, --bottom)
-    {
-        std::swap_ranges(data.get() + static_cast<std::size_t>(top) * rowBytes, data.get() + static_cast<std::size_t>(top + 1) * rowBytes,
-                         data.get() + static_cast<std::size_t>(bottom) * rowBytes);
     }
     TextureInfo info;
     info.width = static_cast<std::uint32_t>(w);

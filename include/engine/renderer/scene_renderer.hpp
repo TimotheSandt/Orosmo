@@ -93,6 +93,11 @@ class SceneRenderer
     void setJitterSequenceLength(std::uint32_t length) noexcept;
     void resetTemporalHistory() noexcept { resetHistoryNextFrame_ = true; }
 
+    // REN-02 : rendu relatif à la caméra. La caméra est à l'origine de la matrice envoyée et chaque maillage est placé par rapport
+    // à elle (translation - position de la caméra) : la précision ne dépend plus de la distance au centre du monde.
+    void setCameraRelative(bool enabled) noexcept { cameraRelative_ = enabled; }
+    bool cameraRelative() const noexcept { return cameraRelative_; }
+
     // Lumières lues par les shaders ; sans appel, une lumière ambiante nulle. Peut être appelé après beginFrame : le groupe de
     // liaison est mis à jour avant le dessin suivant.
     void setLights(LightManager *lights) noexcept { lights_ = lights; }
@@ -155,6 +160,8 @@ class SceneRenderer
     bool historyValid_ = false; // historyTarget_ contient l'image précédente (écrite avec succès à l'image précédente)
 
     bool motionVectorsEnabled_ = false;
+    bool cameraRelative_ = false;
+    glm::vec3 cameraOrigin_{0.0f};
     bool depthAsTextureEnabled_ = false;
     float deltaTime_ = 0.0f;
     glm::vec2 currentJitter_{0.0f};

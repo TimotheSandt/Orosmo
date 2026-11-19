@@ -173,7 +173,8 @@ namespace
 core::Result<std::vector<std::byte>> readTexel(rhi::Device &device, rhi::TextureHandle texture, std::uint32_t x, std::uint32_t yTop, std::uint32_t height)
 {
     rhi::TextureCopy region;
-    region.offset = {static_cast<std::int32_t>(x), static_cast<std::int32_t>(height - 1 - yTop), 0};
+    (void)height; // repère du RHI (A26) : la ligne 0 est le haut, comme ici
+    region.offset = {static_cast<std::int32_t>(x), static_cast<std::int32_t>(yTop), 0};
     region.size = {1, 1, 1};
     return device.readTexture(texture, region);
 }

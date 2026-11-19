@@ -367,4 +367,46 @@ TEST_SUITE("rhi/opengl/state")
         CHECK((tests::errorOf(gpu->submit(std::move(down))) == ErrorCode::kOutOfRange));
         gpu.expectNoValidationErrors();
     }
+
+    TEST_CASE("A26: a counter-clockwise triangle (in NDC, y up) is front-facing on an offscreen target and on the convention's rows")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {8, 8});
+        const char *vs = R"(#version 430 core
+layout(location = 0) in vec2 position;
+void main() { gl_Position = vec4(position, 0.0, 1.0); })";
+        // Triangle anti-horaire en NDC (y vers le haut) couvrant le haut de la cible : (-1, 0) (1, 0) (0, 1).
+        const std::vector<float> ccw{-1, 0, 1, 0, 0, 1};
+        const std::vector<float> cw{-1, 0, 0, 1, 1, 0};
+        auto draw = [&](const std::vector<float> &positions, CullMode cull)
+        {
+            const BufferHandle vb = gpu.buffer(BufferUsage::kVertex, bytesOf(positions));
+            GraphicsPipelineDesc d;
+            d.vertex = gpu.shader(ShaderStage::kVertex, vs);
+            d.fragment = gpu.shader(ShaderStage::kFragment, kRedFs);
+            d.vertexBuffers = {{0, 8, VertexStepRate::kVertex}};
+            d.vertexAttributes = {{0, 0, VertexFormat::kFloat2, 0}};
+            d.colorTargets = {ColorTargetState{}};
+            d.raster.cull = cull;
+            d.raster.frontFace = FrontFace::kCounterClockwise;
+            auto pipe = gpu->createGraphicsPipeline(d);
+            REQUIRE(pipe.has_value());
+            gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    e.beginRenderPass(passOn(color));
+                    e.setPipeline(*pipe);
+                    e.setVertexBuffer(0, vb);
+                    e.draw(3);
+                    e.endRenderPass();
+                });
+            return rgba(gpu.pixel(color, 4, 2)); // ligne 2 depuis le HAUT : dans le triangle
+        };
+        CHECK(draw(ccw, CullMode::kBack) == std::array<std::uint8_t, 4>{255, 0, 0, 255}); // face avant : dessiné
+        CHECK(draw(cw, CullMode::kBack) == std::array<std::uint8_t, 4>{0, 0, 0, 255});    // face arrière : éliminé
+        CHECK(draw(ccw, CullMode::kNone) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
+        CHECK(rgba(gpu.pixel(color, 4, 6)) == std::array<std::uint8_t, 4>{0, 0, 0, 255}); // le bas reste vide : NDC +y = haut
+        gpu.expectNoValidationErrors();
+    }
 }
