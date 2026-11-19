@@ -2,7 +2,8 @@
 
 Moteur de jeu 3D et 2D en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec une interface décrite dans un langage maison (`.cui`) précompilé en C++. Le premier produit visé est un générateur de terrain et de planètes procédural.
 
-> Travail en cours : l'architecture et les API évoluent. Spécification, checklist et plan : [docs/](docs/README.md). Règles de travail : [CLAUDE.md](CLAUDE.md).
+> Première release utilisable : M3 (guide : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)). L'architecture évolue encore ;
+> les changements incompatibles sont listés dans [docs/releases/](docs/releases/). Spécification, checklist et plan : [docs/](docs/README.md). Règles de travail : [CLAUDE.md](CLAUDE.md).
 
 ## Prérequis
 
@@ -57,6 +58,10 @@ make all-debug
 | `make all-debug` / `make all-release` | Moteur → `apps/demo/engine/` → démo |
 | `make sync-demo` | Copie le moteur construit dans `apps/demo/engine/` |
 | `make dist` / `make engine-tool` | Paquet du moteur / outil `engine init` |
+| `make terrain-gen` / `make terrain-gen-check` | Générateur en ligne de commande (TOOL-02) / son déterminisme et ses codes de retour |
+| `make viewer-run ARGS="--seed 42 --preset mountains"` / `make viewer-capture` | Visualiseur de terrain (TOOL-01) / images sans fenêtre, thèmes sombre et clair |
+| `make cui-test` | Tests du compilateur du langage d'interface (cargo test + entrées invalides de bout en bout) |
+| `make e2e-init` | De bout en bout depuis le paquet : `engine init`, compilation, lancement, exemples (BLD-02) |
 | `make clean` / `make fclean` / `make demo-fclean` | Nettoyage |
 | `sh tools/check-repo.sh` | Contrôle d'hygiène du dépôt (binaires, casse, CRLF) |
 | `sh tools/format_sources.sh` | Formatage (`clang-format`) |
@@ -81,7 +86,8 @@ Le moteur compile en bibliothèques statiques (`libgraphics.a`, `libui.a`, `libn
 
 - Vision, checklist, architecture : [docs/](docs/README.md)
 - Backends graphiques : [docs/GRAPHICS_BACKENDS.md](docs/GRAPHICS_BACKENDS.md)
-- Langage d'interface : [docs/UI_DSL_Spec.md](docs/UI_DSL_Spec.md)
+- **Utiliser le moteur depuis une release** (`engine init`, paquet, projet minimal, stabilité de l'API) : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)
+- Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `engine/ui`) ; cible héritée `UI::View` : [docs/UI_DSL_Spec.md](docs/UI_DSL_Spec.md)
 - Nettoyage M00 : [docs/CLEANUP_PLAN.md](docs/CLEANUP_PLAN.md), [docs/releases/M00.md](docs/releases/M00.md)
 
 ## Licence
