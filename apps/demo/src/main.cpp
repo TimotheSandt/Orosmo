@@ -105,6 +105,7 @@ int main(int argc, char **argv)
                 LOG_INFO("Random terrain seed: ", terrainSeed, " (replay it with --seed ", terrainSeed, ")");
             }
             game.setSeed(terrainSeed);
+            game.setVSync(launchOptions.vsync);
             LOG_TRACE("Game created");
             game.init();
             LOG_TRACE("Game initialized");

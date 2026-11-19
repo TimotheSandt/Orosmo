@@ -141,6 +141,14 @@ void Game::refreshViewSize()
     const bool fixedSize = !this->captureDirectory.empty() || this->headless;
     this->viewWidth = fixedSize ? kCaptureWidth : *window.GetWidthptr();
     this->viewHeight = fixedSize ? kCaptureHeight : *window.GetHeightptr();
+    // Pixels réels : sur un écran à échelle (DPI), le tampon d'image est plus grand que la fenêtre. L'interface reste en
+    // coordonnées logiques (la taille de la vue) ; le canevas la projette sur les pixels.
+    this->pixelWidth = this->viewWidth;
+    this->pixelHeight = this->viewHeight;
+    if (!fixedSize)
+    {
+        window.GetFramebufferSize(this->pixelWidth, this->pixelHeight);
+    }
 }
 
 void Game::enableCapture(std::string directory, std::uint32_t frames)
@@ -267,7 +275,7 @@ bool Game::renderUi(rhi::CommandEncoder &encoder, const rhi::TextureHandle &comp
     const bool scaled = uiUpscaling && uiRenderScale < 1.0f;
     if (!scaled)
     {
-        auto drawn = canvas->render(encoder, list, {composedTexture, rhi::Format::kRGBA8Unorm, {static_cast<std::uint32_t>(viewWidth), static_cast<std::uint32_t>(viewHeight)}}, true);
+        auto drawn = canvas->render(encoder, list, {composedTexture, rhi::Format::kRGBA8Unorm, {static_cast<std::uint32_t>(pixelWidth), static_cast<std::uint32_t>(pixelHeight)}}, true);
         if (!drawn)
         {
             LOG_ERROR(1, "UI: ", drawn.error().message);
@@ -275,8 +283,8 @@ bool Game::renderUi(rhi::CommandEncoder &encoder, const rhi::TextureHandle &comp
         return static_cast<bool>(drawn);
     }
 
-    const auto w = static_cast<std::uint32_t>(std::max(1.0f, static_cast<float>(viewWidth) * uiRenderScale));
-    const auto h = static_cast<std::uint32_t>(std::max(1.0f, static_cast<float>(viewHeight) * uiRenderScale));
+    const auto w = static_cast<std::uint32_t>(std::max(1.0f, static_cast<float>(pixelWidth) * uiRenderScale));
+    const auto h = static_cast<std::uint32_t>(std::max(1.0f, static_cast<float>(pixelHeight) * uiRenderScale));
     if (!uiTarget.valid())
     {
         auto target = rd::RenderTarget::create(*device, {.size = {w, h}, .depth = false, .debugName = "ui"});
@@ -309,8 +317,8 @@ bool Game::beginFrame()
         return false; // fenêtre réduite
     }
     backbuffer = *frame;
-    const auto viewW = static_cast<std::uint32_t>(this->viewWidth);
-    const auto viewH = static_cast<std::uint32_t>(this->viewHeight);
+    const auto viewW = static_cast<std::uint32_t>(this->pixelWidth);
+    const auto viewH = static_cast<std::uint32_t>(this->pixelHeight);
     if (viewW == 0 || viewH == 0)
     {
         return false;
@@ -338,11 +346,11 @@ bool Game::beginFrame()
 void Game::render()
 {
     rhi::CommandEncoder &encoder = *frameEncoder;
-    const auto viewW = static_cast<std::uint32_t>(this->viewWidth);
-    const auto viewH = static_cast<std::uint32_t>(this->viewHeight);
+    const auto viewW = static_cast<std::uint32_t>(this->pixelWidth);
+    const auto viewH = static_cast<std::uint32_t>(this->pixelHeight);
 
     this->camera.setAspect(viewW, viewH);
-    sceneRenderer->setOutputResolution(this->viewWidth, this->viewHeight);
+    sceneRenderer->setOutputResolution(this->pixelWidth, this->pixelHeight);
     const glm::vec4 clear = window.GetClearColor();
     Profiler::ProfileGPU("Clear", [&]() { (void)sceneRenderer->beginFrame(encoder, {.clearColor = {clear.r, clear.g, clear.b, clear.a}}); });
     (void)sceneRenderer->setCamera(this->camera);

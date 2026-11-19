@@ -35,6 +35,8 @@ struct GraphicsLaunchOptions
     // --headless (PLAT-04) : no window at all (offscreen device, fixed 1280x720 view, fixed time step, no input). The demo renders
     // --capture-frames N frames (default 10), saves the images if --capture is given, then exits.
     bool headless = false;
+    // --vsync : synchronise la présentation sur le rafraîchissement de l'écran (désactivée par défaut, comme avant ; sans effet en headless).
+    bool vsync = false;
 };
 
 std::string GraphicsAPIToString(GraphicsAPI api) noexcept;

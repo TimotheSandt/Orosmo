@@ -36,6 +36,7 @@ class Game
     // TOOL-03: after `frames` rendered frames, save <directory>/scene.png (3D) and ui.png, then close.
     void enableCapture(std::string directory, std::uint32_t frames);
     void setSeed(std::uint32_t seed) { terrainSeed = seed; }
+    void setVSync(bool enabled) { if (device) { device->setVSync(enabled); } }
     bool captureSucceeded() const noexcept { return captureDirectory.empty() || captureDone; }
 
   private:
@@ -71,6 +72,8 @@ class Game
     std::uint32_t terrainSeed = 1u; // set by main(): never derived from the clock
     int viewWidth = 0;
     int viewHeight = 0;
+    int pixelWidth = 0;  // = viewWidth sauf écran à échelle (DPI) : taille réelle du tampon d'image
+    int pixelHeight = 0;
     std::string captureDirectory;
     std::uint32_t captureFrames = 0;
     std::uint32_t renderedFrames = 0;
