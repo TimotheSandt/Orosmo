@@ -99,6 +99,11 @@ GraphicsLaunchOptions ParseGraphicsLaunchOptions(int argc, const char *const *ar
             options.listApis = true;
             continue;
         }
+        if (argument == "--headless")
+        {
+            options.headless = true;
+            continue;
+        }
         if (argument == "--choose-api")
         {
             options.chooseApiInteractively = true;
@@ -198,11 +203,13 @@ GraphicsLaunchOptions ParseGraphicsLaunchOptions(int argc, const char *const *ar
 
 void PrintGraphicsAPIUsage(std::ostream &out)
 {
-    out << "Usage: ProceduralGeneration [--api <name>] [--choose-api] [--list-apis] [--seed N] [--capture <dir> [--capture-frames N]] [--help]\n";
+    out << "Usage: ProceduralGeneration [--api <name>] [--choose-api] [--list-apis] [--seed N] [--headless] [--capture <dir> [--capture-frames N]] [--help]\n";
     out << "Available API names: " << JoinAvailableApis() << '\n';
     out << "Example: ProceduralGeneration --api opengl\n";
     out << "Capture : renders N frames (default 10) at 1280x720 with seed 1 (unless --seed), writes <dir>/scene.png and\n";
     out << "          <dir>/ui.png (the UI shows live FPS: only scene.png is reproducible), then exits.\n";
+    out << "Headless: --headless creates no window (offscreen device, 1280x720, fixed time step), renders N frames and exits ;\n";
+    out << "          combine it with --capture <dir> to save the images.\n";
 }
 
 bool PromptForGraphicsAPI(std::istream &input, std::ostream &output, GraphicsAPI &selectedApi)

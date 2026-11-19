@@ -115,6 +115,16 @@ Assert(!ParseGraphicsAPI("directx").has_value(), "Unknown API should be rejected
         }
     }
 
+    TEST_CASE("launch options parse --headless (PLAT-04)")
+    {
+        const char *argv[] = {"program", "--headless", "--capture", "out", "--capture-frames", "3"};
+        const GraphicsLaunchOptions options = ParseGraphicsLaunchOptions(6, argv);
+        Assert(options.headless, "--headless should be parsed");
+        AssertEqual(options.captureFrames, 3u, "the frame count is kept in headless mode");
+        const char *none[] = {"program"};
+        Assert(!ParseGraphicsLaunchOptions(1, none).headless, "a window is the default");
+    }
+
     TEST_CASE("launch options reject invalid capture arguments")
     {
         const char *missingValue[] = {"program", "--capture"};
