@@ -53,11 +53,8 @@ void World::Destroy()
 
 void World::Update() {}
 
-void World::Render(rd::SceneRenderer &renderer, const rd::Camera &camera)
+engine::core::Result<> World::Render(rd::SceneRenderer &renderer, const rd::Camera &camera)
 {
     renderer.setLights(&this->lightManager);
-    if (auto drawn = renderer.drawMesh(this->terrainMesh, camera); !drawn)
-    {
-        LOG_ERROR(1, "World: ", drawn.error().message);
-    }
+    return renderer.drawMesh(this->terrainMesh, camera);
 }

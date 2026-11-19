@@ -307,7 +307,9 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         }
         else if (const auto *c = std::get_if<DrawClearRect>(&command))
         {
-            status = drawRect(DrawRect{c->position, c->size, c->color}, false);
+            // Une couche contient une couleur prémultipliée : la couleur de remplacement l'est aussi (le transparent ne change pas).
+            const glm::vec4 color = surface.layerId != 0 ? glm::vec4(glm::vec3(c->color) * c->color.a, c->color.a) : c->color;
+            status = drawRect(DrawRect{c->position, c->size, color}, false);
         }
         else if (const auto *g = std::get_if<DrawGlyphs>(&command))
         {
@@ -422,13 +424,16 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
             const float right = std::ceil((clip->position.x + clip->size.x) * k.x);
             const float top = std::ceil((surface.logical.y - clip->position.y) * k.y);
             Clip c{};
-            if (std::isfinite(left) && std::isfinite(bottom) && std::isfinite(right) && std::isfinite(top))
+            // Parent vide : le découpage reste vide (et std::clamp n'est jamais appelé avec des bornes inversées).
+            if (!parent.empty() && std::isfinite(left) && std::isfinite(bottom) && std::isfinite(right) && std::isfinite(top))
             {
                 auto clampTo = [](float v, int lo, int hi) { return static_cast<int>(std::clamp(v, static_cast<float>(lo), static_cast<float>(hi))); };
                 c.left = clampTo(left, parent.left, parent.right);
                 c.right = clampTo(right, parent.left, parent.right);
                 c.bottom = clampTo(bottom, parent.bottom, parent.top);
                 c.top = clampTo(top, parent.bottom, parent.top);
+                c.right = std::max(c.right, c.left); // largeur ou hauteur négative : vide, bornes ordonnées
+                c.top = std::max(c.top, c.bottom);
             }
             surface.clips.push_back(c); // non fini : {0, 0, 0, 0}, vide
             applyClip(encoder, surface);
@@ -460,6 +465,13 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         status = makeError(ErrorCode::kNotFound, "CanvasRenderer::render: a DrawLayerImage refers to a layer that does not exist (collect the UI again in full)");
     }
 
+    // Liste interrompue par une erreur : rien n'est évincé (une couche que la suite aurait référencée resterait sinon détruite).
+    // Le contenu des couches redessinées avant l'erreur n'est pas fiable : l'appelant redemande une liste complète
+    // (`UI::Manager::InvalidateLayers`).
+    if (!status)
+    {
+        return status;
+    }
     // Couches gardées : celles que la liste a référencées, et celles dont l'image est dans une couche gardée (son contenu en
     // cache les redessine sans les nommer).
     std::vector<std::uint64_t> work;

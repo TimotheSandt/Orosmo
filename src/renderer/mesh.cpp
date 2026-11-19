@@ -4,12 +4,28 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
+#include <cstddef>
 #include <array>
 #include <numeric>
 #include <string>
 
 namespace engine::renderer
 {
+
+namespace
+{
+// Bloc ModelBlock de shaders/rhi/mesh.vert (std140) : deux mat4 de 64 octets, la seconde à l'offset 64.
+struct ModelBlock
+{
+    glm::mat4 model;
+    glm::mat4 normalMatrix;
+};
+static_assert(sizeof(glm::mat4) == 64);
+static_assert(offsetof(ModelBlock, model) == 0);
+static_assert(offsetof(ModelBlock, normalMatrix) == 64);
+static_assert(sizeof(ModelBlock) == 128);
+} // namespace
+
 
 using core::ErrorCode;
 using core::makeError;
@@ -116,7 +132,7 @@ core::Result<Mesh> Mesh::create(rhi::Device &device, const MeshData &data)
     }
     // Bloc ModelBlock de mesh.vert (std140) : matrice du modèle puis matrice des normales (inverse transposée, en mat4).
     rhi::BufferDesc md;
-    md.size = 2 * sizeof(glm::mat4);
+    md.size = sizeof(ModelBlock);
     md.usage = rhi::BufferUsage::kUniform | rhi::BufferUsage::kCopyDst;
     md.debugName = data.name + ".model";
     auto model = GpuBuffer::create(device, md);
@@ -126,7 +142,7 @@ core::Result<Mesh> Mesh::create(rhi::Device &device, const MeshData &data)
     }
     mesh.modelBuffer_ = std::move(*model);
     rhi::BindGroupDesc bg;
-    bg.entries.push_back({.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = mesh.modelBuffer_.handle(), .size = 2 * sizeof(glm::mat4)});
+    bg.entries.push_back({.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = mesh.modelBuffer_.handle(), .size = sizeof(ModelBlock)});
     bg.debugName = data.name + ".modelGroup";
     auto group = device.createBindGroup(bg);
     if (!group)
@@ -165,13 +181,13 @@ core::Result<> Mesh::uploadTransform()
     }
     // Les normales se transforment par l'inverse transposée de la partie 3x3 (juste aussi avec une échelle non uniforme) ; calculée
     // une fois par objet ici plutôt qu'à chaque sommet. Matrice non inversible (échelle nulle) : identité, la normale est inutile.
-    std::array<glm::mat4, 2> block{modelMatrix(), glm::mat4(1.0f)};
-    const glm::mat3 linear(block[0]);
+    ModelBlock block{modelMatrix(), glm::mat4(1.0f)};
+    const glm::mat3 linear(block.model);
     if (glm::determinant(linear) != 0.0f)
     {
-        block[1] = glm::mat4(glm::transpose(glm::inverse(linear)));
+        block.normalMatrix = glm::mat4(glm::transpose(glm::inverse(linear)));
     }
-    if (auto r = modelBuffer_.update(0, std::as_bytes(std::span(glm::value_ptr(block[0]), 32))); !r)
+    if (auto r = modelBuffer_.update(0, std::as_bytes(std::span(&block, 1))); !r) // une vue sur tout le bloc, pas sur une matrice
     {
         return r;
     }

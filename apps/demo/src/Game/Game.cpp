@@ -379,10 +379,19 @@ void Game::render()
     this->camera.setAspect(viewW, viewH);
     sceneRenderer->setOutputResolution(this->pixelWidth, this->pixelHeight);
     const glm::vec4 clear = window.GetClearColor();
-    Profiler::ProfileGPU("Clear", [&]() { (void)sceneRenderer->beginFrame(encoder, {.clearColor = {clear.r, clear.g, clear.b, clear.a}}); });
-    (void)sceneRenderer->setCamera(this->camera);
-    Profiler::ProfileGPU("RenderWorld", &World::Render, this->world.get(), std::ref(*sceneRenderer), std::cref(this->camera));
-    Profiler::ProfileGPU("Upscale", [&]() { (void)sceneRenderer->endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}); });
+    // Un échec de la scène (pipeline qui ne se lie pas, cible refusée...) rend l'image fausse : elle n'est ni comptée ni capturée.
+    auto keep = [&](engine::core::Result<> r, const char *step)
+    {
+        if (!r && !this->sceneError)
+        {
+            LOG_ERROR(1, "Scene (", step, "): ", r.error().message);
+            this->sceneError = r.error();
+        }
+    };
+    Profiler::ProfileGPU("Clear", [&]() { keep(sceneRenderer->beginFrame(encoder, {.clearColor = {clear.r, clear.g, clear.b, clear.a}}), "beginFrame"); });
+    keep(sceneRenderer->setCamera(this->camera), "setCamera");
+    Profiler::ProfileGPU("RenderWorld", [&]() { keep(this->world->Render(*sceneRenderer, this->camera), "world"); });
+    Profiler::ProfileGPU("Upscale", [&]() { keep(sceneRenderer->endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame"); });
 
     Profiler::ProfileGPU("UIUpscale", [&]() { (void)renderUi(encoder, composed.color(0)); });
 
@@ -394,11 +403,13 @@ void Game::endFrame()
 {
     gpuTimers->setEncoder(nullptr);
     const auto result = device->submit(std::move(frameEncoder));
-    const bool submitted = result.has_value();
-    if (!submitted)
+    if (!result)
     {
         LOG_ERROR(1, "Frame: ", result.error().message);
     }
+    // Image valide : soumise ET scène dessinée sans erreur (sinon la capture lirait une cible incomplète).
+    const bool submitted = result.has_value() && !this->sceneError;
+    this->sceneError.reset();
 
     if (!submitted)
     {

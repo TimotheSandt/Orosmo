@@ -28,7 +28,8 @@ class World
                                 std::uint32_t seed);
     void Destroy();
     void Update();
-    void Render(engine::renderer::SceneRenderer &renderer, const engine::renderer::Camera &camera);
+    // Dessine le monde ; l'échec d'un dessin (pipeline qui ne se lie pas...) est renvoyé à l'appelant.
+    engine::core::Result<> Render(engine::renderer::SceneRenderer &renderer, const engine::renderer::Camera &camera);
 
   private:
     TerrainGenerator terrain;

@@ -124,14 +124,15 @@ bool SceneRenderer::setActiveUpscaleMode(const std::string &name)
     {
         for (auto &mode : upscaleModes_)
         {
-            if (mode && mode->name() == name)
+            // Premier mode de ce nom qui est supporté (deux modes peuvent porter le même nom, pour des capacités différentes).
+            if (mode && mode->name() == name && mode->supports(device_.capabilities()))
             {
                 candidate = mode.get();
                 break;
             }
         }
         // Inconnu, non supporté ou qui ne s'initialise pas : refusé, le mode actif reste en place.
-        if (candidate == nullptr || !candidate->supports(device_.capabilities()))
+        if (candidate == nullptr)
         {
             return false;
         }
@@ -365,7 +366,8 @@ core::Result<> SceneRenderer::draw(Mesh &mesh, const Camera &, bool lines)
         e.setBindGroup(1, mesh.textureGroup());
     }
     e.setBindGroup(2, mesh.modelGroup());
-    const std::uint32_t pushSize = mesh.program()->reflection().pushConstantSize;
+    // Taille de la révision qui a construit CE pipeline (après un rechargement qui ne se lie pas, c'est l'ancienne).
+    const std::uint32_t pushSize = pipelines_.pushConstantSize(*pipeline);
     if (pushSize > 0)
     {
         std::vector<std::byte> push(pushSize, std::byte{0});
@@ -419,6 +421,7 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
     }
     encoder_->endRenderPass();
     passOpen_ = false;
+    generatedFrame_ = {}; // pas de handle d'une image précédente si cette fin d'image échoue avant la génération
     FrameContext context{device_, *encoder_, *blit_};
 
     for (const auto &pass : postProcessPasses_)
@@ -460,8 +463,13 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
             historyFresh = true;
         }
     }
-    const bool resetHistory = resetHistoryNextFrame_ || historyFresh;
-    const rhi::TextureHandle previous = history && !historyFresh ? historyTarget_.color(0) : rhi::TextureHandle{};
+    // L'historique n'est « l'image précédente » que s'il a été écrit avec succès à l'image précédente, à la même taille. Il est
+    // marqué invalide tout de suite : seule une copie réussie à la fin de CETTE image le revalide (un retour anticipé le laisse
+    // invalide, de même qu'une image qui n'en a pas besoin).
+    const bool previousValid = history && historyValid_ && !historyFresh;
+    historyValid_ = false;
+    const bool resetHistory = resetHistoryNextFrame_ || !previousValid;
+    const rhi::TextureHandle previous = previousValid ? historyTarget_.color(0) : rhi::TextureHandle{};
 
     if (modeRuns())
     {
@@ -498,7 +506,6 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
             return r;
         }
     }
-    generatedFrame_ = {};
     if (frameGenMode_ != nullptr)
     {
         FrameGenerationInput input;
@@ -525,8 +532,9 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
         {
             return r;
         }
+        historyValid_ = true;
+        resetHistoryNextFrame_ = false; // la demande de réinitialisation a été transmise avec un historique neuf
     }
-    resetHistoryNextFrame_ = false;
     encoder_ = nullptr;
     return {};
 }

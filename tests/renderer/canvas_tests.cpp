@@ -405,4 +405,57 @@ TEST_SUITE("renderer/canvas")
         CHECK((tests::errorOf(r) == ErrorCode::kNotFound));
         CHECK_FALSE(c.gpu->submit(std::move(encoder)).has_value());
     }
+
+    TEST_CASE("a replacement color written into a layer is premultiplied like the rest of its content")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList l = listOf();
+        l.rect({0, 0}, {16, 16}, {0, 0, 0, 1});
+        l.beginLayer(4, {8, 8});
+        l.commands.emplace_back(rd::DrawClearRect{{0, 0}, {8, 8}, {1, 0, 0, 0.5f}}); // remplacement par une couleur non transparente
+        l.endLayer();
+        l.layerImage({.layerId = 4, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        REQUIRE(c.render(l).has_value());
+        CHECK(near(c.px(2, 2)[0], 128, 2)); // et non 255 : la couche est lue comme prémultipliée
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("a clip inside an empty (inverted) clip stays empty, without calling std::clamp with inverted bounds")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList l = listOf();
+        l.pushClip({10, 0}, {-5, 16}); // largeur négative : vide
+        l.pushClip({0, 0}, {16, 16});
+        l.rect({0, 0}, {16, 16}, {1, 0, 0, 1});
+        l.popClip();
+        l.popClip();
+        REQUIRE(c.render(l, false).has_value());
+        CHECK(c.px(4, 4) == Px{0, 0, 0, 0});
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("a list interrupted by an error evicts no layer: the next valid list can still show it")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList first = listOf();
+        first.beginLayer(8, {8, 8});
+        first.rect({0, 0}, {8, 8}, {0, 1, 0, 1});
+        first.endLayer();
+        first.layerImage({.layerId = 8, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        REQUIRE(c.render(first, false).has_value());
+        rd::DrawList broken = listOf();
+        broken.beginLayer(9, {std::numeric_limits<float>::quiet_NaN(), 4}); // erreur avant de référencer la couche 8
+        broken.endLayer();
+        broken.layerImage({.layerId = 8, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        CHECK_FALSE(c.render(broken, false).has_value());
+        CHECK(c.canvas->layerCount() == 1);
+        rd::DrawList again = listOf();
+        again.layerImage({.layerId = 8, .position = {0, 0}, .size = {8, 8}, .contentSize = {8, 8}});
+        REQUIRE(c.render(again, false).has_value());
+        CHECK(c.px(2, 2) == Px{0, 255, 0, 255});
+        c.gpu.expectNoValidationErrors();
+    }
 }
