@@ -90,6 +90,14 @@ enum class Align : std::uint8_t
     kStretch,
 };
 
+// Ce qui dépasse du widget (enfants plus grands que lui, ou placés en dehors) : visible et cliquable (par défaut), ou coupé à son
+// rectangle. Pour faire défiler le contenu : ScrollView.
+enum class Overflow : std::uint8_t
+{
+    kVisible,
+    kHidden,
+};
+
 enum class EventKind : std::uint8_t
 {
     kClick,
@@ -246,6 +254,7 @@ class Widget
     Align alignX = Align::kStretch;
     Align alignY = Align::kStretch;
     int columnSpan = 1; // nombre de colonnes occupées dans une grille
+    Overflow overflow = Overflow::kVisible;
 
     Widget &setWidth(SizeSpec s) { width = s; return *this; }
     Widget &setHeight(SizeSpec s) { height = s; return *this; }

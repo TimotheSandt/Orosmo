@@ -124,6 +124,23 @@ view Gallery {
                                 Button("min 200").width(.fit, min: 200)
                                 Button("max 80, fill").width(.fill, max: 80)
                             }
+                            Label("Overflow: a 300 px button in a 120 px box, visible then hidden").variant("caption")
+                            HBox {
+                                Overlay {
+                                    Button("overflow visible: still clickable").width(300).align(.start).onClick(state.clicked).id("overflowVisible")
+                                }
+                                .width(120)
+                                .height(30)
+                                .style(background: "color.field")
+                                Overlay {
+                                    Button("overflow hidden: clipped").width(300).align(.start).onClick(state.clicked).id("overflowHidden")
+                                }
+                                .width(120)
+                                .height(30)
+                                .style(background: "color.field")
+                                .overflow(.hidden)
+                                .margin(left: 200)
+                            }
                             Label("ScrollView: wheel or scrollbar").variant("caption")
                             ScrollView {
                                 VBox {
@@ -170,6 +187,8 @@ view Gallery {
                                 .style(image: "frame.border", background: "#00000000")
                                 .width(240)
                             }
+                            Label("Text: UTF-8 with accents and typographic punctuation").variant("caption")
+                            Label("Été, déjà, garçon, œuvre, « guillemets » – tiret… 12 € ; Ñandú, Łódź, Ærøskøbing")
                             Label("Variants: the same widget with another theme style").variant("caption")
                             Label("variant(\"title\")").variant("title")
                             Label("variant(\"caption\")").variant("caption")

@@ -64,8 +64,9 @@ enum class StyleProperty : std::uint8_t
     kWidth,        // "width" (px, taille de référence : piste d'un curseur, case à cocher, barre de défilement)
     kImage,        // "image" : fond en neuf parties (nom d'une entrée de "images", ou "none")
     kImageTint,    // "imageTint" : couleur multipliée par l'image
+    kFont,         // "font" : police (nom d'une entrée de "fonts", ou "default")
 };
-inline constexpr std::size_t kStylePropertyCount = 16;
+inline constexpr std::size_t kStylePropertyCount = 17;
 std::string_view propertyName(StyleProperty property) noexcept;
 std::optional<StyleProperty> propertyFromName(std::string_view name) noexcept;
 bool isColorProperty(StyleProperty property) noexcept;
@@ -93,7 +94,16 @@ struct ImageStyle
     float scale = 1.0f; // pixels logiques par texel (coins et motifs répétés)
 };
 using ImageRef = std::shared_ptr<const ImageStyle>;
-using TokenValue = std::variant<Color, float, ImageRef>;
+
+// Police d'un thème (section "fonts") : un fichier TrueType / OpenType. Nulle dans un style : la police par défaut de l'interface.
+struct FontFace
+{
+    std::string name;
+    std::filesystem::path path;
+};
+using FontRef = std::shared_ptr<const FontFace>;
+
+using TokenValue = std::variant<Color, float, ImageRef, FontRef>;
 
 // Apparence résolue d'un widget dans un état.
 struct Style
@@ -114,6 +124,7 @@ struct Style
     float width = 0.0f;
     ImageRef image;          // fond en neuf parties, dessiné par-dessus `background` (nul : aucun)
     Color imageTint{1.0f};
+    FontRef font;            // police du texte (nulle : celle par défaut)
 
     // Écrit une propriété (couleur, nombre ou image selon la propriété ; un mauvais type est ignoré).
     void set(StyleProperty property, const TokenValue &value) noexcept;
@@ -141,6 +152,7 @@ class Theme
     // (section "images") ou "none" (aucune image).
     core::Result<TokenValue> resolve(std::string_view value) const;
     ImageRef image(std::string_view name) const;
+    FontRef font(std::string_view name) const;
     // Style d'un type de widget dans un état. Type sans entrée dans le thème : style de "default".
     const Style &style(std::string_view widget, WidgetState state) const;
     bool hasWidget(std::string_view widget) const;
@@ -153,6 +165,7 @@ class Theme
     std::map<std::string, TokenValue, std::less<>> tokens_;
     std::map<std::string, StyleSet, std::less<>> styles_; // contient toujours "default"
     std::map<std::string, ImageRef, std::less<>> images_;
+    std::map<std::string, FontRef, std::less<>> fonts_;
     std::vector<std::filesystem::path> sources_;
 
     friend struct ThemeBuilder;

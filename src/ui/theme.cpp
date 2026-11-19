@@ -24,7 +24,7 @@ namespace
 constexpr std::array<std::string_view, kWidgetStateCount> kStateNames = {"normal", "hover", "pressed", "disabled", "focus"};
 constexpr std::array<std::string_view, kStylePropertyCount> kPropertyNames = {
     "background", "foreground", "border",  "accent",   "muted",      "shadowColor",  "borderWidth",
-    "radius",     "padding",    "spacing", "fontSize", "shadowSize", "shadowOffset", "width",       "image",       "imageTint",
+    "radius",     "padding",    "spacing", "fontSize", "shadowSize", "shadowOffset", "width",       "image",       "imageTint", "font",
 };
 
 std::optional<WidgetState> stateFromName(std::string_view name)
@@ -85,6 +85,7 @@ struct RawTheme
     std::map<std::string, Json, std::less<>> tokens;
     std::map<std::string, RawWidget> widgets;
     std::map<std::string, std::pair<Json, std::filesystem::path>> images; // définition, dossier du fichier qui la donne
+    std::map<std::string, std::filesystem::path> fonts;                   // nom -> fichier (chemin résolu)
     std::vector<std::filesystem::path> sources;
 };
 
@@ -152,9 +153,9 @@ core::Result<> mergeDocument(RawTheme &raw, std::string_view text, const std::fi
     for (auto it = doc.begin(); it != doc.end(); ++it)
     {
         if (it.key() != "name" && it.key() != "extends" && it.key() != "tokens" && it.key() != "widgets" && it.key() != "$schema" &&
-            it.key() != "description" && it.key() != "images")
+            it.key() != "description" && it.key() != "images" && it.key() != "fonts")
         {
-            return fail(it.key(), "unknown key (expected name, extends, tokens, images, widgets)");
+            return fail(it.key(), "unknown key (expected name, extends, tokens, images, fonts, widgets)");
         }
     }
     if (auto it = doc.find("name"); it != doc.end())
@@ -178,6 +179,21 @@ core::Result<> mergeDocument(RawTheme &raw, std::string_view text, const std::fi
                 return fail("tokens." + t.key(), "expected a color \"#rrggbb[aa]\", a number or another token's name");
             }
             raw.tokens[t.key()] = *t;
+        }
+    }
+    if (auto it = doc.find("fonts"); it != doc.end())
+    {
+        if (!it->is_object())
+        {
+            return fail("fonts", "expected an object {\"name\": \"file.ttf\"}");
+        }
+        for (auto f = it->begin(); f != it->end(); ++f)
+        {
+            if (!f->is_string())
+            {
+                return fail("fonts." + f.key(), "expected the font file name (relative to the theme)");
+            }
+            raw.fonts[f.key()] = baseDirectory / f->get<std::string>();
         }
     }
     if (auto it = doc.find("images"); it != doc.end())
@@ -269,6 +285,12 @@ void Style::set(StyleProperty property, const TokenValue &value) noexcept
     {
         if (const ImageRef *i = std::get_if<ImageRef>(&value))
             image = *i;
+        return;
+    }
+    if (property == StyleProperty::kFont)
+    {
+        if (const FontRef *f = std::get_if<FontRef>(&value))
+            font = *f;
         return;
     }
     if (property == StyleProperty::kImageTint)
@@ -470,6 +492,18 @@ struct ThemeBuilder
             theme.images_[name] = std::move(style);
         }
 
+        // Polices : le fichier doit exister (il est lu par le rendu du texte au premier usage).
+        for (const auto &[name, file] : raw.fonts)
+        {
+            std::error_code ec;
+            if (!std::filesystem::is_regular_file(file, ec))
+            {
+                return makeError(ErrorCode::kIo, source + ": fonts." + name + ": cannot read " + file.generic_string());
+            }
+            theme.fonts_[name] = std::make_shared<FontFace>(FontFace{name, file});
+            theme.sources_.push_back(file);
+        }
+
         using Props = std::vector<std::pair<StyleProperty, TokenValue>>;
         auto resolveProps = [&](const std::map<std::string, Json> &props, const std::string &where) -> core::Result<Props>
         {
@@ -481,6 +515,15 @@ struct ThemeBuilder
                 if (!property)
                 {
                     return fail(path, "unknown property (known: " + knownList(kPropertyNames) + ")");
+                }
+                if (*property == StyleProperty::kFont)
+                {
+                    const std::string name = value.is_string() ? value.get<std::string>() : std::string();
+                    FontRef f = theme.font(name);
+                    if (!f && name != "default")
+                        return fail(path, "unknown font '" + name + "' (section \"fonts\", or \"default\")");
+                    out.emplace_back(*property, TokenValue(f));
+                    continue;
                 }
                 if (*property == StyleProperty::kImage && value.is_string())
                 {
@@ -507,7 +550,7 @@ struct ThemeBuilder
                 else
                 {
                     const bool isColor = std::holds_alternative<Color>(*resolved);
-                    if (std::holds_alternative<ImageRef>(*resolved) || isColor != isColorProperty(*property))
+                    if (std::holds_alternative<ImageRef>(*resolved) || std::holds_alternative<FontRef>(*resolved) || isColor != isColorProperty(*property))
                     {
                         return fail(path, isColorProperty(*property) ? "expects a color" : "expects a number");
                     }
@@ -650,11 +693,25 @@ core::Result<TokenValue> Theme::resolve(std::string_view value) const
     {
         return ImageRef{};
     }
+    if (value == "default")
+    {
+        return FontRef{};
+    }
+    if (FontRef f = font(value))
+    {
+        return f;
+    }
     if (ImageRef i = image(value))
     {
         return i;
     }
     return makeError(ErrorCode::kNotFound, "unknown token '" + std::string(value) + "'");
+}
+
+FontRef Theme::font(std::string_view name) const
+{
+    auto it = fonts_.find(name);
+    return it == fonts_.end() ? FontRef{} : it->second;
 }
 
 ImageRef Theme::image(std::string_view name) const

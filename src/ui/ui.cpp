@@ -144,7 +144,13 @@ bool Ui::wantsKeyboard() const noexcept { return focused_ != nullptr && focused_
 
 Widget *Ui::hitTestIn(Widget &w, glm::vec2 p)
 {
-    if (!w.visible() || !w.rect().contains(p))
+    if (!w.visible())
+    {
+        return nullptr;
+    }
+    // Un enfant qui dépasse de son parent reste cliquable là où il est dessiné, sauf si le parent coupe son contenu.
+    const bool inside = w.rect().contains(p);
+    if (!inside && (w.clipsChildren() || w.overflow == Overflow::kHidden))
     {
         return nullptr;
     }
@@ -156,7 +162,7 @@ Widget *Ui::hitTestIn(Widget &w, glm::vec2 p)
             return hit;
         }
     }
-    return &w;
+    return inside ? &w : nullptr;
 }
 
 Widget *Ui::hitTest(glm::vec2 p) const
@@ -510,12 +516,12 @@ void Ui::draw(renderer::DrawList &list) const
     if (!tooltipText_.empty())
     {
         const Style &s = theme().style("tooltip", WidgetState::kNormal);
-        const glm::vec2 text = font().measure(tooltipText_, s.fontSize);
+        const glm::vec2 text = font().measure(tooltipText_, s.fontSize, s.font.get());
         const glm::vec2 size = text + glm::vec2(2.0f * s.padding);
         glm::vec2 at = tooltipAt_ + glm::vec2(12.0f, 18.0f); // sous le pointeur, décalé de sa taille habituelle
         at = glm::clamp(at, glm::vec2(0.0f), glm::max(viewport_ - size, glm::vec2(0.0f)));
         Widget::drawBox(list, {at, size}, s);
-        font().draw(list, tooltipText_, at + glm::vec2(s.padding), s.fontSize, s.foreground);
+        font().draw(list, tooltipText_, at + glm::vec2(s.padding), s.fontSize, s.foreground, s.font.get());
     }
 }
 

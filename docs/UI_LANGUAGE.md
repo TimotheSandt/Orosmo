@@ -112,6 +112,7 @@ expression (lecture seule). Le chemin commence par un champ `@Mutable`.
 | `.tooltip("texte")` | infobulle |
 | `.visible(expr)`, `.enabled(expr)` | `true`/`false`, ou expression relue à chaque image |
 | `.variant("title")` | type de style du thème (`widgets.title`) |
+| `.overflow(.visible)` / `.overflow(.hidden)` | ce qui dépasse du widget : visible et cliquable (défaut), ou coupé à son rectangle ; pour faire défiler : `ScrollView` |
 | `.style(background: "color.danger", radius: 4)` | surcharge locale : jeton, couleur `"#rrggbb[aa]"` ou nombre (§7) |
 | `.textAlign(.center)` | `Label` seulement |
 | `.range(0, 100)` | `Plot` seulement : bornes fixes |
@@ -163,8 +164,13 @@ par **état**. Un thème peut en étendre un autre ; les variantes claire et som
 "widgets": { "button": { "background": "#00000000", "image": "frame.button",
                          "states": { "hover": { "image": "frame.buttonHover" }, "disabled": { "imageTint": "#ffffff80" } } } }
 ```
+- **Polices** (section `fonts`) : `"fonts": {"title": "fonts/MaPolice-Bold.ttf"}` (fichier TrueType / OpenType relatif au thème),
+  puis `"font": "title"` dans un widget ou un état (`"default"` : la police de l'application) ; dans une vue :
+  `.style(font: "title")`. Le texte est en UTF-8 : ASCII, Latin-1 et Latin étendu A (accents, ç, œ, ß…), guillemets, tirets,
+  points de suspension, euro ; les glyphes étendus sont chargés au premier texte qui en contient.
 - **Propriétés** : `background`, `foreground`, `border`, `accent`, `muted`, `shadowColor`, `imageTint` (couleurs) ; `borderWidth`,
-  `radius`, `padding`, `spacing`, `fontSize`, `shadowSize`, `shadowOffset`, `width` (pixels) ; `image` (nom d'image ou `"none"`).
+  `radius`, `padding`, `spacing`, `fontSize`, `shadowSize`, `shadowOffset`, `width` (pixels) ; `image` (nom d'image ou `"none"`) ;
+  `font` (nom de police ou `"default"`).
 - **États** : `normal`, `hover`, `pressed`, `disabled`, `focus`. Ordre d'application : `default`, le widget, l'état de
   `default`, l'état du widget.
 - **Types de widget** : `panel`, `box`, `label`, `title`, `caption`, `button`, `checkbox`, `slider`, `textField`, `dropdown`, `popup`,

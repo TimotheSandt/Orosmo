@@ -149,7 +149,8 @@ class TextRenderer
     struct FontData
     {
         FT_Face face = nullptr;
-        std::unordered_map<char, Character> characters;
+        std::unordered_map<char32_t, Character> characters; // point de code Unicode -> glyphe
+        bool extended = false; // glyphes au-delà de l'ASCII chargés (au premier texte qui en contient)
         std::shared_ptr<engine::renderer::AtlasImage> atlas; // pixels de l'atlas, partagés avec le dessinateur (CanvasRenderer)
         unsigned int fontSize = 0;
         int atlasWidth = 0;
@@ -183,6 +184,10 @@ class TextRenderer
     void computeFontMetrics(FontData &fontData);
     glm::vec2 calculateAnchorOffset(const std::string &text, float scale, TextAnchor anchor);
     bool ensureFontLoaded(const std::string &fontName, unsigned int fontSize);
+    // Construit l'atlas de `fontData` : l'ASCII, plus les lettres accentuées et la ponctuation courante si `extended`.
+    void buildAtlas(FontData &fontData, bool extended);
+    // Charge les glyphes étendus si `text` contient un caractère non ASCII (une seule fois par police et par taille).
+    void ensureGlyphs(FontData &fontData, const std::string &text);
     ResolvedFont resolveFont(float scale);
     std::string makeFontCacheKey(const std::string &fontName, unsigned int fontSize) const;
 

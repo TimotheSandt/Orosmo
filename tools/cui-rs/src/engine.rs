@@ -136,7 +136,7 @@ static COMPONENTS: &[Component] = &[
 ];
 
 const COMMON_MODIFIERS: &[&str] =
-    &["width", "height", "margin", "align", "span", "id", "tooltip", "visible", "enabled", "style", "variant"];
+    &["width", "height", "margin", "align", "span", "id", "tooltip", "visible", "enabled", "style", "variant", "overflow"];
 
 // Propriétés du thème (engine/ui/theme.hpp) acceptées par `.style(...)`.
 const STYLE_PROPERTIES: &[(&str, &str)] = &[
@@ -156,6 +156,7 @@ const STYLE_PROPERTIES: &[(&str, &str)] = &[
     ("width", "kWidth"),
     ("image", "kImage"),
     ("imageTint", "kImageTint"),
+    ("font", "kFont"),
 ];
 
 fn component(name: &str) -> Option<&'static Component> {
@@ -737,6 +738,17 @@ impl<'a> Gen<'a> {
                     self.emit(format!("{var}->overrideStyle(engine::ui::StyleProperty::{cpp}, {text});"));
                 }
             }
+            "overflow" => {
+                if let Some(e) = one(self) {
+                    match e {
+                        Expr::EnumCase(c) if c == "visible" || c == "hidden" => {
+                            let o = if c == "visible" { "kVisible" } else { "kHidden" };
+                            self.emit(format!("{var}->overflow = engine::ui::Overflow::{o};"));
+                        }
+                        _ => self.err(line, col, "'.overflow' expects .visible or .hidden (to scroll: ScrollView)"),
+                    }
+                }
+            }
             "textAlign" => {
                 if let Some(e) = one(self) {
                     match e {
@@ -1052,6 +1064,8 @@ fn modifier_doc(name: &str) -> &'static str {
         "variant" => "Theme style name (widgets.<name> of the theme).",
         "textAlign" => "Label text alignment: .start, .center, .end.",
         "range" => "Plot: fixed bounds (min, max).",
+        "overflow" => "What goes beyond the widget: .visible (default, still clickable) or .hidden (clipped).",
+        "font" => "",
         "onClick" | "onChange" | "onHover" | "onFocus" => "Event: names a C++ function (state.method, Ns::function) or a registered action name.",
         _ => "",
     }
@@ -1099,7 +1113,7 @@ pub fn spec_json() -> String {
         .join(",");
     let props = STYLE_PROPERTIES.iter().map(|(n, _)| format!("\"{n}\"")).collect::<Vec<_>>().join(",");
     format!(
-        "{{\"import\":\"{IMPORT}\",\"components\":[{}],\"modifiers\":[{mods}],\"styleProperties\":[{props}],\"alignments\":[\"start\",\"center\",\"end\",\"stretch\"],\"sizes\":[\"fit\",\"fill\"],\"wrappers\":[\"@Mutable\",\"@Observed\",\"@Snapshot\"]}}",
+        "{{\"import\":\"{IMPORT}\",\"components\":[{}],\"modifiers\":[{mods}],\"styleProperties\":[{props}],\"alignments\":[\"start\",\"center\",\"end\",\"stretch\"],\"sizes\":[\"fit\",\"fill\"],\"overflows\":[\"visible\",\"hidden\"],\"wrappers\":[\"@Mutable\",\"@Observed\",\"@Snapshot\"]}}",
         comps.join(",")
     )
 }

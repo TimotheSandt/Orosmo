@@ -7,6 +7,8 @@
 #include <glm/glm.hpp>
 
 #include <cstddef>
+#include <map>
+#include <string>
 #include <string_view>
 
 namespace UI
@@ -17,16 +19,20 @@ class TextRenderer;
 namespace engine::ui
 {
 
+struct FontFace; // theme.hpp : police nommée par un thème (fichier)
+
+// `face` : police du style (thème, `"font"`) ; nulle : la police par défaut.
 class Font
 {
   public:
     virtual ~Font() = default;
     // Taille d'une ligne de texte (UTF-8) à `size` pixels : largeur, hauteur de ligne.
-    virtual glm::vec2 measure(std::string_view text, float size) const = 0;
+    virtual glm::vec2 measure(std::string_view text, float size, const FontFace *face = nullptr) const = 0;
     // Ajoute la ligne à `list` ; `position` est le coin haut gauche de la boîte de ligne.
-    virtual void draw(renderer::DrawList &list, std::string_view text, glm::vec2 position, float size, const glm::vec4 &color) const = 0;
+    virtual void draw(renderer::DrawList &list, std::string_view text, glm::vec2 position, float size, const glm::vec4 &color,
+                      const FontFace *face = nullptr) const = 0;
     // Position (octet, début d'un caractère UTF-8) la plus proche de l'abscisse `x` mesurée depuis le début de la ligne.
-    std::size_t caretIndex(std::string_view text, float size, float x) const;
+    std::size_t caretIndex(std::string_view text, float size, float x, const FontFace *face = nullptr) const;
 };
 
 // Chaque caractère fait `advance` × size de large, la ligne `size` de haut. Le dessin ajoute une série de glyphes SANS atlas
@@ -35,25 +41,35 @@ class FixedFont final : public Font
 {
   public:
     explicit FixedFont(float advance = 0.5f) : advance_(advance) {}
-    glm::vec2 measure(std::string_view text, float size) const override;
-    void draw(renderer::DrawList &list, std::string_view text, glm::vec2 position, float size, const glm::vec4 &color) const override;
+    glm::vec2 measure(std::string_view text, float size, const FontFace *face = nullptr) const override;
+    void draw(renderer::DrawList &list, std::string_view text, glm::vec2 position, float size, const glm::vec4 &color,
+              const FontFace *face = nullptr) const override;
 
   private:
     float advance_;
 };
 
-// Police chargée par `UI::TextRenderer` (taille de base de la police : `baseSize` pixels, 48 pour la police par défaut). Le texte est
-// lu octet par octet (ASCII ; voir docs/GAPS.md, REN-36). Le TextRenderer doit vivre plus longtemps que cet objet.
+// Polices de `UI::TextRenderer` (FreeType + MSDF ; taille de base `baseSize` pixels). Texte UTF-8 : ASCII, Latin-1 et Latin
+// étendu A (accents), ponctuation typographique courante. `defaultName` : police déjà chargée par l'application ; les polices des
+// thèmes sont chargées au premier usage (une police illisible est signalée une fois et remplacée par celle par défaut). Le
+// TextRenderer doit vivre plus longtemps que cet objet.
 class TextRendererFont final : public Font
 {
   public:
-    explicit TextRendererFont(::UI::TextRenderer &renderer, float baseSize = 48.0f) : renderer_(&renderer), baseSize_(baseSize) {}
-    glm::vec2 measure(std::string_view text, float size) const override;
-    void draw(renderer::DrawList &list, std::string_view text, glm::vec2 position, float size, const glm::vec4 &color) const override;
+    explicit TextRendererFont(::UI::TextRenderer &renderer, float baseSize = 48.0f, std::string defaultName = "default")
+        : renderer_(&renderer), baseSize_(baseSize), defaultName_(std::move(defaultName))
+    {
+    }
+    glm::vec2 measure(std::string_view text, float size, const FontFace *face = nullptr) const override;
+    void draw(renderer::DrawList &list, std::string_view text, glm::vec2 position, float size, const glm::vec4 &color,
+              const FontFace *face = nullptr) const override;
 
   private:
+    void select(const FontFace *face) const;
     ::UI::TextRenderer *renderer_;
     float baseSize_;
+    std::string defaultName_;
+    mutable std::map<std::string, bool> loaded_; // fichier -> chargé (faux : illisible, police par défaut)
 };
 
 // Longueur en octets du caractère UTF-8 qui commence à `text[i]` (1 pour un octet invalide).

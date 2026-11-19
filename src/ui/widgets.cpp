@@ -12,7 +12,7 @@ namespace engine::ui
 
 namespace
 {
-float lineHeight(const Ui &ui, const Style &style) { return ui.font().measure("Hg", style.fontSize).y; }
+float lineHeight(const Ui &ui, const Style &style) { return ui.font().measure("Hg", style.fontSize, style.font.get()).y; }
 
 std::string formatNumber(double v, int decimals)
 {
@@ -49,7 +49,7 @@ std::string Label::text() const { return source_ ? source_() : text_; }
 glm::vec2 Label::measureContent(Ui &ui, glm::vec2, const Style &style)
 {
     const std::string t = text();
-    return {ui.font().measure(t, style.fontSize).x, lineHeight(ui, style)};
+    return {ui.font().measure(t, style.fontSize, style.font.get()).x, lineHeight(ui, style)};
 }
 
 void Label::drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const
@@ -80,7 +80,7 @@ void Button::onKey(Ui &ui, int key)
 
 glm::vec2 Button::measureContent(Ui &ui, glm::vec2, const Style &style)
 {
-    return {ui.font().measure(text(), style.fontSize).x, lineHeight(ui, style)};
+    return {ui.font().measure(text(), style.fontSize, style.font.get()).x, lineHeight(ui, style)};
 }
 
 void Button::drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const
@@ -122,7 +122,7 @@ void Checkbox::onKey(Ui &ui, int key)
 
 glm::vec2 Checkbox::measureContent(Ui &ui, glm::vec2, const Style &style)
 {
-    const glm::vec2 text = ui.font().measure(text_, style.fontSize);
+    const glm::vec2 text = ui.font().measure(text_, style.fontSize, style.font.get());
     const float box = style.width;
     return {box + (text_.empty() ? 0.0f : style.spacing + text.x), std::max(box, lineHeight(ui, style))};
 }
@@ -260,8 +260,8 @@ void Slider::onKey(Ui &ui, int key)
 
 glm::vec2 Slider::measureContent(Ui &ui, glm::vec2, const Style &style)
 {
-    const float a = ui.font().measure(prefix_ + formatNumber(min_, 3), style.fontSize).x;
-    const float b = ui.font().measure(prefix_ + formatNumber(max_, 3), style.fontSize).x;
+    const float a = ui.font().measure(prefix_ + formatNumber(min_, 3), style.fontSize, style.font.get()).x;
+    const float b = ui.font().measure(prefix_ + formatNumber(max_, 3), style.fontSize, style.font.get()).x;
     return {std::max(a, b) + 2.0f * style.width, std::max(style.width, lineHeight(ui, style))};
 }
 
@@ -298,7 +298,7 @@ class DropdownItem final : public Widget
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2, const Style &style) override
     {
-        return {ui.font().measure(text_, style.fontSize).x, lineHeight(ui, style)};
+        return {ui.font().measure(text_, style.fontSize, style.font.get()).x, lineHeight(ui, style)};
     }
     void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override
     {
@@ -376,9 +376,9 @@ glm::vec2 Dropdown::measureContent(Ui &ui, glm::vec2, const Style &style)
     float widest = 0.0f;
     for (const std::string &o : options())
     {
-        widest = std::max(widest, ui.font().measure(o, style.fontSize).x);
+        widest = std::max(widest, ui.font().measure(o, style.fontSize, style.font.get()).x);
     }
-    return {widest + style.spacing + ui.font().measure("v", style.fontSize).x, lineHeight(ui, style)};
+    return {widest + style.spacing + ui.font().measure("v", style.fontSize, style.font.get()).x, lineHeight(ui, style)};
 }
 
 void Dropdown::drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const
@@ -439,7 +439,7 @@ void TextField::onPress(Ui &ui, glm::vec2 mouse)
         return;
     }
     const Style s = style(ui.theme());
-    caret_ = ui.font().caretIndex(buffer_, s.fontSize, mouse.x - (rect_.position.x + s.padding));
+    caret_ = ui.font().caretIndex(buffer_, s.fontSize, mouse.x - (rect_.position.x + s.padding), s.font.get());
 }
 
 void TextField::onText(Ui &, std::string_view text)
@@ -505,7 +505,7 @@ void TextField::onKey(Ui &ui, int key)
 glm::vec2 TextField::measureContent(Ui &ui, glm::vec2, const Style &style)
 {
     // Assez large pour une dizaine de caractères ; `width` du langage ou du parent pour plus.
-    return {ui.font().measure("0000000000", style.fontSize).x, lineHeight(ui, style)};
+    return {ui.font().measure("0000000000", style.fontSize, style.font.get()).x, lineHeight(ui, style)};
 }
 
 void TextField::drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const
@@ -516,7 +516,7 @@ void TextField::drawContent(const Ui &ui, renderer::DrawList &list, const Style 
     float caretX = 0.0f;
     if (editing_)
     {
-        caretX = ui.font().measure(std::string_view(buffer_).substr(0, caret_), style.fontSize).x;
+        caretX = ui.font().measure(std::string_view(buffer_).substr(0, caret_), style.fontSize, style.font.get()).x;
         offset = std::max(0.0f, caretX - content.size.x + 2.0f);
     }
     list.pushClip(content.position, content.size);
@@ -705,7 +705,7 @@ class TabButton final : public Widget
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2, const Style &style) override
     {
-        return {ui.font().measure(title_, style.fontSize).x, lineHeight(ui, style)};
+        return {ui.font().measure(title_, style.fontSize, style.font.get()).x, lineHeight(ui, style)};
     }
     void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override
     {
@@ -784,7 +784,7 @@ class SectionHeader final : public Widget
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2, const Style &style) override
     {
-        return {ui.font().measure("- " + title_, style.fontSize).x, lineHeight(ui, style)};
+        return {ui.font().measure("- " + title_, style.fontSize, style.font.get()).x, lineHeight(ui, style)};
     }
     void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override
     {
