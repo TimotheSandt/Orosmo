@@ -134,7 +134,7 @@ TEST_SUITE("ui/widgets")
         CHECK(readOnly.checked());
     }
 
-    TEST_CASE("Slider: press and drag set the value from the mouse, quantized to the step; keys; read-only bindings do not move")
+    TEST_CASE("Slider: a click without dragging sets the value under the pointer; a drag moves it from the CURRENT value")
     {
         UiHarness h;
         int octaves = 1;
@@ -142,20 +142,35 @@ TEST_SUITE("ui/widgets")
         auto s = std::make_unique<ui::Slider>(ui::numberBinding(octaves), 0.0, 10.0, 1.0);
         s->onChange([&](const ui::Event &) { ++changes; });
         auto &slider = place(h, std::move(s), {100, 20});
-        h.press({26, 10}); // 26 % → 2,6 → 3
+        h.press({26, 10});
+        CHECK(octaves == 1); // rien à l'appui
+        h.release({26, 10}); // simple clic : 26 % → 2,6 → 3
         CHECK(octaves == 3);
-        h.press({71, 10}); // glissement
-        CHECK(octaves == 7);
+        CHECK(changes == 1);
+        // Glissement qui commence n'importe où (ici à 80 %) : il part de 3 et ajoute la distance (20 px = 2 crans).
+        h.press({80, 10});
+        h.press({82, 10}); // sous le seuil de glissement : rien
+        CHECK(octaves == 3);
+        h.press({100, 10});
+        CHECK(octaves == 5);
         h.press({500, 10}); // au-delà : borné
         CHECK(octaves == 10);
-        h.release({500, 10});
-        CHECK(changes == 3);
+        h.release({500, 10}); // relâché après un glissement : pas de « clic » qui replacerait la valeur
+        CHECK(octaves == 10);
         CHECK(slider.formatted() == "10");
-        h.keys({ui::kKeyLeft}); // le slider a le focus depuis l'appui
+        h.keys({ui::kKeyLeft}); // le curseur a le focus depuis l'appui
         CHECK(octaves == 9);
         h.keys({ui::kKeyHome});
         CHECK(octaves == 0);
+        // Clic droit : la valeur par défaut (celle de la liaison à la construction : 1).
+        CHECK(slider.defaultValue() == 1.0);
+        h.secondaryClick({50, 10});
+        CHECK(octaves == 1);
+        slider.setDefault(4.0);
+        h.secondaryClick({50, 10});
+        CHECK(octaves == 4);
 
+        // Pas fin : le glissement accumule les petits déplacements ; Maj divise la vitesse par dix.
         float gain = 0.5f;
         auto s2 = std::make_unique<ui::Slider>(ui::numberBinding(gain), 0.0, 1.0, 0.05);
         auto &fine = place(h, std::move(s2), {100, 20});
@@ -163,6 +178,10 @@ TEST_SUITE("ui/widgets")
         h.click({33, 10}); // 0,33 → 0,35
         CHECK(gain == doctest::Approx(0.35f));
         CHECK(fine.formatted() == "0.35");
+        h.press({10, 10});
+        h.dragShift({50, 10}); // 40 px avec Maj = 4 % de la plage : 0,39 → 0,40
+        CHECK(gain == doctest::Approx(0.40f));
+        h.release({50, 10});
 
         auto s3 = std::make_unique<ui::Slider>(ui::Binding<double>::constant(0.25), 0.0, 1.0);
         auto &ro = place(h, std::move(s3));

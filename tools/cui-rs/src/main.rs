@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 
 const HASH_TAG: &str = "// @cui-hash:";
 // Bump this whenever generator output changes without a corresponding .cui syntax change.
-const OUTPUT_FORMAT_VERSION: &str = "4";
+const OUTPUT_FORMAT_VERSION: &str = "5";
 
 fn main() {
     if let Err(err) = run_cli() {

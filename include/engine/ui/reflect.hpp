@@ -49,7 +49,8 @@ template <int N, typename V> std::unique_ptr<Widget> vectorFields(V &v)
 }
 } // namespace detail
 
-template <core::Reflected T> std::unique_ptr<Widget> reflectedPanel(T &object, std::string_view idPrefix = {});
+template <core::Reflected T>
+std::unique_ptr<Widget> reflectedPanel(T &object, std::string_view idPrefix = {}, const T *defaults = nullptr);
 
 namespace detail
 {
@@ -129,9 +130,11 @@ template <typename M> std::unique_ptr<Widget> reflectedControl(M &member, const 
 
 // Panneau de réglage de `object` (qui doit vivre plus longtemps que le panneau). Tout changement d'un champ, à n'importe quelle
 // profondeur, émet `onChange` sur le panneau renvoyé. Identifiant de chaque contrôle : `idPrefix` + chemin du champ
-// ("relief.octaves").
-template <core::Reflected T> std::unique_ptr<Widget> reflectedPanel(T &object, std::string_view idPrefix)
+// ("relief.octaves"). Valeurs par défaut (clic droit sur un curseur) : celles de `defaults`, sinon d'un `T{}`.
+template <core::Reflected T> std::unique_ptr<Widget> reflectedPanel(T &object, std::string_view idPrefix, const T *defaults)
 {
+    const T fallback{};
+    const T &reference = defaults != nullptr ? *defaults : fallback;
     auto grid = std::make_unique<Grid>(2, "box");
     Widget &panel = *grid;
     std::apply(
@@ -149,7 +152,7 @@ template <core::Reflected T> std::unique_ptr<Widget> reflectedPanel(T &object, s
                     section.columnSpan = 2;
                     section.setTooltip(help);
                     section.setId(std::string(idPrefix) + f.name);
-                    auto inner = reflectedPanel(member, std::string(idPrefix) + f.name + ".");
+                    auto inner = reflectedPanel(member, std::string(idPrefix) + f.name + ".", &(reference.*(f.member)));
                     inner->onChange([&panel](const Event &) { panel.fire(EventKind::kChange); });
                     section.body().add(std::move(inner));
                 }
@@ -160,6 +163,11 @@ template <core::Reflected T> std::unique_ptr<Widget> reflectedPanel(T &object, s
                     control->setId(std::string(idPrefix) + f.name);
                     control->setTooltip(help);
                     control->setWidth(SizeSpec::fill());
+                    if constexpr (std::is_arithmetic_v<M> && !std::is_same_v<M, bool>)
+                    {
+                        if (auto *slider = dynamic_cast<Slider *>(control.get()))
+                            slider->setDefault(static_cast<double>(reference.*(f.member)));
+                    }
                     control->onChange([&panel](const Event &) { panel.fire(EventKind::kChange); });
                     grid->add(std::move(control));
                 }

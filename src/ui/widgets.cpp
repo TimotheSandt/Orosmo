@@ -151,6 +151,7 @@ void Checkbox::drawContent(const Ui &ui, renderer::DrawList &list, const Style &
 Slider::Slider(Binding<double> value, double min, double max, double step)
     : Widget("slider"), value_(std::move(value)), min_(std::min(min, max)), max_(std::max(min, max)), step_(std::max(step, 0.0))
 {
+    default_ = value_.get ? quantize(value_.value()) : min_;
 }
 
 double Slider::value() const { return hasPending_ ? pending_ : value_.value(); }
@@ -207,8 +208,42 @@ void Slider::setFromMouse(Ui &ui, float x)
     write(ui, min_ + t * (max_ - min_));
 }
 
-void Slider::onPress(Ui &ui, glm::vec2 mouse) { setFromMouse(ui, mouse.x); }
-void Slider::onDrag(Ui &ui, glm::vec2 mouse) { setFromMouse(ui, mouse.x); }
+void Slider::onPress(Ui &, glm::vec2 mouse)
+{
+    dragging_ = false;
+    pressX_ = lastX_ = mouse.x;
+    dragValue_ = value();
+}
+
+void Slider::onDrag(Ui &ui, glm::vec2 mouse)
+{
+    if (!dragging_)
+    {
+        if (std::abs(mouse.x - pressX_) <= kDragThreshold)
+        {
+            return;
+        }
+        dragging_ = true;
+    }
+    // Déplacement relatif depuis la valeur courante : la largeur de la piste vaut toute la plage (dix fois moins avec Maj).
+    const Style s = style(ui.theme());
+    const float width = std::max(inset(rect_, s.padding).size.x, 1.0f);
+    const double perPixel = (max_ - min_) / static_cast<double>(width) * (ui.shiftHeld() ? 0.1 : 1.0);
+    dragValue_ = std::clamp(dragValue_ + static_cast<double>(mouse.x - lastX_) * perPixel, min_, max_);
+    lastX_ = mouse.x;
+    write(ui, dragValue_);
+}
+
+void Slider::onRelease(Ui &ui, glm::vec2 mouse, bool inside)
+{
+    if (!dragging_ && inside)
+    {
+        setFromMouse(ui, mouse.x); // simple clic : la valeur sous le pointeur
+    }
+    dragging_ = false;
+}
+
+void Slider::onSecondaryClick(Ui &ui, glm::vec2) { write(ui, default_); }
 
 void Slider::onKey(Ui &ui, int key)
 {

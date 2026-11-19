@@ -292,6 +292,8 @@ class Widget
     virtual void onPress(Ui &ui, glm::vec2 mouse);
     virtual void onDrag(Ui &ui, glm::vec2 mouse);
     virtual void onRelease(Ui &ui, glm::vec2 mouse, bool inside);
+    // Clic du bouton secondaire (droit) sur le widget : rien par défaut (curseur : valeur par défaut).
+    virtual void onSecondaryClick(Ui &ui, glm::vec2 mouse);
     virtual bool onWheel(Ui &ui, glm::vec2 wheel);
     virtual void onKey(Ui &ui, int key);                // engine::ui::Key
     virtual void onText(Ui &ui, std::string_view text); // UTF-8 saisi

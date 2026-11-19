@@ -258,6 +258,7 @@ void Widget::onRelease(Ui &ui, glm::vec2, bool inside)
         emit(ui, EventKind::kClick);
     }
 }
+void Widget::onSecondaryClick(Ui &, glm::vec2) {}
 bool Widget::onWheel(Ui &, glm::vec2) { return false; }
 void Widget::onKey(Ui &, int) {}
 void Widget::onText(Ui &, std::string_view) {}
