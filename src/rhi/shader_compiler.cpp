@@ -529,12 +529,34 @@ void ShaderHotReloader::watchFiles(std::size_t index, const std::vector<std::str
 core::Result<CompiledShader> ShaderHotReloader::add(const std::filesystem::path &file, ShaderStage stage, Callback onReload,
                                                     std::vector<std::pair<std::string, std::string>> defines)
 {
-    mEntries.push_back(Entry{file, stage, std::move(onReload), std::move(defines), {}, false});
+    mEntries.push_back(Entry{file, stage, std::move(onReload), std::move(defines), {}, false, true});
     const std::size_t index = mEntries.size() - 1;
     std::vector<std::string> dependencies;
     auto first = build(mEntries[index], dependencies);
     watchFiles(index, dependencies);
     return first;
+}
+
+void ShaderHotReloader::remove(EntryId id)
+{
+    if (id >= mEntries.size() || !mEntries[id].active)
+    {
+        return;
+    }
+    Entry &entry = mEntries[id];
+    for (const auto &watch : entry.watches)
+    {
+        mWatcher.unwatch(watch.second);
+    }
+    entry.watches.clear();
+    entry.callback = {};
+    entry.dirty = false;
+    entry.active = false;
+}
+
+std::size_t ShaderHotReloader::activeCount() const noexcept
+{
+    return static_cast<std::size_t>(std::ranges::count_if(mEntries, [](const Entry &e) { return e.active; }));
 }
 
 std::size_t ShaderHotReloader::poll()
@@ -543,7 +565,7 @@ std::size_t ShaderHotReloader::poll()
     std::size_t attempts = 0;
     for (std::size_t i = 0; i < mEntries.size(); ++i)
     {
-        if (!mEntries[i].dirty)
+        if (!mEntries[i].dirty || !mEntries[i].active)
         {
             continue;
         }
@@ -555,7 +577,10 @@ std::size_t ShaderHotReloader::poll()
         // Copies : le rappel peut appeler add(), qui réalloue mEntries.
         const std::filesystem::path file = mEntries[i].file;
         const Callback callback = mEntries[i].callback;
-        callback(file, result);
+        if (callback)
+        {
+            callback(file, result);
+        }
     }
     return attempts;
 }

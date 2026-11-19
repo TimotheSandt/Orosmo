@@ -86,7 +86,8 @@ core::Result<> savePng(rhi::Device &device, rhi::TextureHandle texture, const st
 core::Result<Image> loadPng(const std::filesystem::path &path)
 {
     int w = 0, h = 0, channels = 0;
-    stbi_set_flip_vertically_on_load(false);
+    // Pas de stbi_set_flip_vertically_on_load : le réglage est global (non synchronisé) ; personne ne le modifie plus, il reste à
+    // sa valeur par défaut (pas de retournement).
     std::unique_ptr<unsigned char, decltype(&stbi_image_free)> data(stbi_load(path.string().c_str(), &w, &h, &channels, 4), &stbi_image_free);
     if (!data)
     {

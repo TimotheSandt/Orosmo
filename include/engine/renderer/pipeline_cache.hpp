@@ -1,5 +1,6 @@
-// Cache de pipelines en mémoire : un pipeline par (programme, révision, état fixe). Un rechargement à chaud (révision plus
-// récente) détruit les pipelines périmés du programme et en recrée à la demande.
+// Cache de pipelines en mémoire : un pipeline par (programme, état fixe), construit pour la révision courante du programme. Après
+// un rechargement à chaud (révision plus récente), le pipeline est reconstruit à la demande ; si la nouvelle révision ne se lie
+// pas (étages incompatibles), le dernier pipeline utilisable est gardé et l'échec est conservé dans `lastError()`.
 #pragma once
 
 #include "engine/core/error.hpp"
@@ -7,6 +8,7 @@
 #include "engine/rhi/device.hpp"
 
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,20 +43,23 @@ class PipelineCache
     std::size_t size() const noexcept { return entries_.size(); }
     std::size_t hits() const noexcept { return hits_; }
     std::size_t misses() const noexcept { return misses_; }
+    // Dernier échec de reconstruction après un rechargement (le pipeline précédent a été rendu à la place).
+    const std::optional<core::Error> &lastError() const noexcept { return lastError_; }
 
   private:
     struct Entry
     {
         rhi::PipelineHandle pipeline;
-        std::uint64_t programId = 0;
-        std::uint64_t revision = 0;
+        std::uint64_t revision = 0;       // révision du programme pour laquelle `pipeline` a été construit
+        std::uint64_t failedRevision = 0; // révision qui n'a pas pu être construite (pas de nouvel essai pour elle)
     };
-    void dropStale(const ShaderProgram &program);
+    template <typename Build> core::Result<rhi::PipelineHandle> lookup(std::string key, const ShaderProgram &program, Build &&build);
 
     rhi::Device &device_;
     std::map<std::string, Entry> entries_;
     std::size_t hits_ = 0;
     std::size_t misses_ = 0;
+    std::optional<core::Error> lastError_;
 };
 
 } // namespace engine::renderer

@@ -14,6 +14,7 @@ layout(set = 0, binding = 0, std140) uniform CamBlock
 layout(set = 2, binding = 0, std140) uniform ModelBlock
 {
     mat4 model;
+    mat4 normalMatrix; // inverse transposée de la partie 3x3 du modèle, calculée par objet (Mesh::uploadTransform)
 } model;
 
 layout(location = 0) out vec3 normal;
@@ -23,7 +24,7 @@ layout(location = 2) out vec3 color;
 void main()
 {
     crntPos = vec3(model.model * vec4(aPos, 1.0f));
-    normal = aNormal;
+    normal = mat3(model.normalMatrix) * aNormal; // dans l'espace monde, comme la position (normalisée par mesh.frag)
     color = aColor;
 
     gl_Position = camera.matrix * vec4(crntPos, 1.0f);

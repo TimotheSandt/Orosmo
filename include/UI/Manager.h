@@ -27,6 +27,9 @@ class Manager
     void Update(float dt, int w, int h);
     // UI-02 : produit la liste de dessin de l'interface (aucun appel graphique) ; `CanvasRenderer` l'exécute.
     void Collect(engine::renderer::DrawList &list, int w, int h);
+    // Le contenu des couches mis en cache par `Collect` n'a pas été rendu (rendu en échec, cible abandonnée, couche perdue :
+    // `CanvasRenderer::render` renvoie kNotFound) : la prochaine liste redessine tout.
+    void InvalidateLayers();
 
     void SetRootContainer(std::shared_ptr<Container> root) { rootContainer = std::move(root); }
     std::shared_ptr<Container> GetRootContainer() { return rootContainer; }

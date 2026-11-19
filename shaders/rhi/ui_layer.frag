@@ -29,15 +29,11 @@ void main()
     vec2 sampleUV = vec2(scrolledUV.x, 1.0 - scrolledUV.y);
     vec4 texColor = texture(textureSampler, sampleUV);
 
-    vec4 finalColor;
-    if (pc.color.a > 0.01 && texColor.a < 0.99)
-    {
-        finalColor = mix(pc.color, texColor, texColor.a);
-    }
-    else
-    {
-        finalColor = texColor;
-    }
+    // La couche contient une couleur prémultipliée (rgb déjà multiplié par a). La couleur de fond du conteneur (non
+    // prémultipliée) passe DERRIÈRE le contenu : « contenu par-dessus fond », en prémultiplié, alpha compris (un fond opaque
+    // donne un résultat opaque). La sortie est prémultipliée : le pipeline compose avec (1, 1 - a).
+    vec4 background = vec4(pc.color.rgb * pc.color.a, pc.color.a);
+    vec4 finalColor = texColor + background * (1.0 - texColor.a);
 
     if (finalColor.a < 0.01)
     {

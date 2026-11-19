@@ -25,11 +25,19 @@ class FullscreenBlit
     FullscreenBlit(const FullscreenBlit &) = delete;
     FullscreenBlit &operator=(const FullscreenBlit &) = delete;
 
-    // À l'intérieur d'une passe dont l'unique cible couleur a le format `destinationFormat`.
-    core::Result<> draw(rhi::CommandEncoder &encoder, rhi::TextureHandle source, rhi::SamplerHandle sampler, rhi::Format destinationFormat);
-    // Passe complète : ouvre une passe sur `destination` (contenu précédent ignoré), copie, la referme.
+    // À l'intérieur d'une passe dont l'unique cible couleur a le format `destinationFormat`. Respecte le viewport et le
+    // découpage (ciseau) ACTIFS de la passe : seule la zone qu'ils laissent est remplie. `premultiplied` : compose une source à
+    // couleur prémultipliée par-dessus la cible (1, 1 - a) au lieu de la remplacer.
+    core::Result<> draw(rhi::CommandEncoder &encoder, rhi::TextureHandle source, rhi::SamplerHandle sampler, rhi::Format destinationFormat,
+                        bool premultiplied = false);
+    // Passe complète : ouvre une passe sur `destination` (contenu précédent ignoré, viewport et ciseau = toute la cible), copie,
+    // la referme.
     core::Result<> copy(rhi::CommandEncoder &encoder, rhi::TextureHandle source, rhi::SamplerHandle sampler, rhi::TextureHandle destination,
                         rhi::Format destinationFormat, const std::string &passName = "blit");
+    // Passe complète qui GARDE le contenu de `destination` et y compose `source` (couleur prémultipliée, ex. une interface
+    // rendue sur fond transparent), étirée à toute la cible.
+    core::Result<> compose(rhi::CommandEncoder &encoder, rhi::TextureHandle source, rhi::SamplerHandle sampler, rhi::TextureHandle destination,
+                           rhi::Format destinationFormat, const std::string &passName = "compose");
 
     rhi::SamplerHandle linearSampler() const noexcept { return linear_; }
     rhi::SamplerHandle nearestSampler() const noexcept { return nearest_; }

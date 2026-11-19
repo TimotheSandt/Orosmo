@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <functional>
-#include <stdexcept>
 
 #include <utility>
 
@@ -26,8 +25,22 @@ constexpr int kHeadlessHeight = 720;
 constexpr float kHeadlessStep = 1.0f / 60.0f;
 } // namespace
 
-Game::Game(bool headlessMode) : headless(headlessMode)
+Game::Game(bool headlessMode) : headless(headlessMode) {}
+
+engine::core::Result<std::unique_ptr<Game>> Game::create(bool headless)
 {
+    std::unique_ptr<Game> game(new Game(headless));
+    if (auto r = game->createGraphics(); !r)
+    {
+        return std::unexpected(r.error());
+    }
+    return game;
+}
+
+engine::core::Result<> Game::createGraphics()
+{
+    using engine::core::ErrorCode;
+    using engine::core::makeError;
     LOG_TRACE("Initializing window");
     rhi::DeviceDesc desc;
     desc.backend = rhi::Backend::kOpenGL;
@@ -44,7 +57,7 @@ Game::Game(bool headlessMode) : headless(headlessMode)
     {
         if (window.Init([&]() { (void)rhi::prepareWindowHints(desc); }) != 0)
         {
-            throw std::runtime_error("Failed to initialize window");
+            return makeError(ErrorCode::kUnsupported, "Failed to initialize the window (no display?)");
         }
         desc.surface.nativeWindow = window.GetWindow();
     }
@@ -52,7 +65,7 @@ Game::Game(bool headlessMode) : headless(headlessMode)
     if (!created)
     {
         window.Close();
-        throw std::runtime_error("Failed to create the graphics device: " + created.error().message);
+        return makeError(created.error().code, "Failed to create the graphics device: " + created.error().message);
     }
     device = std::move(*created);
     LOG_INFO("Graphics device: ", device->capabilities().deviceName, " (", device->capabilities().driverVersion, ")");
@@ -62,23 +75,24 @@ Game::Game(bool headlessMode) : headless(headlessMode)
     auto scene = rd::SceneRenderer::create(*device, *shaders, *pipelines, {.shaderDirectory = kShaderDirectory});
     if (!scene)
     {
-        throw std::runtime_error("Failed to create the scene renderer: " + scene.error().message);
+        return makeError(scene.error().code, "Failed to create the scene renderer: " + scene.error().message);
     }
     sceneRenderer = std::move(*scene);
     auto canvasCreated = rd::CanvasRenderer::create(*device, *shaders, *pipelines, kShaderDirectory);
     if (!canvasCreated)
     {
-        throw std::runtime_error("Failed to create the 2D renderer: " + canvasCreated.error().message);
+        return makeError(canvasCreated.error().code, "Failed to create the 2D renderer: " + canvasCreated.error().message);
     }
     canvas = std::move(*canvasCreated);
 
     gpuTimers = std::make_unique<rd::ProfilerGpuTimerFactory>(*device);
     Profiler::SetGpuTimerFactory(gpuTimers.get());
+    return {};
 }
 
 Game::~Game() { this->stop(); }
 
-void Game::init()
+engine::core::Result<> Game::init()
 {
     this->refreshViewSize();
 
@@ -91,7 +105,7 @@ void Game::init()
     this->world = std::make_unique<World>();
     if (auto ready = this->world->Init(*device, *shaders, kShaderDirectory, this->terrainSeed); !ready)
     {
-        throw std::runtime_error("Failed to initialize the world: " + ready.error().message);
+        return engine::core::makeError(ready.error().code, "Failed to initialize the world: " + ready.error().message);
     }
 
     // Initialize UI system
@@ -99,6 +113,7 @@ void Game::init()
     UI::Manager::Instance().GetRootContainer()->AddChild(UI::CreatePerformanceView(&window));
 
     LOG_INFO("Game initialized");
+    return {};
 }
 
 void Game::stop()
@@ -172,6 +187,10 @@ void Game::run()
             }
             Profiler::ProfileGPU("Render", &Game::render, this);
             this->endFrame();
+            if (captureFailed)
+            {
+                return;
+            }
         }
         return;
     }
@@ -265,22 +284,25 @@ void Game::update()
     UI::Manager::Instance().Update(deltaTime, this->viewWidth, this->viewHeight);
 }
 
-// L'interface se pose sur l'image composée : directement, ou à échelle réduite puis agrandie (touches de debug 5 à 8, ancien
-// `Renderer2D::SetRenderScale`).
+// L'interface se pose sur l'image composée : directement, ou rendue à échelle réduite sur une cible TRANSPARENTE puis composée
+// par-dessus la scène (touches de debug 5 à 8, ancien `Renderer2D::SetRenderScale`) : seule l'interface perd en définition.
+// Si son rendu échoue, le contenu des couches mis en cache par Collect n'existe pas : l'interface redessinera tout à l'image suivante.
 bool Game::renderUi(rhi::CommandEncoder &encoder, const rhi::TextureHandle &composedTexture)
 {
     rd::DrawList list;
     UI::Manager::Instance().Collect(list, this->viewWidth, this->viewHeight);
+    auto failed = [&](const std::string &what, const engine::core::Error &error)
+    {
+        LOG_ERROR(1, what, error.message);
+        UI::Manager::Instance().InvalidateLayers();
+        return false;
+    };
 
     const bool scaled = uiUpscaling && uiRenderScale < 1.0f;
     if (!scaled)
     {
         auto drawn = canvas->render(encoder, list, {composedTexture, rhi::Format::kRGBA8Unorm, {static_cast<std::uint32_t>(pixelWidth), static_cast<std::uint32_t>(pixelHeight)}}, true);
-        if (!drawn)
-        {
-            LOG_ERROR(1, "UI: ", drawn.error().message);
-        }
-        return static_cast<bool>(drawn);
+        return drawn ? true : failed("UI: ", drawn.error());
     }
 
     const auto w = static_cast<std::uint32_t>(std::max(1.0f, static_cast<float>(pixelWidth) * uiRenderScale));
@@ -290,21 +312,26 @@ bool Game::renderUi(rhi::CommandEncoder &encoder, const rhi::TextureHandle &comp
         auto target = rd::RenderTarget::create(*device, {.size = {w, h}, .depth = false, .debugName = "ui"});
         if (!target)
         {
-            LOG_ERROR(1, "UI target: ", target.error().message);
-            return false;
+            return failed("UI target: ", target.error());
         }
         uiTarget = std::move(*target);
     }
     else if (auto resized = uiTarget.resize(w, h); !resized)
     {
-        LOG_ERROR(1, "UI target: ", resized.error().message);
-        return false;
+        return failed("UI target: ", resized.error());
     }
     rd::FullscreenBlit &blit = sceneRenderer->blit();
-    bool ok = blit.copy(encoder, composedTexture, blit.linearSampler(), uiTarget.color(0), rhi::Format::kRGBA8Unorm, "ui.copy").has_value();
-    ok = ok && canvas->render(encoder, list, {uiTarget.color(0), rhi::Format::kRGBA8Unorm, {w, h}}, true).has_value();
-    ok = ok && blit.copy(encoder, uiTarget.color(0), blit.linearSampler(), composedTexture, rhi::Format::kRGBA8Unorm, "ui.upscale").has_value();
-    return ok;
+    // Cible effacée en transparent : l'interface y accumule une couleur prémultipliée, composée ensuite sur la scène.
+    if (auto drawn = canvas->render(encoder, list, {uiTarget.color(0), rhi::Format::kRGBA8Unorm, {w, h}}, false); !drawn)
+    {
+        return failed("UI: ", drawn.error());
+    }
+    if (auto composedUi = blit.compose(encoder, uiTarget.color(0), blit.linearSampler(), composedTexture, rhi::Format::kRGBA8Unorm, "ui.upscale");
+        !composedUi)
+    {
+        return failed("UI compose: ", composedUi.error());
+    }
+    return true;
 }
 
 // Prépare l'image : backbuffer, image composée à la taille de la vue, encodeur. Faux : on saute l'image (fenêtre réduite, erreur).
@@ -373,8 +400,19 @@ void Game::endFrame()
         LOG_ERROR(1, "Frame: ", result.error().message);
     }
 
+    if (!submitted)
+    {
+        // Image refusée : pas comptée. Pendant une capture, la sortie ne serait pas fiable : on s'arrête en échec.
+        if (!this->captureDirectory.empty())
+        {
+            this->captureFailed = true;
+            this->window.RequestClose();
+        }
+        Profiler::Profile("SwapBuffers", [&]() { (void)device->present(); });
+        return;
+    }
     ++this->renderedFrames;
-    if (submitted && !this->captureDirectory.empty() && !this->captureDone && this->renderedFrames >= this->captureFrames)
+    if (!this->captureDirectory.empty() && !this->captureDone && this->renderedFrames >= this->captureFrames)
     {
         // scene.png : couleur de la scène à la résolution de rendu ; ui.png : image composée (scène + interface), comme avant.
         const bool sceneSaved = sceneRenderer->saveColorPng(this->captureDirectory + "/scene.png").has_value();

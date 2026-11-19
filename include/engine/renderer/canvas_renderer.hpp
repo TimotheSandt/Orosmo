@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <vector>
 
 namespace engine::renderer
 {
@@ -37,7 +38,10 @@ class CanvasRenderer
     CanvasRenderer &operator=(const CanvasRenderer &) = delete;
 
     // Dessine `list` sur `target` ; `loadExisting` garde le contenu actuel de la cible (l'interface se pose sur la scène), sinon elle
-    // est d'abord effacée en transparent. L'encodeur ne doit avoir aucune passe ouverte.
+    // est d'abord effacée en transparent. L'encodeur ne doit avoir aucune passe ouverte. Les couches contiennent une couleur
+    // prémultipliée et sont composées comme telle. Erreurs : liste mal formée, taille de couche invalide, erreur de l'encodeur
+    // pendant le rendu, ou kNotFound si une `DrawLayerImage` vise une couche qui n'existe pas (le contenu mis en cache par
+    // l'interface est perdu : l'appelant redemande une liste complète, `UI::Manager::InvalidateLayers`).
     core::Result<> render(rhi::CommandEncoder &encoder, const DrawList &list, const CanvasTarget &target, bool loadExisting = true);
 
     // Libère les textures d'atlas et de couches (les handles sont détruits ; la prochaine liste les recrée).
@@ -53,6 +57,7 @@ class CanvasRenderer
         std::uint32_t width = 0;
         std::uint32_t height = 0;
         bool used = false;
+        std::vector<std::uint64_t> children; // couches dont l'image est dessinée dans celle-ci : gardées tant qu'elle l'est
     };
     struct Atlas
     {
@@ -78,7 +83,13 @@ class CanvasRenderer
     };
 
     CanvasRenderer(rhi::Device &device, PipelineCache &pipelines) : device_(device), pipelines_(pipelines) {}
-    core::Result<rhi::PipelineHandle> pipeline(const ShaderProgram &program, rhi::Format format, bool blend, bool glyph);
+    enum class Blend : std::uint8_t
+    {
+        kReplace,       // écrit tel quel (effacement d'une zone)
+        kStraight,      // couleur non prémultipliée (rectangles, glyphes) : src * a + dst * (1 - a)
+        kPremultiplied, // image de couche, déjà prémultipliée : src + dst * (1 - a)
+    };
+    core::Result<rhi::PipelineHandle> pipeline(const ShaderProgram &program, rhi::Format format, Blend blend, bool glyph);
     core::Result<Atlas *> atlasFor(const AtlasImage &image);
     core::Result<Layer *> layerFor(std::uint64_t id, std::uint32_t width, std::uint32_t height, bool &created);
     void beginPass(rhi::CommandEncoder &encoder, const Surface &surface, rhi::LoadOp load, const char *name);

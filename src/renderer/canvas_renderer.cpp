@@ -91,16 +91,22 @@ void CanvasRenderer::clear()
     atlases_.clear();
 }
 
-core::Result<rhi::PipelineHandle> CanvasRenderer::pipeline(const ShaderProgram &program, rhi::Format format, bool blend, bool glyph)
+core::Result<rhi::PipelineHandle> CanvasRenderer::pipeline(const ShaderProgram &program, rhi::Format format, Blend blend, bool glyph)
 {
     GraphicsState state;
     state.raster.cull = rhi::CullMode::kNone;
     rhi::ColorTargetState target;
     target.format = format;
-    if (blend)
+    if (blend == Blend::kStraight)
     {
-        // Même mélange que l'ancien SetAlphaBlend : couleur par alpha source, alpha cumulé.
+        // Même mélange que l'ancien SetAlphaBlend : couleur par alpha source, alpha cumulé. Sur une couche effacée en transparent,
+        // il accumule une couleur PRÉMULTIPLIÉE (rgb * a), d'où le mélange kPremultiplied pour composer la couche ensuite.
         target.blend = {true, rhi::BlendFactor::kSrcAlpha, rhi::BlendFactor::kOneMinusSrcAlpha, rhi::BlendOp::kAdd,
+                        rhi::BlendFactor::kOne, rhi::BlendFactor::kOneMinusSrcAlpha, rhi::BlendOp::kAdd};
+    }
+    else if (blend == Blend::kPremultiplied)
+    {
+        target.blend = {true, rhi::BlendFactor::kOne, rhi::BlendFactor::kOneMinusSrcAlpha, rhi::BlendOp::kAdd,
                         rhi::BlendFactor::kOne, rhi::BlendFactor::kOneMinusSrcAlpha, rhi::BlendOp::kAdd};
     }
     state.colorTargets.assign(1, target);
@@ -109,7 +115,7 @@ core::Result<rhi::PipelineHandle> CanvasRenderer::pipeline(const ShaderProgram &
         state.vertexBuffers.push_back({.binding = 0, .stride = 16, .stepRate = rhi::VertexStepRate::kVertex});
         state.vertexAttributes.push_back({.location = 0, .binding = 0, .format = rhi::VertexFormat::kFloat4, .offset = 0});
     }
-    state.debugName = program.name() + (blend ? "" : ".replace");
+    state.debugName = program.name() + (blend == Blend::kReplace ? ".replace" : blend == Blend::kPremultiplied ? ".premultiplied" : "");
     return pipelines_.graphics(program, state);
 }
 
@@ -262,9 +268,11 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
     main.px = target.size;
     main.logical = list.logicalSize;
     stack.push_back(main);
+    const bool encoderFailedBefore = encoder.error().has_value();
     beginPass(encoder, stack.back(), loadExisting ? rhi::LoadOp::kLoad : rhi::LoadOp::kClear, "ui.canvas");
     std::uint64_t glyphOffset = 0;
     core::Result<> status;
+    bool missingLayer = false;
 
     auto scaleOf = [](const Surface &s) { return glm::vec2(static_cast<float>(s.px.width) / s.logical.x, static_cast<float>(s.px.height) / s.logical.y); };
     auto drawRect = [&](const DrawRect &r, bool blend) -> core::Result<>
@@ -274,7 +282,7 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         {
             return {};
         }
-        auto pipe = pipeline(*rect_, s.format, blend, false);
+        auto pipe = pipeline(*rect_, s.format, blend ? Blend::kStraight : Blend::kReplace, false);
         if (!pipe)
         {
             return std::unexpected(pipe.error());
@@ -310,7 +318,7 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
                 continue;
             }
             auto atlas = atlasFor(*g->atlas);
-            auto pipe = pipeline(*glyph_, surface.format, true, true);
+            auto pipe = pipeline(*glyph_, surface.format, Blend::kStraight, true);
             if (!atlas || !pipe)
             {
                 status = std::unexpected(!atlas ? atlas.error() : pipe.error());
@@ -326,12 +334,25 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         else if (const auto *image = std::get_if<DrawLayerImage>(&command))
         {
             auto it = layers_.find(image->layerId);
-            if (it == layers_.end() || (!surface.clips.empty() && surface.clips.back().empty()))
+            if (it == layers_.end())
+            {
+                missingLayer = true; // son contenu (mis en cache par l'interface) est perdu : signalé à la fin
+                continue;
+            }
+            it->second.used = true; // référencée, même masquée par le découpage : elle peut redevenir visible sans être redessinée
+            if (surface.layerId != 0)
+            {
+                auto parent = layers_.find(surface.layerId);
+                if (parent != layers_.end() && std::ranges::find(parent->second.children, image->layerId) == parent->second.children.end())
+                {
+                    parent->second.children.push_back(image->layerId);
+                }
+            }
+            if (!surface.clips.empty() && surface.clips.back().empty())
             {
                 continue;
             }
-            it->second.used = true;
-            auto pipe = pipeline(*layerImage_, surface.format, true, false);
+            auto pipe = pipeline(*layerImage_, surface.format, Blend::kPremultiplied, false);
             if (!pipe)
             {
                 status = std::unexpected(pipe.error());
@@ -348,6 +369,13 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         }
         else if (const auto *begin = std::get_if<BeginLayer>(&command))
         {
+            // Taille validée avant toute conversion (une valeur non finie ou hors de l'entier non signé est un comportement indéfini).
+            const float maxSize = static_cast<float>(device_.capabilities().maxTextureSize);
+            if (!std::isfinite(begin->size.x) || !std::isfinite(begin->size.y) || begin->size.x > maxSize || begin->size.y > maxSize)
+            {
+                status = makeError(ErrorCode::kOutOfRange, "CanvasRenderer::render: BeginLayer size is not finite or exceeds the device limit");
+                continue;
+            }
             const auto w = static_cast<std::uint32_t>(std::max(begin->size.x, 1.0f));
             const auto h = static_cast<std::uint32_t>(std::max(begin->size.y, 1.0f));
             bool created = false;
@@ -358,6 +386,10 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
                 continue;
             }
             (*layer)->used = true;
+            if (begin->clear || created)
+            {
+                (*layer)->children.clear(); // contenu refait en entier : ses dépendances aussi
+            }
             encoder.endRenderPass();
             Surface inner;
             inner.texture = (*layer)->target.color(0);
@@ -381,18 +413,24 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         }
         else if (const auto *clip = std::get_if<PushClip>(&command))
         {
+            // Intersection avec le découpage parent EN FLOTTANTS, puis conversion : les bornes sont alors dans la surface (une
+            // coordonnée immense ou non finie donne un découpage vide au lieu d'un dépassement d'entier).
             const glm::vec2 k = scaleOf(surface);
-            Clip c;
-            c.left = static_cast<int>(std::floor(clip->position.x * k.x));
-            c.bottom = static_cast<int>(std::floor((surface.logical.y - (clip->position.y + clip->size.y)) * k.y));
-            c.right = static_cast<int>(std::ceil((clip->position.x + clip->size.x) * k.x));
-            c.top = static_cast<int>(std::ceil((surface.logical.y - clip->position.y) * k.y));
             const Clip parent = surface.clips.empty() ? fullClip(surface) : surface.clips.back();
-            c.left = std::max(c.left, parent.left);
-            c.bottom = std::max(c.bottom, parent.bottom);
-            c.right = std::min(c.right, parent.right);
-            c.top = std::min(c.top, parent.top);
-            surface.clips.push_back(c);
+            const float left = std::floor(clip->position.x * k.x);
+            const float bottom = std::floor((surface.logical.y - (clip->position.y + clip->size.y)) * k.y);
+            const float right = std::ceil((clip->position.x + clip->size.x) * k.x);
+            const float top = std::ceil((surface.logical.y - clip->position.y) * k.y);
+            Clip c{};
+            if (std::isfinite(left) && std::isfinite(bottom) && std::isfinite(right) && std::isfinite(top))
+            {
+                auto clampTo = [](float v, int lo, int hi) { return static_cast<int>(std::clamp(v, static_cast<float>(lo), static_cast<float>(hi))); };
+                c.left = clampTo(left, parent.left, parent.right);
+                c.right = clampTo(right, parent.left, parent.right);
+                c.bottom = clampTo(bottom, parent.bottom, parent.top);
+                c.top = clampTo(top, parent.bottom, parent.top);
+            }
+            surface.clips.push_back(c); // non fini : {0, 0, 0, 0}, vide
             applyClip(encoder, surface);
         }
         else if (std::holds_alternative<PopClip>(command))
@@ -412,8 +450,39 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
     {
         status = makeError(ErrorCode::kInvalidArgument, "CanvasRenderer::render: a layer was left open");
     }
+    // Une commande refusée par l'encodeur pendant ce rendu (cible périmée...) : signalée tout de suite, pas seulement à submit.
+    if (status && !encoderFailedBefore && encoder.error())
+    {
+        status = std::unexpected(*encoder.error());
+    }
+    if (status && missingLayer)
+    {
+        status = makeError(ErrorCode::kNotFound, "CanvasRenderer::render: a DrawLayerImage refers to a layer that does not exist (collect the UI again in full)");
+    }
 
-    // Couches que la liste ne référence plus : libérées.
+    // Couches gardées : celles que la liste a référencées, et celles dont l'image est dans une couche gardée (son contenu en
+    // cache les redessine sans les nommer).
+    std::vector<std::uint64_t> work;
+    for (const auto &[id, layer] : layers_)
+    {
+        if (layer.used)
+        {
+            work.push_back(id);
+        }
+    }
+    while (!work.empty())
+    {
+        const std::uint64_t id = work.back();
+        work.pop_back();
+        for (std::uint64_t child : layers_[id].children)
+        {
+            if (auto it = layers_.find(child); it != layers_.end() && !it->second.used)
+            {
+                it->second.used = true;
+                work.push_back(child);
+            }
+        }
+    }
     for (auto it = layers_.begin(); it != layers_.end();)
     {
         if (!it->second.used)

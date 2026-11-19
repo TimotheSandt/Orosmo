@@ -426,6 +426,142 @@ void main() { c = texture(albedo, vec2(0.5)) * pc.tint; })";
         gpu.expectNoValidationErrors();
     }
 
+    TEST_CASE("PipelineCache: programs of two libraries never share an identifier, so never a pipeline (G99)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        rd::ShaderLibrary first(*gpu.device);
+        rd::ShaderLibrary second(*gpu.device);
+        auto red = first.graphicsFromSource("same-name", kFullscreenVs450, redFs());
+        auto green = second.graphicsFromSource("same-name", kFullscreenVs450, redFs("vec4(0.0, 1.0, 0.0, 1.0)"));
+        REQUIRE(red.has_value());
+        REQUIRE(green.has_value());
+        CHECK((*red)->id() != (*green)->id());
+        rd::PipelineCache cache(*gpu.device);
+        rd::GraphicsState state;
+        state.raster.cull = CullMode::kNone;
+        auto a = cache.graphics(**red, state);
+        auto b = cache.graphics(**green, state);
+        REQUIRE(a.has_value());
+        REQUIRE(b.has_value());
+        CHECK(*a != *b);
+        rd::RenderTarget target = *rd::RenderTarget::create(*gpu.device, {.size = {4, 4}, .depth = false, .debugName = "t"});
+        drawFullscreen(gpu, target, *b);
+        CHECK((*target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{0, 255, 0, 255});
+        gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("PipelineCache keeps the last usable pipeline when a reloaded revision does not link (G99)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        TempDir dir;
+        const std::string head = "#version 450\nvoid place() { vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
+        dir.write("v.vert", head + "layout(location = 0) out vec4 tint;\nvoid main() { place(); tint = vec4(1.0, 0.0, 0.0, 1.0); }\n");
+        dir.write("f.frag", "#version 450\nlayout(location = 0) in vec4 tint;\nlayout(location = 0) out vec4 c;\nvoid main() { c = tint; }\n");
+        rd::ShaderLibrary library(*gpu.device, {.cacheDirectory = {}, .includeRoots = {dir.path}});
+        auto program = library.loadGraphics(dir.path / "v.vert", dir.path / "f.frag");
+        REQUIRE(program.has_value());
+        rd::PipelineCache cache(*gpu.device);
+        rd::GraphicsState state;
+        state.raster.cull = CullMode::kNone;
+        auto first = cache.graphics(**program, state);
+        REQUIRE(first.has_value());
+
+        // Chaque étage compile seul, mais l'interface ne correspond plus (vec3 contre vec4) : l'édition de liens échoue.
+        dir.write("v.vert", head + "layout(location = 0) out vec3 tint;\nvoid main() { place(); tint = vec3(0.0, 1.0, 0.0); }\n");
+        CHECK(library.pollHotReload() == 1);
+        CHECK((*program)->revision() == 2);
+        auto kept = cache.graphics(**program, state);
+        REQUIRE(kept.has_value()); // pas d'erreur pour l'appelant : l'ancien pipeline continue
+        CHECK(*kept == *first);
+        REQUIRE(cache.lastError().has_value());
+        const std::size_t misses = cache.misses();
+        CHECK(cache.graphics(**program, state).has_value());
+        CHECK(cache.misses() == misses); // la révision qui ne se lie pas n'est pas retentée à chaque image
+        rd::RenderTarget target = *rd::RenderTarget::create(*gpu.device, {.size = {4, 4}, .depth = false, .debugName = "t"});
+        drawFullscreen(gpu, target, *kept);
+        CHECK((*target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
+    }
+
+    TEST_CASE("ShaderLibrary validates the stages changed in one poll together (both switch a binding from UBO to texture) (G99)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        TempDir dir;
+        const std::string place = "void place() { vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
+        dir.write("v.vert", "#version 450\nlayout(set = 0, binding = 0) uniform U { vec4 k; } u;\n" + place + "void main() { place(); gl_Position.w += u.k.w * 0.0; }\n");
+        dir.write("f.frag", "#version 450\nlayout(set = 0, binding = 0) uniform U { vec4 k; } u;\nlayout(location = 0) out vec4 c;\nvoid main() { c = u.k; }\n");
+        rd::ShaderLibrary library(*gpu.device, {.cacheDirectory = {}, .includeRoots = {dir.path}});
+        auto program = library.loadGraphics(dir.path / "v.vert", dir.path / "f.frag");
+        REQUIRE(program.has_value());
+        dir.write("v.vert", "#version 450\nlayout(set = 0, binding = 0) uniform sampler2D u;\n" + place +
+                                "void main() { place(); gl_Position.w += textureLod(u, vec2(0.5), 0.0).w * 0.0; }\n");
+        dir.write("f.frag", "#version 450\nlayout(set = 0, binding = 0) uniform sampler2D u;\nlayout(location = 0) out vec4 c;\nvoid main() { c = texture(u, vec2(0.5)); }\n");
+        CHECK(library.pollHotReload() == 2); // ensemble : chacun seul aurait été refusé contre l'ancien étage opposé
+        CHECK((*program)->revision() == 2);
+        CHECK_FALSE(library.lastError().has_value());
+        REQUIRE((*program)->reflection().bindings.size() == 1);
+        CHECK(((*program)->reflection().bindings[0].type == BindingType::kSampledTexture));
+        gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("ShaderLibrary stops watching the files of released programs and of failed loads (G99)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        TempDir dir;
+        dir.write("full.vert", kFullscreenVs450);
+        dir.write("c.frag", redFs());
+        dir.write("broken.frag", "#version 450\nvoid main() { nonsense }\n");
+        rd::ShaderLibrary library(*gpu.device, {.cacheDirectory = {}, .includeRoots = {dir.path}});
+        auto program = library.loadGraphics(dir.path / "full.vert", dir.path / "c.frag");
+        REQUIRE(program.has_value());
+        CHECK(library.watchedStageCount() == 2);
+        program->reset(); // libéré par son dernier propriétaire
+        library.pollHotReload();
+        CHECK(library.watchedStageCount() == 0);
+        CHECK_FALSE(library.loadGraphics(dir.path / "full.vert", dir.path / "broken.frag").has_value());
+        CHECK(library.watchedStageCount() == 0); // le vertex déjà surveillé est retiré avec l'échec
+    }
+
+    TEST_CASE("ShaderLibrary: a successful reload in the same poll does not hide another program's failure (G99)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        TempDir dir;
+        dir.write("full.vert", kFullscreenVs450);
+        dir.write("a.frag", redFs());
+        dir.write("b.frag", redFs());
+        rd::ShaderLibrary library(*gpu.device, {.cacheDirectory = {}, .includeRoots = {dir.path}});
+        auto a = library.loadGraphics(dir.path / "full.vert", dir.path / "a.frag");
+        auto b = library.loadGraphics(dir.path / "full.vert", dir.path / "b.frag");
+        REQUIRE(a.has_value());
+        REQUIRE(b.has_value());
+        dir.write("a.frag", "#version 450\nvoid main() { nonsense }\n");
+        dir.write("b.frag", redFs("vec4(0.0, 0.0, 1.0, 1.0)"));
+        CHECK(library.pollHotReload() == 1);
+        CHECK(library.lastError().has_value());
+        CHECK((*b)->revision() == 2);
+        CHECK((*a)->revision() == 1);
+    }
+
+    TEST_CASE("RenderTarget refuses a depth format among the color formats and keeps its previous attachments (G99)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        auto target = rd::RenderTarget::create(*gpu.device, {.size = {4, 4}, .depth = false, .debugName = "t"});
+        REQUIRE(target.has_value());
+        const TextureHandle before = target->color(0);
+        rd::RenderTargetInfo info = target->info();
+        info.colorFormats = {Format::kD32Float};
+        auto r = target->reconfigure(info);
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kInvalidArgument));
+        CHECK(target->color(0) == before);
+        CHECK_FALSE(rd::RenderTarget::create(*gpu.device, {.size = {4, 4}, .colorFormats = {Format::kD32Float}, .depth = false, .depthSampled = false, .debugName = "depth-as-color"}).has_value());
+    }
+
     TEST_CASE("compute programs: loadCompute and the pipeline cache")
     {
         Gpu gpu;

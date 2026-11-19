@@ -3,6 +3,8 @@
 #include "Logger.h"
 
 #include <algorithm>
+#include <atomic>
+#include <iterator>
 
 namespace engine::renderer
 {
@@ -47,37 +49,70 @@ void ShaderProgram::mergeReflection()
     reflection_ = std::move(merged);
 }
 
-core::Result<> ShaderProgram::setStage(const rhi::CompiledShader &compiled, rhi::ShaderHandle handle)
+core::Result<> ShaderProgram::setStages(std::vector<StageUpdate> updates)
 {
-    // Une même liaison ne peut pas changer de type d'un étage à l'autre.
-    for (std::size_t other = 0; other < stageReflection_.size(); ++other)
+    auto destroyCandidates = [&]()
     {
-        if (other == stageIndex(compiled.stage))
+        for (const StageUpdate &u : updates)
         {
-            continue;
+            device_.destroy(u.handle);
         }
-        for (const rhi::ReflectedBinding &a : stageReflection_[other].bindings)
+    };
+    // Ensemble final : étages gardés + étages remplacés. Une même liaison ne peut pas changer de type d'un étage à l'autre.
+    std::array<rhi::ShaderReflection, 3> tentative = stageReflection_;
+    for (const StageUpdate &u : updates)
+    {
+        tentative[stageIndex(u.compiled.stage)] = u.compiled.reflection;
+    }
+    for (std::size_t first = 0; first < tentative.size(); ++first)
+    {
+        for (std::size_t second = first + 1; second < tentative.size(); ++second)
         {
-            for (const rhi::ReflectedBinding &b : compiled.reflection.bindings)
+            for (const rhi::ReflectedBinding &a : tentative[first].bindings)
             {
-                if (a.set == b.set && a.binding == b.binding && a.type != b.type)
+                for (const rhi::ReflectedBinding &b : tentative[second].bindings)
                 {
-                    device_.destroy(handle);
-                    return makeError(ErrorCode::kInvalidArgument, name_ + ": (set " + std::to_string(a.set) + ", binding " + std::to_string(a.binding) +
-                                                                      ") has a different type in two stages ('" + a.name + "' and '" + b.name + "')");
+                    if (a.set == b.set && a.binding == b.binding && a.type != b.type)
+                    {
+                        destroyCandidates();
+                        return makeError(ErrorCode::kInvalidArgument, name_ + ": (set " + std::to_string(a.set) + ", binding " +
+                                                                          std::to_string(a.binding) + ") has a different type in two stages ('" +
+                                                                          a.name + "' and '" + b.name + "')");
+                    }
                 }
             }
         }
     }
-    rhi::ShaderHandle *slot = compiled.stage == rhi::ShaderStage::kVertex     ? &vertex_
-                              : compiled.stage == rhi::ShaderStage::kFragment ? &fragment_
-                                                                             : &compute_;
-    device_.destroy(*slot);
-    *slot = handle;
-    stageReflection_[stageIndex(compiled.stage)] = compiled.reflection;
+    for (const StageUpdate &u : updates)
+    {
+        rhi::ShaderHandle *slot = u.compiled.stage == rhi::ShaderStage::kVertex     ? &vertex_
+                                  : u.compiled.stage == rhi::ShaderStage::kFragment ? &fragment_
+                                                                                   : &compute_;
+        device_.destroy(*slot);
+        *slot = u.handle;
+    }
+    stageReflection_ = std::move(tentative);
     mergeReflection();
     return {};
 }
+
+core::Result<> ShaderProgram::setStage(const rhi::CompiledShader &compiled, rhi::ShaderHandle handle)
+{
+    std::vector<StageUpdate> one;
+    one.push_back({compiled, handle});
+    return setStages(std::move(one));
+}
+
+namespace
+{
+// Identifiant de programme unique dans le processus : deux bibliothèques sur le même périphérique ne donnent jamais le même
+// identifiant à deux programmes (le cache de pipelines s'en sert comme clé).
+std::uint64_t nextProgramId()
+{
+    static std::atomic<std::uint64_t> next{1};
+    return next.fetch_add(1);
+}
+} // namespace
 
 ShaderLibrary::ShaderLibrary(rhi::Device &device, ShaderLibraryConfig config)
     : device_(device), config_(std::move(config)), cache_(config_.cacheDirectory),
@@ -89,7 +124,7 @@ ShaderLibrary::~ShaderLibrary() = default;
 
 std::size_t ShaderLibrary::programCount() const
 {
-    return static_cast<std::size_t>(std::ranges::count_if(programs_, [](const std::weak_ptr<ShaderProgram> &p) { return !p.expired(); }));
+    return static_cast<std::size_t>(std::ranges::count_if(programs_, [](const Tracked &t) { return !t.program.expired(); }));
 }
 
 rhi::CompileOptions ShaderLibrary::options(const std::string &name, const std::vector<Define> &defines) const
@@ -103,50 +138,78 @@ rhi::CompileOptions ShaderLibrary::options(const std::string &name, const std::v
 
 core::Result<std::shared_ptr<ShaderProgram>> ShaderLibrary::newProgram(const std::string &name)
 {
-    std::shared_ptr<ShaderProgram> program(new ShaderProgram(device_, name, nextId_++));
-    std::erase_if(programs_, [](const std::weak_ptr<ShaderProgram> &p) { return p.expired(); });
-    programs_.push_back(program);
+    std::shared_ptr<ShaderProgram> program(new ShaderProgram(device_, name, nextProgramId()));
+    programs_.push_back({program, program->id(), {}});
     return program;
+}
+
+void ShaderLibrary::forget(std::uint64_t programId)
+{
+    std::erase_if(programs_,
+                  [&](const Tracked &t)
+                  {
+                      if (t.id != programId)
+                      {
+                          return false;
+                      }
+                      for (rhi::ShaderHotReloader::EntryId entry : t.entries)
+                      {
+                          reloader_.remove(entry);
+                      }
+                      return true;
+                  });
+}
+
+void ShaderLibrary::reportFailure(const core::Error &error)
+{
+    if (!batchError_)
+    {
+        batchError_ = error;
+    }
 }
 
 core::Result<rhi::CompiledShader> ShaderLibrary::watch(const std::shared_ptr<ShaderProgram> &program, const std::filesystem::path &file,
                                                        rhi::ShaderStage stage, const std::vector<Define> &defines)
 {
     std::weak_ptr<ShaderProgram> weak = program;
-    return reloader_.add(
+    const std::uint64_t id = program->id();
+    auto first = reloader_.add(
         file, stage,
-        [this, weak, stage](const std::filesystem::path &changed, const core::Result<rhi::CompiledShader> &result)
+        [this, weak, id](const std::filesystem::path &changed, const core::Result<rhi::CompiledShader> &result)
         {
-            const auto program = weak.lock();
-            if (!program)
+            const auto live = weak.lock();
+            if (!live)
             {
-                return;
+                return; // libéré depuis le dernier poll : ses entrées sont retirées au prochain
             }
             if (!result)
             {
-                lastError_ = result.error();
+                reportFailure(result.error());
                 LOG_ERROR(1, "Shader reload failed (", changed.generic_string(), "), keeping the previous version: ", result.error().message);
                 return;
             }
             auto handle = rhi::createShaderFromCompiled(device_, *result, changed.generic_string());
             if (!handle)
             {
-                lastError_ = handle.error();
+                reportFailure(handle.error());
                 LOG_ERROR(1, "Shader reload failed (", changed.generic_string(), "): ", handle.error().message);
                 return;
             }
-            if (auto r = program->setStage(*result, *handle); !r)
+            // Pas d'installation ici : les étages du même programme modifiés dans ce poll sont validés ensemble ensuite.
+            auto it = std::ranges::find_if(pending_, [&](const auto &p) { return p.first == id; });
+            if (it == pending_.end())
             {
-                lastError_ = r.error();
-                LOG_ERROR(1, "Shader reload failed (", changed.generic_string(), "): ", r.error().message);
-                return;
+                pending_.push_back({id, Pending{weak, {}}});
+                it = std::prev(pending_.end());
             }
-            ++program->revision_;
-            ++reloaded_;
-            lastError_.reset();
-            (void)stage;
+            it->second.updates.push_back({*result, *handle});
         },
         defines);
+    if (auto it = std::ranges::find_if(programs_, [&](const Tracked &t) { return t.id == id; }); it != programs_.end())
+    {
+        it->entries.push_back(reloader_.lastAdded());
+    }
+    return first;
 }
 
 core::Result<std::shared_ptr<ShaderProgram>> ShaderLibrary::loadGraphics(const std::filesystem::path &vertexFile, const std::filesystem::path &fragmentFile,
@@ -166,18 +229,16 @@ core::Result<std::shared_ptr<ShaderProgram>> ShaderLibrary::loadGraphics(const s
     {
         // Le rechargeur compile une première fois (par le cache) puis surveille ; son rappel met le programme à jour.
         auto compiled = watch(*program, s.file, s.stage, defines);
-        if (!compiled)
+        core::Result<> installed;
+        if (compiled)
         {
-            return std::unexpected(compiled.error());
+            auto handle = rhi::createShaderFromCompiled(device_, *compiled, s.file.generic_string());
+            installed = handle ? (*program)->setStage(*compiled, *handle) : core::Result<>(std::unexpected(handle.error()));
         }
-        auto handle = rhi::createShaderFromCompiled(device_, *compiled, s.file.generic_string());
-        if (!handle)
+        if (!compiled || !installed)
         {
-            return std::unexpected(handle.error());
-        }
-        if (auto r = (*program)->setStage(*compiled, *handle); !r)
-        {
-            return std::unexpected(r.error());
+            forget((*program)->id()); // échec du chargement : aucune surveillance sans consommateur
+            return std::unexpected(!compiled ? compiled.error() : installed.error());
         }
     }
     return program;
@@ -191,18 +252,16 @@ core::Result<std::shared_ptr<ShaderProgram>> ShaderLibrary::loadCompute(const st
         return program;
     }
     auto compiled = watch(*program, computeFile, rhi::ShaderStage::kCompute, defines);
-    if (!compiled)
+    core::Result<> installed;
+    if (compiled)
     {
-        return std::unexpected(compiled.error());
+        auto handle = rhi::createShaderFromCompiled(device_, *compiled, computeFile.generic_string());
+        installed = handle ? (*program)->setStage(*compiled, *handle) : core::Result<>(std::unexpected(handle.error()));
     }
-    auto handle = rhi::createShaderFromCompiled(device_, *compiled, computeFile.generic_string());
-    if (!handle)
+    if (!compiled || !installed)
     {
-        return std::unexpected(handle.error());
-    }
-    if (auto r = (*program)->setStage(*compiled, *handle); !r)
-    {
-        return std::unexpected(r.error());
+        forget((*program)->id());
+        return std::unexpected(!compiled ? compiled.error() : installed.error());
     }
     return program;
 }
@@ -244,8 +303,55 @@ core::Result<std::shared_ptr<ShaderProgram>> ShaderLibrary::graphicsFromSource(c
 
 std::size_t ShaderLibrary::pollHotReload()
 {
+    // Programmes libérés : leurs fichiers ne sont plus surveillés ni recompilés.
+    std::vector<std::uint64_t> expired;
+    for (const Tracked &t : programs_)
+    {
+        if (t.program.expired())
+        {
+            expired.push_back(t.id);
+        }
+    }
+    for (std::uint64_t id : expired)
+    {
+        forget(id);
+    }
+
     const std::size_t before = reloaded_;
+    batchError_.reset();
+    pending_.clear();
     reloader_.poll();
+    for (auto &[id, pending] : pending_)
+    {
+        const auto program = pending.program.lock();
+        if (!program)
+        {
+            for (const ShaderProgram::StageUpdate &u : pending.updates)
+            {
+                device_.destroy(u.handle);
+            }
+            continue;
+        }
+        const std::size_t count = pending.updates.size();
+        if (auto r = program->setStages(std::move(pending.updates)); !r)
+        {
+            reportFailure(r.error());
+            LOG_ERROR(1, "Shader reload of '", program->name(), "' refused, keeping the previous version: ", r.error().message);
+            continue;
+        }
+        ++program->revision_;
+        reloaded_ += count;
+    }
+    pending_.clear();
+    // Le premier échec du lot reste visible ; sans échec, un rechargement réussi efface l'ancien.
+    if (batchError_)
+    {
+        lastError_ = batchError_;
+    }
+    else if (reloaded_ != before)
+    {
+        lastError_.reset();
+    }
     return reloaded_ - before;
 }
 

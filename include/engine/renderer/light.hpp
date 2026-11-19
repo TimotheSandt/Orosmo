@@ -94,10 +94,12 @@ class LightManager
     void resetAmbientLight();
     void addLight(const Light &light);
     void addLights(const std::vector<Light> &lights);
-    void setLight(std::size_t index, const Light &light);
+    // Seule façon de modifier une lumière existante (marque le tampon à renvoyer) ; kOutOfRange pour un index périmé.
+    core::Result<> setLight(std::size_t index, const Light &light);
     void removeLight(std::size_t index);
     void removeLight(const Light &light); // premier élément égal
-    Light &light(std::size_t index) { return lights_.at(index); }
+    // Lecture seule : une modification par référence contournerait `dirty_` (le GPU garderait l'ancienne valeur). Nul si hors limites.
+    const Light *light(std::size_t index) const noexcept { return index < lights_.size() ? &lights_[index] : nullptr; }
     const std::vector<Light> &lights() const noexcept { return lights_; }
     const Light &ambient() const noexcept { return ambient_; }
 

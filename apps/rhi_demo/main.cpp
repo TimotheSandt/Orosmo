@@ -9,7 +9,7 @@
 //   bin/rhi_demo --out /chemin/image.png
 #include <engine/rhi/device.hpp>
 
-#include <stb_image_write.h>
+#include <engine/renderer/image.hpp>
 
 #include <cstdio>
 #include <cstring>
@@ -209,23 +209,15 @@ int main(int argc, char **argv)
     std::printf("  GPU : calcul %.3f ms, passe de rendu %.3f ms\n", static_cast<double>((*times)[1] - (*times)[0]) * 1e-6,
                 static_cast<double>((*times)[2] - (*times)[1]) * 1e-6);
 
-    TRY(pixels, device.readTexture(*color), "readTexture(color)");
     TRY(idPixels, device.readTexture(*ids, {.offset = {kSize / 2, kSize / 2 + 80, 0}, .size = {1, 1, 1}}), "readTexture(ids)");
     std::uint32_t centerId = 0;
     std::memcpy(&centerId, idPixels->data(), 4);
     std::printf("  identifiant d'objet au centre : %u (attendu 7 : un triangle)\n", centerId);
 
-    // readTexture renvoie la ligne du bas en premier (repère OpenGL) ; le PNG commence par le haut.
-    std::vector<std::byte> flipped(pixels->size());
-    const std::size_t row = static_cast<std::size_t>(kSize) * 4;
-    for (std::uint32_t y = 0; y < kSize; ++y)
+    // Une seule implémentation de l'export (ordre des lignes, erreurs) : celle du renderer.
+    if (auto saved = engine::renderer::savePng(device, *color, outPath); !saved)
     {
-        std::memcpy(flipped.data() + y * row, pixels->data() + (kSize - 1 - y) * row, row);
-    }
-    if (stbi_write_png(outPath.c_str(), static_cast<int>(kSize), static_cast<int>(kSize), 4, flipped.data(), static_cast<int>(row)) == 0)
-    {
-        std::fprintf(stderr, "rhi_demo: cannot write %s\n", outPath.c_str());
-        return 1;
+        return fail("savePng", saved.error());
     }
     std::printf("  image : %s\n", outPath.c_str());
 

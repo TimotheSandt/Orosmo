@@ -113,10 +113,16 @@ void LightManager::addLights(const std::vector<Light> &lights)
     dirty_ = true;
 }
 
-void LightManager::setLight(std::size_t index, const Light &light)
+core::Result<> LightManager::setLight(std::size_t index, const Light &light)
 {
-    lights_.at(index) = light;
+    if (index >= lights_.size())
+    {
+        return core::makeError(core::ErrorCode::kOutOfRange, "LightManager::setLight: index " + std::to_string(index) + " >= " +
+                                                                 std::to_string(lights_.size()) + " lights");
+    }
+    lights_[index] = light;
     dirty_ = true;
+    return {};
 }
 
 void LightManager::removeLight(std::size_t index)

@@ -57,17 +57,25 @@ class SceneRenderer
     int outputHeight() const noexcept { return outputHeight_; }
     void setRenderScale(float scale) noexcept; // dans (0, 1] ; < 1 active la mise à l'échelle
     float renderScale() const noexcept { return renderScale_; }
+    // Mise à l'échelle désactivée : le mode actif n'est pas exécuté, la scène est copiée 1:1 sur la destination.
     void setUpscalingEnabled(bool enabled) noexcept { upscalingEnabled_ = enabled; }
     bool upscalingEnabled() const noexcept { return upscalingEnabled_; }
 
-    void registerUpscaleMode(std::unique_ptr<IUpscaleMode> mode);
-    bool setActiveUpscaleMode(const std::string &name); // « disabled » : aucune copie vers la destination
+    void registerUpscaleMode(std::unique_ptr<IUpscaleMode> mode); // les modes enregistrés vivent autant que le renderer
+    // Active un mode enregistré : il doit être supporté (`supports`) et s'initialiser (`initialize`), sinon faux et l'ancien mode
+    // reste actif. L'ancien mode est arrêté (`shutdown`). « disabled » : aucun mode ; à échelle réduite la destination n'est alors
+    // pas touchée, à l'échelle 1 la scène y est copiée 1:1.
+    bool setActiveUpscaleMode(const std::string &name);
     std::string activeUpscaleMode() const;
     std::vector<std::string> registeredUpscaleModes() const;
     UpscaleRequirements activeUpscaleModeRequirements() const noexcept;
     void addPostProcessPass(std::unique_ptr<IPostProcessPass> pass);
     void removePostProcessPass(const std::string &name);
-    void setFrameGenerationMode(std::unique_ptr<IFrameGenerationMode> mode);
+    // Remplace le mode de génération d'images (nul : aucun). Un mode non supporté ou qui ne s'initialise pas est refusé
+    // (kUnsupported) et le mode actif est conservé.
+    core::Result<> setFrameGenerationMode(std::unique_ptr<IFrameGenerationMode> mode);
+    // Image produite par le mode de génération pendant le dernier endFrame (nulle sinon), valable jusqu'au prochain endFrame.
+    rhi::TextureHandle generatedFrame() const noexcept { return generatedFrame_; }
 
     void setMotionVectorsEnabled(bool enabled) noexcept { motionVectorsEnabled_ = enabled; }
     bool motionVectorsEnabled() const noexcept { return motionVectorsEnabled_; }
@@ -85,7 +93,8 @@ class SceneRenderer
     void setJitterSequenceLength(std::uint32_t length) noexcept;
     void resetTemporalHistory() noexcept { resetHistoryNextFrame_ = true; }
 
-    // Lumières lues par les shaders ; sans appel, une lumière ambiante nulle.
+    // Lumières lues par les shaders ; sans appel, une lumière ambiante nulle. Peut être appelé après beginFrame : le groupe de
+    // liaison est mis à jour avant le dessin suivant.
     void setLights(LightManager *lights) noexcept { lights_ = lights; }
 
     // ── Image ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -108,7 +117,9 @@ class SceneRenderer
   private:
     SceneRenderer(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines) : device_(device), library_(library), pipelines_(pipelines) {}
     bool scaled() const noexcept { return upscalingEnabled_ && renderScale_ < 1.0f && outputWidth_ > 0 && outputHeight_ > 0; }
-    bool needsTemporalResources() const noexcept;
+    bool modeRuns() const noexcept { return upscalingEnabled_ && activeUpscaleMode_ != nullptr; }
+    bool needsJitter() const noexcept;
+    bool needsHistory() const noexcept;
     core::Result<> rebuildFrameGroup();
     core::Result<> draw(Mesh &mesh, const Camera &camera, bool lines);
 
@@ -140,6 +151,7 @@ class SceneRenderer
     IUpscaleMode *activeUpscaleMode_ = nullptr;
     std::vector<std::unique_ptr<IPostProcessPass>> postProcessPasses_;
     std::unique_ptr<IFrameGenerationMode> frameGenMode_;
+    rhi::TextureHandle generatedFrame_;
 
     bool motionVectorsEnabled_ = false;
     bool depthAsTextureEnabled_ = false;

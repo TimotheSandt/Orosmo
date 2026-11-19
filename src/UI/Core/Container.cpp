@@ -146,16 +146,36 @@ void ContainerBase::Collect(engine::renderer::DrawList &list, glm::vec2 containe
         }
         else if (hasAppearanceDirty)
         {
-            list.beginLayer(layerId, contentSize, false);
+            // Redessin partiel : chaque zone d'un enfant modifié est effacée puis TOUS les enfants qui la touchent y sont redessinés,
+            // dans l'ordre de la liste et sous un découpage limité à la zone. Un enfant qui recouvre le modifié reste donc devant.
+            std::vector<glm::vec4> zones;
             for (auto &child : children)
             {
                 if (child->IsAppearanceDirty())
                 {
-                    const glm::vec4 childBounds = child->GetCachedBoundsInParent();
-                    list.clearRect({childBounds.x, childBounds.y}, {childBounds.z, childBounds.w});
-                    child->Collect(list, contentSize, {childBounds.x, childBounds.y});
-                    child->ClearDirty();
+                    zones.push_back(child->GetCachedBoundsInParent());
                 }
+            }
+            auto overlaps = [](const glm::vec4 &a, const glm::vec4 &b)
+            { return a.x < b.x + b.z && b.x < a.x + a.z && a.y < b.y + b.w && b.y < a.y + a.w; };
+            list.beginLayer(layerId, contentSize, false);
+            for (const glm::vec4 &zone : zones)
+            {
+                list.pushClip({zone.x, zone.y}, {zone.z, zone.w});
+                list.clearRect({zone.x, zone.y}, {zone.z, zone.w});
+                for (auto &child : children)
+                {
+                    const glm::vec4 childBounds = child->GetCachedBoundsInParent();
+                    if (overlaps(childBounds, zone))
+                    {
+                        child->Collect(list, contentSize, {childBounds.x, childBounds.y});
+                    }
+                }
+                list.popClip();
+            }
+            for (auto &child : children)
+            {
+                child->ClearDirty();
             }
             list.endLayer();
         }

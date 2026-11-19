@@ -36,6 +36,7 @@ class ShaderProgram
     rhi::ShaderHandle compute() const noexcept { return compute_; }
     // Liaisons, taille des push constants, sorties couleur, taille de groupe : somme des étages.
     const rhi::ShaderReflection &reflection() const noexcept { return reflection_; }
+    // Unique dans le processus (toutes bibliothèques confondues) : sert de clé au cache de pipelines.
     std::uint64_t id() const noexcept { return id_; }
     // Augmente à chaque rechargement à chaud réussi : un pipeline construit avec une révision plus ancienne est périmé.
     std::uint64_t revision() const noexcept { return revision_; }
@@ -43,6 +44,14 @@ class ShaderProgram
   private:
     friend class ShaderLibrary;
     ShaderProgram(rhi::Device &device, std::string name, std::uint64_t id) : device_(device), name_(std::move(name)), id_(id) {}
+    struct StageUpdate
+    {
+        rhi::CompiledShader compiled;
+        rhi::ShaderHandle handle;
+    };
+    // Installe tous les étages ou aucun : les liaisons sont comparées sur l'ensemble final (étages remplacés + étages gardés).
+    // En cas de refus, les handles candidats sont détruits et le programme reste tel quel.
+    core::Result<> setStages(std::vector<StageUpdate> updates);
     core::Result<> setStage(const rhi::CompiledShader &compiled, rhi::ShaderHandle handle);
     void mergeReflection();
 
@@ -81,27 +90,46 @@ class ShaderLibrary
     core::Result<std::shared_ptr<ShaderProgram>> graphicsFromSource(const std::string &name, std::string_view vertexSource,
                                                                     std::string_view fragmentSource, const std::vector<Define> &defines = {});
 
-    // À appeler une fois par image : recompile les fichiers modifiés. Renvoie le nombre d'étages rechargés avec succès. Un échec est
-    // journalisé et conservé dans `lastError()` ; le programme garde alors son ancienne version.
+    // À appeler une fois par image : recompile les fichiers modifiés. Les étages modifiés d'un même programme sont validés
+    // ensemble puis installés ensemble. Renvoie le nombre d'étages rechargés avec succès. Un échec est journalisé et conservé dans
+    // `lastError()` (le premier du lot : un succès du même lot ne l'efface pas) ; le programme garde alors son ancienne version.
+    // Les fichiers des programmes libérés cessent d'être surveillés.
     std::size_t pollHotReload();
+    // Entrées du rechargeur encore surveillées (une par étage chargé depuis un fichier d'un programme vivant).
+    std::size_t watchedStageCount() const noexcept { return reloader_.activeCount(); }
     const std::optional<core::Error> &lastError() const noexcept { return lastError_; }
 
     const rhi::ShaderCache &cache() const noexcept { return cache_; }
     std::size_t programCount() const;
 
   private:
+    struct Tracked
+    {
+        std::weak_ptr<ShaderProgram> program;
+        std::uint64_t id = 0;
+        std::vector<rhi::ShaderHotReloader::EntryId> entries;
+    };
+    struct Pending
+    {
+        std::weak_ptr<ShaderProgram> program;
+        std::vector<ShaderProgram::StageUpdate> updates;
+    };
+
     core::Result<std::shared_ptr<ShaderProgram>> newProgram(const std::string &name);
     core::Result<rhi::CompiledShader> watch(const std::shared_ptr<ShaderProgram> &program, const std::filesystem::path &file, rhi::ShaderStage stage,
                                             const std::vector<Define> &defines);
+    void forget(std::uint64_t programId); // ne surveille plus les fichiers du programme
+    void reportFailure(const core::Error &error);
     rhi::CompileOptions options(const std::string &name, const std::vector<Define> &defines) const;
 
     rhi::Device &device_;
     ShaderLibraryConfig config_;
     rhi::ShaderCache cache_;
     rhi::ShaderHotReloader reloader_;
-    std::vector<std::weak_ptr<ShaderProgram>> programs_;
+    std::vector<Tracked> programs_;
+    std::vector<std::pair<std::uint64_t, Pending>> pending_; // candidats du poll en cours, par programme
+    std::optional<core::Error> batchError_;
     std::optional<core::Error> lastError_;
-    std::uint64_t nextId_ = 1;
     std::size_t reloaded_ = 0;
 };
 
