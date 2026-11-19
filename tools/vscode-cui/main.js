@@ -1,168 +1,309 @@
 "use strict";
+// Extension VS Code du langage d'interface (.cui) : diagnostics du compilateur `cui` (fichier:ligne:colonne, pendant la frappe),
+// complétion (composants, arguments nommés, modificateurs, événements, alignements, propriétés et images des thèmes), aide au
+// survol. La description des composants vient du compilateur lui-même (`cui spec`) : l'extension suit le langage sans copie.
 const vscode = require("vscode");
-const cp     = require("child_process");
-const path   = require("path");
-const fs     = require("fs");
-const os     = require("os");
+const cp = require("child_process");
+const path = require("path");
+const fs = require("fs");
 
-/** @type {vscode.DiagnosticCollection} */
-let diagnosticCollection;
-/** @type {vscode.OutputChannel} */
-let outputChannel;
+const DEBOUNCE_MS = 400;
 
-/** @type {Map<string, NodeJS.Timeout>} */
-const debounceTimers = new Map();
-
-const DEBOUNCE_MS = 500;
+/** @type {vscode.DiagnosticCollection} */ let diagnostics;
+/** @type {vscode.OutputChannel} */ let output;
+const timers = new Map();
+let specCache = null; // { tool, spec }
+let themeCache = null; // { at, tokens: Set, images: Set }
 
 function log(msg) {
-    const line = `[${new Date().toISOString()}] ${msg}`;
-    outputChannel.appendLine(line);
+    output.appendLine(`[${new Date().toISOString()}] ${msg}`);
 }
 
-function activate(context) {
-    outputChannel = vscode.window.createOutputChannel("CUI");
-    context.subscriptions.push(outputChannel);
-    outputChannel.show(true);
+// ── Compilateur ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    log("Extension activating");
-    log(`  __dirname : ${__dirname}`);
-    log(`  workspaceFolders: ${JSON.stringify((vscode.workspace.workspaceFolders || []).map(f => f.uri.fsPath))}`);
-
-    diagnosticCollection = vscode.languages.createDiagnosticCollection("cui");
-    context.subscriptions.push(diagnosticCollection);
-
-    vscode.workspace.textDocuments.forEach(doc => {
-        if (doc.languageId === "cui") checkDocument(doc);
-    });
-
-    context.subscriptions.push(
-        vscode.workspace.onDidOpenTextDocument(doc => {
-            if (doc.languageId === "cui") checkDocument(doc);
-        }),
-        vscode.workspace.onDidChangeTextDocument(event => {
-            if (event.document.languageId !== "cui") return;
-            const key = event.document.uri.toString();
-            clearTimeout(debounceTimers.get(key));
-            debounceTimers.set(key, setTimeout(() => {
-                debounceTimers.delete(key);
-                checkDocument(event.document);
-            }, DEBOUNCE_MS));
-        }),
-        vscode.workspace.onDidSaveTextDocument(doc => {
-            if (doc.languageId === "cui") checkDocument(doc);
-        }),
-        vscode.workspace.onDidCloseTextDocument(doc => {
-            diagnosticCollection.delete(doc.uri);
-        }),
-    );
-
-    log("Extension activated");
+function exeName() {
+    return process.platform === "win32" ? "cui.exe" : "cui";
 }
 
-function deactivate() {
-    if (diagnosticCollection) diagnosticCollection.dispose();
-}
-
-function resolveToolPath() {
-    const cfg      = vscode.workspace.getConfiguration("cui");
-    const explicit = cfg.get("toolPath");
-    if (explicit) {
-        log(`  toolPath (explicit): ${explicit}`);
-        return explicit;
+function resolveTool() {
+    const explicit = vscode.workspace.getConfiguration("cui").get("toolPath");
+    if (explicit) return explicit;
+    const candidates = [];
+    for (const folder of vscode.workspace.workspaceFolders || []) {
+        const root = folder.uri.fsPath;
+        candidates.push(
+            path.join(root, "tools", exeName()),                       // dépôt du moteur (make cui-tool)
+            path.join(root, "tools", "target", "release", exeName()),  // cargo build --release
+            path.join(root, "engine", "tools", exeName()),             // projet créé par `engine init`
+            path.join(root, "apps", "demo", "engine", "tools", exeName()),
+        );
     }
-
-    const exeName = process.platform === "win32" ? "cui.exe" : "cui";
-    for (const folder of (vscode.workspace.workspaceFolders || [])) {
-        const candidate = path.join(folder.uri.fsPath, "tools", "cui-rs", "target", "release", exeName);
-        log(`  toolPath candidate: ${candidate} -> exists=${fs.existsSync(candidate)}`);
-        if (fs.existsSync(candidate)) return candidate;
-    }
-
-    const fallback = path.join(__dirname, "..", "cui-rs", "target", "release", exeName);
-    log(`  toolPath fallback: ${fallback} -> exists=${fs.existsSync(fallback)}`);
-    return fallback;
+    for (const c of candidates) if (fs.existsSync(c)) return c;
+    return exeName(); // dans le PATH
 }
 
-function resolveRegistryPath(raw) {
+function resolveRegistry() {
+    const raw = vscode.workspace.getConfiguration("cui").get("registryPath") || "";
     if (!raw) return "";
     if (path.isAbsolute(raw)) return raw;
     const folders = vscode.workspace.workspaceFolders;
-    if (folders && folders.length > 0) return path.join(folders[0].uri.fsPath, raw);
-    return raw;
+    return folders && folders.length ? path.join(folders[0].uri.fsPath, raw) : raw;
 }
 
-function checkDocument(doc) {
-    const cfg      = vscode.workspace.getConfiguration("cui");
-    const toolPath = resolveToolPath();
-    const registry = resolveRegistryPath(cfg.get("registryPath") || "");
-
-    log(`checkDocument: ${doc.fileName}`);
-    log(`  toolPath : ${toolPath}`);
-    log(`  registry : ${registry || "(none)"}`);
-
-    if (!fs.existsSync(toolPath)) {
-        log("  ERROR: toolPath not found");
-        vscode.window.showErrorMessage(`CUI: checker not found at "${toolPath}". Run "make cui-tool" or set cui.toolPath in settings.`);
-        return;
-    }
-
-    const tmpFile = path.join(os.tmpdir(), `cui_check_${Date.now()}.cui`);
-    try {
-        fs.writeFileSync(tmpFile, doc.getText(), "utf8");
-    } catch (err) {
-        log(`  ERROR writing temp file: ${err}`);
-        return;
-    }
-
-    const args = ["check"];
-    if (registry && fs.existsSync(registry)) args.push("--registry", registry);
-    args.push(tmpFile);
-
-    log(`  spawn: ${toolPath} ${args.join(" ")}`);
-
-    let proc;
-    try {
-        proc = cp.spawn(toolPath, args, { stdio: ["ignore", "pipe", "pipe"] });
-    } catch (err) {
-        log(`  ERROR spawn failed: ${err}`);
-        fs.unlink(tmpFile, () => {});
-        return;
-    }
-
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", chunk => { stdout += chunk; });
-    proc.stderr.on("data", chunk => { stderr += chunk; });
-
-    proc.on("close", code => {
-        fs.unlink(tmpFile, () => {});
-        if (stderr) log(`  stderr: ${stderr.trim()}`);
-        log(`  stdout (exit ${code}): ${stdout.trim()}`);
-
-        let items;
+function run(tool, args, input) {
+    return new Promise(resolve => {
+        let proc;
         try {
-            items = JSON.parse(stdout.trim() || "[]");
-        } catch {
-            log("  ERROR: failed to parse JSON output");
+            proc = cp.spawn(tool, args, { stdio: ["pipe", "pipe", "pipe"] });
+        } catch (err) {
+            resolve({ code: -1, stdout: "", stderr: String(err) });
             return;
         }
-
-        const vsDiags = items.map(d => {
-            const startLine = Math.max(0, (d.line    || 1) - 1);
-            const startCol  = Math.max(0, (d.col     || 1) - 1);
-            const endLine   = Math.max(0, (d.endLine || d.line || 1) - 1);
-            const endCol    = Math.max(0, (d.endCol  || (d.col || 1) + 1) - 1);
-            const range = new vscode.Range(startLine, startCol, endLine, endCol);
-            const sev   = d.severity === "warning"
-                ? vscode.DiagnosticSeverity.Warning
-                : vscode.DiagnosticSeverity.Error;
-            return new vscode.Diagnostic(range, d.message, sev);
-        });
-
-        log(`  -> ${vsDiags.length} diagnostic(s) pushed`);
-        diagnosticCollection.set(doc.uri, vsDiags);
+        let stdout = "", stderr = "";
+        proc.stdout.on("data", c => (stdout += c));
+        proc.stderr.on("data", c => (stderr += c));
+        proc.on("error", err => resolve({ code: -1, stdout, stderr: String(err) }));
+        proc.on("close", code => resolve({ code, stdout, stderr }));
+        if (input !== undefined) proc.stdin.end(input, "utf8");
+        else proc.stdin.end();
     });
 }
+
+async function spec() {
+    const tool = resolveTool();
+    if (specCache && specCache.tool === tool) return specCache.spec;
+    const r = await run(tool, ["spec"]);
+    try {
+        specCache = { tool, spec: JSON.parse(r.stdout) };
+        log(`spec: ${specCache.spec.components.length} components from ${tool}`);
+    } catch {
+        log(`spec: unavailable from ${tool} (${r.stderr.trim() || "no output"}) - rebuild cui (make cui-tool)`);
+        specCache = { tool, spec: { components: [], modifiers: [], styleProperties: [], alignments: [], sizes: [], wrappers: [] } };
+    }
+    return specCache.spec;
+}
+
+let warnedMissingTool = false;
+
+async function check(doc) {
+    const tool = resolveTool();
+    const args = ["check", "--stdin"];
+    const registry = resolveRegistry();
+    if (registry && fs.existsSync(registry)) args.push("--registry", registry);
+    args.push(doc.fileName);
+    const r = await run(tool, args, doc.getText());
+    if (r.code === -1) {
+        if (!warnedMissingTool) {
+            warnedMissingTool = true;
+            vscode.window.showWarningMessage(`CUI: compiler not found (${tool}). Build it with "make cui-tool" or set cui.toolPath.`);
+        }
+        log(`check: ${r.stderr}`);
+        return;
+    }
+    let items = [];
+    try {
+        items = JSON.parse(r.stdout.trim() || "[]");
+    } catch {
+        log(`check: unreadable output: ${r.stdout.trim()} ${r.stderr.trim()}`);
+        return;
+    }
+    diagnostics.set(
+        doc.uri,
+        items.map(d => {
+            const range = new vscode.Range(
+                Math.max(0, (d.line || 1) - 1),
+                Math.max(0, (d.col || 1) - 1),
+                Math.max(0, (d.endLine || d.line || 1) - 1),
+                Math.max(0, (d.endCol || (d.col || 1) + 1) - 1),
+            );
+            const diag = new vscode.Diagnostic(
+                range,
+                d.message,
+                d.severity === "warning" ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error,
+            );
+            diag.source = "cui";
+            return diag;
+        }),
+    );
+}
+
+function schedule(doc) {
+    const key = doc.uri.toString();
+    clearTimeout(timers.get(key));
+    timers.set(
+        key,
+        setTimeout(() => {
+            timers.delete(key);
+            check(doc);
+        }, DEBOUNCE_MS),
+    );
+}
+
+// ── Thèmes (jetons et images pour .style(...)) ──────────────────────────────────────────────────────────────────────
+
+async function themeNames() {
+    if (themeCache && Date.now() - themeCache.at < 10000) return themeCache;
+    const tokens = new Set(), images = new Set();
+    const files = await vscode.workspace.findFiles("**/themes/*.json", "**/{node_modules,build,dist}/**", 50);
+    for (const f of files) {
+        try {
+            const j = JSON.parse(fs.readFileSync(f.fsPath, "utf8"));
+            Object.keys(j.tokens || {}).forEach(t => tokens.add(t));
+            Object.keys(j.images || {}).forEach(i => images.add(i));
+        } catch {
+            /* fichier qui n'est pas un thème */
+        }
+    }
+    themeCache = { at: Date.now(), tokens, images };
+    return themeCache;
+}
+
+// ── Complétion et survol ────────────────────────────────────────────────────────────────────────────────────────────
+
+// Composant dont on est en train d'écrire les arguments : NOM( ... jusqu'au curseur, parenthèses équilibrées.
+function enclosingCall(text) {
+    let depth = 0;
+    for (let i = text.length - 1; i >= 0; --i) {
+        const c = text[i];
+        if (c === ")") depth++;
+        else if (c === "(") {
+            if (depth === 0) {
+                const m = /(\.?)([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(text.slice(0, i));
+                return m ? { name: m[2], modifier: m[1] === ".", args: text.slice(i + 1) } : null;
+            }
+            depth--;
+        }
+    }
+    return null;
+}
+
+function snippetFor(c) {
+    const required = c.params.filter(p => p.default === null);
+    let i = 1;
+    const args = required.map((p, k) => (k === 0 && p.kind === "text" ? `"\${${i++}:${p.name}}"` : `${p.name}: \${${i++}}`));
+    let s = c.name + (required.length ? `(${args.join(", ")})` : "");
+    if (c.children !== "none") s += " {\n\t$0\n}";
+    return new vscode.SnippetString(s);
+}
+
+function signature(c) {
+    const params = c.params.map(p => `${p.name}: ${p.kind}${p.default === null ? "" : " = " + (p.default || "omitted")}`);
+    return `${c.name}(${params.join(", ")})`;
+}
+
+async function provideCompletion(doc, pos) {
+    const s = await spec();
+    const line = doc.lineAt(pos.line).text.slice(0, pos.character);
+    const before = doc.getText(new vscode.Range(new vscode.Position(Math.max(0, pos.line - 30), 0), pos));
+    const items = [];
+    const K = vscode.CompletionItemKind;
+
+    // Après « . » : un modificateur / événement, ou une valeur énumérée dans les arguments.
+    if (/\.\w*$/.test(line)) {
+        const call = enclosingCall(before);
+        if (call && /\(\s*\.\w*$|[:,]\s*\.\w*$/.test(line)) {
+            const values = call.name === "width" || call.name === "height" ? s.sizes : s.alignments;
+            return values.map(v => new vscode.CompletionItem(v, K.EnumMember));
+        }
+        return s.modifiers.map(m => {
+            const it = new vscode.CompletionItem(m.name, m.name.startsWith("on") ? K.Event : K.Method);
+            it.documentation = m.doc;
+            it.insertText = new vscode.SnippetString(`${m.name}($1)`);
+            return it;
+        });
+    }
+
+    const call = enclosingCall(before);
+    if (call) {
+        // Dans .style( : propriétés, puis jetons / images dans la chaîne.
+        if (call.modifier && call.name === "style") {
+            const themes = await themeNames();
+            if (((call.args.match(/"/g) || []).length % 2) === 1) { // dans une chaîne ouverte
+                const out = [...themes.tokens].map(t => new vscode.CompletionItem(t, K.Constant));
+                [...themes.images].forEach(i => out.push(Object.assign(new vscode.CompletionItem(i, K.File), { detail: "image (nine-slice)" })));
+                return out;
+            }
+            return s.styleProperties.map(p => Object.assign(new vscode.CompletionItem(p, K.Property), { insertText: new vscode.SnippetString(`${p}: "$1"`) }));
+        }
+        // Arguments nommés d'un composant.
+        const comp = s.components.find(c => c.name === call.name);
+        if (comp && !call.modifier) {
+            return comp.params.map(p => {
+                const it = new vscode.CompletionItem(p.name, K.Field);
+                it.detail = p.kind;
+                it.insertText = new vscode.SnippetString(`${p.name}: $1`);
+                return it;
+            });
+        }
+        return items;
+    }
+
+    // Début d'instruction : composants, déclarations.
+    for (const c of s.components) {
+        const it = new vscode.CompletionItem(c.name, K.Class);
+        it.detail = signature(c);
+        it.documentation = c.doc;
+        it.insertText = snippetFor(c);
+        items.push(it);
+    }
+    for (const w of s.wrappers) {
+        const it = new vscode.CompletionItem(w, K.Keyword);
+        it.insertText = new vscode.SnippetString(`${w} var \${1:name}: \${2:Type}`);
+        items.push(it);
+    }
+    items.push(Object.assign(new vscode.CompletionItem("import \"engine/ui\"", K.Module), { insertText: 'import "engine/ui"' }));
+    items.push(Object.assign(new vscode.CompletionItem("view", K.Keyword), { insertText: new vscode.SnippetString("view ${1:Name} {\n\t$0\n}") }));
+    return items;
+}
+
+async function provideHover(doc, pos) {
+    const range = doc.getWordRangeAtPosition(pos, /[A-Za-z_][A-Za-z0-9_]*/);
+    if (!range) return null;
+    const word = doc.getText(range);
+    const s = await spec();
+    const comp = s.components.find(c => c.name === word);
+    if (comp) {
+        const md = new vscode.MarkdownString();
+        md.appendCodeblock(signature(comp), "cui");
+        md.appendMarkdown(comp.doc + "\n\n");
+        if (comp.events.length) md.appendMarkdown(`Events: ${comp.events.map(e => "`" + e + "`").join(", ")}  \n`);
+        md.appendMarkdown(`Children: ${comp.children}`);
+        return new vscode.Hover(md, range);
+    }
+    const prev = range.start.character > 0 ? doc.getText(new vscode.Range(range.start.translate(0, -1), range.start)) : "";
+    if (prev === ".") {
+        const m = s.modifiers.find(x => x.name === word);
+        if (m) return new vscode.Hover(new vscode.MarkdownString(`**.${m.name}** — ${m.doc}`), range);
+    }
+    return null;
+}
+
+// ── Activation ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+function activate(context) {
+    output = vscode.window.createOutputChannel("CUI");
+    diagnostics = vscode.languages.createDiagnosticCollection("cui");
+    context.subscriptions.push(output, diagnostics);
+    log(`activated; compiler: ${resolveTool()}`);
+
+    vscode.workspace.textDocuments.forEach(d => d.languageId === "cui" && check(d));
+    context.subscriptions.push(
+        vscode.workspace.onDidOpenTextDocument(d => d.languageId === "cui" && check(d)),
+        vscode.workspace.onDidChangeTextDocument(e => e.document.languageId === "cui" && schedule(e.document)),
+        vscode.workspace.onDidSaveTextDocument(d => d.languageId === "cui" && check(d)),
+        vscode.workspace.onDidCloseTextDocument(d => diagnostics.delete(d.uri)),
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration("cui")) {
+                specCache = null;
+                warnedMissingTool = false;
+            }
+        }),
+        vscode.languages.registerCompletionItemProvider({ language: "cui" }, { provideCompletionItems: provideCompletion }, ".", "(", ",", '"', "@"),
+        vscode.languages.registerHoverProvider({ language: "cui" }, { provideHover }),
+        vscode.commands.registerCommand("cui.showOutput", () => output.show(true)),
+    );
+}
+
+function deactivate() {}
 
 module.exports = { activate, deactivate };

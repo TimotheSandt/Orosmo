@@ -994,3 +994,112 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Vali
         Err(errors)
     }
 }
+
+// ── Description du langage pour les éditeurs (`cui spec`) ───────────────────────────────────────────────────────────────
+
+fn component_doc(name: &str) -> &'static str {
+    match name {
+        "VBox" => "Children one under the other (spacing from the theme).",
+        "HBox" => "Children side by side (spacing from the theme).",
+        "Panel" => "VBox with the theme style \"panel\" (background, border, shadow, image).",
+        "Overlay" => "Children stacked on top of each other, each aligned with .align.",
+        "Grid" => "Columns; a column holding a .width(.fill) child takes the remaining width; .span(n) covers several columns.",
+        "ScrollView" => "One child taller than the view: wheel and scrollbar, clipped.",
+        "Tabs" => "Pages (Page elements), one visible at a time.",
+        "Page" => "A page of Tabs: its title, then its content.",
+        "Section" => "Foldable block with a title.",
+        "Label" => "Text; an interpolated string is re-read every frame.",
+        "Button" => "Click with the mouse, or Enter / Space with the focus.",
+        "Checkbox" => "Boolean bound with $path.",
+        "Slider" => "Bounded number. Click: value under the pointer; drag: moves the current value (Shift: finer); right click: default.",
+        "Dropdown" => "Choice in a list (popup).",
+        "TextField" => "Editable text, committed by Enter or by losing the focus; Escape cancels.",
+        "NumberField" => "Number typed with the keyboard; an invalid entry is refused.",
+        "ColorPicker" => "Color: swatch and R, G, B (A) sliders.",
+        "Plot" => "Bars of a sequence of numbers re-read every frame.",
+        "Separator" => "Thin line.",
+        "ParamPanel" => "Every field of a reflected structure as a widget chosen from its type and range (UI-12).",
+        _ => "",
+    }
+}
+
+fn kind_name(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Text => "text",
+        Kind::BindBool => "bool ($binding or expression)",
+        Kind::BindNumber => "number ($binding or expression)",
+        Kind::BindInt => "int ($binding or expression)",
+        Kind::BindString => "string ($binding or expression)",
+        Kind::BindColor => "color ($binding or expression)",
+        Kind::Number => "number",
+        Kind::Bool => "bool",
+        Kind::Options => "expression -> std::vector<std::string>",
+        Kind::Values => "expression -> sequence of numbers",
+        Kind::Reflected => "$binding to a reflected structure",
+    }
+}
+
+fn modifier_doc(name: &str) -> &'static str {
+    match name {
+        "width" | "height" => "Size: a number (fixed), .fit or .fill; named min:, max:, weight:.",
+        "margin" => "Outer margin: a number, or left:, top:, right:, bottom:, horizontal:, vertical:.",
+        "align" => "Alignment in the parent's room: .start, .center, .end, .stretch; or x:, y:.",
+        "span" => "Number of Grid columns covered.",
+        "id" => "Identifier (Widget::find).",
+        "tooltip" => "Tooltip text.",
+        "visible" | "enabled" => "true / false, or a boolean expression re-read every frame.",
+        "style" => "Local theme override: property: \"token\" | \"#rrggbb\" | number | image name.",
+        "variant" => "Theme style name (widgets.<name> of the theme).",
+        "textAlign" => "Label text alignment: .start, .center, .end.",
+        "range" => "Plot: fixed bounds (min, max).",
+        "onClick" | "onChange" | "onHover" | "onFocus" => "Event: names a C++ function (state.method, Ns::function) or a registered action name.",
+        _ => "",
+    }
+}
+
+// JSON des composants, modificateurs, événements et propriétés de thème : la source unique des extensions d'éditeur.
+pub fn spec_json() -> String {
+    use crate::json::json_escape as e;
+    let mut comps = Vec::new();
+    for c in COMPONENTS {
+        let params = c
+            .params
+            .iter()
+            .map(|p| {
+                let default = match p.default {
+                    Default::Required => "null".to_string(),
+                    Default::Value(v) => format!("\"{}\"", e(v)),
+                    Default::Omit => "\"\"".to_string(),
+                };
+                format!("{{\"name\":\"{}\",\"kind\":\"{}\",\"default\":{}}}", p.name, e(kind_name(p.kind)), default)
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let children = match c.children {
+            Children::None => "none",
+            Children::Many => "many",
+            Children::One => "one",
+            Children::Body => "many",
+            Children::Pages => "pages",
+            Children::Page => "many",
+        };
+        let events = c.events.iter().map(|ev| format!("\"{ev}\"")).collect::<Vec<_>>().join(",");
+        let extra = extra_modifiers(c.name).iter().map(|m| format!("\"{m}\"")).collect::<Vec<_>>().join(",");
+        comps.push(format!(
+            "{{\"name\":\"{}\",\"doc\":\"{}\",\"params\":[{params}],\"children\":\"{children}\",\"events\":[{events}],\"modifiers\":[{extra}]}}",
+            c.name,
+            e(component_doc(c.name))
+        ));
+    }
+    let mods = COMMON_MODIFIERS
+        .iter()
+        .chain(["textAlign", "range", "onClick", "onChange", "onHover", "onFocus"].iter())
+        .map(|m| format!("{{\"name\":\"{m}\",\"doc\":\"{}\"}}", e(modifier_doc(m))))
+        .collect::<Vec<_>>()
+        .join(",");
+    let props = STYLE_PROPERTIES.iter().map(|(n, _)| format!("\"{n}\"")).collect::<Vec<_>>().join(",");
+    format!(
+        "{{\"import\":\"{IMPORT}\",\"components\":[{}],\"modifiers\":[{mods}],\"styleProperties\":[{props}],\"alignments\":[\"start\",\"center\",\"end\",\"stretch\"],\"sizes\":[\"fit\",\"fill\"],\"wrappers\":[\"@Mutable\",\"@Observed\",\"@Snapshot\"]}}",
+        comps.join(",")
+    )
+}
