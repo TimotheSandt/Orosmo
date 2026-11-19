@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour à la fin du lot C de M2, donc de M2 (2026-11-18). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour à la fin de M3 (2026-11-19). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -18,6 +18,40 @@ Mis à jour à la fin du lot C de M2, donc de M2 (2026-11-18). États détaillé
 | **M2 lot B5 : dessin 2D et interface par listes de dessin** | **B5 livré côté code ; B6 et lot C à faire** | `docs/releases/M2-B5.md` : `DrawList`, `CanvasRenderer`, `UI::Manager::Collect` ; **`ui.png` de l'ancien rendu (scène + panneau + boîtes + texte figé) reproduit sans aucun pixel d'écart** ; 304 cas doctest verts (+14) |
 | **M2 lot B6 : bascule de la démo, retrait de l'ancien rendu, isolation bloquante** | **Lot B livré côté code ; lot C à faire** | `docs/releases/M2-B6.md` : la démo présente via le RHI (`scene.png` identique à la référence, écart max 0/255) ; `IGraphicsDevice`, backends OpenGL/Vulkan/Metal et façades supprimés (−16 800 lignes, étiquette `archive/pre-M2-B6-legacy-graphics`) ; `check_api_isolation.py --graphics-only --strict` : **0 infraction** ; 259 cas doctest verts |
 | **M2 lot C : plateforme (fenêtre, entrées, mode sans fenêtre), isolation totale** | **Lot C livré côté code ; M2 terminé côté code, à proposer à `main`** | `docs/releases/M2.md` : `Window` et `InputManager` dans `src/platform/` avec GLFW caché (poignée `void *`), DPI (`GetContentScale`, tampon en pixels réels), molette (le `TODO` disparaît), `--headless`, `--vsync` ; `check_api_isolation.py --strict` **sans baseline : 0 infraction** (GLFW et `<windows.h>` compris) ; capture sans fenêtre **identique** à la référence ; 264 cas doctest verts |
+| **M3 Premier générateur de terrain et interface de base (lots A à F)** | **Livré côté code ; à proposer à `main` (première release utilisable, v0.3.0 proposée)** | `docs/releases/M3.md` : module `engine::world` (bruit déterministe CPU et GPU, tuiles, niveaux de détail cousus, streaming, export, lancer de rayon), repère Vulkan du RHI et reverse-Z, dessin de debug, rendu du terrain, module `engine::ui` (widgets, mise en page, thèmes JSON, paramètres réfléchis), compilateur du langage vers `engine::ui`, `terrain-gen`, visualiseur, paquet et `engine init` vérifiés de bout en bout ; 386 cas doctest verts depuis un clone propre, ASan + UBSan propres, `make check`, `cui-test`, `terrain-gen-check`, `viewer-capture`, `e2e-init` verts (Linux) |
+
+## Identifiants de `docs/02` touchés par M3
+
+Preuves sous Linux (g++ 13.3, Mesa 26.1.6, Intel Arc ; la CI exécute aussi sous llvmpipe + xvfb), depuis un clone propre de `dev`
+(`docs/BASELINE/tests-M3.txt`). Windows et macOS : jamais observés (G110).
+
+| ID | Avant | Après | Preuve |
+| --- | --- | --- | --- |
+| TER-01 | Partiel | **Fait** | `include/engine/world/noise.hpp` : `perlin2/3`, `simplex2/3`, `worley2/3`, `fbm2/3`, `warpedFbm2` sur hachage entier et opérations IEEE de base (`-ffp-contract=off`) ; `tests/world/noise_tests.cpp` (5 cas, sommes de contrôle de référence) ; GPU : `world/gpu_noise.hpp` `GpuNoise`, `tests/world/gpu_noise_tests.cpp` : écart max 0,5 mm pour 150 m d'amplitude (tolérance `kGpuTolerance` 1e-4 relative), chaque base, avec et sans distorsion |
+| TER-02 | Partiel | **Fait** | `terrain.hpp` `generateTile`, `TileKey`, positions depuis des indices entiers globaux ; `tests/world/terrain_tests.cpp` « TER-02: a tile is a pure function… », somme de contrôle de tuile ; asynchrone : `TileStreamer` (TER-04) |
+| TER-03 | Absent | **Fait** | `lod.hpp` `selectTiles` (quadtree équilibré, `LodConfig::distanceFactor` = distance de vue), `buildTileMesh` (bords cousus) ; cas « TER-03: the selection covers the roots without overlap… », « TER-03: no crack… » |
+| TER-04 | Absent | Partiel | `streaming.hpp` `TileStreamer` (tâches de `core`, budget mémoire, éviction LRU) ; cas « TER-04: streaming generates asynchronously (same bytes as synchronous), respects the memory budget… » ; **manque** : mesure de saccade (G108) |
+| TER-07 | Absent | **Fait** (OpenGL) | `include/engine/renderer/terrain_renderer.hpp` `TerrainRenderer` (tableau de 4 couches, triplanaire, pente et altitude), `shaders/rhi/terrain.*` ; `tests/renderer/terrain_render_tests.cpp` (2 cas : sable, herbe, neige, roche aux bons endroits) |
+| TER-11 | Absent | **Fait** | `world/export.hpp` : `writeHeightPng16`, `writeHeightExr`/`readHeightExr`, `writeObj`, `writeGltf`, `writeStl` (fermé), `writeBiomePng` ; `tests/world/export_tests.cpp` : chaque fichier relu (stb, EXR, JSON + base64, variété fermée orientée) |
+| TER-12 | Absent | **Fait** | `apps/terrain_viewer/src/TerrainPanel.cui` + `viewer_state.cpp` (graine, hasard journalisé, préréglages chargés et « Save », thème, `ParamPanel` des `TerrainParams`) ; `tests/world/preset_tests.cpp` (2 cas) ; `make viewer-capture` : panneau rendu, thèmes sombre et clair différents |
+| TER-13 | Absent | **Fait** | `world/raycast.hpp` `raycastTerrain`, `meshHeightAt` ; cas « TER-13: consistent with rendering: the rendered depth at the image centre gives the same point as the ray » (5 cm près) |
+| TOOL-01 | Partiel | Partiel | `apps/terrain_viewer` (caméra libre, streaming, panneau, export, `--headless --capture`) ; `make viewer-capture` vert ; **manque** : caméra et export non exercés automatiquement (G109) |
+| TOOL-02 | Absent | **Fait** | `apps/terrain_gen/main.cpp` ; `make terrain-gen-check` : mêmes octets avec 1 et 4 threads, somme de référence `docs/BASELINE/terrain-gen-seed42-256.txt`, codes 0/1/2 ; 4096² en 0,75 s |
+| REN-02 | Partiel | **Fait** | `camera.hpp` : reverse-Z à plan lointain infini, orthographique, `relativeViewMatrix` (rendu relatif à la caméra), jitter ; `tests/renderer/scene_tests.cpp` « Camera (REN-02)… » ; repère du RHI (A26) : `tests/rhi/opengl_state_tests.cpp` |
+| REN-34 | Absent | **Fait** | `debug_draw.hpp` `DebugDraw` (lignes, boîtes, sphères, repères ; désactivé par défaut hors debug), `SceneRenderer::drawDebug` ; `tests/renderer/debug_draw_tests.cpp` (2 cas) |
+| UI-03 | Absent | **Fait** | `include/engine/ui/widgets.hpp` : `Button`, `Slider`, `Checkbox`, `Dropdown`, `TextField`, `NumberField`, `ColorPicker`, `Plot`, `Tabs`, `ScrollView`, `Section`, `Separator`, infobulles ; `tests/ui/widgets_tests.cpp` (18 cas, entrées simulées) ; `tests/ui/ui_render_tests.cpp` (GPU, police réelle, thème sombre) |
+| UI-05 | Partiel | **Fait** | `tools/cui-rs/src/engine.rs` (cible `engine/ui`) : arbre compilé en C++, événements `onClick`/`onChange`/`onHover`/`onFocus` nommant des fonctions C++ (appel direct ou action nommée), liaisons `$`, `@cui-cpp`, erreurs `fichier:ligne:colonne`, `#line` ; dépendances de build (`engine.mk`) ; `cargo test` (8), `make cui-test` (18 entrées invalides dont une erreur C++ ramenée au `.cui`), `tests/ui/cui_tests.cpp` (vue compilée et exécutée) |
+| UI-06 | Partiel | **Fait** | `layout.hpp` : `VBox`, `HBox`, `Grid` (`columnSpan`), `Overlay`, `ScrollView` ; tailles fixes, ajustées, de remplissage pondérées, min et max ; marges ; alignement ; `tests/ui/layout_tests.cpp` (8 cas, valeurs calculées à la main) |
+| UI-07 | Partiel | Partiel | `theme.hpp` `Theme` (jetons, alias, propriétés par widget et par état, `extends`), `ThemeHost` (rechargement à chaud, dernier thème valide gardé), `res/themes/{base,dark,light}.json`, `.style(...)` du langage ; `tests/ui/theme_tests.cpp` (7 cas) ; canevas : coins arrondis, bordures, ombres (`tests/renderer/canvas_tests.cpp`) ; **manque** : jeton de famille de police (G111) |
+| UI-11 | Partiel | **Fait** | `docs/UI_LANGUAGE.md` (grammaire, composants, événements, thèmes, erreurs, limites) ; tests valides (`tests/ui/cui/test_panel.cui`) et invalides avec messages attendus (`tests/ui/cui_errors/`, `tools/check_cui_errors.py`, `tools/cui-rs/src/tests.rs`) |
+| UI-12 | Absent | **Fait** | `reflect.hpp` `reflectedPanel` (booléen, énumération nommée par `core::EnumNames`, entiers et flottants bornés ou non, chaîne, couleur, vecteurs, structures imbriquées) ; `tests/ui/reflect_tests.cpp` (3 cas) ; `ParamPanel` du langage |
+| PLAT-05 | Absent | Partiel | `InputManager::GetTextInput` (rappel de caractères, UTF-8), `AppendUtf8` ; `tests/platform/text_input_tests.cpp` ; **manque** : IME, presse-papiers (G107) |
+| TEST-03 | Partiel | Partiel | sommes de contrôle de référence (bruit, tuile, région, `terrain-gen`) vérifiées sous Linux x64 (CI : Linux x64 et arm64, Windows et macOS non observés) |
+| BLD-02 | Partiel | Partiel | `make e2e-init` (paquet, `engine init --package`, compilation, lancement sans fenêtre, exemples) en CI Linux ; Windows et macOS rapportés, jamais observés |
+| BLD-01 | Partiel | Partiel | `docs/USING_THE_ENGINE.md` (prérequis par système, `engine init`, `ENGINE_DIR`) ; Windows et macOS non vérifiés |
+| DOC-01 | Partiel | Partiel | `docs/USING_THE_ENGINE.md`, `docs/UI_LANGUAGE.md`, README de `src/world`, `src/ui`, `apps/terrain_gen`, `apps/terrain_viewer` ; manquent toujours le schéma des modules et `ADD_A_BACKEND.md` |
+
+Totaux après M3 : Fait 31, Partiel 43, Absent 77, Incompatible 1 (avant : 16 / 47 / 88 / 1).
 
 ## Identifiants de `docs/02` touchés par la revue de la PR #7 (G97 à G100)
 

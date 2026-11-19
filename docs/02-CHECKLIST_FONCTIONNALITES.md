@@ -36,7 +36,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | PLAT-02 | InputManager | P0 | Existe déjà. Dispositions QWERTY/AZERTY/DVORAK, remappage, état par image. | Partiel (molette faite) |
 | PLAT-03 | Manettes | P2 | Axes, boutons, hot-plug. | Absent |
 | PLAT-04 | Mode sans fenêtre | P0 | Démarrage sans fenêtre (génération et export en ligne de commande) sur les trois systèmes. | Partiel (`--headless` sous Linux) |
-| PLAT-05 | Saisie de texte | P1 | Texte Unicode, composition IME, presse-papiers. | Absent |
+| PLAT-05 | Saisie de texte | P1 | Texte Unicode, composition IME, presse-papiers. | Partiel (texte Unicode ; ni IME ni presse-papiers) |
 
 ## C. Couche graphique (`rhi`) : voir `03-ARCHITECTURE_ET_PORTABILITE.md`
 
@@ -67,7 +67,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
 | REN-01 | Graphe de passes et plugins de rendu | P1 | Passes déclaratives avec dépendances, ressources transitoires, ordre calculé ; **plugins de rendu** (maillages, terrain, 2D, voxels futurs, ray tracing futur) qui ajoutent leurs passes sans modifier le cœur. | Absent |
-| REN-02 | Caméra | P0 | Perspective et orthographique ; **reverse-Z avec plan lointain infini** ; rendu relatif à la caméra ; décalage (jitter) prévu pour le TAA. | Partiel |
+| REN-02 | Caméra | P0 | Perspective et orthographique ; **reverse-Z avec plan lointain infini** ; rendu relatif à la caméra ; décalage (jitter) prévu pour le TAA. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | REN-03 | Données par image (groupe 0) | P0 | Bloc de constantes décrit en `03` §10 : matrices et inverses, image précédente, caméra, temps, résolution, graine de bruit, lumière principale, paramètres d'atmosphère. | Partiel |
 | REN-04 | Éclairage forward+ clusterisé | P0 | Pré-passe de profondeur ; clusters remplis en compute ; nombre de lumières limité par un budget réglable. | Absent |
 | REN-05 | Types de lumières | P0 | Existe (UBO/SSBO std140/std430) ; directionnelle, ponctuelle, spot migrées sur le RHI. Lumières de surface en P2. | Partiel |
@@ -104,7 +104,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | REN-40 | Transparence indépendante de l'ordre (OIT) | P2 | OIT pondéré (weighted blended) en option, avec passe de composition ; OIT à listes chaînées ou à moments en P3. | Absent |
 | REN-41 | Transparents et sorties auxiliaires | P1 | Par défaut un transparent n'écrit ni normales, ni identifiant, ni vecteurs de mouvement ; chaque matériau peut les demander explicitement (par exemple pour la sélection à la souris ou le TAA). | Absent |
 | REN-33 | Particules et décalques | P1 | Particules GPU (compute) ; décalques en P2 ; particules douces. | Absent |
-| REN-34 | Dessin de debug | P0 | Lignes, boîtes, sphères, repères ; aucun coût hors debug. | Absent |
+| REN-34 | Dessin de debug | P0 | Lignes, boîtes, sphères, repères ; aucun coût hors debug. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | REN-35 | Modes d'affichage de debug | P1 | Normales, albédo, surdessin, couleurs de LOD, cascades, lumières par cluster, filaire, gel du frustum de culling. | Partiel |
 | REN-36 | Rendu du texte | P0 | Existe (FreeType, ancrage, retour à la ligne, alignement) ; migré sur le RHI. | Partiel |
 
@@ -141,19 +141,19 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
-| TER-01 | Bruit | P0 | Perlin, Simplex, Worley, fBm, distorsion de domaine ; **CPU et GPU donnent le même résultat** (tolérance fixée) ; testé. | Partiel |
-| TER-02 | Génération par tuiles | P0 | Hauteur par tuile à partir de (graine, coordonnées, paramètres) ; déterministe ; asynchrone. | Partiel |
-| TER-03 | Maillage à niveaux de détail | P0 | Quadtree ou clipmap ; pas de fissures entre niveaux ; distance de vue réglable. | Absent |
-| TER-04 | Streaming | P0 | Chargement/déchargement par distance ; pas de saccade mesurable sur la démo ; budget mémoire réglable. | Absent |
+| TER-01 | Bruit | P0 | Perlin, Simplex, Worley, fBm, distorsion de domaine ; **CPU et GPU donnent le même résultat** (tolérance fixée) ; testé. | Fait — preuve : `docs/STATUS.md`, « M3 » |
+| TER-02 | Génération par tuiles | P0 | Hauteur par tuile à partir de (graine, coordonnées, paramètres) ; déterministe ; asynchrone. | Fait — preuve : `docs/STATUS.md`, « M3 » |
+| TER-03 | Maillage à niveaux de détail | P0 | Quadtree ou clipmap ; pas de fissures entre niveaux ; distance de vue réglable. | Fait — preuve : `docs/STATUS.md`, « M3 » |
+| TER-04 | Streaming | P0 | Chargement/déchargement par distance ; pas de saccade mesurable sur la démo ; budget mémoire réglable. | Partiel (budget et génération asynchrone ; absence de saccade non mesurée) |
 | TER-05 | Érosion | P1 | Hydraulique et thermique, en compute ; résultat reproductible. | Absent |
 | TER-06 | Biomes | P1 | Température, humidité, altitude, pente → biome ; table modifiable. | Absent |
-| TER-07 | Texturage du terrain | P0 | Mélange par pente et altitude, triplanaire ; atlas ou tableau de textures. | Absent |
+| TER-07 | Texturage du terrain | P0 | Mélange par pente et altitude, triplanaire ; atlas ou tableau de textures. | Fait (OpenGL) — preuve : `docs/STATUS.md`, « M3 » |
 | TER-08 | Végétation et dispersion | P1 | Placement déterministe, instancié (REN-28) ; densité par biome. | Absent |
 | TER-09 | Planètes sphériques | P1 | Cube-sphère à quadtree ; précision `double` côté CPU ; rendu relatif à la caméra ; transition sol/espace avec l'atmosphère. | Absent |
 | TER-10 | Eau, rivières, lacs | P2 | Niveau de la mer, bassins, tracé de rivières. | Absent |
-| TER-11 | Export | P0 | Carte de hauteur (PNG 16 bits, EXR), maillage (OBJ, glTF, STL imprimable), carte de biomes. | Absent |
-| TER-12 | Interface de réglage | P0 | Paramètres modifiables en direct, graine, préréglages sauvegardables ; affichage automatique à partir de la réflexion (UI-12). | Absent |
-| TER-13 | Lancer de rayon sur le terrain | P1 | Picking souris et hauteur en un point, CPU, cohérent avec le rendu. | Absent |
+| TER-11 | Export | P0 | Carte de hauteur (PNG 16 bits, EXR), maillage (OBJ, glTF, STL imprimable), carte de biomes. | Fait — preuve : `docs/STATUS.md`, « M3 » |
+| TER-12 | Interface de réglage | P0 | Paramètres modifiables en direct, graine, préréglages sauvegardables ; affichage automatique à partir de la réflexion (UI-12). | Fait — preuve : `docs/STATUS.md`, « M3 » |
+| TER-13 | Lancer de rayon sur le terrain | P1 | Picking souris et hauteur en un point, CPU, cohérent avec le rendu. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | TER-14 | Grottes et voxels | P3 | Réservé ; l'architecture ne doit pas l'exclure. | Absent |
 
 ## H. Scène et simulation (`scene`, `sim`)
@@ -173,16 +173,16 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | --- | --- | --- | --- | --- |
 | UI-01 | UIManager | P0 | Existe (UIComponent, UIContainer, VBox, `DeferredValue<T>` à double tampon, mixin CRTP). Migré sur le RHI ; comportement identique. | Partiel |
 | UI-02 | Rendu indépendant du backend | P0 | L'interface produit des listes de dessin (rectangles, texte, images, découpage, ordre `z`) ; un adaptateur les envoie au batch 2D (R2D-01). | Partiel |
-| UI-03 | Widgets de base | P0 | Bouton, curseur, case à cocher, liste déroulante, champ de texte, sélecteur de couleur, graphique simple, onglets, défilement, infobulles. | Absent |
+| UI-03 | Widgets de base | P0 | Bouton, curseur, case à cocher, liste déroulante, champ de texte, sélecteur de couleur, graphique simple, onglets, défilement, infobulles. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | UI-04 | Outils de debug | P1 | Dear ImGui (ou équivalent) sur le RHI, réservé aux outils : profileur, console. | Absent |
-| UI-05 | Langage d'interface : compilateur vers C++ | P0 | Description déclarative de l'arbre, compilée en C++ sans coût d'exécution ; événements (`onClick`, `onChange`, `onHover`, `onFocus`) liés à des fonctions externes, **aucune logique métier dans le langage** ; liaison de données typée dans les deux sens ; C++ embarqué possible ; erreurs avec **fichier, ligne et colonne du source du langage** ; intégration au build avec dépendances correctes. | Partiel |
-| UI-06 | Mise en page complète | P0 | `VBox`, `HBox`, grille, superposition, marges, alignement, tailles fixes, flexibles et minimales. | Partiel |
-| UI-07 | Thèmes en JSON | P0 | Fichier de données avec **jetons** (`color.primary`, `radius.medium`, polices, tailles, marges, ombres, bordures) et états (normal, survol, appuyé, désactivé, focus) ; les widgets lisent le thème, jamais de valeur en dur ; changement à chaud ; variantes clair/sombre ; surcharge locale possible dans le langage. | Partiel |
+| UI-05 | Langage d'interface : compilateur vers C++ | P0 | Description déclarative de l'arbre, compilée en C++ sans coût d'exécution ; événements (`onClick`, `onChange`, `onHover`, `onFocus`) liés à des fonctions externes, **aucune logique métier dans le langage** ; liaison de données typée dans les deux sens ; C++ embarqué possible ; erreurs avec **fichier, ligne et colonne du source du langage** ; intégration au build avec dépendances correctes. | Fait — preuve : `docs/STATUS.md`, « M3 » |
+| UI-06 | Mise en page complète | P0 | `VBox`, `HBox`, grille, superposition, marges, alignement, tailles fixes, flexibles et minimales. | Fait — preuve : `docs/STATUS.md`, « M3 » |
+| UI-07 | Thèmes en JSON | P0 | Fichier de données avec **jetons** (`color.primary`, `radius.medium`, polices, tailles, marges, ombres, bordures) et états (normal, survol, appuyé, désactivé, focus) ; les widgets lisent le thème, jamais de valeur en dur ; changement à chaud ; variantes clair/sombre ; surcharge locale possible dans le langage. | Partiel (jetons, états, variantes, rechargement, surcharge locale ; pas de jeton de famille de police) |
 | UI-08 | Rechargement à chaud de l'interface | P1 | Mode développement : le même arbre est interprété ou chargé en bibliothèque dynamique et se met à jour à l'enregistrement ; mode final : C++ généré lié directement. | Absent |
 | UI-09 | Navigation et accessibilité de base | P1 | Clavier et manette, focus visible, ordre de tabulation. | Absent |
 | UI-10 | Inspecteur d'interface | P1 | Arbre des composants et tailles calculées affichés dans les outils de debug. | Absent |
-| UI-11 | Spécification et tests du langage | P0 | `docs/UI_LANGUAGE.md` : grammaire, exemples, limites ; tests de compilation avec entrées valides et invalides et messages d'erreur attendus. | Partiel |
-| UI-12 | Paramètres réfléchis → curseurs | P1 | Une structure de paramètres réfléchie (CORE-12) est affichée automatiquement en widgets adaptés au type et à la plage. | Absent |
+| UI-11 | Spécification et tests du langage | P0 | `docs/UI_LANGUAGE.md` : grammaire, exemples, limites ; tests de compilation avec entrées valides et invalides et messages d'erreur attendus. | Fait — preuve : `docs/STATUS.md`, « M3 » |
+| UI-12 | Paramètres réfléchis → curseurs | P1 | Une structure de paramètres réfléchie (CORE-12) est affichée automatiquement en widgets adaptés au type et à la plage. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 
 ## J. Logique de jeu rechargeable (`game`)
 
@@ -210,8 +210,8 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
-| TOOL-01 | Visualiseur de terrain | P0 | Application de démo : caméra libre, réglages, export. Démo principale. | Partiel |
-| TOOL-02 | Générateur en ligne de commande | P0 | `terrain-gen --seed N --size S --out fichier` sans fenêtre ; sorties de TER-11 ; code de retour fiable. | Absent |
+| TOOL-01 | Visualiseur de terrain | P0 | Application de démo : caméra libre, réglages, export. Démo principale. | Partiel (visualiseur livré ; caméra et export vérifiés à la main seulement) |
+| TOOL-02 | Générateur en ligne de commande | P0 | `terrain-gen --seed N --size S --out fichier` sans fenêtre ; sorties de TER-11 ; code de retour fiable. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | TOOL-03 | Capture d'écran | P0 | Image depuis le rendu ; utilisée par RHI-14. (Priorité passée de P2 à P0 par l'auteur le 2026-11-17 : comparer les images dès le début.) | Partiel |
 | BLD-01 | Construction multiplateforme | P0 | Un seul chemin de build documenté pour Windows, Linux, macOS ; vcpkg ; types debug/dev/release. L'IA peut **proposer** CMake (avec presets) en gardant le Makefile en enveloppe, sans migrer sans accord. | Partiel |
 | REPO-01 | Dépôt propre et structuré | P0 | M00 de `docs/06` : `.gitignore`, `.gitattributes`, `.editorconfig`, `.clang-format`, `README.md` racine, `third_party/` documenté, aucun fichier généré ou binaire inutile suivi, historique conservé, comportement identique à la référence. | Fait (confirmé par l'auteur le 2026-11-17) — preuve : `docs/STATUS.md`, « M0 » |

@@ -1,0 +1,9 @@
+# make demo-test, clone propre de dev (ddad19b), Linux x64, g++ 13.3, Mesa 26.1.6 (Intel Arc), 2026-11-19
+[doctest] doctest version is "2.4.11"
+[doctest] run with "--help" for options
+[doctest] test cases:   386 |   386 passed | 0 failed | 0 skipped
+[doctest] assertions: 24117 | 24117 passed | 0 failed |
+[doctest] Status: SUCCESS!
+# make demo-test SANITIZE=address,undefined (même commit)
+[doctest] test cases:   386 |   386 passed | 0 failed | 0 skipped
+[doctest] assertions: 24117 | 24117 passed | 0 failed |

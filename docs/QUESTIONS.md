@@ -153,3 +153,10 @@ ne remplace pas encore l'interface héritée `UI::` de la démo (`PerformanceVie
 l'ancien code reste jusqu'à sa bascule, sous `src/ui/legacy/` (déplacé de `src/UI/` : deux dossiers qui ne diffèrent que par la
 casse sont impossibles sous Windows et macOS). Le langage choisit la cible par `import "engine/ui"`. *Proposition : basculer la
 démo et retirer `UI::` dans un jalon ultérieur (M5, avec le batch 2D R2D-01), à confirmer.*
+
+**A31. API de `platform` et version de la release de M3 (2026-11-19, proposition).** Le lot F demande l'API publique figée et
+nommée selon `docs/03` §7. `core`, `rhi`, `renderer`, `world` et `ui` le sont. `platform` (`Window`, `InputManager`) ne l'est pas :
+la renommer casse la cible héritée du langage (`Get` + nom déduit par `generator.rs`) et la démo. Proposition : le guide déclare
+`platform` **provisoire** (`docs/USING_THE_ENGINE.md` §7), le renommage est fait avec la bascule de la démo vers `engine::ui`
+(A30), et la release de M3 porte le numéro **v0.3.0** (`mk/config.mk` ; 0.x : un changement mineur peut casser l'API, la liste
+est dans `docs/releases/`). *L'étiquette est posée par l'auteur ; à contester.*
