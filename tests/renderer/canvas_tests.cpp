@@ -113,6 +113,30 @@ TEST_SUITE("renderer/canvas")
         c.gpu.expectNoValidationErrors();
     }
 
+    TEST_CASE("UI-07: rounded corners, inner border and soft edge (shadow); a plain rectangle stays exact")
+    {
+        Canvas c(32);
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList l = listOf(32.0f);
+        // Rectangle 16x16 en (0,0), coins de rayon 5, bordure bleue de 2 px, intérieur rouge.
+        l.rect(rd::DrawRect{.position = {0, 0}, .size = {16, 16}, .color = {1, 0, 0, 1}, .radius = 5.0f, .borderWidth = 2.0f, .borderColor = {0, 0, 1, 1}});
+        // Bord adouci sur 8 px (ombre) en (16,16) : plein au centre, transparent au bord.
+        l.rect(rd::DrawRect{.position = {16, 16}, .size = {16, 16}, .color = {0, 0, 0, 1}, .softness = 8.0f});
+        auto encoder = c.gpu->createCommandEncoder();
+        REQUIRE(c.canvas->render(*encoder, l, c.canvasTarget(32), false).has_value());
+        REQUIRE(c.gpu->submit(std::move(encoder)).has_value());
+        CHECK(c.px(0, 0, 32) == Px{0, 0, 0, 0});       // coin arrondi : hors de la forme
+        CHECK(c.px(8, 8, 32) == Px{255, 0, 0, 255});   // centre : intérieur
+        CHECK(c.px(8, 0, 32) == Px{0, 0, 255, 255});   // haut, au milieu : bordure
+        CHECK(c.px(0, 8, 32) == Px{0, 0, 255, 255});   // gauche, au milieu : bordure
+        CHECK(c.px(24, 24, 32)[3] > 245);              // centre de l'ombre : opaque (à l'arrondi de smoothstep près)
+        CHECK(c.px(16, 24, 32)[3] < 40);               // bord de l'ombre : presque transparent
+        const auto mid = c.px(20, 24, 32)[3];          // à mi-chemin : partiel
+        CHECK(mid > 40);
+        CHECK(mid < 255);
+        c.gpu.expectNoValidationErrors();
+    }
+
     TEST_CASE("the logical size is independent of the target size (HiDPI, render scale)")
     {
         Canvas c(32);

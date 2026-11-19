@@ -17,6 +17,8 @@ struct RectPush
     float offsetScale[4];
     float container[4];
     float color[4];
+    float shape[4]; // rayon, épaisseur de bordure, adoucissement, 0
+    float borderColor[4];
 };
 struct GlyphPush
 {
@@ -30,7 +32,7 @@ struct LayerPush
     float content[4];
     float color[4];
 };
-static_assert(sizeof(RectPush) == 48 && sizeof(GlyphPush) == 32 && sizeof(LayerPush) == 64, "blocs push_constant des shaders ui_*");
+static_assert(sizeof(RectPush) == 80 && sizeof(GlyphPush) == 32 && sizeof(LayerPush) == 64, "blocs push_constant des shaders ui_*");
 
 template <typename T> std::span<const std::byte> bytesOf(const T &v) { return std::as_bytes(std::span(&v, 1)); }
 } // namespace
@@ -288,7 +290,11 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         {
             return std::unexpected(pipe.error());
         }
-        RectPush push{{r.position.x, r.position.y, r.size.x, r.size.y}, {s.logical.x, s.logical.y, 0, 0}, {r.color.r, r.color.g, r.color.b, r.color.a}};
+        RectPush push{{r.position.x, r.position.y, r.size.x, r.size.y},
+                      {s.logical.x, s.logical.y, 0, 0},
+                      {r.color.r, r.color.g, r.color.b, r.color.a},
+                      {r.radius, r.borderWidth, r.softness, 0},
+                      {r.borderColor.r, r.borderColor.g, r.borderColor.b, r.borderColor.a}};
         encoder.setPipeline(*pipe);
         encoder.setPushConstants(bytesOf(push));
         encoder.draw(6);
@@ -310,7 +316,7 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         {
             // Une couche contient une couleur prémultipliée : la couleur de remplacement l'est aussi (le transparent ne change pas).
             const glm::vec4 color = surface.layerId != 0 ? glm::vec4(glm::vec3(c->color) * c->color.a, c->color.a) : c->color;
-            status = drawRect(DrawRect{c->position, c->size, color}, false);
+            status = drawRect(DrawRect{.position = c->position, .size = c->size, .color = color}, false);
         }
         else if (const auto *g = std::get_if<DrawGlyphs>(&command))
         {

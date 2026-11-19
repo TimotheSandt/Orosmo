@@ -1,0 +1,26 @@
+{
+    "name": "light",
+    "extends": "base.json",
+    "tokens": {
+        "color.surface": "#f5f6f9eb",
+        "color.surfaceRaised": "#ffffff",
+        "color.outline": "#c9cdd6",
+        "color.outlineHover": "#9aa1b2",
+        "color.text": "#1c1f26",
+        "color.textMuted": "#5b6170",
+        "color.textDisabled": "#a4a9b5",
+        "color.muted": "#d5d9e1",
+        "color.control": "#e8eaef",
+        "color.controlHover": "#dde1e8",
+        "color.controlDisabled": "#eff0f3",
+        "color.field": "#ffffff",
+        "color.primary": "#2f6fe0",
+        "color.primaryHover": "#4c8dff",
+        "color.onPrimary": "#ffffff",
+        "color.focus": "#2f6fe0",
+        "color.scrollbar": "#9aa1b2",
+        "color.tooltip": "#1c1f26",
+        "color.onTooltip": "#f5f6f9",
+        "color.shadow": "#00000040"
+    }
+}
