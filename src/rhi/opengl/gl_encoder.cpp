@@ -220,7 +220,14 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
     }
     else
     {
-        glDrawBuffers(static_cast<GLsizei>(desc.colors.size()), drawBuffers.data());
+        if (toWindow)
+        {
+            glDrawBuffer(GL_BACK); // glDrawBuffers n'accepte pas GL_BACK (GL_INVALID_ENUM) : un seul tampon, le backbuffer
+        }
+        else
+        {
+            glDrawBuffers(static_cast<GLsizei>(desc.colors.size()), drawBuffers.data());
+        }
         glReadBuffer(toWindow ? GL_BACK : GL_COLOR_ATTACHMENT0);
     }
     if (!check(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE, ErrorCode::kUnsupported,
@@ -285,6 +292,7 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
     glEnable(GL_SCISSOR_TEST);
     glViewport(0, 0, static_cast<GLsizei>(extent.width), static_cast<GLsizei>(extent.height));
     glScissor(0, 0, static_cast<GLsizei>(extent.width), static_cast<GLsizei>(extent.height));
+    glDepthRangef(0.0f, 1.0f); // la plage d'une passe précédente (setViewport) ne fuit pas
 
     inPass_ = true;
     passColorFormats_ = std::move(formats);
@@ -612,6 +620,8 @@ void GlEncoder::drawIndexedIndirect(BufferHandle args, std::uint64_t offset, std
                "drawIndexedIndirect: args buffer is stale or lacks the Indirect usage") ||
         !check(drawCount > 0 && offset + step * (drawCount - 1) + sizeof(DrawIndexedIndirectCommand) <= b->desc.size, ErrorCode::kOutOfRange,
                "drawIndexedIndirect: commands exceed the buffer") ||
+        !check(indexOffset_ == 0, ErrorCode::kUnsupported,
+               "drawIndexedIndirect: a non-zero index buffer offset is not supported (GL reads indices from byte 0 plus firstIndex)") ||
         !beforeDraw(true))
     {
         return;
@@ -642,6 +652,7 @@ void GlEncoder::dispatch(std::uint32_t x, std::uint32_t y, std::uint32_t z)
         check(x <= caps.maxComputeWorkGroupCount[0] && y <= caps.maxComputeWorkGroupCount[1] && z <= caps.maxComputeWorkGroupCount[2],
               ErrorCode::kOutOfRange, "dispatch: group count exceeds the device limit"))
     {
+        glUseProgram(device_.get(computePipeline_)->program); // une passe graphique a pu changer le programme courant
         glDispatchCompute(x, y, z);
         glMemoryBarrier(GL_ALL_BARRIER_BITS);
     }
@@ -657,6 +668,7 @@ void GlEncoder::dispatchIndirect(BufferHandle args, std::uint64_t offset)
         check(offset + sizeof(DispatchIndirectCommand) <= b->desc.size && offset % 4 == 0, ErrorCode::kOutOfRange,
               "dispatchIndirect: offset out of range or unaligned"))
     {
+        glUseProgram(device_.get(computePipeline_)->program);
         glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, b->id);
         glDispatchComputeIndirect(static_cast<GLintptr>(offset));
         glMemoryBarrier(GL_ALL_BARRIER_BITS);

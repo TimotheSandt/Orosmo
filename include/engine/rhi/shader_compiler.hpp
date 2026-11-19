@@ -110,6 +110,12 @@ class ShaderHotReloader
     // `cache` (facultatif, non possédé) sert les compilations, y compris les rechargements : une source déjà vue ne se recompile pas.
     explicit ShaderHotReloader(IncludeResolver resolver = {}, ShaderCache *cache = nullptr) : mResolver(std::move(resolver)), mCache(cache) {}
 
+    // Les rappels des surveillances retiennent `this` : ni copie ni déplacement.
+    ShaderHotReloader(const ShaderHotReloader &) = delete;
+    ShaderHotReloader &operator=(const ShaderHotReloader &) = delete;
+    ShaderHotReloader(ShaderHotReloader &&) = delete;
+    ShaderHotReloader &operator=(ShaderHotReloader &&) = delete;
+
     // Compile `file` tout de suite (premier résultat renvoyé) et la surveille ensuite.
     core::Result<CompiledShader> add(const std::filesystem::path &file, ShaderStage stage, Callback onReload,
                                      std::vector<std::pair<std::string, std::string>> defines = {});

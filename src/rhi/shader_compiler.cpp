@@ -5,6 +5,7 @@
 #include <spirv_cross/spirv_glsl.hpp>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -345,10 +346,14 @@ core::Result<CompiledShader> ShaderCache::compile(ShaderStage stage, std::string
             in.read(reinterpret_cast<char *>(words.data()), static_cast<std::streamsize>(words.size() * 4));
             if (bytes % 4 == 0 && !words.empty() && words[0] == kSpirvMagic && in)
             {
-                ++mDiskHits;
-                ++mHits;
-                mMemory.emplace(key, words);
-                return finish(stage, std::move(words), std::move(included), options.name);
+                // Une entrée dont la réflexion échoue (fichier corrompu mais au bon mot magique) est une absence : on recompile.
+                if (auto cached = finish(stage, words, included, options.name))
+                {
+                    ++mDiskHits;
+                    ++mHits;
+                    mMemory.emplace(key, std::move(words));
+                    return cached;
+                }
             }
         }
     }

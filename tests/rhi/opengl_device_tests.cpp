@@ -445,6 +445,54 @@ void main() { color = vColor; })";
         gpu.expectNoValidationErrors();
     }
 
+    TEST_CASE("a synchronous read during a pass does not redirect the next draw (revue CodeRabbit)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {4, 4});
+        const TextureHandle other = gpu.target(Format::kRGBA8Unorm, {4, 4}, "other");
+        const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVs), gpu.shader(ShaderStage::kFragment, kRedFs));
+        gpu.run(
+            [&](CommandEncoder &e)
+            {
+                e.beginRenderPass(passOn(color, {0, 1, 0, 1}));
+                CHECK(gpu->readTexture(other).has_value()); // lecture synchrone au milieu de la passe
+                e.setPipeline(pipe);
+                e.draw(3);
+                e.endRenderPass();
+            });
+        CHECK(rgba(gpu.pixel(color, 1, 1)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
+        gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("resize beyond the device limit fails and keeps the current backbuffer (revue CodeRabbit)")
+    {
+        Gpu gpu({6, 4});
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        auto frame = gpu->beginFrame();
+        REQUIRE(frame.has_value());
+        const auto tooBig = gpu->capabilities().maxTextureSize + 1;
+        CHECK_FALSE(gpu->resize({tooBig, 4}).has_value());
+        auto again = gpu->beginFrame();
+        REQUIRE(again.has_value());
+        auto pixels = gpu->readTexture(*again);
+        REQUIRE(pixels.has_value());
+        CHECK(pixels->size() == 6u * 4u * 4u); // l'ancien stockage est intact
+    }
+
+    TEST_CASE("textures beyond the per-type limits are refused instead of returning a handle with no storage (revue CodeRabbit)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        TextureDesc d;
+        d.format = Format::kRGBA8Unorm;
+        d.usage = TextureUsage::kSampled;
+        d.dimension = TextureDimension::k2DArray;
+        d.size = {1, 1, 1};
+        d.layers = 0x7fffffffu;
+        CHECK_FALSE(gpu->createTexture(d).has_value());
+    }
+
     TEST_CASE("depth test with push constants: the nearer triangle wins and the depth buffer holds its depth")
     {
         Gpu gpu;

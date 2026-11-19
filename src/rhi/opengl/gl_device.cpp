@@ -19,6 +19,25 @@ using engine::core::makeError;
 namespace
 {
 
+// Vide la file d'erreurs GL, pour qu'un test d'erreur ne lise que celles de l'appel qui suit.
+void clearGlErrors()
+{
+    while (glGetError() != GL_NO_ERROR)
+    {
+    }
+}
+
+// Vrai si une allocation vient d'échouer (mémoire du GPU épuisée ou taille refusée par le pilote).
+bool allocationFailed()
+{
+    bool failed = false;
+    for (GLenum error = glGetError(); error != GL_NO_ERROR; error = glGetError())
+    {
+        failed = failed || error == GL_OUT_OF_MEMORY || error == GL_INVALID_VALUE;
+    }
+    return failed;
+}
+
 void label(GLenum identifier, GLuint id, const std::string &name)
 {
     if (!name.empty())
@@ -282,6 +301,12 @@ GlDevice::~GlDevice()
     glfwMakeContextCurrent(window_);
     glFinish();
     flushReleases(true);
+    if (!ownsWindow_)
+    {
+        // Le contexte retourne à son créateur : le rappel de validation retient `this`, il ne doit pas lui survivre.
+        glDisable(GL_DEBUG_OUTPUT);
+        glDebugMessageCallback(nullptr, nullptr);
+    }
     buffers_.forEach([](BufferHandle, BufferRes &r) { glDeleteBuffers(1, &r.id); });
     textures_.forEach([](TextureHandle, TextureRes &r) { glDeleteTextures(1, &r.id); });
     samplers_.forEach([](SamplerHandle, SamplerRes &r) { glDeleteSamplers(1, &r.id); });
@@ -380,7 +405,13 @@ Result<BufferHandle> GlDevice::createBuffer(const BufferDesc &desc, std::span<co
     glGenBuffers(1, &id);
     glBindBuffer(GL_COPY_WRITE_BUFFER, id);
     const GLenum hint = desc.memory == MemoryKind::kReadback ? GL_STREAM_READ : (desc.memory == MemoryKind::kUpload ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
+    clearGlErrors();
     glBufferData(GL_COPY_WRITE_BUFFER, static_cast<GLsizeiptr>(desc.size), nullptr, hint);
+    if (allocationFailed())
+    {
+        glDeleteBuffers(1, &id);
+        return makeError(ErrorCode::kOutOfRange, "createBuffer: the driver could not allocate " + std::to_string(desc.size) + " bytes (" + desc.debugName + ")");
+    }
     if (!initial.empty())
     {
         glBufferSubData(GL_COPY_WRITE_BUFFER, 0, static_cast<GLsizeiptr>(initial.size()), initial.data());
@@ -493,6 +524,24 @@ Result<TextureHandle> GlDevice::createTextureImpl(const TextureDesc &requested)
     {
         return makeError(ErrorCode::kOutOfRange, "createTexture: extent exceeds the device limit (" + desc.debugName + ")");
     }
+    if (desc.dimension == TextureDimension::k2DArray)
+    {
+        GLint maxLayers = 0;
+        glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &maxLayers);
+        if (layers > static_cast<std::uint32_t>(maxLayers))
+        {
+            return makeError(ErrorCode::kOutOfRange, "createTexture: more array layers than the device allows (" + desc.debugName + ")");
+        }
+    }
+    if (desc.dimension == TextureDimension::kCube)
+    {
+        GLint maxCube = 0;
+        glGetIntegerv(GL_MAX_CUBE_MAP_TEXTURE_SIZE, &maxCube);
+        if (desc.size.width > static_cast<std::uint32_t>(maxCube))
+        {
+            return makeError(ErrorCode::kOutOfRange, "createTexture: cube face exceeds the device limit (" + desc.debugName + ")");
+        }
+    }
     const std::uint32_t full = fullMipCount(desc.size.width, desc.size.height, desc.dimension == TextureDimension::k3D ? desc.size.depth : 1);
     const std::uint32_t levels = desc.mipLevels == 0 ? full : desc.mipLevels;
     if (levels > full)
@@ -508,6 +557,7 @@ Result<TextureHandle> GlDevice::createTextureImpl(const TextureDesc &requested)
     res.layers = layers;
     glGenTextures(1, &res.id);
     glBindTexture(res.target, res.id);
+    clearGlErrors();
     const auto w = static_cast<GLsizei>(desc.size.width);
     const auto h = static_cast<GLsizei>(desc.size.height);
     switch (desc.dimension)
@@ -520,6 +570,11 @@ Result<TextureHandle> GlDevice::createTextureImpl(const TextureDesc &requested)
         case TextureDimension::k3D:
             glTexStorage3D(res.target, static_cast<GLsizei>(levels), gf.internal, w, h, static_cast<GLsizei>(desc.size.depth));
             break;
+    }
+    if (allocationFailed())
+    {
+        glDeleteTextures(1, &res.id);
+        return makeError(ErrorCode::kOutOfRange, "createTexture: the driver could not allocate the storage (" + desc.debugName + ")");
     }
     label(GL_TEXTURE, res.id, desc.debugName);
     return textures_.add(std::move(res));
@@ -641,6 +696,9 @@ Result<> GlDevice::readRegion(const TextureRes &texture, const SliceRegion &regi
     const std::uint64_t rowTexels = rowLength != 0 ? rowLength : region.size.width;
     const std::uint64_t sliceBytes = rowTexels * region.size.height * info.bytesPerTexel;
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    // Une lecture synchrone reste permise pendant une passe : on rend la liaison qu'on a trouvée, que l'encodeur suppose intacte.
+    GLint previousFramebuffer = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
     if (texture.defaultFramebuffer)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -649,6 +707,7 @@ Result<> GlDevice::readRegion(const TextureRes &texture, const SliceRegion &regi
         glReadPixels(region.offset.x, region.offset.y, static_cast<GLsizei>(region.size.width), static_cast<GLsizei>(region.size.height), gf.format,
                      gf.type, reinterpret_cast<void *>(destination));
         glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
         return {};
     }
     glBindFramebuffer(GL_FRAMEBUFFER, scratchFbo_);
@@ -689,7 +748,7 @@ Result<> GlDevice::readRegion(const TextureRes &texture, const SliceRegion &regi
     }
     glPixelStorei(GL_PACK_ROW_LENGTH, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, 0, 0);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
     return result;
 }
 
@@ -1165,15 +1224,25 @@ Result<> GlDevice::resize(Extent2D size)
     }
     TextureRes *bb = textures_.get(backbuffer_);
     const TextureRes old = *bb;
-    queueRelease([this, old]() { releaseTexture(old); });
 
     TextureRes fresh = old;
     fresh.desc.size = {size.width, size.height, 1};
     fresh.levels = 1;
+    if (size.width > caps_.maxTextureSize || size.height > caps_.maxTextureSize)
+    {
+        return makeError(ErrorCode::kOutOfRange, "resize: size exceeds the device limit"); // le backbuffer actuel reste intact
+    }
     glGenTextures(1, &fresh.id);
     glBindTexture(fresh.target, fresh.id);
+    clearGlErrors();
     glTexStorage2D(fresh.target, 1, GL_RGBA8, static_cast<GLsizei>(size.width), static_cast<GLsizei>(size.height));
+    if (allocationFailed())
+    {
+        glDeleteTextures(1, &fresh.id);
+        return makeError(ErrorCode::kOutOfRange, "resize: the driver could not allocate the new backbuffer"); // l'ancien reste intact
+    }
     label(GL_TEXTURE, fresh.id, fresh.desc.debugName);
+    queueRelease([this, old]() { releaseTexture(old); }); // seulement après le succès
     *bb = fresh; // le handle reste valide
     backbufferSize_ = size;
     return {};
