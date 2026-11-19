@@ -211,6 +211,29 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
         REQUIRE(again.compile(ShaderStage::kFragment, src, options).has_value());
         CHECK(again.diskHits() == 0);
         CHECK(again.misses() == 1);
+
+        // Bon mot magique mais SPIR-V invalide (la réflexion échoue) : traité comme une absence, on recompile (revue CodeRabbit).
+        for (const auto &entry : fs::directory_iterator(dir.path / "cache"))
+        {
+            const std::uint32_t garbage[] = {0x07230203u, 0xdeadbeefu, 0xdeadbeefu, 0u};
+            std::ofstream(entry.path(), std::ios::binary | std::ios::trunc).write(reinterpret_cast<const char *>(garbage), sizeof(garbage));
+        }
+        ShaderCache broken(dir.path / "cache");
+        auto recovered = broken.compile(ShaderStage::kFragment, src, options);
+        REQUIRE(recovered.has_value());
+        CHECK(broken.diskHits() == 0);
+        CHECK(broken.misses() == 1);
+        // ... et la compilation suivante est servie sans erreur depuis la mémoire.
+        CHECK(broken.compile(ShaderStage::kFragment, src, options).has_value());
+        CHECK(broken.hits() == 1);
+    }
+
+    TEST_CASE("ShaderHotReloader is neither copyable nor movable (its watch callbacks capture this)")
+    {
+        static_assert(!std::is_copy_constructible_v<ShaderHotReloader>);
+        static_assert(!std::is_move_constructible_v<ShaderHotReloader>);
+        static_assert(!std::is_copy_assignable_v<ShaderHotReloader>);
+        static_assert(!std::is_move_assignable_v<ShaderHotReloader>);
     }
 
     TEST_CASE("hot reload: a modified file or include is recompiled; a broken edit reports the error and keeps going")

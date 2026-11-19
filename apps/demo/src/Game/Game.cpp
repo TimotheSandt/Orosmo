@@ -366,13 +366,15 @@ void Game::render()
 void Game::endFrame()
 {
     gpuTimers->setEncoder(nullptr);
-    if (auto submitted = device->submit(std::move(frameEncoder)); !submitted)
+    const auto result = device->submit(std::move(frameEncoder));
+    const bool submitted = result.has_value();
+    if (!submitted)
     {
-        LOG_ERROR(1, "Frame: ", submitted.error().message);
+        LOG_ERROR(1, "Frame: ", result.error().message);
     }
 
     ++this->renderedFrames;
-    if (!this->captureDirectory.empty() && !this->captureDone && this->renderedFrames >= this->captureFrames)
+    if (submitted && !this->captureDirectory.empty() && !this->captureDone && this->renderedFrames >= this->captureFrames)
     {
         // scene.png : couleur de la scène à la résolution de rendu ; ui.png : image composée (scène + interface), comme avant.
         const bool sceneSaved = sceneRenderer->saveColorPng(this->captureDirectory + "/scene.png").has_value();
