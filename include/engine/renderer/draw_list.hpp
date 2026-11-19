@@ -25,11 +25,18 @@ struct AtlasImage
     std::vector<std::uint8_t> rgba; // width * height * 4 ; la ligne i correspond à v = i / height (la ligne 0 à v = 0)
 };
 
+// Rectangle plein. Forme facultative (UI-07) : coins arrondis (`radius`), bordure intérieure (`borderWidth`, `borderColor`) et
+// bord adouci sur `softness` pixels (ombre portée : rectangle agrandi de `softness`, plein au centre, transparent au bord). Sans
+// forme (les trois à 0), le rectangle est exactement la couleur, sans anticrénelage.
 struct DrawRect
 {
     glm::vec2 position{0.0f};
     glm::vec2 size{0.0f};
     glm::vec4 color{1.0f};
+    float radius = 0.0f;
+    float borderWidth = 0.0f;
+    glm::vec4 borderColor{0.0f};
+    float softness = 0.0f;
 };
 
 // Remplace les pixels du rectangle par `color` sans mélange (effacement partiel d'une couche : `color` = transparent).
@@ -97,7 +104,11 @@ class DrawList
     bool empty() const noexcept { return commands.empty(); }
     std::size_t size() const noexcept { return commands.size(); }
 
-    void rect(const glm::vec2 &position, const glm::vec2 &size, const glm::vec4 &color) { commands.emplace_back(DrawRect{position, size, color}); }
+    void rect(const glm::vec2 &position, const glm::vec2 &size, const glm::vec4 &color)
+    {
+        commands.emplace_back(DrawRect{.position = position, .size = size, .color = color});
+    }
+    void rect(const DrawRect &shape) { commands.emplace_back(shape); }
     void clearRect(const glm::vec2 &position, const glm::vec2 &size) { commands.emplace_back(DrawClearRect{position, size, glm::vec4(0.0f)}); }
     void glyphs(DrawGlyphs run) { commands.emplace_back(std::move(run)); }
     void layerImage(const DrawLayerImage &image) { commands.emplace_back(image); }
