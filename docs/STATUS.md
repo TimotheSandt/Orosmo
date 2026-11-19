@@ -19,6 +19,17 @@ Mis à jour à la fin du lot C de M2, donc de M2 (2026-11-18). États détaillé
 | **M2 lot B6 : bascule de la démo, retrait de l'ancien rendu, isolation bloquante** | **Lot B livré côté code ; lot C à faire** | `docs/releases/M2-B6.md` : la démo présente via le RHI (`scene.png` identique à la référence, écart max 0/255) ; `IGraphicsDevice`, backends OpenGL/Vulkan/Metal et façades supprimés (−16 800 lignes, étiquette `archive/pre-M2-B6-legacy-graphics`) ; `check_api_isolation.py --graphics-only --strict` : **0 infraction** ; 259 cas doctest verts |
 | **M2 lot C : plateforme (fenêtre, entrées, mode sans fenêtre), isolation totale** | **Lot C livré côté code ; M2 terminé côté code, à proposer à `main`** | `docs/releases/M2.md` : `Window` et `InputManager` dans `src/platform/` avec GLFW caché (poignée `void *`), DPI (`GetContentScale`, tampon en pixels réels), molette (le `TODO` disparaît), `--headless`, `--vsync` ; `check_api_isolation.py --strict` **sans baseline : 0 infraction** (GLFW et `<windows.h>` compris) ; capture sans fenêtre **identique** à la référence ; 264 cas doctest verts |
 
+## Identifiants de `docs/02` touchés par la revue de la PR #7 (G97 à G100)
+
+| ID | Avant | Après | Preuve |
+| --- | --- | --- | --- |
+| RHI-15 | Fait (OpenGL) | Fait (OpenGL) | rendu vers `Capabilities::maxColorAttachments` cibles (8 sur Mesa Intel Arc et llvmpipe), une valeur distincte par cible : `tests/rhi/opengl_state_tests.cpp`, cas « MRT up to Capabilities::maxColorAttachments » |
+| RHI-03 | Partiel | Absent | l'ancien backend Vulkan est retiré du build et archivé (A1) ; `--api vulkan` répond « not available yet (Vulkan: M4) » (`tests/suites/graphics_api_tests.cpp`) |
+| RHI-08 | Partiel | Partiel | destruction différée gardée par une clôture GPU par image (`GlDevice::present`, `flushReleases`) : cas « destroyed resources are released only after the frames in flight AND the GPU fence » |
+| RHI-09 | Fait (OpenGL) | Fait (OpenGL) | barrière de stockage entre deux dessins d'une passe qui lie un tampon ou une image de stockage (`GlEncoder::beforeDraw`) ; limite des SSBO exposée (`Capabilities::maxStorageBufferBindings`) |
+| RHI-12 | Fait | Fait | réflexion des tableaux de ressources et des chevauchements, includes absents surveillés, étages validés ensemble (`tests/rhi/shader_compiler_tests.cpp`, `tests/renderer/resources_tests.cpp`) |
+| UI-02 | Partiel | Partiel | couches prémultipliées, couches gardées (découpage, dépendances), redessin partiel dans l'ordre (`tests/renderer/canvas_tests.cpp`, `ui_collect_tests.cpp`) ; parité `ui.png` toujours dans la tolérance (`parity_tests.cpp`) |
+
 ## Identifiants de `docs/02` touchés par M2 lot C
 
 | ID | Avant | Après | Preuve |

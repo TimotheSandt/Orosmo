@@ -1,6 +1,9 @@
-// Chemins du dépôt pour les tests : indépendants du dossier courant. On cherche `shaders/rhi/mesh.vert` en remontant depuis le dossier
-// courant (apps/demo sous `make demo-test`, racine du dépôt ou autre quand on lance le binaire à la main), puis depuis __FILE__.
+// Chemins du dépôt pour les tests : indépendants du dossier courant. On cherche `shaders/rhi/mesh.vert` en remontant depuis des points
+// de départ ABSOLUS : le dossier de l'exécutable des tests (apps/demo/bin/tests/ dans le dépôt, quel que soit le dossier d'où on le
+// lance), le dossier courant, puis __FILE__ (relatif au dossier de compilation). Échec : chemin vide, le test le signale.
 #pragma once
+
+#include <engine/core/system.hpp>
 
 #include <filesystem>
 
@@ -11,7 +14,9 @@ inline std::filesystem::path repoRoot(const char *sourceFile)
 {
     namespace fs = std::filesystem;
     std::error_code ec;
-    for (fs::path start : {fs::current_path(ec), fs::absolute(fs::path(sourceFile).parent_path(), ec)})
+    const fs::path starts[] = {engine::core::system::executablePath().parent_path(), fs::current_path(ec),
+                               fs::absolute(fs::path(sourceFile).parent_path(), ec)};
+    for (const fs::path &start : starts)
     {
         for (fs::path dir = start; !dir.empty(); dir = dir.parent_path())
         {
@@ -25,7 +30,7 @@ inline std::filesystem::path repoRoot(const char *sourceFile)
             }
         }
     }
-    return fs::path(sourceFile).parent_path().parent_path().parent_path(); // repli : ancien comportement
+    return {};
 }
 
 } // namespace tests

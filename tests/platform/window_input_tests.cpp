@@ -18,6 +18,10 @@ bool open(Window &window)
 {
     if (window.Init() != 0)
     {
+        if (tests::gpuRequired())
+        {
+            FAIL("ENGINE_TEST_REQUIRE_GPU is set but the window could not be created");
+        }
         MESSAGE("no display: window test skipped");
         return false;
     }
@@ -26,7 +30,7 @@ bool open(Window &window)
 
 } // namespace
 
-TEST_SUITE("platform window")
+TEST_SUITE("platform/window")
 {
     TEST_CASE("PLAT-01 a window exposes an opaque native handle, its framebuffer size and its DPI scale")
     {

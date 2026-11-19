@@ -47,7 +47,8 @@ make all-debug
 | `make run` | Construit si besoin puis lance la démo (`apps/demo/bin/<type>/`) |
 | `make demo-test` | Construit et lance les tests (`tests/`, doctest ; filtres : `-ts=<suite>`, `-tc=<cas>`) |
 | `make demo-test SANITIZE=address,undefined` | Idem sous ASan + UBSan (arbre propre : `make fclean` avant) |
-| `make check` | Dépôt, couches, isolation des API, en-têtes autonomes (mode avertissement) ; `CHECK_ARGS=--strict` pour échouer |
+| `make demo-test-unit` / `make demo-test-gpu` | Seulement les tests sans GPU ni fenêtre / seulement l'intégration graphique (contexte OpenGL, fenêtre). `ENGINE_TEST_REQUIRE_GPU=1` : un test graphique sans pilote ni affichage échoue au lieu d'être ignoré |
+| `make check` | Dépôt, couches, isolation des API (y compris GLFW et `<windows.h>`), en-têtes autonomes : **bloquant** (échoue à la première violation, comme la CI) |
 | `main --api opengl --capture <dossier>` | Rend 10 images à 1280x720 (graine 1), écrit `scene.png` (reproductible) et `ui.png` ; OpenGL seulement |
 | `python3 tools/compare_png.py A.png B.png` | Compare deux images (tolérance, budget de pixels, image de différence) |
 | `python3 -m unittest discover -s tests/tools` | Tests des outils Python |

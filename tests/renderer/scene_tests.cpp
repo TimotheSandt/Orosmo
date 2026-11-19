@@ -5,6 +5,7 @@
 #include "support/test_support.hpp"
 #include "renderer/repo_paths.hpp"
 #include "rhi/gpu_fixture.hpp"
+#include "support/temp_dir.hpp"
 
 #include <engine/renderer/camera.hpp>
 #include <engine/renderer/image.hpp>
@@ -184,7 +185,7 @@ TEST_SUITE("renderer/light")
         lights.resetAmbientLight();
         CHECK(lights.ambient().strength == 0.0f);
         CHECK(lights.light(50) == nullptr); // hors limites : aucune exception (CLAUDE.md règle 10)
-        CHECK((lights.setLight(50, rd::ambientLight({1, 1, 1}, 1.0f)).error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(lights.setLight(50, rd::ambientLight({1, 1, 1}, 1.0f))) == ErrorCode::kOutOfRange));
         REQUIRE(lights.upload().has_value());
         CHECK_FALSE(lights.dirty());
         REQUIRE(lights.setLight(0, rd::ambientLight({1, 1, 1}, 0.5f)).has_value());
@@ -204,13 +205,13 @@ TEST_SUITE("renderer/mesh")
         bad.indices = {0, 1, 3}; // 3 sommets : l'index 3 n'existe pas
         auto refused = rd::Mesh::create(*gpu.device, bad);
         REQUIRE_FALSE(refused.has_value());
-        CHECK((refused.error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(refused) == ErrorCode::kOutOfRange));
         auto mesh = rd::Mesh::create(*gpu.device, triangleData({1, 0, 0}));
         REQUIRE(mesh.has_value());
         const std::vector<float> patch{1, 2, 3};
         auto wrapped = mesh->updateVertices(patch, std::numeric_limits<std::size_t>::max() / sizeof(float) + 1); // * 4 reboucle à 0
         REQUIRE_FALSE(wrapped.has_value());
-        CHECK((wrapped.error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(wrapped) == ErrorCode::kOutOfRange));
         gpu.expectNoValidationErrors();
     }
 
@@ -310,10 +311,10 @@ TEST_SUITE("renderer/mesh")
 
         rd::MeshData wide = triangleData({1, 0, 0});
         wide.attributeSizes = {3, 3, 5};
-        CHECK((rd::Mesh::create(*gpu.device, wide).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(rd::Mesh::create(*gpu.device, wide)) == ErrorCode::kInvalidArgument));
         rd::MeshData ragged = triangleData({1, 0, 0});
         ragged.vertices.pop_back();
-        CHECK((rd::Mesh::create(*gpu.device, ragged).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(rd::Mesh::create(*gpu.device, ragged)) == ErrorCode::kInvalidArgument));
         CHECK_FALSE(rd::Mesh::create(*gpu.device, {}).has_value());
         gpu.expectNoValidationErrors();
     }
@@ -495,16 +496,16 @@ TEST_SUITE("renderer/scene")
         SKIP_TEST_IF_NULL(scene.gpu.device.get(), "OpenGL 4.3 context");
         rd::Camera camera;
         auto encoder = scene.gpu->createCommandEncoder();
-        CHECK((scene.renderer->beginFrame(*encoder).error().code == ErrorCode::kInvalidArgument)); // pas de résolution
+        CHECK((tests::errorOf(scene.renderer->beginFrame(*encoder)) == ErrorCode::kInvalidArgument)); // pas de résolution
         scene.renderer->setOutputResolution(4, 4);
         const TextureHandle out = scene.output(4, 4);
         auto mesh = rd::Mesh::create(*scene.gpu.device, triangleData({1, 0, 0}));
         REQUIRE(mesh.has_value());
-        CHECK((scene.renderer->drawMesh(*mesh, camera).error().code == ErrorCode::kInvalidArgument)); // hors image
-        CHECK((scene.renderer->endFrame({out, Format::kRGBA8Unorm, {4, 4}}).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(scene.renderer->drawMesh(*mesh, camera)) == ErrorCode::kInvalidArgument)); // hors image
+        CHECK((tests::errorOf(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {4, 4}})) == ErrorCode::kInvalidArgument));
         REQUIRE(scene.renderer->beginFrame(*encoder, {.clearColor = {0, 1, 0, 1}}).has_value());
-        CHECK((scene.renderer->beginFrame(*encoder).error().code == ErrorCode::kInvalidArgument)); // déjà ouverte
-        CHECK((scene.renderer->drawMesh(*mesh, camera).error().code == ErrorCode::kInvalidArgument)); // pas de programme
+        CHECK((tests::errorOf(scene.renderer->beginFrame(*encoder)) == ErrorCode::kInvalidArgument)); // déjà ouverte
+        CHECK((tests::errorOf(scene.renderer->drawMesh(*mesh, camera)) == ErrorCode::kInvalidArgument)); // pas de programme
         REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {4, 4}}).has_value());
         REQUIRE(scene.gpu->submit(std::move(encoder)).has_value());
         CHECK(rgba(scene.gpu.pixel(out, 2, 2))[1] == 255); // sans échelle : la scène est tout de même présentée en 1:1
@@ -519,7 +520,10 @@ TEST_SUITE("renderer/scene")
                 REQUIRE(scene.renderer->endFrame({untouched, Format::kRGBA8Unorm, {4, 4}}).has_value()); // scale 1 : copie 1:1 de repli
             });
         CHECK(rgba(scene.gpu.pixel(untouched, 2, 2))[3] == 255);
-        CHECK_FALSE(scene.renderer->saveColorPng("/nonexistent-dir-xyz/forbidden/shot.png").has_value());
+        // Chemin impossible quels que soient les droits du processus : un composant parent est un FICHIER ordinaire.
+        tests::TempDir dir("engine_scene_png");
+        dir.write("not-a-directory", "x");
+        CHECK_FALSE(scene.renderer->saveColorPng(dir.path / "not-a-directory" / "shot.png").has_value());
         scene.gpu.expectNoValidationErrors();
     }
 
@@ -623,7 +627,7 @@ TEST_SUITE("renderer/scene")
         unsupported->supported = false;
         auto refused = scene.renderer->setFrameGenerationMode(std::move(unsupported));
         REQUIRE_FALSE(refused.has_value());
-        CHECK((refused.error().code == ErrorCode::kUnsupported));
+        CHECK((tests::errorOf(refused) == ErrorCode::kUnsupported));
 
         auto mode = std::make_unique<Recording>();
         Recording *rec = mode.get();

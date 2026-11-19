@@ -6,6 +6,7 @@
 #include "rhi/gpu_fixture.hpp"
 
 #include <cmath>
+#include <string>
 #include <cstring>
 #include <limits>
 
@@ -78,13 +79,13 @@ TEST_SUITE("rhi/opengl/state")
         openPass->beginRenderPass(passOn(color, {1, 0, 0, 1}));
         auto r1 = gpu->submit(std::move(openPass));
         REQUIRE_FALSE(r1.has_value());
-        CHECK((r1.error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(r1) == ErrorCode::kInvalidArgument));
 
         auto openGroup = gpu->createCommandEncoder();
         openGroup->beginDebugGroup("left open");
         auto r2 = gpu->submit(std::move(openGroup));
         REQUIRE_FALSE(r2.has_value());
-        CHECK((r2.error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(r2) == ErrorCode::kInvalidArgument));
 
         // Le contexte reste propre : une passe normale fonctionne ensuite.
         gpu.run([&](CommandEncoder &e) { e.beginRenderPass(passOn(color, {0, 1, 0, 1})); e.endRenderPass(); });
@@ -124,7 +125,7 @@ TEST_SUITE("rhi/opengl/state")
         beyond->beginRenderPass(pass);
         auto r = gpu->submit(std::move(beyond));
         REQUIRE_FALSE(r.has_value());
-        CHECK((r.error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(r) == ErrorCode::kOutOfRange));
         gpu.expectNoValidationErrors();
     }
 
@@ -139,7 +140,7 @@ TEST_SUITE("rhi/opengl/state")
             e->beginRenderPass(passOn(ids, {bad, 0, 0, 0}));
             auto r = gpu->submit(std::move(e));
             REQUIRE_FALSE(r.has_value());
-            CHECK((r.error().code == ErrorCode::kInvalidArgument));
+            CHECK((tests::errorOf(r) == ErrorCode::kInvalidArgument));
         }
         gpu.run([&](CommandEncoder &e) { e.beginRenderPass(passOn(ids, {7, 0, 0, 0})); e.endRenderPass(); });
         auto px = gpu.pixel(ids, 0, 0);
@@ -167,10 +168,10 @@ TEST_SUITE("rhi/opengl/state")
             return gpu->submit(std::move(e));
         };
         CHECK(drawWith(0, 2, 0).has_value());
-        CHECK((drawWith(2, 1, 0).error().code == ErrorCode::kInvalidArgument));  // décalage non multiple de 4
-        CHECK((drawWith(0, 2, 6).error().code == ErrorCode::kInvalidArgument));  // pas non multiple de 4
-        CHECK((drawWith(0, 2, 8).error().code == ErrorCode::kInvalidArgument));  // pas plus court qu'une commande
-        CHECK((drawWith(std::numeric_limits<std::uint64_t>::max() - 3, 1, 0).error().code == ErrorCode::kOutOfRange)); // rebouclerait
+        CHECK((tests::errorOf(drawWith(2, 1, 0)) == ErrorCode::kInvalidArgument));  // décalage non multiple de 4
+        CHECK((tests::errorOf(drawWith(0, 2, 6)) == ErrorCode::kInvalidArgument));  // pas non multiple de 4
+        CHECK((tests::errorOf(drawWith(0, 2, 8)) == ErrorCode::kInvalidArgument));  // pas plus court qu'une commande
+        CHECK((tests::errorOf(drawWith(std::numeric_limits<std::uint64_t>::max() - 3, 1, 0)) == ErrorCode::kOutOfRange)); // rebouclerait
 
         const BufferHandle src = gpu.buffer(BufferUsage::kCopySrc, {}, 64);
         const BufferHandle dst = gpu.buffer(BufferUsage::kCopyDst, {}, 64);
@@ -178,7 +179,7 @@ TEST_SUITE("rhi/opengl/state")
         copy->copyBuffer(src, dst, {.srcOffset = std::numeric_limits<std::uint64_t>::max() - 7, .dstOffset = 0, .size = 16});
         auto r = gpu->submit(std::move(copy));
         REQUIRE_FALSE(r.has_value());
-        CHECK((r.error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(r) == ErrorCode::kOutOfRange));
         gpu.expectNoValidationErrors();
     }
 
@@ -213,7 +214,7 @@ TEST_SUITE("rhi/opengl/state")
         shortRow->copyBufferToTexture(src, *tex, {.bufferRowLength = 1}); // pas plus court que la région
         auto r = gpu->submit(std::move(shortRow));
         REQUIRE_FALSE(r.has_value());
-        CHECK((r.error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(r) == ErrorCode::kInvalidArgument));
         gpu.expectNoValidationErrors();
     }
 
@@ -265,6 +266,57 @@ TEST_SUITE("rhi/opengl/state")
             REQUIRE(gpu->present().has_value());
         }
         CHECK(gpu->stats().pendingDestruction == 0); // la clôture de l'image a été attendue, pas seulement comptée
+        gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("MRT up to Capabilities::maxColorAttachments (8 on OpenGL 4.3+) with a distinct output per target (RHI-15)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        const std::uint32_t count = gpu->capabilities().maxColorAttachments;
+        REQUIRE(count >= 1);
+        REQUIRE(count <= 8);
+        std::string fs = "#version 430 core\n";
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            fs += "layout(location = " + std::to_string(i) + ") out vec4 o" + std::to_string(i) + ";\n";
+        }
+        fs += "void main() {\n";
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            // Cible i : rouge = i / 8, vert = 1 - i / 8 : chaque cible reçoit une valeur différente.
+            fs += "  o" + std::to_string(i) + " = vec4(" + std::to_string(i) + ".0 / 8.0, 1.0 - " + std::to_string(i) + ".0 / 8.0, 0.0, 1.0);\n";
+        }
+        fs += "}\n";
+        std::vector<TextureHandle> targets;
+        std::vector<ColorTargetState> states;
+        RenderPassDesc pass;
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            targets.push_back(gpu.target(Format::kRGBA8Unorm, {2, 2}, "mrt"));
+            states.push_back(ColorTargetState{});
+            pass.colors.push_back({.texture = targets.back()});
+        }
+        const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVs), gpu.shader(ShaderStage::kFragment, fs.c_str()), states);
+        gpu.run(
+            [&](CommandEncoder &e)
+            {
+                e.beginRenderPass(pass);
+                e.setPipeline(pipe);
+                e.draw(3);
+                e.endRenderPass();
+            });
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            const auto px = rgba(gpu.pixel(targets[i], 1, 1));
+            INFO("target ", i);
+            CHECK(near(px[0], static_cast<int>(std::lround(255.0 * i / 8.0))));
+            CHECK(near(px[1], static_cast<int>(std::lround(255.0 * (1.0 - i / 8.0)))));
+        }
+        if (count < 8) // la liste des cibles reste celle du pilote : RHI-15 n'est prouvé à 8 que là où il en offre 8
+        {
+            MESSAGE("maxColorAttachments = ", count, " (< 8 on this driver)");
+        }
         gpu.expectNoValidationErrors();
     }
 }

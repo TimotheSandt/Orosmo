@@ -245,8 +245,9 @@ $(BIN_DIR)/icon.rc: $(ICON_NAME) | $(BIN_DIR)
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 .PHONY: test
+TEST_ARGS ?=
 test: $(TEST_TARGET)
-	@./$(TEST_TARGET)
+	@./$(TEST_TARGET) $(TEST_ARGS)
 
 $(TEST_TARGET): $(TEST_OBJS) $(ENGINE_LIBS) | bin/tests
 	$(CXX) $(ENGINE_CXXFLAGS) $(TEST_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@

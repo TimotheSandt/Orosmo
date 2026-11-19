@@ -3,11 +3,10 @@
 
 #include "support/test_support.hpp"
 #include "rhi/gpu_fixture.hpp"
+#include "support/temp_dir.hpp"
 
-#include <engine/core/system.hpp>
 #include <engine/rhi/shader_compiler.hpp>
 
-#include <atomic>
 #include <filesystem>
 #include <fstream>
 
@@ -35,35 +34,9 @@ layout(set = 0, binding = 1, std430) buffer Out { uint data[]; };
 layout(set = 2, binding = 0, rgba8) uniform image2D img;
 void main() { data[gl_GlobalInvocationID.x] = 1u; })";
 
-// Dossier temporaire propre au processus et à l'instance, créé de façon exclusive : deux exécutions des tests en parallèle
-// ne nettoient jamais le dossier de l'autre (G100).
-struct TempDir
+struct TempDir : tests::TempDir
 {
-    fs::path path;
-    TempDir()
-    {
-        static std::atomic<std::uint64_t> counter{0};
-        for (;;)
-        {
-            path = fs::temp_directory_path() /
-                   ("engine_shader_" + std::to_string(engine::core::system::processId()) + "_" + std::to_string(counter.fetch_add(1)));
-            std::error_code ec;
-            if (fs::create_directory(path, ec))
-            {
-                break; // créé par nous : il n'existait pas
-            }
-        }
-    }
-    ~TempDir()
-    {
-        std::error_code ec;
-        fs::remove_all(path, ec);
-    }
-    void write(const std::string &name, const std::string &text) const
-    {
-        fs::create_directories((path / name).parent_path());
-        std::ofstream(path / name, std::ios::trunc | std::ios::binary) << text;
-    }
+    TempDir() : tests::TempDir("engine_shader") {}
 };
 
 } // namespace
@@ -121,7 +94,7 @@ TEST_SUITE("rhi/shader")
     {
         auto bad = compileGlsl(ShaderStage::kVertex, "#version 450\nvoid main() {\n  gl_Position = nonsense;\n}\n", {.name = "broken.vert"});
         REQUIRE_FALSE(bad.has_value());
-        CHECK((bad.error().code == engine::core::ErrorCode::kParse));
+        CHECK((tests::errorOf(bad) == engine::core::ErrorCode::kParse));
         CHECK(bad.error().message.find("broken.vert:3") != std::string::npos);
 
         const char *outOfGroups = R"(#version 450
@@ -130,7 +103,7 @@ layout(location = 0) out vec4 c;
 void main() { c = u.v; })";
         auto r1 = compileGlsl(ShaderStage::kFragment, outOfGroups, {.name = "groups"});
         REQUIRE_FALSE(r1.has_value());
-        CHECK((r1.error().code == engine::core::ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(r1) == engine::core::ErrorCode::kInvalidArgument));
         CHECK(r1.error().message.find("set 3") != std::string::npos);
 
         const char *highBinding = R"(#version 450
@@ -151,14 +124,16 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
 
     TEST_CASE("#include: relative and root lookups, nested files, macros, missing file")
     {
+        // Le fichier principal est HORS de la racine d'inclusion : `lib/color.glsl` ne peut venir que de la racine (le premier
+        // candidat, relatif au fichier principal, n'existe pas) ; `common.glsl` vient ensuite du dossier de color.glsl.
         TempDir dir;
-        dir.write("lib/color.glsl", "#extension GL_GOOGLE_include_directive : enable\n#include \"common.glsl\"\nvec4 shade() { return vec4(TINT, 1.0); }\n");
-        dir.write("lib/common.glsl", "const vec3 TINT = vec3(0.25, 0.5, 0.75);\n");
+        dir.write("root/lib/color.glsl", "#extension GL_GOOGLE_include_directive : enable\n#include \"common.glsl\"\nvec4 shade() { return vec4(TINT, 1.0); }\n");
+        dir.write("root/lib/common.glsl", "const vec3 TINT = vec3(0.25, 0.5, 0.75);\n");
         const std::string main = "#version 450\n#extension GL_GOOGLE_include_directive : enable\n#include \"lib/color.glsl\"\n"
                                  "layout(location = 0) out vec4 c;\nvoid main() { c = shade(); }\n";
         CompileOptions options;
-        options.name = (dir.path / "main.frag").generic_string();
-        options.includeResolver = fileIncludeResolver({dir.path});
+        options.name = (dir.path / "shaders" / "main.frag").generic_string();
+        options.includeResolver = fileIncludeResolver({dir.path / "root"});
         auto ok = compileGlsl(ShaderStage::kFragment, main, options);
         INFO((ok ? std::string() : ok.error().message));
         REQUIRE(ok.has_value());
@@ -169,7 +144,7 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
         REQUIRE_FALSE(none.has_value());
         CHECK(none.error().message.find("no include resolver") != std::string::npos);
 
-        options.includeResolver = fileIncludeResolver({dir.path});
+        options.includeResolver = fileIncludeResolver({dir.path / "root"});
         const std::string absent = "#version 450\n#extension GL_GOOGLE_include_directive : enable\n#include \"absent.glsl\"\nvoid main() {}\n";
         auto missing = compileGlsl(ShaderStage::kFragment, absent, options);
         REQUIRE_FALSE(missing.has_value());
@@ -247,13 +222,13 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
         auto overflow = compileGlsl(ShaderStage::kFragment, head + "layout(set = 0, binding = 7) uniform sampler2D t[2];\n"
                                                                    "void main() { c = texture(t[0], vec2(0)) + texture(t[1], vec2(0)); }\n");
         REQUIRE_FALSE(overflow.has_value());
-        CHECK((overflow.error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(overflow) == ErrorCode::kInvalidArgument));
         // Chevauchement : t[2] occupe 0 et 1, u est en 1.
         auto overlap = compileGlsl(ShaderStage::kFragment, head + "layout(set = 0, binding = 0) uniform sampler2D t[2];\n"
                                                                   "layout(set = 0, binding = 1) uniform sampler2D u;\n"
                                                                   "void main() { c = texture(t[0], vec2(0)) + texture(t[1], vec2(0)) + texture(u, vec2(0)); }\n");
         REQUIRE_FALSE(overlap.has_value());
-        CHECK((overlap.error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(overlap) == ErrorCode::kInvalidArgument));
         CHECK(overlap.error().message.find("'t'") != std::string::npos);
         CHECK(overlap.error().message.find("'u'") != std::string::npos);
         // Sans chevauchement : accepté, et la réflexion donne la taille du tableau.
@@ -285,7 +260,7 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
             return;
         }
         REQUIRE_FALSE(secret.has_value());
-        CHECK((secret.error().code == ErrorCode::kIo));
+        CHECK((tests::errorOf(secret) == ErrorCode::kIo));
     }
 
     TEST_CASE("the disk cache publishes complete files only: no temporary file is left behind")

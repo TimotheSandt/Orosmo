@@ -1,6 +1,6 @@
 # Le RHI et la couche de rendu
 
-Guide d'ensemble (état de M2 B6). Détails : [`src/rhi/README.md`](../src/rhi/README.md), [`src/renderer/README.md`](../src/renderer/README.md), architecture : [`03-ARCHITECTURE_ET_PORTABILITE.md`](03-ARCHITECTURE_ET_PORTABILITE.md).
+Guide d'ensemble (état de fin de M2). Détails : [`src/rhi/README.md`](../src/rhi/README.md), [`src/renderer/README.md`](../src/renderer/README.md), architecture : [`03-ARCHITECTURE_ET_PORTABILITE.md`](03-ARCHITECTURE_ET_PORTABILITE.md).
 
 ## Les couches
 
@@ -11,27 +11,41 @@ Guide d'ensemble (état de M2 B6). Détails : [`src/rhi/README.md`](../src/rhi/R
                  RenderTarget, Texture, GpuBuffer, GpuTimer, Image    -> include/engine/renderer/
  rhi             Device, CommandEncoder, handles, shader_compiler     -> include/engine/rhi/
    rhi/opengl    le seul endroit où gl*, GL_*, glad existent          -> src/rhi/opengl/
- platform        Window (GLFW), InputManager
+ platform        Window, InputManager (GLFW caché : src/platform/)
  core            Logger, Result<T>, tâches, VFS, configuration
 ```
 
 ## Une image, de bout en bout
 
 ```cpp
-auto device   = rhi::createDevice({.surface = {.nativeWindow = window}});        // la fenêtre a été créée après rhi::prepareWindowHints
-rd::ShaderLibrary shaders(*device);  rd::PipelineCache pipelines(*device);
-auto scene    = rd::SceneRenderer::create(*device, shaders, pipelines, {.shaderDirectory = "res/shader/rhi"});
-auto canvas   = rd::CanvasRenderer::create(*device, shaders, pipelines, "res/shader/rhi");
+// Chaque appel renvoie un Result<T> (std::expected) : on le vérifie, puis on prend la valeur. Pas d'exception.
+auto created = rhi::createDevice({.surface = {.nativeWindow = window.GetWindow()}}); // fenêtre créée après rhi::prepareWindowHints
+if (!created) { return fail(created.error()); }
+std::unique_ptr<rhi::Device> device = std::move(*created);
+rd::ShaderLibrary shaders(*device);
+rd::PipelineCache pipelines(*device);
+auto sceneMade  = rd::SceneRenderer::create(*device, shaders, pipelines, {.shaderDirectory = "res/shader/rhi"});
+auto canvasMade = rd::CanvasRenderer::create(*device, shaders, pipelines, "res/shader/rhi");
+if (!sceneMade || !canvasMade) { return fail(!sceneMade ? sceneMade.error() : canvasMade.error()); }
+std::unique_ptr<rd::SceneRenderer> scene = std::move(*sceneMade);
+std::unique_ptr<rd::CanvasRenderer> canvas = std::move(*canvasMade);
+scene->setOutputResolution(w, h);                              // obligatoire avant beginFrame (sinon kInvalidArgument)
 
-auto frame    = (*device)->beginFrame();                       // backbuffer (kBusy si la fenêtre est réduite : sauter l'image)
-auto encoder  = (*device)->createCommandEncoder();
-scene->beginFrame(*encoder, {.clearColor = {0.07f, 0.13f, 0.17f, 1}});    // passe de scène (cible interne, taille de rendu)
-scene->setCamera(camera);  scene->drawMesh(mesh, camera);
-scene->endFrame({composed, rhi::Format::kRGBA8Unorm, {w, h}});           // post-traitements, mise à l'échelle -> image composée
-ui.Collect(list, w, h);  canvas->render(*encoder, list, {composed, ...}); // l'interface se pose sur la scène
-scene->blit().copy(*encoder, composed, ..., *frame, rhi::Format::kRGBA8Unorm);   // présentation
-(*device)->submit(std::move(encoder));  (*device)->present();
+auto frame = device->beginFrame();                             // backbuffer ; kBusy si la fenêtre est réduite : sauter l'image
+if (!frame) { return skipFrame(); }
+auto encoder = device->createCommandEncoder();
+if (auto r = scene->beginFrame(*encoder, {.clearColor = {0.07f, 0.13f, 0.17f, 1}}); !r) { return fail(r.error()); }
+scene->setCamera(camera);
+scene->drawMesh(mesh, camera);
+scene->endFrame({composed, rhi::Format::kRGBA8Unorm, {w, h}});  // post-traitements, mise à l'échelle -> image composée
+ui.Collect(list, w, h);
+canvas->render(*encoder, list, {composed, rhi::Format::kRGBA8Unorm, {w, h}}); // l'interface se pose sur la scène
+scene->blit().copy(*encoder, composed, scene->blit().linearSampler(), *frame, rhi::Format::kRGBA8Unorm); // présentation
+device->submit(std::move(encoder));
+device->present();
 ```
+
+Exemple complet et compilé : `apps/demo/src/Game/Game.cpp` (`Game::createGraphics`, `beginFrame`, `render`, `endFrame`).
 
 ## Règles à retenir
 
@@ -39,7 +53,7 @@ scene->blit().copy(*encoder, composed, ..., *frame, rhi::Format::kRGBA8Unorm);  
 - **Pas d'état implicite** : chaque passe déclare ses attachements, chaque pipeline porte tout son état fixe (`PipelineCache` les construit).
 - **Liaison** : trois groupes (0 image, 1 matériau, 2 objet) × 8 liaisons ; OpenGL les aplatit en `groupe × 8 + binding`. Push constants : jusqu'à 128 octets.
 - **Shaders** : GLSL 450 « style Vulkan » dans `shaders/rhi/`, compilés (shaderc) puis traduits (SPIRV-Cross) en GLSL 430 pour OpenGL ; rechargement à chaud : `ShaderLibrary::pollHotReload`.
-- **Repère** : celui d'OpenGL (QUESTIONS A26). Les octets envoyés ou lus commencent par le bas de l'image ; `Image` et `readPixel*` retournent explicitement.
+- **Repère** : celui d'OpenGL en M2 ; l'auteur a choisi le repère Vulkan (QUESTIONS A26), appliqué en M3. Les octets envoyés ou lus commencent par le bas de l'image ; `Image` et `readPixel*` retournent explicitement.
 - **Capacités optionnelles** : toujours lues dans `Capabilities`, jamais supposées (`rayQuery`, `bindless`, `meshShader`... toutes `false`).
 
 ## Preuves et images de référence
@@ -50,7 +64,7 @@ scene->blit().copy(*encoder, composed, ..., *frame, rhi::Format::kRGBA8Unorm);  
 | capture de la démo (`--capture`) | `scene.png` comparé à la référence par `tools/compare_png.py` (CI, tolérance pour llvmpipe) |
 | `tests/rhi/*`, `tests/renderer/*` | périphérique, ressources, shaders, fenêtre, dessinateur 2D, minuteries GPU |
 
-`make check` : couches, en-têtes autonomes, isolation des API (`--graphics-only --strict` : aucun `gl*`, `Vk*`, `MTL*` hors de `src/rhi/` ; GLFW en baseline jusqu'au lot C).
+`make check` (bloquant) : couches, en-têtes autonomes, isolation des API (aucun `gl*`, `Vk*`, `MTL*` hors de `src/rhi/`, aucun GLFW ni `<windows.h>` hors de `src/platform/` et `src/rhi/`).
 
 ## Ajouter un backend
 

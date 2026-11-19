@@ -84,7 +84,7 @@ TEST_SUITE("rhi/opengl/window")
     {
         DeviceDesc desc;
         desc.backend = Backend::kVulkan;
-        CHECK((prepareWindowHints(desc).error().code == ErrorCode::kUnsupported));
+        CHECK((tests::errorOf(prepareWindowHints(desc)) == ErrorCode::kUnsupported));
     }
 
     TEST_CASE("a window is adopted: the backbuffer has the framebuffer size and the window outlives the device")
@@ -174,8 +174,7 @@ TEST_SUITE("rhi/opengl/window")
         SKIP_TEST_IF_NULL(window.handle, "OpenGL 4.3 window");
         auto device = window.device();
         SKIP_TEST_IF_NULL(device.get(), "windowed OpenGL 4.3 device");
-        Gpu gpu;
-        gpu.device = std::move(device);
+        Gpu gpu(std::move(device)); // pas de second périphérique : le contexte de la fenêtre reste courant
         auto frame = gpu->beginFrame();
         REQUIRE(frame.has_value());
         const Extent2D size = window.framebufferSize();
@@ -187,22 +186,22 @@ TEST_SUITE("rhi/opengl/window")
         pd.colors = {{.texture = *frame}};
         pd.depth = DepthAttachment{.texture = depth};
         withDepth->beginRenderPass(pd);
-        CHECK((gpu->submit(std::move(withDepth)).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->submit(std::move(withDepth))) == ErrorCode::kInvalidArgument));
 
         auto mrt = gpu->createCommandEncoder();
         RenderPassDesc md;
         md.colors = {{.texture = *frame}, {.texture = other}};
         mrt->beginRenderPass(md);
-        CHECK((gpu->submit(std::move(mrt)).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->submit(std::move(mrt))) == ErrorCode::kInvalidArgument));
 
         BindGroupDesc bd;
         auto sampler = gpu->createSampler({});
         REQUIRE(sampler.has_value());
         bd.entries = {{.binding = 0, .type = BindingType::kSampledTexture, .texture = *frame, .sampler = *sampler}};
-        CHECK((gpu->createBindGroup(bd).error().code == ErrorCode::kInvalidArgument)); // pas d'usage Sampled
+        CHECK((tests::errorOf(gpu->createBindGroup(bd)) == ErrorCode::kInvalidArgument)); // pas d'usage Sampled
 
         std::vector<std::byte> data(static_cast<std::size_t>(size.width) * size.height * 4);
-        CHECK((gpu->updateTexture(*frame, {}, data).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->updateTexture(*frame, {}, data)) == ErrorCode::kInvalidArgument));
         auto mips = gpu->createCommandEncoder();
         mips->generateMips(*frame);
         CHECK_FALSE(gpu->submit(std::move(mips)).has_value());
