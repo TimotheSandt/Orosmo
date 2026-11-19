@@ -2,6 +2,7 @@
     "name": "light",
     "extends": "base.json",
     "tokens": {
+        "color.background": "#dfe3ea",
         "color.surface": "#f5f6f9eb",
         "color.surfaceRaised": "#ffffff",
         "color.outline": "#c9cdd6",

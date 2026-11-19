@@ -1,13 +1,7 @@
 {
     "name": "framed",
-    "description": "Variante à images en neuf parties : le panneau et les boutons ont un cadre biseauté (coins fixes, bords répétés, centre répété), sur les jetons du thème sombre.",
+    "description": "Variante à images en neuf parties : le panneau et les boutons prennent les cadres biseautés définis dans base.json (coins fixes, bords répétés, centre répété), sur les jetons du thème sombre.",
     "extends": "dark.json",
-    "images": {
-        "frame.panel": {"file": "images/panel.png", "slice": 8, "edges": "repeat", "center": "repeat", "scale": 2},
-        "frame.button": {"file": "images/button.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1},
-        "frame.buttonHover": {"file": "images/button_hover.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1},
-        "frame.buttonPressed": {"file": "images/button_pressed.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1}
-    },
     "tokens": {
         "color.text": "#f1e6d2",
         "color.primary": "#c8a46e",

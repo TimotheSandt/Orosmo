@@ -173,6 +173,7 @@ class ThemeHost
     // Observe les fichiers du thème (le fichier et ses parents). Une modification signalée par `watcher.poll()` est appliquée au
     // prochain `reloadIfChanged()` (appelé par `Ui::update`) : un fichier invalide laisse le thème précédent en place, l'erreur
     // est journalisée et disponible par `lastError()`.
+    // `watcher` doit vivre plus longtemps que ce ThemeHost (ou `unwatch()` être appelé avant sa destruction).
     void watch(core::FileWatcher &watcher);
     void unwatch();
     // Relit le thème si un de ses fichiers a changé depuis le dernier appel ; vrai si un nouveau thème est installé.

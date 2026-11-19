@@ -27,6 +27,7 @@ engine-<platform>/
     minimal/         — the smallest program linked to the engine (one terrain tile, no window): make -C examples/minimal
     terrain_gen/     — command-line generator (no window, no GPU):  make -C examples/terrain_gen
     terrain_viewer/  — viewer with a .cui control panel:            make -C examples/terrain_viewer
+    ui_gallery/      — every widget, layout, event and theme of engine::ui: make -C examples/ui_gallery
   vcpkg.json         — third-party dependencies (make install in a project created by `engine init`)
   .gitignore, README.md
 ```

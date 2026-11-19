@@ -1,0 +1,189 @@
+// Galerie de l'interface : chaque composant, conteneur, modificateur et événement du langage (docs/UI_LANGUAGE.md), sur un
+// état C++ (gallery_state.hpp). La vue décrit ; la logique est en C++ ; l'apparence vient du thème (res/themes).
+import "engine/ui"
+import "gallery_state.hpp"
+
+view Gallery {
+    @Mutable var state: GalleryState
+    let sideWidth = 300
+
+    Overlay {
+        HBox {
+            // ── Colonne de gauche : présentation, thème, journal des événements ──
+            Panel {
+                Label("UI gallery").variant("title")
+                Label("engine::ui + .cui language").variant("caption")
+                Separator()
+                Label("Theme").variant("caption")
+                Dropdown(options: state.themes(), selected: $state.theme).onChange(state.applyTheme).id("theme")
+                    .tooltip("dark, light, or framed (nine-slice images). Edit res/themes/*.json: reloaded live")
+                Label("Tab / Shift+Tab: move the focus").variant("caption")
+                Label("Enter / Space: activate").variant("caption")
+                Label("Right click on a slider: default value").variant("caption")
+                Label("Hover a widget: tooltip").variant("caption")
+                Separator()
+                HBox {
+                    Label("Events").variant("caption").width(.fill)
+                    Button("Clear").onClick(state.clearLog).id("clear")
+                }
+                Label("\(state.logLine(0))").id("log0")
+                Label("\(state.logLine(1))")
+                Label("\(state.logLine(2))")
+                Label("\(state.logLine(3))")
+                Label("\(state.logLine(4))")
+                Label("\(state.logLine(5))")
+                Label("\(state.logLine(6))")
+                Label("\(state.logLine(7))")
+                Separator()
+                Label("Live plot (re-read every frame)").variant("caption")
+                Plot(values: state.wave()).height(60).tooltip("Plot: bars of a sequence of numbers").id("plot")
+            }
+            .width(sideWidth)
+            .height(.fill)
+
+            // ── Pages ──
+            Panel {
+                Tabs(selected: $state.tab) {
+                    Page("Widgets") {
+                        ScrollView {
+                            Grid(2) {
+                                Label("Button")
+                                HBox {
+                                    Button("Click me").onClick(state.clicked).onHover(state.hovered).onFocus(state.focused).id("button")
+                                        .tooltip("onClick, onHover and onFocus name C++ functions")
+                                    Button("Submit").enabled(state.canSubmit()).onClick(state.clicked).id("submit")
+                                        .tooltip(".enabled(expression): needs a name and 'Enabled'")
+                                    Button("Named action").onClick(galleryAction).id("action")
+                                        .tooltip("an event naming a function that is not a field: looked up in ui.actions()")
+                                }
+                                Label("Checkbox")
+                                Checkbox("Enabled", checked: $state.enabled).onChange(state.changed).id("enabled")
+                                Label("Checkbox")
+                                Checkbox("Notifications", checked: $state.notifications).onChange(state.changed).id("notifications")
+                                Label("Slider")
+                                Slider($state.volume, min: 0, max: 1, default: 0.5).onChange(state.changed).width(.fill).id("volume")
+                                    .tooltip("click: value under the pointer; drag: from the current value (Shift: finer); right click: 0.5")
+                                Label("Slider (step 1)")
+                                Slider($state.count, min: 0, max: 10, step: 1).onChange(state.changed).width(.fill).id("count")
+                                Label("Dropdown")
+                                Dropdown(options: state.fruits(), selected: $state.fruit).onChange(state.changed).width(.fill).id("fruit")
+                                Label("Text field")
+                                TextField($state.name).onChange(state.changed).width(.fill).id("name")
+                                    .tooltip("Enter or losing the focus commits; Escape cancels")
+                                Label("Number field")
+                                NumberField($state.seed, integer: true, min: 0, max: 4294967295).onChange(state.changed).width(.fill).id("seed")
+                                    .tooltip("an invalid or out-of-range entry is refused")
+                                Label("Color picker")
+                                ColorPicker($state.tint, alpha: true).onChange(state.changed).width(.fill).id("tint")
+                                Label("Read-only")
+                                Slider(state.volume * 100, min: 0, max: 100).width(.fill).id("readonly")
+                                    .tooltip("a value that is not a $binding is shown but cannot be changed")
+                                Label("Section")
+                                Section("More options", expanded: false) {
+                                    Label("A foldable block: click its header.")
+                                    Checkbox("Inside a section", checked: $state.notifications)
+                                }
+                                .width(.fill)
+                                Label("Values").variant("caption")
+                                Label("\(state.summary())").variant("caption").id("summary")
+                            }
+                            .width(.fill)
+                        }
+                        .height(.fill)
+                    }
+                    Page("Layout") {
+                        VBox {
+                            Label("HBox with fill weights 1, 2, 1 and a fixed width").variant("caption")
+                            HBox {
+                                Button("fill 1").width(.fill)
+                                Button("fill 2").width(.fill, weight: 2)
+                                Button("fill 1").width(.fill)
+                                Button("120 px").width(120)
+                            }
+                            Label("Grid of 3 columns, one cell spans 2 columns").variant("caption")
+                            Grid(3) {
+                                Button("1")
+                                Button("2")
+                                Button("3")
+                                Button("spans 2").span(2)
+                                Button("6")
+                            }
+                            Label("Overlay: children aligned on both axes").variant("caption")
+                            Overlay {
+                                Label("top left").align(x: .start, y: .start)
+                                Label("top right").align(x: .end, y: .start)
+                                Label("centre").align(.center)
+                                Label("bottom left").align(x: .start, y: .end)
+                                Label("bottom right").align(x: .end, y: .end)
+                            }
+                            .height(90)
+                            .style(background: "color.field", radius: 6)
+                            Label("Margins, min and max sizes").variant("caption")
+                            HBox {
+                                Button("margin 12").margin(12)
+                                Button("min 200").width(.fit, min: 200)
+                                Button("max 80, fill").width(.fill, max: 80)
+                            }
+                            Label("ScrollView: wheel or scrollbar").variant("caption")
+                            ScrollView {
+                                VBox {
+                                    Label("Line 1")
+                                    Label("Line 2")
+                                    Label("Line 3")
+                                    Label("Line 4")
+                                    Label("Line 5")
+                                    Label("Line 6")
+                                    Label("Line 7")
+                                    Label("Line 8")
+                                    Label("Line 9")
+                                    Label("Line 10")
+                                }
+                            }
+                            .height(80)
+                        }
+                    }
+                    Page("Parameters") {
+                        VBox {
+                            Label("ParamPanel: a reflected C++ structure, no interface code (UI-12)").variant("caption")
+                            ScrollView {
+                                ParamPanel($state.params).onChange(state.changed).id("params")
+                            }
+                            .height(.fill)
+                        }
+                    }
+                    Page("Themes") {
+                        VBox {
+                            Label("Every colour and size comes from the theme; .style(...) overrides one property locally").variant("caption")
+                            HBox {
+                                Button("Theme button")
+                                Button("accent").style(background: "color.primary", foreground: "color.onPrimary")
+                                Button("#c0392b, radius 12").style(background: "#c0392b", radius: 12)
+                                Button("bigger text").style(fontSize: 22)
+                            }
+                            Label("Nine-slice images: fixed corners; edges and centre stretched, repeated or removed").variant("caption")
+                            HBox {
+                                Button("frame.button").style(image: "frame.button", background: "#00000000").height(48)
+                                Button("tall and wide").style(image: "frame.button", background: "#00000000").width(220).height(70)
+                                Panel {
+                                    Label("frame.border: centre removed")
+                                }
+                                .style(image: "frame.border", background: "#00000000")
+                                .width(240)
+                            }
+                            Label("Variants: the same widget with another theme style").variant("caption")
+                            Label("variant(\"title\")").variant("title")
+                            Label("variant(\"caption\")").variant("caption")
+                            Label("Shadows, borders and rounded corners: the panels around").variant("caption")
+                        }
+                    }
+                }
+                .height(.fill)
+            }
+            .width(.fill)
+            .height(.fill)
+        }
+        .margin(12)
+        .height(.fill)
+    }
+    .style(background: "color.background")
+}

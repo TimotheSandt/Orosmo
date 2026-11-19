@@ -1,6 +1,13 @@
 {
     "name": "base",
     "description": "Structure commune des thèmes : chaque propriété renvoie à un jeton. dark.json et light.json ne changent que les jetons.",
+    "images": {
+        "frame.panel": {"file": "images/panel.png", "slice": 8, "edges": "repeat", "center": "repeat", "scale": 2},
+        "frame.button": {"file": "images/button.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1},
+        "frame.buttonHover": {"file": "images/button_hover.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1},
+        "frame.buttonPressed": {"file": "images/button_pressed.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1},
+        "frame.border": {"file": "images/panel.png", "slice": 8, "edges": "repeat", "center": "none", "scale": 2}
+    },
     "tokens": {
         "radius.small": 3,
         "radius.medium": 6,
