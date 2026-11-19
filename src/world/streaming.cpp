@@ -1,0 +1,140 @@
+#include "engine/world/streaming.hpp"
+
+#include <algorithm>
+#include <unordered_set>
+
+namespace engine::world
+{
+
+TileStreamer::TileStreamer(TerrainParams params, std::uint32_t seed, LodConfig lod, StreamingConfig config, core::TaskSystem &tasks)
+    : params_(params), seed_(seed), lod_(lod), config_(config), tasks_(tasks)
+{
+}
+
+TileStreamer::~TileStreamer()
+{
+    for (const Job &job : jobs_)
+    {
+        tasks_.wait(job.task);
+    }
+}
+
+void TileStreamer::collectFinished()
+{
+    std::erase_if(jobs_,
+                  [&](Job &job)
+                  {
+                      if (!job.task.done())
+                      {
+                          return false;
+                      }
+                      job.result->lastUsedFrame = frame_;
+                      memory_ += job.result->memoryBytes();
+                      ++generated_;
+                      resident_.insert_or_assign(job.key, std::move(*job.result));
+                      return true;
+                  });
+}
+
+void TileStreamer::update(float cameraX, float cameraZ)
+{
+    ++frame_;
+    collectFinished();
+    selection_ = selectTiles(params_, lod_, cameraX, cameraZ);
+    std::size_t needed = 0;
+    for (const TileKey &key : selection_)
+    {
+        const CoarserNeighbors stitch = coarserNeighbors(selection_, key);
+        if (auto it = resident_.find(key); it != resident_.end())
+        {
+            it->second.lastUsedFrame = frame_;
+            if (it->second.stitch != stitch)
+            {
+                // Les voisines ont changé de niveau : seul le maillage est refait (les hauteurs ne dépendent que de la tuile).
+                memory_ -= it->second.memoryBytes();
+                it->second.mesh = buildTileMesh(params_, seed_, it->second.heights, stitch);
+                it->second.stitch = stitch;
+                memory_ += it->second.memoryBytes();
+            }
+            needed += it->second.memoryBytes();
+            continue;
+        }
+        const bool pending = std::ranges::any_of(jobs_, [&](const Job &j) { return j.key == key; });
+        if (pending || jobs_.size() >= config_.maxJobsInFlight)
+        {
+            continue;
+        }
+        Job job;
+        job.key = key;
+        job.stitch = stitch;
+        job.result = std::make_shared<ResidentTile>();
+        // La tâche ne lit que des copies (paramètres, graine, clé) : aucun état partagé avec le streamer.
+        job.task = tasks_.submit(
+            [params = params_, seed = seed_, key, stitch, out = job.result]()
+            {
+                out->heights = generateTile(params, seed, key);
+                out->mesh = buildTileMesh(params, seed, out->heights, stitch);
+                out->stitch = stitch;
+            });
+        jobs_.push_back(std::move(job));
+    }
+    overBudget_ = needed > config_.memoryBudgetBytes;
+    evict();
+}
+
+void TileStreamer::evict()
+{
+    if (memory_ <= config_.memoryBudgetBytes)
+    {
+        return;
+    }
+    const std::unordered_set<TileKey, TileKeyHash> wanted(selection_.begin(), selection_.end());
+    std::vector<std::pair<std::uint64_t, TileKey>> candidates;
+    for (const auto &[key, tile] : resident_)
+    {
+        if (!wanted.contains(key))
+        {
+            candidates.emplace_back(tile.lastUsedFrame, key);
+        }
+    }
+    // Les plus anciennes d'abord ; à âge égal, ordre des clés (déterministe).
+    std::ranges::sort(candidates, [](const auto &a, const auto &b)
+                      {
+                          if (a.first != b.first) return a.first < b.first;
+                          if (a.second.lod != b.second.lod) return a.second.lod < b.second.lod;
+                          return a.second.z != b.second.z ? a.second.z < b.second.z : a.second.x < b.second.x;
+                      });
+    for (const auto &[age, key] : candidates)
+    {
+        if (memory_ <= config_.memoryBudgetBytes)
+        {
+            break;
+        }
+        auto it = resident_.find(key);
+        memory_ -= it->second.memoryBytes();
+        resident_.erase(it);
+        ++evictions_;
+    }
+}
+
+const ResidentTile *TileStreamer::find(const TileKey &key) const
+{
+    auto it = resident_.find(key);
+    return it == resident_.end() ? nullptr : &it->second;
+}
+
+StreamingStats TileStreamer::stats() const
+{
+    return {resident_.size(), jobs_.size(), memory_, evictions_, generated_, overBudget_};
+}
+
+void TileStreamer::finishPending()
+{
+    for (const Job &job : jobs_)
+    {
+        tasks_.wait(job.task);
+    }
+    collectFinished();
+}
+
+} // namespace engine::world
