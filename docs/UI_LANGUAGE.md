@@ -91,7 +91,7 @@ Arguments positionnels dans l'ordre du tableau, ou nommés (`min: 0`). Un argume
 | `RadioButton` | `text`, `value` (nombre), `selected` (entier lié : les boutons d'un groupe lient le même entier) | — | onClick, onChange |
 | `RangeSlider` | `low`, `high` (nombres liés), `min`, `max`, `step` (= 0) | — | onChange |
 | `SpinBox` | `value` (nombre lié), `min`, `max` (= sans borne), `step` (= 1), `integer` (= true) | — | onChange |
-| `TextArea` | `text` (chaîne liée), `lineNumbers` (= false), `readOnly` (= false) | — | onChange |
+| `TextArea` | `text` (chaîne liée), `lineNumbers` (= false), `readOnly` (= false), `wrap` (= true : retour à la ligne automatique) | — | onChange |
 | `ColorWheel` | `color` (couleur liée) | — | onChange |
 | `ColorEditor` | `color` (couleur liée), `alpha` (= false) | — | onChange |
 | `GradientEditor` | `gradient` (`engine::ui::Gradient` lié) | — | onChange |
@@ -99,7 +99,7 @@ Arguments positionnels dans l'ordre du tableau, ou nommés (`min: 0`). Un argume
 | `Dialog` | `title`, `open` (booléen lié : ouverte tant qu'il vaut vrai), `dismiss` (= true : un clic dehors ferme) | le contenu de la fenêtre | onChange (fermeture) |
 | `MenuBar` | — | des `Menu` seulement | onHover, onFocus |
 | `Menu` | `title` | `MenuItem`, `Menu` (sous-menu), `Separator` | onHover, onFocus |
-| `MenuItem` | `text`, `shortcut` (texte affiché, = ""), `checked` (booléen lié, facultatif) | — (dans `Menu` ou `ContextMenu`) | onClick |
+| `MenuItem` | `text`, `shortcut` (= "" ; affiché ET installé : « Ctrl+S » déclenche l'élément, menu fermé compris), `checked` (booléen lié, facultatif) | — (dans `Menu` ou `ContextMenu`) | onClick |
 | `ContextMenu` | — | comme `Menu` ; ouvert par un clic droit sur son parent | — |
 | `Notifications` | `max` (= 5), `maxHeight` (pixels, = 0 : sans limite), `width` (= 0 : celle du texte) | — | — |
 | `ImageView` | `image` (expression → `engine::ui::DynamicImage` ou `std::shared_ptr<const renderer::AtlasImage>`, relue à chaque image) | — | onHover, onFocus |
@@ -113,7 +113,10 @@ avec au plus deux décimales, `engine::ui::text`) ou une expression C++ (`state.
 déplace de la distance parcourue (toute la largeur = toute la plage ; Maj : dix fois plus fin) ; clic droit : valeur par défaut.
 
 **Fenêtres et menus** : `.width` / `.height` d'un `Dialog` règlent la fenêtre (le `Dialog` ne prend pas de place dans l'arbre).
-Échap ferme le menu ouvert, sinon la fenêtre modale (un champ de saisie prend d'abord Échap pour perdre le focus). Les
+Échap ferme le menu ouvert, sinon la fenêtre modale (un champ de saisie prend d'abord Échap pour perdre le focus). Au clavier :
+Tab jusqu'à un titre de la barre, Bas / Entrée l'ouvrent, Haut / Bas parcourent, Droite / Gauche entrent dans un sous-menu ou en
+sortent (ou passent au menu voisin de la barre), Entrée active. Une fenêtre modale ouverte ne laisse passer que ses propres
+raccourcis. Les
 notifications viennent de `Ui::notify(texte, genre, secondes)` côté C++ ; au-delà de `max` ou de `maxHeight`, les plus anciennes
 sont retirées.
 
@@ -137,6 +140,7 @@ expression (lecture seule). Le chemin commence par un champ `@Mutable`.
 | `.textAlign(.center)` | `Label` seulement |
 | `.range(0, 100)` | `Plot` seulement : bornes fixes |
 | `.fit(.contain)`, `.fit(.cover)`, `.fit(.stretch)` | `ImageView` seulement : image entière, remplissage coupé, ou déformée |
+| `.shortcut("Ctrl+R")` | `Button` seulement : raccourci clavier qui clique le bouton (modificateurs Ctrl, Alt, Shift, Super ; touche : lettre, chiffre, `F1`–`F25`, `Delete`, `PageUp`...) |
 | `.onClick(f)`, `.onChange(f)`, `.onHover(f)`, `.onFocus(f)` | événements (§6) |
 
 ## 6. Événements
