@@ -10,6 +10,7 @@ isolé dans `src/world/gpu/`.
 | `terrain.hpp` | TER-02 : `TerrainParams` (réfléchi : relief, distorsion, échelle, espacement, résolution), `heightAt`, `TileKey`, `Heightmap`, `generateTile` (pur, appelable depuis n'importe quel thread) ; positions d'échantillons depuis des indices entiers globaux : voisines et niveaux de détail partagent les échantillons au bit près |
 | `lod.hpp` | TER-03 : `selectTiles` (quadtree découpé selon la distance, puis équilibré : voisines à un niveau près), `coarserNeighbors`, `buildTileMesh` (sommets position + normale, triangles ; bords cousus vers une voisine plus grossière : pas de fissure) |
 | `streaming.hpp` | TER-04 : `TileStreamer` : sélection à chaque image, génération en tâches de fond (CORE-04), maillage refait quand les voisines changent de niveau, éviction LRU sous un budget mémoire (la sélection courante n'est jamais évincée ; `overBudget` si elle dépasse seule le budget) |
+| `gpu_noise.hpp` | TER-01 (GPU) : `GpuNoise::generateTile` : les mêmes hauteurs calculées en compute par le RHI (GLSL traduit ligne pour ligne, `precise` contre la fusion en FMA, positions en double) ; écart borné par `kGpuTolerance` (1e-4 de l'amplitude), mesuré à 0,5 mm pour 150 m |
 | `checksum.hpp` | TEST-03 : `checksum64` (FNV-1a 64 bits, octets en petit-boutiste) des sorties de génération |
 
 ## Déterminisme (règle 9, TEST-03)
