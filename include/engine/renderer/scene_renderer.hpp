@@ -5,6 +5,7 @@
 
 #include "engine/core/error.hpp"
 #include "engine/renderer/camera.hpp"
+#include "engine/renderer/debug_draw.hpp"
 #include "engine/renderer/fullscreen_blit.hpp"
 #include "engine/renderer/gpu_buffer.hpp"
 #include "engine/renderer/light.hpp"
@@ -108,6 +109,9 @@ class SceneRenderer
     // Applique le jitter courant à la caméra, envoie ses données au GPU.
     core::Result<> setCamera(Camera &camera);
     core::Result<> drawMesh(Mesh &mesh, const Camera &camera);
+    // REN-34 : dessine les segments de `debug` dans la passe de scène (après setCamera). Sans segment ou désactivé : rien (aucun
+    // coût). Les shaders `debug_line.vert/frag` sont chargés au premier appel.
+    core::Result<> drawDebug(const DebugDraw &debug);
     // Referme la passe, exécute post-traitements, historique, mise à l'échelle vers `output`, génération d'images.
     core::Result<> endFrame(const UpscaleTarget &output);
 
@@ -133,6 +137,9 @@ class SceneRenderer
     PipelineCache &pipelines_;
     std::unique_ptr<FullscreenBlit> blit_;
     std::shared_ptr<ShaderProgram> meshProgram_;
+    std::shared_ptr<ShaderProgram> debugProgram_;
+    GpuBuffer debugBuffer_;
+    std::filesystem::path shaderDirectory_;
     GpuBuffer cameraBuffer_;
     LightManager defaultLights_;
     LightManager *lights_ = nullptr;
