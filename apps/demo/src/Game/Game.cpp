@@ -1,5 +1,6 @@
 #include "Game.h"
 
+#include <algorithm>
 #include <functional>
 #include <stdexcept>
 
@@ -18,7 +19,14 @@ namespace
 constexpr const char *kShaderDirectory = GET_RESOURCE_PATH("shader/rhi");
 } // namespace
 
-Game::Game()
+namespace
+{
+constexpr int kHeadlessWidth = 1280;
+constexpr int kHeadlessHeight = 720;
+constexpr float kHeadlessStep = 1.0f / 60.0f;
+} // namespace
+
+Game::Game(bool headlessMode) : headless(headlessMode)
 {
     LOG_TRACE("Initializing window");
     rhi::DeviceDesc desc;
@@ -28,12 +36,18 @@ Game::Game()
 #else
     desc.validation = false;
 #endif
-    if (window.Init([&]() { (void)rhi::prepareWindowHints(desc); }) != 0)
+    if (headless)
     {
-        throw std::runtime_error("Failed to initialize window");
+        desc.surface.size = {kHeadlessWidth, kHeadlessHeight}; // backbuffer hors écran, pas de fenêtre
     }
-
-    desc.surface.nativeWindow = window.GetWindow();
+    else
+    {
+        if (window.Init([&]() { (void)rhi::prepareWindowHints(desc); }) != 0)
+        {
+            throw std::runtime_error("Failed to initialize window");
+        }
+        desc.surface.nativeWindow = window.GetWindow();
+    }
     auto created = rhi::createDevice(desc);
     if (!created)
     {
@@ -124,9 +138,9 @@ void Game::refreshViewSize()
 {
     constexpr int kCaptureWidth = 1280;
     constexpr int kCaptureHeight = 720;
-    const bool capturing = !this->captureDirectory.empty();
-    this->viewWidth = capturing ? kCaptureWidth : *window.GetWidthptr();
-    this->viewHeight = capturing ? kCaptureHeight : *window.GetHeightptr();
+    const bool fixedSize = !this->captureDirectory.empty() || this->headless;
+    this->viewWidth = fixedSize ? kCaptureWidth : *window.GetWidthptr();
+    this->viewHeight = fixedSize ? kCaptureHeight : *window.GetHeightptr();
 }
 
 void Game::enableCapture(std::string directory, std::uint32_t frames)
@@ -137,6 +151,22 @@ void Game::enableCapture(std::string directory, std::uint32_t frames)
 
 void Game::run()
 {
+    if (headless)
+    {
+        // Sans fenêtre : captureFrames images à pas de temps fixe (déterministe), puis la capture éventuelle.
+        for (std::uint32_t frame = 0; frame < std::max(captureFrames, 1u); ++frame)
+        {
+            this->update();
+            if (!this->beginFrame())
+            {
+                LOG_ERROR(1, "Headless: the frame could not be started");
+                return;
+            }
+            Profiler::ProfileGPU("Render", &Game::render, this);
+            this->endFrame();
+        }
+        return;
+    }
     while (!window.ShouldClose())
     {
         if (!this->window.NewFrame())
@@ -213,12 +243,15 @@ void Game::processInput()
 
 void Game::update()
 {
-    this->processInput();
-
-    const double fps = this->window.GetFPS();
-    const float deltaTime = fps > 0.0 ? static_cast<float>(1.0 / fps) : 1.0f / 60.0f;
+    float deltaTime = kHeadlessStep;
     this->refreshViewSize();
-    this->cameraController.update(this->window, this->camera, deltaTime, this->viewWidth, this->viewHeight);
+    if (!headless)
+    {
+        this->processInput();
+        const double fps = this->window.GetFPS();
+        deltaTime = fps > 0.0 ? static_cast<float>(1.0 / fps) : kHeadlessStep;
+        this->cameraController.update(this->window, this->camera, deltaTime, this->viewWidth, this->viewHeight);
+    }
 
     this->world->Update();
     UI::Manager::Instance().Update(deltaTime, this->viewWidth, this->viewHeight);

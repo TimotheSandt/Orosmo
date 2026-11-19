@@ -24,7 +24,8 @@
 class Game
 {
   public:
-    Game();
+    // `headless` (PLAT-04) : aucune fenêtre ; périphérique hors écran 1280x720, pas de temps fixe, pas d'entrées.
+    explicit Game(bool headless = false);
     ~Game();
 
     void init();
@@ -74,4 +75,5 @@ class Game
     std::uint32_t captureFrames = 0;
     std::uint32_t renderedFrames = 0;
     bool captureDone = false;
+    bool headless = false;
 };

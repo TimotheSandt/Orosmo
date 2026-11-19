@@ -80,12 +80,17 @@ int main(int argc, char **argv)
 
         int exitCode = EXIT_SUCCESS;
         {
-            Game game;
+            Game game(launchOptions.headless);
             LOG_INFO("Starting game with graphics API: ", GraphicsAPIToString(selectedApi));
             // The seed is chosen HERE, explicitly (rule 9: no clock inside the generation). Captures use seed 1 unless
             // given; otherwise a random seed is drawn and logged so that the terrain can be replayed with --seed N.
             std::uint32_t terrainSeed = 1u;
-            if (!launchOptions.captureDirectory.empty())
+            if (launchOptions.headless)
+            {
+                game.enableCapture(captureDirectory, launchOptions.captureFrames); // sans dossier : seulement le nombre d'images
+                terrainSeed = launchOptions.seed.value_or(1u);
+            }
+            else if (!launchOptions.captureDirectory.empty())
             {
                 game.enableCapture(captureDirectory, launchOptions.captureFrames);
                 terrainSeed = launchOptions.seed.value_or(1u);

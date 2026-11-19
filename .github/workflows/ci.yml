@@ -156,6 +156,12 @@ jobs:
           python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720.png ci-capture/scene.png \
             --tolerance 8 --max-diff-percent 2 --diff-out ci-capture/diff.png
 
+      - name: Headless capture (PLAT-04, no window) identical to the windowed one
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" \
+            apps/demo/bin/debug/main --api opengl --headless --capture "$PWD/ci-capture-headless" --capture-frames 5
+          python3 tools/compare_png.py ci-capture/scene.png ci-capture-headless/scene.png
+
       - name: Tool tests (Python)
         run: python3 -m unittest discover -s tests/tools
 
