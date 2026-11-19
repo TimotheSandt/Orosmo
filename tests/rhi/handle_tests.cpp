@@ -4,6 +4,8 @@
 #include <engine/rhi/device.hpp>
 #include <engine/rhi/handle.hpp>
 
+#include "support/result_support.hpp"
+
 using namespace engine::rhi;
 
 TEST_SUITE("rhi/handle")
@@ -105,6 +107,6 @@ TEST_SUITE("rhi/device")
         desc.backend = Backend::kVulkan;
         auto device = createDevice(desc);
         REQUIRE_FALSE(device.has_value());
-        CHECK((device.error().code == engine::core::ErrorCode::kUnsupported));
+        CHECK((tests::errorOf(device) == engine::core::ErrorCode::kUnsupported));
     }
 }

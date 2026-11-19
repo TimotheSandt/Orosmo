@@ -14,18 +14,18 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
-| CORE-01 | Logger (pile d'appels, dédoublonnage, couleurs, `<stacktrace>`) | P0 | Existe déjà. Niveaux, sortie fichier, thread-safe, testé. | Fait |
+| CORE-01 | Logger (pile d'appels, dédoublonnage, couleurs, `<stacktrace>`) | P0 | Existe déjà. Niveaux, sortie fichier, thread-safe, testé. | Fait — preuve : `docs/STATUS.md`, « M1 » |
 | CORE-02 | Gestion d'erreurs | P0 | `std::expected` pour les erreurs attendues ; assertions avec message ; aucune exception dans le flux normal. | Partiel |
-| CORE-03 | Allocateurs | P1 | Arène par image et pool d'objets ; test de non-fuite ; utilisation documentée. | Fait |
-| CORE-04 | Système de tâches | P0 | Pool de threads, `submit`, dépendances, attente d'un groupe, arrêt propre. Test de charge. | Fait |
+| CORE-03 | Allocateurs | P1 | Arène par image et pool d'objets ; test de non-fuite ; utilisation documentée. | Fait — preuve : `docs/STATUS.md`, « M1 » |
+| CORE-04 | Système de tâches | P0 | Pool de threads, `submit`, dépendances, attente d'un groupe, arrêt propre. Test de charge. | Fait — preuve : `docs/STATUS.md`, « M1 » |
 | CORE-05 | Profilage | P1 | Marqueurs CPU, minuteries GPU (via RHI), export vers un outil (Tracy ou équivalent) ou fichier trace. | Partiel |
-| CORE-06 | Configuration | P1 | Réglages et arguments de ligne de commande ; lecture/écriture JSON ; valeurs par défaut documentées. | Fait |
-| CORE-07 | Temps | P0 | Horloge, pas fixe pour la simulation, delta variable pour le rendu, test déterministe. | Fait |
-| CORE-08 | Événements | P1 | Bus d'événements typé, sans allocation par événement dans le cas courant. | Fait |
-| CORE-09 | Mathématiques | P0 | Vecteurs, matrices, quaternions en `float` ; **`double` pour les positions mondiales** ; conversions explicites. | Fait |
-| CORE-10 | Gestionnaire de ressources | P0 | Handles avec génération, chargement asynchrone, comptage, rechargement à chaud. | Fait |
-| CORE-11 | Système de fichiers virtuel | P1 | Chemins logiques (`res://`, `user://`), indépendants de l'OS. | Fait |
-| CORE-12 | Sérialisation et réflexion | P1 | JSON lisible et binaire compact ; versionnage ; **réflexion des champs** (nom, type, plage) utilisée par l'interface automatique et la migration d'état. | Fait |
+| CORE-06 | Configuration | P1 | Réglages et arguments de ligne de commande ; lecture/écriture JSON ; valeurs par défaut documentées. | Fait — preuve : `docs/STATUS.md`, « M1 » |
+| CORE-07 | Temps | P0 | Horloge, pas fixe pour la simulation, delta variable pour le rendu, test déterministe. | Fait — preuve : `docs/STATUS.md`, « M1 » |
+| CORE-08 | Événements | P1 | Bus d'événements typé, sans allocation par événement dans le cas courant. | Fait — preuve : `docs/STATUS.md`, « M1 » |
+| CORE-09 | Mathématiques | P0 | Vecteurs, matrices, quaternions en `float` ; **`double` pour les positions mondiales** ; conversions explicites. | Fait — preuve : `docs/STATUS.md`, « M1 » |
+| CORE-10 | Gestionnaire de ressources | P0 | Handles avec génération, chargement asynchrone, comptage, rechargement à chaud. | Fait — preuve : `docs/STATUS.md`, « M1 » |
+| CORE-11 | Système de fichiers virtuel | P1 | Chemins logiques (`res://`, `user://`), indépendants de l'OS. | Fait — preuve : `docs/STATUS.md`, « M1 » |
+| CORE-12 | Sérialisation et réflexion | P1 | JSON lisible et binaire compact ; versionnage ; **réflexion des champs** (nom, type, plage) utilisée par l'interface automatique et la migration d'état. | Fait — preuve : `docs/STATUS.md`, « M1 » |
 | CORE-13 | Observateur de fichiers | P1 | Notifie les changements (shaders, thèmes, interface, paramètres, bibliothèque de jeu) sur les trois systèmes. | Partiel |
 
 ## B. Plateforme et entrées (`platform`)
@@ -43,23 +43,23 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
 | RHI-01 | Interface RHI | P0 | Interface décrite en `03` ; aucun type d'API (`GLuint`, `VkBuffer`…) dans les en-têtes publics. | Partiel |
-| RHI-02 | Backend OpenGL 4.3+ | P0 | Reprend le rendu existant derrière le RHI ; images de référence identiques à l'ancien rendu (tolérance définie). | Fait (OpenGL) |
-| RHI-03 | Backend Vulkan | P0 | Parité de fonctionnalités avec OpenGL ; couches de validation silencieuses ; mémoire via VMA. | Partiel |
+| RHI-02 | Backend OpenGL 4.3+ | P0 | Reprend le rendu existant derrière le RHI ; images de référence identiques à l'ancien rendu (tolérance définie). | Fait (OpenGL) — preuve : `docs/STATUS.md`, « M2 B6 » |
+| RHI-03 | Backend Vulkan | P0 | Parité de fonctionnalités avec OpenGL ; couches de validation silencieuses ; mémoire via VMA. | Absent (ancien backend retiré du build et archivé, A1 ; réécriture en M4) |
 | RHI-04 | Choix du backend à l'exécution | P0 | `--backend=vulkan|opengl|metal`, repli documenté, `Capabilities` interrogeable. | Partiel |
 | RHI-05 | Buffers, textures (2D, tableau, cube, 3D, mips), échantillonneurs | P0 | Création, mise à jour, copie, génération de mips ; formats portables listés. | Partiel |
 | RHI-06 | Pipelines graphiques et de calcul | P0 | État explicite ; cache de pipelines en mémoire **et sur disque**. | Partiel |
 | RHI-07 | Groupes de liaison | P0 | Modèle de liaison à trois groupes (voir `03`) traduit par chaque backend. | Partiel |
 | RHI-08 | Passes de rendu et swapchain | P0 | Passes décrites par attachements ; redimensionnement sans fuite ; vsync réglable. | Partiel |
-| RHI-09 | Compute | P0 | Dispatch direct, tampons de stockage, barrières gérées par le RHI ; taille de groupe lue dans `Capabilities`. | Fait (OpenGL) |
+| RHI-09 | Compute | P0 | Dispatch direct, tampons de stockage, barrières gérées par le RHI ; taille de groupe lue dans `Capabilities`. | Fait (OpenGL) — preuve : `docs/STATUS.md`, « M2 lot A » |
 | RHI-10 | Dessin instancié et indirect | P0 | `drawIndexed` instancié ; `drawIndirect` avec compteur (multi-draw indirect). | Partiel |
 | RHI-11 | Minuteries GPU et noms de debug | P1 | Requêtes de temps par passe ; noms visibles dans RenderDoc. | Partiel |
 | RHI-12 | Pipeline de shaders | P0 | GLSL → SPIR-V hors ligne → SPIRV-Cross (MSL, GLSL) ; réflexion des liaisons ; inclusions ; rechargement à chaud. | Partiel |
 | RHI-13 | Backend Metal | P2 | Via MoltenVK validé d'abord ; backend natif seulement si les mesures le justifient. | Absent |
 | RHI-14 | Tests de rendu | P0 | Images de référence par backend, comparaison automatisée, rapport de différence. | Partiel |
-| RHI-15 | Rendu vers plusieurs cibles (MRT) | P0 | Jusqu'à 8 attachements couleur (lus dans `Capabilities`) + profondeur, format et opérations par cible ; sorties distinctes dans un même shader. | Fait (OpenGL) |
+| RHI-15 | Rendu vers plusieurs cibles (MRT) | P0 | Jusqu'à 8 attachements couleur (lus dans `Capabilities`) + profondeur, format et opérations par cible ; sorties distinctes dans un même shader. | Fait (OpenGL) — preuve : `docs/STATUS.md`, « M2 B4 » |
 | RHI-16 | Textures 3D et images de stockage | P0 | Lecture/écriture en compute ; formats flottants 16 et 32 bits, `RG16F`, `RGBA16F`, `R32F`, `R32UI` garantis. | Partiel |
-| RHI-17 | Dispatch indirect et groupes dynamiques | P1 | `dispatchIndirect` ; offsets dynamiques des tampons. | Fait (OpenGL) |
-| RHI-18 | Capacités optionnelles réservées | P1 | `Capabilities` expose `rayQuery`, `accelerationStructure`, `bindless`, `meshShader`, `bufferDeviceAddress`, `sparseResources` (toutes à `false` tant que non implémentées) ; le moteur ne suppose jamais leur présence. | Fait |
+| RHI-17 | Dispatch indirect et groupes dynamiques | P1 | `dispatchIndirect` ; offsets dynamiques des tampons. | Fait (OpenGL) — preuve : `docs/STATUS.md`, « M2 lot A » |
+| RHI-18 | Capacités optionnelles réservées | P1 | `Capabilities` expose `rayQuery`, `accelerationStructure`, `bindless`, `meshShader`, `bufferDeviceAddress`, `sparseResources` (toutes à `false` tant que non implémentées) ; le moteur ne suppose jamais leur présence. | Fait — preuve : `docs/STATUS.md`, « M2 B6 » |
 | RHI-19 | Transferts asynchrones | P2 | File de transfert séparée quand disponible ; chargement sans saccade. | Absent |
 
 ## D. Rendu 3D (`renderer`)
@@ -214,7 +214,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | TOOL-02 | Générateur en ligne de commande | P0 | `terrain-gen --seed N --size S --out fichier` sans fenêtre ; sorties de TER-11 ; code de retour fiable. | Absent |
 | TOOL-03 | Capture d'écran | P0 | Image depuis le rendu ; utilisée par RHI-14. (Priorité passée de P2 à P0 par l'auteur le 2026-11-17 : comparer les images dès le début.) | Partiel |
 | BLD-01 | Construction multiplateforme | P0 | Un seul chemin de build documenté pour Windows, Linux, macOS ; vcpkg ; types debug/dev/release. L'IA peut **proposer** CMake (avec presets) en gardant le Makefile en enveloppe, sans migrer sans accord. | Partiel |
-| REPO-01 | Dépôt propre et structuré | P0 | M00 de `docs/06` : `.gitignore`, `.gitattributes`, `.editorconfig`, `.clang-format`, `README.md` racine, `third_party/` documenté, aucun fichier généré ou binaire inutile suivi, historique conservé, comportement identique à la référence. | Fait (confirmé par l'auteur le 2026-11-17) |
+| REPO-01 | Dépôt propre et structuré | P0 | M00 de `docs/06` : `.gitignore`, `.gitattributes`, `.editorconfig`, `.clang-format`, `README.md` racine, `third_party/` documenté, aucun fichier généré ou binaire inutile suivi, historique conservé, comportement identique à la référence. | Fait (confirmé par l'auteur le 2026-11-17) — preuve : `docs/STATUS.md`, « M0 » |
 | GIT-01 | Flux de branches | P0 | `main` réservé à l'auteur, `dev` d'intégration, une branche par fonctionnalité, commits au format `type(ID): résumé`, fin de jalon par merge request de l'auteur (détail en `docs/06`). | Partiel |
 | BLD-02 | Intégration continue | P0 | Matrice Windows/Linux/macOS : build, tests, vérification des couches. | Partiel |
 | TEST-01 | Tests unitaires | P0 | Framework unique (Catch2 ou doctest) ; exécutés en CI ; couverture de `core` et `world`. | Partiel |

@@ -1,0 +1,12 @@
+# Après la revue CodeRabbit de la PR #7 (G97 à G100) : clone propre de fix/G100-tests-docs (61ac423, contient G98 et G99),
+# Linux g++ 13.3, Mesa Intel Arc (OpenGL 4.6)
+# make all-debug : 0 avertissement (-Werror)
+# make demo-test
+[doctest] test cases:  304 |  304 passed | 0 failed | 0 skipped
+[doctest] assertions: 5009 | 5009 passed | 0 failed |
+# make demo-test SANITIZE=address,undefined (après fclean) : aucun rapport ASan/UBSan
+[doctest] test cases:  304 |  304 passed | 0 failed | 0 skipped
+[doctest] assertions: 5009 | 5009 passed | 0 failed |
+# make demo-test-unit (sans DISPLAY) : 208 cas verts ; make demo-test-gpu : 96 cas verts
+# make check (bloquant) : couches 0 violation (136 fichiers), isolation des API 0, en-têtes autonomes 0
+# capture fenêtrée et capture --headless vs reference/scene-opengl-seed1-1280x720.png : 0 pixel d'écart, écart max 0/255

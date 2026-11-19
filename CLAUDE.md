@@ -74,7 +74,8 @@ make run                                # lance la démo (OpenGL par défaut ; -
 # 3. Tests et contrôles
 make demo-test                          # doctest : 117 cas (construit les archives release d'abord)
 make demo-test SANITIZE=address,undefined   # ASan + UBSan (partir d'un arbre propre : make fclean)
-make check                              # dépôt, couches, isolation des API, en-têtes autonomes (mode avertissement)
+make check                              # dépôt, couches, isolation des API, en-têtes autonomes (bloquant depuis M2)
+make demo-test-unit                     # tests sans GPU ni fenêtre ; make demo-test-gpu : seulement l'intégration graphique
 python3 -m unittest discover -s tests/tools # outils Python (compare_png)
 
 # 4. Images de référence

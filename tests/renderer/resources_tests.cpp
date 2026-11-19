@@ -4,6 +4,7 @@
 
 #include "support/test_support.hpp"
 #include "rhi/gpu_fixture.hpp"
+#include "support/temp_dir.hpp"
 
 #include <engine/renderer/gpu_buffer.hpp>
 #include <engine/renderer/gpu_timer.hpp>
@@ -16,7 +17,6 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <thread>
 
 namespace fs = std::filesystem;
 namespace rd = engine::renderer;
@@ -31,22 +31,9 @@ std::string redFs(const char *color = "vec4(1.0, 0.0, 0.0, 1.0)")
 {
     return std::string("#version 450\nlayout(location = 0) out vec4 c;\nvoid main() { c = ") + color + "; }\n";
 }
-
-struct TempDir
+struct TempDir : tests::TempDir
 {
-    fs::path path;
-    TempDir()
-    {
-        path = fs::temp_directory_path() / ("engine_renderer_" + std::to_string(reinterpret_cast<std::uintptr_t>(this)));
-        fs::remove_all(path);
-        fs::create_directories(path);
-    }
-    ~TempDir()
-    {
-        std::error_code ec;
-        fs::remove_all(path, ec);
-    }
-    void write(const std::string &name, const std::string &text) const { std::ofstream(path / name, std::ios::trunc | std::ios::binary) << text; }
+    TempDir() : tests::TempDir("engine_renderer") {}
 };
 
 // Dessine un triangle plein écran dans `target` (cible RenderTarget) avec `pipeline`, ciseau limité au coin bas-gauche si demandé.
@@ -107,7 +94,7 @@ TEST_SUITE("renderer/buffer")
             CHECK(moved.valid());
             CHECK_FALSE(moved.update(100, bytesOf(patch)).has_value()); // hors limites
             rd::GpuBuffer empty;
-            CHECK((empty.update(0, bytesOf(patch)).error().code == ErrorCode::kInvalidArgument));
+            CHECK((tests::errorOf(empty.update(0, bytesOf(patch))) == ErrorCode::kInvalidArgument));
         }
         CHECK(gpu->stats().buffers == 0); // détruit à la sortie du bloc
         BufferDesc bad;
@@ -149,7 +136,7 @@ TEST_SUITE("renderer/texture")
             CHECK(rgba(gpu.pixel(linear->handle(), 0, 0, 3))[0] == 200); // le dernier mip existe et vaut la moyenne
 
             std::vector<std::uint8_t> wrong(10);
-            CHECK((linear->upload(std::as_bytes(std::span(wrong))).error().code == ErrorCode::kInvalidArgument));
+            CHECK((tests::errorOf(linear->upload(std::as_bytes(std::span(wrong)))) == ErrorCode::kInvalidArgument));
             std::vector<std::uint8_t> other(8 * 8 * 4, 50);
             REQUIRE(linear->upload(std::as_bytes(std::span(other))).has_value());
             CHECK(static_cast<std::uint8_t>((*linear->readback())[0]) == 50);
@@ -228,13 +215,13 @@ void main() { color = vec4(1.0, 0.0, 0.0, 1.0); id = 9u; })";
         REQUIRE(pipe.has_value());
         drawFullscreen(gpu, *target, *pipe, true); // ciseau : coin BAS gauche (repère du RHI)
         // Lecture depuis le coin HAUT gauche : y = hauteur - 1 est la ligne du bas.
-        CHECK((*target->readPixelRgba8(0, 0, 7)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
-        CHECK((*target->readPixelRgba8(0, 0, 0)) == std::array<std::uint8_t, 4>{0, 0, 0, 255});
-        CHECK(*target->readPixelUInt(1, 1, 6) == 9);
-        CHECK(*target->readPixelUInt(1, 7, 0) == 0);
-        CHECK((target->readPixelUInt(0, 0, 0).error().code == ErrorCode::kInvalidArgument)); // pas R32Uint
-        CHECK((target->readPixelRgba8(1, 0, 0).error().code == ErrorCode::kInvalidArgument));
-        CHECK((target->readPixelUInt(1, 8, 0).error().code == ErrorCode::kOutOfRange));
+        CHECK(tests::valueOf(target->readPixelRgba8(0, 0, 7)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
+        CHECK(tests::valueOf(target->readPixelRgba8(0, 0, 0)) == std::array<std::uint8_t, 4>{0, 0, 0, 255});
+        CHECK(tests::valueOf(target->readPixelUInt(1, 1, 6)) == 9);
+        CHECK(tests::valueOf(target->readPixelUInt(1, 7, 0)) == 0);
+        CHECK((tests::errorOf(target->readPixelUInt(0, 0, 0)) == ErrorCode::kInvalidArgument)); // pas R32Uint
+        CHECK((tests::errorOf(target->readPixelRgba8(1, 0, 0)) == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(target->readPixelUInt(1, 8, 0)) == ErrorCode::kOutOfRange));
 
         REQUIRE(target->resize(16, 4).has_value());
         CHECK(target->width() == 16);
@@ -251,7 +238,7 @@ void main() { color = vec4(1.0, 0.0, 0.0, 1.0); id = 9u; })";
 
         rd::RenderTargetInfo tooMany;
         tooMany.colorFormats.assign(gpu->capabilities().maxColorAttachments + 1, Format::kRGBA8Unorm);
-        CHECK((rd::RenderTarget::create(*gpu.device, tooMany).error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(rd::RenderTarget::create(*gpu.device, tooMany)) == ErrorCode::kOutOfRange));
         CHECK(target->valid()); // la cible précédente reste utilisable après un reconfigure échoué
         CHECK_FALSE(target->reconfigure(tooMany).has_value());
         CHECK(target->valid());
@@ -314,7 +301,7 @@ TEST_SUITE("renderer/image")
         CHECK_FALSE(rd::loadPng(dir.path / "missing.png").has_value());
 
         const TextureHandle wrong = gpu.target(Format::kRG16Float, {2, 2}, "rg");
-        CHECK((rd::readImage(*gpu.device, wrong).error().code == ErrorCode::kUnsupported));
+        CHECK((tests::errorOf(rd::readImage(*gpu.device, wrong)) == ErrorCode::kUnsupported));
         gpu.expectNoValidationErrors();
     }
 }
@@ -371,7 +358,7 @@ void main() { c = texture(albedo, vec2(0.5)) * pc.tint; })";
         CHECK(library.pollHotReload() == 0);
 
         rd::PipelineCache cache(*gpu.device);
-        rd::RenderTarget target = *rd::RenderTarget::create(*gpu.device, {.size = {4, 4}, .depth = false, .debugName = "t"});
+        rd::RenderTarget target = tests::valueOf(rd::RenderTarget::create(*gpu.device, {.size = {4, 4}, .depth = false, .debugName = "t"}));
         rd::GraphicsState state;
         state.raster.cull = CullMode::kNone;
         auto first = cache.graphics(**program, state);
@@ -380,7 +367,7 @@ void main() { c = texture(albedo, vec2(0.5)) * pc.tint; })";
         CHECK(cache.hits() == 1);
         CHECK(cache.misses() == 1);
         drawFullscreen(gpu, target, *first);
-        CHECK((*target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
+        CHECK(tests::valueOf(target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
 
         dir.write("c.frag", redFs("vec4(0.0, 1.0, 0.0, 1.0)")); // rechargement à chaud : devient vert
         CHECK(library.pollHotReload() == 1);
@@ -390,7 +377,7 @@ void main() { c = texture(albedo, vec2(0.5)) * pc.tint; })";
         CHECK(cache.misses() == 2);
         CHECK(cache.size() == 1); // le pipeline de la révision 1 a été détruit
         drawFullscreen(gpu, target, *second);
-        CHECK((*target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{0, 255, 0, 255});
+        CHECK(tests::valueOf(target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{0, 255, 0, 255});
 
         dir.write("c.frag", "#version 450\nvoid main() { nonsense }\n"); // édition cassée
         CHECK(library.pollHotReload() == 0);
@@ -398,14 +385,14 @@ void main() { c = texture(albedo, vec2(0.5)) * pc.tint; })";
         CHECK((*program)->revision() == 2); // inchangé
         REQUIRE(cache.graphics(**program, state).has_value());
         CHECK(cache.hits() >= 2);
-        drawFullscreen(gpu, target, *cache.graphics(**program, state));
-        CHECK((*target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{0, 255, 0, 255}); // l'ancien shader tourne encore
+        drawFullscreen(gpu, target, tests::valueOf(cache.graphics(**program, state)));
+        CHECK(tests::valueOf(target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{0, 255, 0, 255}); // l'ancien shader tourne encore
 
         dir.write("c.frag", redFs("vec4(0.0, 0.0, 1.0, 1.0)")); // corrigé : bleu
         CHECK(library.pollHotReload() == 1);
         CHECK_FALSE(library.lastError().has_value());
-        drawFullscreen(gpu, target, *cache.graphics(**program, state));
-        CHECK((*target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{0, 0, 255, 255});
+        drawFullscreen(gpu, target, tests::valueOf(cache.graphics(**program, state)));
+        CHECK(tests::valueOf(target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{0, 0, 255, 255});
 
         // Autre état fixe => autre pipeline ; clear invalide les handles.
         rd::GraphicsState blended = state;
@@ -445,9 +432,9 @@ void main() { c = texture(albedo, vec2(0.5)) * pc.tint; })";
         REQUIRE(a.has_value());
         REQUIRE(b.has_value());
         CHECK(*a != *b);
-        rd::RenderTarget target = *rd::RenderTarget::create(*gpu.device, {.size = {4, 4}, .depth = false, .debugName = "t"});
+        rd::RenderTarget target = tests::valueOf(rd::RenderTarget::create(*gpu.device, {.size = {4, 4}, .depth = false, .debugName = "t"}));
         drawFullscreen(gpu, target, *b);
-        CHECK((*target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{0, 255, 0, 255});
+        CHECK(tests::valueOf(target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{0, 255, 0, 255});
         gpu.expectNoValidationErrors();
     }
 
@@ -479,9 +466,9 @@ void main() { c = texture(albedo, vec2(0.5)) * pc.tint; })";
         const std::size_t misses = cache.misses();
         CHECK(cache.graphics(**program, state).has_value());
         CHECK(cache.misses() == misses); // la révision qui ne se lie pas n'est pas retentée à chaque image
-        rd::RenderTarget target = *rd::RenderTarget::create(*gpu.device, {.size = {4, 4}, .depth = false, .debugName = "t"});
+        rd::RenderTarget target = tests::valueOf(rd::RenderTarget::create(*gpu.device, {.size = {4, 4}, .depth = false, .debugName = "t"}));
         drawFullscreen(gpu, target, *kept);
-        CHECK((*target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
+        CHECK(tests::valueOf(target.readPixelRgba8(0, 1, 1)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
     }
 
     TEST_CASE("ShaderLibrary validates the stages changed in one poll together (both switch a binding from UBO to texture) (G99)")
@@ -557,7 +544,7 @@ void main() { c = texture(albedo, vec2(0.5)) * pc.tint; })";
         info.colorFormats = {Format::kD32Float};
         auto r = target->reconfigure(info);
         REQUIRE_FALSE(r.has_value());
-        CHECK((r.error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(r) == ErrorCode::kInvalidArgument));
         CHECK(target->color(0) == before);
         CHECK_FALSE(rd::RenderTarget::create(*gpu.device, {.size = {4, 4}, .colorFormats = {Format::kD32Float}, .depth = false, .depthSampled = false, .debugName = "depth-as-color"}).has_value());
     }
@@ -580,7 +567,7 @@ void main() { data[gl_GlobalInvocationID.x] = 7u; })");
         rd::PipelineCache cache(*gpu.device);
         auto pipe = cache.compute(**program);
         REQUIRE(pipe.has_value());
-        CHECK((cache.graphics(**program, {}).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(cache.graphics(**program, {})) == ErrorCode::kInvalidArgument));
         const BufferHandle ssbo = gpu.buffer(BufferUsage::kStorage | BufferUsage::kCopySrc, {}, 64);
         BindGroupDesc g;
         g.entries = {{.binding = 1, .type = BindingType::kStorageBuffer, .buffer = ssbo}};
@@ -621,12 +608,8 @@ TEST_SUITE("renderer/gpu_timer")
                 e.endRenderPass();
                 timer.end(e);
             });
-        std::optional<std::chrono::nanoseconds> elapsed;
-        for (int i = 0; i < 200 && !(elapsed = timer.elapsed()); ++i)
-        {
-            (void)gpu->present();
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
-        }
+        gpu->waitIdle(); // synchronisation explicite : plus d'attente bornée par une horloge (tests déterministes)
+        const std::optional<std::chrono::nanoseconds> elapsed = timer.elapsed();
         REQUIRE(elapsed.has_value());
         CHECK(elapsed->count() >= 0);
         CHECK(timer.isReady());
@@ -661,11 +644,7 @@ TEST_SUITE("renderer/gpu_timer/profiler")
         timer->End();
         factory.setEncoder(nullptr);
         REQUIRE(gpu->submit(std::move(encoder)).has_value());
-        for (int i = 0; i < 200 && !timer->IsReady(); ++i)
-        {
-            (void)gpu->present();
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
-        }
+        gpu->waitIdle();
         REQUIRE(timer->IsReady());
         CHECK(timer->GetElapsedTime().count() >= 0);
         gpu.expectNoValidationErrors();

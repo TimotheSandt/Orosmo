@@ -5,6 +5,8 @@
 
 #include <engine/rhi/device.hpp>
 
+#include "support/result_support.hpp"
+
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -51,6 +53,9 @@ struct Gpu
             MESSAGE("no OpenGL 4.3 context: ", created.error().message);
         }
     }
+
+    // Adopte un périphérique déjà créé (fenêtré) : aucun second contexte n'est créé, le contexte courant reste le sien.
+    explicit Gpu(std::unique_ptr<Device> adopted) : device(std::move(adopted)) {}
 
     Device &operator*() { return *device; }
     Device *operator->() { return device.get(); }

@@ -142,7 +142,7 @@ jobs:
         run: make -j"$(nproc)" all-debug
 
       - name: Tests
-        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test
+        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test
 
       - name: Capture reference images (OpenGL, Mesa llvmpipe under Xvfb)
         run: |
@@ -242,7 +242,7 @@ jobs:
         run: make -j"$(nproc)" all-debug WERROR=0
 
       - name: Tests
-        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test WERROR=0
+        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test WERROR=0
 
   # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
   sanitizers:
@@ -292,7 +292,7 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test SANITIZE=address,undefined
+        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test SANITIZE=address,undefined
 
   # ── Windows and macOS: same entry points through vcpkg manifest mode. ─────────────────────
   # `continue-on-error`: these two jobs have never been observed green (no Windows/macOS machine was

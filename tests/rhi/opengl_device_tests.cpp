@@ -35,7 +35,9 @@ TEST_SUITE("rhi/opengl/device")
         CHECK(c.timestampQueries);
         CHECK(c.maxComputeInvocations >= 1);
         CHECK(c.maxComputeWorkGroupSize[0] >= 1);
-        CHECK(c.minUniformAlignment >= 16);
+        // OpenGL 4.3 permet un alignement inférieur à 16 : seule une puissance de deux non nulle est garantie.
+        CHECK(c.minUniformAlignment >= 1);
+        CHECK((c.minUniformAlignment & (c.minUniformAlignment - 1)) == 0);
         // RHI-18 : jamais supposées
         CHECK_FALSE(c.rayQuery);
         CHECK_FALSE(c.accelerationStructure);
@@ -65,15 +67,15 @@ TEST_SUITE("rhi/opengl/device")
         CHECK(words[2] == 99);
         CHECK(words[3] == 4);
 
-        CHECK((gpu->updateBuffer(b, 30, bytesOf(patch)).error().code == ErrorCode::kOutOfRange));
-        CHECK((gpu->readBuffer(b, 0, 64).error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(gpu->updateBuffer(b, 30, bytesOf(patch))) == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(gpu->readBuffer(b, 0, 64)) == ErrorCode::kOutOfRange));
 
         gpu->destroy(b);
-        CHECK((gpu->updateBuffer(b, 0, bytesOf(patch)).error().code == ErrorCode::kNotFound));
-        CHECK((gpu->readBuffer(b, 0, 4).error().code == ErrorCode::kNotFound));
+        CHECK((tests::errorOf(gpu->updateBuffer(b, 0, bytesOf(patch))) == ErrorCode::kNotFound));
+        CHECK((tests::errorOf(gpu->readBuffer(b, 0, 4)) == ErrorCode::kNotFound));
 
         BufferDesc bad;
-        CHECK((gpu->createBuffer(bad).error().code == ErrorCode::kInvalidArgument)); // taille 0
+        CHECK((tests::errorOf(gpu->createBuffer(bad)) == ErrorCode::kInvalidArgument)); // taille 0
         gpu.expectNoValidationErrors();
     }
 
@@ -164,22 +166,22 @@ TEST_SUITE("rhi/opengl/device")
         TextureCopy outside;
         outside.offset = {3, 0, 0};
         outside.size = {2, 1, 1};
-        CHECK((gpu->readTexture(*t, outside).error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(gpu->readTexture(*t, outside)) == ErrorCode::kOutOfRange));
         TextureCopy badMip;
         badMip.mipLevel = 3;
-        CHECK((gpu->readTexture(*t, badMip).error().code == ErrorCode::kOutOfRange));
-        CHECK((gpu->updateTexture(*t, region, std::as_bytes(std::span(patch).first(4))).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->readTexture(*t, badMip)) == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(gpu->updateTexture(*t, region, std::as_bytes(std::span(patch).first(4)))) == ErrorCode::kInvalidArgument));
 
         TextureDesc bad;
         bad.size = {0, 4, 1};
-        CHECK((gpu->createTexture(bad).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->createTexture(bad)) == ErrorCode::kInvalidArgument));
         bad.size = {4, 4, 1};
         bad.mipLevels = 9;
-        CHECK((gpu->createTexture(bad).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->createTexture(bad)) == ErrorCode::kInvalidArgument));
         bad.mipLevels = 1;
         bad.usage = TextureUsage::kStorage;
         bad.format = Format::kRGBA8Srgb; // pas une image de stockage
-        CHECK((gpu->createTexture(bad).error().code == ErrorCode::kUnsupported));
+        CHECK((tests::errorOf(gpu->createTexture(bad)) == ErrorCode::kUnsupported));
         gpu.expectNoValidationErrors();
     }
 
@@ -213,7 +215,7 @@ TEST_SUITE("rhi/opengl/device")
         spirv.language = ShaderLanguage::kSpirv;
         const std::byte word{0x03};
         spirv.code = std::span(&word, 1);
-        CHECK((gpu->createShader(spirv).error().code == ErrorCode::kUnsupported));
+        CHECK((tests::errorOf(gpu->createShader(spirv)) == ErrorCode::kUnsupported));
 
         ShaderDesc broken;
         broken.stage = ShaderStage::kVertex;
@@ -221,7 +223,7 @@ TEST_SUITE("rhi/opengl/device")
         broken.debugName = "broken";
         auto r = gpu->createShader(broken);
         REQUIRE_FALSE(r.has_value());
-        CHECK((r.error().code == ErrorCode::kParse));
+        CHECK((tests::errorOf(r) == ErrorCode::kParse));
         CHECK(r.error().message.find("broken") != std::string::npos);
         // Pas de contrôle de la validation ici : Mesa signale lui-même l'erreur de compilation comme message d'erreur GL_KHR_debug.
         CHECK(gpu->validationErrorCount() <= 2);
@@ -316,7 +318,7 @@ void main() { color = vec4(0.0, 1.0, 0.0, 1.0); motion = vec2(0.5, 0.25); object
             tooMany.colors.push_back({.texture = a});
         }
         encoder->beginRenderPass(tooMany);
-        CHECK((gpu->submit(std::move(encoder)).error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(gpu->submit(std::move(encoder))) == ErrorCode::kOutOfRange));
         gpu.expectNoValidationErrors();
     }
 
@@ -441,7 +443,7 @@ void main() { color = vColor; })";
         encoder->setVertexBuffer(1, inst);
         encoder->drawIndirect(args, 0, 3);
         encoder->endRenderPass();
-        CHECK((gpu->submit(std::move(encoder)).error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(gpu->submit(std::move(encoder))) == ErrorCode::kOutOfRange));
         gpu.expectNoValidationErrors();
     }
 
@@ -543,12 +545,12 @@ void main() { outColor = pc.color; })";
         encoder->beginRenderPass(pass);
         encoder->setPipeline(noDepth);
         encoder->endRenderPass();
-        CHECK((gpu->submit(std::move(encoder)).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->submit(std::move(encoder))) == ErrorCode::kInvalidArgument));
 
         std::vector<std::byte> tooBig(256);
         auto e2 = gpu->createCommandEncoder();
         e2->setPushConstants(tooBig);
-        CHECK((gpu->submit(std::move(e2)).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->submit(std::move(e2))) == ErrorCode::kInvalidArgument));
         gpu.expectNoValidationErrors();
     }
 
@@ -583,12 +585,15 @@ void main() { color = vec4(1.0, 0.0, 0.0, 0.5); })";
     {
         Gpu gpu;
         SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        // Pas d'un bloc de 16 octets arrondi à l'alignement annoncé (qui peut être inférieur à 16 sur OpenGL 4.3).
         const std::uint64_t align = gpu->capabilities().minUniformAlignment;
-        std::vector<std::byte> ubo(align * 2, std::byte{0});
+        REQUIRE(align > 0);
+        const std::uint64_t stride = (16 + align - 1) / align * align;
+        std::vector<std::byte> ubo(stride * 2, std::byte{0});
         const float red[4] = {1, 0, 0, 1};
         const float green[4] = {0, 1, 0, 1};
         std::memcpy(ubo.data(), red, 16);
-        std::memcpy(ubo.data() + align, green, 16);
+        std::memcpy(ubo.data() + stride, green, 16);
         const BufferHandle ubuf = gpu.buffer(BufferUsage::kUniform, ubo, 0, "colors");
         const char *fs = R"(#version 430 core
 layout(std140, binding = 0) uniform U { vec4 color; } u;
@@ -603,7 +608,7 @@ void main() { outColor = u.color; })";
         const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {4, 4});
         for (int i = 0; i < 2; ++i)
         {
-            const std::uint32_t offset = i == 0 ? 0u : static_cast<std::uint32_t>(align);
+            const std::uint32_t offset = i == 0 ? 0u : static_cast<std::uint32_t>(stride);
             gpu.run(
                 [&](CommandEncoder &e)
                 {
@@ -615,13 +620,16 @@ void main() { outColor = u.color; })";
                 });
             CHECK(rgba(gpu.pixel(color, 1, 1)) == (i == 0 ? std::array<std::uint8_t, 4>{255, 0, 0, 255} : std::array<std::uint8_t, 4>{0, 255, 0, 255}));
         }
-        const std::uint32_t misaligned = 4;
-        auto bad = gpu->createCommandEncoder();
-        bad->setBindGroup(0, *group, std::span(&misaligned, 1));
-        CHECK((gpu->submit(std::move(bad)).error().code == ErrorCode::kInvalidArgument));
+        if (align > 1) // un décalage désaligné n'existe que si l'alignement dépasse 1
+        {
+            const auto misaligned = static_cast<std::uint32_t>(align / 2);
+            auto bad = gpu->createCommandEncoder();
+            bad->setBindGroup(0, *group, std::span(&misaligned, 1));
+            CHECK((tests::errorOf(gpu->submit(std::move(bad))) == ErrorCode::kInvalidArgument));
+        }
         auto missing = gpu->createCommandEncoder();
         missing->setBindGroup(0, *group, {});
-        CHECK((gpu->submit(std::move(missing)).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->submit(std::move(missing))) == ErrorCode::kInvalidArgument));
 
         // Texture échantillonnée (groupe 1, binding 0 => emplacement plat 8).
         TextureDesc td;
@@ -665,20 +673,20 @@ void main() { outColor = texture(tex, gl_FragCoord.xy / 2.0); })";
         const BufferHandle vertexOnly = gpu.buffer(BufferUsage::kVertex, {}, 256);
         BindGroupDesc d;
         d.entries = {{.binding = 0, .type = BindingType::kUniformBuffer, .buffer = vertexOnly}};
-        CHECK((gpu->createBindGroup(d).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->createBindGroup(d)) == ErrorCode::kInvalidArgument));
         const BufferHandle ubo = gpu.buffer(BufferUsage::kUniform, {}, 256);
         d.entries = {{.binding = kBindingsPerGroup, .type = BindingType::kUniformBuffer, .buffer = ubo}};
-        CHECK((gpu->createBindGroup(d).error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(gpu->createBindGroup(d)) == ErrorCode::kOutOfRange));
         d.entries = {{.binding = 0, .type = BindingType::kUniformBuffer, .buffer = ubo},
                      {.binding = 0, .type = BindingType::kUniformBuffer, .buffer = ubo}};
-        CHECK((gpu->createBindGroup(d).error().code == ErrorCode::kAlreadyExists));
+        CHECK((tests::errorOf(gpu->createBindGroup(d)) == ErrorCode::kAlreadyExists));
         d.entries = {{.binding = 0, .type = BindingType::kUniformBuffer, .buffer = ubo}};
         auto ok = gpu->createBindGroup(d);
         REQUIRE(ok.has_value());
         gpu->destroy(ubo);
         auto encoder = gpu->createCommandEncoder();
         encoder->setBindGroup(0, *ok, {});
-        CHECK((gpu->submit(std::move(encoder)).error().code == ErrorCode::kNotFound)); // la ressource du groupe a été détruite
+        CHECK((tests::errorOf(gpu->submit(std::move(encoder))) == ErrorCode::kNotFound)); // la ressource du groupe a été détruite
         gpu.expectNoValidationErrors();
     }
 
@@ -710,7 +718,7 @@ void main() { outColor = texture(tex, gl_FragCoord.xy / 2.0); })";
         CHECK(rgba(gpu.pixel(cube, 1, 1, 0, 3)) == std::array<std::uint8_t, 4>{255, 255, 0, 255});
         TextureCopy outside;
         outside.layer = 3;
-        CHECK((gpu->readTexture(array, outside).error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(gpu->readTexture(array, outside)) == ErrorCode::kOutOfRange));
         gpu.expectNoValidationErrors();
     }
 
@@ -723,7 +731,7 @@ void main() { outColor = texture(tex, gl_FragCoord.xy / 2.0); })";
 
         auto drawOutside = gpu->createCommandEncoder();
         drawOutside->draw(3);
-        CHECK((gpu->submit(std::move(drawOutside)).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->submit(std::move(drawOutside))) == ErrorCode::kInvalidArgument));
 
         auto endWithoutBegin = gpu->createCommandEncoder();
         endWithoutBegin->endRenderPass();
@@ -742,7 +750,7 @@ void main() { outColor = texture(tex, gl_FragCoord.xy / 2.0); })";
         mismatch->beginRenderPass(passOn(color));
         mismatch->setPipeline(wrongFormat);
         mismatch->endRenderPass();
-        CHECK((gpu->submit(std::move(mismatch)).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->submit(std::move(mismatch))) == ErrorCode::kInvalidArgument));
 
         // Pipeline détruit : handle périmé.
         gpu->destroy(pipe);
@@ -750,7 +758,7 @@ void main() { outColor = texture(tex, gl_FragCoord.xy / 2.0); })";
         stale->beginRenderPass(passOn(color));
         stale->setPipeline(pipe);
         stale->endRenderPass();
-        CHECK((gpu->submit(std::move(stale)).error().code == ErrorCode::kNotFound));
+        CHECK((tests::errorOf(gpu->submit(std::move(stale))) == ErrorCode::kNotFound));
 
         CHECK_FALSE(gpu->submit(nullptr).has_value());
         gpu.expectNoValidationErrors();
@@ -773,7 +781,7 @@ void main() { outColor = texture(tex, gl_FragCoord.xy / 2.0); })";
         auto all = gpu->readTexture(*again);
         REQUIRE(all.has_value());
         CHECK(all->size() == 10u * 7u * 4u);
-        CHECK((gpu->resize({0, 5}).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->resize({0, 5})) == ErrorCode::kInvalidArgument));
         gpu->destroy(*again); // le backbuffer appartient au périphérique : sans effet
         CHECK(gpu->readTexture(*again).has_value());
         gpu.expectNoValidationErrors();
@@ -844,7 +852,7 @@ void main() { data[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x * 2u + 1u;
         auto big = gpu->createCommandEncoder();
         big->bindComputePipeline(*pipe);
         big->dispatch(gpu->capabilities().maxComputeWorkGroupCount[0] + 1, 1, 1);
-        CHECK((gpu->submit(std::move(big)).error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(gpu->submit(std::move(big))) == ErrorCode::kOutOfRange));
         auto noPipe = gpu->createCommandEncoder();
         noPipe->dispatch(1, 1, 1);
         CHECK_FALSE(gpu->submit(std::move(noPipe)).has_value());
@@ -929,10 +937,10 @@ void main() { ivec3 p = ivec3(gl_GlobalInvocationID); imageStore(img, p, vec4(fl
 
         auto overlap = gpu->createCommandEncoder();
         overlap->copyBuffer(mid, mid, {.srcOffset = 0, .dstOffset = 4, .size = 8});
-        CHECK((gpu->submit(std::move(overlap)).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->submit(std::move(overlap))) == ErrorCode::kInvalidArgument));
         auto noUsage = gpu->createCommandEncoder();
         noUsage->copyBuffer(dst, mid, {.size = 4}); // dst n'a pas CopySrc
-        CHECK((gpu->submit(std::move(noUsage)).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(gpu->submit(std::move(noUsage))) == ErrorCode::kInvalidArgument));
         gpu.expectNoValidationErrors();
     }
 }
@@ -966,10 +974,10 @@ TEST_SUITE("rhi/opengl/timing")
         REQUIRE(t.has_value());
         CHECK((*t)[0] > 0);
         CHECK((*t)[1] >= (*t)[0]);
-        CHECK((gpu->readTimestamps(*pool, 1, 2).error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(gpu->readTimestamps(*pool, 1, 2)) == ErrorCode::kOutOfRange));
         auto bad = gpu->createCommandEncoder();
         bad->writeTimestamp(*pool, 2);
-        CHECK((gpu->submit(std::move(bad)).error().code == ErrorCode::kOutOfRange));
+        CHECK((tests::errorOf(gpu->submit(std::move(bad))) == ErrorCode::kOutOfRange));
         auto unbalanced = gpu->createCommandEncoder();
         unbalanced->endDebugGroup();
         CHECK_FALSE(gpu->submit(std::move(unbalanced)).has_value());
@@ -997,7 +1005,7 @@ TEST_SUITE("rhi/opengl/query")
         REQUIRE(frame.has_value());
         CHECK(gpu->textureDesc(*frame)->size.width == 6);
         gpu->destroy(*t);
-        CHECK((gpu->textureDesc(*t).error().code == ErrorCode::kNotFound));
+        CHECK((tests::errorOf(gpu->textureDesc(*t)) == ErrorCode::kNotFound));
     }
 
     TEST_CASE("timestampsReady is false until the timestamps were written and finished by the GPU")
@@ -1006,12 +1014,12 @@ TEST_SUITE("rhi/opengl/query")
         SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
         auto pool = gpu->createQueryPool(2, "ready");
         REQUIRE(pool.has_value());
-        CHECK_FALSE(*gpu->timestampsReady(*pool, 0, 2));
+        CHECK_FALSE(tests::valueOf(gpu->timestampsReady(*pool, 0, 2)));
         gpu.run([&](CommandEncoder &e) { e.writeTimestamp(*pool, 0); e.writeTimestamp(*pool, 1); });
         gpu->waitIdle();
-        CHECK(*gpu->timestampsReady(*pool, 0, 2));
-        CHECK((gpu->timestampsReady(*pool, 1, 5).error().code == ErrorCode::kOutOfRange));
+        CHECK(tests::valueOf(gpu->timestampsReady(*pool, 0, 2)));
+        CHECK((tests::errorOf(gpu->timestampsReady(*pool, 1, 5)) == ErrorCode::kOutOfRange));
         gpu->destroy(*pool);
-        CHECK((gpu->timestampsReady(*pool, 0, 1).error().code == ErrorCode::kNotFound));
+        CHECK((tests::errorOf(gpu->timestampsReady(*pool, 0, 1)) == ErrorCode::kNotFound));
     }
 }

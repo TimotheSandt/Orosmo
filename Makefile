@@ -26,7 +26,8 @@
 #   make demo-search kw        search vcpkg catalog
 #   make demo-clean / fclean   remove demo build artifacts
 #
-# ── Architecture checks (docs/03 §8) — warning mode until the code is migrated ──
+# ── Architecture checks (docs/03 §8) — all blocking since M2: layers, API isolation (graphics APIs, GLFW, <windows.h>),
+#    self-contained headers. Each script exits 1 on a violation (same commands as the CI). ──
 .PHONY: check check-repo check-layers check-api check-headers
 check: check-repo check-layers check-api check-headers
 
@@ -34,13 +35,13 @@ check-repo:
 	@sh tools/check-repo.sh
 
 check-layers:
-	@python3 tools/check_layers.py $(CHECK_ARGS)
+	@python3 tools/check_layers.py --strict
 
 check-api:
 	@python3 tools/check_api_isolation.py --strict
 
 check-headers:
-	@python3 tools/check_headers.py $(CHECK_ARGS)
+	@python3 tools/check_headers.py --strict
 
 # ── Combined ──────────────────────────────────────────────────────────────────
 #   make all-debug             engine debug → sync → demo debug
@@ -150,6 +151,19 @@ demo-test:
 	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
 	$(MAKE) -C apps/demo $(DEMO_ARGS) test
+
+# Tests sans GPU ni fenêtre (unitaires) / seulement ceux qui en demandent un (intégration graphique : contexte OpenGL hors écran,
+# fenêtre). `make demo-test` exécute les deux. ENGINE_TEST_REQUIRE_GPU=1 fait échouer (au lieu d'ignorer) un test GPU sans pilote.
+GPU_TEST_SUITES := rhi/opengl*,rhi/shader/opengl,renderer/*,platform/window
+.PHONY: demo-test-unit demo-test-gpu
+demo-test-unit:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) TEST_ARGS='--test-suite-exclude=$(GPU_TEST_SUITES)' test
+demo-test-gpu:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/demo $(DEMO_ARGS) TEST_ARGS='--test-suite=$(GPU_TEST_SUITES)' test
 
 # ── Core demo (M1): 10 000 tasks, hot-reloaded config, measurements; no window, no graphics ──
 #   make core-demo                     build and run          make core-demo CORE_DEMO_ARGS="--tasks 20000 --trace t.json"

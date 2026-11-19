@@ -21,7 +21,14 @@ apps/demo/bin/debug/main --api opengl --headless --capture /tmp/out
 
 ## Tests
 
-`make demo-test` : voir `docs/BASELINE/tests-M2-lotC.txt` (cas doctest verts) ; ASan + UBSan propres ; `make check` : 0 violation (couches, isolation des API sans baseline, en-têtes) ; capture fenêtrée et sans fenêtre identiques à la référence.
+`make demo-test` : voir `docs/BASELINE/tests-M2-review.txt` (cas doctest verts, après la revue) ; ASan + UBSan propres ; `make check` : 0 violation (couches, isolation des API sans baseline, en-têtes) ; capture fenêtrée et sans fenêtre identiques à la référence.
+
+## Revue CodeRabbit (PR #7)
+
+Les points fondés de la revue sont corrigés avant fusion, chacun avec un test (`docs/GAPS.md` G97 à G100, `docs/releases/M2.md`) :
+RHI OpenGL (état implicite contenu, validations, clôtures GPU, réflexion, rechargement à chaud), couche de rendu (cache de
+pipelines, bibliothèque de shaders, modes de fin d'image, couches d'interface prémultipliées), tests déterministes et
+documentation. Images de référence inchangées. Reportés avec raison : fichiers par `platform`/VFS (G101), `ui.png` en CI.
 
 ## À vérifier à la relecture
 

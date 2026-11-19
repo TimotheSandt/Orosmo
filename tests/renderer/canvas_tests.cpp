@@ -181,7 +181,7 @@ TEST_SUITE("renderer/canvas")
         run.atlas = empty;
         rd::DrawList bad = listOf();
         bad.glyphs(run);
-        CHECK((c.render(bad).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(c.render(bad)) == ErrorCode::kInvalidArgument));
         c.gpu.expectNoValidationErrors();
     }
 
@@ -249,15 +249,15 @@ TEST_SUITE("renderer/canvas")
         SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
         rd::DrawList endWithout = listOf();
         endWithout.endLayer();
-        CHECK((c.render(endWithout).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(c.render(endWithout)) == ErrorCode::kInvalidArgument));
         rd::DrawList popWithout = listOf();
         popWithout.popClip();
-        CHECK((c.render(popWithout).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(c.render(popWithout)) == ErrorCode::kInvalidArgument));
         rd::DrawList open = listOf();
         open.beginLayer(3, {4, 4});
-        CHECK((c.render(open).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(c.render(open)) == ErrorCode::kInvalidArgument));
         rd::DrawList noSize;
-        CHECK((c.render(noSize).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(c.render(noSize)) == ErrorCode::kInvalidArgument));
         // Une liste valide fonctionne toujours après les erreurs (aucune passe n'est restée ouverte).
         rd::DrawList ok = listOf();
         ok.rect({0, 0}, {4, 4}, {1, 0, 0, 1});
@@ -363,7 +363,7 @@ TEST_SUITE("renderer/canvas")
         l.rect({8, 8}, {4, 4}, {1, 0, 0, 1});
         auto r = c.render(l, false);
         REQUIRE_FALSE(r.has_value());
-        CHECK((r.error().code == ErrorCode::kNotFound));
+        CHECK((tests::errorOf(r) == ErrorCode::kNotFound));
         CHECK(c.px(9, 9) == Px{255, 0, 0, 255});
         c.gpu.expectNoValidationErrors();
     }
@@ -379,7 +379,7 @@ TEST_SUITE("renderer/canvas")
             l.endLayer();
             auto r = c.render(l);
             REQUIRE_FALSE(r.has_value());
-            CHECK((r.error().code == ErrorCode::kOutOfRange));
+            CHECK((tests::errorOf(r) == ErrorCode::kOutOfRange));
         }
         rd::DrawList far = listOf();
         far.pushClip({3e9f, 0}, {10, 10}); // hors de la surface : découpage vide, sans dépassement d'entier (UBSan)
@@ -402,7 +402,7 @@ TEST_SUITE("renderer/canvas")
         auto encoder = c.gpu->createCommandEncoder();
         auto r = c.canvas->render(*encoder, listOf(4), {stale, Format::kRGBA8Unorm, {4, 4}});
         REQUIRE_FALSE(r.has_value());
-        CHECK((r.error().code == ErrorCode::kNotFound));
+        CHECK((tests::errorOf(r) == ErrorCode::kNotFound));
         CHECK_FALSE(c.gpu->submit(std::move(encoder)).has_value());
     }
 }
