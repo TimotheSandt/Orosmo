@@ -154,7 +154,7 @@ demo-test:
 
 # Tests sans GPU ni fenêtre (unitaires) / seulement ceux qui en demandent un (intégration graphique : contexte OpenGL hors écran,
 # fenêtre). `make demo-test` exécute les deux. ENGINE_TEST_REQUIRE_GPU=1 fait échouer (au lieu d'ignorer) un test GPU sans pilote.
-GPU_TEST_SUITES := rhi/opengl*,rhi/shader/opengl,renderer/*,platform/window
+GPU_TEST_SUITES := rhi/opengl*,rhi/shader/opengl,renderer/*,platform/window,world/gpu,world/render
 .PHONY: demo-test-unit demo-test-gpu
 demo-test-unit:
 	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
@@ -164,6 +164,27 @@ demo-test-gpu:
 	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
 	$(MAKE) -C apps/demo $(DEMO_ARGS) TEST_ARGS='--test-suite=$(GPU_TEST_SUITES)' test
+
+# ── TOOL-02 : terrain-gen (sans fenêtre ni GPU) ──
+#   make terrain-gen         construit apps/terrain_gen/bin/terrain-gen
+#   make terrain-gen-check   déterminisme : deux exports identiques (1 et 4 threads), somme de contrôle de référence, codes de retour
+TERRAIN_GEN := apps/terrain_gen/bin/terrain-gen$(if $(filter Windows_NT,$(OS)),.exe)
+TG_CHECK    := build/terrain-gen-check
+.PHONY: terrain-gen terrain-gen-check
+terrain-gen:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/terrain_gen BUILD_TYPE=release all
+terrain-gen-check: terrain-gen
+	@mkdir -p $(TG_CHECK)
+	./$(TERRAIN_GEN) --seed 42 --size 256 --out $(TG_CHECK)/a.png --threads 1 > $(TG_CHECK)/a.txt
+	./$(TERRAIN_GEN) --seed 42 --size 256 --out $(TG_CHECK)/b.png --threads 4 > $(TG_CHECK)/b.txt
+	cmp $(TG_CHECK)/a.png $(TG_CHECK)/b.png
+	grep -F "$$(cat docs/BASELINE/terrain-gen-seed42-256.txt)" $(TG_CHECK)/a.txt
+	./$(TERRAIN_GEN) --seed 42 --size 64 --out $(TG_CHECK)/t.stl > /dev/null
+	@./$(TERRAIN_GEN) --seed 42 --size 1 --out $(TG_CHECK)/x.png > /dev/null 2>&1; test $$? -eq 1
+	@./$(TERRAIN_GEN) --seed 42 --size 8 --params $(TG_CHECK)/absent.json --out $(TG_CHECK)/y.png > /dev/null 2>&1; test $$? -eq 2
+	@echo "terrain-gen-check : OK (mêmes octets, somme de contrôle de référence, codes de retour)"
 
 # ── Core demo (M1): 10 000 tasks, hot-reloaded config, measurements; no window, no graphics ──
 #   make core-demo                     build and run          make core-demo CORE_DEMO_ARGS="--tasks 20000 --trace t.json"
