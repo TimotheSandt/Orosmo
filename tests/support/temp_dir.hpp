@@ -2,6 +2,7 @@
 // supprimé à la destruction : deux exécutions des tests en parallèle ne nettoient jamais le dossier de l'autre (G100).
 #pragma once
 
+#include <doctest/doctest.h>
 #include <engine/core/system.hpp>
 
 #include <atomic>
@@ -28,6 +29,12 @@ struct TempDir
             if (std::filesystem::create_directory(path, ec))
             {
                 break;
+            }
+            // Seule une collision de nom justifie un nouvel essai ; toute autre erreur (dossier temporaire non inscriptible...) arrête
+            // le test tout de suite au lieu de boucler sans fin.
+            if (ec || !std::filesystem::exists(path))
+            {
+                FAIL("cannot create the temporary directory " << path.string() << ": " << (ec ? ec.message() : std::string("unknown error")));
             }
         }
     }

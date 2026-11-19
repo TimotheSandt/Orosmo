@@ -6,6 +6,7 @@
 #include "Logger.h"
 
 #include <algorithm>
+#include <limits>
 #include <string>
 
 namespace engine::rhi::gl
@@ -105,7 +106,7 @@ class GlEncoder final : public CommandEncoder
     IndexType indexType_ = IndexType::kUint32;
     std::uint64_t indexOffset_ = 0;
     bool storageTouched_ = false;
-    bool drawnInPass_ = false;
+    bool storageDrawInPass_ = false; // un dessin de la passe a utilisé un programme qui accède au stockage
 };
 
 std::unique_ptr<CommandEncoder> GlDevice::createCommandEncoder() { return std::make_unique<GlEncoder>(*this); }
@@ -198,6 +199,18 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
         depthFormat = attachments[kMaxAttachments]->desc.format;
     }
 
+    // Toutes les valeurs d'effacement sont validées AVANT le premier effacement : un refus ne laisse aucune cible modifiée.
+    for (std::size_t i = 0; i < desc.colors.size(); ++i)
+    {
+        const float v = desc.colors[i].clearColor[0];
+        if (desc.colors[i].load == LoadOp::kClear && formatInfo(formats[i]).kind == FormatKind::kUint &&
+            !check(v >= 0.0f && v < 4294967296.0f, ErrorCode::kInvalidArgument,
+                   "beginRenderPass: the clear value of an integer target must be in [0, 2^32)")) // NaN, négatif, >= 2^32
+        {
+            return;
+        }
+    }
+
     bool toWindow = false;
     for (std::size_t i = 0; i < desc.colors.size(); ++i)
     {
@@ -269,20 +282,7 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
         {
             if (formatInfo(formats[i]).kind == FormatKind::kUint)
             {
-                // Seule une valeur représentable se convertit sans comportement indéfini (NaN, négatif, >= 2^32 refusés).
-                const float v = c.clearColor[0];
-                if (!check(v >= 0.0f && v < 4294967296.0f, ErrorCode::kInvalidArgument,
-                           "beginRenderPass: the clear value of an integer target must be in [0, 2^32)"))
-                {
-                    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-                    if (passGroupPushed_)
-                    {
-                        glPopDebugGroup();
-                        passGroupPushed_ = false;
-                    }
-                    return;
-                }
-                const GLuint value[4] = {static_cast<GLuint>(v), 0, 0, 0};
+                const GLuint value[4] = {static_cast<GLuint>(c.clearColor[0]), 0, 0, 0}; // représentable : validé plus haut
                 glClearBufferuiv(GL_COLOR, static_cast<GLint>(i), value);
             }
             else
@@ -325,7 +325,7 @@ void GlEncoder::beginRenderPass(const RenderPassDesc &desc)
     passExtent_ = extent;
     pipeline_ = {};
     storageTouched_ = false;
-    drawnInPass_ = false;
+    storageDrawInPass_ = false;
 }
 
 void GlEncoder::endRenderPass()
@@ -339,7 +339,7 @@ void GlEncoder::endRenderPass()
     {
         glInvalidateFramebuffer(GL_FRAMEBUFFER, static_cast<GLsizei>(invalidate_.size()), invalidate_.data());
     }
-    if (storageTouched_)
+    if (storageTouched_ || storageDrawInPass_)
     {
         glMemoryBarrier(GL_ALL_BARRIER_BITS); // RHI-09 : le RHI calcule les barrières ; ici, conservatrice
     }
@@ -621,14 +621,15 @@ bool GlEncoder::beforeDraw(bool indexed)
         }
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->id);
     }
-    // Un dessin précédent de la passe a pu écrire un tampon ou une image de stockage que celui-ci lit : sans barrière, OpenGL
-    // n'en garantit pas l'ordre (RHI-09, barrière conservatrice tant que le RHI ne suit pas les accès en écriture).
-    if (storageTouched_ && drawnInPass_)
+    // Un dessin précédent de la passe dont le programme accède au stockage (SSBO, images) a pu écrire ce que celui-ci lit : sans
+    // barrière, OpenGL n'en garantit pas l'ordre. Le critère est le PROGRAMME (réflexion à l'édition de liens), pas l'historique
+    // des liaisons : une liaison faite avant la passe est couverte, et les passes sans stockage (interface) n'en paient rien.
+    if (p->usesStorage && storageDrawInPass_)
     {
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT |
                         GL_ELEMENT_ARRAY_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_UNIFORM_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
     }
-    drawnInPass_ = true;
+    storageDrawInPass_ = storageDrawInPass_ || p->usesStorage;
     return true;
 }
 
@@ -795,6 +796,8 @@ void GlEncoder::copyBufferToTexture(BufferHandle src, TextureHandle dst, const T
     const std::uint64_t bytes = transferBytes(*region, copy.bufferRowLength, formatInfo(t->desc.format).bytesPerTexel);
     if (!check(copy.bufferRowLength == 0 || copy.bufferRowLength >= region->size.width, ErrorCode::kInvalidArgument,
                "copyBufferToTexture: bufferRowLength is shorter than the region") ||
+        !check(copy.bufferRowLength <= static_cast<std::uint32_t>(std::numeric_limits<GLint>::max()), ErrorCode::kOutOfRange,
+               "copyBufferToTexture: bufferRowLength does not fit in a GLint") ||
         !check(rangeFits(copy.bufferOffset, bytes, b->desc.size), ErrorCode::kOutOfRange, "copyBufferToTexture: region exceeds the buffer"))
     {
         return;
@@ -823,6 +826,8 @@ void GlEncoder::copyTextureToBuffer(TextureHandle src, BufferHandle dst, const T
     const std::uint64_t bytes = transferBytes(*region, copy.bufferRowLength, formatInfo(t->desc.format).bytesPerTexel);
     if (!check(copy.bufferRowLength == 0 || copy.bufferRowLength >= region->size.width, ErrorCode::kInvalidArgument,
                "copyTextureToBuffer: bufferRowLength is shorter than the region") ||
+        !check(copy.bufferRowLength <= static_cast<std::uint32_t>(std::numeric_limits<GLint>::max()), ErrorCode::kOutOfRange,
+               "copyTextureToBuffer: bufferRowLength does not fit in a GLint") ||
         !check(rangeFits(copy.bufferOffset, bytes, b->desc.size), ErrorCode::kOutOfRange, "copyTextureToBuffer: region exceeds the buffer"))
     {
         return;

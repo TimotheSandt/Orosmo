@@ -284,7 +284,7 @@ IncludeResolver fileIncludeResolver(std::vector<std::filesystem::path> roots)
             {
                 text << in.rdbuf();
             }
-            if (in.bad())
+            if (in.bad() || text.bad())
             {
                 return makeError(ErrorCode::kIo, "include cannot be read: " + candidate.generic_string());
             }
@@ -529,7 +529,7 @@ void ShaderHotReloader::watchFiles(std::size_t index, const std::vector<std::str
 core::Result<CompiledShader> ShaderHotReloader::add(const std::filesystem::path &file, ShaderStage stage, Callback onReload,
                                                     std::vector<std::pair<std::string, std::string>> defines)
 {
-    mEntries.push_back(Entry{file, stage, std::move(onReload), std::move(defines), {}, false, true});
+    mEntries.push_back(Entry{file, stage, std::make_shared<Callback>(std::move(onReload)), std::move(defines), {}, false, true});
     const std::size_t index = mEntries.size() - 1;
     std::vector<std::string> dependencies;
     auto first = build(mEntries[index], dependencies);
@@ -549,7 +549,7 @@ void ShaderHotReloader::remove(EntryId id)
         mWatcher.unwatch(watch.second);
     }
     entry.watches.clear();
-    entry.callback = {};
+    entry.callback.reset();
     entry.dirty = false;
     entry.active = false;
 }
@@ -576,10 +576,12 @@ std::size_t ShaderHotReloader::poll()
         watchFiles(i, dependencies); // les includes ont pu changer, y compris après un échec (include encore absent)
         // Copies : le rappel peut appeler add(), qui réalloue mEntries.
         const std::filesystem::path file = mEntries[i].file;
-        const Callback callback = mEntries[i].callback;
-        if (callback)
+        // Copie du POINTEUR, pas du rappel : le même objet est appelé à chaque notification (un lambda mutable garde son état) et
+        // il reste en vie même si le rappel appelle add() (réallocation) ou remove() sur sa propre entrée.
+        const std::shared_ptr<Callback> callback = mEntries[i].callback;
+        if (callback && *callback)
         {
-            callback(file, result);
+            (*callback)(file, result);
         }
     }
     return attempts;

@@ -473,13 +473,15 @@ void main() { color = vColor; })";
         SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
         auto frame = gpu->beginFrame();
         REQUIRE(frame.has_value());
+        gpu.run([&](CommandEncoder &e) { e.beginRenderPass(passOn(*frame, {1, 0, 1, 1})); e.endRenderPass(); }); // contenu connu
         const auto tooBig = gpu->capabilities().maxTextureSize + 1;
         CHECK_FALSE(gpu->resize({tooBig, 4}).has_value());
         auto again = gpu->beginFrame();
         REQUIRE(again.has_value());
         auto pixels = gpu->readTexture(*again);
         REQUIRE(pixels.has_value());
-        CHECK(pixels->size() == 6u * 4u * 4u); // l'ancien stockage est intact
+        CHECK(pixels->size() == 6u * 4u * 4u);
+        CHECK(rgba(gpu.pixel(*again, 5, 3)) == std::array<std::uint8_t, 4>{255, 0, 255, 255}); // le contenu aussi est intact
     }
 
     TEST_CASE("textures beyond the per-type limits are refused instead of returning a handle with no storage (revue CodeRabbit)")

@@ -1,6 +1,6 @@
-// Tests « boîte blanche » du backend OpenGL (src/rhi/opengl/) : ce que l'API du RHI ne laisse pas observer, lu directement
-// dans l'état OpenGL. Seul fichier de test qui inclut un en-tête interne du backend et appelle `gl*` (règle 4 : ces appels
-// restent confinés au backend et à ses propres tests).
+// Tests « boîte blanche » du backend OpenGL (src/rhi/opengl/) : ce que l'API du RHI ne laisse pas observer. Le test inclut
+// l'en-tête interne du backend mais n'appelle aucune fonction `gl*` (règle 4) : l'état GL est lu par des auxiliaires du backend
+// (`GlDevice::inspectVertexArray`) ou par ses structures internes.
 #include <doctest/doctest.h>
 
 #include "support/test_support.hpp"
@@ -45,16 +45,33 @@ void main() { gl_Position = vec4(position, 0.0, 1.0); })";
         CHECK(rgba(gpu.pixel(color, 1, 1)) == std::array<std::uint8_t, 4>{255, 0, 0, 255});
 
         // Sans détachement, détruire `vb` et `ib` laisserait leur stockage retenu par ce VAO tant qu'il vit.
-        const gl::PipelineRes *p = device.get(*pipe);
-        REQUIRE(p != nullptr);
-        glBindVertexArray(p->vao);
-        GLint vertexBuffer = -1;
-        GLint indexBuffer = -1;
-        glGetIntegeri_v(GL_VERTEX_BINDING_BUFFER, 0, &vertexBuffer);
-        glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &indexBuffer);
-        glBindVertexArray(device.emptyVertexArray());
-        CHECK(vertexBuffer == 0);
-        CHECK(indexBuffer == 0);
+        auto bindings = device.inspectVertexArray(*pipe);
+        REQUIRE(bindings.has_value());
+        CHECK(bindings->vertexBuffer0 == 0u);
+        CHECK(bindings->indexBuffer == 0u);
+        gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("a pipeline knows whether its program accesses storage (the criterion of the barrier between draws)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        auto &device = static_cast<gl::GlDevice &>(*gpu);
+        const PipelineHandle plain = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVs), gpu.shader(ShaderStage::kFragment, kRedFs));
+        const char *ssboFs = R"(#version 430 core
+layout(std430, binding = 1) buffer Data { vec4 values[]; } data;
+layout(location = 0) out vec4 color;
+void main() { color = data.values[0]; })";
+        const char *imageFs = R"(#version 430 core
+layout(rgba8, binding = 0) uniform readonly image2D img;
+layout(location = 0) out vec4 color;
+void main() { color = imageLoad(img, ivec2(0)); })";
+        const PipelineHandle ssbo = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVs), gpu.shader(ShaderStage::kFragment, ssboFs));
+        const PipelineHandle image = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVs), gpu.shader(ShaderStage::kFragment, imageFs));
+        REQUIRE(device.get(plain) != nullptr);
+        CHECK_FALSE(device.get(plain)->usesStorage);
+        CHECK(device.get(ssbo)->usesStorage);
+        CHECK(device.get(image)->usesStorage);
         gpu.expectNoValidationErrors();
     }
 }

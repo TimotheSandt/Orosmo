@@ -100,6 +100,7 @@ TEST_SUITE("rhi/opengl/state")
         TextureDesc d;
         d.dimension = TextureDimension::k3D;
         d.size = {4, 4, 4};
+        d.mipLevels = 2; // le niveau 1 existe (2 tranches) : le refus plus bas vient de la tranche, pas du niveau
         d.usage = TextureUsage::kRenderTarget | TextureUsage::kCopySrc;
         d.debugName = "volume";
         auto volume = gpu->createTexture(d);
@@ -119,6 +120,14 @@ TEST_SUITE("rhi/opengl/state")
         REQUIRE(px.has_value());
         CHECK(rgba(*px) == std::array<std::uint8_t, 4>{0, 0, 255, 255});
 
+        gpu.run(
+            [&](CommandEncoder &e)
+            {
+                RenderPassDesc inside; // niveau 1, tranche 1 : la dernière qui existe
+                inside.colors.push_back({.texture = *volume, .mipLevel = 1, .layer = 1});
+                e.beginRenderPass(inside);
+                e.endRenderPass();
+            });
         auto beyond = gpu->createCommandEncoder();
         RenderPassDesc pass;
         pass.colors.push_back({.texture = *volume, .mipLevel = 1, .layer = 2}); // le niveau 1 n'a que 2 tranches
@@ -138,6 +147,7 @@ TEST_SUITE("rhi/opengl/state")
         {
             auto e = gpu->createCommandEncoder();
             e->beginRenderPass(passOn(ids, {bad, 0, 0, 0}));
+            e->endRenderPass(); // passe refermée : seule la valeur d'effacement peut faire échouer submit
             auto r = gpu->submit(std::move(e));
             REQUIRE_FALSE(r.has_value());
             CHECK((tests::errorOf(r) == ErrorCode::kInvalidArgument));
@@ -317,6 +327,44 @@ TEST_SUITE("rhi/opengl/state")
         {
             MESSAGE("maxColorAttachments = ", count, " (< 8 on this driver)");
         }
+        gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("a refused clear value leaves every target of the pass untouched (all clears validated first)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {2, 2}, "color");
+        const TextureHandle ids = gpu.target(Format::kR32Uint, {2, 2}, "ids");
+        gpu.run([&](CommandEncoder &e) { e.beginRenderPass(passOn(color, {0, 0, 1, 1})); e.endRenderPass(); }); // bleu
+        auto e = gpu->createCommandEncoder();
+        RenderPassDesc pass;
+        pass.colors.push_back({.texture = color, .clearColor = {1, 0, 0, 1}}); // rouge, valide
+        pass.colors.push_back({.texture = ids, .clearColor = {-1, 0, 0, 0}}); // refusé
+        e->beginRenderPass(pass);
+        e->endRenderPass();
+        CHECK((tests::errorOf(gpu->submit(std::move(e))) == ErrorCode::kInvalidArgument));
+        CHECK(rgba(gpu.pixel(color, 0, 0)) == std::array<std::uint8_t, 4>{0, 0, 255, 255}); // toujours bleu
+        gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("a bufferRowLength that does not fit in a GLint is refused in both copy directions")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        TextureDesc td;
+        td.size = {1, 1, 1};
+        td.usage = TextureUsage::kCopyDst | TextureUsage::kCopySrc;
+        auto tex = gpu->createTexture(td);
+        REQUIRE(tex.has_value());
+        const BufferHandle src = gpu.buffer(BufferUsage::kCopySrc, {}, 4);
+        const BufferHandle dst = gpu.buffer(BufferUsage::kCopyDst, {}, 4);
+        auto up = gpu->createCommandEncoder();
+        up->copyBufferToTexture(src, *tex, {.bufferRowLength = 0x80000000u});
+        CHECK((tests::errorOf(gpu->submit(std::move(up))) == ErrorCode::kOutOfRange));
+        auto down = gpu->createCommandEncoder();
+        down->copyTextureToBuffer(*tex, dst, {.bufferRowLength = 0x80000000u});
+        CHECK((tests::errorOf(gpu->submit(std::move(down))) == ErrorCode::kOutOfRange));
         gpu.expectNoValidationErrors();
     }
 }
