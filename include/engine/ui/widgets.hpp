@@ -53,11 +53,15 @@ class Button : public Widget
     Button &setText(std::string text) { text_ = std::move(text); return *this; }
     Button &bindText(std::function<std::string()> text) { source_ = std::move(text); return *this; }
     std::string text() const { return source_ ? source_() : text_; }
+    // Raccourci clavier qui clique le bouton (« Ctrl+R », « F5 » ; normalizeShortcut).
+    Button &setShortcut(std::string shortcut);
+    const std::string &shortcut() const noexcept { return shortcut_; }
 
     bool interactive() const override { return true; }
     bool focusable() const override { return true; }
     void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
     void onKey(Ui &ui, int key) override;
+    bool onShortcut(Ui &ui, std::string_view shortcut) override;
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
@@ -66,6 +70,7 @@ class Button : public Widget
   private:
     std::string text_;
     std::function<std::string()> source_;
+    std::string shortcut_; // normalisé
 };
 
 class Checkbox : public Widget
@@ -181,6 +186,35 @@ struct TextEditState
     void insert(std::string_view s); // remplace la sélection
     void moveTo(std::size_t position, bool extend);
     void selectAll();
+
+    // ── Annuler / rétablir ──
+    // Appelé AVANT une modification : garde l'état actuel. Les frappes successives forment un seul pas (jusqu'à une espace, un
+    // retour à la ligne ou un déplacement du curseur), de même les effacements successifs.
+    enum class EditKind : std::uint8_t
+    {
+        kOther,
+        kTyping,
+        kDeleting,
+    };
+    void beginEdit(EditKind kind, std::string_view inserted = {});
+    bool undo();
+    bool redo();
+    bool canUndo() const noexcept { return !undo_.empty(); }
+    bool canRedo() const noexcept { return !redo_.empty(); }
+    void resetHistory() noexcept;
+    static constexpr std::size_t kMaxHistory = 200;
+
+  private:
+    struct Snapshot
+    {
+        std::string text;
+        std::size_t caret;
+        std::size_t anchor;
+    };
+    std::vector<Snapshot> undo_;
+    std::vector<Snapshot> redo_;
+    EditKind lastKind_ = EditKind::kOther;
+    bool groupOpen_ = false;
 };
 
 class TextField : public Widget

@@ -107,6 +107,13 @@ struct UiHarness
         in.shift = shift;
         ui.update(in, viewport);
     }
+    // Combinaisons appuyées pendant une image ("Ctrl+Z", "F5").
+    void shortcut(std::string chord)
+    {
+        engine::ui::InputFrame in = input();
+        in.shortcuts = {std::move(chord)};
+        ui.update(in, viewport);
+    }
     void type(std::string text)
     {
         engine::ui::InputFrame in = input();

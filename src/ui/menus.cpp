@@ -65,14 +65,124 @@ MenuItem::MenuItem(std::string text, std::string shortcut, Binding<bool> checked
 {
 }
 
-void MenuItem::onRelease(Ui &ui, glm::vec2, bool inside)
+void MenuItem::activate(Ui &ui)
 {
-    if (!inside)
-        return;
     if (checked_.writable())
         ui.defer([set = checked_.set, v = !checked_.value()] { set(v); });
     emit(ui, EventKind::kClick);
     ui.closePopup();
+}
+
+void MenuItem::onRelease(Ui &ui, glm::vec2, bool inside)
+{
+    if (inside)
+        activate(ui);
+}
+
+bool MenuItem::onShortcut(Ui &ui, std::string_view shortcut)
+{
+    if (shortcut_.empty() || normalizeShortcut(shortcut_) != shortcut)
+        return false;
+    activate(ui);
+    return true;
+}
+
+namespace
+{
+// Navigation au clavier dans une fenêtre de menu (éléments et sous-menus).
+std::vector<Widget *> menuEntries(const Widget &list)
+{
+    std::vector<Widget *> out;
+    for (const auto &c : list.children())
+        if (c->visible() && c->enabled() && c->focusable())
+            out.push_back(c.get());
+    return out;
+}
+
+void focusSibling(Ui &ui, Widget &self, int direction)
+{
+    if (self.parent() == nullptr)
+        return;
+    const auto entries = menuEntries(*self.parent());
+    const auto it = std::find(entries.begin(), entries.end(), &self);
+    if (it == entries.end())
+        return;
+    const auto n = static_cast<std::ptrdiff_t>(entries.size());
+    const std::ptrdiff_t i = ((it - entries.begin()) + direction + n) % n;
+    ui.focus(entries[static_cast<std::size_t>(i)]);
+}
+
+// Menu de la barre qui contient (par ses sous-menus) la fenêtre où se trouve `w` ; nul hors d'une barre.
+Menu *barMenuOf(const Ui &ui, const Widget &w)
+{
+    const Widget *at = &w;
+    while (Widget *owner = ui.popupOwnerOf(*at))
+    {
+        if (auto *menu = dynamic_cast<Menu *>(owner); menu != nullptr && menu->inBar())
+            return menu;
+        at = owner;
+    }
+    return nullptr;
+}
+
+// Menu voisin dans la barre (direction ±1), ouvert avec le focus sur son premier élément.
+void switchBarMenu(Ui &ui, Menu &current, int direction, bool openIt)
+{
+    std::vector<Menu *> menus;
+    for (const auto &c : current.parent()->children())
+        if (auto *m = dynamic_cast<Menu *>(c.get()); m != nullptr && m->visible() && m->enabled())
+            menus.push_back(m);
+    const auto it = std::find(menus.begin(), menus.end(), &current);
+    if (it == menus.end() || menus.size() < 2)
+        return;
+    const auto n = static_cast<std::ptrdiff_t>(menus.size());
+    Menu *next = menus[static_cast<std::size_t>(((it - menus.begin()) + direction + n) % n)];
+    if (openIt)
+        next->open(ui, true);
+    else
+        ui.focus(next);
+}
+
+// Touches communes aux entrées d'une fenêtre de menu ; vrai si la touche est prise.
+bool menuEntryKey(Ui &ui, Widget &self, int key)
+{
+    switch (key)
+    {
+    case kKeyUp: focusSibling(ui, self, -1); return true;
+    case kKeyDown: focusSibling(ui, self, 1); return true;
+    case kKeyLeft:
+    case kKeyEscape:
+    {
+        Widget *owner = ui.popupOwnerOf(self);
+        if (owner == nullptr)
+            return false;
+        auto *menu = dynamic_cast<Menu *>(owner);
+        if (key == kKeyLeft && menu != nullptr && menu->inBar())
+        {
+            switchBarMenu(ui, *menu, -1, true);
+            return true;
+        }
+        if (key == kKeyLeft && menu == nullptr)
+            return true; // menu contextuel : rien à gauche
+        ui.closePopupOf(*owner);
+        ui.focus(owner->focusable() ? owner : nullptr);
+        return true;
+    }
+    case kKeyRight:
+        if (Menu *bar = barMenuOf(ui, self))
+            switchBarMenu(ui, *bar, 1, true);
+        return true;
+    default: return false;
+    }
+}
+} // namespace
+
+void MenuItem::onKey(Ui &ui, int key)
+{
+    if (key == kKeyEnter || key == kKeySpace)
+        activate(ui);
+    else
+        (void)menuEntryKey(ui, *this, key);
 }
 
 glm::vec2 MenuItem::measureContent(Ui &ui, glm::vec2, const Style &style)
@@ -107,11 +217,43 @@ Menu::Menu(std::string title) : Widget("menu"), title_(std::move(title)), items_
 
 bool Menu::inBar() const { return dynamic_cast<const MenuBar *>(parent()) != nullptr; }
 
-void Menu::open(Ui &ui)
+void Menu::open(Ui &ui, bool focusFirst)
 {
     if (items_->children().empty())
         return;
     ui.openPopup(*this, *items_, rect_, inBar() ? PopupPlacement::kBelow : PopupPlacement::kRight);
+    if (focusFirst)
+    {
+        const auto entries = menuEntries(*items_);
+        if (!entries.empty())
+            ui.focus(entries.front());
+    }
+}
+
+void Menu::onKey(Ui &ui, int key)
+{
+    if (inBar())
+    {
+        switch (key)
+        {
+        case kKeyDown:
+        case kKeyEnter:
+        case kKeySpace: open(ui, true); break;
+        case kKeyLeft: switchBarMenu(ui, *this, -1, ui.popupOpenFor(*this)); break;
+        case kKeyRight: switchBarMenu(ui, *this, 1, ui.popupOpenFor(*this)); break;
+        case kKeyEscape:
+            if (ui.popupOpenFor(*this))
+                ui.closePopupOf(*this);
+            break;
+        default: break;
+        }
+        return;
+    }
+    // Sous-menu (entrée d'une fenêtre de menu).
+    if (key == kKeyRight || key == kKeyEnter || key == kKeySpace)
+        open(ui, true);
+    else
+        (void)menuEntryKey(ui, *this, key);
 }
 
 void Menu::onPress(Ui &ui, glm::vec2)

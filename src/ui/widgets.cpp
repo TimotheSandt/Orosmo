@@ -78,6 +78,20 @@ void Button::onKey(Ui &ui, int key)
     }
 }
 
+Button &Button::setShortcut(std::string shortcut)
+{
+    shortcut_ = normalizeShortcut(shortcut);
+    return *this;
+}
+
+bool Button::onShortcut(Ui &ui, std::string_view shortcut)
+{
+    if (shortcut_.empty() || shortcut_ != shortcut)
+        return false;
+    emit(ui, EventKind::kClick);
+    return true;
+}
+
 glm::vec2 Button::measureContent(Ui &ui, glm::vec2, const Style &style)
 {
     return {ui.font().measure(text(), style.fontSize, style.font.get()).x, lineHeight(ui, style)};
@@ -426,6 +440,7 @@ void TextField::onFocusChanged(Ui &ui, bool focused)
     {
         edit_.text = current();
         edit_.selectAll(); // prendre le focus sélectionne tout : la frappe remplace la valeur
+        edit_.resetHistory();
         editing_ = true;
         return;
     }
@@ -476,6 +491,11 @@ void TextField::onText(Ui &, std::string_view text)
             clean.push_back(c);
         }
     }
+    if (clean.empty())
+    {
+        return;
+    }
+    edit_.beginEdit(TextEditState::EditKind::kTyping, clean);
     edit_.insert(clean);
 }
 
@@ -489,15 +509,25 @@ void TextField::onKey(Ui &ui, int key)
     switch (key)
     {
     case kKeyBackspace:
-        if (!edit_.hasSelection() && edit_.caret > 0)
-            edit_.anchor = utf8Previous(edit_.text, edit_.caret);
-        edit_.eraseSelection();
+        if (edit_.hasSelection() || edit_.caret > 0)
+        {
+            edit_.beginEdit(TextEditState::EditKind::kDeleting);
+            if (!edit_.hasSelection())
+                edit_.anchor = utf8Previous(edit_.text, edit_.caret);
+            edit_.eraseSelection();
+        }
         break;
     case kKeyDelete:
-        if (!edit_.hasSelection() && edit_.caret < edit_.text.size())
-            edit_.anchor = edit_.caret + utf8Length(edit_.text, edit_.caret);
-        edit_.eraseSelection();
+        if (edit_.hasSelection() || edit_.caret < edit_.text.size())
+        {
+            edit_.beginEdit(TextEditState::EditKind::kDeleting);
+            if (!edit_.hasSelection())
+                edit_.anchor = edit_.caret + utf8Length(edit_.text, edit_.caret);
+            edit_.eraseSelection();
+        }
         break;
+    case kKeyUndo: (void)edit_.undo(); break;
+    case kKeyRedo: (void)edit_.redo(); break;
     case kKeyLeft:
         edit_.moveTo(edit_.hasSelection() && !extend ? edit_.selectionStart() : utf8Previous(edit_.text, edit_.caret), extend);
         break;
@@ -517,6 +547,7 @@ void TextField::onKey(Ui &ui, int key)
         if (edit_.hasSelection())
         {
             ui.setClipboardText(edit_.selected());
+            edit_.beginEdit(TextEditState::EditKind::kOther);
             edit_.eraseSelection();
         }
         break;
@@ -524,7 +555,11 @@ void TextField::onKey(Ui &ui, int key)
     {
         std::string pasted = ui.clipboardText();
         std::erase_if(pasted, [](char c) { return c == '\n' || c == '\r'; }); // une seule ligne
-        edit_.insert(pasted);
+        if (!pasted.empty() || edit_.hasSelection())
+        {
+            edit_.beginEdit(TextEditState::EditKind::kOther);
+            edit_.insert(pasted);
+        }
         break;
     }
     case kKeyEnter:

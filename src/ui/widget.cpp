@@ -285,6 +285,7 @@ void Widget::onHoverChanged(Ui &, bool) {}
 bool Widget::onWheel(Ui &, glm::vec2) { return false; }
 void Widget::onKey(Ui &, int) {}
 void Widget::onText(Ui &, std::string_view) {}
+bool Widget::onShortcut(Ui &, std::string_view) { return false; }
 void Widget::onFocusChanged(Ui &ui, bool focused) { emit(ui, EventKind::kFocus, focused); }
 
 void Widget::fire(EventKind kind, bool active)
