@@ -203,6 +203,8 @@ e2e-init:
 	$(MAKE) -C $(E2E_RUN)/mygame debug
 	cd $(E2E_RUN)/mygame && ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3
 	test -s $(E2E_RUN)/capture/scene.png
+	$(MAKE) -C $(E2E_RUN)/mygame/engine/examples/minimal
+	$(E2E_RUN)/mygame/engine/examples/minimal/bin/minimal$(E2E_EXE)
 	$(MAKE) -C $(E2E_RUN)/mygame/engine/examples/terrain_gen
 	$(E2E_RUN)/mygame/engine/examples/terrain_gen/bin/terrain-gen$(E2E_EXE) --seed 42 --size 256 --out $(E2E_RUN)/tg.png > $(E2E_RUN)/tg.txt
 	grep -q "$(E2E_CHECKSUM)" $(E2E_RUN)/tg.txt

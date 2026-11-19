@@ -387,6 +387,8 @@ ifeq ($(DETECTED_OS),Windows)
 	@powershell -NoProfile -Command "Copy-Item -Path 'shaders' -Destination '$(DIST_PKG_DIR)/shaders' -Recurse -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'res/fonts','res/themes' -Destination '$(DIST_PKG_DIR)/res' -Recurse -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'apps/terrain_gen/main.cpp','apps/terrain_gen/Makefile','apps/terrain_gen/README.md' -Destination '$(DIST_PKG_DIR)/examples/terrain_gen' -Force"
+	@mkdir -p "$(DIST_PKG_DIR)/examples/minimal"
+	@powershell -NoProfile -Command "Copy-Item -Path 'apps/minimal/main.cpp','apps/minimal/Makefile' -Destination '$(DIST_PKG_DIR)/examples/minimal' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'apps/terrain_viewer/src','apps/terrain_viewer/presets','apps/terrain_viewer/Makefile','apps/terrain_viewer/README.md' -Destination '$(DIST_PKG_DIR)/examples/terrain_viewer' -Recurse -Force"
 else
 	@rm -rf "$(_DIST_STAGING)"
@@ -405,6 +407,8 @@ else
 	@mkdir -p "$(DIST_PKG_DIR)/res" "$(DIST_PKG_DIR)/examples/terrain_gen" "$(DIST_PKG_DIR)/examples/terrain_viewer"
 	@cp -r res/fonts res/themes "$(DIST_PKG_DIR)/res/"
 	@cp apps/terrain_gen/main.cpp apps/terrain_gen/Makefile apps/terrain_gen/README.md "$(DIST_PKG_DIR)/examples/terrain_gen/"
+	@mkdir -p "$(DIST_PKG_DIR)/examples/minimal"
+	@cp apps/minimal/main.cpp apps/minimal/Makefile "$(DIST_PKG_DIR)/examples/minimal/"
 	@cp -r apps/terrain_viewer/src apps/terrain_viewer/presets apps/terrain_viewer/Makefile apps/terrain_viewer/README.md \
 	       "$(DIST_PKG_DIR)/examples/terrain_viewer/"
 endif

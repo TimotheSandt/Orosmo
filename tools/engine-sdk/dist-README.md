@@ -24,6 +24,7 @@ engine-<platform>/
   shaders/rhi/       — GLSL 450 shaders of the RHI renderers: copy them next to your executable (res/shader/rhi/)
   res/fonts, res/themes — default font and the dark/light themes of engine::ui
   examples/
+    minimal/         — the smallest program linked to the engine (one terrain tile, no window): make -C examples/minimal
     terrain_gen/     — command-line generator (no window, no GPU):  make -C examples/terrain_gen
     terrain_viewer/  — viewer with a .cui control panel:            make -C examples/terrain_viewer
   vcpkg.json         — third-party dependencies (make install in a project created by `engine init`)
