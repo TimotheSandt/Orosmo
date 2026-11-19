@@ -473,8 +473,10 @@ core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
     }
     GraphicsState state;
     state.topology = rhi::PrimitiveTopology::kLineList;
-    state.vertexBuffers = {{.binding = 0, .stride = static_cast<std::uint32_t>(DebugDraw::kFloatsPerVertex * sizeof(float)),
-                            .stepRate = rhi::VertexStepRate::kVertex}};
+    // assign(1, ...) et non `= {{...}}` : GCC 13 en -O3 avec ASan signale à tort -Warray-bounds sur la liste d'un élément.
+    state.vertexBuffers.assign(1, rhi::VertexBufferLayout{.binding = 0,
+                                                          .stride = static_cast<std::uint32_t>(DebugDraw::kFloatsPerVertex * sizeof(float)),
+                                                          .stepRate = rhi::VertexStepRate::kVertex});
     state.vertexAttributes = {{.location = 0, .binding = 0, .format = rhi::VertexFormat::kFloat3, .offset = 0},
                               {.location = 1, .binding = 0, .format = rhi::VertexFormat::kFloat4, .offset = 12}};
     state.raster.cull = rhi::CullMode::kNone;
