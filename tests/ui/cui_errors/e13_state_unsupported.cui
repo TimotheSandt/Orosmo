@@ -1,0 +1,7 @@
+// expect: 5:5: error: @State is not supported with engine/ui: keep the state in C++ and bind it with @Mutable
+import "engine/ui"
+
+view V {
+    @State var count: int = 0
+    Label("x")
+}

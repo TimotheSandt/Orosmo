@@ -138,3 +138,18 @@ caméra en reverse-Z (plan lointain infini par défaut). Précision sur « repè
 sont celles de Vulkan ; pour le sens de y en NDC, le RHI garde y = +1 en haut (projections usuelles de glm), et le backend Vulkan
 retournera le viewport (hauteur négative, cœur 1.1). Les images de référence sont restées identiques au pixel près.
 
+
+**A13 : choix par défaut appliqués en M3 lot E (2026-11-19), à contester.** Faute de réponse et pour livrer UI-05 : (a) le
+compilateur **reste en Rust** (`tools/cui-rs`, déjà construit par le build et la CI ; le passage en C++ reste possible plus tard) ;
+(b) un événement s'écrit comme un **modificateur qui nomme une fonction** : `.onClick(state.regenerate)` (appel direct) ou
+`.onClick(regenerate)` (action retrouvée par nom dans le registre de l'interface, docs/03 §12) — cohérent avec la grammaire
+existante ; jamais une expression ; (c) l'en-tête généré porte le nom du **fichier** (`st.cui` → `st.gen.h`), défaut corrigé pour
+les deux cibles ; (d) `docs/UI_LANGUAGE.md` (français) est la spécification de la nouvelle cible `engine/ui` ;
+`docs/UI_DSL_Spec.md` (anglais) reste celle de la cible héritée `UI::View`, utilisée par la démo.
+
+**A30. Deux modules d'interface pendant la migration (M3 lot E, 2026-11-19).** Le module `engine::ui` de `docs/03` (§1 couche
+`ui`, §12) est écrit à neuf (`include/engine/ui/`, `src/ui/`) : widgets, mise en page, thèmes JSON, événements, liste de dessin. Il
+ne remplace pas encore l'interface héritée `UI::` de la démo (`PerformanceView`, parité de `ui.png`) : comme pour le rendu en M2,
+l'ancien code reste jusqu'à sa bascule, sous `src/ui/legacy/` (déplacé de `src/UI/` : deux dossiers qui ne diffèrent que par la
+casse sont impossibles sous Windows et macOS). Le langage choisit la cible par `import "engine/ui"`. *Proposition : basculer la
+démo et retirer `UI::` dans un jalon ultérieur (M5, avec le batch 2D R2D-01), à confirmer.*

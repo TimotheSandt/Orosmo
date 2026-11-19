@@ -147,6 +147,9 @@ jobs:
       - name: terrain-gen determinism (TOOL-02, TEST-03)
         run: make terrain-gen-check
 
+      - name: Interface language compiler (UI-11; cargo test + invalid inputs + C++ errors mapped to the .cui)
+        run: make cui-test
+
       - name: Capture reference images (OpenGL, Mesa llvmpipe under Xvfb)
         run: |
           xvfb-run -a -s "-screen 0 1280x720x24" \

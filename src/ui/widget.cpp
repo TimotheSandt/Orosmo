@@ -5,9 +5,28 @@
 #include "Logger.h"
 
 #include <algorithm>
+#include <cstdio>
 
 namespace engine::ui
 {
+
+std::string detail::textPiece(double value)
+{
+    if (!std::isfinite(value))
+    {
+        return value != value ? "nan" : (value > 0 ? "inf" : "-inf");
+    }
+    char buffer[64];
+    std::snprintf(buffer, sizeof buffer, "%.2f", value);
+    std::string out = buffer;
+    while (!out.empty() && out.back() == '0')
+        out.pop_back();
+    if (!out.empty() && out.back() == '.')
+        out.pop_back();
+    if (out == "-0")
+        out = "0";
+    return out;
+}
 
 Widget::Widget(std::string styleName) : styleName_(std::move(styleName)) {}
 Widget::~Widget() = default;

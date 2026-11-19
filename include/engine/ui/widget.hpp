@@ -160,6 +160,51 @@ template <typename T> Binding<double> numberBinding(T &value)
             }};
 }
 
+// Liaison entière (liste déroulante, onglets) vers un entier ou une énumération.
+template <typename T> Binding<int> intBinding(T &value)
+{
+    static_assert(std::is_integral_v<T> || std::is_enum_v<T>);
+    return {[p = &value] { return static_cast<int>(*p); }, [p = &value](const int &v) { *p = static_cast<T>(v); }};
+}
+
+// Liaison de couleur vers un glm::vec4 (RGBA) ou un glm::vec3 (RGB, alpha 1).
+template <typename T> Binding<glm::vec4> colorBinding(T &value)
+{
+    if constexpr (std::is_same_v<T, glm::vec3>)
+        return {[p = &value] { return glm::vec4(*p, 1.0f); }, [p = &value](const glm::vec4 &c) { *p = glm::vec3(c); }};
+    else
+        return Binding<glm::vec4>::ref(value);
+}
+
+// Texte d'un libellé lié (interpolation du langage d'interface) : les morceaux mis bout à bout ; un nombre flottant a au plus deux
+// décimales (« 59.87 », « 120 »), un booléen s'écrit true / false.
+namespace detail
+{
+std::string textPiece(double value);
+inline std::string textPiece(const std::string &s) { return s; }
+inline std::string textPiece(std::string_view s) { return std::string(s); }
+inline std::string textPiece(const char *s) { return s != nullptr ? std::string(s) : std::string(); }
+inline std::string textPiece(bool b) { return b ? "true" : "false"; }
+template <typename T>
+    requires(std::is_integral_v<T> && !std::is_same_v<T, bool>)
+std::string textPiece(T v)
+{
+    return std::to_string(v);
+}
+template <typename T>
+    requires std::is_floating_point_v<T>
+std::string textPiece(T v)
+{
+    return textPiece(static_cast<double>(v));
+}
+} // namespace detail
+template <typename... Args> std::string text(const Args &...args)
+{
+    std::string out;
+    ((out += detail::textPiece(args)), ...);
+    return out;
+}
+
 class Widget
 {
   public:

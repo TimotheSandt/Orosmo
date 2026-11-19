@@ -171,7 +171,13 @@ impl<'a> Generator<'a> {
             "// AUTO-GENERATED - do not edit. Source: {}",
             self.source_file
         ));
-        cpp.push(format!("#include \"{}.gen.h\"", view.name));
+        // L'en-tête porte le nom du fichier source (pas celui de la vue) : `st.cui` qui déclare `view F` produit `st.gen.h`.
+        let stem = std::path::Path::new(&self.source_file)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(&view.name)
+            .to_string();
+        cpp.push(format!("#include \"{stem}.gen.h\""));
         cpp.push(String::new());
         cpp.push("namespace ui::generated".to_string());
         cpp.push("{".to_string());
@@ -776,6 +782,7 @@ impl<'a> GenContext<'a> {
                 format!("{} {op} {}", self.gen_expr(left), self.gen_expr(right))
             }
             Expr::Capture { expr, .. } => self.gen_expr(expr),
+            Expr::Binding(path) => path.clone(), // refusé par main.rs avant la génération (cible héritée)
             Expr::StringLit(parts) => {
                 if parts.iter().all(|part| matches!(part, StringPart::Text(_))) {
                     let text = parts

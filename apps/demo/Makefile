@@ -161,7 +161,11 @@ endif
 
 # Test sources
 TEST_SRCS   := $(shell find $(TEST_DIR) -type f -name "*.cpp" 2>/dev/null)
-TEST_OBJS   := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/tests/%.o) $(TEST_GAME_OBJS) $(GEN_OBJS)
+# UI-11 : les vues .cui des tests (sauf les cas d'erreur de cui_errors/) sont compilées par cui, puis avec les tests.
+TEST_CUI_SRCS := $(shell find $(TEST_DIR) -type f -name "*.cui" -not -path "*/cui_errors/*" 2>/dev/null)
+TEST_GEN_CPP  := $(patsubst $(TEST_DIR)/%.cui,$(ENGINE_GEN_DIR)/tests/%.gen.cpp,$(TEST_CUI_SRCS))
+TEST_GEN_OBJS := $(TEST_GEN_CPP:$(ENGINE_GEN_DIR)/%.gen.cpp=$(OBJ_DIR)/gen/%.o)
+TEST_OBJS   := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/tests/%.o) $(TEST_GAME_OBJS) $(GEN_OBJS) $(TEST_GEN_OBJS)
 TEST_TARGET := bin/tests/tests$(ENGINE_EXE_EXT)
 
 # Style sources
@@ -252,7 +256,15 @@ test: $(TEST_TARGET)
 $(TEST_TARGET): $(TEST_OBJS) $(ENGINE_LIBS) | bin/tests
 	$(CXX) $(ENGINE_CXXFLAGS) $(TEST_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
 
-$(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp
+$(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp | $(TEST_GEN_CPP)
+	@mkdir -p "$(dir $@)"
+	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+
+$(ENGINE_GEN_DIR)/tests/%.gen.cpp: $(TEST_DIR)/%.cui $(_ENG_CUI_TOOL)
+	@mkdir -p "$(dir $@)"
+	$(_ENG_CUI_TOOL) run --output "$(dir $@)" $<
+
+$(OBJ_DIR)/gen/tests/%.o: $(ENGINE_GEN_DIR)/tests/%.gen.cpp
 	@mkdir -p "$(dir $@)"
 	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 

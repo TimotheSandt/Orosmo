@@ -1,0 +1,6 @@
+// expect: 5:17: error: unknown theme property 'colour' (properties: background, foreground, border, accent, muted, shadowColor, borderWidth, radius, padding, spacing, fontSize, shadowSize, shadowOffset, width)
+import "engine/ui"
+
+view V {
+    Button("Go").style(colour: "color.primary")
+}

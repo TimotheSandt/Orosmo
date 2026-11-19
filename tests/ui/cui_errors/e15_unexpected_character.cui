@@ -1,0 +1,6 @@
+// expect: 5:16: error: Unexpected character '#'
+import "engine/ui"
+
+view V {
+    Label("x") # comment
+}
