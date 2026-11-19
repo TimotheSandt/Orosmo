@@ -1,6 +1,7 @@
 # TOOL-01 : terrain-viewer. Utilise le SDK moteur synchronisé dans apps/demo/engine (`make viewer` à la racine du dépôt).
 # Le panneau src/TerrainPanel.cui est compilé par cui (cible engine/ui) puis avec le reste.
-ENGINE_DIR   := ../demo/engine
+# Dans le dépôt : le SDK synchronisé (apps/demo/engine) ; dans le paquet du moteur (examples/<nom>/) : la racine du paquet.
+ENGINE_DIR   ?= $(if $(wildcard ../../make/engine.mk),../..,../demo/engine)
 GAME_SRC_DIR := src
 BUILD_TYPE   ?= release
 SHELL        := sh
@@ -9,7 +10,9 @@ include $(ENGINE_DIR)/make/engine.mk
 TARGET   := bin/terrain-viewer$(ENGINE_EXE_EXT)
 SRCS     := $(wildcard src/*.cpp)
 OBJS     := $(SRCS:src/%.cpp=obj/%.o) $(GEN_CPP_SOURCES:$(ENGINE_GEN_DIR)/%.gen.cpp=obj/gen/%.o)
-REPO     ?= ../..
+# Ressources : celles du paquet (res/, shaders/) s'il y en a, sinon celles du dépôt.
+ENGINE_RES     ?= $(if $(wildcard $(ENGINE_DIR)/res/fonts),$(ENGINE_DIR)/res,../../res)
+ENGINE_SHADERS ?= $(if $(wildcard $(ENGINE_DIR)/shaders/rhi),$(ENGINE_DIR)/shaders,../../shaders)
 RES_OUT  := bin/res
 .DEFAULT_GOAL := all
 
@@ -31,9 +34,9 @@ obj/gen/%.o: $(ENGINE_GEN_DIR)/%.gen.cpp
 # Ressources à côté de l'exécutable : police, thèmes (rechargés à chaud depuis bin/res/themes), shaders du RHI, préréglages.
 resources:
 	@mkdir -p $(RES_OUT)/fonts $(RES_OUT)/themes $(RES_OUT)/shader/rhi $(RES_OUT)/presets
-	cp $(REPO)/res/fonts/Roboto-Regular.ttf $(RES_OUT)/fonts/
-	cp $(REPO)/res/themes/*.json $(RES_OUT)/themes/
-	cp $(REPO)/shaders/rhi/* $(RES_OUT)/shader/rhi/
+	cp $(ENGINE_RES)/fonts/Roboto-Regular.ttf $(RES_OUT)/fonts/
+	cp $(ENGINE_RES)/themes/*.json $(RES_OUT)/themes/
+	cp $(ENGINE_SHADERS)/rhi/* $(RES_OUT)/shader/rhi/
 	cp presets/*.json $(RES_OUT)/presets/
 
 run: all

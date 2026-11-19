@@ -7,16 +7,27 @@ to build a game project against this engine without having to compile the engine
 
 ```
 engine-<platform>/
-  includes/          — Public C++ headers (Graphics, UI, Noise, Profiler, …)
+  includes/
+    engine/          — public API (stable within a minor version, see docs/USING_THE_ENGINE.md in the repository):
+      core/            errors (std::expected), logger, tasks, file watcher, reflection + JSON/MessagePack serialization
+      platform/        Window, InputManager (names still PascalCase: will change, see "API stability")
+      rhi/             graphics abstraction (Device, CommandEncoder, handles) — OpenGL 4.3+ backend before M4
+      renderer/        SceneRenderer, Camera (reverse-Z), CanvasRenderer, DrawList, TerrainRenderer, DebugDraw
+      world/           deterministic noise, terrain tiles, LOD streaming, GPU noise, export (PNG16/EXR/OBJ/glTF/STL)
+      ui/              engine::ui — widgets, layout, JSON themes, reflected parameter panels
+    Graphics/, UI/, Noise/, Profiler/, Utilities/, Benchmark/ — legacy headers (UI::View target of the .cui language)
   lib/
-    debug/           — Static archives built with debug flags
-    release/         — Static archives built with optimisations
-  make/
-    engine.mk        — Include this in your project Makefile
-  tools/
-    cui[.exe]        — CUI precompiler (converts .cui DSL files to C++)
-  .gitignore         — Ignores everything here (all files are generated)
-  README.md          — This file
+    debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libworld, libui, … (link them all:
+                       ENGINE_LINK_LIBS)
+  make/engine.mk     — include this in your project Makefile
+  tools/cui[.exe]    — interface language compiler (.cui → C++), run by engine.mk
+  shaders/rhi/       — GLSL 450 shaders of the RHI renderers: copy them next to your executable (res/shader/rhi/)
+  res/fonts, res/themes — default font and the dark/light themes of engine::ui
+  examples/
+    terrain_gen/     — command-line generator (no window, no GPU):  make -C examples/terrain_gen
+    terrain_viewer/  — viewer with a .cui control panel:            make -C examples/terrain_viewer
+  vcpkg.json         — third-party dependencies (make install in a project created by `engine init`)
+  .gitignore, README.md
 ```
 
 ## Prerequisites
@@ -24,7 +35,7 @@ engine-<platform>/
 | Tool | Minimum version | Notes |
 |------|----------------|-------|
 | GNU Make | 4.x | `make --version` |
-| g++ or clang++ | C++23 support | set `CXX` to override |
+| g++ or clang++ | g++ 13 (verified: 13.3) or clang++ 17 | C++23 (`std::expected`, `<stacktrace>`); set `CXX` to override |
 | vcpkg | any | only needed for `make install` |
 
 No Python, no Rust toolchain required. The CUI precompiler ships as a native binary.
@@ -140,3 +151,16 @@ Recommended workflows:
 
 - **Submodule**: reference the engine source repository as a submodule and run
   `make -f mk/engine.mk dist` locally. Keep the `dist/` output gitignored.
+
+## Examples and resources
+
+Both examples build from this package alone: `ENGINE_DIR` defaults to the package root when they sit in `examples/`.
+A program that renders needs the RHI shaders and, for `engine::ui`, a font and a theme at run time: the examples copy
+`shaders/rhi`, `res/fonts` and `res/themes` into `bin/res/`. The template project created by `engine init` does the same.
+
+## Interface language
+
+`.cui` files that start with `import "engine/ui"` describe an `engine::ui` panel: widgets, two-way bindings (`$state.value`),
+events that name C++ functions (`.onClick(state.regenerate)`), local theme overrides by token. Errors are reported as
+`file:line:column: error: message`, and `#line` directives map C++ errors back to the `.cui` line. Specification:
+`docs/UI_LANGUAGE.md` in the engine repository.

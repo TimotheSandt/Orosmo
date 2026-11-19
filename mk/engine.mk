@@ -383,6 +383,11 @@ ifeq ($(DETECTED_OS),Windows)
 	@powershell -NoProfile -Command "Copy-Item -Path 'vcpkg.json' -Destination '$(DIST_PKG_DIR)' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist.gitignore' -Destination '$(DIST_PKG_DIR)/.gitignore' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist-README.md' -Destination '$(DIST_PKG_DIR)/README.md' -Force"
+	@mkdir -p "$(DIST_PKG_DIR)/res" "$(DIST_PKG_DIR)/examples/terrain_gen" "$(DIST_PKG_DIR)/examples/terrain_viewer"
+	@powershell -NoProfile -Command "Copy-Item -Path 'shaders' -Destination '$(DIST_PKG_DIR)/shaders' -Recurse -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'res/fonts','res/themes' -Destination '$(DIST_PKG_DIR)/res' -Recurse -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'apps/terrain_gen/main.cpp','apps/terrain_gen/Makefile','apps/terrain_gen/README.md' -Destination '$(DIST_PKG_DIR)/examples/terrain_gen' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'apps/terrain_viewer/src','apps/terrain_viewer/presets','apps/terrain_viewer/Makefile','apps/terrain_viewer/README.md' -Destination '$(DIST_PKG_DIR)/examples/terrain_viewer' -Recurse -Force"
 else
 	@rm -rf "$(_DIST_STAGING)"
 	@mkdir -p "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
@@ -395,6 +400,13 @@ else
 	@cp vcpkg.json      "$(DIST_PKG_DIR)/vcpkg.json"
 	@cp tools/engine-sdk/dist.gitignore "$(DIST_PKG_DIR)/.gitignore"
 	@cp tools/engine-sdk/dist-README.md "$(DIST_PKG_DIR)/README.md"
+	@# Shaders du RHI, police et thèmes (ressources des programmes) ; exemples compilables depuis le paquet (BLD-02).
+	@cp -r shaders "$(DIST_PKG_DIR)/shaders"
+	@mkdir -p "$(DIST_PKG_DIR)/res" "$(DIST_PKG_DIR)/examples/terrain_gen" "$(DIST_PKG_DIR)/examples/terrain_viewer"
+	@cp -r res/fonts res/themes "$(DIST_PKG_DIR)/res/"
+	@cp apps/terrain_gen/main.cpp apps/terrain_gen/Makefile apps/terrain_gen/README.md "$(DIST_PKG_DIR)/examples/terrain_gen/"
+	@cp -r apps/terrain_viewer/src apps/terrain_viewer/presets apps/terrain_viewer/Makefile apps/terrain_viewer/README.md \
+	       "$(DIST_PKG_DIR)/examples/terrain_viewer/"
 endif
 	@echo "Engine package ready: $(DIST_PKG_DIR)/"
 
@@ -454,6 +466,10 @@ else
 	cp "$(ENGINE_INIT_EXE)" "$@"
 endif
 	@echo "Engine tool: $@"
+
+.PHONY: print-platform
+print-platform:
+	@echo $(ENGINE_PLATFORM)
 
 .PHONY: engine-tool
 engine-tool: $(ENGINE_PKG_ZIP) $(ENGINE_TOOL_EXE)
