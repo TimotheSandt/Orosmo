@@ -1,12 +1,12 @@
 #include "support/test_support.hpp"
 
-#include <engine/core/fps_counter.hpp>
-#include <engine/core/ring_buffer.hpp>
+#include <orosmo/core/fps_counter.hpp>
+#include <orosmo/core/ring_buffer.hpp>
 
 #include <chrono>
 #include <thread>
 
-using namespace engine::core;
+using namespace orosmo::core;
 
 namespace tests
 {

@@ -1,13 +1,13 @@
-#include "engine/ui/widgets.hpp"
+#include "orosmo/ui/widgets.hpp"
 
-#include "engine/ui/ui.hpp"
+#include "orosmo/ui/ui.hpp"
 
 #include <algorithm>
 #include <charconv>
 #include <cmath>
 #include <cstdio>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 namespace
@@ -921,4 +921,4 @@ glm::vec2 Section::measureContent(Ui &ui, glm::vec2 available, const Style &styl
 glm::vec2 Separator::measureContent(Ui &, glm::vec2, const Style &style) { return {0.0f, style.width}; }
 void Separator::drawContent(const Ui &, renderer::DrawList &, const Style &) const {}
 
-} // namespace engine::ui
+} // namespace orosmo::ui

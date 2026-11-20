@@ -5,9 +5,9 @@
 Premier jalon présenté comme **utilisable** (release proposée : `v0.3.0`). Le moteur génère un terrain **déterministe** (mêmes
 octets pour la même graine, CPU, et GPU dans une tolérance fixée), le découpe en tuiles à niveaux de détail sans fissure,
 le charge en tâche de fond sous un budget mémoire, le dessine (pente/altitude, triplanaire, reverse-Z dans le repère Vulkan du RHI)
-et l'exporte (PNG 16 bits, EXR, OBJ, glTF, STL imprimable, biomes). Un nouveau module **`engine::ui`** (widgets, mise en page,
+et l'exporte (PNG 16 bits, EXR, OBJ, glTF, STL imprimable, biomes). Un nouveau module **`orosmo::ui`** (widgets, mise en page,
 thèmes JSON rechargés à chaud, paramètres réfléchis affichés automatiquement) est piloté par le **langage d'interface**, dont le
-compilateur produit maintenant du code `engine::ui` avec événements nommés, liaisons dans les deux sens et erreurs
+compilateur produit maintenant du code `orosmo::ui` avec événements nommés, liaisons dans les deux sens et erreurs
 `fichier:ligne:colonne`. Deux outils : `terrain-gen` (sans fenêtre) et le **visualiseur** (panneau `.cui`, préréglages, thème
 clair/sombre en direct, export). Le paquet de release contient shaders, ressources et exemples ; `orosmo init` est vérifié de bout
 en bout. Détail : `docs/releases/M3.md`.

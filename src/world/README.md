@@ -1,6 +1,6 @@
 # world
 
-Couche `world` de `docs/03` : bruit, terrain, export. Archive : `libworld.a` (`src/world/`), API publique `include/engine/world/`.
+Couche `world` de `docs/03` : bruit, terrain, export. Archive : `libworld.a` (`src/world/`), API publique `include/orosmo/world/`.
 Ne dépend **pas** de `renderer` : la génération tourne sans GPU (`terrain-gen`, tests). Le calcul sur GPU passe par le RHI et est
 isolé dans `src/world/gpu/`.
 
@@ -27,8 +27,8 @@ isolé dans `src/world/gpu/`.
 ## Exemple
 
 ```cpp
-#include <engine/world/noise.hpp>
-namespace w = engine::world;
+#include <orosmo/world/noise.hpp>
+namespace w = orosmo::world;
 const w::FbmParams relief{.basis = w::NoiseBasis::kPerlin, .octaves = 6, .frequency = 0.01f};
 const float h = w::warpedFbm2(x, z, seed, relief, {.amplitude = 20.0f, .frequency = 0.004f});
 ```

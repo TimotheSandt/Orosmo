@@ -1,14 +1,14 @@
-#include "engine/ui/font.hpp"
+#include "orosmo/ui/font.hpp"
 
-#include "engine/ui/theme.hpp"
+#include "orosmo/ui/theme.hpp"
 
-#include <engine/core/log.hpp>
-#include "engine/ui/text_renderer.hpp"
+#include <orosmo/core/log.hpp>
+#include "orosmo/ui/text_renderer.hpp"
 
 #include <cmath>
 #include <string>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 std::size_t utf8Length(std::string_view text, std::size_t i) noexcept
@@ -133,4 +133,4 @@ void TextRendererFont::draw(renderer::DrawList &list, std::string_view text, glm
     renderer_->setDrawListSink(nullptr);
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

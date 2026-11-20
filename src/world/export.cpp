@@ -1,6 +1,6 @@
-#include "engine/world/export.hpp"
+#include "orosmo/world/export.hpp"
 
-#include "engine/core/tasks.hpp"
+#include "orosmo/core/tasks.hpp"
 
 #include <nlohmann/json.hpp>
 #include <stb_image_write.h>
@@ -17,7 +17,7 @@
 #include <string>
 #include <tuple>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 using core::ErrorCode;
@@ -477,7 +477,7 @@ core::Result<> writeObj(const std::filesystem::path &path, const HeightField &fi
     if (auto r = checkField(field, "writeObj"); !r)
         return r;
     const GridMesh m = gridMesh(field);
-    std::string out = "# terrain exporté par engine::world (TER-11)\n";
+    std::string out = "# terrain exporté par orosmo::world (TER-11)\n";
     char line[128];
     // std::to_chars : même sortie que "%.6f", mais indépendante de LC_NUMERIC (une virgule changerait les octets du fichier).
     auto triple = [&](const char *prefix, const float *v)
@@ -534,7 +534,7 @@ core::Result<> writeGltf(const std::filesystem::path &path, const HeightField &f
     const std::size_t vertexCount = m.positions.size() / 3;
     using nlohmann::json;
     json doc = {
-        {"asset", {{"version", "2.0"}, {"generator", "engine::world (TER-11)"}}},
+        {"asset", {{"version", "2.0"}, {"generator", "orosmo::world (TER-11)"}}},
         {"scene", 0},
         {"scenes", json::array({{{"nodes", json::array({0})}}})},
         {"nodes", json::array({{{"mesh", 0}, {"name", "terrain"}}})},
@@ -595,7 +595,7 @@ core::Result<> writeStl(const std::filesystem::path &path, const HeightField &fi
         skirt(top(w, j + 1), top(w, j), bottom(w, j + 1), bottom(w, j)); // bord x maximal
     }
     Bytes stl;
-    std::string header = "engine::world TER-11 terrain (binary STL, closed solid)";
+    std::string header = "orosmo::world TER-11 terrain (binary STL, closed solid)";
     header.resize(80, ' ');
     stl.str(header, false);
     stl.u32le(static_cast<std::uint32_t>(triangles.size()));
@@ -668,4 +668,4 @@ core::Result<> writeBiomePng(const std::filesystem::path &path, const HeightFiel
     return {};
 }
 
-} // namespace engine::world
+} // namespace orosmo::world

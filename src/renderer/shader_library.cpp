@@ -1,6 +1,6 @@
-#include "engine/renderer/shader_library.hpp"
+#include "orosmo/renderer/shader_library.hpp"
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -8,7 +8,7 @@
 #include <atomic>
 #include <iterator>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 using core::ErrorCode;
@@ -432,4 +432,4 @@ std::size_t ShaderLibrary::pollHotReload()
     return reloaded_ - before;
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

@@ -1,10 +1,10 @@
-#include "engine/world/gpu_noise.hpp"
+#include "orosmo/world/gpu_noise.hpp"
 
-#include "engine/rhi/shader_compiler.hpp"
+#include "orosmo/rhi/shader_compiler.hpp"
 
 #include <cstring>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 using core::ErrorCode;
@@ -309,4 +309,4 @@ core::Result<std::vector<float>> GpuNoise::generateTile(const TerrainParams &par
     return out;
 }
 
-} // namespace engine::world
+} // namespace orosmo::world

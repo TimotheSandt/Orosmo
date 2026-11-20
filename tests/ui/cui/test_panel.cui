@@ -1,5 +1,5 @@
-// UI-11 : vue de test (compilée par cui vers engine::ui, puis par le compilateur C++, puis exécutée par tests/ui/cui_tests.cpp).
-import "engine/ui"
+// UI-11 : vue de test (compilée par cui vers orosmo::ui, puis par le compilateur C++, puis exécutée par tests/ui/cui_tests.cpp).
+import "orosmo/ui"
 import "ui/cui_test_state.hpp"
 
 view TestPanel {

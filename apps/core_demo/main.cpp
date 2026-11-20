@@ -1,17 +1,17 @@
-// Démo M1 : le noyau (`engine/core`) sans aucune fenêtre ni appel graphique.
+// Démo M1 : le noyau (`orosmo/core`) sans aucune fenêtre ni appel graphique.
 //   1. lance 10 000 tâches sur le TaskSystem et mesure le débit ;
 //   2. recharge à chaud un fichier de configuration modifié, sans redémarrer (FileWatcher + Config) ;
 //   3. affiche les mesures (TraceRecorder) et écrit une trace Chrome (user://trace.json).
 //
 //   make core-demo            construit et lance (voir README du module core)
 //   bin/core_demo --tasks 20000 --config.name=alpha --trace out.json
-#include <engine/core/config.hpp>
-#include <engine/core/events.hpp>
-#include <engine/core/file_watcher.hpp>
-#include <engine/core/tasks.hpp>
-#include <engine/core/time.hpp>
-#include <engine/core/trace.hpp>
-#include <engine/core/vfs.hpp>
+#include <orosmo/core/config.hpp>
+#include <orosmo/core/events.hpp>
+#include <orosmo/core/file_watcher.hpp>
+#include <orosmo/core/tasks.hpp>
+#include <orosmo/core/time.hpp>
+#include <orosmo/core/trace.hpp>
+#include <orosmo/core/vfs.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -22,7 +22,7 @@
 #include <random>
 #include <thread>
 
-using namespace engine::core;
+using namespace orosmo::core;
 namespace fs = std::filesystem;
 
 namespace

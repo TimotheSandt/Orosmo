@@ -1,25 +1,25 @@
-// Galerie de l'interface (exemple) : tous les widgets, conteneurs, modificateurs, événements et thèmes d'engine::ui, décrits dans
+// Galerie de l'interface (exemple) : tous les widgets, conteneurs, modificateurs, événements et thèmes d'orosmo::ui, décrits dans
 // Gallery.cui. Fenêtre, ou image sans fenêtre (--headless --capture DIR). Codes de retour : 0, 1 (utilisation), 2 (exécution).
 #include "Gallery.gen.h"
 #include "gallery_state.hpp"
 
-#include <engine/core/file_watcher.hpp>
-#include <engine/core/system.hpp>
-#include <engine/platform/input_manager.hpp>
-#include <engine/platform/window.hpp>
-#include <engine/renderer/canvas_renderer.hpp>
-#include <engine/renderer/fullscreen_blit.hpp>
-#include <engine/renderer/image.hpp>
-#include <engine/renderer/pipeline_cache.hpp>
-#include <engine/renderer/render_target.hpp>
-#include <engine/renderer/shader_library.hpp>
-#include <engine/rhi/device.hpp>
-#include <engine/ui/font.hpp>
-#include <engine/ui/ui.hpp>
-#include <engine/ui/window_input.hpp>
+#include <orosmo/core/file_watcher.hpp>
+#include <orosmo/core/system.hpp>
+#include <orosmo/platform/input_manager.hpp>
+#include <orosmo/platform/window.hpp>
+#include <orosmo/renderer/canvas_renderer.hpp>
+#include <orosmo/renderer/fullscreen_blit.hpp>
+#include <orosmo/renderer/image.hpp>
+#include <orosmo/renderer/pipeline_cache.hpp>
+#include <orosmo/renderer/render_target.hpp>
+#include <orosmo/renderer/shader_library.hpp>
+#include <orosmo/rhi/device.hpp>
+#include <orosmo/ui/font.hpp>
+#include <orosmo/ui/ui.hpp>
+#include <orosmo/ui/window_input.hpp>
 
-#include <engine/core/log.hpp>
-#include <engine/ui/text_renderer.hpp>
+#include <orosmo/core/log.hpp>
+#include <orosmo/ui/text_renderer.hpp>
 
 #include <charconv>
 #include <cstdlib>
@@ -29,9 +29,9 @@
 #include <string_view>
 
 namespace fs = std::filesystem;
-namespace rd = engine::renderer;
-namespace rhi = engine::rhi;
-namespace ui = engine::ui;
+namespace rd = orosmo::renderer;
+namespace rhi = orosmo::rhi;
+namespace ui = orosmo::ui;
 
 namespace
 {
@@ -101,7 +101,7 @@ int run(const Options &o)
     }
     text.setActiveFont("default");
     ui::TextRendererFont font(text);
-    engine::core::FileWatcher watcher; // avant l'interface : son ThemeHost s'en désinscrit à sa destruction
+    orosmo::core::FileWatcher watcher; // avant l'interface : son ThemeHost s'en désinscrit à sa destruction
     ui::Ui interface(font);
     if (!o.headless)
         ui::useSystemClipboard(interface, window); // champs de texte : Ctrl+C / X / V
@@ -262,7 +262,7 @@ int main(int argc, char **argv)
     Options o;
     // Ressources à côté du binaire trouvé par le système (pas argv[0], qui peut n'être que le nom de la commande) ; --res les
     // remplace. Résolution sans exception.
-    fs::path exe = engine::core::system::executablePath();
+    fs::path exe = orosmo::core::system::executablePath();
     std::error_code pathError;
     if (exe.empty())
         exe = fs::absolute(argv[0], pathError);

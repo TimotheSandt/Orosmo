@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/time.hpp>
+#include <orosmo/core/time.hpp>
 
-using namespace engine::core;
+using namespace orosmo::core;
 using std::chrono::milliseconds;
 
 TEST_SUITE("core/time")

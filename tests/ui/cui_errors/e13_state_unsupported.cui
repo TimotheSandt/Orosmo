@@ -1,5 +1,5 @@
-// expect: 5:5: error: @State is not supported with engine/ui: keep the state in C++ and bind it with @Mutable
-import "engine/ui"
+// expect: 5:5: error: @State is not supported with orosmo/ui: keep the state in C++ and bind it with @Mutable
+import "orosmo/ui"
 
 view V {
     @State var count: int = 0

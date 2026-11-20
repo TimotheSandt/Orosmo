@@ -6,7 +6,7 @@ use crate::compile_source;
 use crate::lexer::{Lexer, TokenType};
 
 fn engine(src: &str) -> Result<(String, String), Vec<String>> {
-    compile_source(&format!("import \"engine/ui\"\n{src}"), "v.cui", "v")
+    compile_source(&format!("import \"orosmo/ui\"\n{src}"), "v.cui", "v")
 }
 
 fn errors(src: &str) -> Vec<String> {
@@ -40,13 +40,13 @@ fn a_view_compiles_to_a_struct_and_a_build_function() {
     assert!(header.contains("    State *state = nullptr;"));
     assert!(header.contains("    const Stats *stats = nullptr;"));
     assert!(header.contains("    static constexpr auto w = 320.0;"));
-    assert!(header.contains("inline std::unique_ptr<engine::ui::Widget> buildPanel(engine::ui::Ui &cui_ui, State &state, const Stats &stats)"));
+    assert!(header.contains("inline std::unique_ptr<orosmo::ui::Widget> buildPanel(orosmo::ui::Ui &cui_ui, State &state, const Stats &stats)"));
     assert!(source.contains("#include \"v.gen.h\""));
-    assert!(source.contains("engine::ui::Slider>(engine::ui::numberBinding(state->scale), static_cast<double>(0.0), static_cast<double>(10.0), static_cast<double>(1.0))"));
+    assert!(source.contains("orosmo::ui::Slider>(orosmo::ui::numberBinding(state->scale), static_cast<double>(0.0), static_cast<double>(10.0), static_cast<double>(1.0))"));
     assert!(source.contains("decltype(state->changed(std::forward<decltype(cui_a)>(cui_a)...))"));
-    assert!(source.contains("bindText([=] { return engine::ui::text(\"FPS \", stats->fps); });"));
+    assert!(source.contains("bindText([=] { return orosmo::ui::text(\"FPS \", stats->fps); });"));
     assert!(source.contains("onClick(cui_ui.actions().bind(\"regenerate\"));"));
-    assert!(source.contains("setWidth(engine::ui::SizeSpec::fixed(static_cast<float>(w)));"));
+    assert!(source.contains("setWidth(orosmo::ui::SizeSpec::fixed(static_cast<float>(w)));"));
 }
 
 #[test]
@@ -58,8 +58,8 @@ fn every_statement_is_mapped_to_its_line_in_the_cui_file() {
             assert!(lines[i - 1].starts_with("#line "), "statement without #line: {line}");
         }
     }
-    assert!(source.contains("#line 4 \"v.cui\"\n    auto cui_w1 = std::make_unique<engine::ui::Label>();"));
-    assert!(source.contains("#line 5 \"v.cui\"\n    auto cui_w2 = std::make_unique<engine::ui::Label>();"));
+    assert!(source.contains("#line 4 \"v.cui\"\n    auto cui_w1 = std::make_unique<orosmo::ui::Label>();"));
+    assert!(source.contains("#line 5 \"v.cui\"\n    auto cui_w2 = std::make_unique<orosmo::ui::Label>();"));
 }
 
 #[test]
@@ -68,10 +68,10 @@ fn tabs_pages_sections_and_param_panels() {
         "view V {\n    @Mutable var s: S\n    Tabs {\n        Page(\"A\") { ParamPanel($s.params) }\n        Page(\"B\") { Label(\"1\") Label(\"2\") }\n    }\n}\n",
     )
     .unwrap();
-    assert!(source.contains("engine::ui::reflectedPanel(s->params)"));
+    assert!(source.contains("orosmo::ui::reflectedPanel(s->params)"));
     assert!(source.contains("addPage(std::string(\"A\"), std::move("));
     assert!(source.contains("addPage(std::string(\"B\"), std::move("));
-    assert!(source.contains("std::make_unique<engine::ui::VBox>()")); // page à plusieurs enfants
+    assert!(source.contains("std::make_unique<orosmo::ui::VBox>()")); // page à plusieurs enfants
 }
 
 #[test]
@@ -102,10 +102,10 @@ fn invalid_sources_give_exact_messages() {
 
 #[test]
 fn a_file_without_the_engine_ui_import_is_refused() {
-    // La cible héritée UI::View a été supprimée : sans `import "engine/ui"`, rien n'est généré.
+    // La cible héritée UI::View a été supprimée : sans `import "orosmo/ui"`, rien n'est généré.
     let err = compile_source("view F {\n    VBox {}\n}\n", "f.cui", "f").unwrap_err();
     assert_eq!(err.len(), 1, "{err:?}");
-    assert!(err[0].starts_with("f.cui:1:1: error: missing `import \"engine/ui\"`"), "{err:?}");
+    assert!(err[0].starts_with("f.cui:1:1: error: missing `import \"orosmo/ui\"`"), "{err:?}");
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn a_slider_default_is_set_after_construction() {
 #[test]
 fn the_spec_lists_every_component_as_json() {
     let spec = crate::engine::spec_json();
-    assert!(spec.starts_with("{\"import\":\"engine/ui\""));
+    assert!(spec.starts_with("{\"import\":\"orosmo/ui\""));
     for name in ["\"VBox\"", "\"Slider\"", "\"ParamPanel\"", "\"onClick\"", "\"imageTint\""] {
         assert!(spec.contains(name), "{name} missing");
     }
@@ -130,14 +130,14 @@ fn ui03_components_generate_their_widgets_and_check_their_children() {
         "view V {\n    @Mutable var s: S\n    VBox {\n        MenuBar {\n            Menu(\"File\") {\n                MenuItem(\"Grid\", checked: $s.grid)\n            }\n        }\n        Dialog(\"D\", open: $s.open) {\n            Label(\"in\")\n        }\n        .width(200)\n        GradientEditor($s.gradient)\n        ImageView(s.map).fit(.cover)\n        Button(\"Go\").shortcut(\"Ctrl+G\")\n        TextArea($s.notes, wrap: false)\n    }\n}\n",
     )
     .unwrap();
-    assert!(header.contains("#include \"engine/ui/menus.hpp\""));
+    assert!(header.contains("#include \"orosmo/ui/menus.hpp\""));
     assert!(source.contains("->items().add(std::move("));
-    assert!(source.contains("engine::ui::MenuItem>(std::string(\"Grid\"), std::string(), engine::ui::Binding<bool>::ref(s->grid))"));
+    assert!(source.contains("orosmo::ui::MenuItem>(std::string(\"Grid\"), std::string(), orosmo::ui::Binding<bool>::ref(s->grid))"));
     assert!(source.contains("->body().add(std::move("));
-    assert!(source.contains("(&cui_w4->panel())->setWidth(engine::ui::SizeSpec::fixed(static_cast<float>(200.0)));"));
-    assert!(source.contains("engine::ui::Binding<engine::ui::Gradient>::ref(s->gradient)"));
-    assert!(source.contains("[=] { return engine::ui::imageOf(s->map); }"));
-    assert!(source.contains("setFit(engine::ui::ImageFit::kCover);"));
+    assert!(source.contains("(&cui_w4->panel())->setWidth(orosmo::ui::SizeSpec::fixed(static_cast<float>(200.0)));"));
+    assert!(source.contains("orosmo::ui::Binding<orosmo::ui::Gradient>::ref(s->gradient)"));
+    assert!(source.contains("[=] { return orosmo::ui::imageOf(s->map); }"));
+    assert!(source.contains("setFit(orosmo::ui::ImageFit::kCover);"));
     assert!(source.contains("->setShortcut(std::string(\"Ctrl+G\"));"));
     assert!(source.contains("->setLineNumbers(false).setReadOnly(false).setWrap(static_cast<bool>(false));"));
     assert_eq!(

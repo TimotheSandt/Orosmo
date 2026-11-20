@@ -1,10 +1,10 @@
-#include "engine/rhi/shader_compiler.hpp"
+#include "orosmo/rhi/shader_compiler.hpp"
 
 #include <shaderc/shaderc.hpp>
 #include <spirv_cross/spirv_cross.hpp>
 #include <spirv_cross/spirv_glsl.hpp>
 
-#include "engine/core/system.hpp"
+#include "orosmo/core/system.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -13,7 +13,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace engine::rhi
+namespace orosmo::rhi
 {
 
 using core::ErrorCode;
@@ -587,4 +587,4 @@ std::size_t ShaderHotReloader::poll()
     return attempts;
 }
 
-} // namespace engine::rhi
+} // namespace orosmo::rhi

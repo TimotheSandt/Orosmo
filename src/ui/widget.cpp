@@ -1,14 +1,14 @@
-#include "engine/ui/widget.hpp"
+#include "orosmo/ui/widget.hpp"
 
-#include "engine/ui/nine_slice.hpp"
-#include "engine/ui/ui.hpp"
+#include "orosmo/ui/nine_slice.hpp"
+#include "orosmo/ui/ui.hpp"
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <algorithm>
 #include <cstdio>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 std::string detail::textPiece(double value)
@@ -313,4 +313,4 @@ void Widget::emit(Ui &ui, EventKind kind, bool active)
         });
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

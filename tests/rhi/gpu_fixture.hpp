@@ -3,7 +3,7 @@
 
 #include <doctest/doctest.h>
 
-#include <engine/rhi/device.hpp>
+#include <orosmo/rhi/device.hpp>
 
 #include "support/result_support.hpp"
 
@@ -14,8 +14,8 @@
 #include <string_view>
 #include <vector>
 
-using namespace engine::rhi;
-using engine::core::ErrorCode;
+using namespace orosmo::rhi;
+using orosmo::core::ErrorCode;
 
 namespace
 {

@@ -1,6 +1,6 @@
-#include "engine/renderer/fullscreen_blit.hpp"
+#include "orosmo/renderer/fullscreen_blit.hpp"
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 namespace
@@ -144,4 +144,4 @@ core::Result<> FullscreenBlit::compose(rhi::CommandEncoder &encoder, rhi::Textur
     return r;
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

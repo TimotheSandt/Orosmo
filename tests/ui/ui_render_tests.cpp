@@ -6,14 +6,14 @@
 #include "rhi/gpu_fixture.hpp"
 #include "support/test_support.hpp"
 
-#include <engine/renderer/canvas_renderer.hpp>
-#include <engine/ui/ui.hpp>
-#include <engine/ui/widgets.hpp>
+#include <orosmo/renderer/canvas_renderer.hpp>
+#include <orosmo/ui/ui.hpp>
+#include <orosmo/ui/widgets.hpp>
 
-#include <engine/ui/text_renderer.hpp>
+#include <orosmo/ui/text_renderer.hpp>
 
-namespace rd = engine::renderer;
-namespace ui = engine::ui;
+namespace rd = orosmo::renderer;
+namespace ui = orosmo::ui;
 
 namespace
 {
@@ -33,7 +33,7 @@ TEST_SUITE("ui/render")
         SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
         const auto root = tests::repoRoot(__FILE__);
 
-        engine::ui::TextRenderer text;
+        orosmo::ui::TextRenderer text;
         REQUIRE(text.init(256, 128));
         REQUIRE(text.loadFont((root / "res" / "fonts" / "Roboto-Regular.ttf").string(), "default", 48));
         text.setActiveFont("default");

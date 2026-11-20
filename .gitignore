@@ -18,7 +18,7 @@ imgui.ini
 /*.stl
 
 # Engine copied/linked into the demo, per-machine overrides
-/apps/*/engine/
+/apps/*/orosmo/
 /apps/*/vcpkg_installed/
 config.local.mk
 

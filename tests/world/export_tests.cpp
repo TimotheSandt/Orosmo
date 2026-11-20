@@ -6,14 +6,14 @@
 #include "renderer/repo_paths.hpp"
 #include "rhi/gpu_fixture.hpp"
 
-#include <engine/core/tasks.hpp>
-#include <engine/renderer/light.hpp>
-#include <engine/renderer/scene_renderer.hpp>
-#include <engine/renderer/terrain_renderer.hpp>
-#include <engine/world/checksum.hpp>
-#include <engine/world/export.hpp>
-#include <engine/world/lod.hpp>
-#include <engine/world/raycast.hpp>
+#include <orosmo/core/tasks.hpp>
+#include <orosmo/renderer/light.hpp>
+#include <orosmo/renderer/scene_renderer.hpp>
+#include <orosmo/renderer/terrain_renderer.hpp>
+#include <orosmo/world/checksum.hpp>
+#include <orosmo/world/export.hpp>
+#include <orosmo/world/lod.hpp>
+#include <orosmo/world/raycast.hpp>
 
 #include <nlohmann/json.hpp>
 #include <stb_image.h>
@@ -28,8 +28,8 @@
 #include <sstream>
 #include <string_view>
 
-namespace w = engine::world;
-namespace rd = engine::renderer;
+namespace w = orosmo::world;
+namespace rd = orosmo::renderer;
 namespace fs = std::filesystem;
 
 namespace
@@ -101,7 +101,7 @@ TEST_SUITE("world/export")
         CHECK(field.heights == tile.heights);
         CHECK(field.originX == 32.0f);
         CHECK(field.originZ == 64.0f);
-        engine::core::TaskSystem tasks(3);
+        orosmo::core::TaskSystem tasks(3);
         CHECK(w::generateRegion(p, 9, -40, 7, 64, 48, &tasks).heights == w::generateRegion(p, 9, -40, 7, 64, 48).heights);
     }
 
@@ -154,7 +154,7 @@ TEST_SUITE("world/export")
         CHECK(bytes[1] == 0x2f);
         CHECK(bytes[2] == 0x31);
         CHECK(bytes[3] == 0x01);
-        CHECK((tests::errorOf(w::readHeightExr(dir.path / "absent.exr")) == engine::core::ErrorCode::kIo));
+        CHECK((tests::errorOf(w::readHeightExr(dir.path / "absent.exr")) == orosmo::core::ErrorCode::kIo));
     }
 
     TEST_CASE("EXR from an untrusted file: truncated attributes, oversized windows, bad offsets and duplicate rows are errors")
@@ -188,22 +188,22 @@ TEST_SUITE("world/export")
 
         auto truncated = valid; // attribut « channels » réduit à 2 octets : le nom du canal n'y est plus terminé
         put32(truncated, payloadOf("channels"), 2);
-        CHECK((tests::errorOf(readBack(truncated)) == engine::core::ErrorCode::kParse));
+        CHECK((tests::errorOf(readBack(truncated)) == orosmo::core::ErrorCode::kParse));
 
         auto huge = valid; // fenêtre de 2^32 colonnes : aucune allocation, et pas de débordement de xMax - xMin + 1
         const std::size_t window = payloadOf("dataWindow") + 4;
         put32(huge, window, 0x80000000U);
         put32(huge, window + 8, 0x7fffffffU);
-        CHECK((tests::errorOf(readBack(huge)) == engine::core::ErrorCode::kParse));
+        CHECK((tests::errorOf(readBack(huge)) == orosmo::core::ErrorCode::kParse));
 
         auto outside = valid; // offset au-delà du fichier : refusé avant la lecture de la rangée
         put32(outside, table, 0xffffff00U);
         put32(outside, table + 4, 0xffffffffU);
-        CHECK((tests::errorOf(readBack(outside)) == engine::core::ErrorCode::kParse));
+        CHECK((tests::errorOf(readBack(outside)) == orosmo::core::ErrorCode::kParse));
 
         auto duplicate = valid; // deux entrées de la table vers la même rangée : l'autre rangée ne serait jamais remplie
         std::copy_n(valid.begin() + static_cast<std::ptrdiff_t>(table), 8, duplicate.begin() + static_cast<std::ptrdiff_t>(table + 8));
-        CHECK((tests::errorOf(readBack(duplicate)) == engine::core::ErrorCode::kParse));
+        CHECK((tests::errorOf(readBack(duplicate)) == orosmo::core::ErrorCode::kParse));
     }
 
     TEST_CASE("OBJ and glTF: reopened, vertices, normals and triangles match the height field")
@@ -308,8 +308,8 @@ TEST_SUITE("world/export")
         CHECK(closed);
         CHECK(volume > 0.0); // normales vers l'extérieur
         // Socle qui ne passe pas sous la surface : pas un solide, refusé.
-        CHECK((tests::errorOf(w::writeStl(dir.path / "flat.stl", field, 0.0f)) == engine::core::ErrorCode::kInvalidArgument));
-        CHECK((tests::errorOf(w::writeStl(dir.path / "nan.stl", field, std::nanf(""))) == engine::core::ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(w::writeStl(dir.path / "flat.stl", field, 0.0f)) == orosmo::core::ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(w::writeStl(dir.path / "nan.stl", field, std::nanf(""))) == orosmo::core::ErrorCode::kInvalidArgument));
     }
 
     TEST_CASE("exported positions come from the global sample index, like the heights; OBJ numbers ignore the C locale")
@@ -409,7 +409,7 @@ TEST_SUITE("world/raycast")
         CHECK(below->distance == 0.0f);
         for (int k = 0; k < 20; ++k) // rayons obliques : le point touché est sur la surface
         {
-            const engine::core::Vec3 o{static_cast<float>(k) * 3.1f, 120.0f, -static_cast<float>(k) * 1.7f};
+            const orosmo::core::Vec3 o{static_cast<float>(k) * 3.1f, 120.0f, -static_cast<float>(k) * 1.7f};
             auto h = w::raycastTerrain(p, 11, o, {0.4f, -1.0f, 0.3f}, 1000.0f);
             REQUIRE(h.has_value());
             CHECK(h->position.y == doctest::Approx(w::meshHeightAt(p, 11, h->position.x, h->position.z)).epsilon(1e-3));
@@ -433,8 +433,8 @@ TEST_SUITE("world/render")
         for (int k = 0; k < 200; ++k)
         {
             const float x = -20.0f + 0.37f * static_cast<float>(k), z = 3.0f - 0.11f * static_cast<float>(k);
-            const engine::core::Vec3 o{x, w::meshHeightAt(p, 7, x, z) + 0.05f, z};
-            const engine::core::Vec3 d{std::cos(0.7f * static_cast<float>(k)), -0.01f, std::sin(0.7f * static_cast<float>(k))};
+            const orosmo::core::Vec3 o{x, w::meshHeightAt(p, 7, x, z) + 0.05f, z};
+            const orosmo::core::Vec3 d{std::cos(0.7f * static_cast<float>(k)), -0.01f, std::sin(0.7f * static_cast<float>(k))};
             const float range = 6.0f;
             const auto h = w::raycastTerrain(p, 7, o, d, range);
             const float len = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
@@ -443,7 +443,7 @@ TEST_SUITE("world/render")
             for (int i = 1; i < 4000; ++i)
             {
                 const float t = end * static_cast<float>(i) / 4000.0f;
-                const engine::core::Vec3 q = o + d * (t / len);
+                const orosmo::core::Vec3 q = o + d * (t / len);
                 crossedBefore = crossedBefore || q.y < w::meshHeightAt(p, 7, q.x, q.z) - 1e-4f;
             }
             CHECK_FALSE(crossedBefore);

@@ -1,6 +1,6 @@
 // UI-03 : vue de test des composants ajoutés (contrôles, couleur, fenêtres et menus), compilée par cui puis par le compilateur C++,
 // exécutée par tests/ui/cui_widgets_tests.cpp.
-import "engine/ui"
+import "orosmo/ui"
 import "ui/cui_widgets_state.hpp"
 
 view WidgetsPanel {

@@ -1,7 +1,7 @@
 // Backend OpenGL 4.3+ du RHI (privé : seul endroit avec glad/GLFW pour le rendu). Voir src/rhi/README.md.
 #pragma once
 
-#include "engine/rhi/device.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <glad/glad.h>
 
@@ -15,7 +15,7 @@
 
 struct GLFWwindow;
 
-namespace engine::rhi::gl
+namespace orosmo::rhi::gl
 {
 
 // Emplacement plat des liaisons : (groupe, binding) -> groupe * kBindingsPerGroup + binding (docs/03 §4, RHI-07).
@@ -239,4 +239,4 @@ class GlDevice final : public Device
 Result<std::unique_ptr<Device>> createGlDevice(const DeviceDesc &desc);
 void applyWindowHints(const DeviceDesc &desc);
 
-} // namespace engine::rhi::gl
+} // namespace orosmo::rhi::gl

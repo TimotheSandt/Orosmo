@@ -1,9 +1,9 @@
-#include "engine/ui/nine_slice.hpp"
+#include "orosmo/ui/nine_slice.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 namespace
@@ -114,4 +114,4 @@ void appendNineSlice(renderer::DrawList &list, const ImageStyle &image, const Re
     list.image(renderer::DrawImage{.image = image.image, .vertices = std::move(vertices), .tint = tint});
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

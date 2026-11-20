@@ -1,6 +1,6 @@
 # terrain-gen (TOOL-02)
 
-Génère une région de terrain **sans fenêtre ni GPU** (module `engine::world`) et l'exporte (TER-11).
+Génère une région de terrain **sans fenêtre ni GPU** (module `orosmo::world`) et l'exporte (TER-11).
 
 ```bash
 make terrain-gen

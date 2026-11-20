@@ -1,11 +1,11 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/vfs.hpp>
+#include <orosmo/core/vfs.hpp>
 
 #include <filesystem>
 #include <fstream>
 
-using namespace engine::core;
+using namespace orosmo::core;
 namespace fs = std::filesystem;
 
 namespace

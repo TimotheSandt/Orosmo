@@ -1,6 +1,6 @@
-#include "engine/ui/text_renderer.hpp"
+#include "orosmo/ui/text_renderer.hpp"
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -16,7 +16,7 @@
 
 #include FT_OUTLINE_H
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 namespace
@@ -589,8 +589,8 @@ void TextRenderer::buildAtlas(FontData &fontData, bool extended)
 
     computeFontMetrics(fontData);
     {
-        auto atlas = std::make_shared<engine::renderer::AtlasImage>();
-        atlas->id = engine::renderer::newAtlasId();
+        auto atlas = std::make_shared<orosmo::renderer::AtlasImage>();
+        atlas->id = orosmo::renderer::newAtlasId();
         atlas->width = static_cast<std::uint32_t>(fontData.atlasWidth);
         atlas->height = static_cast<std::uint32_t>(fontData.atlasHeight);
         atlas->rgba.assign(atlasPixels.begin(), atlasPixels.end());
@@ -827,7 +827,7 @@ void TextRenderer::renderText(const std::string &text, float x, float y, float s
         return;
     }
 
-    engine::renderer::DrawGlyphs run;
+    orosmo::renderer::DrawGlyphs run;
     run.atlas = fontData.atlas;
     run.vertices = batchedVertices;
     run.color = color;
@@ -1261,4 +1261,4 @@ float TextRenderer::findOptimalScale(const std::string &text, float maxWidth, fl
     return bestScale;
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

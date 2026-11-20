@@ -1,4 +1,4 @@
-#include <engine/core/system.hpp>
+#include <orosmo/core/system.hpp>
 
 #include <thread>
 
@@ -22,7 +22,7 @@
 #include <system_error>
 #include <vector>
 
-namespace engine::core::system
+namespace orosmo::core::system
 {
 
 namespace fs = std::filesystem;
@@ -188,4 +188,4 @@ void endHighResolutionTimer()
 #endif
 }
 
-} // namespace engine::core::system
+} // namespace orosmo::core::system

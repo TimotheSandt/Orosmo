@@ -1,10 +1,10 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/error.hpp>
+#include <orosmo/core/error.hpp>
 
 #include <stdexcept>
 
-using namespace engine::core;
+using namespace orosmo::core;
 
 
 namespace

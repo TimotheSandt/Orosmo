@@ -1,7 +1,7 @@
-# TOOL-01 : terrain-viewer. Utilise le SDK moteur synchronisé dans apps/demo/engine (`make viewer` à la racine du dépôt).
-# Le panneau src/TerrainPanel.cui est compilé par cui (cible engine/ui) puis avec le reste.
-# Dans le dépôt : le SDK synchronisé (apps/demo/engine) ; dans le paquet du moteur (examples/<nom>/) : la racine du paquet.
-ENGINE_DIR   ?= $(if $(wildcard ../../make/engine.mk),../..,../demo/engine)
+# TOOL-01 : terrain-viewer. Utilise le SDK moteur synchronisé dans apps/demo/orosmo (`make viewer` à la racine du dépôt).
+# Le panneau src/TerrainPanel.cui est compilé par cui (cible orosmo/ui) puis avec le reste.
+# Dans le dépôt : le SDK synchronisé (apps/demo/orosmo) ; dans le paquet du moteur (examples/<nom>/) : la racine du paquet.
+ENGINE_DIR   ?= $(if $(wildcard ../../make/engine.mk),../..,../demo/orosmo)
 GAME_SRC_DIR := src
 BUILD_TYPE   ?= release
 SHELL        := sh

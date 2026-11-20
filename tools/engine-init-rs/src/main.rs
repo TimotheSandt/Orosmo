@@ -27,7 +27,7 @@ const TPL_CONFIG_LOCAL_MK: &str = "\
 # Machine-specific overrides — gitignored, do NOT commit.\n\
 # Uncomment and set values relevant to your setup.\n\
 \n\
-# ENGINE_DIR  := engine\n\
+# ENGINE_DIR  := orosmo\n\
 # _ENGINE_MK  := $(ENGINE_DIR)/make/engine.mk\n\
 # _VCPKG_ROOT := vcpkg_installed\n\
 ";
@@ -170,9 +170,9 @@ fn cmd_update(args: &[String]) -> Result<(), String> {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
 
-    if !project_dir.join("engine").exists() {
+    if !project_dir.join("orosmo").exists() {
         return Err(format!(
-            "'{}' does not look like an engine project (no engine/ directory)",
+            "'{}' does not look like an Orosmo project (no orosmo/ directory)",
             project_dir.display()
         ));
     }
@@ -333,7 +333,7 @@ fn extract_engine(project_dir: &Path, release: Option<&Release>) -> Result<(), S
     if let Some(path) = LOCAL_PACKAGE.with(|p| p.borrow().clone()) {
         println!("  Using local package {}...", path.display());
         let bytes = fs::read(&path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-        return extract_zip_bytes(project_dir, &bytes, "engine/");
+        return extract_zip_bytes(project_dir, &bytes, "orosmo/");
     }
     // Try GitHub first if a release is available.
     if let Some(r) = release {
@@ -341,7 +341,7 @@ fn extract_engine(project_dir: &Path, release: Option<&Release>) -> Result<(), S
         if let Some(url) = r.find_asset(&pkg_name) {
             println!("  Downloading {} ({})...", pkg_name, r.tag);
             match download_bytes(url, &pkg_name) {
-                Ok(bytes) => return extract_zip_bytes(project_dir, &bytes, "engine/"),
+                Ok(bytes) => return extract_zip_bytes(project_dir, &bytes, "orosmo/"),
                 Err(e) => eprintln!("  Warning: download failed ({e}), trying embedded package..."),
             }
         } else {
@@ -353,7 +353,7 @@ fn extract_engine(project_dir: &Path, release: Option<&Release>) -> Result<(), S
     // Fallback: use the engine payload embedded at build time.
     if has_embedded_engine() {
         println!("  Using embedded engine package...");
-        return extract_zip_bytes(project_dir, ENGINE_ZIP, "engine/");
+        return extract_zip_bytes(project_dir, ENGINE_ZIP, "orosmo/");
     }
 
     Err(format!(
@@ -721,7 +721,7 @@ fn print_usage() {
     eprintln!("An internet connection is required (falls back to the embedded package if offline).");
     eprintln!();
     eprintln!("Created files:");
-    eprintln!("  engine/          pre-built engine (headers, libraries, tools)");
+    eprintln!("  orosmo/          pre-built engine (headers, libraries, tools)");
     eprintln!("  src/             C++ sources from the reference demo project");
     eprintln!("  Makefile         build system  — updated by 'orosmo update'");
     eprintln!("  .gitignore       standard ignores — updated by 'orosmo update'");
@@ -729,7 +729,7 @@ fn print_usage() {
     eprintln!("  config.local.mk  machine-specific paths — gitignored");
     eprintln!();
     eprintln!("'orosmo update' (in a project directory):");
-    eprintln!("  - Downloads and replaces engine/ with the latest release");
+    eprintln!("  - Downloads and replaces orosmo/ with the latest release");
     eprintln!("  - Updates Makefile and .gitignore if unmodified (prompts otherwise)");
     eprintln!("  - Appends new fields to config.mk without touching existing values");
     eprintln!("  - Updates a local orosmo[.exe] binary if one exists in the project");
@@ -741,7 +741,7 @@ mod tests {
 
     #[test]
     fn package_paths_cannot_leave_the_destination() {
-        assert_eq!(safe_relative("includes/engine/core.hpp"), Some(PathBuf::from("includes/engine/core.hpp")));
+        assert_eq!(safe_relative("includes/orosmo/core.hpp"), Some(PathBuf::from("includes/orosmo/core.hpp")));
         assert_eq!(safe_relative("./lib//release/x.a"), Some(PathBuf::from("lib/release/x.a")));
         assert_eq!(safe_relative(strip_top_dir("pkg/../Makefile")), None);
         assert_eq!(safe_relative("a/../../b"), None);

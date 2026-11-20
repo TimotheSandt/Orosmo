@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/resources.hpp>
+#include <orosmo/core/resources.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -8,7 +8,7 @@
 #include <string>
 #include <thread>
 
-using namespace engine::core;
+using namespace orosmo::core;
 
 namespace
 {

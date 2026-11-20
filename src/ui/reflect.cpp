@@ -1,6 +1,6 @@
-#include "engine/ui/reflect.hpp"
+#include "orosmo/ui/reflect.hpp"
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 std::string fieldLabel(std::string_view name)
@@ -44,4 +44,4 @@ bool namesColor(std::string_view name)
 }
 } // namespace detail
 
-} // namespace engine::ui
+} // namespace orosmo::ui

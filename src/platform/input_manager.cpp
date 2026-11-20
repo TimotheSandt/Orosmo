@@ -1,4 +1,4 @@
-#include <engine/platform/input_manager.hpp>
+#include <orosmo/platform/input_manager.hpp>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -8,7 +8,7 @@
 #include <functional>
 #include <iostream>
 #include <utility>
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #undef DELETE
 

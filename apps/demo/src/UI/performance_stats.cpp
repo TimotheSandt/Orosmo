@@ -1,10 +1,10 @@
 #include "UI/performance_stats.hpp"
 
-#include <engine/core/profiler.hpp>
+#include <orosmo/core/profiler.hpp>
 
 PerformanceSample samplePerformance(double averageFps)
 {
-    using engine::core::Profiler;
+    using orosmo::core::Profiler;
     PerformanceSample s;
     s.fps = averageFps;
     s.renderMs = Profiler::GetAverageTimeMs("Render");

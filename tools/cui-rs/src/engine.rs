@@ -1,4 +1,4 @@
-// Cible `engine/ui` (UI-05) : un fichier qui commence par `import "engine/ui"` est compilé vers le module `engine::ui` du moteur
+// Cible `orosmo/ui` (UI-05) : un fichier qui commence par `import "orosmo/ui"` est compilé vers le module `orosmo::ui` du moteur
 // (docs/03 §12) ; c'est la seule cible du langage. Le langage DÉCRIT (règle 12) : l'arbre de widgets, les liaisons (`$chemin` :
 // dans les deux sens) et les événements, qui NOMMENT une fonction C++ (`.onClick(state.regenerate)` : appel direct ;
 // `.onClick(regenerate)` : action retrouvée par nom dans `Ui::actions()` au moment de l'événement). L'apparence vient du thème
@@ -16,7 +16,7 @@ pub struct CompileError {
     pub col: usize,
 }
 
-pub const IMPORT: &str = "engine/ui";
+pub const IMPORT: &str = "orosmo/ui";
 
 pub fn is_engine_target(ast: &FileAst) -> bool {
     ast.imports.iter().any(|import| import.path == IMPORT)
@@ -32,8 +32,8 @@ enum Kind {
     BindInt,
     BindString,
     BindColor,
-    BindGradient, // engine::ui::Gradient
-    BindCurve,    // engine::ui::Curve
+    BindGradient, // orosmo::ui::Gradient
+    BindCurve,    // orosmo::ui::Curve
     Image,      // expression -> DynamicImage ou std::shared_ptr<const AtlasImage>, relue à chaque image
     Number,     // nombre évalué à la construction
     Bool,       // booléen évalué à la construction
@@ -130,8 +130,8 @@ static COMPONENTS: &[Component] = &[
         params: &[
             p("value", Kind::BindNumber, Default::Required),
             p("integer", Kind::Bool, Default::Value("false")),
-            p("min", Kind::Number, Default::Value("-engine::ui::NumberField::kUnboundedNumber")),
-            p("max", Kind::Number, Default::Value("engine::ui::NumberField::kUnboundedNumber")),
+            p("min", Kind::Number, Default::Value("-orosmo::ui::NumberField::kUnboundedNumber")),
+            p("max", Kind::Number, Default::Value("orosmo::ui::NumberField::kUnboundedNumber")),
         ],
         children: Children::None,
         events: EV_CHANGE,
@@ -168,8 +168,8 @@ static COMPONENTS: &[Component] = &[
         name: "SpinBox",
         params: &[
             p("value", Kind::BindNumber, Default::Required),
-            p("min", Kind::Number, Default::Value("-engine::ui::NumberField::kUnboundedNumber")),
-            p("max", Kind::Number, Default::Value("engine::ui::NumberField::kUnboundedNumber")),
+            p("min", Kind::Number, Default::Value("-orosmo::ui::NumberField::kUnboundedNumber")),
+            p("max", Kind::Number, Default::Value("orosmo::ui::NumberField::kUnboundedNumber")),
             p("step", Kind::Number, Default::Value("1.0")),
             p("integer", Kind::Bool, Default::Value("true")),
         ],
@@ -223,7 +223,7 @@ static COMPONENTS: &[Component] = &[
 const COMMON_MODIFIERS: &[&str] =
     &["width", "height", "margin", "align", "span", "id", "tooltip", "visible", "enabled", "style", "variant", "overflow"];
 
-// Propriétés du thème (engine/ui/theme.hpp) acceptées par `.style(...)`.
+// Propriétés du thème (orosmo/ui/theme.hpp) acceptées par `.style(...)`.
 const STYLE_PROPERTIES: &[(&str, &str)] = &[
     ("background", "kBackground"),
     ("foreground", "kForeground"),
@@ -381,7 +381,7 @@ fn text_call(parts: &[StringPart], scope: &Scope) -> Result<String, String> {
             StringPart::Interp { expr, .. } => args.push(expr_cpp(expr, scope)?),
         }
     }
-    Ok(format!("engine::ui::text({})", args.join(", ")))
+    Ok(format!("orosmo::ui::text({})", args.join(", ")))
 }
 
 fn is_constant_text(expr: &Expr) -> bool {
@@ -474,7 +474,7 @@ impl<'a> Gen<'a> {
         let scope = &self.scope;
         let result: Result<String, String> = match (param.kind, expr) {
             (Kind::Text, Expr::Binding(path)) => Err(format!("{what} is a text, not a binding: write \"\\({path})\"")),
-            (Kind::Text, e) => expr_cpp(e, scope).map(|v| if matches!(e, Expr::StringLit(_)) { v } else { format!("engine::ui::text({v})") }),
+            (Kind::Text, e) => expr_cpp(e, scope).map(|v| if matches!(e, Expr::StringLit(_)) { v } else { format!("orosmo::ui::text({v})") }),
             (Kind::Number, Expr::StringLit(_)) | (Kind::Bool, Expr::StringLit(_)) => Err(format!("{what} expects a {}", if param.kind == Kind::Number { "number" } else { "boolean" })),
             (Kind::Number, e) => expr_cpp(e, scope).map(|v| format!("static_cast<double>({v})")),
             (Kind::Bool, e) => expr_cpp(e, scope).map(|v| format!("static_cast<bool>({v})")),
@@ -482,30 +482,30 @@ impl<'a> Gen<'a> {
             (Kind::Options, e) => expr_cpp(e, scope).map(|v| format!("[=] {{ return {v}; }}")),
             (Kind::Values, Expr::StringLit(_)) | (Kind::Values, Expr::Number(_)) => Err(format!("{what} expects an expression that gives a sequence of numbers")),
             (Kind::Values, e) => expr_cpp(e, scope).map(|v| format!("[=] {{ const auto &values = {v}; return std::vector<float>(std::begin(values), std::end(values)); }}")),
-            (Kind::Reflected, Expr::Binding(path)) => self.binding_target(path).map(|lv| format!("engine::ui::reflectedPanel({lv})")),
-            (Kind::Image, Expr::StringLit(_)) | (Kind::Image, Expr::Number(_)) | (Kind::Image, Expr::Binding(_)) => Err(format!("{what} expects an expression that gives an engine::ui::DynamicImage or a std::shared_ptr<const AtlasImage> (for example state.minimap)")),
-            (Kind::Image, e) => expr_cpp(e, scope).map(|v| format!("[=] {{ return engine::ui::imageOf({v}); }}")),
+            (Kind::Reflected, Expr::Binding(path)) => self.binding_target(path).map(|lv| format!("orosmo::ui::reflectedPanel({lv})")),
+            (Kind::Image, Expr::StringLit(_)) | (Kind::Image, Expr::Number(_)) | (Kind::Image, Expr::Binding(_)) => Err(format!("{what} expects an expression that gives an orosmo::ui::DynamicImage or a std::shared_ptr<const AtlasImage> (for example state.minimap)")),
+            (Kind::Image, e) => expr_cpp(e, scope).map(|v| format!("[=] {{ return orosmo::ui::imageOf({v}); }}")),
             (Kind::Reflected, _) => Err(format!("{what} must be a two-way binding to a reflected structure (for example ParamPanel($state.params))")),
             (kind, Expr::Binding(path)) => self.binding_target(path).map(|lv| match kind {
-                Kind::BindBool => format!("engine::ui::Binding<bool>::ref({lv})"),
-                Kind::BindNumber => format!("engine::ui::numberBinding({lv})"),
-                Kind::BindInt => format!("engine::ui::intBinding({lv})"),
-                Kind::BindString => format!("engine::ui::Binding<std::string>::ref({lv})"),
-                Kind::BindGradient => format!("engine::ui::Binding<engine::ui::Gradient>::ref({lv})"),
-                Kind::BindCurve => format!("engine::ui::Binding<engine::ui::Curve>::ref({lv})"),
-                _ => format!("engine::ui::colorBinding({lv})"),
+                Kind::BindBool => format!("orosmo::ui::Binding<bool>::ref({lv})"),
+                Kind::BindNumber => format!("orosmo::ui::numberBinding({lv})"),
+                Kind::BindInt => format!("orosmo::ui::intBinding({lv})"),
+                Kind::BindString => format!("orosmo::ui::Binding<std::string>::ref({lv})"),
+                Kind::BindGradient => format!("orosmo::ui::Binding<orosmo::ui::Gradient>::ref({lv})"),
+                Kind::BindCurve => format!("orosmo::ui::Binding<orosmo::ui::Curve>::ref({lv})"),
+                _ => format!("orosmo::ui::colorBinding({lv})"),
             }),
             (kind, e) => {
                 let read = match kind {
                     Kind::BindBool => ("bool", "static_cast<bool>"),
                     Kind::BindNumber => ("double", "static_cast<double>"),
                     Kind::BindInt => ("int", "static_cast<int>"),
-                    Kind::BindString => ("std::string", "engine::ui::text"),
-                    Kind::BindGradient => ("engine::ui::Gradient", "engine::ui::Gradient"),
-                    Kind::BindCurve => ("engine::ui::Curve", "engine::ui::Curve"),
-                    _ => ("engine::ui::Color", "engine::ui::Color"),
+                    Kind::BindString => ("std::string", "orosmo::ui::text"),
+                    Kind::BindGradient => ("orosmo::ui::Gradient", "orosmo::ui::Gradient"),
+                    Kind::BindCurve => ("orosmo::ui::Curve", "orosmo::ui::Curve"),
+                    _ => ("orosmo::ui::Color", "orosmo::ui::Color"),
                 };
-                expr_cpp(e, scope).map(|v| format!("engine::ui::Binding<{}>{{[=] {{ return {}({v}); }}, {{}}}}", read.0, read.1))
+                expr_cpp(e, scope).map(|v| format!("orosmo::ui::Binding<{}>{{[=] {{ return {}({v}); }}, {{}}}}", read.0, read.1))
             }
         };
         match result {
@@ -598,7 +598,7 @@ impl<'a> Gen<'a> {
                 self.line_directive(element.line);
                 self.emit(format!("auto {var} = std::move({child});"));
             } else {
-                self.emit(format!("auto {var} = std::make_unique<engine::ui::VBox>();"));
+                self.emit(format!("auto {var} = std::make_unique<orosmo::ui::VBox>();"));
                 for child in &element.children {
                     if let Some(c) = self.element(child, Some("Page")) {
                         self.line_directive(child.line);
@@ -623,32 +623,32 @@ impl<'a> Gen<'a> {
                         self.err(element.line, element.col, "'Grid' columns must be an integer from 1 to 256");
                     }
                 }
-                format!("std::make_unique<engine::ui::Grid>(static_cast<int>(std::clamp(static_cast<double>({}), 1.0, 256.0)))", a[0])
+                format!("std::make_unique<orosmo::ui::Grid>(static_cast<int>(std::clamp(static_cast<double>({}), 1.0, 256.0)))", a[0])
             }
-            "Tabs" if args[0].is_some() => format!("std::make_unique<engine::ui::Tabs>({})", a[0]),
-            "Section" => format!("std::make_unique<engine::ui::Section>({}, {})", a[0], a[1]),
-            "Label" | "Button" => format!("std::make_unique<engine::ui::{}>()", comp.name),
-            "Checkbox" => format!("std::make_unique<engine::ui::Checkbox>({}, {})", a[0], a[1]),
-            "Slider" => format!("std::make_unique<engine::ui::Slider>({}, {}, {}, {})", a[0], a[1], a[2], a[3]),
-            "Dropdown" => format!("std::make_unique<engine::ui::Dropdown>({}, {})", a[0], a[1]),
-            "TextField" => format!("std::make_unique<engine::ui::TextField>({})", a[0]),
-            "NumberField" => format!("std::make_unique<engine::ui::NumberField>({}, {}, {}, {})", a[0], a[1], a[2], a[3]),
-            "ColorPicker" => format!("std::make_unique<engine::ui::ColorPicker>({}, {})", a[0], a[1]),
-            "Plot" => format!("std::make_unique<engine::ui::Plot>({})", a[0]),
-            "RadioButton" => format!("std::make_unique<engine::ui::RadioButton>({}, static_cast<int>({}), {})", a[0], a[1], a[2]),
-            "RangeSlider" => format!("std::make_unique<engine::ui::RangeSlider>({}, {}, {}, {}, {})", a[0], a[1], a[2], a[3], a[4]),
-            "SpinBox" => format!("std::make_unique<engine::ui::SpinBox>({}, {}, {}, {}, {})", a[0], a[1], a[2], a[3], a[4]),
-            "TextArea" => format!("std::make_unique<engine::ui::TextArea>({})", a[0]),
-            "ColorWheel" | "GradientEditor" | "CurveEditor" => format!("std::make_unique<engine::ui::{}>({})", comp.name, a[0]),
-            "ColorEditor" => format!("std::make_unique<engine::ui::ColorEditor>({}, {})", a[0], a[1]),
-            "Dialog" => format!("std::make_unique<engine::ui::Dialog>({}, {}, {})", a[0], a[1], a[2]),
-            "Menu" => format!("std::make_unique<engine::ui::Menu>({})", a[0]),
-            "MenuItem" if args[2].is_some() => format!("std::make_unique<engine::ui::MenuItem>({}, {}, {})", a[0], a[1], a[2]),
-            "MenuItem" => format!("std::make_unique<engine::ui::MenuItem>({}, {})", a[0], a[1]),
-            "Notifications" => format!("std::make_unique<engine::ui::Notifications>(static_cast<int>({}), static_cast<float>({}), static_cast<float>({}))", a[0], a[1], a[2]),
-            "ImageView" => format!("std::make_unique<engine::ui::ImageView>({})", a[0]),
+            "Tabs" if args[0].is_some() => format!("std::make_unique<orosmo::ui::Tabs>({})", a[0]),
+            "Section" => format!("std::make_unique<orosmo::ui::Section>({}, {})", a[0], a[1]),
+            "Label" | "Button" => format!("std::make_unique<orosmo::ui::{}>()", comp.name),
+            "Checkbox" => format!("std::make_unique<orosmo::ui::Checkbox>({}, {})", a[0], a[1]),
+            "Slider" => format!("std::make_unique<orosmo::ui::Slider>({}, {}, {}, {})", a[0], a[1], a[2], a[3]),
+            "Dropdown" => format!("std::make_unique<orosmo::ui::Dropdown>({}, {})", a[0], a[1]),
+            "TextField" => format!("std::make_unique<orosmo::ui::TextField>({})", a[0]),
+            "NumberField" => format!("std::make_unique<orosmo::ui::NumberField>({}, {}, {}, {})", a[0], a[1], a[2], a[3]),
+            "ColorPicker" => format!("std::make_unique<orosmo::ui::ColorPicker>({}, {})", a[0], a[1]),
+            "Plot" => format!("std::make_unique<orosmo::ui::Plot>({})", a[0]),
+            "RadioButton" => format!("std::make_unique<orosmo::ui::RadioButton>({}, static_cast<int>({}), {})", a[0], a[1], a[2]),
+            "RangeSlider" => format!("std::make_unique<orosmo::ui::RangeSlider>({}, {}, {}, {}, {})", a[0], a[1], a[2], a[3], a[4]),
+            "SpinBox" => format!("std::make_unique<orosmo::ui::SpinBox>({}, {}, {}, {}, {})", a[0], a[1], a[2], a[3], a[4]),
+            "TextArea" => format!("std::make_unique<orosmo::ui::TextArea>({})", a[0]),
+            "ColorWheel" | "GradientEditor" | "CurveEditor" => format!("std::make_unique<orosmo::ui::{}>({})", comp.name, a[0]),
+            "ColorEditor" => format!("std::make_unique<orosmo::ui::ColorEditor>({}, {})", a[0], a[1]),
+            "Dialog" => format!("std::make_unique<orosmo::ui::Dialog>({}, {}, {})", a[0], a[1], a[2]),
+            "Menu" => format!("std::make_unique<orosmo::ui::Menu>({})", a[0]),
+            "MenuItem" if args[2].is_some() => format!("std::make_unique<orosmo::ui::MenuItem>({}, {}, {})", a[0], a[1], a[2]),
+            "MenuItem" => format!("std::make_unique<orosmo::ui::MenuItem>({}, {})", a[0], a[1]),
+            "Notifications" => format!("std::make_unique<orosmo::ui::Notifications>(static_cast<int>({}), static_cast<float>({}), static_cast<float>({}))", a[0], a[1], a[2]),
+            "ImageView" => format!("std::make_unique<orosmo::ui::ImageView>({})", a[0]),
             "ParamPanel" => a[0].clone(),
-            other => format!("std::make_unique<engine::ui::{other}>()"),
+            other => format!("std::make_unique<orosmo::ui::{other}>()"),
         };
         self.emit(format!("auto {var} = {ctor};"));
         if comp.name == "Slider" && args[4].is_some() {
@@ -731,12 +731,12 @@ impl<'a> Gen<'a> {
                     None => "1.0f".into(),
                 };
                 match m.args.first() {
-                    Some(Expr::EnumCase(case)) if case == "fill" => self.emit(format!("{var}->{setter}(engine::ui::SizeSpec::fill({weight}));")),
-                    Some(Expr::EnumCase(case)) if case == "fit" => self.emit(format!("{var}->{setter}(engine::ui::SizeSpec::fit());")),
+                    Some(Expr::EnumCase(case)) if case == "fill" => self.emit(format!("{var}->{setter}(orosmo::ui::SizeSpec::fill({weight}));")),
+                    Some(Expr::EnumCase(case)) if case == "fit" => self.emit(format!("{var}->{setter}(orosmo::ui::SizeSpec::fit());")),
                     Some(Expr::EnumCase(case)) => return self.err(line, col, format!("'.{name}(.{case})': expected a number, .fit or .fill")),
                     Some(Expr::StringLit(_)) | Some(Expr::Binding(_)) => return self.err(line, col, format!("'.{name}' expects a number, .fit or .fill")),
                     Some(e) => match expr_cpp(e, &self.scope) {
-                        Ok(v) => self.emit(format!("{var}->{setter}(engine::ui::SizeSpec::fixed(static_cast<float>({v})));")),
+                        Ok(v) => self.emit(format!("{var}->{setter}(orosmo::ui::SizeSpec::fixed(static_cast<float>({v})));")),
                         Err(e) => return self.err(line, col, e),
                     },
                     None => {}
@@ -758,7 +758,7 @@ impl<'a> Gen<'a> {
                 }
                 if let Some(first) = m.args.first() {
                     match expr_cpp(first, &self.scope) {
-                        Ok(v) => self.emit(format!("{var}->setMargin(engine::ui::Insets::all(static_cast<float>({v})));")),
+                        Ok(v) => self.emit(format!("{var}->setMargin(orosmo::ui::Insets::all(static_cast<float>({v})));")),
                         Err(e) => return self.err(line, col, e),
                     }
                 }
@@ -789,10 +789,10 @@ impl<'a> Gen<'a> {
                 let align = |g: &mut Self, e: &Expr| -> Option<&'static str> {
                     match e {
                         Expr::EnumCase(c) => match c.as_str() {
-                            "start" => Some("engine::ui::Align::kStart"),
-                            "center" => Some("engine::ui::Align::kCenter"),
-                            "end" => Some("engine::ui::Align::kEnd"),
-                            "stretch" => Some("engine::ui::Align::kStretch"),
+                            "start" => Some("orosmo::ui::Align::kStart"),
+                            "center" => Some("orosmo::ui::Align::kCenter"),
+                            "end" => Some("orosmo::ui::Align::kEnd"),
+                            "stretch" => Some("orosmo::ui::Align::kStretch"),
                             other => {
                                 g.err(line, col, format!("unknown alignment '.{other}' (.start, .center, .end, .stretch)"));
                                 None
@@ -849,7 +849,7 @@ impl<'a> Gen<'a> {
                 if let Some(e) = one(self) {
                     match expr_cpp(e, &self.scope) {
                         Ok(v) if matches!(e, Expr::StringLit(_)) => self.emit(format!("{var}->setTooltip({v});")),
-                        Ok(v) => self.emit(format!("{var}->setTooltip(engine::ui::text({v}));")),
+                        Ok(v) => self.emit(format!("{var}->setTooltip(orosmo::ui::text({v}));")),
                         Err(e) => self.err(line, col, e),
                     }
                 }
@@ -884,7 +884,7 @@ impl<'a> Gen<'a> {
                             continue;
                         }
                     };
-                    self.emit(format!("{var}->overrideStyle(engine::ui::StyleProperty::{cpp}, {text});"));
+                    self.emit(format!("{var}->overrideStyle(orosmo::ui::StyleProperty::{cpp}, {text});"));
                 }
             }
             "overflow" => {
@@ -892,7 +892,7 @@ impl<'a> Gen<'a> {
                     match e {
                         Expr::EnumCase(c) if c == "visible" || c == "hidden" => {
                             let o = if c == "visible" { "kVisible" } else { "kHidden" };
-                            self.emit(format!("{var}->overflow = engine::ui::Overflow::{o};"));
+                            self.emit(format!("{var}->overflow = orosmo::ui::Overflow::{o};"));
                         }
                         _ => self.err(line, col, "'.overflow' expects .visible or .hidden (to scroll: ScrollView)"),
                     }
@@ -907,7 +907,7 @@ impl<'a> Gen<'a> {
                                 "center" => "kCenter",
                                 _ => "kEnd",
                             };
-                            self.emit(format!("{var}->setTextAlign(engine::ui::Align::{a});"));
+                            self.emit(format!("{var}->setTextAlign(orosmo::ui::Align::{a});"));
                         }
                         _ => self.err(line, col, "'.textAlign' expects .start, .center or .end"),
                     }
@@ -931,7 +931,7 @@ impl<'a> Gen<'a> {
                                 "cover" => "kCover",
                                 _ => "kStretch",
                             };
-                            self.emit(format!("{var}->setFit(engine::ui::ImageFit::{f});"));
+                            self.emit(format!("{var}->setFit(orosmo::ui::ImageFit::{f});"));
                         }
                         _ => self.err(line, col, "'.fit' expects .contain, .cover or .stretch"),
                     }
@@ -987,7 +987,7 @@ impl<'a> Gen<'a> {
             }
             let call = path_cpp(&target, &self.scope);
             format!(
-                "engine::ui::handler([=](auto &&...cui_a) -> decltype({call}(std::forward<decltype(cui_a)>(cui_a)...)) {{ return {call}(std::forward<decltype(cui_a)>(cui_a)...); }})"
+                "orosmo::ui::handler([=](auto &&...cui_a) -> decltype({call}(std::forward<decltype(cui_a)>(cui_a)...)) {{ return {call}(std::forward<decltype(cui_a)>(cui_a)...); }})"
             )
         } else {
             format!("cui_ui.actions().bind({})", cpp_string(&target))
@@ -1021,15 +1021,15 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
     let mut source = Vec::new();
     let mut errors = Vec::new();
 
-    header.push(format!("// AUTO-GENERATED by cui (engine/ui) - do not edit. Source: {file_for_line}"));
+    header.push(format!("// AUTO-GENERATED by cui (orosmo/ui) - do not edit. Source: {file_for_line}"));
     header.push("#pragma once".into());
     header.push(String::new());
-    header.push("#include \"engine/ui/reflect.hpp\"".into());
-    header.push("#include \"engine/ui/ui.hpp\"".into());
-    header.push("#include \"engine/ui/widgets.hpp\"".into());
-    header.push("#include \"engine/ui/controls.hpp\"".into());
-    header.push("#include \"engine/ui/color.hpp\"".into());
-    header.push("#include \"engine/ui/menus.hpp\"".into());
+    header.push("#include \"orosmo/ui/reflect.hpp\"".into());
+    header.push("#include \"orosmo/ui/ui.hpp\"".into());
+    header.push("#include \"orosmo/ui/widgets.hpp\"".into());
+    header.push("#include \"orosmo/ui/controls.hpp\"".into());
+    header.push("#include \"orosmo/ui/color.hpp\"".into());
+    header.push("#include \"orosmo/ui/menus.hpp\"".into());
     for import in ast.imports.iter().filter(|i| i.path != IMPORT) {
         header.push(format!("#include \"{}\"", import.path));
     }
@@ -1042,7 +1042,7 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
     header.push("namespace cui".into());
     header.push("{".into());
 
-    source.push(format!("// AUTO-GENERATED by cui (engine/ui) - do not edit. Source: {file_for_line}"));
+    source.push(format!("// AUTO-GENERATED by cui (orosmo/ui) - do not edit. Source: {file_for_line}"));
     source.push(format!("#include \"{stem}.gen.h\""));
     source.push(String::new());
     source.push("namespace cui".into());
@@ -1105,7 +1105,7 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
                         other => diags.push((
                             w.line,
                             w.col,
-                            format!("{other} is not supported with engine/ui: keep the state in C++ and bind it with @Mutable"),
+                            format!("{other} is not supported with orosmo/ui: keep the state in C++ and bind it with @Mutable"),
                         )),
                     }
                 }
@@ -1158,11 +1158,11 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
         header.push("{".into());
         header.extend(members);
         header.push(String::new());
-        header.push("    std::unique_ptr<engine::ui::Widget> build(engine::ui::Ui &cui_ui) const;".into());
+        header.push("    std::unique_ptr<orosmo::ui::Widget> build(orosmo::ui::Ui &cui_ui) const;".into());
         header.push("};".into());
         header.push(String::new());
         header.push(format!(
-            "inline std::unique_ptr<engine::ui::Widget> build{}(engine::ui::Ui &cui_ui{}{})",
+            "inline std::unique_ptr<orosmo::ui::Widget> build{}(orosmo::ui::Ui &cui_ui{}{})",
             view.name,
             if helper_params.is_empty() { "" } else { ", " },
             helper_params.join(", ")
@@ -1177,7 +1177,7 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
 
         source.push(String::new());
         source.push(format!("#line {} \"{file_for_line}\"", view.line.max(1)));
-        source.push(format!("std::unique_ptr<engine::ui::Widget> {}::build(engine::ui::Ui &cui_ui) const", view.name));
+        source.push(format!("std::unique_ptr<orosmo::ui::Widget> {}::build(orosmo::ui::Ui &cui_ui) const", view.name));
         source.push("{".into());
         source.push("    (void)cui_ui;".into());
         source.extend(locals);

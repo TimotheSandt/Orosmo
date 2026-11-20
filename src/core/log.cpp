@@ -1,6 +1,6 @@
-#include "engine/core/log.hpp"
+#include "orosmo/core/log.hpp"
 
-#include <engine/core/system.hpp>
+#include <orosmo/core/system.hpp>
 
 #include <iostream>
 #include <iomanip>
@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <algorithm>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 std::vector<Logger::LogMessage> Logger::logs;
@@ -37,7 +37,7 @@ void Logger::Initialize(const std::string &sFilename)
         // Dossier de données de l'application (APPDATA, Application Support, XDG_DATA_HOME : src/platform/system.cpp), sinon
         // le dossier courant (comme avant).
         std::stringstream ss;
-        if (const std::filesystem::path base = engine::core::system::userDataDirectory(); !base.empty())
+        if (const std::filesystem::path base = orosmo::core::system::userDataDirectory(); !base.empty())
         {
             ss << (base / "Orosmo").string() << '/';
         }
@@ -76,7 +76,7 @@ void Logger::Initialize(const std::string &sFilename)
     // Write session header
     auto now = std::chrono::system_clock::now();
     *logFile << "\n=== Logger Session Started: " << FormatTimestamp(now) << " ===" << std::endl;
-    *logFile << "Process ID: " << engine::core::system::processId() << std::endl;
+    *logFile << "Process ID: " << orosmo::core::system::processId() << std::endl;
     *logFile << "Working Directory: " << std::filesystem::current_path() << std::endl;
     *logFile << std::endl;
     logFile->flush();
@@ -200,7 +200,7 @@ void Logger::FlushToFile() noexcept
     }
 }
 
-size_t getTerminalWidth() { return engine::core::system::terminalWidth(); } // OS : src/platform/system.cpp
+size_t getTerminalWidth() { return orosmo::core::system::terminalWidth(); } // OS : src/platform/system.cpp
 
 size_t Logger::CalculateLogLength(const LogMessage &log)
 {
@@ -555,4 +555,4 @@ std::string Logger::CaptureStackTrace()
 }
 #endif
 
-} // namespace engine::core
+} // namespace orosmo::core

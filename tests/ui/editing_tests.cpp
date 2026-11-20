@@ -2,10 +2,10 @@
 // menus au clavier, raccourcis installés (éléments de menu, boutons) et leur forme normalisée. Entrées simulées, sans GPU.
 #include "ui/ui_harness.hpp"
 
-#include <engine/ui/controls.hpp>
-#include <engine/ui/menus.hpp>
+#include <orosmo/ui/controls.hpp>
+#include <orosmo/ui/menus.hpp>
 
-namespace ui = engine::ui;
+namespace ui = orosmo::ui;
 using tests::UiHarness;
 
 namespace

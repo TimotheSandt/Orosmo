@@ -1,23 +1,23 @@
 # rhi
 
 Couche 2 de `docs/03` : l'interface graphique abstraite (RHI) et ses backends. Archive : `librhi.a`.
-API publique : `include/engine/rhi/` (aucun type d'API graphique). Backends privés : `src/rhi/<backend>/`, **seuls endroits** où
+API publique : `include/orosmo/rhi/` (aucun type d'API graphique). Backends privés : `src/rhi/<backend>/`, **seuls endroits** où
 `gl*`, `Vk*`, `MTL*` ont le droit d'exister (`tools/check_api_isolation.py`).
 
 | Fichier | Rôle |
 | --- | --- |
-| `include/engine/rhi/handle.hpp` | `Handle<Tag>` (indice + génération) et `HandlePool<Tag, T>` : un handle périmé est refusé, jamais déréférencé |
-| `include/engine/rhi/types.hpp` | formats, usages, descriptions (buffer, texture, échantillonneur, shader, pipeline, groupe de liaison, passe) |
-| `include/engine/rhi/capabilities.hpp` | `Capabilities` : limites, fonctions, capacités optionnelles réservées (toutes `false`, RHI-18) |
-| `include/engine/rhi/device.hpp` | `Device`, `CommandEncoder`, `DeviceStats`, `createDevice` |
+| `include/orosmo/rhi/handle.hpp` | `Handle<Tag>` (indice + génération) et `HandlePool<Tag, T>` : un handle périmé est refusé, jamais déréférencé |
+| `include/orosmo/rhi/types.hpp` | formats, usages, descriptions (buffer, texture, échantillonneur, shader, pipeline, groupe de liaison, passe) |
+| `include/orosmo/rhi/capabilities.hpp` | `Capabilities` : limites, fonctions, capacités optionnelles réservées (toutes `false`, RHI-18) |
+| `include/orosmo/rhi/device.hpp` | `Device`, `CommandEncoder`, `DeviceStats`, `createDevice` |
 | `src/rhi/format.cpp`, `src/rhi/device.cpp` | `formatInfo`, choix du backend |
-| `include/engine/rhi/shader_compiler.hpp`, `src/rhi/shader_compiler.cpp` | pipeline de shaders (RHI-12) : `compileGlsl`, `translateToGlsl430`, `ShaderCache`, `createShaderFromGlsl`, `ShaderHotReloader` |
+| `include/orosmo/rhi/shader_compiler.hpp`, `src/rhi/shader_compiler.cpp` | pipeline de shaders (RHI-12) : `compileGlsl`, `translateToGlsl430`, `ShaderCache`, `createShaderFromGlsl`, `ShaderHotReloader` |
 | `src/rhi/opengl/` | backend OpenGL 4.3 (`gl_device.cpp` ressources, `gl_encoder.cpp` commandes, `gl_translate.hpp` tables) |
 
 ## Utilisation
 
 ```cpp
-using namespace engine::rhi;
+using namespace orosmo::rhi;
 DeviceDesc desc;                       // backend OpenGL, surface hors écran 1x1 par défaut
 desc.surface.size = {1280, 720};
 auto device = createDevice(desc);      // Result<unique_ptr<Device>> ; kUnsupported avec la raison si GL 4.3 est absent

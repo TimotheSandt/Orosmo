@@ -1,5 +1,5 @@
 // expect: 7:5: error: 'Slider' requires the argument 'max'
-import "engine/ui"
+import "orosmo/ui"
 import "state.hpp"
 
 view V {

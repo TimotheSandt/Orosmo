@@ -1,10 +1,10 @@
-#include "engine/renderer/canvas_renderer.hpp"
+#include "orosmo/renderer/canvas_renderer.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 using core::ErrorCode;
@@ -584,4 +584,4 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
     return status;
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

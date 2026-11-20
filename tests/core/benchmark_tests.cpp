@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/benchmark.hpp>
+#include <orosmo/core/benchmark.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -12,7 +12,7 @@
 #include <stdexcept>
 #include <string>
 
-using namespace engine::core::bench;
+using namespace orosmo::core::bench;
 
 namespace
 {

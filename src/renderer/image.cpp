@@ -1,4 +1,4 @@
-#include "engine/renderer/image.hpp"
+#include "orosmo/renderer/image.hpp"
 
 #include <stb_image.h>
 #include <stb_image_write.h>
@@ -8,7 +8,7 @@
 #include <cstring>
 #include <memory>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 using core::ErrorCode;
@@ -124,4 +124,4 @@ core::Result<ImageDiff> compareImages(const Image &a, const Image &b, std::uint8
     return diff;
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

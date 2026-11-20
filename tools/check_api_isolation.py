@@ -57,7 +57,7 @@ def main():
                 if not n.endswith((".h", ".hpp", ".cpp", ".c")):
                     continue
                 rel = os.path.relpath(os.path.join(dp, n), ROOT).replace(os.sep, "/")
-                if "/Generated/" in rel or rel.startswith("apps/demo/engine/") or rel.startswith(allowed):
+                if "/Generated/" in rel or rel.startswith("apps/demo/orosmo/") or rel.startswith(allowed):
                     continue
                 files += 1
                 text = open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace").read()

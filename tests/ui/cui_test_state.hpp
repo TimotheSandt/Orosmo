@@ -1,8 +1,8 @@
 // État C++ lié par la vue de test tests/ui/cui/test_panel.cui (UI-11) : la logique est ici, la vue ne fait que nommer.
 #pragma once
 
-#include <engine/core/reflection.hpp>
-#include <engine/ui/widget.hpp>
+#include <orosmo/core/reflection.hpp>
+#include <orosmo/ui/widget.hpp>
 
 #include <glm/glm.hpp>
 
@@ -16,7 +16,7 @@ struct CuiTestParams
     int octaves = 4;
 };
 
-template <> struct engine::core::Reflect<CuiTestParams>
+template <> struct orosmo::core::Reflect<CuiTestParams>
 {
     static constexpr int kVersion = 1;
     static constexpr auto fields()
@@ -42,7 +42,7 @@ struct CuiTestState
 
     void randomize() { seed = seed * 1664525u + 1013904223u, ++randomized; }
     void changed() { ++changes; }
-    void apply(const engine::ui::Event &e) { applied += e.kind == engine::ui::EventKind::kClick ? 1 : 0; } // reçoit l'événement
+    void apply(const orosmo::ui::Event &e) { applied += e.kind == orosmo::ui::EventKind::kClick ? 1 : 0; } // reçoit l'événement
     std::vector<std::string> presetNames() const { return {"Hills", "Mountains", "Islands"}; }
 };
 

@@ -1,8 +1,8 @@
-// Chemins d'application (engine/core/paths.hpp), repris des tests de l'ancien `Utilities`.
+// Chemins d'application (orosmo/core/paths.hpp), repris des tests de l'ancien `Utilities`.
 #include <doctest/doctest.h>
 
-#include <engine/core/paths.hpp>
-#include <engine/core/system.hpp>
+#include <orosmo/core/paths.hpp>
+#include <orosmo/core/system.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -10,7 +10,7 @@
 #include <vector>
 
 namespace fs = std::filesystem;
-namespace core = engine::core;
+namespace core = orosmo::core;
 
 TEST_SUITE("core.paths")
 {

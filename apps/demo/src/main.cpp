@@ -1,8 +1,8 @@
 #include "Game/Game.h"
 #include "launch_options.hpp"
-#include <engine/core/log.hpp>
-#include <engine/core/paths.hpp>
-#include <engine/platform/window.hpp>
+#include <orosmo/core/log.hpp>
+#include <orosmo/core/paths.hpp>
+#include <orosmo/platform/window.hpp>
 
 #include <random>
 #include <cstdlib>
@@ -18,7 +18,7 @@ int main(int argc, char **argv)
     try
     {
         const std::filesystem::path launchDirectory = std::filesystem::current_path();
-        engine::core::setWorkingDirectoryToExecutable();
+        orosmo::core::setWorkingDirectoryToExecutable();
 
 #ifdef DEBUG
         SET_LOG_FILE("logs/log.log");
@@ -45,7 +45,7 @@ int main(int argc, char **argv)
 
         if (launchOptions.listApis)
         {
-            for (const engine::rhi::Backend api : {engine::rhi::Backend::kOpenGL, engine::rhi::Backend::kVulkan, engine::rhi::Backend::kMetal})
+            for (const orosmo::rhi::Backend api : {orosmo::rhi::Backend::kOpenGL, orosmo::rhi::Backend::kVulkan, orosmo::rhi::Backend::kMetal})
             {
                 std::cout << demo::backendDisplayName(api) << ": " << demo::backendAvailabilityMessage(api) << '\n';
             }
@@ -56,7 +56,7 @@ int main(int argc, char **argv)
         const std::string captureDirectory =
             launchOptions.captureDirectory.empty() ? std::string() : (launchDirectory / launchOptions.captureDirectory).string();
 
-        engine::rhi::Backend selectedApi = launchOptions.api;
+        orosmo::rhi::Backend selectedApi = launchOptions.api;
         const bool shouldPromptForApi = launchOptions.chooseApiInteractively;
         if (shouldPromptForApi && !demo::promptForBackend(std::cin, std::cout, selectedApi))
         {
@@ -82,7 +82,7 @@ int main(int argc, char **argv)
             GET_RESOURCE_PATH("shader/rhi/ui_rect.frag"),    GET_RESOURCE_PATH("shader/rhi/ui_glyph.vert"), GET_RESOURCE_PATH("shader/rhi/ui_glyph.frag"),
             GET_RESOURCE_PATH("shader/rhi/ui_layer.vert"),   GET_RESOURCE_PATH("shader/rhi/ui_layer.frag")};
 
-        if (!engine::core::validateAssets(requiredAssets))
+        if (!orosmo::core::validateAssets(requiredAssets))
         {
             FLUSH_LOG_TO_FILE;
             return EXIT_FAILURE;

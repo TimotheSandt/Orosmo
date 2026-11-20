@@ -1,9 +1,9 @@
-#include "engine/renderer/debug_draw.hpp"
+#include "orosmo/renderer/debug_draw.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 void DebugDraw::push(const glm::vec3 &p, const glm::vec4 &c)
@@ -73,4 +73,4 @@ void DebugDraw::axes(const glm::mat4 &transform, float size)
     line(o, glm::vec3(transform * glm::vec4(0, 0, size, 1)), {0, 0, 1, 1});
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

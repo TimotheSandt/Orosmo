@@ -1,7 +1,7 @@
 // PLAT-05 : texte saisi : les points de code reçus de GLFW sont écrits en UTF-8 (le rappel lui-même demande une fenêtre).
 #include <doctest/doctest.h>
 
-#include <engine/platform/input_manager.hpp>
+#include <orosmo/platform/input_manager.hpp>
 
 TEST_SUITE("platform/text")
 {

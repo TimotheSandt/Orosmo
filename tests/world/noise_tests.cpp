@@ -3,8 +3,8 @@
 // volontaire de l'algorithme change ces constantes ; la changer sans raison casse le déterminisme promis aux utilisateurs.
 #include <doctest/doctest.h>
 
-#include <engine/world/checksum.hpp>
-#include <engine/world/noise.hpp>
+#include <orosmo/world/checksum.hpp>
+#include <orosmo/world/noise.hpp>
 
 #include <cmath>
 #include <cstdint>
@@ -13,7 +13,7 @@
 #include <limits>
 #include <vector>
 
-namespace w = engine::world;
+namespace w = orosmo::world;
 
 namespace
 {

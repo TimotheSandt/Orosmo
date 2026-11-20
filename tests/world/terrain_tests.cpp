@@ -1,11 +1,11 @@
 // TER-02 (tuiles), TER-03 (niveaux de détail sans fissure), TER-04 (streaming sous budget), TEST-03 (somme de contrôle d'une tuile).
 #include <doctest/doctest.h>
 
-#include <engine/core/tasks.hpp>
-#include <engine/world/checksum.hpp>
-#include <engine/world/lod.hpp>
-#include <engine/world/streaming.hpp>
-#include <engine/world/terrain.hpp>
+#include <orosmo/core/tasks.hpp>
+#include <orosmo/world/checksum.hpp>
+#include <orosmo/world/lod.hpp>
+#include <orosmo/world/streaming.hpp>
+#include <orosmo/world/terrain.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -14,7 +14,7 @@
 #include <set>
 #include <tuple>
 
-namespace w = engine::world;
+namespace w = orosmo::world;
 
 namespace
 {
@@ -230,7 +230,7 @@ TEST_SUITE("world/terrain")
 
     TEST_CASE("TER-04: streaming generates asynchronously (same bytes as synchronous), respects the memory budget, keeps the selection")
     {
-        engine::core::TaskSystem tasks(2);
+        orosmo::core::TaskSystem tasks(2);
         const w::TerrainParams p = smallParams();
         const w::LodConfig lod{.rootLod = 3, .rootRadius = 1, .distanceFactor = 1.5f};
         const std::size_t tileBytes = [&]
@@ -286,7 +286,7 @@ TEST_SUITE("world/terrain")
 
     TEST_CASE("TER-04: finishPending applies the budget to the tiles it integrates, and re-stitches tiles whose neighbours changed")
     {
-        engine::core::TaskSystem tasks(1);
+        orosmo::core::TaskSystem tasks(1);
         const w::TerrainParams p = smallParams();
         const std::size_t tileBytes = [&]
         {
@@ -332,7 +332,7 @@ TEST_SUITE("world/terrain")
 
     TEST_CASE("TER-04: a selection larger than the budget is reported, not evicted")
     {
-        engine::core::TaskSystem tasks(1);
+        orosmo::core::TaskSystem tasks(1);
         const w::TerrainParams p = smallParams();
         w::TileStreamer streamer(p, 1, {.rootLod = 3, .rootRadius = 1, .distanceFactor = 1.5f}, {.memoryBudgetBytes = 1, .maxJobsInFlight = 64}, tasks);
         for (int i = 0; i < 16; ++i) // la sélection peut dépasser le nombre de générations simultanées : plusieurs tours

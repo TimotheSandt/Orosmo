@@ -1,5 +1,5 @@
 // expect: 6:9: error: unknown component 'Buton' (components: VBox, HBox, Panel, Overlay, Grid, ScrollView, Tabs, Section, Label, Button, Checkbox, Slider, Dropdown, TextField, NumberField, ColorPicker, Plot, Separator, ParamPanel, RadioButton, RangeSlider, SpinBox, TextArea, ColorWheel, ColorEditor, GradientEditor, CurveEditor, Dialog, MenuBar, Menu, MenuItem, ContextMenu, Notifications, ImageView)
-import "engine/ui"
+import "orosmo/ui"
 
 view V {
     VBox {

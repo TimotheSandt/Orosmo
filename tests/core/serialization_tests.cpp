@@ -1,11 +1,11 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/serialization.hpp>
+#include <orosmo/core/serialization.hpp>
 
 #include <string>
 #include <vector>
 
-using namespace engine::core;
+using namespace orosmo::core;
 
 namespace
 {
@@ -35,7 +35,7 @@ struct TerrainParams
 };
 } // namespace
 
-template <> struct engine::core::Reflect<Layer>
+template <> struct orosmo::core::Reflect<Layer>
 {
     static constexpr auto fields()
     {
@@ -44,7 +44,7 @@ template <> struct engine::core::Reflect<Layer>
     static constexpr int kVersion = 1;
 };
 
-template <> struct engine::core::Reflect<TerrainParams>
+template <> struct orosmo::core::Reflect<TerrainParams>
 {
     static constexpr int kVersion = 2;
     static constexpr auto fields()

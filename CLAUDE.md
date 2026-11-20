@@ -53,7 +53,7 @@ Toute correction de portabilité Windows → Linux est faite sans casser la comp
 
 ## Conventions de code (décision de l'auteur, 2026-11-17)
 
-On suit `docs/03` §2 (arborescence `include/engine/<module>/*.hpp`, `src/<module>/`, `src/rhi/<backend>/`, `tests/<module>/`, `apps/<nom>/`) et §7 (types `PascalCase`, fonctions et variables `camelCase`, constantes `kPascalCase`, fichiers `snake_case`, `-Wall -Wextra -Wpedantic -Werror`). Le code existant (`include/<Module>/*.h`, noms `PascalCase`) **migre module par module** quand le jalon du plan le réécrit (M1 core, M2 rhi/platform/renderer…) : tout code neuf suit déjà `docs/03`. Pas de renommage de masse hors jalon.
+On suit `docs/03` §2 (arborescence `include/orosmo/<module>/*.hpp`, `src/<module>/`, `src/rhi/<backend>/`, `tests/<module>/`, `apps/<nom>/`) et §7 (types `PascalCase`, fonctions et variables `camelCase`, constantes `kPascalCase`, fichiers `snake_case`, `-Wall -Wextra -Wpedantic -Werror`). Le code existant (`include/<Module>/*.h`, noms `PascalCase`) **migre module par module** quand le jalon du plan le réécrit (M1 core, M2 rhi/platform/renderer…) : tout code neuf suit déjà `docs/03`. Pas de renommage de masse hors jalon.
 
 ## Commandes
 
@@ -68,7 +68,7 @@ git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.
 ~/vcpkg/vcpkg install                   # à la racine du dépôt ; make relie ensuite les paquets apt tout seul
 
 # 2. Build et démo
-make all-debug                          # moteur (debug, -Wpedantic -Werror) -> apps/demo/engine -> démo
+make all-debug                          # moteur (debug, -Wpedantic -Werror) -> apps/demo/orosmo -> démo
 make run                                # lance la démo (OpenGL par défaut ; --api vulkan non fiable avant M4)
 
 # 3. Tests et contrôles

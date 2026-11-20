@@ -2,10 +2,10 @@
 // ici (règle 12) ; la vue ne fait que décrire.
 #pragma once
 
-#include <engine/core/reflection.hpp>
-#include <engine/ui/color.hpp>
-#include <engine/ui/menus.hpp>
-#include <engine/ui/widget.hpp>
+#include <orosmo/core/reflection.hpp>
+#include <orosmo/ui/color.hpp>
+#include <orosmo/ui/menus.hpp>
+#include <orosmo/ui/widget.hpp>
 
 #include <glm/glm.hpp>
 
@@ -39,11 +39,11 @@ struct GalleryParams
     Lighting lighting;
 };
 
-template <> struct engine::core::EnumNames<Quality>
+template <> struct orosmo::core::EnumNames<Quality>
 {
     static constexpr std::array<const char *, 3> names{"Low", "Medium", "High"};
 };
-template <> struct engine::core::Reflect<Lighting>
+template <> struct orosmo::core::Reflect<Lighting>
 {
     static constexpr int kVersion = 1;
     static constexpr auto fields()
@@ -52,7 +52,7 @@ template <> struct engine::core::Reflect<Lighting>
                                field("sunColor", &Lighting::sunColor, {}, "colour of the sun (name contains 'color': colour picker)"));
     }
 };
-template <> struct engine::core::Reflect<GalleryParams>
+template <> struct orosmo::core::Reflect<GalleryParams>
 {
     static constexpr int kVersion = 1;
     static constexpr auto fields()
@@ -88,23 +88,23 @@ struct GalleryState
     int octaves = 4;
     std::string notes = "Multi-line text editor.\nSelect with Shift or the mouse; Ctrl+A, C, X, V; Ctrl+Z to undo, Ctrl+Y to redo. A line longer than the editor wraps at the last space that fits, and its number is shown once.\nLine numbers on the left.";
     glm::vec4 accent{0.95f, 0.55f, 0.20f, 1.0f};
-    engine::ui::Gradient terrainColors{{{0.0f, {0.10f, 0.25f, 0.60f, 1.0f}}, {0.38f, {0.25f, 0.55f, 0.85f, 1.0f}},
+    orosmo::ui::Gradient terrainColors{{{0.0f, {0.10f, 0.25f, 0.60f, 1.0f}}, {0.38f, {0.25f, 0.55f, 0.85f, 1.0f}},
                                         {0.42f, {0.85f, 0.80f, 0.55f, 1.0f}}, {0.50f, {0.30f, 0.60f, 0.25f, 1.0f}},
                                         {0.75f, {0.45f, 0.40f, 0.35f, 1.0f}}, {0.92f, {0.95f, 0.95f, 0.97f, 1.0f}}}};
-    engine::ui::Curve heightCurve{{{0.0f, 0.0f}, {0.45f, 0.35f}, {1.0f, 1.0f}}};
+    orosmo::ui::Curve heightCurve{{{0.0f, 0.0f}, {0.45f, 0.35f}, {1.0f, 1.0f}}};
     bool dialogOpen = false;
     bool showPlayer = true;
     bool windowsRequested = false;
     // Images produites par le jeu (ici la galerie) : mini-carte (hauteurs -> courbe -> dégradé) et boussole.
-    engine::ui::DynamicImage minimap{96, 96};
-    engine::ui::DynamicImage compass{64, 64};
-    engine::ui::Ui *ui = nullptr; // notifications (Ui::notify)
+    orosmo::ui::DynamicImage minimap{96, 96};
+    orosmo::ui::DynamicImage compass{64, 64};
+    orosmo::ui::Ui *ui = nullptr; // notifications (Ui::notify)
 
     // ── Appelé par la vue (événements) ──
-    void clicked(const engine::ui::Event &e);
-    void changed(const engine::ui::Event &e);
-    void hovered(const engine::ui::Event &e);
-    void focused(const engine::ui::Event &e);
+    void clicked(const orosmo::ui::Event &e);
+    void changed(const orosmo::ui::Event &e);
+    void hovered(const orosmo::ui::Event &e);
+    void focused(const orosmo::ui::Event &e);
     void applyTheme() { themeRequested = true; }
     void clearLog() { log.clear(); }
     void openDialog() { dialogOpen = true; }

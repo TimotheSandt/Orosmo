@@ -1,6 +1,6 @@
-#include "engine/rhi/types.hpp"
+#include "orosmo/rhi/types.hpp"
 
-namespace engine::rhi
+namespace orosmo::rhi
 {
 
 const char *toString(Backend backend) noexcept
@@ -60,4 +60,4 @@ const char *toString(Format format) noexcept
     return "unknown";
 }
 
-} // namespace engine::rhi
+} // namespace orosmo::rhi

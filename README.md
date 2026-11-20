@@ -55,8 +55,8 @@ make all-debug
 | `python3 tools/compare_png.py A.png B.png` | Compare deux images (tolérance, budget de pixels, image de différence) |
 | `python3 -m unittest discover -s tests/tools` | Tests des outils Python |
 | `make debug` / `make release` | Archives du moteur dans `lib/<type>/` |
-| `make all-debug` / `make all-release` | Moteur → `apps/demo/engine/` → démo |
-| `make sync-demo` | Copie le moteur construit dans `apps/demo/engine/` |
+| `make all-debug` / `make all-release` | Moteur → `apps/demo/orosmo/` → démo |
+| `make sync-demo` | Copie le moteur construit dans `apps/demo/orosmo/` |
 | `make dist` / `make engine-tool` | Paquet du moteur / outil `orosmo init` |
 | `make terrain-gen` / `make terrain-gen-check` | Générateur en ligne de commande (TOOL-02) / son déterminisme et ses codes de retour |
 | `make viewer-run ARGS="--seed 42 --preset mountains"` / `make viewer-capture` | Visualiseur de terrain (TOOL-01) / images sans fenêtre, thèmes sombre et clair |
@@ -70,9 +70,9 @@ make all-debug
 ## Organisation
 
 ```
-include/engine/  en-têtes publics du moteur, un dossier par module : core, platform, rhi, renderer, world, ui
+include/orosmo/  en-têtes publics du moteur, un dossier par module : core, platform, rhi, renderer, world, ui
 src/          implémentations, même découpage (src/rhi/<backend>/ pour les API graphiques) ; README.md par module
-apps/         demo (terrain engine::world + panneau de performances), terrain_viewer, terrain_gen, ui_gallery, minimal, core_demo, rhi_demo
+apps/         demo (terrain orosmo::world + panneau de performances), terrain_viewer, terrain_gen, ui_gallery, minimal, core_demo, rhi_demo
 tests/        tests (doctest) et tests des outils Python (tests/tools)
 shaders/      shaders GLSL (copiés vers <bin>/res/shader/)
 res/          polices, icône (copiés vers <bin>/res/)
@@ -81,14 +81,14 @@ tools/        précompilateur .cui (cui-rs), outil engine-init-rs, SDK (engine-s
 docs/         spécification, plan, rapports (voir docs/README.md)
 ```
 
-Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libworld.a`, `libui.a`, `libthirdparty.a`) ; la démo les relie via `apps/demo/engine/`.
+Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libworld.a`, `libui.a`, `libthirdparty.a`) ; la démo les relie via `apps/demo/orosmo/`.
 
 ## Documentation
 
 - Vision, checklist, architecture : [docs/](docs/README.md)
 - Couche graphique (RHI) : [docs/RHI.md](docs/RHI.md)
 - **Utiliser le moteur depuis une release** (`orosmo init`, paquet, projet minimal, stabilité de l'API) : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)
-- Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `engine/ui`)
+- Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `orosmo/ui`)
 - Nettoyage M00 : [docs/CLEANUP_PLAN.md](docs/CLEANUP_PLAN.md), [docs/releases/M00.md](docs/releases/M00.md)
 
 ## Licence

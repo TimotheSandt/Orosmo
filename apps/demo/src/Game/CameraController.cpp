@@ -1,7 +1,7 @@
 #include "CameraController.h"
 
-#include <engine/platform/input_manager.hpp>
-#include <engine/platform/window.hpp>
+#include <orosmo/platform/input_manager.hpp>
+#include <orosmo/platform/window.hpp>
 
 CameraController::CameraController()
 {
@@ -17,7 +17,7 @@ CameraController::CameraController()
     InputManager::BindActionToInput("Camera::ToggleWireframe", KeyButton::W);
 }
 
-void CameraController::update(Window &window, engine::renderer::Camera &camera, float elapsedSeconds, int viewWidth, int viewHeight)
+void CameraController::update(Window &window, orosmo::renderer::Camera &camera, float elapsedSeconds, int viewWidth, int viewHeight)
 {
     const float distance = speed_ * elapsedSeconds;
     InputManager &input = InputManager::GetInstance(window.GetWindow());

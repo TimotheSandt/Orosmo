@@ -2,10 +2,10 @@
 // Entrées simulées, sans GPU (la mise à jour d'une image sur le GPU est dans tests/renderer/canvas_tests.cpp).
 #include "ui/ui_harness.hpp"
 
-#include <engine/ui/menus.hpp>
+#include <orosmo/ui/menus.hpp>
 
-namespace ui = engine::ui;
-namespace rd = engine::renderer;
+namespace ui = orosmo::ui;
+namespace rd = orosmo::renderer;
 using tests::UiHarness;
 
 TEST_SUITE("ui/menus")

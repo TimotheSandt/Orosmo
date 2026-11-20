@@ -5,12 +5,12 @@
 #include "renderer/repo_paths.hpp"
 #include "rhi/gpu_fixture.hpp"
 
-#include <engine/renderer/debug_draw.hpp>
-#include <engine/renderer/light.hpp>
-#include <engine/renderer/mesh.hpp>
-#include <engine/renderer/scene_renderer.hpp>
+#include <orosmo/renderer/debug_draw.hpp>
+#include <orosmo/renderer/light.hpp>
+#include <orosmo/renderer/mesh.hpp>
+#include <orosmo/renderer/scene_renderer.hpp>
 
-namespace rd = engine::renderer;
+namespace rd = orosmo::renderer;
 
 namespace
 {

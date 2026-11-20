@@ -1,9 +1,9 @@
-#include "engine/renderer/light.hpp"
+#include "orosmo/renderer/light.hpp"
 
 #include <algorithm>
 #include <cstring>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 bool Light::operator==(const Light &o) const
@@ -204,4 +204,4 @@ core::Result<> LightManager::upload()
     return {};
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

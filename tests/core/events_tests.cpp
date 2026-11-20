@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/events.hpp>
+#include <orosmo/core/events.hpp>
 
 #include <atomic>
 #include <cstdlib>
@@ -32,7 +32,7 @@ void operator delete(void *p, std::size_t) noexcept { std::free(p); }
 #pragma GCC diagnostic pop
 #endif
 
-using namespace engine::core;
+using namespace orosmo::core;
 
 namespace
 {

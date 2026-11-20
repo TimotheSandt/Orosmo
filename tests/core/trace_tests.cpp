@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/tasks.hpp>
-#include <engine/core/trace.hpp>
+#include <orosmo/core/tasks.hpp>
+#include <orosmo/core/trace.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -9,7 +9,7 @@
 #include <fstream>
 #include <sstream>
 
-using namespace engine::core;
+using namespace orosmo::core;
 using std::chrono::microseconds;
 using std::chrono::milliseconds;
 

@@ -1,5 +1,5 @@
 // expect: 7:17: error: '.onClick' names a C++ function (state.regenerate, Tools::save or a registered action name); it cannot be an expression or a call
-import "engine/ui"
+import "orosmo/ui"
 import "state.hpp"
 
 view V {

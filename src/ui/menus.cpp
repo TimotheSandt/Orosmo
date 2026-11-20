@@ -1,12 +1,12 @@
-#include "engine/ui/menus.hpp"
+#include "orosmo/ui/menus.hpp"
 
-#include "engine/ui/ui.hpp"
+#include "orosmo/ui/ui.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 namespace
@@ -468,4 +468,4 @@ void ImageView::drawContent(const Ui &, renderer::DrawList &list, const Style &s
     list.image(renderer::DrawImage{.image = image, .vertices = std::vector<float>(std::begin(q), std::end(q)), .tint = tint_});
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

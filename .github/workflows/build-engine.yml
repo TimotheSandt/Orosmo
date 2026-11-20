@@ -276,7 +276,7 @@ jobs:
             cd myproject && ./orosmo update
             ```
 
-            **Engine package** — public headers (`include/engine/{core,platform,rhi,renderer,world,ui}`), pre-built static
+            **Engine package** — public headers (`include/orosmo/{core,platform,rhi,renderer,world,ui}`), pre-built static
             libraries (debug + release: `libcore`, `libplatform`, `librhi`, `librenderer`, `libworld`, `libui`, …), `engine.mk`,
             the interface language compiler `cui`, the RHI shaders (`shaders/rhi`), the default font and themes (`res/`),
             two examples buildable from the package (`examples/terrain_gen`, `examples/terrain_viewer`) and `vcpkg.json`.

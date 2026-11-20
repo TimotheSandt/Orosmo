@@ -28,7 +28,7 @@ Names starting with `cui_` are reserved for the generated code (a field or a `le
 
 ## Targets and tests
 
-- Every file starts with `import "engine/ui"` and is compiled for the engine's `engine::ui` module; a file without it is
+- Every file starts with `import "orosmo/ui"` and is compiled for the engine's `orosmo::ui` module; a file without it is
   refused. The legacy `UI::View` target (component registry scanned from `include/UI`, `scan` / `build` commands, `--headers`
   and `--registry` options) was removed with the legacy interface. Specification (French):
   [docs/UI_LANGUAGE.md](../../docs/UI_LANGUAGE.md).

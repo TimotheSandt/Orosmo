@@ -4,12 +4,12 @@
 #include "renderer/repo_paths.hpp"
 #include "support/temp_dir.hpp"
 
-#include <engine/core/file_watcher.hpp>
-#include <engine/ui/theme.hpp>
+#include <orosmo/core/file_watcher.hpp>
+#include <orosmo/ui/theme.hpp>
 
 #include <thread>
 
-namespace ui = engine::ui;
+namespace ui = orosmo::ui;
 
 namespace
 {
@@ -84,7 +84,7 @@ TEST_SUITE("ui/theme")
         CHECK(std::get<float>(*radius) == 3.0f);
         CHECK(std::get<float>(*twelve) == 12.0f);
         CHECK(near(std::get<ui::Color>(*green), {0, 1, 0, 1}));
-        CHECK((nope.error().code == engine::core::ErrorCode::kNotFound));
+        CHECK((nope.error().code == orosmo::core::ErrorCode::kNotFound));
     }
 
     TEST_CASE("errors name the file and the JSON path")
@@ -94,7 +94,7 @@ TEST_SUITE("ui/theme")
             auto theme = ui::Theme::parse(json, {}, "t.json");
             REQUIRE_FALSE(theme.has_value());
             INFO(theme.error().message);
-            CHECK((theme.error().code == engine::core::ErrorCode::kParse));
+            CHECK((theme.error().code == orosmo::core::ErrorCode::kParse));
             CHECK(theme.error().message.find(fragment) != std::string::npos);
             CHECK(theme.error().message.starts_with("t.json: "));
         };
@@ -110,7 +110,7 @@ TEST_SUITE("ui/theme")
         tests::TempDir empty("ui_theme_missing"); // dossier vide : aucun missing.json du dossier de lancement n'est trouvé
         auto missing = ui::Theme::parse(R"({"extends": "missing.json"})", empty.path, "t.json");
         REQUIRE_FALSE(missing.has_value());
-        CHECK((missing.error().code == engine::core::ErrorCode::kIo));
+        CHECK((missing.error().code == orosmo::core::ErrorCode::kIo));
         CHECK(missing.error().message.find("missing.json: cannot read the theme file") != std::string::npos);
     }
 
@@ -160,7 +160,7 @@ TEST_SUITE("ui/theme")
         tests::TempDir dir("ui_theme_reload");
         dir.write("base.json", kBase);
         dir.write("t.json", R"({"extends": "base.json", "tokens": {"color.primary": "#000000", "color.text": "#111111", "color.muted": "#222222"}})");
-        engine::core::FileWatcher watcher;
+        orosmo::core::FileWatcher watcher;
         ui::ThemeHost host;
         REQUIRE(host.load(dir.path / "t.json").has_value());
         host.watch(watcher);
@@ -193,7 +193,7 @@ TEST_SUITE("ui/theme")
         dir.write("base.json", kBase);
         dir.write("dark.json", R"({"name": "dark", "extends": "base.json", "tokens": {"color.primary": "#336699", "color.text": "#eeeeee", "color.muted": "#555555"}})");
         dir.write("light.json", R"({"name": "light", "extends": "base.json", "tokens": {"color.primary": "not a color"}})");
-        engine::core::FileWatcher watcher;
+        orosmo::core::FileWatcher watcher;
         ui::ThemeHost host;
         REQUIRE(host.load(dir.path / "dark.json").has_value());
         host.watch(watcher);

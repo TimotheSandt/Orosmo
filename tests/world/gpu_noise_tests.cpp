@@ -6,13 +6,13 @@
 #include "support/test_support.hpp"
 #include "rhi/gpu_fixture.hpp"
 
-#include <engine/world/gpu_noise.hpp>
-#include <engine/world/terrain.hpp>
+#include <orosmo/world/gpu_noise.hpp>
+#include <orosmo/world/terrain.hpp>
 
 #include <algorithm>
 #include <cmath>
 
-namespace w = engine::world;
+namespace w = orosmo::world;
 
 TEST_SUITE("world/gpu")
 {

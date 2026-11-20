@@ -256,7 +256,7 @@ all debug release dev: $(ENGINE_LIBS) $(_CUI_INSTALLED)
 	@echo "Engine [$(BUILD_TYPE)] — all archives up to date"
 
 engine: install-demo
-	@echo "Engine fully prepared in apps/demo/engine/"
+	@echo "Engine fully prepared in apps/demo/orosmo/"
 
 # ── Archive rules ─────────────────────────────────────────────────────────────
 # Archive recréée (rm) : `ar rcs` garderait les objets des fichiers supprimés (ancienne interface src/ui/legacy/).
@@ -382,10 +382,12 @@ endif
 # ── zip helper ────────────────────────────────────────────────────────────────
 # Zips from the *parent* of _DIST_STAGING so the top-level dir in the archive
 # is the staging dir name (e.g. pkg-linux-x64/...).  strip_top_dir() in Rust
-# strips that prefix, placing files directly under engine/.
+# strips that prefix, placing files directly under orosmo/.
 _STAGING_PARENT := $(patsubst %/,%,$(dir $(_DIST_STAGING)))
 _STAGING_NAME   := $(notdir $(_DIST_STAGING))
+# The archive is removed first: `zip -r` updates an existing archive and would keep files deleted from the engine.
 define _DO_ZIP
+	rm -f "$(abspath $(1))" && \
 	cd "$(_STAGING_PARENT)" && \
 	if command -v zip >/dev/null 2>&1; then \
 	    zip -r "$(abspath $(1))" "$(_STAGING_NAME)/"; \
@@ -445,56 +447,56 @@ engine-tool: $(ENGINE_PKG_ZIP) $(ENGINE_TOOL_EXE)
 	@echo "engine-tool done: $(ENGINE_TOOL_EXE)  $(ENGINE_PKG_ZIP)"
 
 # ── Sync demo ─────────────────────────────────────────────────────────────────
-# Copies the current BUILD_TYPE artifacts directly into apps/demo/engine/.
+# Copies the current BUILD_TYPE artifacts directly into apps/demo/orosmo/.
 # Faster than install-demo: no dist packaging step required.
 # vcpkg_installed/ is linked (not copied) to avoid duplicating hundreds of MB.
 .PHONY: sync-demo
 sync-demo: $(ENGINE_LIBS) $(_CUI_INSTALLED)
-	@mkdir -p apps/demo/engine/lib/$(BUILD_TYPE) apps/demo/engine/make apps/demo/engine/tools
+	@mkdir -p apps/demo/orosmo/lib/$(BUILD_TYPE) apps/demo/orosmo/make apps/demo/orosmo/tools
 ifeq ($(DETECTED_OS),Windows)
-	@mkdir -p apps/demo/engine/includes
-	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination 'apps/demo/engine/includes' -Recurse -Force"
+	@mkdir -p apps/demo/orosmo/includes
+	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination 'apps/demo/orosmo/includes' -Recurse -Force"
 else
-	@rm -rf apps/demo/engine/includes && cp -r $(INCLUDES_BASE) apps/demo/engine/includes
+	@rm -rf apps/demo/orosmo/includes && cp -r $(INCLUDES_BASE) apps/demo/orosmo/includes
 endif
 ifeq ($(DETECTED_OS),Windows)
-	@for f in $(ENGINE_LIBS); do powershell -NoProfile -Command "Copy-Item -Path '$$f' -Destination 'apps/demo/engine/lib/$(BUILD_TYPE)' -Force"; done
-	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination 'apps/demo/engine/make' -Force"
-	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination 'apps/demo/engine/tools' -Force"
+	@for f in $(ENGINE_LIBS); do powershell -NoProfile -Command "Copy-Item -Path '$$f' -Destination 'apps/demo/orosmo/lib/$(BUILD_TYPE)' -Force"; done
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination 'apps/demo/orosmo/make' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination 'apps/demo/orosmo/tools' -Force"
 else
-	@cp $(ENGINE_LIBS) apps/demo/engine/lib/$(BUILD_TYPE)/
-	@cp tools/engine-sdk/engine.mk apps/demo/engine/make/
-	@cp "$(_CUI_INSTALLED)" apps/demo/engine/tools/
+	@cp $(ENGINE_LIBS) apps/demo/orosmo/lib/$(BUILD_TYPE)/
+	@cp tools/engine-sdk/engine.mk apps/demo/orosmo/make/
+	@cp "$(_CUI_INSTALLED)" apps/demo/orosmo/tools/
 endif
-	@if [ ! -e apps/demo/engine/vcpkg_installed ]; then \
+	@if [ ! -e apps/demo/orosmo/vcpkg_installed ]; then \
 	    if [ "$(DETECTED_OS)" = "Windows" ]; then \
 	        TARGET=$$(cd "$(VCPKG_INSTALLED_ROOT)" && pwd -W 2>/dev/null || echo "$(VCPKG_INSTALLED_ROOT)"); \
 	        MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\engine\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
-	            || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
+	            || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
 	    else \
-	        ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
+	        ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
 	    fi; \
 	fi
-	@echo "Synced [$(BUILD_TYPE)] → apps/demo/engine/"
+	@echo "Synced [$(BUILD_TYPE)] → apps/demo/orosmo/"
 
 # ── Install demo ──────────────────────────────────────────────────────────────
 # Full dist-based install: packages headers, both build types, and tools.
 install-demo: engine-tool
 ifeq ($(DETECTED_OS),Windows)
-	@mkdir -p apps/demo/engine
-	@powershell -NoProfile -Command "Copy-Item -Path '$(DIST_PKG_DIR)/*' -Destination 'apps/demo/engine' -Recurse -Force"
+	@mkdir -p apps/demo/orosmo
+	@powershell -NoProfile -Command "Copy-Item -Path '$(DIST_PKG_DIR)/*' -Destination 'apps/demo/orosmo' -Recurse -Force"
 else
-	@rm -rf apps/demo/engine
-	@cp -r "$(DIST_PKG_DIR)" apps/demo/engine
+	@rm -rf apps/demo/orosmo
+	@cp -r "$(DIST_PKG_DIR)" apps/demo/orosmo
 endif
 	@if [ "$(DETECTED_OS)" = "Windows" ]; then \
 	    TARGET=$$(cd "$(VCPKG_INSTALLED_ROOT)" && pwd -W 2>/dev/null || echo "$(VCPKG_INSTALLED_ROOT)"); \
 	    MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\engine\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
-	        || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
+	        || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
 	else \
-	    ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
+	    ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
 	fi
-	@echo "Engine installed to apps/demo/engine/"
+	@echo "Engine installed to apps/demo/orosmo/"
 
 # ── vcpkg dependency management ───────────────────────────────────────────────
 # install:   no args → install all vcpkg.json deps (incremental)

@@ -2,7 +2,7 @@
 // codes d'erreur, niveaux, accès concurrents) avant toute migration (M1 bis).
 #include <doctest/doctest.h>
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -12,7 +12,7 @@
 #include <vector>
 
 namespace fs = std::filesystem;
-using namespace engine::core; // Logger, LogLevel et ses niveaux L_*
+using namespace orosmo::core; // Logger, LogLevel et ses niveaux L_*
 
 namespace
 {

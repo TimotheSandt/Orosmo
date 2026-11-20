@@ -34,7 +34,7 @@ Notes :
 ## 2. Arborescence
 
 ```
-include/engine/<module>/*.hpp     API publique (stable, documentée)
+include/orosmo/<module>/*.hpp     API publique (stable, documentée)
 src/<module>/                     implémentation privée
 src/rhi/{vulkan,opengl,metal}/    backends
 shaders/                          GLSL source, sous-dossiers par système
@@ -53,7 +53,7 @@ Principes : style « moderne » (état explicite, pas d'état global caché) pou
 Esquisse (à affiner par l'IA, sans changer les principes) :
 
 ```cpp
-namespace engine::rhi {
+namespace orosmo::rhi {
 
 template <typename Tag> struct Handle { uint32_t index = 0, generation = 0; };
 using BufferHandle   = Handle<struct BufferTag>;
