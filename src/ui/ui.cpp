@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <memory>
 #include <unordered_set>
 
 namespace orosmo::ui
@@ -231,7 +232,9 @@ Widget *Ui::find(std::string_view id) const noexcept
     return nullptr;
 }
 
-bool Ui::wantsKeyboard() const noexcept { return focused_ != nullptr && focused_->acceptsText(); }
+// Le widget focalisé a pu être détruit depuis la dernière mise à jour (`clearChildren` public, sans `forget`) : son jeton de durée
+// de vie est vérifié avant tout accès.
+bool Ui::wantsKeyboard() const noexcept { return focused_ != nullptr && !focusedAlive_.expired() && focused_->acceptsText(); }
 
 Widget *Ui::hitTestIn(Widget &w, glm::vec2 p)
 {
@@ -300,12 +303,13 @@ void Ui::setHovered(Widget *target)
 
 void Ui::focus(Widget *widget)
 {
-    if (widget == focused_)
+    if (widget == focused_ && (widget == nullptr || !focusedAlive_.expired())) // même adresse qu'un widget détruit : nouveau focus
     {
         return;
     }
-    Widget *old = focused_;
+    Widget *old = focusedAlive_.expired() ? nullptr : focused_; // détruit depuis : rien à prévenir
     focused_ = widget;
+    focusedAlive_ = widget != nullptr ? std::weak_ptr<char>(widget->lifetime_) : std::weak_ptr<char>();
     if (old != nullptr)
     {
         old->focused_ = false;
@@ -481,6 +485,8 @@ bool Ui::dispatchShortcut(std::string_view shortcut)
 
 void Ui::forgetSubtree(const Widget *root)
 {
+    if (focusedAlive_.expired())
+        focused_ = nullptr; // détruit : ni parcours de ses parents ni notification
     for (Widget **p : {&hovered_, &active_, &focused_})
     {
         if (*p != nullptr && inSubtree(root, *p))
@@ -645,6 +651,8 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
     (void)themes_.reloadIfChanged();
 
     // Pointeurs vers des widgets retirés de l'arbre depuis l'image précédente : oubliés (sans les déréférencer).
+    if (focusedAlive_.expired())
+        focused_ = nullptr; // détruit (même si un nouveau widget occupe la même adresse)
     {
         std::unordered_set<const Widget *> alive;
         if (root_)

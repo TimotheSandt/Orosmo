@@ -156,7 +156,8 @@ class Ui
     bool wantsKeyboard() const noexcept;
 
     Widget *hovered() const noexcept { return hovered_; }
-    Widget *focused() const noexcept { return focused_; }
+    // Nul si le widget focalisé a été détruit depuis (retiré par `clearChildren` sans `forget`).
+    Widget *focused() const noexcept { return focusedAlive_.expired() ? nullptr : focused_; }
     void focus(Widget *widget);
     // Ordre de tabulation : widgets visibles, actifs et `focusable`, dans l'ordre de l'arbre.
     void focusNext(bool backwards = false);
@@ -250,6 +251,7 @@ class Ui
     Widget *hovered_ = nullptr;
     Widget *active_ = nullptr;
     Widget *focused_ = nullptr;
+    std::weak_ptr<char> focusedAlive_; // jeton de durée de vie de `focused_` (Widget::lifetime_)
     std::vector<PopupEntry> popups_;
     std::vector<ModalEntry> modals_;
     std::deque<Notification> notifications_;
