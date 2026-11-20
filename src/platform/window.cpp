@@ -4,7 +4,7 @@
 #include <GLFW/glfw3.h>
 
 #include <engine/platform/input_manager.hpp>
-#include "Profiler.h"
+#include <engine/core/profiler.hpp>
 #include <engine/core/log.hpp>
 #include <engine/core/paths.hpp>
 
@@ -258,11 +258,11 @@ void Window::SetCursorPosition(glm::dvec2 position)
 
 bool Window::NewFrame()
 {
-    Profiler::Profile("PollEvents", &glfwPollEvents);
-    Profiler::Process();
+    engine::core::Profiler::Profile("PollEvents", &glfwPollEvents);
+    engine::core::Profiler::Process();
     this->inputManager->Update();
 
-    if (!Profiler::Profile("HealthCheck", &Window::IsWindowHealthy, this))
+    if (!engine::core::Profiler::Profile("HealthCheck", &Window::IsWindowHealthy, this))
     {
         LOG_WARNING("Window is not healthy");
         return false;

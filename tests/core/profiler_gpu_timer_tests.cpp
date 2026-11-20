@@ -2,13 +2,14 @@
 // que le runtime graphique enregistre quand on lie un backend. Ces tests n'utilisent aucun GPU.
 #include <doctest/doctest.h>
 
-#include "Profiler/GpuTimer.h"
-#include "Profiler/Profiler.h"
+#include <engine/core/gpu_timer.hpp>
+#include <engine/core/profiler.hpp>
 
 #include <chrono>
 #include <memory>
 
 using namespace std::chrono_literals;
+using namespace engine::core;
 
 namespace
 {

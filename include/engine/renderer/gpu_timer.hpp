@@ -1,7 +1,7 @@
 // Minuterie GPU d'une portion de commandes (RHI-11) : deux horodatages dans une pool, durée lue sans bloquer quand elle est prête.
 #pragma once
 
-#include "GpuTimer.h" // Profiler : IGpuTimer, IGpuTimerFactory
+#include "engine/core/gpu_timer.hpp" // Profiler : IGpuTimer, IGpuTimerFactory
 #include "engine/rhi/device.hpp"
 
 #include <chrono>
@@ -37,13 +37,13 @@ class GpuTimer
 // Fournisseur de minuteries GPU du `Profiler` (A25) : chaque minuteur écrit deux horodatages dans l'encodeur COURANT, que l'application
 // donne au début de l'image (`setEncoder`) et retire à la fin. Hors image (aucun encodeur), les minuteurs ne mesurent rien et ne sont
 // jamais prêts (le Profiler les abandonne après son délai).
-class ProfilerGpuTimerFactory final : public IGpuTimerFactory
+class ProfilerGpuTimerFactory final : public core::IGpuTimerFactory
 {
   public:
     explicit ProfilerGpuTimerFactory(rhi::Device &device) : device_(device) {}
     void setEncoder(rhi::CommandEncoder *encoder) noexcept { encoder_ = encoder; }
     rhi::CommandEncoder *encoder() const noexcept { return encoder_; }
-    std::unique_ptr<IGpuTimer> CreateTimer(const std::string &name) const override;
+    std::unique_ptr<core::IGpuTimer> CreateTimer(const std::string &name) const override;
 
   private:
     rhi::Device &device_;

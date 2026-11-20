@@ -472,7 +472,7 @@ impl<'a> Generator<'a> {
             "nanoseconds" => "std::chrono::nanoseconds",
             "seconds" => "std::chrono::duration<double>",
             "Window" => "Window",
-            "Profiler" => "Profiler",
+            "Profiler" => "engine::core::Profiler",
             other => other,
         }
         .to_string()
@@ -487,7 +487,7 @@ impl<'a> Generator<'a> {
             includes.insert("engine/platform/window.hpp".to_string());
         }
         if type_name.contains("Profiler") {
-            includes.insert("Profiler/Profiler.h".to_string());
+            includes.insert("engine/core/profiler.hpp".to_string());
         }
         includes
     }
@@ -825,7 +825,7 @@ impl<'a> GenContext<'a> {
                 return format!("{}->{}({})", owner, getter, all_args.join(", "));
             }
             if owner.chars().next().is_some_and(char::is_uppercase) {
-                return format!("{}::{}({})", owner, getter, all_args.join(", "));
+                return format!("{}::{}({})", Generator::dsl_to_cpp_type(owner), getter, all_args.join(", "));
             }
             return format!("{}.{}({})", owner, method, all_args.join(", "));
         }

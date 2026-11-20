@@ -7,7 +7,7 @@
 
 #include "CameraController.h"
 #include <engine/platform/input_manager.hpp>
-#include "Profiler.h"
+#include <engine/core/profiler.hpp>
 #include "UIManager.h"
 #include <engine/platform/window.hpp>
 #include "World.h"

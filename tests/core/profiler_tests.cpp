@@ -1,10 +1,12 @@
 #include "support/test_support.hpp"
 
-#include "Profiler/FPSCounter.h"
-#include "Profiler/RingBuffer.h"
+#include <engine/core/fps_counter.hpp>
+#include <engine/core/ring_buffer.hpp>
 
 #include <chrono>
 #include <thread>
+
+using namespace engine::core;
 
 namespace tests
 {
