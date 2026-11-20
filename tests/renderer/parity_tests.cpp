@@ -173,7 +173,7 @@ TEST_SUITE("renderer/parity")
         REQUIRE(expected.has_value());
         auto diff = rd::compareImages(*image, *expected, 4);
         REQUIRE(diff.has_value());
-        INFO("pixels hors tolérance : ", diff->outOfTolerance, " / ", diff->pixels, ", écart max ", static_cast<int>(diff->maxDelta), ", moyen ", diff->meanDelta);
+        MESSAGE("pixels hors tolérance : ", diff->outOfTolerance, " / ", diff->pixels, ", écart max ", static_cast<int>(diff->maxDelta), ", moyen ", diff->meanDelta);
         if (diff->outOfTolerance > diff->pixels / 1000)
         {
             (void)rd::savePng(*image, fs::temp_directory_path() / "engine_scene_parity_actual.png");
@@ -232,7 +232,7 @@ TEST_SUITE("renderer/parity")
         REQUIRE(expected.has_value());
         auto diff = rd::compareImages(*image, *expected, 4);
         REQUIRE(diff.has_value());
-        INFO("pixels hors tolérance : ", diff->outOfTolerance, " / ", diff->pixels, ", écart max ", static_cast<int>(diff->maxDelta), ", moyen ", diff->meanDelta);
+        MESSAGE("pixels hors tolérance : ", diff->outOfTolerance, " / ", diff->pixels, ", écart max ", static_cast<int>(diff->maxDelta), ", moyen ", diff->meanDelta);
         if (diff->outOfTolerance > diff->pixels / 1000)
         {
             (void)rd::savePng(*image, fs::temp_directory_path() / "engine_ui_parity_actual.png");

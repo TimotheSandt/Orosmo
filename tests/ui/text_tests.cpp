@@ -8,6 +8,7 @@
 
 #include "Rendering/TextRenderer.h"
 
+#include <algorithm>
 #include <filesystem>
 
 namespace ui = engine::ui;
