@@ -13,8 +13,8 @@ Exemple complet : `apps/ui_gallery/src/Gallery.cui` (chaque composant, modificat
 
 ## 1. Cible
 
-Un seul produit : `struct Vue` + `cui::buildVue(ui, …)` pour le module `engine::ui` (`include/engine/ui/`). Chaque fichier
-commence par `import "engine/ui"` ; un fichier sans cet import est refusé (`missing `import "engine/ui"`…`). L'ancienne cible
+Un seul produit : `struct Vue` + `cui::buildVue(ui, …)` pour le module `orosmo::ui` (`include/orosmo/ui/`). Chaque fichier
+commence par `import "orosmo/ui"` ; un fichier sans cet import est refusé (`missing `import "orosmo/ui"`…`). L'ancienne cible
 `UI::View` (interface héritée `include/UI/`, registre des composants lu dans les en-têtes, options `--headers` et `--registry`)
 a été supprimée le 2026-11-20 avec l'interface héritée ; le panneau de la démo (`apps/demo/src/UI/Views/PerformanceView.cui`)
 utilise cette cible.
@@ -23,7 +23,7 @@ utilise cette cible.
 
 ```
 fichier     := import* vue*
-import      := "import" CHAÎNE                    // "engine/ui" est obligatoire ; les autres deviennent des #include
+import      := "import" CHAÎNE                    // "orosmo/ui" est obligatoire ; les autres deviennent des #include
 vue         := "view" NOM "{" (champ | let | func | cpp)* élément "}"     // exactement un élément racine
 champ       := ("@Mutable" | "@Observed" | "@Snapshot") "var" NOM ":" TYPE ["=" expr]
 let         := "let" NOM [":" TYPE] "=" expr       // constante : static constexpr
@@ -58,8 +58,8 @@ Chaque vue `V` produit, dans le fichier `<nom du fichier>.gen.h` :
 
 ```cpp
 namespace cui {
-struct V { State *state = nullptr; const Stats *stats = nullptr; /* let, func */ std::unique_ptr<engine::ui::Widget> build(engine::ui::Ui &) const; };
-inline std::unique_ptr<engine::ui::Widget> buildV(engine::ui::Ui &ui, State &state, const Stats &stats);
+struct V { State *state = nullptr; const Stats *stats = nullptr; /* let, func */ std::unique_ptr<orosmo::ui::Widget> build(orosmo::ui::Ui &) const; };
+inline std::unique_ptr<orosmo::ui::Widget> buildV(orosmo::ui::Ui &ui, State &state, const Stats &stats);
 }
 ui.setRoot(cui::buildV(ui, state, stats));   // les objets liés doivent vivre plus longtemps que l'interface
 ```
@@ -93,20 +93,20 @@ Arguments positionnels dans l'ordre du tableau, ou nommés (`min: 0`). Un argume
 | `TextArea` | `text` (chaîne liée), `lineNumbers` (= false), `readOnly` (= false), `wrap` (= true : retour à la ligne automatique) | — | onChange |
 | `ColorWheel` | `color` (couleur liée) | — | onChange |
 | `ColorEditor` | `color` (couleur liée), `alpha` (= false) | — | onChange |
-| `GradientEditor` | `gradient` (`engine::ui::Gradient` lié) | — | onChange |
-| `CurveEditor` | `curve` (`engine::ui::Curve` lié) | — | onChange |
+| `GradientEditor` | `gradient` (`orosmo::ui::Gradient` lié) | — | onChange |
+| `CurveEditor` | `curve` (`orosmo::ui::Curve` lié) | — | onChange |
 | `Dialog` | `title`, `open` (booléen lié : ouverte tant qu'il vaut vrai), `dismiss` (= true : un clic dehors ferme) | le contenu de la fenêtre | onChange (fermeture) |
 | `MenuBar` | — | des `Menu` seulement | onHover, onFocus |
 | `Menu` | `title` | `MenuItem`, `Menu` (sous-menu), `Separator` | onHover, onFocus |
 | `MenuItem` | `text`, `shortcut` (= "" ; affiché ET installé : « Ctrl+S » déclenche l'élément, menu fermé compris), `checked` (booléen lié, facultatif) | — (dans `Menu` ou `ContextMenu`) | onClick |
 | `ContextMenu` | — | comme `Menu` ; ouvert par un clic droit sur son parent | — |
 | `Notifications` | `max` (= 5), `maxHeight` (pixels, = 0 : sans limite), `width` (= 0 : celle du texte) | — | — |
-| `ImageView` | `image` (expression → `engine::ui::DynamicImage` ou `std::shared_ptr<const renderer::AtlasImage>`, relue à chaque image) | — | onHover, onFocus |
+| `ImageView` | `image` (expression → `orosmo::ui::DynamicImage` ou `std::shared_ptr<const renderer::AtlasImage>`, relue à chaque image) | — | onHover, onFocus |
 
 onHover et onFocus sont acceptés partout sauf sur `Page`.
 
 **Texte** : une chaîne (`"Graine"`), une chaîne interpolée (`"FPS \(stats.fps)"`, relue à chaque image : un flottant s'affiche
-avec au plus deux décimales, `engine::ui::text`) ou une expression C++ (`state.title`).
+avec au plus deux décimales, `orosmo::ui::text`) ou une expression C++ (`state.title`).
 
 **Curseur** (`Slider`) : un clic sans glisser place la valeur sous le pointeur ; un glissement part de la valeur courante et la
 déplace de la distance parcourue (toute la largeur = toute la plage ; Maj : dix fois plus fin) ; clic droit : valeur par défaut.
@@ -152,7 +152,7 @@ Un événement **nomme** une fonction C++ ; ce n'est jamais une expression ni un
 | `.onClick(Tools::save)` | appel direct de la fonction libre `Tools::save()` ou `Tools::save(event)` |
 | `.onClick(regenerate)` | action **nommée**, retrouvée dans `ui.actions()` au moment de l'événement (`ui.actions().add("regenerate", …)` ; `ui.actions().missing()` liste celles qui manquent) |
 
-Une `func` de la vue ne peut pas servir d'événement (pas de logique dans le langage). `engine::ui::Event` : `kind`, `source`,
+Une `func` de la vue ne peut pas servir d'événement (pas de logique dans le langage). `orosmo::ui::Event` : `kind`, `source`,
 `active` (survol : entrée ou sortie ; focus : pris ou perdu). Les événements sont appelés à la fin de `Ui::update`, après les
 écritures des liaisons qui les précèdent : le gestionnaire de `onChange` lit la nouvelle valeur.
 
@@ -237,8 +237,8 @@ Messages vérifiés par les tests (extrait) :
 | argument manquant / inconnu | `'Slider' requires the argument 'max'` ; `'Button' has no argument 'color' (arguments: text)` |
 | propriété de thème inconnue | `unknown theme property 'colour' (properties: background, …)` |
 | structure | `'Page' is only allowed directly inside 'Tabs'` ; `'ScrollView' takes exactly one child (put several in a VBox)` |
-| état local | `@State is not supported with engine/ui: keep the state in C++ and bind it with @Mutable` |
-| import manquant | `missing `import "engine/ui"`: it is the only target of the interface language (…)` |
+| état local | `@State is not supported with orosmo/ui: keep the state in C++ and bind it with @Mutable` |
+| import manquant | `missing `import "orosmo/ui"`: it is the only target of the interface language (…)` |
 | lexique | `Unexpected character '#'` ; `Unterminated string literal` |
 
 ## 9. Intégration au build

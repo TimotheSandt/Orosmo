@@ -27,7 +27,7 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 
 **A1. Le plan suppose un seul backend existant, il y en a deux.** `docs/05` (M2) migre le rendu OpenGL « derrière le RHI », M4 écrit Vulkan. Dans le code, un backend Vulkan fonctionnel (2 500 lignes) et un OpenGL existent déjà derrière une autre abstraction (`IGraphicsDevice`). Proposition : M2 réécrit l'interface (handles, `CommandEncoder`, groupes) et porte **les deux** backends existants à parité de tests ; M4 devient parité/VMA/cache disque/validation. Alternative : conserver l'abstraction actuelle jusqu'à M3. *Décision demandée.*
 
-**A2. Arborescence et nommage de `docs/03`.** `docs/03` §2 : `include/engine/<module>/*.hpp`, fichiers en `snake_case`, fonctions en `camelCase`. Le code : `include/<Module>/*.h`, fichiers en `PascalCase`, méthodes en `PascalCase` (`GetInstance`), macros `LOG_*`. `CLAUDE.md` demande de suivre l'existant. Proposition : **garder l'existant**, l'inscrire dans `CLAUDE.md`, et n'ajouter `engine/` que si l'API est publiée à des tiers. *Choix demandé.*
+**A2. Arborescence et nommage de `docs/03`.** `docs/03` §2 : `include/orosmo/<module>/*.hpp`, fichiers en `snake_case`, fonctions en `camelCase`. Le code : `include/<Module>/*.h`, fichiers en `PascalCase`, méthodes en `PascalCase` (`GetInstance`), macros `LOG_*`. `CLAUDE.md` demande de suivre l'existant. Proposition : **garder l'existant**, l'inscrire dans `CLAUDE.md`, et n'ajouter `engine/` que si l'API est publiée à des tiers. *Choix demandé.*
 
 **A3. `-Wall -Wextra -Wpedantic -Werror`** (`docs/03` §7) : le build actuel émet 6 avertissements (`-Wmissing-field-initializers`). Proposition : corriger puis activer `-Werror` en M0 pour le code du dépôt (pas pour les bibliothèques tierces).
 
@@ -69,7 +69,7 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 | A6 | TOOL-03 passe en P0 | `docs/02` modifié ; fait en M0 (capture PNG + outil de comparaison) |
 | A11 | Corriger en temps voulu, selon le plan | Rien changé : capacités Vulkan fausses et minuterie GPU factice restent notées (`GAPS.md`) pour M2/M4 |
 
-**A17. Quand migrer l'arborescence et les noms vers `docs/03` ?** Option 1 (recommandée) : au fil des jalons, comme écrit plus haut. Option 2 : une migration de masse dédiée avant M1 (`include/engine/<module>/*.hpp`, fichiers en `snake_case`, fonctions en `camelCase`), qui touche ~19 000 lignes mécaniquement mais fait passer tous les `#include` et tous les appels ; je la ferais avec les tests comme filet. *Dis-moi si tu préfères l'option 2.*
+**A17. Quand migrer l'arborescence et les noms vers `docs/03` ?** Option 1 (recommandée) : au fil des jalons, comme écrit plus haut. Option 2 : une migration de masse dédiée avant M1 (`include/orosmo/<module>/*.hpp`, fichiers en `snake_case`, fonctions en `camelCase`), qui touche ~19 000 lignes mécaniquement mais fait passer tous les `#include` et tous les appels ; je la ferais avec les tests comme filet. *Dis-moi si tu préfères l'option 2.*
 
 **A18. Windows et macOS dans la CI.** Les jobs correspondants de `.github/workflows/ci.yml` n'ont jamais tourné (aucune machine disponible pendant M0) : ils sont en `continue-on-error`. Quand tu auras vu un premier run, dis-moi ce qu'il affiche pour que je corrige et retire ce drapeau.
 
@@ -107,7 +107,7 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 
 ## Décisions prises en M1 bis, à valider par l'auteur
 
-**A24. Comment `core` utilise le système sans dépendre de `platform`.** Le plan dit « sortir `<windows.h>` de `Logger`, `Utilities` et `FPSCounter` derrière une interface `platform` ». Or `core` est la couche 0 (`docs/03` §1) : il ne peut rien inclure au-dessus. J'ai donc fait un **port** : `include/engine/core/system.hpp` (dans `core`) *déclare* six fonctions, `src/platform/system.cpp` (nouvelle archive `libplatform.a`) les *définit*. Aucun `#include` ne remonte, aucun enregistrement à l'exécution, comportement identique, et une plateforme sans implémentation échoue à l'édition de liens. Alternative écartée : une interface virtuelle que `platform` installerait au démarrage (plus souple pour les tests, mais l'application doit penser à l'installer, et `Logger` fonctionnerait sans elle avec des valeurs par défaut différentes). **`std::filesystem` reste** dans `Vfs`, `FileWatcher`, `Config`, `TraceRecorder` : c'est la bibliothèque standard, pas un appel système, et l'envelopper dans `platform` ajouterait une couche sans autre bénéfice aujourd'hui. À confirmer ; si tu veux l'envelopper, c'est un jalon de plus.
+**A24. Comment `core` utilise le système sans dépendre de `platform`.** Le plan dit « sortir `<windows.h>` de `Logger`, `Utilities` et `FPSCounter` derrière une interface `platform` ». Or `core` est la couche 0 (`docs/03` §1) : il ne peut rien inclure au-dessus. J'ai donc fait un **port** : `include/orosmo/core/system.hpp` (dans `core`) *déclare* six fonctions, `src/platform/system.cpp` (nouvelle archive `libplatform.a`) les *définit*. Aucun `#include` ne remonte, aucun enregistrement à l'exécution, comportement identique, et une plateforme sans implémentation échoue à l'édition de liens. Alternative écartée : une interface virtuelle que `platform` installerait au démarrage (plus souple pour les tests, mais l'application doit penser à l'installer, et `Logger` fonctionnerait sans elle avec des valeurs par défaut différentes). **`std::filesystem` reste** dans `Vfs`, `FileWatcher`, `Config`, `TraceRecorder` : c'est la bibliothèque standard, pas un appel système, et l'envelopper dans `platform` ajouterait une couche sans autre bénéfice aujourd'hui. À confirmer ; si tu veux l'envelopper, c'est un jalon de plus.
 
 **A25. Le RHI s'enregistre auprès des couches du dessous.** Pour supprimer les deux violations restantes (`Profiler` → RHI, `Window` → RHI), le haut dépend du bas par des interfaces définies en bas : `IGpuTimerFactory` (`include/Profiler/GpuTimer.h`) et `IWindowGraphicsBinding` (`include/Graphics/Presentation/WindowGraphicsBinding.h`). `BindGraphicsRuntime` installe les deux ; ils restent installés après `ClearGraphicsRuntime` (sinon `Window::Close` ne libérerait plus le contexte). C'est le même principe que celui prévu pour les backends (`docs/03` §3) ; à confirmer pour les futures couches (renderer, assets).
 
@@ -144,33 +144,33 @@ compilateur **reste en Rust** (`tools/cui-rs`, déjà construit par le build et 
 (b) un événement s'écrit comme un **modificateur qui nomme une fonction** : `.onClick(state.regenerate)` (appel direct) ou
 `.onClick(regenerate)` (action retrouvée par nom dans le registre de l'interface, docs/03 §12) — cohérent avec la grammaire
 existante ; jamais une expression ; (c) l'en-tête généré porte le nom du **fichier** (`st.cui` → `st.gen.h`), défaut corrigé pour
-les deux cibles ; (d) `docs/UI_LANGUAGE.md` (français) est la spécification de la nouvelle cible `engine/ui` ;
+les deux cibles ; (d) `docs/UI_LANGUAGE.md` (français) est la spécification de la nouvelle cible `orosmo/ui` ;
 `docs/UI_DSL_Spec.md` (anglais) reste celle de la cible héritée `UI::View`, utilisée par la démo.
 
-**A30. Deux modules d'interface pendant la migration (M3 lot E, 2026-11-19).** Le module `engine::ui` de `docs/03` (§1 couche
-`ui`, §12) est écrit à neuf (`include/engine/ui/`, `src/ui/`) : widgets, mise en page, thèmes JSON, événements, liste de dessin. Il
+**A30. Deux modules d'interface pendant la migration (M3 lot E, 2026-11-19).** Le module `orosmo::ui` de `docs/03` (§1 couche
+`ui`, §12) est écrit à neuf (`include/orosmo/ui/`, `src/ui/`) : widgets, mise en page, thèmes JSON, événements, liste de dessin. Il
 ne remplace pas encore l'interface héritée `UI::` de la démo (`PerformanceView`, parité de `ui.png`) : comme pour le rendu en M2,
 l'ancien code reste jusqu'à sa bascule, sous `src/ui/legacy/` (déplacé de `src/UI/` : deux dossiers qui ne diffèrent que par la
-casse sont impossibles sous Windows et macOS). Le langage choisit la cible par `import "engine/ui"`. *Proposition : basculer la
+casse sont impossibles sous Windows et macOS). Le langage choisit la cible par `import "orosmo/ui"`. *Proposition : basculer la
 démo et retirer `UI::` dans un jalon ultérieur (M5, avec le batch 2D R2D-01), à confirmer.*
 
 **A31. API de `platform` et version de la release de M3 (2026-11-19, proposition).** Le lot F demande l'API publique figée et
 nommée selon `docs/03` §7. `core`, `rhi`, `renderer`, `world` et `ui` le sont. `platform` (`Window`, `InputManager`) ne l'est pas :
 la renommer casse la cible héritée du langage (`Get` + nom déduit par `generator.rs`) et la démo. Proposition : le guide déclare
-`platform` **provisoire** (`docs/USING_THE_ENGINE.md` §7), le renommage est fait avec la bascule de la démo vers `engine::ui`
+`platform` **provisoire** (`docs/USING_THE_ENGINE.md` §7), le renommage est fait avec la bascule de la démo vers `orosmo::ui`
 (A30), et la release de M3 porte le numéro **v0.3.0** (`mk/config.mk` ; 0.x : un changement mineur peut casser l'API, la liste
 est dans `docs/releases/`). *L'étiquette est posée par l'auteur ; à contester.*
 
 *A30 et A31, suite (2026-11-20)* : à la demande de l'auteur, l'interface héritée `UI::` et la cible `UI::View` du langage sont
-supprimées, et la démo passe sur `engine::ui` et `engine::world` (nettoyage « Orosmo », `docs/releases/M3.md`). `platform`
+supprimées, et la démo passe sur `orosmo::ui` et `orosmo::world` (nettoyage « Orosmo », `docs/releases/M3.md`). `platform`
 reste provisoire (G96).
 
-**A32. Nom Orosmo : jusqu'où renommer ? (2026-11-20, tranchée).** L'auteur a renommé le projet **Orosmo**. Fait : nom affiché
-(`mk/config.mk`, bannière de l'outil, README, CLAUDE.md, SDK, extension VS Code, dossier de données `Orosmo/`). **Pas fait**, car ce sont
-des décisions d'architecture (`docs/03` §2 et §7) qui cassent l'API de tous les projets : l'espace de noms `engine::`, le dossier
-`include/engine/` et le nom de l'outil en ligne de commande `engine` (`engine init`). Proposition : garder `engine::` et
-`include/engine/` (neutres, courts, déjà figés pour 0.3.x), et renommer seulement l'outil en `orosmo` (`orosmo init`) au début de
-M4, avec une note de changement incompatible. **Décision de l'auteur (2026-11-20)** : renommer l'outil tout de suite
-(aucun projet extérieur ne l'utilise, seulement la démo) : `orosmo init`, `orosmo update`, fichiers de release
-`orosmo-<plateforme>[.exe]` et `orosmo-pkg-<plateforme>.zip` (`chore/rename-cli-orosmo`). `engine::`, `include/engine/` et le
-dossier `engine/` des projets restent.
+**A32. Nom Orosmo : jusqu'où renommer ? (2026-11-20, tranchée).** L'auteur a renommé le projet **Orosmo**. Fait d'abord : nom
+affiché (`mk/config.mk`, bannière de l'outil, README, CLAUDE.md, SDK, extension VS Code, dossier de données `Orosmo/`). Proposition
+initiale : garder l'espace de noms, le dossier des en-têtes et l'outil `engine`, renommer l'outil seulement à M4. **Décision de
+l'auteur (2026-11-20)** : tout renommer tout de suite, aucun projet extérieur n'utilisant encore le moteur : outil `orosmo`
+(`orosmo init`, `orosmo update`, fichiers `orosmo-<plateforme>[.exe]` et `orosmo-pkg-<plateforme>.zip`, branche
+`chore/rename-cli-orosmo`), espace de noms `orosmo::`, en-têtes `include/orosmo/<module>/` (`#include <orosmo/core/log.hpp>`),
+dossier du paquet dans un projet `orosmo/` (`apps/demo/orosmo/` dans le dépôt), import `.cui` `import "orosmo/ui"` (branche
+`chore/rename-namespace-orosmo`). Restent nommés « engine » : les variables de build `ENGINE_*` (`ENGINE_DIR`…), le fichier
+`make/engine.mk` du SDK et les dossiers d'outils `tools/engine-sdk/`, `tools/engine-init-rs/` (internes).

@@ -6,10 +6,10 @@ Guide d'ensemble (état de fin de M2). Détails : [`src/rhi/README.md`](../src/r
 
 ```
  apps/demo       Game, World, CameraController                    (application)
- ui              engine::ui::Ui::draw -> DrawList                  (l'interface ne dessine pas)
+ ui              orosmo::ui::Ui::draw -> DrawList                  (l'interface ne dessine pas)
  renderer        SceneRenderer, CanvasRenderer, Mesh, Camera, LightManager, ShaderLibrary, PipelineCache,
-                 RenderTarget, Texture, GpuBuffer, GpuTimer, Image    -> include/engine/renderer/
- rhi             Device, CommandEncoder, handles, shader_compiler     -> include/engine/rhi/
+                 RenderTarget, Texture, GpuBuffer, GpuTimer, Image    -> include/orosmo/renderer/
+ rhi             Device, CommandEncoder, handles, shader_compiler     -> include/orosmo/rhi/
    rhi/opengl    le seul endroit où gl*, GL_*, glad existent          -> src/rhi/opengl/
  platform        Window, InputManager (GLFW caché : src/platform/)
  core            Logger, Result<T>, tâches, VFS, configuration
