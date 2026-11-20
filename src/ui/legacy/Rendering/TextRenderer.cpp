@@ -794,8 +794,11 @@ void TextRenderer::renderText(const std::string &text, float x, float y, float s
         const float glyphTop = maybeRound(baselineY - static_cast<float>(ch.bearing.y) * renderScale);
         const float w =
             std::max(1.0f, snapToPixels ? std::round(static_cast<float>(ch.size.x) * renderScale) : static_cast<float>(ch.size.x) * renderScale);
-        const float h =
-            std::max(1.0f, snapToPixels ? std::round(static_cast<float>(ch.size.y) * renderScale) : static_cast<float>(ch.size.y) * renderScale);
+        // Bas du glyphe arrondi par rapport à la ligne de base (et non haut + hauteur arrondis chacun de leur côté) : les lettres
+        // posées sur la ligne de base y restent toutes, sans décalage d'un pixel d'une lettre à l'autre.
+        const float glyphBottom = snapToPixels ? baselineY + std::round(static_cast<float>(ch.size.y - ch.bearing.y) * renderScale)
+                                               : glyphTop + static_cast<float>(ch.size.y) * renderScale;
+        const float h = std::max(1.0f, glyphBottom - glyphTop);
         const float u0 = ch.uvMin.x;
         const float v0 = ch.uvMin.y;
         const float u1 = ch.uvMax.x;
