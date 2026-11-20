@@ -147,7 +147,6 @@ LIB_RHI        := $(LIB_DIR)/$(BUILD_TYPE)/librhi.a
 LIB_RENDERER   := $(LIB_DIR)/$(BUILD_TYPE)/librenderer.a
 LIB_WORLD      := $(LIB_DIR)/$(BUILD_TYPE)/libworld.a
 LIB_THIRDPARTY := $(LIB_DIR)/$(BUILD_TYPE)/libthirdparty.a
-LIB_BENCHMARK  := $(LIB_DIR)/$(BUILD_TYPE)/libbenchmark.a
 
 ENGINE_LIBS := $(LIB_GRAPHICS) $(LIB_UI) $(LIB_NOISE) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_WORLD) $(LIB_THIRDPARTY)
 
@@ -161,7 +160,6 @@ Rhi_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/rhi        -type f \( -name
 Renderer_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/renderer   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 World_SRCS      := $(shell find $(LIBRARIES_SRC_DIR)/world      -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 ThirdParty_SRCS := $(shell find $(LIBRARIES_SRC_DIR)/ThirdParty -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-Benchmark_SRCS  := $(shell find $(LIBRARIES_SRC_DIR)/Benchmark  -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 
 obj_from_src = \
     $(patsubst $(LIBRARIES_SRC_DIR)/%.cpp,$(OBJ_DIR_TYPE)/Libraries/%.o,$(filter %.cpp,$(1))) \
@@ -176,9 +174,8 @@ Rhi_OBJS        := $(call obj_from_src,$(Rhi_SRCS))
 Renderer_OBJS   := $(call obj_from_src,$(Renderer_SRCS))
 World_OBJS      := $(call obj_from_src,$(World_SRCS))
 ThirdParty_OBJS := $(call obj_from_src,$(ThirdParty_SRCS))
-Benchmark_OBJS  := $(call obj_from_src,$(Benchmark_SRCS))
 
-ALL_ENGINE_OBJS := $(Graphics_OBJS) $(UI_OBJS) $(Noise_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(World_OBJS) $(ThirdParty_OBJS) $(Benchmark_OBJS)
+ALL_ENGINE_OBJS := $(Graphics_OBJS) $(UI_OBJS) $(Noise_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(World_OBJS) $(ThirdParty_OBJS)
 
 # ── Git remote detection ──────────────────────────────────────────────────────
 # Reads the 'origin' remote and extracts the host and owner/repo slug.
@@ -313,11 +310,6 @@ $(LIB_THIRDPARTY): $(ThirdParty_OBJS)
 	@mkdir -p "$(dir $@)"
 	$(AR) rcs $@ $^
 	@echo "Archived [ThirdParty]  $(BUILD_TYPE): $@"
-
-$(LIB_BENCHMARK): $(Benchmark_OBJS)
-	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Benchmark]   $(BUILD_TYPE): $@"
 
 # ── Compilation rules ─────────────────────────────────────────────────────────
 $(OBJ_DIR_TYPE)/Libraries/%.o: $(LIBRARIES_SRC_DIR)/%.cpp

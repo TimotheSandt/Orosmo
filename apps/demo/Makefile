@@ -174,7 +174,6 @@ BENCH_DIR    := benchmark
 BENCH_SRCS   := $(shell find $(BENCH_DIR) -type f -name "*.cpp" 2>/dev/null)
 BENCH_OBJS   := $(BENCH_SRCS:$(BENCH_DIR)/%.cpp=$(OBJ_DIR)/benchmark/%.o)
 BENCH_TARGET := bin/benchmark/benchmark$(ENGINE_EXE_EXT)
-BENCH_LIB    := $(ENGINE_DIR)/lib/$(BUILD_TYPE)/libbenchmark.a
 
 STYLE_SRCS := $(shell find $(SRC_DIR) $(TEST_DIR) $(BENCH_DIR) -type f \( -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 LINT_FLAGS  := $(filter-out -flto=jobserver,$(ENGINE_CXXFLAGS))
@@ -274,11 +273,8 @@ $(OBJ_DIR)/gen/tests/%.o: $(ENGINE_GEN_DIR)/tests/%.gen.cpp
 benchmark: $(BENCH_TARGET)
 	@./$(BENCH_TARGET)
 
-$(BENCH_LIB):
-	$(error Missing libbenchmark.a — run 'make sync-demo' from the project root first)
-
-$(BENCH_TARGET): $(BENCH_OBJS) $(BENCH_LIB) | bin/benchmark
-	$(CXX) $(ENGINE_CXXFLAGS) $(BENCH_OBJS) $(BENCH_LIB) -o $@
+$(BENCH_TARGET): $(BENCH_OBJS) $(ENGINE_LIBS) | bin/benchmark
+	$(CXX) $(ENGINE_CXXFLAGS) $(BENCH_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
 
 $(OBJ_DIR)/benchmark/%.o: $(BENCH_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
@@ -476,6 +472,7 @@ info:
 # ── Dependency files ──────────────────────────────────────────────────────────
 -include $(wildcard $(ALL_OBJS:.o=.d))
 -include $(wildcard $(TEST_OBJS:.o=.d))
+-include $(wildcard $(BENCH_OBJS:.o=.d))
 
 # ── Installer (packaging) ─────────────────────────────────────────────────────
 .PHONY: installer create_windows_installer create_linux_installer
