@@ -29,6 +29,16 @@ void TileStreamer::collectFinished()
                           return false;
                       }
                       job.result->lastUsedFrame = frame_;
+                      // La sélection a pu changer pendant le travail : la couture calculée au lancement ne vaut plus forcément.
+                      if (std::ranges::find(selection_, job.key) != selection_.end())
+                      {
+                          const CoarserNeighbors stitch = coarserNeighbors(selection_, job.key);
+                          if (stitch != job.result->stitch)
+                          {
+                              job.result->mesh = buildTileMesh(params_, seed_, job.result->heights, stitch);
+                              job.result->stitch = stitch;
+                          }
+                      }
                       memory_ += job.result->memoryBytes();
                       ++generated_;
                       resident_.insert_or_assign(job.key, std::move(*job.result));
@@ -41,7 +51,6 @@ void TileStreamer::update(float cameraX, float cameraZ)
     ++frame_;
     collectFinished();
     selection_ = selectTiles(params_, lod_, cameraX, cameraZ);
-    std::size_t needed = 0;
     for (const TileKey &key : selection_)
     {
         const CoarserNeighbors stitch = coarserNeighbors(selection_, key);
@@ -56,7 +65,6 @@ void TileStreamer::update(float cameraX, float cameraZ)
                 it->second.stitch = stitch;
                 memory_ += it->second.memoryBytes();
             }
-            needed += it->second.memoryBytes();
             continue;
         }
         const bool pending = std::ranges::any_of(jobs_, [&](const Job &j) { return j.key == key; });
@@ -77,6 +85,19 @@ void TileStreamer::update(float cameraX, float cameraZ)
                 out->stitch = stitch;
             });
         jobs_.push_back(std::move(job));
+    }
+    rebalance();
+}
+
+void TileStreamer::rebalance()
+{
+    std::size_t needed = 0;
+    for (const TileKey &key : selection_)
+    {
+        if (auto it = resident_.find(key); it != resident_.end())
+        {
+            needed += it->second.memoryBytes();
+        }
     }
     overBudget_ = needed > config_.memoryBudgetBytes;
     evict();
@@ -135,6 +156,7 @@ void TileStreamer::finishPending()
         tasks_.wait(job.task);
     }
     collectFinished();
+    rebalance(); // les tuiles intégrées comptent : budget et éviction recalculés sans attendre le prochain update()
 }
 
 } // namespace engine::world

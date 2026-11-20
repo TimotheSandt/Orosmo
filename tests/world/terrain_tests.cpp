@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <mutex>
 #include <set>
 #include <tuple>
 
@@ -272,7 +273,7 @@ TEST_SUITE("world/terrain")
             const w::StreamingStats s = streamer.stats();
             if (!s.overBudget)
             {
-                CHECK(s.memoryBytes <= tileBytes * (selectionSize + 4) + tileBytes); // budget (+ arrondi d'une tuile)
+                CHECK(s.memoryBytes <= tileBytes * (selectionSize + 4)); // toutes les tuiles ont la même taille : budget exact
             }
             for (const auto &key : streamer.selection())
             {
@@ -281,6 +282,52 @@ TEST_SUITE("world/terrain")
         }
         CHECK(streamer.stats().evictions > 0);
         CHECK(streamer.stats().generated > selectionSize);
+    }
+
+    TEST_CASE("TER-04: finishPending applies the budget to the tiles it integrates, and re-stitches tiles whose neighbours changed")
+    {
+        engine::core::TaskSystem tasks(1);
+        const w::TerrainParams p = smallParams();
+        const std::size_t tileBytes = [&]
+        {
+            const w::Heightmap h = w::generateTile(p, 3, {0, 0, 0});
+            const w::TileMesh m = w::buildTileMesh(p, 3, h, {});
+            return h.memoryBytes() + m.vertices.size() * sizeof(float) + m.indices.size() * sizeof(std::uint32_t);
+        }();
+        // Une seule tuile sélectionnée (racine sans subdivision), budget d'une tuile : passer de A à B ne doit pas en garder deux.
+        const w::LodConfig single{.rootLod = 0, .rootRadius = 0, .distanceFactor = 0.0f};
+        w::TileStreamer streamer(p, 3, single, {.memoryBudgetBytes = tileBytes, .maxJobsInFlight = 4}, tasks);
+        streamer.update(0.0f, 0.0f);
+        streamer.finishPending();
+        REQUIRE(streamer.stats().residentTiles == 1);
+        streamer.update(1000.0f, 0.0f); // B lancée ; A encore résidente (le cache est au budget)
+        streamer.finishPending();       // B intégrée : A doit partir sans attendre un autre update()
+        CHECK(streamer.stats().residentTiles == 1);
+        CHECK(streamer.stats().memoryBytes <= tileBytes);
+        CHECK_FALSE(streamer.stats().overBudget);
+        REQUIRE(streamer.selection().size() == 1);
+        CHECK(streamer.find(streamer.selection()[0]) != nullptr);
+
+        // Travaux lancés pour une sélection, terminés après le passage à une autre : la couture suit la sélection courante.
+        std::mutex gate;
+        gate.lock();
+        tasks.submit([&] { const std::lock_guard<std::mutex> hold(gate); }); // bloque le seul thread de travail
+        const w::LodConfig lod{.rootLod = 3, .rootRadius = 1, .distanceFactor = 1.5f};
+        w::TileStreamer moving(p, 3, lod, {.memoryBudgetBytes = tileBytes * 1000, .maxJobsInFlight = 1000}, tasks);
+        moving.update(0.0f, 0.0f);
+        moving.update(37.0f, 21.0f); // les travaux de la première sélection ne sont pas commencés
+        gate.unlock();
+        moving.finishPending();
+        std::size_t checked = 0;
+        for (const auto &key : moving.selection())
+        {
+            if (const w::ResidentTile *t = moving.find(key))
+            {
+                CHECK(t->mesh.vertices == w::buildTileMesh(p, 3, t->heights, w::coarserNeighbors(moving.selection(), key)).vertices);
+                ++checked;
+            }
+        }
+        CHECK(checked > 0);
     }
 
     TEST_CASE("TER-04: a selection larger than the budget is reported, not evicted")
