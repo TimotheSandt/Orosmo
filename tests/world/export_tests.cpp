@@ -18,11 +18,13 @@
 #include <nlohmann/json.hpp>
 #include <stb_image.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fstream>
 #include <map>
 #include <sstream>
+#include <string_view>
 
 namespace w = engine::world;
 namespace rd = engine::renderer;
@@ -141,6 +143,55 @@ TEST_SUITE("world/export")
         CHECK(bytes[2] == 0x31);
         CHECK(bytes[3] == 0x01);
         CHECK((tests::errorOf(w::readHeightExr(dir.path / "absent.exr")) == engine::core::ErrorCode::kIo));
+    }
+
+    TEST_CASE("EXR from an untrusted file: truncated attributes, oversized windows, bad offsets and duplicate rows are errors")
+    {
+        tests::TempDir dir("engine_export");
+        const w::HeightField field = w::generateRegion(params(), 3, 0, 0, 3, 2);
+        REQUIRE(w::writeHeightExr(dir.path / "h.exr", field).has_value());
+        const auto valid = readBytes(dir.path / "h.exr");
+        auto payloadOf = [&](std::string_view name) // position de la taille de l'attribut (après « nom\0type\0 »)
+        {
+            const auto it = std::search(valid.begin(), valid.end(), name.begin(), name.end());
+            REQUIRE(it != valid.end());
+            auto p = static_cast<std::size_t>(it - valid.begin()) + name.size() + 1;
+            while (valid[p] != 0)
+                ++p;
+            return p + 1;
+        };
+        auto put32 = [](std::vector<std::uint8_t> &b, std::size_t at, std::uint32_t v)
+        {
+            for (int i = 0; i < 4; ++i)
+                b[at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(v >> (8 * i));
+        };
+        auto readBack = [&](const std::vector<std::uint8_t> &bytes)
+        {
+            const fs::path path = dir.path / "bad.exr";
+            std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            return w::readHeightExr(path);
+        };
+        REQUIRE(readBack(valid).has_value());
+        const std::size_t table = valid.size() - 2 * (8 + 8 + 3 * 4); // en-tête, table (8 octets par rangée), rangées
+
+        auto truncated = valid; // attribut « channels » réduit à 2 octets : le nom du canal n'y est plus terminé
+        put32(truncated, payloadOf("channels"), 2);
+        CHECK((tests::errorOf(readBack(truncated)) == engine::core::ErrorCode::kParse));
+
+        auto huge = valid; // fenêtre de 2^32 colonnes : aucune allocation, et pas de débordement de xMax - xMin + 1
+        const std::size_t window = payloadOf("dataWindow") + 4;
+        put32(huge, window, 0x80000000U);
+        put32(huge, window + 8, 0x7fffffffU);
+        CHECK((tests::errorOf(readBack(huge)) == engine::core::ErrorCode::kParse));
+
+        auto outside = valid; // offset au-delà du fichier : refusé avant la lecture de la rangée
+        put32(outside, table, 0xffffff00U);
+        put32(outside, table + 4, 0xffffffffU);
+        CHECK((tests::errorOf(readBack(outside)) == engine::core::ErrorCode::kParse));
+
+        auto duplicate = valid; // deux entrées de la table vers la même rangée : l'autre rangée ne serait jamais remplie
+        std::copy_n(valid.begin() + static_cast<std::ptrdiff_t>(table), 8, duplicate.begin() + static_cast<std::ptrdiff_t>(table + 8));
+        CHECK((tests::errorOf(readBack(duplicate)) == engine::core::ErrorCode::kParse));
     }
 
     TEST_CASE("OBJ and glTF: reopened, vertices, normals and triangles match the height field")
