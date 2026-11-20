@@ -193,11 +193,12 @@ void Game::run()
             if (!this->beginFrame())
             {
                 LOG_ERROR(1, "Headless: the frame could not be started");
+                this->headlessFrameFailed = true;
                 return;
             }
             Profiler::ProfileGPU("Render", &Game::render, this);
             this->endFrame();
-            if (captureFailed)
+            if (headlessFrameFailed)
             {
                 return;
             }
@@ -447,7 +448,12 @@ void Game::endFrame()
 
     if (!submitted)
     {
-        // Image refusée : pas comptée. Pendant une capture, la sortie ne serait pas fiable : on s'arrête en échec.
+        // Image refusée : pas comptée. Sans fenêtre, l'exécution échoue (code de sortie) ; pendant une capture, la sortie ne
+        // serait pas fiable : on s'arrête en échec.
+        if (this->headless)
+        {
+            this->headlessFrameFailed = true;
+        }
         if (!this->captureDirectory.empty())
         {
             this->captureFailed = true;

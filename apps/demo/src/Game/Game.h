@@ -45,6 +45,8 @@ class Game
     void setVSync(bool enabled) { if (device) { device->setVSync(enabled); } }
     // Faux si une capture était demandée et n'a pas été faite, ou si une image de la capture a été refusée par le périphérique.
     bool captureSucceeded() const noexcept { return !captureFailed && (captureDirectory.empty() || captureDone); }
+    // Sans fenêtre : faux si une image n'a pas pu être commencée ou a été refusée (submit ou scène), avec ou sans capture.
+    bool headlessSucceeded() const noexcept { return !headlessFrameFailed; }
 
   private:
     explicit Game(bool headless);
@@ -95,6 +97,7 @@ class Game
     std::uint32_t captureFrames = 0;
     std::uint32_t renderedFrames = 0;
     bool captureDone = false;
+    bool headlessFrameFailed = false; // mode sans fenêtre : une image a échoué (code de sortie de la démo)
     bool captureFailed = false; // une image de la capture a été refusée (submit ou scène) : la capture ne serait pas fiable
     std::optional<orosmo::core::Error> sceneError; // premier échec de la scène pendant l'image en cours
     bool headless = false;
