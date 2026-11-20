@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 
 const HASH_TAG: &str = "// @cui-hash:";
 // Bump this whenever generator output changes without a corresponding .cui syntax change.
-const OUTPUT_FORMAT_VERSION: &str = "7";
+const OUTPUT_FORMAT_VERSION: &str = "8"; // 8 : cui_view, #line des champs dans l'en-tête, colonnes de Grid bornées
 
 fn main() {
     if let Err(err) = run_cli() {
@@ -212,6 +212,10 @@ fn cmd_check(args: &[String]) -> Result<(), String> {
                 diagnostics.push(diagnostic_json(&file, e.line.max(1), e.col.max(1), e.line.max(1), e.col.max(1) + 1, &e.message, "error"));
             }
         }
+    } else if let Some((line, col)) = first_binding(&ast) {
+        // Même refus que la compilation : l'éditeur ne doit pas accepter ce que `cui` refusera.
+        let message = format!("two-way bindings ($...) need `import \"{}\"`", engine::IMPORT);
+        diagnostics.push(diagnostic_json(&file, line.max(1), col.max(1), line.max(1), col.max(1) + 1, &message, "error"));
     } else if let Some(registry_path) = parsed.options.get("--registry") {
         let path = Path::new(registry_path);
         if path.exists() {
@@ -299,7 +303,17 @@ fn first_binding(ast: &crate::ast::FileAst) -> Option<(usize, usize)> {
         }
         e.children.iter().find_map(walk)
     }
-    ast.views.iter().find_map(|v| walk(&v.root))
+    // Les déclarations aussi : `let x = $y` ou la valeur par défaut d'un champ contournerait sinon le refus.
+    ast.views.iter().find_map(|v| {
+        for field in &v.fields {
+            match field {
+                crate::ast::ViewField::Let(l) if has(&l.value) => return Some((l.line, l.col)),
+                crate::ast::ViewField::Wrapped(w) if w.default.as_ref().is_some_and(has) => return Some((w.line, w.col)),
+                _ => {}
+            }
+        }
+        walk(&v.root)
+    })
 }
 
 fn compile_file(cui_path: &Path, out_dir: &Path, registry: Option<&Registry>) -> Result<(), String> {

@@ -380,8 +380,10 @@ fn extract_zip_bytes(project_dir: &Path, bytes: &[u8], subdir: &str) -> Result<(
         // The pkg zip has a top-level directory prefix — strip it.
         let rel = strip_top_dir(&raw);
         if rel.is_empty() { continue; }
+        // Untrusted archive (--package): every entry must stay inside dest_root (no "..", no absolute path, no drive).
+        let safe = safe_relative(rel).ok_or_else(|| format!("unsafe path in the engine package: {raw}"))?;
 
-        let dest = dest_root.join(rel);
+        let dest = dest_root.join(safe);
 
         if entry.is_dir() {
             fs::create_dir_all(&dest)
@@ -666,6 +668,24 @@ fn render(template: &str, project_name: &str) -> String {
         .replace("{{GUARD}}", &guard)
 }
 
+/// Relative path made only of normal components, or None if `path` could leave the destination: a `..` component, an
+/// absolute path (leading `/` or `\\`), or a drive / stream prefix (`C:`, `file:stream`). `.` and empty components are dropped.
+fn safe_relative(path: &str) -> Option<PathBuf> {
+    if path.starts_with('/') || path.starts_with('\\') {
+        return None;
+    }
+    let mut out = PathBuf::new();
+    for part in path.split(['/', '\\']) {
+        match part {
+            "" | "." => continue,
+            ".." => return None,
+            p if p.contains(':') => return None,
+            p => out.push(p),
+        }
+    }
+    if out.as_os_str().is_empty() { None } else { Some(out) }
+}
+
 fn strip_top_dir(path: &str) -> &str {
     match path.find('/') {
         Some(i) => &path[i + 1..],
@@ -713,4 +733,21 @@ fn print_usage() {
     eprintln!("  - Updates Makefile and .gitignore if unmodified (prompts otherwise)");
     eprintln!("  - Appends new fields to config.mk without touching existing values");
     eprintln!("  - Updates a local engine[.exe] binary if one exists in the project");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn package_paths_cannot_leave_the_destination() {
+        assert_eq!(safe_relative("includes/engine/core.hpp"), Some(PathBuf::from("includes/engine/core.hpp")));
+        assert_eq!(safe_relative("./lib//release/x.a"), Some(PathBuf::from("lib/release/x.a")));
+        assert_eq!(safe_relative(strip_top_dir("pkg/../Makefile")), None);
+        assert_eq!(safe_relative("a/../../b"), None);
+        assert_eq!(safe_relative("/etc/passwd"), None);
+        assert_eq!(safe_relative("\\server\\share"), None);
+        assert_eq!(safe_relative("C:/Windows/x"), None);
+        assert_eq!(safe_relative("a\\..\\..\\b"), None);
+    }
 }

@@ -251,7 +251,7 @@ CUI_BIN := tools/cui$(if $(filter Windows_NT,$(OS)),.exe)
 .PHONY: cui-test
 cui-test:
 	$(MAKE) -f $(ENGINE_MK) cui-tool
-	cargo test --manifest-path tools/Cargo.toml -p cui
+	cargo test --manifest-path tools/Cargo.toml -p cui -p engine
 	python3 tools/check_cui_errors.py --cui $(CUI_BIN) --headers include --cases tests/ui/cui_errors --out build/cui-errors --cxx auto
 
 # ── TOOL-02 : terrain-gen (sans fenêtre ni GPU) ──

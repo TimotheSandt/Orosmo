@@ -160,3 +160,42 @@ fn ui03_components_generate_their_widgets_and_check_their_children() {
         vec!["v.cui:4:9: error: 'MenuItem' is only allowed inside 'Menu' or 'ContextMenu'".to_string()]
     );
 }
+
+#[test]
+fn review_m3_names_numbers_arguments_and_descendants() {
+    // Variable du helper préfixée (cui_view) ; préfixe cui_ réservé aux noms générés.
+    let (header, _) = engine("view V {\n    @Mutable var model: S\n    Label(\"x\")\n}\n").unwrap();
+    assert!(header.contains("V cui_view;"), "{header}");
+    assert!(header.contains("cui_view.model = &model;"), "{header}");
+    let err = errors("view V {\n    @Mutable var cui_w0: S\n    Label(\"x\")\n}\n");
+    assert!(err.iter().any(|e| e.contains("v.cui:3:5: error: 'cui_w0': names starting with 'cui_' are reserved")), "{err:?}");
+    // Le type d'un champ est rapporté à sa ligne du .cui dans l'en-tête.
+    let (header, _) = engine("view V {\n    @Mutable var s: MissingType\n    Label(\"x\")\n}\n").unwrap();
+    assert!(header.contains("#line 3 \"v.cui\"\n    MissingType *s = nullptr;"), "{header}");
+    // Grands nombres : littéral flottant (exposant), pas un entier trop grand.
+    let (_, source) = engine("view V {\n    Label(\"x\").width(100000000000000000000.0)\n}\n").unwrap();
+    assert!(source.contains("static_cast<float>(1e20)"), "{source}");
+    // Grid : nombre de colonnes borné ; un littéral hors plage est refusé.
+    let (_, source) = engine("view V {\n    Grid(2) {\n        Label(\"x\")\n    }\n}\n").unwrap();
+    assert!(source.contains("std::clamp(static_cast<double>(static_cast<double>(2.0)), 1.0, 256.0)"), "{source}");
+    let err = errors("view V {\n    Grid(2147483648) {\n        Label(\"x\")\n    }\n}\n");
+    assert!(err.iter().any(|e| e.contains("'Grid' columns must be an integer from 1 to 256")), "{err:?}");
+    // Deuxième argument positionnel ou argument nommé inconnu : refusés au lieu d'être ignorés.
+    let err = errors("view V {\n    Label(\"x\").align(.start, .end)\n}\n");
+    assert!(err.iter().any(|e| e.contains(".align(x: .start, y: .end)")), "{err:?}");
+    let err = errors("view V {\n    Label(\"x\").margin(4, 16)\n}\n");
+    assert!(err.iter().any(|e| e.contains(".margin(horizontal: h, vertical: v)")), "{err:?}");
+    let err = errors("view V {\n    Plot(values).range(0, 100, typo: 1)\n}\n");
+    assert!(err.iter().any(|e| e.contains("'.range' takes two numbers")), "{err:?}");
+    // Composant inconnu : ses descendants sont vérifiés aussi (deux erreurs en une passe).
+    let err = errors("view V {\n    Unknown {\n        Label(\"x\").widht(30)\n    }\n}\n");
+    assert!(err.iter().any(|e| e.contains("unknown component 'Unknown'")), "{err:?}");
+    assert!(err.iter().any(|e| e.contains("'Label' has no modifier 'widht'")), "{err:?}");
+}
+
+#[test]
+fn the_legacy_target_refuses_bindings_in_declarations_too() {
+    let registry = Registry::default();
+    let err = compile_source("view F {\n    let x = $y\n    VBox {}\n}\n", "f.cui", "f", Some(&registry)).unwrap_err();
+    assert_eq!(err, vec!["f.cui:2:5: error: two-way bindings ($...) need `import \"engine/ui\"`".to_string()]);
+}

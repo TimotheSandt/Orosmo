@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -41,8 +42,9 @@ def run_case(path: Path, args: argparse.Namespace) -> list[str]:
             want = f"{display}:{e}"
             if want not in result.stderr.splitlines():
                 failures.append(f"{path.name}: missing diagnostic\n  expected: {want}\n  stderr:\n{result.stderr}")
-        if any(out.glob("*.gen.*")):
-            failures.append(f"{path.name}: generated code left behind for an invalid file")
+        left = sorted(p.name for p in out.iterdir())  # en-tête, source ET redirection au nom du .cui
+        if left:
+            failures.append(f"{path.name}: generated files left behind for an invalid file: {', '.join(left)}")
         return failures
 
     if expected_cxx:
@@ -56,10 +58,13 @@ def run_case(path: Path, args: argparse.Namespace) -> list[str]:
         compiled = subprocess.run(compile_cmd, capture_output=True, text=True, check=False)
         if compiled.returncode == 0:
             return [f"{path.name}: the generated C++ compiled although an error was expected"]
+        # Les directives #line écrivent le chemin avec des « / » (aussi sous Windows) ; le diagnostic doit être une ERREUR à
+        # cette ligne (pas une note, et pas seulement un chemin qui contient le mot « error »).
+        cxx_display = display.replace("\\", "/")
         for line in expected_cxx:
-            marker = f"{display}:{line}:"
-            if not any(marker in l and "error" in l for l in compiled.stderr.splitlines()):
-                failures.append(f"{path.name}: the C++ error does not point to {marker}\n{compiled.stderr[:3000]}")
+            pattern = re.compile(re.escape(cxx_display) + rf":{line}:(\d+:)? (fatal )?error:")
+            if not any(pattern.search(l.replace("\\", "/")) for l in compiled.stderr.splitlines()):
+                failures.append(f"{path.name}: no C++ error at {cxx_display}:{line}\n{compiled.stderr[:3000]}")
         return failures
 
     return [f"{path.name}: no '// expect:' or '// expect-cxx:' line"]
