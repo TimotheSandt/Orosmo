@@ -7,8 +7,8 @@
 #include <utility>
 #include <chrono>
 
-#include "InputManager.h"
-#include "Sprite.h"
+#include <engine/platform/input_manager.hpp>
+#include "engine/renderer/draw_list.hpp"
 
 #include "Bounds.h"
 #include "../Rendering/Theme.h"
@@ -27,7 +27,6 @@ class ComponentBase : public std::enable_shared_from_this<ComponentBase>
 {
   protected:
     Bounds localBounds;
-    Sprite sprite;
 
     std::weak_ptr<ContainerBase> parent;
 
@@ -64,7 +63,8 @@ class ComponentBase : public std::enable_shared_from_this<ComponentBase>
 
     virtual void Initialize();
     virtual void Update();
-    virtual void Draw(glm::vec2 containerSize, glm::vec2 offset = {0, 0});
+    // UI-02 : produit des commandes de dessin (aucun appel graphique) ; `engine::renderer::CanvasRenderer` les exécute.
+    virtual void Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset = {0, 0});
 
     // Bounds
     void SetSize(glm::vec2 size)

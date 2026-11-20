@@ -5,8 +5,7 @@
 #include <array>
 #include <functional>
 
-#include "Mesh.h"
-#include "Renderer3D.h"
+#include "engine/renderer/mesh.hpp"
 
 struct Vertex
 {
@@ -34,13 +33,13 @@ class Grid
 
     void TransformPoints(const std::function<void(Vertex &, unsigned int)> &func);
 
-    void Render(const Renderer3D &renderer3D, Camera &camera);
 
     unsigned int GetResolutionX() { return this->resolution_x; }
     unsigned int GetResolutionY() { return this->resolution_z; }
     std::vector<Vertex> GetPoints() { return this->points; }
     std::vector<std::array<unsigned int, 3>> GetTriangles() { return this->triangles; }
-    Mesh &GetMesh() { return this->mesh; }
+    // Données du maillage produites par GenerateMesh (sommets position/normale/couleur, index) ; le GPU est l'affaire du monde.
+    const engine::renderer::MeshData &GetMeshData() const { return this->meshData; }
 
     unsigned int GetPointCount() { return this->points.size(); }
     unsigned int GetTriangleCount() { return this->triangles.size(); }
@@ -53,5 +52,5 @@ class Grid
     std::vector<Vertex> points;
     std::vector<std::array<unsigned int, 3>> triangles;
 
-    Mesh mesh;
+    engine::renderer::MeshData meshData;
 };

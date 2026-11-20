@@ -1,0 +1,9 @@
+# clone propre de dev (175203d), Linux g++ 13.3, Mesa Intel Arc (OpenGL 4.6)
+# make demo-test
+[doctest] test cases:  264 |  264 passed | 0 failed | 0 skipped
+[doctest] assertions: 4561 | 4561 passed | 0 failed |
+# make demo-test SANITIZE=address,undefined (après fclean)
+[doctest] test cases:  264 |  264 passed | 0 failed | 0 skipped
+[doctest] assertions: 4561 | 4561 passed | 0 failed |  (aucun rapport ASan/UBSan)
+# make check : couches 0, isolation des API 0 (sans baseline), en-têtes 0
+# capture fenêtrée et capture --headless vs reference/scene-opengl-seed1-1280x720.png : 0 pixel d'écart, écart max 0/255

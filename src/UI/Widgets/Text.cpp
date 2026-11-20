@@ -28,7 +28,7 @@ void TextWidgetBase::Update()
     ComponentBase::Update();
 }
 
-void TextWidgetBase::Draw(glm::vec2 containerSize, glm::vec2 offset)
+void TextWidgetBase::Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset)
 {
     if (!visible.Get())
     {
@@ -38,12 +38,7 @@ void TextWidgetBase::Draw(glm::vec2 containerSize, glm::vec2 offset)
     ApplyAutoSize();
 
     std::shared_ptr<TextRenderer> textRenderer = GetTextRenderer();
-    if (textRenderer == nullptr)
-    {
-        return;
-    }
-
-    if (containerSize.x <= 0.0f || containerSize.y <= 0.0f)
+    if (textRenderer == nullptr || containerSize.x <= 0.0f || containerSize.y <= 0.0f)
     {
         return;
     }
@@ -52,7 +47,9 @@ void TextWidgetBase::Draw(glm::vec2 containerSize, glm::vec2 offset)
 
     const glm::vec2 drawPosition = ResolveDrawPosition(offset);
     const glm::vec3 textColor = glm::vec3(GetColor());
+    textRenderer->setDrawListSink(&list);
     textRenderer->renderText(displayedText, drawPosition.x, drawPosition.y, textScale, textColor, textAnchor);
+    textRenderer->setDrawListSink(nullptr);
 
     ClearDirty();
 }
@@ -202,9 +199,9 @@ void Text::Update()
     TextWidgetBase::Update();
 }
 
-void Text::Draw(glm::vec2 containerSize, glm::vec2 offset)
+void Text::Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset)
 {
-    TextWidgetBase::Draw(containerSize, offset);
+    TextWidgetBase::Collect(list, containerSize, offset);
 }
 
 std::shared_ptr<Text> Text::ClearContent()

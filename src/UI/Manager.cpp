@@ -1,7 +1,7 @@
 #include "Manager.h"
 #include "Layout/VBox.h"
 #include "Widgets.h"
-#include "Window.h"
+#include <engine/platform/window.hpp>
 
 #include <utility>
 
@@ -80,7 +80,15 @@ void Manager::Update(float dt, int w, int h)
     rootContainer->Update();
 }
 
-void Manager::Render(Renderer2D &externalRenderer, int w, int h)
+void Manager::InvalidateLayers()
+{
+    if (rootContainer)
+    {
+        rootContainer->MarkFullDirty();
+    }
+}
+
+void Manager::Collect(engine::renderer::DrawList &list, int w, int h)
 {
     if (!active)
     {
@@ -92,14 +100,8 @@ void Manager::Render(Renderer2D &externalRenderer, int w, int h)
         Init(w, h, window);
     }
 
-    // Apply Manager-owned render settings to the caller's renderer
-    externalRenderer.SetRenderScale(renderer2D.GetRenderScale());
-    externalRenderer.SetUpscalingEnabled(renderer2D.IsUpscalingEnabled());
-
-    externalRenderer.BeginCanvasPass();
-    glm::vec2 screenSize = {static_cast<float>(w), static_cast<float>(h)};
-    rootContainer->Draw(screenSize, {0, 0});
-    externalRenderer.EndCanvasPass();
+    list.logicalSize = {static_cast<float>(w), static_cast<float>(h)};
+    rootContainer->Collect(list, list.logicalSize, {0, 0});
 }
 
 } // namespace UI

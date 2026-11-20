@@ -57,7 +57,7 @@ class TextWidgetBase : public ComponentBase
   public:
     void Initialize() override;
     void Update() override;
-    void Draw(glm::vec2 containerSize, glm::vec2 offset = {0, 0}) override;
+    void Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset = {0, 0}) override;
 
     /** @cui-modifier scale,textScale */
     void DoSetTextScale(float scale);
@@ -131,7 +131,7 @@ class Text : public ChainableTextWidget<TextWidgetBase, Text>
     }
 
     void Update() override;
-    void Draw(glm::vec2 containerSize, glm::vec2 offset = {0, 0}) override;
+    void Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset = {0, 0}) override;
 
     std::shared_ptr<Text> ClearContent();
     std::shared_ptr<Text> ClearParts() { return ClearContent(); }

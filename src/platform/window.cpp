@@ -1,0 +1,587 @@
+#include <engine/platform/window.hpp>
+
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+
+#include <engine/platform/input_manager.hpp>
+#include "Profiler.h"
+#include "Logger.h"
+#include "Utilities.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+// Fenêtre : ne connaît aucune API graphique. Le graphique s'y accroche de l'extérieur : l'appelant fournit un rappel qui pose les
+// attributs de contexte avant la création (`Init`), puis le RHI adopte la fenêtre (`SurfaceDesc::nativeWindow`) et la présente.
+#ifdef DEBUG
+#define WINDOW_CHECK_ERRORS(context)                                                                                                       \
+    do                                                                                                                                     \
+    {                                                                                                                                      \
+        const char *glfwErrorDescription = nullptr;                                                                                        \
+        if (const int glfwErrorCode = glfwGetError(&glfwErrorDescription); glfwErrorCode != GLFW_NO_ERROR)                                \
+            LOG_ERROR(glfwErrorCode, context, ": ", glfwErrorDescription != nullptr ? glfwErrorDescription : "");                         \
+    } while (false)
+#else
+#define WINDOW_CHECK_ERRORS(context) ((void)0)
+#endif
+
+namespace
+{
+GLFWwindow *native(void *handle) { return static_cast<GLFWwindow *>(handle); }
+// Initialise GLFW une fois : rappel d'erreur journalisé (reprend celui de l'ancien backend OpenGL).
+bool InitializeGlfw()
+{
+    static const bool initialized = []()
+    {
+#ifdef _WIN32
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOALIGNMENTFAULTEXCEPT | SEM_NOOPENFILEERRORBOX);
+#endif
+        glfwSetErrorCallback([](int errorCode, const char *description) { LOG_ERROR(errorCode, "GLFW Error: ", description); });
+        if (!glfwInit())
+        {
+            LOG_FATAL(-1, "Failed to initialize GLFW");
+            return false;
+        }
+        return true;
+    }();
+    return initialized;
+}
+} // namespace
+
+Window::Window()
+{
+    this->window = nullptr;
+    this->inputManager = nullptr;
+    this->parameters.title = "Window";
+    this->parameters.width = 800;
+    this->parameters.height = 600;
+    this->parameters.posX = 100;
+    this->parameters.posY = 100;
+    this->parameters.maxFPS = 0;
+    this->parameters.vsync = false;
+#ifdef DEBUG
+    this->parameters.windowState = WindowState::WINDOWED;
+#else
+    this->parameters.windowState = WindowState::FULLSCREEN;
+#endif // DEBUG
+    this->parameters.clearColor = glm::vec4(0.07f, 0.13f, 0.17f, 1.0f);
+    this->parameters.trueEveryms = 500;
+    this->lastTime = this->fpsCounter.getLastTime();
+
+    // Windowed
+    this->parameters.windowedWidth = this->parameters.width;
+    this->parameters.windowedHeight = this->parameters.height;
+    this->parameters.windowedPosX = this->parameters.posX;
+    this->parameters.windowedPosY = this->parameters.posY;
+}
+
+Window::Window(std::string title, int width, int height) : Window()
+{
+    this->parameters.title = std::move(title);
+    this->parameters.width = width;
+    this->parameters.height = height;
+    this->parameters.windowedWidth = width;
+    this->parameters.windowedHeight = height;
+}
+
+Window::Window(std::string title, int width, int height, WindowState windowState) : Window(std::move(title), width, height)
+{
+    this->parameters.windowState = windowState;
+}
+
+Window::Window(WindowParameters parameters) : Window()
+{
+    this->parameters = std::move(parameters);
+    this->parameters.windowedWidth = this->parameters.width;
+    this->parameters.windowedHeight = this->parameters.height;
+    this->parameters.windowedPosX = this->parameters.posX;
+    this->parameters.windowedPosY = this->parameters.posY;
+}
+
+Window::~Window() { this->Close(); }
+
+Window::Window(Window &&other) noexcept { this->Swap(other); }
+
+Window &Window::operator=(Window &&other) noexcept
+{
+    if (this != &other)
+    {
+        this->Close();
+        this->Swap(other);
+    }
+    return *this;
+}
+
+void Window::Swap(Window &other) noexcept
+{
+    std::swap(this->window, other.window);
+    std::swap(this->parameters, other.parameters);
+    std::swap(this->inputManager, other.inputManager);
+    std::swap(this->fpsCounter, other.fpsCounter);
+    std::swap(this->lastTime, other.lastTime);
+}
+
+int Window::Init(const std::function<void()> &beforeCreate)
+{
+    if (!InitializeGlfw())
+    {
+        return -1;
+    }
+    glfwDefaultWindowHints();
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_CENTER_CURSOR, GLFW_TRUE);
+    glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_FOCUSED, GLFW_TRUE);
+    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
+    glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_TRUE);
+    if (beforeCreate)
+    {
+        beforeCreate(); // attributs de contexte du graphique (RHI : prepareWindowHints)
+    }
+
+    this->window = glfwCreateWindow(this->parameters.width, this->parameters.height, this->parameters.title.c_str(), nullptr, nullptr);
+    if (!this->window)
+    {
+        LOG_ERROR(1, "Failed to create GLFW window");
+        return -1;
+    }
+
+    glfwGetWindowPos(native(this->window), &this->parameters.posX, &this->parameters.posY);
+    WINDOW_CHECK_ERRORS("glfwGetWindowPos");
+
+    glfwSetWindowUserPointer(native(this->window), this);
+    WINDOW_CHECK_ERRORS("glfwSetWindowUserPointer");
+
+    this->SetupCallbacks();
+
+    this->ChangeWindowState(this->parameters.windowState);
+    this->inputManager = &InputManager::GetInstance(this->window);
+
+    return 0;
+}
+
+void Window::Close()
+{
+    if (!this->window)
+    {
+        return;
+    }
+
+    this->ClearCallbacks();
+
+    InputManager::RemoveInstance(this->window);
+    this->inputManager = nullptr;
+
+    glfwDestroyWindow(native(this->window));
+    this->window = nullptr;
+
+#ifdef _WIN32
+    ShowWindow(FindWindowA("Shell_TrayWnd", nullptr), SW_SHOW);
+#endif
+}
+
+void Window::Terminate() { glfwTerminate(); }
+
+bool Window::ShouldClose() const { return this->window == nullptr || glfwWindowShouldClose(native(this->window)) != 0; }
+
+void Window::RequestClose()
+{
+    if (this->window)
+    {
+        glfwSetWindowShouldClose(native(this->window), GLFW_TRUE);
+    }
+}
+
+void Window::GetFramebufferSize(int &width, int &height) const
+{
+    width = this->parameters.width;
+    height = this->parameters.height;
+    if (this->window)
+    {
+        glfwGetFramebufferSize(native(this->window), &width, &height);
+    }
+}
+
+glm::vec2 Window::GetContentScale() const
+{
+    float x = 1.0f;
+    float y = 1.0f;
+    if (this->window)
+    {
+        glfwGetWindowContentScale(native(this->window), &x, &y);
+    }
+    return {x, y};
+}
+
+void Window::SetCursorMode(CursorMode mode)
+{
+    if (!this->window)
+    {
+        return;
+    }
+    const int value = mode == CursorMode::Hidden ? GLFW_CURSOR_HIDDEN : mode == CursorMode::Disabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL;
+    glfwSetInputMode(native(this->window), GLFW_CURSOR, value);
+}
+
+glm::dvec2 Window::GetCursorPosition() const
+{
+    glm::dvec2 position{0.0, 0.0};
+    if (this->window)
+    {
+        glfwGetCursorPos(native(this->window), &position.x, &position.y);
+    }
+    return position;
+}
+
+void Window::SetCursorPosition(glm::dvec2 position)
+{
+    if (this->window)
+    {
+        glfwSetCursorPos(native(this->window), position.x, position.y);
+    }
+}
+
+bool Window::NewFrame()
+{
+    Profiler::Profile("PollEvents", &glfwPollEvents);
+    Profiler::Process();
+    this->inputManager->Update();
+
+    if (!Profiler::Profile("HealthCheck", &Window::IsWindowHealthy, this))
+    {
+        LOG_WARNING("Window is not healthy");
+        return false;
+    }
+
+    this->fpsCounter.newFrame(this->parameters.maxFPS);
+
+    if (this->parameters.trueEveryms == 0)
+    {
+        this->fpsCounter.updateStat();
+        return true;
+    }
+
+    auto now = this->fpsCounter.getTime();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - this->lastTime).count();
+    if (elapsed >= static_cast<long long>(this->parameters.trueEveryms))
+    {
+        this->fpsCounter.updateStat();
+        this->lastTime = now;
+    }
+
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////// Window state functions ///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////
+
+void Window::ChangeWindowState(WindowState state)
+{
+    switch (state)
+    {
+        case WindowState::FULLSCREEN:
+        case WindowState::FULLSCREEN_UNFOCUSED:
+            this->ActivateFullscreen();
+            break;
+        case WindowState::BORDERLESS:
+            this->ActivateBorderless();
+            break;
+        case WindowState::WINDOWED:
+        default:
+            this->ActivateWindowed();
+            break;
+    }
+}
+
+void Window::ToggleFullscreen()
+{
+    if (this->parameters.windowState == WindowState::FULLSCREEN || this->parameters.windowState == WindowState::FULLSCREEN_UNFOCUSED)
+    {
+        this->ActivateWindowed();
+    }
+    else
+    {
+        this->ActivateFullscreen();
+    }
+}
+
+void Window::ToggleBorderless()
+{
+    if (this->parameters.windowState == WindowState::BORDERLESS)
+    {
+        this->ActivateWindowed();
+    }
+    else
+    {
+        this->ActivateBorderless();
+    }
+}
+
+void Window::ActivateFullscreen()
+{
+    if (this->parameters.windowState == WindowState::FULLSCREEN)
+    {
+        return;
+    }
+
+    if (!IsWindowHealthy())
+    {
+        LOG_WARNING("Window not healthy, skipping fullscreen toggle");
+        return;
+    }
+
+    if (this->parameters.windowState == WindowState::WINDOWED)
+    {
+        this->SaveWindowedParameters();
+    }
+
+    // Get primary monitor
+    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+    if (!monitor)
+    {
+        LOG_ERROR(1, "Failed to get primary monitor");
+        return;
+    }
+
+    // Get monitor's video mode
+    const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+    if (!mode)
+    {
+        LOG_ERROR(1, "Failed to get video mode");
+        return;
+    }
+
+    // Switch to fullscreen
+    glfwSetWindowMonitor(native(this->window), monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+    WINDOW_CHECK_ERRORS("glfwSetWindowMonitor");
+
+    // Update internal parameters
+    this->parameters.width = mode->width;
+    this->parameters.height = mode->height;
+    this->parameters.windowState = WindowState::FULLSCREEN;
+
+    PostWindowStateChange();
+    LOG_DEBUG("Switched to fullscreen: ", mode->width, "x", mode->height, " @ ", mode->refreshRate, "Hz");
+}
+
+void Window::ActivateWindowed()
+{
+    if (this->parameters.windowState == WindowState::WINDOWED)
+    {
+        return;
+    }
+
+    if (!IsWindowHealthy())
+    {
+        LOG_WARNING("Window not healthy, skipping windowed toggle");
+        return;
+    }
+
+#ifdef _WIN32
+    ShowWindow(FindWindowA("Shell_TrayWnd", nullptr), SW_SHOW);
+#endif
+
+    glfwSetWindowMonitor(native(this->window), nullptr, this->parameters.windowedPosX, this->parameters.windowedPosY,
+                         this->parameters.windowedWidth, this->parameters.windowedHeight, GLFW_DONT_CARE);
+    WINDOW_CHECK_ERRORS("glfwSetWindowMonitor");
+    glfwSetWindowAttrib(native(this->window), GLFW_DECORATED, GLFW_TRUE);
+    WINDOW_CHECK_ERRORS("glfwSetWindowAttrib");
+
+    // Update internal parameters
+    this->parameters.width = this->parameters.windowedWidth;
+    this->parameters.height = this->parameters.windowedHeight;
+    this->parameters.windowState = WindowState::WINDOWED;
+
+    PostWindowStateChange();
+    LOG_DEBUG("Switched to windowed: ", this->parameters.windowedWidth, "x", this->parameters.windowedHeight);
+}
+
+void Window::ActivateBorderless()
+{
+    if (this->parameters.windowState == WindowState::BORDERLESS)
+    {
+        return;
+    }
+    if (!IsWindowHealthy())
+    {
+        LOG_WARNING("Window not healthy, skipping borderless toggle");
+        return;
+    }
+
+    if (this->parameters.windowState == WindowState::WINDOWED)
+    {
+        SaveWindowedParameters();
+    }
+
+    // Get primary monitor
+    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+    if (!monitor)
+    {
+        LOG_ERROR(1, "Failed to get primary monitor");
+        return;
+    }
+
+    // Get monitor's video mode
+    const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+    if (!mode)
+    {
+        LOG_ERROR(1, "Failed to get video mode");
+        return;
+    }
+
+    int width = mode->width;
+    int height = mode->height + 1;
+
+    // On Windows, we need to hide the taskbar
+#ifdef _WIN32
+    ShowWindow(FindWindowA("Shell_TrayWnd", nullptr), SW_HIDE);
+#endif
+
+    glfwSetWindowAttrib(native(this->window), GLFW_DECORATED, GLFW_FALSE);
+    WINDOW_CHECK_ERRORS("glfwSetWindowAttrib");
+    glfwSetWindowMonitor(native(this->window), nullptr, 0, 0, width, height, GLFW_DONT_CARE);
+    WINDOW_CHECK_ERRORS("glfwSetWindowMonitor");
+
+    // Update internal parameters
+    this->parameters.width = width;
+    this->parameters.height = height;
+    this->parameters.windowState = WindowState::BORDERLESS;
+
+    PostWindowStateChange();
+    LOG_DEBUG("Switched to borderless: ", width, "x", height);
+}
+
+void Window::SaveWindowedParameters()
+{
+    if (!this->window)
+    {
+        return;
+    }
+
+    glfwGetWindowSize(native(this->window), &this->parameters.windowedWidth, &this->parameters.windowedHeight);
+    WINDOW_CHECK_ERRORS("glfwGetWindowSize");
+    glfwGetWindowPos(native(this->window), &this->parameters.windowedPosX, &this->parameters.windowedPosY);
+    WINDOW_CHECK_ERRORS("glfwGetWindowPos");
+}
+
+void Window::PostWindowStateChange() const
+{
+    // Rien à reconfigurer côté graphique : le RHI relit la taille du framebuffer au début de chaque image.
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////        CALLBACK        ///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////
+
+void Window::SetupCallbacks()
+{
+    // Callback pour gérer la perte de focus (peut aider avec la touche Windows)
+    glfwSetWindowFocusCallback(native(this->window),
+                               [](GLFWwindow *window, int focused)
+                               {
+                                   try
+                                   {
+                                       Window *windowObj = static_cast<Window *>(glfwGetWindowUserPointer(window));
+                                       if (!windowObj)
+                                       {
+                                           return;
+                                       }
+                                       windowObj->CallbackFocus(focused);
+                                   }
+                                   catch (...)
+                                   {
+                                       // Ignorer les erreurs dans ce callback
+                                   }
+                               });
+
+    glfwSetWindowSizeCallback(native(this->window),
+                              [](GLFWwindow *window, int width, int height)
+                              {
+                                  try
+                                  {
+                                      Window *windowObj = static_cast<Window *>(glfwGetWindowUserPointer(window));
+                                      if (!windowObj)
+                                      {
+                                          return;
+                                      }
+                                      windowObj->CallbackResize(width, height);
+                                  }
+                                  catch (...)
+                                  {
+                                      // Ignorer les erreurs dans ce callback
+                                  }
+                              });
+
+    glfwSetWindowPosCallback(native(this->window),
+                             [](GLFWwindow *window, int x, int y)
+                             {
+                                 try
+                                 {
+                                     Window *windowObj = static_cast<Window *>(glfwGetWindowUserPointer(window));
+                                     if (!windowObj)
+                                     {
+                                         return;
+                                     }
+                                     windowObj->CallbackPosition(x, y);
+                                 }
+                                 catch (...)
+                                 {
+                                     // Ignorer les erreurs dans ce callback
+                                 }
+                             });
+}
+
+void Window::CallbackResize(int width, int height)
+{
+    this->parameters.width = width;
+    this->parameters.height = height;
+}
+
+void Window::CallbackPosition(int x, int y)
+{
+    this->parameters.posX = x;
+    this->parameters.posY = y;
+}
+
+void Window::CallbackFocus(int focused)
+{
+    UNUSED(focused);
+
+    LOG_DEBUGGING("Window focus changed");
+
+#ifdef _WIN32
+    if (this->parameters.windowState == WindowState::BORDERLESS)
+    {
+        ShowWindow(FindWindowA("Shell_TrayWnd", nullptr), SW_HIDE);
+    }
+    else
+    {
+        ShowWindow(FindWindowA("Shell_TrayWnd", nullptr), SW_SHOW);
+    }
+#endif
+}
+
+void Window::ClearCallbacks()
+{
+    glfwSetWindowFocusCallback(native(this->window), nullptr);
+    glfwSetWindowSizeCallback(native(this->window), nullptr);
+    glfwSetWindowPosCallback(native(this->window), nullptr);
+    glfwSetKeyCallback(native(this->window), nullptr);
+    glfwSetFramebufferSizeCallback(native(this->window), nullptr);
+    glfwSetWindowIconifyCallback(native(this->window), nullptr);
+    glfwSetWindowMaximizeCallback(native(this->window), nullptr);
+    glfwSetWindowCloseCallback(native(this->window), nullptr);
+}
+
+// Fonction pour vérifier l'état de la fenêtre
+bool Window::IsWindowHealthy() const
+{
+    if (!this->window)
+    {
+        return false;
+    }
+
+    return true;
+}

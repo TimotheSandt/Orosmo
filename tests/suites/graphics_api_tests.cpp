@@ -1,7 +1,7 @@
 #include "support/test_support.hpp"
 
 #include "Graphics/Backends/GraphicsAPI.h"
-#include "Graphics/Core/GraphicsBackend.h"
+#include <engine/rhi/device.hpp>
 
 #include <sstream>
 #include <stdexcept>
@@ -115,6 +115,24 @@ Assert(!ParseGraphicsAPI("directx").has_value(), "Unknown API should be rejected
         }
     }
 
+    TEST_CASE("launch options parse --headless (PLAT-04)")
+    {
+        const char *argv[] = {"program", "--headless", "--capture", "out", "--capture-frames", "3"};
+        const GraphicsLaunchOptions options = ParseGraphicsLaunchOptions(6, argv);
+        Assert(options.headless, "--headless should be parsed");
+        AssertEqual(options.captureFrames, 3u, "the frame count is kept in headless mode");
+        const char *none[] = {"program"};
+        Assert(!ParseGraphicsLaunchOptions(1, none).headless, "a window is the default");
+    }
+
+    TEST_CASE("launch options parse --vsync")
+    {
+        const char *argv[] = {"program", "--vsync"};
+        Assert(ParseGraphicsLaunchOptions(2, argv).vsync, "--vsync should be parsed");
+        const char *none[] = {"program"};
+        Assert(!ParseGraphicsLaunchOptions(1, none).vsync, "vsync is off by default, as before");
+    }
+
     TEST_CASE("launch options reject invalid capture arguments")
     {
         const char *missingValue[] = {"program", "--capture"};
@@ -172,11 +190,14 @@ Assert(!ParseGraphicsAPI("directx").has_value(), "Unknown API should be rejected
         Assert(IsGraphicsAPIAvailable(GraphicsAPI::OpenGL), "OpenGL should be runnable");
     }
 
-    TEST_CASE("vulkan backend is reported available")
+    TEST_CASE("vulkan backend is recognized but not available before M4 (A1: the old backend was removed)")
     {
-        AssertEqual(GetGraphicsAPIAvailability(GraphicsAPI::Vulkan), GraphicsAPIAvailability::Available,
-                    "Vulkan backend should be advertised as available");
-        Assert(IsGraphicsAPIAvailable(GraphicsAPI::Vulkan), "Vulkan should now be runnable through the runtime");
+        AssertEqual(GetGraphicsAPIAvailability(GraphicsAPI::Vulkan), GraphicsAPIAvailability::NotBuilt,
+                    "Vulkan should be recognized but not built until it is rewritten on the RHI");
+        Assert(!IsGraphicsAPIAvailable(GraphicsAPI::Vulkan), "Vulkan must not be selectable");
+        Assert(GetGraphicsAPIAvailabilityMessage(GraphicsAPI::Vulkan).find("M4") != std::string::npos,
+               "the message should say when Vulkan comes back");
+        Assert(IsGraphicsAPIAvailable(GraphicsAPI::OpenGL), "OpenGL is the RHI backend");
     }
 
     TEST_CASE("other backend messages are non-empty")
@@ -185,11 +206,14 @@ Assert(!ParseGraphicsAPI("directx").has_value(), "Unknown API should be rejected
         Assert(!GetGraphicsAPIAvailabilityMessage(GraphicsAPI::Metal).empty(), "Metal availability message should be present");
     }
 
-    TEST_CASE("backend factory returns matching api")
+    TEST_CASE("the selectable APIs match the backends compiled into the RHI (RHI-04)")
     {
-        const std::unique_ptr<IGraphicsBackend> backend = CreateGraphicsBackend({GraphicsAPI::OpenGL});
-        AssertEqual(backend->GetAPI(), GraphicsAPI::OpenGL, "Factory should return a backend matching the requested API");
-        Assert(backend->IsAvailable(), "OpenGL backend returned by the factory should be available");
+        Assert(engine::rhi::isBackendCompiled(engine::rhi::Backend::kOpenGL), "the OpenGL backend is compiled");
+        Assert(!engine::rhi::isBackendCompiled(engine::rhi::Backend::kVulkan), "the Vulkan backend comes back in M4");
+        AssertEqual(IsGraphicsAPIAvailable(GraphicsAPI::OpenGL), engine::rhi::isBackendCompiled(engine::rhi::Backend::kOpenGL),
+                    "OpenGL availability should follow the RHI");
+        AssertEqual(IsGraphicsAPIAvailable(GraphicsAPI::Vulkan), engine::rhi::isBackendCompiled(engine::rhi::Backend::kVulkan),
+                    "Vulkan availability should follow the RHI");
     }
 }
 

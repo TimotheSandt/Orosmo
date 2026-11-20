@@ -163,6 +163,15 @@ void preciseSleep(std::chrono::nanoseconds sleepTime)
 #endif
 }
 
+std::uint64_t processId()
+{
+#if defined(_WIN32)
+    return static_cast<std::uint64_t>(GetCurrentProcessId());
+#else
+    return static_cast<std::uint64_t>(getpid());
+#endif
+}
+
 bool beginHighResolutionTimer()
 {
 #if defined(_WIN32)

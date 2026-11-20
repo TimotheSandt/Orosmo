@@ -1,6 +1,4 @@
 #include "Core/Container.h"
-#include "Graphics/Core/RenderState.h"
-#include "Graphics/Core/GraphicsDiagnostics.h"
 #include "Logger.h"
 #include "Utilities.h"
 
@@ -11,71 +9,12 @@
 namespace UI
 {
 
-namespace
-{
 
-struct ClipRect
-{
-    int x = 0;
-    int y = 0;
-    int width = 0;
-    int height = 0;
-};
-
-std::optional<ClipRect> ComputeClipRect(const GraphicsRenderState::FramebufferState &state, glm::vec2 containerSize, glm::vec2 offset,
-                                        glm::vec2 scale)
-{
-    const int viewportLeft = state.viewport[0];
-    const int viewportBottom = state.viewport[1];
-    const int viewportRight = viewportLeft + state.viewport[2];
-    const int viewportTop = viewportBottom + state.viewport[3];
-
-    if (containerSize.x <= 0.0f || containerSize.y <= 0.0f || state.viewport[2] <= 0 || state.viewport[3] <= 0)
-    {
-        return std::nullopt;
-    }
-
-    const float scaleX = static_cast<float>(state.viewport[2]) / containerSize.x;
-    const float scaleY = static_cast<float>(state.viewport[3]) / containerSize.y;
-
-    int left = viewportLeft + static_cast<int>(std::floor(offset.x * scaleX));
-    int bottom = viewportBottom + static_cast<int>(std::floor((containerSize.y - (offset.y + scale.y)) * scaleY));
-    int right = viewportLeft + static_cast<int>(std::ceil((offset.x + scale.x) * scaleX));
-    int top = viewportBottom + static_cast<int>(std::ceil((containerSize.y - offset.y) * scaleY));
-
-    left = std::max(left, viewportLeft);
-    bottom = std::max(bottom, viewportBottom);
-    right = std::min(right, viewportRight);
-    top = std::min(top, viewportTop);
-
-    if (state.scissorTest)
-    {
-        const int scissorLeft = state.scissorBox[0];
-        const int scissorBottom = state.scissorBox[1];
-        const int scissorRight = scissorLeft + state.scissorBox[2];
-        const int scissorTop = scissorBottom + state.scissorBox[3];
-
-        left = std::max(left, scissorLeft);
-        bottom = std::max(bottom, scissorBottom);
-        right = std::min(right, scissorRight);
-        top = std::min(top, scissorTop);
-    }
-
-    if (right <= left || top <= bottom)
-    {
-        return std::nullopt;
-    }
-
-    return ClipRect{left, bottom, right - left, top - bottom};
-}
-
-} // namespace
 
 ContainerBase::ContainerBase(Bounds bounds, bool useRenderTarget) : ComponentBase(bounds)
 {
     contentSize = localBounds.scale;
     renderToTexture.ForceSet(useRenderTarget);
-    RefreshSpriteShader();
     UpdateTheme();
 }
 
@@ -98,7 +37,6 @@ void ContainerBase::Initialize()
         child->Initialize();
     }
     RecalculateChildBounds();
-    InitializeRenderTarget();
 }
 
 void ContainerBase::Update()
@@ -129,12 +67,7 @@ void ContainerBase::Update()
     if (renderToTexture.Apply())
     {
         renderModeChanged = true;
-        RefreshSpriteShader();
-        if (!UsesOwnRenderTarget())
-        {
-            renderTarget.Destroy();
-            fboInitialized = false;
-        }
+        collectedLayerSize = {0, 0}; // la couche est recréée (ou abandonnée) au prochain Collect
         dirtySelfLayout = true;
         dirtyChildLayout = true;
         dirtyAppearance = true;
@@ -153,158 +86,105 @@ void ContainerBase::Update()
     if (dirtySelfLayout || dirtyChildLayout || renderModeChanged)
     {
         RecalculateChildBounds();
-        InitializeRenderTarget();
     }
 }
 
-void ContainerBase::RefreshSpriteShader()
-{
-    if (UsesOwnRenderTarget())
-    {
-        sprite.SetShader(GET_RESOURCE_PATH("shader/UI/container.vert"), GET_RESOURCE_PATH("shader/UI/container.frag"));
-    }
-    else
-    {
-        sprite.SetShader(GET_RESOURCE_PATH("shader/UI/default.vert"), GET_RESOURCE_PATH("shader/UI/default.frag"));
-    }
-}
-
-void ContainerBase::InitializeRenderTarget()
-{
-    if (!UsesOwnRenderTarget())
-    {
-        if (renderTarget.IsInitialized())
-        {
-            renderTarget.Destroy();
-        }
-        fboInitialized = false;
-        return;
-    }
-
-    if (contentSize.x <= 0 || contentSize.y <= 0)
-    {
-        return;
-    }
-
-    if (renderTarget.GetWidth() != static_cast<int>(contentSize.x) || renderTarget.GetHeight() != static_cast<int>(contentSize.y))
-    {
-
-        renderTarget.Init(static_cast<int>(contentSize.x), static_cast<int>(contentSize.y));
-        fboInitialized = true;
-        GRAPHICS_CHECK_ERRORS_M("UIContainer RenderTarget Init");
-
-        // Clear render target to transparent immediately after init
-        const GraphicsRenderState::FramebufferState previousState = GraphicsRenderState::CaptureFramebufferState();
-
-        renderTarget.Bind();
-        GraphicsRenderState::ClearTransparentColorBuffer();
-        renderTarget.Unbind();
-        GraphicsRenderState::RestoreFramebufferState(previousState);
-
-        // Force re-render on next frame
-        MarkFullDirty();
-    }
-}
-
-void ContainerBase::ClearZone(glm::vec4 bounds)
-{
-    GraphicsRenderState::SetScissorTest(true);
-    // Flip Y for OpenGL (Bottom-Left origin)
-    // Bounds are (x, y, w, h) in Top-Left origin
-    const int yGl = static_cast<int>(contentSize.y - (bounds.y + bounds.w));
-
-    GraphicsRenderState::SetScissor(static_cast<int>(bounds.x), yGl, static_cast<int>(bounds.z), static_cast<int>(bounds.w));
-    GraphicsRenderState::ClearTransparentColorBuffer();
-    GraphicsRenderState::SetScissorTest(false);
-}
-
-void ContainerBase::RenderChildren()
-{
-    if (!UsesOwnRenderTarget())
-    {
-        return;
-    }
-
-    const GraphicsRenderState::FramebufferState previousState = GraphicsRenderState::CaptureFramebufferState();
-
-    renderTarget.Bind();
-    GRAPHICS_CHECK_ERRORS_M("RenderDirtyChildren Bind");
-
-    // Set viewport to render target size
-    GraphicsRenderState::SetViewport(0, 0, static_cast<int>(contentSize.x), static_cast<int>(contentSize.y));
-
-    // Determine dirty level: layout vs appearance only
-    bool hasLayoutDirty = IsSelfLayoutDirty(); // If we resized, we must re-render all (anchors changed)
-    bool hasAppearanceDirty = false;
-    for (auto &child : children)
-    {
-        if (child->IsSelfLayoutDirty() || child->IsChildLayoutDirty())
-        {
-            hasLayoutDirty = true;
-            break;
-        }
-        if (child->IsAppearanceDirty())
-        {
-            hasAppearanceDirty = true;
-        }
-    }
-
-    if (hasLayoutDirty)
-    {
-        // Layout changed: clear the full render target and re-render all
-        GraphicsRenderState::ClearTransparentColorBuffer();
-
-        for (auto &child : children)
-        {
-            glm::vec4 childBounds = child->GetCachedBoundsInParent();
-            child->Draw(contentSize, {childBounds.x, childBounds.y});
-            child->ClearDirty();
-        }
-    }
-    else if (hasAppearanceDirty)
-    {
-        // Appearance only: zone clear and re-render dirty children
-        for (auto &child : children)
-        {
-            if (child->IsAppearanceDirty())
-            {
-                glm::vec4 childBounds = child->GetCachedBoundsInParent();
-                ClearZone(childBounds);
-                child->Draw(contentSize, {childBounds.x, childBounds.y});
-                child->ClearDirty();
-            }
-        }
-    }
-
-    GraphicsRenderState::RestoreFramebufferState(previousState);
-    GRAPHICS_CHECK_ERRORS_M("RenderDirtyChildren Restore");
-}
-
-void ContainerBase::Draw(glm::vec2 containerSize, glm::vec2 offset)
+void ContainerBase::Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset)
 {
     if (!visible.Get())
     {
+        collectedLayerSize = {0, 0}; // la couche sera recréée quand le conteneur redeviendra visible
         return;
     }
 
-    // Update child positions
     if (dirtySelfLayout || dirtyChildLayout)
     {
         RecalculateChildBounds();
-        InitializeRenderTarget();
     }
 
     if (UsesOwnRenderTarget())
     {
-        RenderChildren();
+        if (contentSize.x <= 0 || contentSize.y <= 0)
+        {
+            ClearDirty();
+            return;
+        }
 
-        sprite.Draw({.offset = offset,
-                     .scale = localBounds.scale,
-                     .containerSize = containerSize,
-                     .scrollOffset = scrollOffset,
-                     .contentSize = contentSize,
-                     .color = this->color.Get()},
-                    &renderTarget.GetTexture());
+        // Taille changée : la couche est recréée vide, tout est à redessiner (comme l'ancienne InitializeRenderTarget).
+        if (collectedLayerSize != contentSize)
+        {
+            collectedLayerSize = contentSize;
+            MarkFullDirty();
+        }
+
+        const std::uint64_t layerId = reinterpret_cast<std::uintptr_t>(this);
+        bool hasLayoutDirty = IsSelfLayoutDirty();
+        bool hasAppearanceDirty = false;
+        for (auto &child : children)
+        {
+            if (child->IsSelfLayoutDirty() || child->IsChildLayoutDirty())
+            {
+                hasLayoutDirty = true;
+                break;
+            }
+            if (child->IsAppearanceDirty())
+            {
+                hasAppearanceDirty = true;
+            }
+        }
+
+        if (hasLayoutDirty)
+        {
+            list.beginLayer(layerId, contentSize, true);
+            for (auto &child : children)
+            {
+                const glm::vec4 childBounds = child->GetCachedBoundsInParent();
+                child->Collect(list, contentSize, {childBounds.x, childBounds.y});
+                child->ClearDirty();
+            }
+            list.endLayer();
+        }
+        else if (hasAppearanceDirty)
+        {
+            // Redessin partiel : chaque zone d'un enfant modifié est effacée puis TOUS les enfants y sont redessinés, dans l'ordre de
+            // la liste et sous un découpage limité à la zone (le découpage écarte ce qui tombe dehors). On ne filtre pas sur les
+            // bornes des enfants : un descendant peut déborder de son conteneur. Un enfant qui recouvre le modifié reste devant.
+            std::vector<glm::vec4> zones;
+            for (auto &child : children)
+            {
+                if (child->IsAppearanceDirty())
+                {
+                    zones.push_back(child->GetCachedBoundsInParent());
+                }
+            }
+            list.beginLayer(layerId, contentSize, false);
+            for (const glm::vec4 &zone : zones)
+            {
+                list.pushClip({zone.x, zone.y}, {zone.z, zone.w});
+                list.clearRect({zone.x, zone.y}, {zone.z, zone.w});
+                for (auto &child : children)
+                {
+                    const glm::vec4 childBounds = child->GetCachedBoundsInParent();
+                    child->Collect(list, contentSize, {childBounds.x, childBounds.y});
+                }
+                list.popClip();
+            }
+            for (auto &child : children)
+            {
+                child->ClearDirty();
+            }
+            list.endLayer();
+        }
+        // Sinon la couche garde son contenu : seule son image est redessinée.
+
+        engine::renderer::DrawLayerImage image;
+        image.layerId = layerId;
+        image.position = offset;
+        image.size = localBounds.scale;
+        image.scrollOffset = scrollOffset;
+        image.contentSize = contentSize;
+        image.color = this->color.Get();
+        list.layerImage(image);
 
         ClearDirty();
         return;
@@ -312,36 +192,25 @@ void ContainerBase::Draw(glm::vec2 containerSize, glm::vec2 offset)
 
     if (GetColor().a > 0.0f)
     {
-        sprite.Draw({.offset = offset, .scale = localBounds.scale, .containerSize = containerSize, .color = this->color.Get()});
+        list.rect(offset, localBounds.scale, this->color.Get());
     }
 
     const bool shouldClipChildren = overflowMode.Get() == OverflowMode::HIDDEN || overflowMode.Get() == OverflowMode::SCROLL;
-    std::optional<GraphicsRenderState::FramebufferState> clipState;
     if (shouldClipChildren)
     {
-        clipState = GraphicsRenderState::CaptureFramebufferState();
-        const std::optional<ClipRect> clipRect = ComputeClipRect(*clipState, containerSize, offset, localBounds.scale);
-        if (!clipRect.has_value())
-        {
-            GraphicsRenderState::RestoreFramebufferState(*clipState);
-            ClearDirty();
-            return;
-        }
-
-        GraphicsRenderState::SetScissorTest(true);
-        GraphicsRenderState::SetScissor(clipRect->x, clipRect->y, clipRect->width, clipRect->height);
+        list.pushClip(offset, localBounds.scale);
     }
 
     const glm::vec2 childBaseOffset = offset - scrollOffset;
     for (auto &child : children)
     {
         const glm::vec4 childBounds = child->GetCachedBoundsInParent();
-        child->Draw(containerSize, {childBaseOffset.x + childBounds.x, childBaseOffset.y + childBounds.y});
+        child->Collect(list, containerSize, {childBaseOffset.x + childBounds.x, childBaseOffset.y + childBounds.y});
     }
 
-    if (clipState.has_value())
+    if (shouldClipChildren)
     {
-        GraphicsRenderState::RestoreFramebufferState(*clipState);
+        list.popClip();
     }
 
     ClearDirty();

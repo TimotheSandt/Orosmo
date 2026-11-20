@@ -10,7 +10,6 @@ namespace UI
 
 ComponentBase::ComponentBase(Bounds bounds) : localBounds(bounds)
 {
-    this->sprite.SetShader(GET_RESOURCE_PATH("shader/UI/default.vert"), GET_RESOURCE_PATH("shader/UI/default.frag"));
 
     // Direct initialization with ForceSet to avoid deferred behavior
     this->theme = Theme::GetTheme("default");
@@ -79,16 +78,20 @@ glm::vec2 ComponentBase::CalculatePixelSize()
     return this->localBounds.scale;
 }
 
-void ComponentBase::Draw(glm::vec2 containerSize, glm::vec2 offset)
+void ComponentBase::Collect(engine::renderer::DrawList &list, glm::vec2 containerSize, glm::vec2 offset)
 {
+    (void)containerSize;
     if (!visible.Get())
     {
         return;
     }
 
     // offset already includes anchor offset from cachedBoundsInParent
-
-    sprite.Draw({.offset = offset, .scale = this->localBounds.scale, .containerSize = containerSize, .color = this->color.Get()});
+    const glm::vec4 c = this->color.Get();
+    if (c.a > 0.0f)
+    {
+        list.rect(offset, this->localBounds.scale, c);
+    }
 
     ClearDirty();
 }

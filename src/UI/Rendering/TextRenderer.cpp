@@ -1,9 +1,9 @@
 #include "UI/Rendering/TextRenderer.h"
 
-#include "Graphics/Core/GraphicsRuntime.h"
 #include "Logger.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -21,46 +21,6 @@ namespace UI
 
 namespace
 {
-
-constexpr const char *VERTEX_SHADER = R"(
-#version 330 core
-layout (location = 0) in vec4 vertex;
-out vec2 TexCoords;
-
-uniform mat4 projection;
-
-void main() {
-    gl_Position = projection * vec4(vertex.xy, 0.0, 1.0);
-    TexCoords = vertex.zw;
-}
-)";
-
-constexpr const char *FRAGMENT_SHADER = R"(
-#version 330 core
-in vec2 TexCoords;
-out vec4 color;
-
-uniform sampler2D text;
-uniform vec3 textColor;
-uniform float msdfPixelRange;
-uniform float msdfWeight;
-
-float median(vec3 value) {
-    return max(min(value.r, value.g), min(max(value.r, value.g), value.b));
-}
-
-void main() {
-    vec4 sampleValue = texture(text, TexCoords);
-    float signedDistance = median(sampleValue.rgb) - 0.5;
-    vec2 unitRange = vec2(msdfPixelRange) / vec2(textureSize(text, 0));
-    vec2 dx = dFdx(TexCoords);
-    vec2 dy = dFdy(TexCoords);
-    vec2 screenTexSize = inversesqrt(max(vec2(dot(dx, dx), dot(dy, dy)), vec2(0.0000001)));
-    float screenPxRange = max(0.5 * dot(unitRange, screenTexSize), 1.0);
-    float alpha = clamp((signedDistance + msdfWeight) * screenPxRange + 0.5, 0.0, 1.0);
-    color = vec4(textColor, alpha);
-}
-)";
 
 constexpr unsigned int MinimumDynamicFontSize = 8;
 constexpr unsigned int MaximumDynamicFontSize = 256;
@@ -396,9 +356,6 @@ TextRenderer::~TextRenderer()
     {
         FT_Done_FreeType(ft);
     }
-
-    glyphGeometry.reset();
-    shaderProgram.Destroy();
 }
 
 bool TextRenderer::init(unsigned int width, unsigned int height)
@@ -412,32 +369,7 @@ bool TextRenderer::init(unsigned int width, unsigned int height)
         return false;
     }
 
-    shaderProgram.SetShaderCode(VERTEX_SHADER, FRAGMENT_SHADER);
-    // Match the rest of the UI: origin is top-left, Y grows downward.
-    projection = glm::ortho(0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f);
-    setupRenderData();
-    projectionUniform = shaderProgram.GetUniformLocation("projection");
-    textColorUniform = shaderProgram.GetUniformLocation("textColor");
-    textSamplerUniform = shaderProgram.GetUniformLocation("text");
-    msdfPixelRangeUniform = shaderProgram.GetUniformLocation("msdfPixelRange");
-    msdfWeightUniform = shaderProgram.GetUniformLocation("msdfWeight");
-
-    return shaderProgram.IsCompiled() && glyphGeometry != nullptr;
-}
-
-void TextRenderer::setupRenderData()
-{
-    glyphGeometry.reset();
-
-    if (const IGraphicsDevice *device = TryGetActiveGraphicsDevice(); device != nullptr)
-    {
-        GeometryCreateInfo createInfo{};
-        createInfo.layout.vertexAttributes = {4};
-        createInfo.vertexData.assign(GlyphQuadFloatCount, 0.0f);
-        createInfo.dynamicVertexData = true;
-        createInfo.debugName = "ui_text_batch";
-        glyphGeometry = device->CreateGeometry(createInfo);
-    }
+    return true;
 }
 
 void TextRenderer::computeFontMetrics(FontData &fontData)
@@ -571,8 +503,15 @@ bool TextRenderer::ensureFontLoaded(const std::string &fontName, unsigned int fo
     }
 
     computeFontMetrics(fontData);
-    fontData.atlasTexture = Texture(atlasPixels.data(), fontData.atlasWidth, fontData.atlasHeight, "text", 0, TextureFormat::RGBA8,
-                                    TexturePixelType::UnsignedByte, TextureFilterMode::LinearNoMipmaps);
+    {
+        static std::atomic<std::uint64_t> nextAtlasId{1};
+        auto atlas = std::make_shared<engine::renderer::AtlasImage>();
+        atlas->id = nextAtlasId.fetch_add(1);
+        atlas->width = static_cast<std::uint32_t>(fontData.atlasWidth);
+        atlas->height = static_cast<std::uint32_t>(fontData.atlasHeight);
+        atlas->rgba.assign(atlasPixels.begin(), atlasPixels.end());
+        fontData.atlas = std::move(atlas);
+    }
 
     fonts[cacheKey] = std::move(fontData);
     return true;
@@ -651,8 +590,6 @@ void TextRenderer::updateScreenSize(unsigned int width, unsigned int height)
     }
     screenWidth = width;
     screenHeight = height;
-    // Match the rest of the UI: origin is top-left, Y grows downward.
-    projection = glm::ortho(0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f);
 }
 
 glm::vec2 TextRenderer::calculateAnchorOffset(const std::string &text, float scale, TextAnchor anchor)
@@ -697,7 +634,8 @@ glm::vec2 TextRenderer::calculateAnchorOffset(const std::string &text, float sca
 
 void TextRenderer::renderText(const std::string &text, float x, float y, float scale, const glm::vec3 &color, TextAnchor anchor)
 {
-    if (fontRegistrations.empty() || activeFontName.empty() || glyphGeometry == nullptr || !shaderProgram.IsCompiled())
+    // Sans liste de dessin donnée (`setDrawListSink`), il n'y a nulle part où produire les glyphes.
+    if (fontRegistrations.empty() || activeFontName.empty() || drawSink == nullptr)
     {
         return;
     }
@@ -786,21 +724,13 @@ void TextRenderer::renderText(const std::string &text, float x, float y, float s
         return;
     }
 
-    shaderProgram.Bind();
-    shaderProgram.SetUniformMatrix4(projectionUniform, &projection[0][0]);
-    shaderProgram.SetUniformFloats(textColorUniform, &color[0], 3);
-    const int textureSlot = 0;
-    const float msdfPixelRange = MsdfPixelRange;
-    shaderProgram.SetUniformInts(textSamplerUniform, &textureSlot, 1);
-    shaderProgram.SetUniformFloats(msdfPixelRangeUniform, &msdfPixelRange, 1);
-    shaderProgram.SetUniformFloats(msdfWeightUniform, &msdfWeight, 1);
-
-    fontData.atlasTexture.Bind();
-    glyphGeometry->Bind();
-    glyphGeometry->UpdateVertexData(batchedVertices.data(), batchedVertices.size(), 0);
-    glyphGeometry->DrawVertices(batchedVertices.size() / 4);
-    glyphGeometry->Unbind();
-    shaderProgram.Unbind();
+    engine::renderer::DrawGlyphs run;
+    run.atlas = fontData.atlas;
+    run.vertices = batchedVertices;
+    run.color = color;
+    run.msdfPixelRange = MsdfPixelRange;
+    run.msdfWeight = msdfWeight;
+    drawSink->glyphs(std::move(run));
 }
 
 float TextRenderer::measureTextWidth(const std::string &text, float scale)

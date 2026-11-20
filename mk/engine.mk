@@ -13,7 +13,7 @@
 # ── Output ────────────────────────────────────────────────────────────────────
 #   lib/<build>/libgraphics.a    lib/<build>/libui.a
 #   lib/<build>/libnoise.a       lib/<build>/libprofiler.a
-#   lib/<build>/libcore.a  lib/<build>/libplatform.a  lib/<build>/libutilities.a   lib/<build>/libthirdparty.a
+#   lib/<build>/libcore.a  lib/<build>/libplatform.a  lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libutilities.a   lib/<build>/libthirdparty.a
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
 #   dist/engine-<platform>/
@@ -142,10 +142,12 @@ LIB_PROFILER   := $(LIB_DIR)/$(BUILD_TYPE)/libprofiler.a
 LIB_UTILITIES  := $(LIB_DIR)/$(BUILD_TYPE)/libutilities.a
 LIB_CORE       := $(LIB_DIR)/$(BUILD_TYPE)/libcore.a
 LIB_PLATFORM   := $(LIB_DIR)/$(BUILD_TYPE)/libplatform.a
+LIB_RHI        := $(LIB_DIR)/$(BUILD_TYPE)/librhi.a
+LIB_RENDERER   := $(LIB_DIR)/$(BUILD_TYPE)/librenderer.a
 LIB_THIRDPARTY := $(LIB_DIR)/$(BUILD_TYPE)/libthirdparty.a
 LIB_BENCHMARK  := $(LIB_DIR)/$(BUILD_TYPE)/libbenchmark.a
 
-ENGINE_LIBS := $(LIB_GRAPHICS) $(LIB_UI) $(LIB_NOISE) $(LIB_PROFILER) $(LIB_UTILITIES) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_THIRDPARTY)
+ENGINE_LIBS := $(LIB_GRAPHICS) $(LIB_UI) $(LIB_NOISE) $(LIB_PROFILER) $(LIB_UTILITIES) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_THIRDPARTY)
 
 # ── Per-subsystem sources ─────────────────────────────────────────────────────
 Graphics_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/Graphics   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
@@ -155,6 +157,8 @@ Profiler_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/Profiler   -type f \( -name
 Utilities_SRCS  := $(shell find $(LIBRARIES_SRC_DIR)/Utilities  -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Core_SRCS       := $(shell find $(LIBRARIES_SRC_DIR)/core       -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Platform_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/platform   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+Rhi_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/rhi        -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+Renderer_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/renderer   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 ThirdParty_SRCS := $(shell find $(LIBRARIES_SRC_DIR)/ThirdParty -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Benchmark_SRCS  := $(shell find $(LIBRARIES_SRC_DIR)/Benchmark  -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 
@@ -169,10 +173,12 @@ Profiler_OBJS   := $(call obj_from_src,$(Profiler_SRCS))
 Utilities_OBJS  := $(call obj_from_src,$(Utilities_SRCS))
 Core_OBJS       := $(call obj_from_src,$(Core_SRCS))
 Platform_OBJS   := $(call obj_from_src,$(Platform_SRCS))
+Rhi_OBJS        := $(call obj_from_src,$(Rhi_SRCS))
+Renderer_OBJS   := $(call obj_from_src,$(Renderer_SRCS))
 ThirdParty_OBJS := $(call obj_from_src,$(ThirdParty_SRCS))
 Benchmark_OBJS  := $(call obj_from_src,$(Benchmark_SRCS))
 
-ALL_ENGINE_OBJS := $(Graphics_OBJS) $(UI_OBJS) $(Noise_OBJS) $(Profiler_OBJS) $(Utilities_OBJS) $(Core_OBJS) $(Platform_OBJS) $(ThirdParty_OBJS) $(Benchmark_OBJS)
+ALL_ENGINE_OBJS := $(Graphics_OBJS) $(UI_OBJS) $(Noise_OBJS) $(Profiler_OBJS) $(Utilities_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(ThirdParty_OBJS) $(Benchmark_OBJS)
 
 # ── Git remote detection ──────────────────────────────────────────────────────
 # Reads the 'origin' remote and extracts the host and owner/repo slug.
@@ -297,6 +303,16 @@ $(LIB_PLATFORM): $(Platform_OBJS)
 	@mkdir -p "$(dir $@)"
 	$(AR) rcs $@ $^
 	@echo "Archived [Platform]    $(BUILD_TYPE): $@"
+
+$(LIB_RHI): $(Rhi_OBJS)
+	@mkdir -p "$(dir $@)"
+	$(AR) rcs $@ $^
+	@echo "Archived [Rhi]         $(BUILD_TYPE): $@"
+
+$(LIB_RENDERER): $(Renderer_OBJS)
+	@mkdir -p "$(dir $@)"
+	$(AR) rcs $@ $^
+	@echo "Archived [Renderer]    $(BUILD_TYPE): $@"
 
 $(LIB_THIRDPARTY): $(ThirdParty_OBJS)
 	@mkdir -p "$(dir $@)"

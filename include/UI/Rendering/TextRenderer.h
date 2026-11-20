@@ -8,9 +8,7 @@
 #include <memory>
 #include <glm/glm.hpp>
 #include <ft2build.h>
-#include "Graphics/Core/GraphicsResources.h"
-#include "ShaderProgram.h"
-#include "Texture.h"
+#include "engine/renderer/draw_list.hpp"
 #include FT_FREETYPE_H
 
 namespace UI
@@ -33,7 +31,6 @@ enum class TextAnchor : std::uint8_t
 // Représentation d'un caractère
 struct Character
 {
-    Texture texture;
     glm::ivec2 size;
     glm::ivec2 bearing;
     glm::vec2 uvMin = {0.0f, 0.0f};
@@ -122,6 +119,10 @@ class TextRenderer
                     TextAnchor anchor = TextAnchor::TopLeft);
 
     // === RENDU AVANCÉ AVEC LAYOUT ===
+    // Liste de dessin (UI-02) : `renderText` et `renderTextAdvanced` y ajoutent des séries de glyphes (le dessin est fait par
+    // `engine::renderer::CanvasRenderer`). Sans liste donnée, ils ne produisent rien.
+    void setDrawListSink(engine::renderer::DrawList *list) { drawSink = list; }
+
     void renderTextAdvanced(const std::string &text, float x, float y, const TextLayoutParams &params,
                             const glm::vec3 &color = glm::vec3(1.0f), float scale = 1.0f);
 
@@ -149,7 +150,7 @@ class TextRenderer
     {
         FT_Face face = nullptr;
         std::unordered_map<char, Character> characters;
-        Texture atlasTexture;
+        std::shared_ptr<engine::renderer::AtlasImage> atlas; // pixels de l'atlas, partagés avec le dessinateur (CanvasRenderer)
         unsigned int fontSize = 0;
         int atlasWidth = 0;
         int atlasHeight = 0;
@@ -174,19 +175,11 @@ class TextRenderer
     std::unordered_map<std::string, FontRegistration> fontRegistrations;
     std::string activeFontName;
 
-    ShaderProgram shaderProgram;
-    std::unique_ptr<IGeometryResource> glyphGeometry;
-    glm::mat4 projection;
     unsigned int screenWidth, screenHeight;
     std::vector<float> batchedVertices;
-    int projectionUniform = -1;
-    int textColorUniform = -1;
-    int textSamplerUniform = -1;
-    int msdfPixelRangeUniform = -1;
-    int msdfWeightUniform = -1;
+    engine::renderer::DrawList *drawSink = nullptr;
 
     // Méthodes privées
-    void setupRenderData();
     void computeFontMetrics(FontData &fontData);
     glm::vec2 calculateAnchorOffset(const std::string &text, float scale, TextAnchor anchor);
     bool ensureFontLoaded(const std::string &fontName, unsigned int fontSize);

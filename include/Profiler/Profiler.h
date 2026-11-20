@@ -75,6 +75,8 @@ class Profiler
 
     // Fournisseur de minuteries GPU (installé par le runtime graphique, voir Profiler/GpuTimer.h). nullptr : mesure CPU.
     // Le stockage de ce pointeur est dans src/Profiler/Profiler.cpp (pas d'état global défini dans un en-tête).
+    // Abandonne les mesures GPU en attente (à appeler avant de détruire le périphérique graphique dont dépendent les minuteurs).
+    static void ClearGpuQueries();
     static void SetGpuTimerFactory(const IGpuTimerFactory *factory) noexcept;
     static const IGpuTimerFactory *GetGpuTimerFactory() noexcept;
 

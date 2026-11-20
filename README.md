@@ -28,7 +28,7 @@ git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.
 make all-debug                           # relie les paquets apt tout seul, puis moteur -> démo (debug)
 ```
 
-`vcpkg.json` marque `glfw3`, `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad`, `msdfgen` et `nlohmann-json` (sans options par défaut : noyau seulement, sans skia). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
+`vcpkg.json` marque `glfw3`, `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad`, `msdfgen`, `nlohmann-json` et `spirv-cross` (sans options par défaut : noyau seulement, sans skia). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
 
 `make clean-all` supprime `vcpkg_installed/` : relance ensuite `~/vcpkg/vcpkg install` (12 s, les archives sont en cache), `make` relie le reste.
 
@@ -47,7 +47,8 @@ make all-debug
 | `make run` | Construit si besoin puis lance la démo (`apps/demo/bin/<type>/`) |
 | `make demo-test` | Construit et lance les tests (`tests/`, doctest ; filtres : `-ts=<suite>`, `-tc=<cas>`) |
 | `make demo-test SANITIZE=address,undefined` | Idem sous ASan + UBSan (arbre propre : `make fclean` avant) |
-| `make check` | Dépôt, couches, isolation des API, en-têtes autonomes (mode avertissement) ; `CHECK_ARGS=--strict` pour échouer |
+| `make demo-test-unit` / `make demo-test-gpu` | Seulement les tests sans GPU ni fenêtre / seulement l'intégration graphique (contexte OpenGL, fenêtre). `ENGINE_TEST_REQUIRE_GPU=1` : un test graphique sans pilote ni affichage échoue au lieu d'être ignoré |
+| `make check` | Dépôt, couches, isolation des API (y compris GLFW et `<windows.h>`), en-têtes autonomes : **bloquant** (échoue à la première violation, comme la CI) |
 | `main --api opengl --capture <dossier>` | Rend 10 images à 1280x720 (graine 1), écrit `scene.png` (reproductible) et `ui.png` ; OpenGL seulement |
 | `python3 tools/compare_png.py A.png B.png` | Compare deux images (tolérance, budget de pixels, image de différence) |
 | `python3 -m unittest discover -s tests/tools` | Tests des outils Python |

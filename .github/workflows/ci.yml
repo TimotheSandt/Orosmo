@@ -135,14 +135,14 @@ jobs:
         run: |
           sh tools/check-repo.sh
           python3 tools/check_layers.py --strict
-          python3 tools/check_api_isolation.py --baseline tools/baseline/api_isolation.txt
+          python3 tools/check_api_isolation.py --strict   # gl*, Vk*, MTL*, GLFW, <windows.h> hors de src/rhi/ et src/platform/ : bloquant (M2 lot C)
           python3 tools/check_headers.py --strict
 
       - name: Build (debug, -Werror)
         run: make -j"$(nproc)" all-debug
 
       - name: Tests
-        run: make demo-test
+        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test
 
       - name: Capture reference images (OpenGL, Mesa llvmpipe under Xvfb)
         run: |
@@ -155,6 +155,12 @@ jobs:
         run: |
           python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720.png ci-capture/scene.png \
             --tolerance 8 --max-diff-percent 2 --diff-out ci-capture/diff.png
+
+      - name: Headless capture (PLAT-04, no window) identical to the windowed one
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" \
+            apps/demo/bin/debug/main --api opengl --headless --capture "$PWD/ci-capture-headless" --capture-frames 5
+          python3 tools/compare_png.py ci-capture/scene.png ci-capture-headless/scene.png
 
       - name: Tool tests (Python)
         run: python3 -m unittest discover -s tests/tools
@@ -202,7 +208,8 @@ jobs:
             autoconf autoconf-archive automake libtool \
             libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
             libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
-            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            xvfb libgl1-mesa-dri
 
       - name: Bootstrap vcpkg
         run: |
@@ -235,7 +242,7 @@ jobs:
         run: make -j"$(nproc)" all-debug WERROR=0
 
       - name: Tests
-        run: make demo-test WERROR=0
+        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test WERROR=0
 
   # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
   sanitizers:
@@ -256,7 +263,8 @@ jobs:
             autoconf autoconf-archive automake libtool \
             libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
             libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
-            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            xvfb libgl1-mesa-dri
       - name: Bootstrap vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
@@ -284,7 +292,7 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: make demo-test SANITIZE=address,undefined
+        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test SANITIZE=address,undefined
 
   # ── Windows and macOS: same entry points through vcpkg manifest mode. ─────────────────────
   # `continue-on-error`: these two jobs have never been observed green (no Windows/macOS machine was
