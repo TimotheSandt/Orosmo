@@ -277,6 +277,58 @@ TEST_SUITE("world/export")
         std::memcpy(&y5, buffer.data() + (5 * 3 + 1) * 4, 4); // POSITION du sommet 5, composante y
         CHECK(y5 == field.heights[5]);
         CHECK(doc["accessors"][0]["max"][1].get<float>() == doctest::Approx(field.maxHeight()));
+
+        // Indices 32 bits (bufferViews[2]) : la même triangulation que l'OBJ, en base 0.
+        auto floatAt = [&](std::size_t offset)
+        {
+            float v = 0;
+            std::memcpy(&v, buffer.data() + offset, 4);
+            return v;
+        };
+        const auto indicesView = doc["bufferViews"][2];
+        const auto indicesOffset = indicesView["byteOffset"].get<std::size_t>();
+        REQUIRE(indicesView["byteLength"].get<std::size_t>() == expected.size() * 4);
+        REQUIRE(indicesOffset + expected.size() * 4 <= buffer.size());
+        std::vector<unsigned> gltfIndices;
+        for (std::size_t k = 0; k < expected.size(); ++k)
+        {
+            std::uint32_t v = 0;
+            for (std::size_t b = 0; b < 4; ++b) // petit-boutiste (glTF)
+                v |= static_cast<std::uint32_t>(buffer[indicesOffset + k * 4 + b]) << (8 * b);
+            gltfIndices.push_back(v + 1);
+        }
+        CHECK(gltfIndices == expected);
+        // NORMAL (bufferViews[1]) : différences centrées (décentrées au bord) recalculées ici en double, puis normalisées.
+        const auto normalsOffset = doc["bufferViews"][1]["byteOffset"].get<std::size_t>();
+        REQUIRE(doc["bufferViews"][1]["byteLength"].get<std::size_t>() == field.heights.size() * 12);
+        for (std::uint32_t j = 0; j < field.height; ++j)
+        {
+            for (std::uint32_t i = 0; i < field.width; ++i)
+            {
+                const std::uint32_t il = i > 0 ? i - 1 : i, ir = std::min(i + 1, field.width - 1);
+                const std::uint32_t jd = j > 0 ? j - 1 : j, ju = std::min(j + 1, field.height - 1);
+                const double sx = -(static_cast<double>(field.at(ir, j)) - field.at(il, j)) / ((ir - il) * static_cast<double>(field.spacing));
+                const double sz = -(static_cast<double>(field.at(i, ju)) - field.at(i, jd)) / ((ju - jd) * static_cast<double>(field.spacing));
+                const double len = std::sqrt(sx * sx + 1.0 + sz * sz);
+                const std::size_t at = normalsOffset + (static_cast<std::size_t>(j) * field.width + i) * 12;
+                CHECK(floatAt(at) == doctest::Approx(sx / len).epsilon(1e-5));
+                CHECK(floatAt(at + 4) == doctest::Approx(1.0 / len).epsilon(1e-5));
+                CHECK(floatAt(at + 8) == doctest::Approx(sz / len).epsilon(1e-5));
+            }
+        }
+
+        // Bornes de POSITION : des valeurs réellement présentes, même au-delà de l'ancienne valeur initiale (1e30).
+        w::HeightField high;
+        high.width = 2;
+        high.height = 2;
+        high.heights = {2e30f, 3e30f, 4e30f, 5e30f};
+        REQUIRE(w::writeGltf(dir.path / "high.gltf", high).has_value());
+        std::ifstream highIn(dir.path / "high.gltf");
+        const nlohmann::json highDoc = nlohmann::json::parse(highIn);
+        CHECK(highDoc["accessors"][0]["min"][1].get<float>() == 2e30f);
+        CHECK(highDoc["accessors"][0]["max"][1].get<float>() == 5e30f);
+        CHECK(highDoc["accessors"][0]["min"][0].get<float>() == 0.0f);
+        CHECK(highDoc["accessors"][0]["max"][0].get<float>() == 1.0f);
     }
 
     TEST_CASE("STL: a closed, consistently oriented solid (every edge shared by two triangles in opposite directions), positive volume")

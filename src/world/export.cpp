@@ -532,8 +532,10 @@ core::Result<> writeGltf(const std::filesystem::path &path, const HeightField &f
     const std::size_t indicesOffset = buffer.data.size();
     for (std::uint32_t i : m.indices)
         buffer.u32le(i);
-    std::array<float, 3> lo{1e30f, 1e30f, 1e30f}, hi{-1e30f, -1e30f, -1e30f};
-    for (std::size_t v = 0; v < m.positions.size(); v += 3)
+    // Bornes initialisées sur le premier sommet (checkField en garantit au moins quatre) : min/max sont des valeurs du tampon.
+    std::array<float, 3> lo{m.positions[0], m.positions[1], m.positions[2]};
+    std::array<float, 3> hi = lo;
+    for (std::size_t v = 3; v < m.positions.size(); v += 3)
     {
         for (std::size_t c = 0; c < 3; ++c)
         {
