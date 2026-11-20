@@ -681,12 +681,18 @@ core::Result<> writeBiomePng(const std::filesystem::path &path, const HeightFiel
         const auto &c = kColors[static_cast<std::size_t>(b)];
         rgb.insert(rgb.end(), c.begin(), c.end());
     }
-    std::error_code ec;
-    if (const auto parent = path.parent_path(); !parent.empty())
-        std::filesystem::create_directories(parent, ec);
-    if (stbi_write_png(path.string().c_str(), static_cast<int>(field.width), static_cast<int>(field.height), 3, rgb.data(), static_cast<int>(field.width * 3)) == 0)
-        return makeError(ErrorCode::kIo, "writeBiomePng: cannot write " + path.generic_string());
-    return {};
+    // Encodage en mémoire (mêmes octets que stbi_write_png, qui ignore l'échec de fwrite/fclose), puis writeFile : une écriture
+    // ou une fermeture ratée (disque plein…) devient kIo.
+    std::vector<std::uint8_t> png;
+    auto append = [](void *context, void *data, int size)
+    {
+        auto *out = static_cast<std::vector<std::uint8_t> *>(context);
+        const auto *bytes = static_cast<const std::uint8_t *>(data);
+        out->insert(out->end(), bytes, bytes + size);
+    };
+    if (stbi_write_png_to_func(append, &png, static_cast<int>(field.width), static_cast<int>(field.height), 3, rgb.data(), static_cast<int>(field.width * 3)) == 0)
+        return makeError(ErrorCode::kIo, "writeBiomePng: cannot encode " + path.generic_string());
+    return writeFile(path, png.data(), png.size());
 }
 
 } // namespace orosmo::world

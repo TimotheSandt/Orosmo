@@ -436,6 +436,11 @@ TEST_SUITE("world/export")
         const bool water = map[0] == w::Biome::kWater;
         CHECK((rgb[2] > rgb[0]) == water); // eau : bleu dominant
         stbi_image_free(rgb);
+        // /dev/full s'ouvre, mais l'écriture échoue (ENOSPC) : l'erreur est propagée (stbi_write_png l'ignorait).
+        if (std::error_code ec; fs::exists("/dev/full", ec))
+        {
+            CHECK((tests::errorOf(w::writeBiomePng("/dev/full", field, b)) == orosmo::core::ErrorCode::kIo));
+        }
     }
 
     TEST_CASE("TEST-03: reference checksum of an exported region")
