@@ -486,6 +486,14 @@ TEST_SUITE("world/raycast")
             REQUIRE(h.has_value());
             CHECK(h->position.y == doctest::Approx(w::meshHeightAt(p, 11, h->position.x, h->position.z)).epsilon(1e-3));
         }
+        // maxDistance infinie : la borne du rayon vaut DBL_MAX, (b - a) * fa débordait (impact à l'infini).
+        w::TerrainParams flat = p;
+        flat.heightScale = 0.0f;
+        flat.heightOffset = 0.0f;
+        const auto unbounded = w::raycastTerrain(flat, 1, {0.5f, 2.0f, 0.5f}, {0.0f, -1.0f, 0.0f}, std::numeric_limits<float>::infinity());
+        REQUIRE(unbounded.has_value());
+        CHECK(unbounded->distance == doctest::Approx(2.0f));
+        CHECK(unbounded->position.y == doctest::Approx(0.0f));
     }
 }
 

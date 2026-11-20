@@ -130,7 +130,7 @@ std::optional<RayHit> raycastTerrain(const TerrainParams &params, std::uint32_t 
         const double g0 = diagonal(t0), g1 = diagonal(t1);
         if ((g0 < 0.0 && g1 > 0.0) || (g0 > 0.0 && g1 < 0.0))
         {
-            cuts[1] = t0 + (t1 - t0) * g0 / (g0 - g1);
+            cuts[1] = t0 + (t1 - t0) * (g0 / (g0 - g1));
             pieces = 2;
         }
         for (int k = 0; k < pieces; ++k)
@@ -149,7 +149,8 @@ std::optional<RayHit> raycastTerrain(const TerrainParams &params, std::uint32_t 
             const double fa = above(a), fb = above(b);
             if (fb <= 0.0)
             {
-                const double t = fa > 0.0 ? a + (b - a) * fa / (fa - fb) : a;
+                // Fraction d'abord (dans [0, 1]) : (b - a) * fa déborderait pour b = DBL_MAX (maxDistance infinie).
+                const double t = fa > 0.0 ? a + (b - a) * (fa / (fa - fb)) : a;
                 return hit(std::clamp(t, a, b));
             }
         }
