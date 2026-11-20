@@ -204,6 +204,10 @@ TEST_SUITE("world/export")
         auto duplicate = valid; // deux entrées de la table vers la même rangée : l'autre rangée ne serait jamais remplie
         std::copy_n(valid.begin() + static_cast<std::ptrdiff_t>(table), 8, duplicate.begin() + static_cast<std::ptrdiff_t>(table + 8));
         CHECK((tests::errorOf(readBack(duplicate)) == orosmo::core::ErrorCode::kParse));
+
+        // Erreur de lecture APRÈS l'ouverture (un dossier s'ouvre sous Linux, sa lecture échoue en EISDIR ; ailleurs l'ouverture
+        // échoue) : kIo, pas d'exception.
+        CHECK((tests::errorOf(w::readHeightExr(dir.path)) == orosmo::core::ErrorCode::kIo));
     }
 
     TEST_CASE("OBJ and glTF: reopened, vertices, normals and triangles match the height field")

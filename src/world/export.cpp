@@ -354,7 +354,17 @@ core::Result<HeightField> readHeightExr(const std::filesystem::path &path)
     std::ifstream in(path, std::ios::binary);
     if (!in)
         return makeError(ErrorCode::kIo, "readHeightExr: cannot open " + path.generic_string());
-    const std::vector<std::uint8_t> d((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    // Lecture contrôlée : istream::read transforme une erreur du système (ex. EISDIR sur un dossier ouvert sous Linux) en badbit,
+    // là où istreambuf_iterator laisserait remonter l'exception de basic_filebuf::underflow.
+    std::vector<std::uint8_t> d;
+    std::array<char, 65536> chunk{};
+    while (in)
+    {
+        in.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+        d.insert(d.end(), chunk.begin(), chunk.begin() + in.gcount());
+    }
+    if (in.bad())
+        return makeError(ErrorCode::kIo, "readHeightExr: cannot read " + path.generic_string());
     // Fichier non fiable : chaque lecture est bornée par `limit` (fin du fichier, ou fin de l'attribut en cours de lecture), les
     // tailles se calculent en 64 bits et sont comparées aux octets restants AVANT toute allocation ou indexation.
     std::size_t pos = 0;
