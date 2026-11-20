@@ -256,7 +256,8 @@ test: $(TEST_TARGET)
 $(TEST_TARGET): $(TEST_OBJS) $(ENGINE_LIBS) | bin/tests
 	$(CXX) $(ENGINE_CXXFLAGS) $(TEST_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
 
-$(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp | $(TEST_GEN_CPP)
+# Les tests incluent aussi les vues générées de la démo (UI/Views/*.gen.h) : elles doivent exister avant leur compilation.
+$(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp | $(TEST_GEN_CPP) $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
 	@mkdir -p "$(dir $@)"
 	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 
@@ -264,7 +265,9 @@ $(ENGINE_GEN_DIR)/tests/%.gen.cpp: $(TEST_DIR)/%.cui $(_ENG_CUI_TOOL)
 	@mkdir -p "$(dir $@)"
 	$(_ENG_CUI_TOOL) run --output "$(dir $@)" $<
 
-$(OBJ_DIR)/gen/tests/%.o: $(ENGINE_GEN_DIR)/tests/%.gen.cpp
+# Règle statique : prioritaire sur $(OBJ_DIR)/gen/%.o (sans -I$(TEST_DIR)) quel que soit make ; GNU make 3.81 (macOS) prend
+# la première règle implicite qui correspond, pas la plus précise.
+$(TEST_GEN_OBJS): $(OBJ_DIR)/gen/tests/%.o: $(ENGINE_GEN_DIR)/tests/%.gen.cpp
 	@mkdir -p "$(dir $@)"
 	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 
