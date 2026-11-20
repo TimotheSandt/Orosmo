@@ -21,7 +21,10 @@ struct RayHit
 };
 
 // Premier point où le rayon passe sous la surface maillée, à moins de `maxDistance` (m). Origine sous la surface : touché en 0.
-// Le rayon avance par pas d'un quart d'espacement, puis le point est affiné par dichotomie (précision ~1e-4 de l'espacement).
+// Le rayon parcourt les cellules dans son ordre ; dans chaque triangle, la hauteur au-dessus de la surface est affine le long du
+// rayon et l'intersection se calcule exactement (en double) : aucune crête fine n'est franchie sans être vue. Direction nulle ou
+// non finie, espacement invalide ou origine hors du domaine des indices : pas d'intersection.
+// meshHeightAt rend NaN pour un espacement invalide (<= 0, non fini) ou une coordonnée hors du domaine des indices entiers.
 std::optional<RayHit> raycastTerrain(const TerrainParams &params, std::uint32_t seed, core::Vec3 origin, core::Vec3 direction, float maxDistance);
 
 } // namespace engine::world

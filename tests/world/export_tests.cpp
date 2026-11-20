@@ -419,6 +419,65 @@ TEST_SUITE("world/raycast")
 
 TEST_SUITE("world/render")
 {
+    TEST_CASE("TER-13: the FIRST crossing along the ray, even over a crest thinner than the old fixed step; degenerate inputs")
+    {
+        w::TerrainParams p = params();
+        p.sampleSpacing = 1.0f;
+        p.heightScale = 1.0f;
+        p.relief.frequency = 0.5f;
+        p.relief.octaves = 1;
+        p.warp.amplitude = 0.0f;
+        // Rayons presque horizontaux, au ras de la surface : aucune traversée ne doit précéder le point rendu (contrôle brutal par
+        // 4000 échantillons le long du rayon), et un rayon manqué ne doit traverser nulle part.
+        int hits = 0;
+        for (int k = 0; k < 200; ++k)
+        {
+            const float x = -20.0f + 0.37f * static_cast<float>(k), z = 3.0f - 0.11f * static_cast<float>(k);
+            const engine::core::Vec3 o{x, w::meshHeightAt(p, 7, x, z) + 0.05f, z};
+            const engine::core::Vec3 d{std::cos(0.7f * static_cast<float>(k)), -0.01f, std::sin(0.7f * static_cast<float>(k))};
+            const float range = 6.0f;
+            const auto h = w::raycastTerrain(p, 7, o, d, range);
+            const float len = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+            const float end = h ? h->distance : range;
+            bool crossedBefore = false;
+            for (int i = 1; i < 4000; ++i)
+            {
+                const float t = end * static_cast<float>(i) / 4000.0f;
+                const engine::core::Vec3 q = o + d * (t / len);
+                crossedBefore = crossedBefore || q.y < w::meshHeightAt(p, 7, q.x, q.z) - 1e-4f;
+            }
+            CHECK_FALSE(crossedBefore);
+            if (h)
+            {
+                ++hits;
+                CHECK(h->position.y == doctest::Approx(w::meshHeightAt(p, 7, h->position.x, h->position.z)).epsilon(1e-4));
+            }
+        }
+        CHECK(hits > 20);
+
+        // Progression garantie : à 262144 m, un pas de 0.015625 m ne changeait plus t en float (boucle sans fin).
+        w::TerrainParams fine = params();
+        fine.sampleSpacing = 0.0625f;
+        const auto down = w::raycastTerrain(fine, 3, {0.0f, 300000.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, 400000.0f);
+        REQUIRE(down.has_value());
+        CHECK(down->position.y == doctest::Approx(w::meshHeightAt(fine, 3, 0.0f, 0.0f)).epsilon(1e-4));
+        // Cellule dont les deux bords tombent sur le même float : hauteur finie.
+        CHECK(std::isfinite(w::meshHeightAt(fine, 3, 1048576.0f, 0.0f)));
+
+        // Direction finie dont le carré de la norme déborde en float.
+        w::TerrainParams flat = params();
+        flat.heightScale = 0.0f;
+        flat.heightOffset = 0.0f;
+        const auto huge = w::raycastTerrain(flat, 1, {0.0f, 1.0f, 0.0f}, {0.0f, -1e20f, 0.0f}, 10.0f);
+        REQUIRE(huge.has_value());
+        CHECK(huge->distance == doctest::Approx(1.0f));
+        // Espacement invalide (appel direct, hors des bornes réfléchies) : pas de conversion indéfinie.
+        w::TerrainParams zero = params();
+        zero.sampleSpacing = 0.0f;
+        CHECK(std::isnan(w::meshHeightAt(zero, 1, 1.0f, 1.0f)));
+        CHECK_FALSE(w::raycastTerrain(zero, 1, {0.0f, 10.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, 100.0f).has_value());
+    }
+
     TEST_CASE("TER-13: consistent with rendering: the rendered depth at the image centre gives the same point as the ray")
     {
         Gpu gpu;
