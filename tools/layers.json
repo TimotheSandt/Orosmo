@@ -31,8 +31,6 @@
     ["src/Graphics/GPUTimestampQuery.cpp", "rhi"],
     ["include/Graphics/AccelerationStructure.h", "rhi"],
     ["src/Graphics/AccelerationStructure.cpp", "rhi"],
-    ["include/UI/Rendering/TextRenderer.h", "renderer"],
-    ["src/ui/legacy/Rendering/TextRenderer.cpp", "renderer"],
     ["include/Graphics/*", "renderer"],
     ["src/Graphics/*", "renderer"],
     ["include/UI/*", "ui"],

@@ -1,6 +1,13 @@
 #pragma once
 #include "Core/Container.h"
-#include "Rendering/TextRenderer.h"
+#include "engine/ui/text_renderer.hpp"
+
+// Transition : le rendu de texte est dans engine::ui (text_renderer.hpp).
+namespace UI
+{
+using engine::ui::TextAnchor;
+using engine::ui::TextRenderer;
+} // namespace UI
 
 class Window;
 

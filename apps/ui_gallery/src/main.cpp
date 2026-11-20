@@ -19,7 +19,7 @@
 #include <engine/ui/window_input.hpp>
 
 #include <engine/core/log.hpp>
-#include "Rendering/TextRenderer.h"
+#include <engine/ui/text_renderer.hpp>
 
 #include <charconv>
 #include <cstdlib>
@@ -92,7 +92,7 @@ int run(const Options &o)
         return 2;
     }
 
-    UI::TextRenderer text;
+    ui::TextRenderer text;
     if (!text.init(static_cast<unsigned>(o.width), static_cast<unsigned>(o.height)) ||
         !text.loadFont((o.resources / "fonts" / "Roboto-Regular.ttf").string(), "default", 48))
     {

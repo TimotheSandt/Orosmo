@@ -1,5 +1,5 @@
 // Texte de l'interface : mesure et dessin d'une ligne. `Font` est l'interface ; `FixedFont` (chasse fixe, sans atlas) sert aux tests
-// et au mode sans GPU ; `TextRendererFont` adapte le rendu de texte existant (FreeType + atlas MSDF, `UI::TextRenderer`).
+// et au mode sans GPU ; `TextRendererFont` adapte le rendu de texte (FreeType + atlas MSDF, `TextRenderer`, text_renderer.hpp).
 #pragma once
 
 #include "engine/renderer/draw_list.hpp"
@@ -11,13 +11,10 @@
 #include <string>
 #include <string_view>
 
-namespace UI
-{
-class TextRenderer;
-}
-
 namespace engine::ui
 {
+
+class TextRenderer; // text_renderer.hpp
 
 struct FontFace; // theme.hpp : police nommée par un thème (fichier)
 
@@ -49,14 +46,14 @@ class FixedFont final : public Font
     float advance_;
 };
 
-// Polices de `UI::TextRenderer` (FreeType + MSDF ; taille de base `baseSize` pixels). Texte UTF-8 : ASCII, Latin-1 et Latin
+// Polices de `TextRenderer` (FreeType + MSDF ; taille de base `baseSize` pixels). Texte UTF-8 : ASCII, Latin-1 et Latin
 // étendu A (accents), ponctuation typographique courante. `defaultName` : police déjà chargée par l'application ; les polices des
 // thèmes sont chargées au premier usage (une police illisible est signalée une fois et remplacée par celle par défaut). Le
 // TextRenderer doit vivre plus longtemps que cet objet.
 class TextRendererFont final : public Font
 {
   public:
-    explicit TextRendererFont(::UI::TextRenderer &renderer, float baseSize = 48.0f, std::string defaultName = "default")
+    explicit TextRendererFont(TextRenderer &renderer, float baseSize = 48.0f, std::string defaultName = "default")
         : renderer_(&renderer), baseSize_(baseSize), defaultName_(std::move(defaultName))
     {
     }
@@ -66,7 +63,7 @@ class TextRendererFont final : public Font
 
   private:
     void select(const FontFace *face) const;
-    ::UI::TextRenderer *renderer_;
+    TextRenderer *renderer_;
     float baseSize_;
     std::string defaultName_;
     mutable std::map<std::string, bool> loaded_; // fichier -> chargé (faux : illisible, police par défaut)

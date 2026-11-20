@@ -21,7 +21,7 @@
 #include <engine/ui/ui.hpp>
 #include <engine/world/streaming.hpp>
 
-#include "Rendering/TextRenderer.h"
+#include <engine/ui/text_renderer.hpp>
 
 #include <filesystem>
 #include <memory>
@@ -78,7 +78,7 @@ class Viewer
     std::unique_ptr<engine::world::TileStreamer> streamer_;
     std::unordered_map<std::uint64_t, const engine::world::ResidentTile *> shown_; // tuiles envoyées au renderer
 
-    UI::TextRenderer text_;
+    engine::ui::TextRenderer text_;
     std::unique_ptr<engine::ui::TextRendererFont> font_;
     std::unique_ptr<engine::ui::Ui> ui_;
     engine::core::FileWatcher watcher_;
