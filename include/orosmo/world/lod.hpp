@@ -21,6 +21,8 @@ struct LodConfig
 };
 
 // Feuilles à afficher pour une caméra en (x, z) : équilibrées, sans recouvrement, couvrant les racines autour de la caméra.
+// Vide si la taille des racines n'est pas finie et positive, si rootLod > 30, rootRadius < 0, ou si la caméra (NaN, infinie ou
+// trop loin) donnerait des clés hors de std::int32_t après découpe jusqu'au niveau 0.
 std::vector<TileKey> selectTiles(const TerrainParams &params, const LodConfig &config, float cameraX, float cameraZ);
 
 enum class Edge : std::uint8_t
