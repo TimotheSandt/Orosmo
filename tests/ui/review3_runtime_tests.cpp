@@ -135,4 +135,136 @@ TEST_SUITE("ui/review3")
         CHECK(h.ui.popupOpenFor(sub));
         CHECK(h.ui.modalOpen());
     }
+
+    TEST_CASE("CurveEditor: a deferred write never touches the editor destroyed earlier in the frame or by its own setter")
+    {
+        SUBCASE("destroyed by an onHover handler queued before the write")
+        {
+            UiHarness h;
+            ui::Curve curve;
+            int changes = 0;
+            auto root = std::make_unique<ui::VBox>();
+            auto &box = root->emplace<ui::VBox>();
+            auto &editor = box.emplace<ui::CurveEditor>(ui::Binding<ui::Curve>::ref(curve));
+            editor.setWidth(ui::SizeSpec::fixed(200)).setHeight(ui::SizeSpec::fixed(200));
+            editor.onHover([&](const ui::Event &e) {
+                if (e.active)
+                    box.clearChildren();
+            });
+            editor.onChange([&](const ui::Event &) { ++changes; });
+            h.ui.setRoot(std::move(root));
+            h.frame();
+            h.press(UiHarness::center(editor)); // survol (différé) puis ajout d'un point (écriture différée) dans la même image
+            CHECK(box.children().empty());
+            CHECK(curve.points.size() == 2); // l'éditeur détruit n'a rien écrit
+            CHECK(changes == 0);
+            h.release({1, 1});
+        }
+        SUBCASE("destroyed by the binding's setter: written, then nothing else touched")
+        {
+            UiHarness h;
+            ui::Curve curve;
+            int changes = 0;
+            auto root = std::make_unique<ui::VBox>();
+            auto &box = root->emplace<ui::VBox>();
+            ui::Binding<ui::Curve> binding{[&] { return curve; },
+                                           [&](const ui::Curve &c) {
+                                               curve = c;
+                                               box.clearChildren();
+                                           }};
+            auto &editor = box.emplace<ui::CurveEditor>(std::move(binding));
+            editor.setWidth(ui::SizeSpec::fixed(200)).setHeight(ui::SizeSpec::fixed(200));
+            editor.onChange([&](const ui::Event &) { ++changes; });
+            h.ui.setRoot(std::move(root));
+            h.frame();
+            h.press(UiHarness::center(editor));
+            CHECK(curve.points.size() == 3); // écrit avant la destruction
+            CHECK(box.children().empty());
+            CHECK(changes == 0); // onChange (après l'écriture) : la source n'existe plus
+            h.release({1, 1});
+        }
+        SUBCASE("alive: the write comes before onChange")
+        {
+            UiHarness h;
+            ui::Curve curve;
+            std::size_t seen = 0;
+            auto root = std::make_unique<ui::VBox>();
+            auto &editor = root->emplace<ui::CurveEditor>(ui::Binding<ui::Curve>::ref(curve));
+            editor.setWidth(ui::SizeSpec::fixed(200)).setHeight(ui::SizeSpec::fixed(200));
+            editor.onChange([&](const ui::Event &) { seen = curve.points.size(); });
+            h.ui.setRoot(std::move(root));
+            h.frame();
+            h.click(UiHarness::center(editor));
+            CHECK(seen == 3);
+            CHECK(editor.curve().points.size() == 3);
+        }
+    }
+
+    TEST_CASE("ColorWheel and GradientBar: a deferred write never touches the widget destroyed earlier in the frame")
+    {
+        SUBCASE("ColorWheel")
+        {
+            UiHarness h;
+            ui::Color color{1, 0, 0, 1};
+            auto root = std::make_unique<ui::VBox>();
+            auto &box = root->emplace<ui::VBox>();
+            auto &wheel = box.emplace<ui::ColorWheel>(ui::Binding<ui::Color>::ref(color));
+            wheel.setWidth(ui::SizeSpec::fixed(200)).setHeight(ui::SizeSpec::fixed(200));
+            wheel.onHover([&](const ui::Event &e) {
+                if (e.active)
+                    box.clearChildren();
+            });
+            h.ui.setRoot(std::move(root));
+            h.frame();
+            h.press(UiHarness::center(wheel) + glm::vec2(0, 90)); // anneau : teinte 1/4, écriture différée après le survol
+            CHECK(box.children().empty());
+            CHECK(color == ui::Color{1, 0, 0, 1});
+            h.release({1, 1});
+        }
+        SUBCASE("ColorWheel destroyed by its setter")
+        {
+            UiHarness h;
+            ui::Color color{1, 0, 0, 1};
+            auto root = std::make_unique<ui::VBox>();
+            auto &box = root->emplace<ui::VBox>();
+            ui::Binding<ui::Color> binding{[&] { return color; },
+                                           [&](const ui::Color &c) {
+                                               color = c;
+                                               box.clearChildren();
+                                           }};
+            auto &wheel = box.emplace<ui::ColorWheel>(std::move(binding));
+            wheel.setWidth(ui::SizeSpec::fixed(200)).setHeight(ui::SizeSpec::fixed(200));
+            h.ui.setRoot(std::move(root));
+            h.frame();
+            h.press(UiHarness::center(wheel) + glm::vec2(0, 90));
+            CHECK(box.children().empty());
+            CHECK(ui::rgbToHsv(glm::vec3(color)).x == doctest::Approx(0.25f).epsilon(0.02));
+            h.release({1, 1});
+        }
+        SUBCASE("GradientBar")
+        {
+            UiHarness h;
+            ui::Gradient gradient;
+            int changes = 0;
+            auto root = std::make_unique<ui::VBox>();
+            auto &box = root->emplace<ui::VBox>();
+            auto &editor = box.emplace<ui::GradientEditor>(ui::Binding<ui::Gradient>::ref(gradient));
+            editor.setWidth(ui::SizeSpec::fixed(400));
+            editor.onChange([&](const ui::Event &) { ++changes; });
+            ui::Widget &bar = *editor.children()[0];
+            bar.onHover([&](const ui::Event &e) {
+                if (e.active)
+                    box.clearChildren(); // GradientEditor lui-même (son clearChildren ne retire rien) : via son parent
+            });
+            h.viewport = {600, 600};
+            h.ui.setRoot(std::move(root));
+            h.frame();
+            const glm::vec2 at = bar.rect().position + glm::vec2(bar.rect().size.x * 0.5f, 2.0f); // sur la barre, loin des arrêts
+            h.press(at);
+            CHECK(box.children().empty());
+            CHECK(gradient.stops.size() == 2);
+            CHECK(changes == 0);
+            h.release({1, 1});
+        }
+    }
 }

@@ -346,9 +346,15 @@ void ColorWheel::pick(Ui &ui, glm::vec2 mouse)
     if (!value_.writable() || next == current)
         return;
     pending_ = next;
-    ui.defer([this, next] {
-        value_.set(next);
-        pending_.reset();
+    // Un gestionnaire exécuté avant l'écriture (onHover de la même image) a pu détruire la roue : jeton vérifié avant et après
+    // le setter (qui peut lui aussi la retirer). L'écriture précède onChange.
+    ui.defer([this, alive = lifetimeToken(), next] {
+        if (alive.expired())
+            return;
+        const auto set = value_.set; // copie : le setter peut détruire la roue, et donc value_
+        set(next);
+        if (!alive.expired())
+            pending_.reset();
     });
     emit(ui, EventKind::kChange);
 }
@@ -602,9 +608,14 @@ class GradientBar final : public Widget
         if (!owner_->value_.writable()) // liaison en lecture seule : on peut choisir un arrêt, pas le déplacer
             return;
         pending_ = g;
-        ui.defer([this, g] {
-            owner_->value_.set(g);
-            pending_.reset();
+        // La barre appartient à l'éditeur : son jeton couvre aussi la destruction de l'éditeur (voir ColorWheel::pick).
+        ui.defer([this, alive = lifetimeToken(), g] {
+            if (alive.expired())
+                return;
+            const auto set = owner_->value_.set;
+            set(g);
+            if (!alive.expired())
+                pending_.reset();
         });
         owner_->emit(ui, EventKind::kChange);
     }
@@ -670,9 +681,14 @@ void CurveEditor::write(Ui &ui, Curve c)
     if (!value_.writable())
         return;
     pending_ = c;
-    ui.defer([this, c] {
-        value_.set(c);
-        pending_.reset();
+    // Voir ColorWheel::pick : jeton de durée de vie vérifié avant et après le setter ; l'écriture précède onChange.
+    ui.defer([this, alive = lifetimeToken(), c] {
+        if (alive.expired())
+            return;
+        const auto set = value_.set;
+        set(c);
+        if (!alive.expired())
+            pending_.reset();
     });
     emit(ui, EventKind::kChange);
 }
