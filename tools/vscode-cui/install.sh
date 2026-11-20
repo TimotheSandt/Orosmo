@@ -5,12 +5,14 @@ set -eu
 SRC=$(cd "$(dirname "$0")" && pwd)
 VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$SRC/package.json" | head -n 1)
 DEST_ROOT=${1:-"$HOME/.vscode/extensions"}
-DEST="$DEST_ROOT/proceduralgeneration.cui-language-$VERSION"
+DEST="$DEST_ROOT/orosmo.cui-language-$VERSION"
 mkdir -p "$DEST/syntaxes"
 cp "$SRC/package.json" "$SRC/main.js" "$SRC/language-configuration.json" "$DEST/"
 cp "$SRC/syntaxes/cui.tmLanguage.json" "$DEST/syntaxes/"
 echo "CUI extension $VERSION installed in $DEST"
-for old in "$DEST_ROOT"/proceduralgeneration.cui-language-*; do
+# Anciennes versions, dont celles publiées sous l'ancien nom du projet (proceduralgeneration.*).
+for old in "$DEST_ROOT"/orosmo.cui-language-* "$DEST_ROOT"/proceduralgeneration.cui-language-*; do
+    [ -e "$old" ] || continue
     [ "$old" = "$DEST" ] || echo "  an older version is still there: $old (remove it by hand)"
 done
 echo "Reload VS Code (Developer: Reload Window). The compiler is found in tools/cui (make cui-tool) or set cui.toolPath."

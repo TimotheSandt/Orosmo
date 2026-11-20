@@ -1,4 +1,4 @@
-; NSIS script for ProceduralGeneration installer
+; NSIS script of the game installer (PRODUCT_NAME, ICON_NAME, OUTPUT_FILE given by the Makefile)
 ; This bundles the release build and creates an uninstaller
 !if "${ICON_NAME}" != ""
     Icon "..\..\${ICON_NAME}"
@@ -15,7 +15,7 @@ Page instfiles
 
 Section "Install"
   SetOutPath "$INSTDIR"
-  File "..\..\bin\release\ProceduralGeneration.exe"
+  File "..\..\bin\release\${PRODUCT_NAME}.exe"
   File /nonfatal "..\..\bin\release\*.dll"
   File /nonfatal "..\..\bin\release\*.lib"
   File /nonfatal "..\..\bin\release\*.a"
@@ -39,7 +39,7 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
-  ExecWait 'taskkill /f /im ProceduralGeneration.exe' $0
+  ExecWait 'taskkill /f /im ${PRODUCT_NAME}.exe' $0
 
   Delete "$INSTDIR\uninstaller.exe"
   RMDir /r "$INSTDIR"

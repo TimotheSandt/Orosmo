@@ -1,4 +1,4 @@
-# Spécification du moteur ProceduralGeneration
+# Spécification du moteur Orosmo
 
 Ce dossier dit à l'IA **quoi construire**, **comment l'organiser**, **comment travailler avec Git** et **comment prouver que c'est fait**.
 À copier tel quel dans le dépôt, sous `docs/` (et `CLAUDE.md` à la racine).

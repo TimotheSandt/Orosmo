@@ -12,7 +12,7 @@ connaisse un nouveau composant. Le compilateur est cherché dans `tools/cui`, `t
 créé par `engine init`), puis le `PATH` ; réglage `cui.toolPath` sinon.
 
 ```bash
-sh tools/vscode-cui/install.sh          # Linux, macOS : ~/.vscode/extensions/proceduralgeneration.cui-language-<version>
+sh tools/vscode-cui/install.sh          # Linux, macOS : ~/.vscode/extensions/orosmo.cui-language-<version>
 .\tools\vscode-cui\install.ps1          # Windows
 ```
 Puis « Developer: Reload Window ». Journal : commande « CUI: Show the extension log ».

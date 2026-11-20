@@ -1,9 +1,9 @@
 {
   "name": "cui-language",
   "displayName": "CUI Language Support",
-  "description": "Interface language (.cui) of the ProceduralGeneration engine: highlighting, compiler diagnostics (file:line:column), completion and hover from `cui spec`",
+  "description": "Interface language (.cui) of the Orosmo engine: highlighting, compiler diagnostics (file:line:column), completion and hover from `cui spec`",
   "version": "0.3.0",
-  "publisher": "proceduralgeneration",
+  "publisher": "orosmo",
   "engines": {
     "vscode": "^1.80.0"
   },

@@ -1,6 +1,6 @@
-# ProceduralGeneration : règles permanentes
+# Orosmo : règles permanentes
 
-Moteur de jeu 3D et 2D en **C++23**, rendu par une couche d'abstraction (**RHI**) avec backends **Vulkan** (principal), **OpenGL 4.3+** et **Metal** (via MoltenVK d'abord, natif ensuite). Le premier produit visé est un générateur de terrain et de planètes procédural. L'interface s'écrit dans un langage maison précompilé en C++, avec thèmes JSON.
+Orosmo est un moteur de jeu 3D et 2D en **C++23**, rendu par une couche d'abstraction (**RHI**) avec backends **Vulkan** (principal), **OpenGL 4.3+** et **Metal** (via MoltenVK d'abord, natif ensuite). Le premier produit visé est un générateur de terrain et de planètes procédural. L'interface s'écrit dans un langage maison précompilé en C++, avec thèmes JSON.
 
 Lis `docs/` avant tout travail : `01` vision, `02` checklist, `03` architecture, `04` audit, `05` plan.
 

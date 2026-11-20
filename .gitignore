@@ -10,6 +10,12 @@ Generated/
 logs/
 *.log
 imgui.ini
+# Sorties de terrain-gen ou des démos lancées à la racine (relief.png, rhi-demo.png...) : jamais suivies
+/*.png
+/*.exr
+/*.obj
+/*.gltf
+/*.stl
 
 # Engine copied/linked into the demo, per-machine overrides
 /apps/*/engine/

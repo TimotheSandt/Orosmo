@@ -1,4 +1,4 @@
-# Makefile — ProceduralGeneration engine root
+# Makefile — Orosmo engine root
 #
 # ── vcpkg ─────────────────────────────────────────────────────────────────────
 #   make install-deps          install engine vcpkg deps
