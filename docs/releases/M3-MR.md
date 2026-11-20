@@ -9,7 +9,7 @@ et l'exporte (PNG 16 bits, EXR, OBJ, glTF, STL imprimable, biomes). Un nouveau m
 thèmes JSON rechargés à chaud, paramètres réfléchis affichés automatiquement) est piloté par le **langage d'interface**, dont le
 compilateur produit maintenant du code `engine::ui` avec événements nommés, liaisons dans les deux sens et erreurs
 `fichier:ligne:colonne`. Deux outils : `terrain-gen` (sans fenêtre) et le **visualiseur** (panneau `.cui`, préréglages, thème
-clair/sombre en direct, export). Le paquet de release contient shaders, ressources et exemples ; `engine init` est vérifié de bout
+clair/sombre en direct, export). Le paquet de release contient shaders, ressources et exemples ; `orosmo init` est vérifié de bout
 en bout. Détail : `docs/releases/M3.md`.
 
 M2 (PR #7) est déjà fusionné dans `main` ; la 3e passe de CodeRabbit sur M2 est relevée dans `docs/GAPS.md` (G104), non
