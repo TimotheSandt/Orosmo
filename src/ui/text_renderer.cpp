@@ -1,5 +1,7 @@
 #include "orosmo/ui/text_renderer.hpp"
 
+#include "orosmo/ui/font.hpp"
+
 #include <orosmo/core/log.hpp>
 
 #include <algorithm>
@@ -80,55 +82,13 @@ float GetVisibleDescenderPixels(const Character &character)
     return std::max(0.0f, static_cast<float>(character.size.y - character.bearing.y - MsdfPaddingPixels));
 }
 
-// Point de code UTF-8 qui commence à `index` ; `index` avance après lui. Une séquence invalide donne U+FFFD sur un octet.
+// Point de code UTF-8 qui commence à `index` ; `index` avance après lui. Une séquence invalide donne U+FFFD sur un octet (mêmes
+// unités que l'édition : utf8Decode, font.hpp).
 char32_t NextCodepoint(const std::string &text, std::size_t &index)
 {
-    const auto b0 = static_cast<unsigned char>(text[index]);
-    std::size_t n = 1;
-    char32_t cp = b0;
-    if (b0 >= 0xF0U && b0 < 0xF8U)
-    {
-        n = 4;
-        cp = b0 & 0x07U;
-    }
-    else if (b0 >= 0xE0U)
-    {
-        n = 3;
-        cp = b0 & 0x0FU;
-    }
-    else if (b0 >= 0xC0U)
-    {
-        n = 2;
-        cp = b0 & 0x1FU;
-    }
-    else if (b0 >= 0x80U)
-    {
-        ++index;
-        return 0xFFFD;
-    }
-    if (index + n > text.size())
-    {
-        ++index;
-        return 0xFFFD;
-    }
-    for (std::size_t k = 1; k < n; ++k)
-    {
-        const auto b = static_cast<unsigned char>(text[index + k]);
-        if ((b & 0xC0U) != 0x80U)
-        {
-            ++index;
-            return 0xFFFD;
-        }
-        cp = (cp << 6U) | (b & 0x3FU);
-    }
-    // Forme la plus courte seulement (C0 AF n'est pas « / »), ni demi-code de substitution, ni valeur au-delà de U+10FFFF.
-    static constexpr char32_t kMinimum[] = {0, 0, 0x80U, 0x800U, 0x10000U};
-    if (cp < kMinimum[n] || (cp >= 0xD800U && cp <= 0xDFFFU) || cp > 0x10FFFFU)
-    {
-        ++index;
-        return 0xFFFD;
-    }
-    index += n;
+    std::size_t length = 1;
+    const char32_t cp = utf8Decode(text, index, length);
+    index += length;
     return cp;
 }
 
@@ -732,6 +692,11 @@ glm::vec2 TextRenderer::calculateAnchorOffset(const std::string &text, float sca
 
 void TextRenderer::renderText(const std::string &text, float x, float y, float scale, const glm::vec3 &color, TextAnchor anchor)
 {
+    renderText(text, x, y, scale, glm::vec4(color, 1.0f), anchor);
+}
+
+void TextRenderer::renderText(const std::string &text, float x, float y, float scale, const glm::vec4 &color, TextAnchor anchor)
+{
     // Sans liste de dessin donnée (`setDrawListSink`), il n'y a nulle part où produire les glyphes.
     if (fontRegistrations.empty() || activeFontName.empty() || drawSink == nullptr)
     {
@@ -830,7 +795,8 @@ void TextRenderer::renderText(const std::string &text, float x, float y, float s
     orosmo::renderer::DrawGlyphs run;
     run.atlas = fontData.atlas;
     run.vertices = batchedVertices;
-    run.color = color;
+    run.color = glm::vec3(color);
+    run.alpha = color.a;
     run.msdfPixelRange = MsdfPixelRange;
     run.msdfWeight = msdfWeight;
     drawSink->glyphs(std::move(run));

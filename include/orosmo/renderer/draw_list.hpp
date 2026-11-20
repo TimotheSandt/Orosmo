@@ -5,7 +5,6 @@
 
 #include <glm/glm.hpp>
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -29,12 +28,9 @@ struct AtlasImage
     std::vector<std::uint8_t> rgba; // width * height * 4 ; la ligne i correspond à v = i / height (la ligne 0 à v = 0)
 };
 
-// Identifiant neuf pour une `AtlasImage` (atlas de glyphes, images de thème) : unique dans le processus.
-inline std::uint64_t newAtlasId() noexcept
-{
-    static std::atomic<std::uint64_t> next{1};
-    return next.fetch_add(1);
-}
+// Identifiant neuf pour une `AtlasImage` (atlas de glyphes, images de thème) : unique dans le processus, jamais 0 (compteur
+// atomique défini dans src/renderer/draw_list.cpp).
+std::uint64_t newAtlasId() noexcept;
 
 // Rectangle plein. Forme facultative (UI-07) : coins arrondis (`radius`), bordure intérieure (`borderWidth`, `borderColor`) et
 // bord adouci sur `softness` pixels (ombre portée : rectangle agrandi de `softness`, plein au centre, transparent au bord). Sans
@@ -58,12 +54,14 @@ struct DrawClearRect
     glm::vec4 color{0.0f};
 };
 
-// Triangles de glyphes : 4 flottants par sommet (x, y en pixels logiques ; u, v dans l'atlas), 6 sommets par glyphe.
+// Triangles de glyphes : 4 flottants par sommet (x, y en pixels logiques ; u, v dans l'atlas), 6 sommets par glyphe. Couleur
+// `color` ; `alpha` multiplie la couverture du glyphe (1 par défaut : un producteur qui ne donne qu'une couleur RGB reste opaque).
 struct DrawGlyphs
 {
     std::shared_ptr<const AtlasImage> atlas;
     std::vector<float> vertices;
     glm::vec3 color{1.0f};
+    float alpha = 1.0f;
     float msdfPixelRange = 8.0f;
     float msdfWeight = 0.0f;
 };

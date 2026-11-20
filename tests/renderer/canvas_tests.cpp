@@ -8,6 +8,7 @@
 
 #include <orosmo/renderer/canvas_renderer.hpp>
 
+#include <cstdlib>
 #include <limits>
 
 namespace rd = orosmo::renderer;
@@ -261,6 +262,31 @@ TEST_SUITE("renderer/canvas")
         rd::DrawList bad = listOf();
         bad.glyphs(run);
         CHECK((tests::errorOf(c.render(bad)) == ErrorCode::kInvalidArgument));
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("glyph runs keep their alpha up to the shader; without alpha they stay opaque")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        auto atlas = std::make_shared<rd::AtlasImage>();
+        atlas->id = rd::newAtlasId();
+        atlas->width = 2;
+        atlas->height = 2;
+        atlas->rgba.assign(16, 255); // couverture 1 partout
+        rd::DrawGlyphs run;
+        run.atlas = atlas;
+        run.color = {0.0f, 0.0f, 1.0f};
+        CHECK(run.alpha == 1.0f); // défaut : une couleur RGB seule est opaque
+        run.vertices = {4, 4, 0, 0, 4, 12, 0, 1, 12, 12, 1, 1, 4, 4, 0, 0, 12, 12, 1, 1, 12, 4, 1, 0};
+        run.alpha = 0.5f;
+        rd::DrawList l = listOf();
+        l.glyphs(run);
+        REQUIRE(c.render(l).has_value());
+        const Px half = c.px(8, 8); // bleu à moitié sur le vert : (0, ~128, ~128) ; avant, le bleu était opaque
+        CHECK(half[0] == 0);
+        CHECK(std::abs(int(half[1]) - 128) <= 2);
+        CHECK(std::abs(int(half[2]) - 128) <= 2);
         c.gpu.expectNoValidationErrors();
     }
 

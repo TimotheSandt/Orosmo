@@ -117,8 +117,10 @@ class TextRenderer
     void updateScreenSize(unsigned int width, unsigned int height);
 
     // === RENDU SIMPLE ===
+    // Couleur RGB : opaque (alpha 1). Couleur RGBA : l'alpha multiplie la couverture des glyphes (DrawGlyphs::alpha).
     void renderText(const std::string &text, float x, float y, float scale = 1.0f, const glm::vec3 &color = glm::vec3(1.0f),
                     TextAnchor anchor = TextAnchor::TopLeft);
+    void renderText(const std::string &text, float x, float y, float scale, const glm::vec4 &color, TextAnchor anchor = TextAnchor::TopLeft);
 
     // === RENDU AVANCÉ AVEC LAYOUT ===
     // Liste de dessin (UI-02) : `renderText` et `renderTextAdvanced` y ajoutent des séries de glyphes (le dessin est fait par
