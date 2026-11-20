@@ -471,7 +471,7 @@ endif
 	@if [ ! -e apps/demo/orosmo/vcpkg_installed ]; then \
 	    if [ "$(DETECTED_OS)" = "Windows" ]; then \
 	        TARGET=$$(cd "$(VCPKG_INSTALLED_ROOT)" && pwd -W 2>/dev/null || echo "$(VCPKG_INSTALLED_ROOT)"); \
-	        MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\engine\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
+	        MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\orosmo\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
 	            || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
 	    else \
 	        ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
@@ -491,7 +491,7 @@ else
 endif
 	@if [ "$(DETECTED_OS)" = "Windows" ]; then \
 	    TARGET=$$(cd "$(VCPKG_INSTALLED_ROOT)" && pwd -W 2>/dev/null || echo "$(VCPKG_INSTALLED_ROOT)"); \
-	    MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\engine\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
+	    MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\orosmo\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
 	        || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
 	else \
 	    ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
