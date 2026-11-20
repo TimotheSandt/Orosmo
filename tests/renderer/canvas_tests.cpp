@@ -137,6 +137,26 @@ TEST_SUITE("renderer/canvas")
         c.gpu.expectNoValidationErrors();
     }
 
+    TEST_CASE("UI-07: a border over a transparent interior blends in premultiplied space (white stays white at the transition)")
+    {
+        Canvas c(32);
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList l = listOf(32.0f);
+        // Intérieur transparent, bordure blanche opaque de 1,5 px : le pixel x = 1 est à moitié dans la bordure.
+        l.rect(rd::DrawRect{.position = {0, 0}, .size = {16, 16}, .color = {0, 0, 0, 0}, .borderWidth = 1.5f, .borderColor = {1, 1, 1, 1}});
+        auto encoder = c.gpu->createCommandEncoder();
+        REQUIRE(c.canvas->render(*encoder, l, c.canvasTarget(32), false).has_value());
+        REQUIRE(c.gpu->submit(std::move(encoder)).has_value());
+        const Px edge = c.px(1, 8, 32);
+        INFO("pixel de transition : ", int(edge[0]), ",", int(edge[1]), ",", int(edge[2]), ",", int(edge[3]));
+        CHECK(edge[3] > 100); // à moitié couvert
+        CHECK(edge[3] < 160);
+        // Blanc à moitié couvert, posé sur du transparent : rouge = alpha (avant : la moitié, la couleur mélangée au noir
+        // transparent était multipliée une seconde fois par l'alpha).
+        CHECK(std::abs(int(edge[0]) - int(edge[3])) <= 8);
+        c.gpu.expectNoValidationErrors();
+    }
+
     TEST_CASE("UI-07: images are sampled and multiplied by the tint; one command holds several quads")
     {
         Canvas c(16);
