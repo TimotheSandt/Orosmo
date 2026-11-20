@@ -293,8 +293,11 @@ type Diag = (usize, usize, String);
 
 // ── Expressions ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
+// Toujours un littéral flottant C++ : un point décimal ou un exposant (1e20 écrit en entier serait un entier trop grand).
 fn cpp_number(value: f64) -> String {
-    if value.fract() == 0.0 && value.abs() < 1e15 {
+    if value.abs() >= 1e15 {
+        format!("{value:e}")
+    } else if value.fract() == 0.0 {
         format!("{value:.1}")
     } else {
         format!("{value}")
@@ -524,6 +527,10 @@ impl<'a> Gen<'a> {
         let Some(comp) = component(&element.name) else {
             let names = known_list(COMPONENTS.iter().filter(|c| c.name != "Page").map(|c| c.name));
             self.err(element.line, element.col, format!("unknown component '{}' (components: {names})", element.name));
+            // Les descendants sont vérifiés quand même (leurs erreurs sont indépendantes) ; rien n'est écrit en cas d'erreur.
+            for child in &element.children {
+                let _ = self.element(child, None);
+            }
             return None;
         };
         if comp.name == "Page" && parent != Some("Tabs") {
@@ -601,7 +608,16 @@ impl<'a> Gen<'a> {
         }
 
         let ctor = match comp.name {
-            "Grid" => format!("std::make_unique<engine::ui::Grid>(static_cast<int>({}))", a[0]),
+            "Grid" => {
+                // Nombre de colonnes : entier de 1 à 256 ; un littéral hors plage est refusé, une expression est bornée avant la
+                // conversion en int (une conversion d'un double hors de la plage d'int est indéfinie).
+                if let Some(Expr::Number(n)) = &args[0] {
+                    if n.fract() != 0.0 || !(1.0..=256.0).contains(n) {
+                        self.err(element.line, element.col, "'Grid' columns must be an integer from 1 to 256");
+                    }
+                }
+                format!("std::make_unique<engine::ui::Grid>(static_cast<int>(std::clamp(static_cast<double>({}), 1.0, 256.0)))", a[0])
+            }
             "Tabs" if args[0].is_some() => format!("std::make_unique<engine::ui::Tabs>({})", a[0]),
             "Section" => format!("std::make_unique<engine::ui::Section>({}, {})", a[0], a[1]),
             "Label" | "Button" => format!("std::make_unique<engine::ui::{}>()", comp.name),
@@ -730,6 +746,9 @@ impl<'a> Gen<'a> {
                 }
             }
             "margin" => {
+                if m.args.len() > 1 {
+                    return self.err(line, col, "'.margin' takes one value; for two axes write .margin(horizontal: h, vertical: v)");
+                }
                 if let Some(first) = m.args.first() {
                     match expr_cpp(first, &self.scope) {
                         Ok(v) => self.emit(format!("{var}->setMargin(engine::ui::Insets::all(static_cast<float>({v})));")),
@@ -778,6 +797,9 @@ impl<'a> Gen<'a> {
                         }
                     }
                 };
+                if m.args.len() > 1 {
+                    return self.err(line, col, "'.align' takes one value; for two axes write .align(x: .start, y: .end)");
+                }
                 if let Some(first) = m.args.first() {
                     if let Some(a) = align(self, first) {
                         self.emit(format!("{var}->alignX = {a};"));
@@ -909,8 +931,8 @@ impl<'a> Gen<'a> {
                 }
             }
             "range" => {
-                if m.args.len() != 2 {
-                    return self.err(line, col, "'.range' takes two numbers (min, max)");
+                if m.args.len() != 2 || !m.named_args.is_empty() {
+                    return self.err(line, col, "'.range' takes two numbers (min, max), without names");
                 }
                 match (expr_cpp(&m.args[0], &self.scope), expr_cpp(&m.args[1], &self.scope)) {
                     (Ok(lo), Ok(hi)) => self.emit(format!("{var}->setRange(static_cast<float>({lo}), static_cast<float>({hi}));")),
@@ -1005,6 +1027,7 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Vali
         header.push(format!("#include \"{}\"", import.path));
     }
     header.push(String::new());
+    header.push("#include <algorithm>".into());
     header.push("#include <memory>".into());
     header.push("#include <string>".into());
     header.push("#include <vector>".into());
@@ -1028,9 +1051,23 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Vali
         let mut helper_assign = Vec::new();
         let mut locals = Vec::new();
         for field in &view.fields {
+            // Préfixe réservé au code généré (cui_ui, cui_view, cui_w0...) : un champ ou une constante de ce nom y entrerait en
+            // collision ; `view` et les autres noms restent libres.
+            let declared = match field {
+                ViewField::Wrapped(w) => Some((w.name.as_str(), w.line, w.col)),
+                ViewField::Let(l) => Some((l.name.as_str(), l.line, l.col)),
+                _ => None,
+            };
+            if let Some((name, line, col)) = declared {
+                if name.starts_with("cui_") {
+                    diags.push((line, col, format!("'{name}': names starting with 'cui_' are reserved for the generated code")));
+                }
+            }
             match field {
                 ViewField::Wrapped(w) => {
                     let ty = cpp_type(&w.type_name);
+                    // Le type écrit dans l'en-tête est rapporté à la ligne du .cui (une erreur C++ « type inconnu » y renvoie).
+                    members.push(format!("#line {} \"{file_for_line}\"", w.line.max(1)));
                     match w.wrapper.as_str() {
                         "@Mutable" | "@Observed" => {
                             let constness = if w.wrapper == "@Observed" { "const " } else { "" };
@@ -1039,7 +1076,7 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Vali
                             }
                             members.push(format!("    {constness}{ty} *{} = nullptr;", w.name));
                             helper_params.push(format!("{constness}{ty} &{}", w.name));
-                            helper_assign.push(format!("view.{0} = &{0};", w.name));
+                            helper_assign.push(format!("cui_view.{0} = &{0};", w.name));
                             locals.push(format!("    [[maybe_unused]] {constness}{ty} *const {0} = this->{0};", w.name));
                         }
                         "@Snapshot" => {
@@ -1055,7 +1092,7 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Vali
                             };
                             members.push(format!("    {ty} {}{init};", w.name));
                             helper_params.push(format!("{ty} {}", w.name));
-                            helper_assign.push(format!("view.{0} = std::move({0});", w.name));
+                            helper_assign.push(format!("cui_view.{0} = std::move({0});", w.name));
                             locals.push(format!("    [[maybe_unused]] const auto {0} = this->{0};", w.name));
                         }
                         other => diags.push((
@@ -1124,11 +1161,11 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Vali
             helper_params.join(", ")
         ));
         header.push("{".into());
-        header.push(format!("    {} view;", view.name));
+        header.push(format!("    {} cui_view;", view.name));
         for a in &helper_assign {
             header.push(format!("    {a}"));
         }
-        header.push("    return view.build(cui_ui);".into());
+        header.push("    return cui_view.build(cui_ui);".into());
         header.push("}".into());
 
         source.push(String::new());

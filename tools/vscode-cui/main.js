@@ -12,7 +12,7 @@ const DEBOUNCE_MS = 400;
 /** @type {vscode.DiagnosticCollection} */ let diagnostics;
 /** @type {vscode.OutputChannel} */ let output;
 const timers = new Map();
-let specCache = null; // { tool, spec }
+let specCache = null; // { tool, stamp, spec }
 let themeCache = null; // { at, tokens: Set, images: Set }
 
 function log(msg) {
@@ -69,18 +69,30 @@ function run(tool, args, input) {
     });
 }
 
+// Spécification mise en cache par chemin ET date de modification du compilateur : une reconstruction au même chemin est relue ;
+// un échec n'est pas gardé (nouvel essai au prochain appel, par exemple après « make cui-tool »).
+function toolStamp(tool) {
+    try {
+        return fs.statSync(tool).mtimeMs;
+    } catch {
+        return -1;
+    }
+}
+
 async function spec() {
     const tool = resolveTool();
-    if (specCache && specCache.tool === tool) return specCache.spec;
+    const stamp = toolStamp(tool);
+    if (specCache && specCache.tool === tool && specCache.stamp === stamp) return specCache.spec;
     const r = await run(tool, ["spec"]);
     try {
-        specCache = { tool, spec: JSON.parse(r.stdout) };
+        specCache = { tool, stamp, spec: JSON.parse(r.stdout) };
         log(`spec: ${specCache.spec.components.length} components from ${tool}`);
+        return specCache.spec;
     } catch {
         log(`spec: unavailable from ${tool} (${r.stderr.trim() || "no output"}) - rebuild cui (make cui-tool)`);
-        specCache = { tool, spec: { components: [], modifiers: [], styleProperties: [], alignments: [], sizes: [], wrappers: [] } };
+        specCache = null;
+        return { components: [], modifiers: [], styleProperties: [], alignments: [], sizes: [], wrappers: [] };
     }
-    return specCache.spec;
 }
 
 let warnedMissingTool = false;
@@ -91,7 +103,10 @@ async function check(doc) {
     const registry = resolveRegistry();
     if (registry && fs.existsSync(registry)) args.push("--registry", registry);
     args.push(doc.fileName);
+    const version = doc.version;
     const r = await run(tool, args, doc.getText());
+    // Un contrôle plus récent a pu finir avant celui-ci, ou le document a été fermé : ce résultat est périmé.
+    if (doc.isClosed || doc.version !== version) return;
     if (r.code === -1) {
         if (!warnedMissingTool) {
             warnedMissingTool = true;

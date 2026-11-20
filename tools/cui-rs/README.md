@@ -8,21 +8,23 @@ Native implementation of the `.cui` DSL precompiler. It replaces the legacy Pyth
 make cui-tool
 ```
 
-or directly:
+`make cui-tool` installs the binary as `tools/cui` (`tools/cui.exe` on Windows). A direct Cargo build of the workspace:
 
 ```sh
-cargo build --release --manifest-path tools/cui-rs/Cargo.toml
+cargo build --release --manifest-path tools/Cargo.toml -p cui
 ```
 
-The resulting binary is `tools/cui-rs/target/release/cui` (`cui.exe` on Windows).
+writes it to `tools/target/release/cui` instead.
 
 ## Usage
 
 ```sh
-tools/cui-rs/target/release/cui scan --headers include --output Generated/registry.json
-tools/cui-rs/target/release/cui run --headers include --output Generated apps/demo/src/UI/Views/PerformanceView.cui
-tools/cui-rs/target/release/cui check --registry Generated/registry.json apps/demo/src/UI/Views/PerformanceView.cui
+tools/cui scan --headers include --output Generated/registry.json
+tools/cui run --headers include --output Generated apps/demo/src/UI/Views/PerformanceView.cui
+tools/cui check --registry Generated/registry.json apps/demo/src/UI/Views/PerformanceView.cui
 ```
+
+Names starting with `cui_` are reserved for the generated code (a field or a `let` with such a name is refused).
 
 ## Targets and tests
 
