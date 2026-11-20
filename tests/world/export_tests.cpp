@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -103,6 +104,16 @@ TEST_SUITE("world/export")
         CHECK(field.originZ == 64.0f);
         orosmo::core::TaskSystem tasks(3);
         CHECK(w::generateRegion(p, 9, -40, 7, 64, 48, &tasks).heights == w::generateRegion(p, 9, -40, 7, 64, 48).heights);
+
+        // Dernier indice global hors de std::int64_t : région vide (rien d'alloué ni calculé), refusée par les exports.
+        constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
+        const w::HeightField overflow = w::generateRegion(p, 9, kMax - 1, 0, 3, 2, &tasks);
+        CHECK(overflow.width == 0);
+        CHECK(overflow.heights.empty());
+        CHECK(w::generateRegion(p, 9, 0, kMax, 2, 2).heights.empty());
+        CHECK(w::generateRegion(p, 9, kMax - 2, kMax - 1, 3, 2).heights.size() == 6); // dernier indice = kMax : accepté
+        tests::TempDir dir("engine_export");
+        CHECK((tests::errorOf(w::writeHeightExr(dir.path / "o.exr", overflow)) == orosmo::core::ErrorCode::kInvalidArgument));
     }
 
     TEST_CASE("PNG 16 bits: reopened by an independent decoder (stb), same quantized heights, same bytes at each export")

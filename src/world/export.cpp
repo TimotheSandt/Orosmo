@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -220,9 +221,17 @@ HeightField generateRegion(const TerrainParams &params, std::uint32_t seed, std:
                            std::uint32_t height, core::TaskSystem *tasks)
 {
     HeightField f;
+    f.spacing = params.sampleSpacing;
+    // Le dernier indice global (first + n - 1) doit être représentable AVANT toute allocation ou tâche : sinon région vide, que
+    // chaque export refuse (kInvalidArgument).
+    auto fits = [](std::int64_t first, std::uint32_t n)
+    { return n == 0 || first <= std::numeric_limits<std::int64_t>::max() - static_cast<std::int64_t>(n - 1); };
+    if (!fits(firstX, width) || !fits(firstZ, height))
+    {
+        return f;
+    }
     f.width = width;
     f.height = height;
-    f.spacing = params.sampleSpacing;
     auto position = [&](std::int64_t global) { return static_cast<float>(static_cast<double>(global) * static_cast<double>(params.sampleSpacing)); };
     f.originX = position(firstX);
     f.originZ = position(firstZ);

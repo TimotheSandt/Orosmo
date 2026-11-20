@@ -49,7 +49,8 @@ private:
 };
 
 // Génère `width` x `height` échantillons à partir de l'échantillon global (firstX, firstZ). `tasks` (facultatif) parallélise par
-// rangée ; le résultat ne dépend pas du nombre de threads.
+// rangée ; le résultat ne dépend pas du nombre de threads. Si le dernier indice global (firstX + width - 1 ou firstZ + height - 1)
+// dépasse std::int64_t, la région est vide (width = height = 0, rien d'alloué) et chaque export la refuse (kInvalidArgument).
 HeightField generateRegion(const TerrainParams &params, std::uint32_t seed, std::int64_t firstX, std::int64_t firstZ, std::uint32_t width,
                            std::uint32_t height, core::TaskSystem *tasks = nullptr);
 
