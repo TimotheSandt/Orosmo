@@ -41,6 +41,7 @@ struct RawKeyPress
     int key;
     bool repeat;
     int mods;
+    std::size_t textBefore; // octets de texte saisis avant cet appui depuis le dernier Update (ordre texte / touches)
 };
 std::unordered_map<void *, std::vector<RawKeyPress>> &pendingKeys()
 {
@@ -95,7 +96,7 @@ InputManager::InputManager(void *nativeWindow) : window(nativeWindow)
                            [](GLFWwindow *w, int key, int, int action, int mods)
                            {
                                if (action == GLFW_PRESS || action == GLFW_REPEAT)
-                                   pendingKeys()[w].push_back({key, action == GLFW_REPEAT, mods});
+                                   pendingKeys()[w].push_back({key, action == GLFW_REPEAT, mods, pendingText()[w].size()});
                            });
     }
     Init();
@@ -224,7 +225,7 @@ void InputManager::Update()
                     if (code == raw.key)
                     {
                         this->keyPresses.push_back({button, raw.repeat, (raw.mods & GLFW_MOD_SHIFT) != 0, (raw.mods & GLFW_MOD_CONTROL) != 0,
-                                                    (raw.mods & GLFW_MOD_ALT) != 0, (raw.mods & GLFW_MOD_SUPER) != 0});
+                                                    (raw.mods & GLFW_MOD_ALT) != 0, (raw.mods & GLFW_MOD_SUPER) != 0, raw.textBefore});
                         break;
                     }
                 }

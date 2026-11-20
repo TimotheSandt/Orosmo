@@ -112,8 +112,11 @@ void Checkbox::toggle(Ui &ui)
     {
         return;
     }
-    const bool next = !checked();
-    ui.defer([set = value_.set, next] { set(next); });
+    // Valeur en attente : deux bascules dans la même image partent de la valeur déjà programmée, pas de l'ancienne.
+    const bool next = !(hasPending_ ? pending_ : checked());
+    pending_ = next;
+    hasPending_ = true;
+    ui.defer([set = value_.set, next] { set(next); }); // écrite à la fin de l'image ; hasPending_ retombe à la mise en page
     emit(ui, EventKind::kChange);
 }
 
@@ -136,6 +139,7 @@ void Checkbox::onKey(Ui &ui, int key)
 
 glm::vec2 Checkbox::measureContent(Ui &ui, glm::vec2, const Style &style)
 {
+    hasPending_ = false; // la mise en page suit l'écriture des actions différées : la valeur liée est à jour
     const glm::vec2 text = ui.font().measure(text_, style.fontSize, style.font.get());
     const float box = style.width;
     return {box + (text_.empty() ? 0.0f : style.spacing + text.x), std::max(box, lineHeight(ui, style))};
@@ -173,7 +177,7 @@ double Slider::value() const { return hasPending_ ? pending_ : value_.value(); }
 double Slider::quantize(double v) const
 {
     v = std::clamp(v, min_, max_);
-    if (step_ > 0.0)
+    if (step_ > 0.0 && v < max_) // les deux bornes restent atteignables (pas de 0.3 sur [0, 1] : Fin donne 1, pas 0.9)
     {
         v = min_ + std::round((v - min_) / step_) * step_;
         v = std::clamp(v, min_, max_);
@@ -307,10 +311,18 @@ class DropdownItem final : public Widget
     bool interactive() const override { return true; }
     void onRelease(Ui &ui, glm::vec2, bool inside) override
     {
-        if (inside)
+        if (!inside)
         {
-            owner_->choose(ui, index_);
+            return;
         }
+        // Les options ont pu changer depuis l'ouverture : un indice qui désigne une autre option que celle affichée est refusé.
+        const std::vector<std::string> now = owner_->options();
+        if (index_ >= static_cast<int>(now.size()) || now[static_cast<std::size_t>(index_)] != text_)
+        {
+            ui.closePopup();
+            return;
+        }
+        owner_->choose(ui, index_);
     }
 
   protected:
@@ -633,7 +645,7 @@ std::string NumberField::current() const
     }
     char buffer[64];
     // Écriture la plus courte qui relit la même valeur en float (les paramètres sont des float) : 0.35 et non 0.3499999940.
-    auto [end, ec] = std::to_chars(buffer, buffer + sizeof buffer, static_cast<float>(v));
+    auto [end, ec] = doublePrecision_ ? std::to_chars(buffer, buffer + sizeof buffer, v) : std::to_chars(buffer, buffer + sizeof buffer, static_cast<float>(v));
     return ec == std::errc() ? std::string(buffer, end) : formatNumber(v, 6);
 }
 
@@ -658,13 +670,13 @@ bool NumberField::commit(Ui &ui, const std::string &text)
         ++begin;
     }
     auto [ptr, ec] = std::from_chars(begin, end, v);
+    if (integer_)
+    {
+        v = std::round(v); // avant le contrôle des bornes : 2.5 dans [0, 2.5] deviendrait 3
+    }
     if (ec != std::errc() || ptr != end || !std::isfinite(v) || v < min_ || v > max_)
     {
         return false;
-    }
-    if (integer_)
-    {
-        v = std::round(v);
     }
     if (v == number_.value())
     {
@@ -685,7 +697,7 @@ ColorPicker::ColorPicker(Binding<Color> value, bool alpha) : Widget("colorPicker
     {
         Binding<double> channel;
         channel.get = [get = value_.get, i] { return get ? static_cast<double>(get()[i]) : 0.0; };
-        if (value_.writable())
+        if (value_.writable() && value_.get) // éditer un canal relit les autres : il faut aussi un getter
         {
             channel.set = [b = value_, i](const double &v)
             {

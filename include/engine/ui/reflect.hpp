@@ -16,6 +16,7 @@
 #include "engine/ui/widgets.hpp"
 
 #include <cctype>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
@@ -72,9 +73,18 @@ template <typename M> std::unique_ptr<Widget> reflectedControl(M &member, const 
     else if constexpr (std::is_enum_v<M>)
     {
         using U = std::underlying_type_t<M>;
+        // Valeurs représentables par le type sous-jacent seulement (bornes du champ et contrôle à l'écriture : une conversion
+        // hors de U serait indéfinie).
+        const double lo = static_cast<double>(std::numeric_limits<U>::lowest());
+        const double above = std::ldexp(1.0, std::numeric_limits<U>::digits);
         Binding<double> b{[p = &member] { return static_cast<double>(static_cast<U>(*p)); },
-                          [p = &member](const double &v) { *p = static_cast<M>(static_cast<U>(v)); }};
-        return std::make_unique<NumberField>(std::move(b), true);
+                          [p = &member, lo, above](const double &v)
+                          {
+                              const double r = std::round(v);
+                              if (r >= lo && r < above)
+                                  *p = static_cast<M>(static_cast<U>(r));
+                          }};
+        return std::make_unique<NumberField>(std::move(b), true, lo, above - 1.0);
     }
     else if constexpr (std::is_integral_v<M>)
     {
@@ -87,7 +97,9 @@ template <typename M> std::unique_ptr<Widget> reflectedControl(M &member, const 
     {
         if (range.bounded)
             return std::make_unique<Slider>(numberBinding(member), range.min, range.max);
-        return std::make_unique<NumberField>(numberBinding(member), false);
+        auto field = std::make_unique<NumberField>(numberBinding(member), false);
+        field->setDoublePrecision(std::is_same_v<M, double>); // un double ne repasse pas par float (16777217 resterait 16777216)
+        return field;
     }
     else if constexpr (std::is_same_v<M, std::string>)
     {

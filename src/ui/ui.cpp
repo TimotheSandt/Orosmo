@@ -819,11 +819,12 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         focus(first ? items.front() : items.back());
         return true;
     };
-    for (int key : input.keys)
+    auto dispatchKey = [&](int key, bool shift)
     {
+        shift_ = shift; // Maj au moment de CET appui (les widgets la lisent par shiftHeld)
         if (key == kKeyTab && !(focused_ != nullptr && focused_->wantsTab()))
         {
-            focusNext(input.shift);
+            focusNext(shift);
         }
         else if ((key == kKeyDown || key == kKeyUp) && !popups_.empty() && !(focused_ != nullptr && inAnyPopup(focused_)) && enterPopup(key == kKeyDown))
         {
@@ -845,18 +846,33 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         {
             modals_.back().owner->onKey(*this, kKeyEscape);
         }
-    }
-    if (!input.text.empty() && focused_ != nullptr)
+    };
+    if (!input.events.empty())
     {
-        focused_->onText(*this, input.text);
+        // Ordre réel de saisie : « a » puis Retour arrière n'est pas Retour arrière puis « a ».
+        for (const InputFrame::Event &e : input.events)
+        {
+            if (e.key != kKeyNone)
+                dispatchKey(e.key, e.shift);
+            else if (!e.text.empty() && focused_ != nullptr)
+                focused_->onText(*this, e.text);
+        }
     }
+    else
+    {
+        for (int key : input.keys)
+            dispatchKey(key, input.shift);
+        if (!input.text.empty() && focused_ != nullptr)
+            focused_->onText(*this, input.text);
+    }
+    shift_ = input.shift;
     for (const std::string &raw : input.shortcuts)
     {
         const std::string s = normalizeShortcut(raw);
         if (s.empty())
             continue;
         // Champ de texte : commandes d'édition (Super sur macOS comme Ctrl ailleurs).
-        if (focused_ != nullptr && focused_->acceptsText())
+        if (focused_ != nullptr && focused_->handlesEditCommands())
         {
             static const std::pair<const char *, int> kEdit[] = {
                 {"Ctrl+A", kKeySelectAll}, {"Ctrl+C", kKeyCopy}, {"Ctrl+X", kKeyCut},        {"Ctrl+V", kKeyPaste},      {"Ctrl+Z", kKeyUndo},

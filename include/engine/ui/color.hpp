@@ -116,6 +116,7 @@ class ColorEditor : public VBox
     VBox *channels_;
     Color original_;
     std::string hex_;
+    float hue_ = 0.0f; // dernière teinte (0..1) choisie ou lue : celle d'un gris n'est pas dans le RGB
 };
 
 // Éditeur de dégradé : la barre du dégradé et ses arrêts ; glisser un arrêt le déplace, cliquer sur la barre en ajoute un (de la

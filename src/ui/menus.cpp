@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace engine::ui
 {
@@ -317,6 +318,9 @@ bool ContextMenu::openContextMenu(Ui &ui, glm::vec2 mouse)
 
 namespace
 {
+// Barre de couleur à gauche d'une notification : même largeur à la mesure et au dessin (style "toast" de base).
+float toastBar(const Style &toast) { return std::max(3.0f, toast.width * 0.25f); }
+
 const char *toastStyle(NotificationKind kind)
 {
     switch (kind)
@@ -348,7 +352,7 @@ glm::vec2 Notifications::measureContent(Ui &ui, glm::vec2 available, const Style
     float widest = 0.0f;
     for (const Notification &n : queue)
         widest = std::max(widest, ui.font().measure(n.text, toast.fontSize, toast.font.get()).x);
-    const float w = width_ > 0.0f ? width_ : std::min(widest + 2.0f * toast.padding + toast.width * 0.5f, available.x);
+    const float w = width_ > 0.0f ? width_ : std::min(widest + 2.0f * toast.padding + toastBar(toast), available.x);
     return {queue.empty() ? 0.0f : w, heightOf(queue.size())};
 }
 
@@ -368,7 +372,7 @@ void Notifications::drawContent(const Ui &ui, renderer::DrawList &list, const St
             col->a *= fade;
         const Rect r{{c.position.x, y}, {c.size.x, one}};
         drawBox(list, r, s);
-        const float bar = std::max(3.0f, s.width * 0.25f);
+        const float bar = toastBar(base);
         list.rect(renderer::DrawRect{.position = r.position, .size = {bar, r.size.y}, .color = s.accent, .radius = std::min(s.radius, bar * 0.5f)});
         drawText(ui, list, n.text, {{r.position.x + bar + s.padding, r.position.y}, {r.size.x - bar - 2.0f * s.padding, r.size.y}}, s, Align::kStart);
         placed_.push_back({n.id, r});
@@ -391,10 +395,19 @@ DynamicImage::DynamicImage(std::uint32_t width, std::uint32_t height) { resize(w
 
 void DynamicImage::resize(std::uint32_t width, std::uint32_t height)
 {
+    width = std::max(width, 1u);
+    height = std::max(height, 1u);
+    // Octets RGBA8 calculés sans débordement (2^31 x 2^31 x 4 reviendrait à 0) ; une taille impossible garde l'image précédente.
+    if (static_cast<std::size_t>(width) > std::numeric_limits<std::size_t>::max() / 4 / height)
+    {
+        if (!image_)
+            resize(1, 1);
+        return;
+    }
     auto image = std::make_shared<renderer::AtlasImage>();
     image->id = renderer::newAtlasId();
-    image->width = std::max(width, 1u);
-    image->height = std::max(height, 1u);
+    image->width = width;
+    image->height = height;
     image->rgba.assign(static_cast<std::size_t>(image->width) * image->height * 4, 0);
     image_ = std::move(image);
 }

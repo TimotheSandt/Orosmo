@@ -186,6 +186,15 @@ void Grid::computeTracks(Ui &ui, glm::vec2 available, const Style &style)
         {
             continue;
         }
+        // Enfant `fill` sur plusieurs colonnes dont aucune n'est extensible : ses colonnes le deviennent (l'excédent s'y répartit).
+        if (cell.widget->width.mode == SizeMode::kFill)
+        {
+            bool any = false;
+            for (int k = 0; k < cell.span; ++k)
+                any = any || fillColumns_[static_cast<std::size_t>(cell.column + k)];
+            for (int k = 0; !any && k < cell.span; ++k)
+                fillColumns_[static_cast<std::size_t>(cell.column + k)] = true;
+        }
         float spanned = style.spacing * static_cast<float>(cell.span - 1);
         for (int k = 0; k < cell.span; ++k)
         {
@@ -326,7 +335,9 @@ Rect ScrollView::thumb() const
     {
         return {};
     }
-    const float h = std::max(barWidth_ * 2.0f, viewport_.size.y * viewport_.size.y / contentHeight_);
+    // Taille minimale réduite dans une vue courte : le curseur garde toujours une course (il ne dépasse pas de la vue).
+    const float minimum = std::min(barWidth_ * 2.0f, viewport_.size.y * 0.5f);
+    const float h = std::max(minimum, viewport_.size.y * viewport_.size.y / contentHeight_);
     const float y = viewport_.position.y + (viewport_.size.y - h) * (scroll_ / maxScroll_);
     return {{viewport_.end().x - barWidth_, y}, {barWidth_, h}};
 }

@@ -149,19 +149,23 @@ template <typename T> struct Binding
 };
 
 // Liaison numérique (curseur, champ numérique) vers un entier ou un flottant de n'importe quel type : lecture en double, écriture
-// arrondie au plus proche pour un entier (et bornée à son type).
+// arrondie au plus proche pour un entier (et saturée à son type). NaN ne modifie pas la valeur.
 template <typename T> Binding<double> numberBinding(T &value)
 {
     static_assert(std::is_arithmetic_v<T> && !std::is_same_v<T, bool>);
     return {[p = &value] { return static_cast<double>(*p); },
             [p = &value](const double &v)
             {
+                if (std::isnan(v))
+                    return;
                 if constexpr (std::is_integral_v<T>)
                 {
                     const double r = v < 0.0 ? -std::floor(-v + 0.5) : std::floor(v + 0.5);
+                    // Bornes EXACTES en double : lowest() (0 ou -2^n) et 2^n, borne supérieure exclue ; max() converti en double
+                    // pourrait être arrondi à 2^n, qui ne tient plus dans T.
                     const double lo = static_cast<double>(std::numeric_limits<T>::lowest());
-                    const double hi = static_cast<double>(std::numeric_limits<T>::max());
-                    *p = static_cast<T>(r < lo ? lo : (r > hi ? hi : r));
+                    const double above = std::ldexp(1.0, std::numeric_limits<T>::digits);
+                    *p = r < lo ? std::numeric_limits<T>::lowest() : (r >= above ? std::numeric_limits<T>::max() : static_cast<T>(r));
                 }
                 else
                     *p = static_cast<T>(v);
@@ -304,6 +308,8 @@ class Widget
     // Zone où les enfants sont dessinés et cliquables quand clipsChildren() : le rectangle du widget, ou une zone intérieure.
     virtual Rect childClip() const { return rect_; }
     virtual bool acceptsText() const { return false; }  // reçoit la saisie de texte (l'application ne doit pas lire les touches)
+    // Reçoit les commandes d'édition (Ctrl+A / C / X / V / Z / Y) : un éditeur en lecture seule garde la sélection et la copie.
+    virtual bool handlesEditCommands() const { return acceptsText(); }
     virtual void onPress(Ui &ui, glm::vec2 mouse);
     virtual void onDrag(Ui &ui, glm::vec2 mouse);
     virtual void onRelease(Ui &ui, glm::vec2 mouse, bool inside);

@@ -134,8 +134,11 @@ class TextArea : public Widget
 
     bool interactive() const override { return true; }
     bool focusable() const override { return true; }
-    bool acceptsText() const override { return !readOnly_; }
-    bool wantsTab() const override { return !readOnly_; }
+    // Modifiable : ni en lecture seule, ni liée à une valeur sans setter (la modification disparaîtrait à la perte du focus).
+    bool editable() const { return !readOnly_ && value_.writable(); }
+    bool acceptsText() const override { return editable(); }
+    bool handlesEditCommands() const override { return true; } // sélection et copie, même en lecture seule
+    bool wantsTab() const override { return editable(); }
     bool clipsChildren() const override { return true; }
     void onPress(Ui &ui, glm::vec2 mouse) override;
     void onDrag(Ui &ui, glm::vec2 mouse) override;
@@ -146,9 +149,11 @@ class TextArea : public Widget
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
+    void arrange(Ui &ui, const Rect &content, const Style &style) override;
     void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
 
   private:
+    void syncFromBinding(); // tampon <- valeur liée ; un texte différent efface l'historique et ramène le curseur sur un caractère
     // Rangée affichée : une ligne du texte, ou un morceau d'une ligne coupée par le retour automatique.
     struct Line
     {

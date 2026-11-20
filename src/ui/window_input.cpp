@@ -3,6 +3,8 @@
 #include <engine/platform/input_manager.hpp>
 #include <engine/platform/window.hpp>
 
+#include <algorithm>
+
 namespace engine::ui
 {
 
@@ -18,6 +20,15 @@ InputFrame readWindowInput(Window &window, float deltaTime)
     in.text = input.GetTextInput();
     in.shift = input.IsKeyPressed(KeyButton::LEFT_SHIFT) || input.IsKeyPressed(KeyButton::RIGHT_SHIFT) ||
                input.IsKeyJustPressed(KeyButton::LEFT_SHIFT) || input.IsKeyJustPressed(KeyButton::RIGHT_SHIFT);
+    const std::string &typed = in.text;
+    std::size_t textDone = 0;
+    auto flushText = [&](std::size_t upTo)
+    {
+        upTo = std::min(upTo, typed.size());
+        if (upTo > textDone)
+            in.events.push_back({kKeyNone, in.shift, typed.substr(textDone, upTo - textDone)});
+        textDone = std::max(textDone, upTo);
+    };
     for (const KeyPress &press : input.GetKeyPresses())
     {
         // Touches d'édition et de navigation (répétées tant qu'elles sont tenues) ; avec Ctrl, Alt ou Super ce sont des raccourcis.
@@ -44,8 +55,13 @@ InputFrame readWindowInput(Window &window, float deltaTime)
         default: break;
         }
         if (key != kKeyNone)
+        {
             in.keys.push_back(key);
+            flushText(press.textOffset); // le texte saisi avant cette touche passe avant elle
+            in.events.push_back({key, press.shift, {}});
+        }
     }
+    flushText(typed.size());
     in.shortcuts = input.GetShortcuts();
     return in;
 }

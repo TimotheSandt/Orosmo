@@ -93,6 +93,8 @@ class Checkbox : public Widget
     void toggle(Ui &ui);
     std::string text_;
     Binding<bool> value_;
+    bool pending_ = false;    // valeur programmée, pas encore écrite (fin de l'image)
+    bool hasPending_ = false;
 };
 
 class Slider : public Widget
@@ -255,6 +257,8 @@ class NumberField : public TextField
   public:
     NumberField(Binding<double> value, bool integer, double min = -kUnboundedNumber, double max = kUnboundedNumber);
     static constexpr double kUnboundedNumber = 1.0e300;
+    // Affichage : écriture la plus courte qui relit la même valeur en float (défaut, paramètres float) ou en double.
+    NumberField &setDoublePrecision(bool on) noexcept { doublePrecision_ = on; return *this; }
 
   protected:
     bool commit(Ui &ui, const std::string &text) override;
@@ -263,6 +267,7 @@ class NumberField : public TextField
   private:
     Binding<double> number_;
     bool integer_;
+    bool doublePrecision_ = false;
     double min_;
     double max_;
 };

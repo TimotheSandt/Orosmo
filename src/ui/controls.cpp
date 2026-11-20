@@ -11,15 +11,21 @@ namespace engine::ui
 
 namespace
 {
-float lineHeight(const Ui &ui, const Style &style) { return ui.font().measure("Hg", style.fontSize, style.font.get()).y; }
+// Au moins un pixel : un thème avec `fontSize: 0` ne doit pas mener à des divisions par zéro (rangées, pages, souris).
+float lineHeight(const Ui &ui, const Style &style) { return std::max(1.0f, ui.font().measure("Hg", style.fontSize, style.font.get()).y); }
 
-std::string formatValue(double v, double step)
+// Décimales qui représentent exactement le pas ET l'origine de la plage (pas de 0.25 : deux décimales ; 0.1 depuis 0.05 : deux).
+std::string formatValue(double v, double step, double origin = 0.0)
 {
     char buffer[64];
-    if (step > 0.0 && std::abs(step - std::round(step)) < 1e-9)
-        std::snprintf(buffer, sizeof buffer, "%.0f", v);
-    else if (step > 0.0)
-        std::snprintf(buffer, sizeof buffer, "%.*f", std::clamp(static_cast<int>(std::ceil(-std::log10(step) - 1e-9)), 0, 6), v);
+    if (step > 0.0)
+    {
+        auto exact = [](double x, int d) { const double s = x * std::pow(10.0, d); return std::abs(s - std::round(s)) < 1e-6 * std::max(1.0, std::abs(s)); };
+        int decimals = 0;
+        while (decimals < 6 && !(exact(step, decimals) && exact(origin, decimals)))
+            ++decimals;
+        std::snprintf(buffer, sizeof buffer, "%.*f", decimals, v);
+    }
     else
         std::snprintf(buffer, sizeof buffer, "%.4g", v);
     return buffer;
@@ -186,7 +192,7 @@ double RangeSlider::quantize(double v) const
     return v;
 }
 
-std::string RangeSlider::formatted() const { return formatValue(low(), step_) + " - " + formatValue(high(), step_); }
+std::string RangeSlider::formatted() const { return formatValue(low(), step_, min_) + " - " + formatValue(high(), step_, min_); }
 
 float RangeSlider::xOf(const Ui &ui, double v) const
 {
@@ -284,7 +290,7 @@ void RangeSlider::onKey(Ui &ui, int key)
 
 glm::vec2 RangeSlider::measureContent(Ui &ui, glm::vec2, const Style &style)
 {
-    const float w = ui.font().measure(formatValue(max_, step_) + " - " + formatValue(max_, step_), style.fontSize, style.font.get()).x;
+    const float w = ui.font().measure(formatValue(max_, step_, min_) + " - " + formatValue(max_, step_, min_), style.fontSize, style.font.get()).x;
     return {w + 2.0f * style.width, std::max(style.width, lineHeight(ui, style))};
 }
 
@@ -311,6 +317,8 @@ SpinBox::SpinBox(Binding<double> value, double min, double max, double stepSize,
     : Widget("box"), value_(std::move(value)), min_(std::min(min, max)), max_(std::max(min, max)), step_(stepSize > 0.0 ? stepSize : 1.0)
 {
     field_ = &emplace<NumberField>(value_, integer, min_, max_);
+    // Saisie validée dans le champ : même événement que les boutons (NumberField n'émet que pour une valeur acceptée et changée).
+    field_->onChange([this](const Event &) { fire(EventKind::kChange); });
     minus_ = &emplace<Button>("-");
     plus_ = &emplace<Button>("+");
     minus_->onClick([this](const Event &) { if (ui_ != nullptr) this->step(*ui_, -1.0); });
@@ -385,6 +393,8 @@ std::vector<TextArea::Line> TextArea::lines(const Ui &ui, const Style &style) co
                 fit = utf8Length(rest, 0); // au moins un caractère par rangée
             const std::size_t space = rest.substr(0, fit).find_last_of(' ');
             const std::size_t cut = space != std::string_view::npos && space > 0 ? space + 1 : fit;
+            if (start + cut >= end)
+                break; // le reste (un seul caractère trop large) forme la dernière rangée : pas de rangée vide après lui
             out.push_back({start, start + cut, start == begin, false, number});
             start += cut;
         }
@@ -428,6 +438,20 @@ std::size_t TextArea::positionAt(const Ui &ui, glm::vec2 mouse) const
     return l.begin + ui.font().caretIndex(text, s.fontSize, mouse.x - content.position.x - gutter(ui, s), s.font.get());
 }
 
+void TextArea::syncFromBinding()
+{
+    std::string v = value_.value();
+    if (v == edit_.text)
+        return;
+    edit_.text = std::move(v); // changée hors de l'éditeur : l'historique ne s'applique plus
+    edit_.resetHistory();
+    // Le curseur reste dans le texte, sur le début d'un caractère UTF-8 (jamais au milieu de « é »).
+    std::size_t caret = std::min(edit_.caret, edit_.text.size());
+    while (caret > 0 && caret < edit_.text.size() && (static_cast<unsigned char>(edit_.text[caret]) & 0xC0U) == 0x80U)
+        --caret;
+    edit_.caret = edit_.anchor = caret;
+}
+
 void TextArea::changed(Ui &ui)
 {
     // Un éditeur écrit à chaque modification (pas seulement à la validation) : la valeur liée suit la frappe.
@@ -457,12 +481,7 @@ void TextArea::onFocusChanged(Ui &ui, bool focused)
     Widget::onFocusChanged(ui, focused);
     if (focused)
     {
-        if (std::string v = value_.value(); v != edit_.text)
-        {
-            edit_.text = std::move(v); // changée hors de l'éditeur : l'historique ne s'applique plus
-            edit_.resetHistory();
-        }
-        edit_.caret = std::min(edit_.caret, edit_.text.size());
+        syncFromBinding();
         edit_.anchor = edit_.caret;
         syncing_ = false;
     }
@@ -476,7 +495,7 @@ void TextArea::onFocusChanged(Ui &ui, bool focused)
 void TextArea::onPress(Ui &ui, glm::vec2 mouse)
 {
     if (syncing_)
-        edit_.text = value_.value();
+        syncFromBinding();
     edit_.moveTo(positionAt(ui, mouse), ui.shiftHeld());
     desiredX_ = -1.0f;
 }
@@ -485,7 +504,7 @@ void TextArea::onDrag(Ui &ui, glm::vec2 mouse) { edit_.moveTo(positionAt(ui, mou
 
 void TextArea::onText(Ui &ui, std::string_view text)
 {
-    if (readOnly_)
+    if (!editable())
         return;
     std::string clean;
     for (char c : text)
@@ -516,7 +535,10 @@ void TextArea::onKey(Ui &ui, int key)
             desiredX_ = xOf(edit_.caret);
         const Line &l = ls[r];
         const std::string_view text = std::string_view(edit_.text).substr(l.begin, l.end - l.begin);
-        edit_.moveTo(l.begin + ui.font().caretIndex(text, s.fontSize, desiredX_, s.font.get()), extend);
+        std::size_t target = l.begin + ui.font().caretIndex(text, s.fontSize, desiredX_, s.font.get());
+        if (target == l.end && !l.last && target > l.begin) // la fin d'une rangée coupée appartient à la suivante : rester sur celle-ci
+            target = utf8Previous(edit_.text, target);
+        edit_.moveTo(target, extend);
     };
     const float lh = lineHeight(ui, s);
     const auto page = static_cast<std::size_t>(std::max(1.0f, inset(rect_, s.padding).size.y / lh));
@@ -557,7 +579,7 @@ void TextArea::onKey(Ui &ui, int key)
             ui.setClipboardText(edit_.selected());
         break;
     case kKeyCut:
-        if (edit_.hasSelection() && !readOnly_)
+        if (edit_.hasSelection() && editable())
         {
             ui.setClipboardText(edit_.selected());
             edit_.beginEdit(TextEditState::EditKind::kOther);
@@ -566,7 +588,7 @@ void TextArea::onKey(Ui &ui, int key)
         }
         break;
     case kKeyPaste:
-        if (!readOnly_)
+        if (editable())
         {
             edit_.beginEdit(TextEditState::EditKind::kOther);
             edit_.insert(ui.clipboardText());
@@ -574,7 +596,7 @@ void TextArea::onKey(Ui &ui, int key)
         }
         break;
     case kKeyEnter:
-        if (!readOnly_)
+        if (editable())
         {
             edit_.beginEdit(TextEditState::EditKind::kTyping, "\n");
             edit_.insert("\n");
@@ -582,17 +604,17 @@ void TextArea::onKey(Ui &ui, int key)
         }
         break;
     case kKeyTab:
-        if (!readOnly_)
+        if (editable())
         {
             edit_.beginEdit(TextEditState::EditKind::kTyping, "    ");
             edit_.insert("    ");
             edited = true;
         }
         break;
-    case kKeyUndo: edited = !readOnly_ && edit_.undo(); break;
-    case kKeyRedo: edited = !readOnly_ && edit_.redo(); break;
+    case kKeyUndo: edited = editable() && edit_.undo(); break;
+    case kKeyRedo: edited = editable() && edit_.redo(); break;
     case kKeyBackspace:
-        if (!readOnly_ && (edit_.hasSelection() || edit_.caret > 0))
+        if (editable() && (edit_.hasSelection() || edit_.caret > 0))
         {
             edit_.beginEdit(TextEditState::EditKind::kDeleting);
             if (!edit_.hasSelection())
@@ -602,7 +624,7 @@ void TextArea::onKey(Ui &ui, int key)
         }
         break;
     case kKeyDelete:
-        if (!readOnly_ && (edit_.hasSelection() || edit_.caret < edit_.text.size()))
+        if (editable() && (edit_.hasSelection() || edit_.caret < edit_.text.size()))
         {
             edit_.beginEdit(TextEditState::EditKind::kDeleting);
             if (!edit_.hasSelection())
@@ -640,9 +662,18 @@ bool TextArea::onWheel(Ui &ui, glm::vec2 wheel)
 glm::vec2 TextArea::measureContent(Ui &ui, glm::vec2, const Style &style)
 {
     if (syncing_)
-        edit_.text = value_.value();
+        syncFromBinding();
     // Six lignes et une quarantaine de caractères par défaut ; .width / .height pour plus.
     return {ui.font().measure(std::string(40, '0'), style.fontSize, style.font.get()).x, 6.0f * lineHeight(ui, style)};
+}
+
+void TextArea::arrange(Ui &ui, const Rect &content, const Style &style)
+{
+    Widget::arrange(ui, content, style);
+    // Contenu raccourci (valeur liée remplacée, largeur changée) : le défilement revient dans la nouvelle plage.
+    const float lh = lineHeight(ui, style);
+    const float maxScroll = std::max(0.0f, static_cast<float>(lines(ui, style).size()) * lh - content.size.y);
+    scroll_ = std::clamp(scroll_, 0.0f, maxScroll);
 }
 
 void TextArea::drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const
