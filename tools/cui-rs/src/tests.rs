@@ -181,3 +181,54 @@ fn review_m3_names_numbers_arguments_and_descendants() {
     assert!(err.iter().any(|e| e.contains("unknown component 'Unknown'")), "{err:?}");
     assert!(err.iter().any(|e| e.contains("'Label' has no modifier 'widht'")), "{err:?}");
 }
+
+#[test]
+fn cache_hash_is_invalidated_when_cpp_write_fails() {
+    use std::fs;
+    let unique = format!(
+        "cui_cache_test_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let root = std::env::temp_dir().join(unique);
+    let out_dir = root.join("out");
+    fs::create_dir_all(&out_dir).unwrap();
+    let cui_path = root.join("panel.cui");
+    let header_path = out_dir.join("panel.gen.h");
+    let cpp_path = out_dir.join("panel.gen.cpp");
+
+    let src_a = "import \"orosmo/ui\"\nview Panel {\n    Label(\"version A\")\n}\n";
+    let src_b = "import \"orosmo/ui\"\nview Panel {\n    Label(\"version B\")\n}\n";
+
+    fs::write(&cui_path, src_a).unwrap();
+    crate::compile_file(&cui_path, &out_dir).unwrap();
+    let old_cpp = fs::read_to_string(&cpp_path).unwrap();
+    assert!(old_cpp.contains("version A"));
+
+    // Simule un échec d'écriture sur .gen.cpp (répertoire à sa place : échoue même sous root).
+    fs::remove_file(&cpp_path).unwrap();
+    fs::create_dir(&cpp_path).unwrap();
+    fs::write(&cui_path, src_b).unwrap();
+    assert!(crate::compile_file(&cui_path, &out_dir).is_err());
+    assert_ne!(
+        crate::read_stored_hash(&header_path).as_deref(),
+        Some(crate::source_hash(src_b).as_str()),
+        "le hash de B ne doit pas être validé après un échec d'écriture de .gen.cpp"
+    );
+
+    // Remet l'ancien .gen.cpp (version A) : la relance doit régénérer B au lieu d'ignorer le fichier.
+    fs::remove_dir(&cpp_path).unwrap();
+    fs::write(&cpp_path, &old_cpp).unwrap();
+    crate::compile_file(&cui_path, &out_dir).unwrap();
+    let new_cpp = fs::read_to_string(&cpp_path).unwrap();
+    assert!(new_cpp.contains("version B"), "le .gen.cpp périmé a été conservé : {new_cpp}");
+    assert_eq!(
+        crate::read_stored_hash(&header_path).as_deref(),
+        Some(crate::source_hash(src_b).as_str())
+    );
+
+    let _ = fs::remove_dir_all(&root);
+}
