@@ -12,8 +12,8 @@
 //   std::vector                → libellé « [n] » en lecture seule (pas d'édition de liste ; docs/GAPS.md)
 #pragma once
 
-#include "engine/core/reflection.hpp"
-#include "engine/ui/widgets.hpp"
+#include "orosmo/core/reflection.hpp"
+#include "orosmo/ui/widgets.hpp"
 
 #include <cctype>
 #include <cmath>
@@ -23,7 +23,7 @@
 #include <string_view>
 #include <tuple>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 // Libellé lisible d'un nom de champ : "heightScale" → "Height scale", "tileResolution" → "Tile resolution".
@@ -190,4 +190,4 @@ template <core::Reflected T> std::unique_ptr<Widget> reflectedPanel(T &object, s
     return grid;
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

@@ -2,8 +2,8 @@
 // Propres à la démo (elles vivaient dans l'ancien module Graphics) ; seul OpenGL est disponible avant M4 (Vulkan) et M9 (Metal).
 #pragma once
 
-#include <engine/core/error.hpp>
-#include <engine/rhi/types.hpp>
+#include <orosmo/core/error.hpp>
+#include <orosmo/rhi/types.hpp>
 
 #include <cstdint>
 #include <iosfwd>
@@ -23,7 +23,7 @@ enum class BackendAvailability : std::uint8_t
 
 struct LaunchOptions
 {
-    engine::rhi::Backend api = engine::rhi::Backend::kOpenGL;
+    orosmo::rhi::Backend api = orosmo::rhi::Backend::kOpenGL;
     bool showHelp = false;
     bool listApis = false;
     bool chooseApiInteractively = false;
@@ -41,19 +41,19 @@ struct LaunchOptions
 };
 
 // Nom affiché : « OpenGL », « Vulkan », « Metal ».
-std::string_view backendDisplayName(engine::rhi::Backend api) noexcept;
+std::string_view backendDisplayName(orosmo::rhi::Backend api) noexcept;
 // « opengl » / « gl », « vulkan » / « vk », « metal » (casse indifférente).
-std::optional<engine::rhi::Backend> parseBackend(std::string_view value) noexcept;
+std::optional<orosmo::rhi::Backend> parseBackend(std::string_view value) noexcept;
 
 // Argument inconnu ou valeur invalide : erreur kInvalidArgument (message prêt à afficher).
-engine::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv);
+orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv);
 void printUsage(std::ostream &out);
 // Menu interactif (--choose-api) : faux si l'entrée est fermée ou le choix inconnu (`selected` inchangé).
-bool promptForBackend(std::istream &input, std::ostream &output, engine::rhi::Backend &selected);
+bool promptForBackend(std::istream &input, std::ostream &output, orosmo::rhi::Backend &selected);
 
 // Suit les backends compilés dans le RHI (RHI-04) ; Metal n'existe que sur les plateformes Apple.
-BackendAvailability backendAvailability(engine::rhi::Backend api) noexcept;
-bool isBackendAvailable(engine::rhi::Backend api) noexcept;
-std::string backendAvailabilityMessage(engine::rhi::Backend api);
+BackendAvailability backendAvailability(orosmo::rhi::Backend api) noexcept;
+bool isBackendAvailable(orosmo::rhi::Backend api) noexcept;
+std::string backendAvailabilityMessage(orosmo::rhi::Backend api);
 
 } // namespace demo

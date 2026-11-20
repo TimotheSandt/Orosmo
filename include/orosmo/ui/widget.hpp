@@ -7,8 +7,8 @@
 // final). Coordonnées en pixels logiques, origine en haut à gauche (comme `DrawList`).
 #pragma once
 
-#include "engine/renderer/draw_list.hpp"
-#include "engine/ui/theme.hpp"
+#include "orosmo/renderer/draw_list.hpp"
+#include "orosmo/ui/theme.hpp"
 
 #include <glm/glm.hpp>
 
@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 class Ui;
@@ -328,7 +328,7 @@ class Widget
     // Le widget garde la touche Tab pour lui (éditeur de texte) au lieu de passer le focus.
     virtual bool wantsTab() const { return false; }
     virtual bool onWheel(Ui &ui, glm::vec2 wheel);
-    virtual void onKey(Ui &ui, int key);                // engine::ui::Key
+    virtual void onKey(Ui &ui, int key);                // orosmo::ui::Key
     virtual void onText(Ui &ui, std::string_view text); // UTF-8 saisi
     virtual void onFocusChanged(Ui &ui, bool focused);
     // Raccourci clavier normalisé (`normalizeShortcut` : "Ctrl+S", "Ctrl+Shift+Z", "F5") ; vrai si le widget l'a pris (élément
@@ -385,4 +385,4 @@ class Widget
     mutable bool overrideWarned_ = false;
 };
 
-} // namespace engine::ui
+} // namespace orosmo::ui

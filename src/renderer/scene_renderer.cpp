@@ -1,12 +1,12 @@
-#include "engine/renderer/scene_renderer.hpp"
+#include "orosmo/renderer/scene_renderer.hpp"
 
-#include "engine/renderer/image.hpp"
+#include "orosmo/renderer/image.hpp"
 
 #include <algorithm>
 #include <cstring>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 using core::ErrorCode;
@@ -639,4 +639,4 @@ core::Result<> SceneRenderer::saveColorPng(const std::filesystem::path &path) co
     return savePng(device_, sceneTarget_.color(0), path);
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

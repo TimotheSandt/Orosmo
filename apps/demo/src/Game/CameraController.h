@@ -1,8 +1,8 @@
-// Pilotage de la caméra au clavier et à la souris (ancien `Camera::Inputs`). La caméra du moteur (`engine::renderer::Camera`) ne lit
+// Pilotage de la caméra au clavier et à la souris (ancien `Camera::Inputs`). La caméra du moteur (`orosmo::renderer::Camera`) ne lit
 // aucune entrée : c'est l'application qui la déplace. À terme, ceci passe par `platform::Input` (M2 lot C).
 #pragma once
 
-#include "engine/renderer/camera.hpp"
+#include "orosmo/renderer/camera.hpp"
 
 class Window;
 
@@ -13,7 +13,7 @@ class CameraController
 
     // Déplace et oriente `camera` selon les actions actives de l'InputManager (clavier, clic droit pour tourner). `viewWidth` et
     // `viewHeight` : taille de la vue en pixels (centre de rotation de la souris).
-    void update(Window &window, engine::renderer::Camera &camera, float elapsedSeconds, int viewWidth, int viewHeight);
+    void update(Window &window, orosmo::renderer::Camera &camera, float elapsedSeconds, int viewWidth, int viewHeight);
     // Fil de fer (touche W, en debug seulement) : l'état voulu après `update`.
     bool wireframeRequested() const noexcept { return wireframe_; }
 

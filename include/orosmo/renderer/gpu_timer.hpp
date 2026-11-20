@@ -1,14 +1,14 @@
 // Minuterie GPU d'une portion de commandes (RHI-11) : deux horodatages dans une pool, durée lue sans bloquer quand elle est prête.
 #pragma once
 
-#include "engine/core/gpu_timer.hpp" // Profiler : IGpuTimer, IGpuTimerFactory
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/gpu_timer.hpp" // Profiler : IGpuTimer, IGpuTimerFactory
+#include "orosmo/rhi/device.hpp"
 
 #include <chrono>
 #include <optional>
 #include <string>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 class GpuTimer
@@ -50,4 +50,4 @@ class ProfilerGpuTimerFactory final : public core::IGpuTimerFactory
     rhi::CommandEncoder *encoder_ = nullptr;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

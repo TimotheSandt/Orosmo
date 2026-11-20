@@ -1,6 +1,6 @@
 // Valide pour cui, mais la méthode n'existe pas en C++ : l'erreur du compilateur C++ désigne la ligne 9 de CE fichier (#line).
 // expect-cxx: 9
-import "engine/ui"
+import "orosmo/ui"
 import "ui/cui_test_state.hpp"
 
 view V {

@@ -5,15 +5,15 @@
 
 #include <utility>
 
-#include <engine/core/paths.hpp>
+#include <orosmo/core/paths.hpp>
 #include "UI/Views/PerformanceView.gen.h"
-#include "engine/renderer/draw_list.hpp"
-#include "engine/renderer/image.hpp"
+#include "orosmo/renderer/draw_list.hpp"
+#include "orosmo/renderer/image.hpp"
 
 
-namespace rd = engine::renderer;
-using engine::core::Profiler;
-namespace rhi = engine::rhi;
+namespace rd = orosmo::renderer;
+using orosmo::core::Profiler;
+namespace rhi = orosmo::rhi;
 
 namespace
 {
@@ -29,7 +29,7 @@ constexpr float kHeadlessStep = 1.0f / 60.0f;
 
 Game::Game(bool headlessMode) : headless(headlessMode) {}
 
-engine::core::Result<std::unique_ptr<Game>> Game::create(bool headless)
+orosmo::core::Result<std::unique_ptr<Game>> Game::create(bool headless)
 {
     std::unique_ptr<Game> game(new Game(headless));
     if (auto r = game->createGraphics(); !r)
@@ -39,10 +39,10 @@ engine::core::Result<std::unique_ptr<Game>> Game::create(bool headless)
     return game;
 }
 
-engine::core::Result<> Game::createGraphics()
+orosmo::core::Result<> Game::createGraphics()
 {
-    using engine::core::ErrorCode;
-    using engine::core::makeError;
+    using orosmo::core::ErrorCode;
+    using orosmo::core::makeError;
     LOG_TRACE("Initializing window");
     rhi::DeviceDesc desc;
     desc.backend = rhi::Backend::kOpenGL;
@@ -94,7 +94,7 @@ engine::core::Result<> Game::createGraphics()
 
 Game::~Game() { this->stop(); }
 
-engine::core::Result<> Game::init()
+orosmo::core::Result<> Game::init()
 {
     this->refreshViewSize();
 
@@ -111,7 +111,7 @@ engine::core::Result<> Game::init()
     const bool waitForTiles = this->headless || !this->captureDirectory.empty();
     if (auto ready = this->world->Init(*device, *shaders, kShaderDirectory, this->terrainSeed, waitForTiles); !ready)
     {
-        return engine::core::makeError(ready.error().code, "Failed to initialize the world: " + ready.error().message);
+        return orosmo::core::makeError(ready.error().code, "Failed to initialize the world: " + ready.error().message);
     }
 
     if (auto created = this->createUi(); !created)
@@ -292,25 +292,25 @@ void Game::update()
 
     this->world->Update();
     this->performance.tick(deltaTime, [&]() { return samplePerformance(this->window.GetAverageFPS()); });
-    engine::ui::InputFrame input; // le panneau n'est pas interactif : pas d'entrées, seulement le temps écoulé
+    orosmo::ui::InputFrame input; // le panneau n'est pas interactif : pas d'entrées, seulement le temps écoulé
     input.deltaTime = deltaTime;
     this->ui->update(input, {static_cast<float>(this->viewWidth), static_cast<float>(this->viewHeight)});
 }
 
 // Interface : police de l'application (Roboto, taille de base 48 px), thème du panneau (res/themes/hud.json), vue générée par cui.
-engine::core::Result<> Game::createUi()
+orosmo::core::Result<> Game::createUi()
 {
-    using engine::core::ErrorCode;
-    using engine::core::makeError;
-    this->text = std::make_unique<engine::ui::TextRenderer>();
+    using orosmo::core::ErrorCode;
+    using orosmo::core::makeError;
+    this->text = std::make_unique<orosmo::ui::TextRenderer>();
     if (!this->text->init(static_cast<unsigned>(this->viewWidth), static_cast<unsigned>(this->viewHeight)) ||
         !this->text->loadFont(GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"), "default", 48))
     {
         return makeError(ErrorCode::kNotFound, "UI: cannot load the font " GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"));
     }
     this->text->setActiveFont("default");
-    this->font = std::make_unique<engine::ui::TextRendererFont>(*this->text);
-    this->ui = std::make_unique<engine::ui::Ui>(*this->font);
+    this->font = std::make_unique<orosmo::ui::TextRendererFont>(*this->text);
+    this->ui = std::make_unique<orosmo::ui::Ui>(*this->font);
     if (auto theme = this->ui->themes().load(GET_RESOURCE_PATH("themes/hud.json")); !theme)
     {
         return makeError(theme.error().code, "UI: " + theme.error().message);
@@ -321,12 +321,12 @@ engine::core::Result<> Game::createUi()
 
 // L'interface se pose sur l'image composée : directement, ou rendue à échelle réduite sur une cible TRANSPARENTE puis composée
 // par-dessus la scène (touches de debug 5 à 8, ancien `Renderer2D::SetRenderScale`) : seule l'interface perd en définition.
-// L'interface (engine::ui) produit une liste complète à chaque image : un échec ne laisse rien à invalider.
+// L'interface (orosmo::ui) produit une liste complète à chaque image : un échec ne laisse rien à invalider.
 bool Game::renderUi(rhi::CommandEncoder &encoder, const rhi::TextureHandle &composedTexture)
 {
     rd::DrawList list;
     this->ui->draw(list);
-    auto failed = [&](const std::string &what, const engine::core::Error &error)
+    auto failed = [&](const std::string &what, const orosmo::core::Error &error)
     {
         LOG_ERROR(1, what, error.message);
         return false;
@@ -414,7 +414,7 @@ void Game::render()
     sceneRenderer->setOutputResolution(this->pixelWidth, this->pixelHeight);
     const glm::vec4 clear = window.GetClearColor();
     // Un échec de la scène (pipeline qui ne se lie pas, cible refusée...) rend l'image fausse : elle n'est ni comptée ni capturée.
-    auto keep = [&](engine::core::Result<> r, const char *step)
+    auto keep = [&](orosmo::core::Result<> r, const char *step)
     {
         if (!r && !this->sceneError)
         {

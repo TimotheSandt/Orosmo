@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <filesystem>
 
-namespace engine::core::system
+namespace orosmo::core::system
 {
 
 // Nombre de colonnes de la console attachée à la sortie standard ; 80 s'il n'y en a pas (redirection, pas de terminal).
@@ -40,4 +40,4 @@ std::uint64_t processId();
 bool beginHighResolutionTimer();
 void endHighResolutionTimer();
 
-} // namespace engine::core::system
+} // namespace orosmo::core::system

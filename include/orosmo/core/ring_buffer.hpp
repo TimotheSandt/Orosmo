@@ -4,9 +4,9 @@
 #include <chrono>
 #include <cstddef>
 #include <type_traits>
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 inline constexpr std::size_t kRingBufferMinCapacity = 10;
@@ -230,4 +230,4 @@ template <typename Type> class RingBuffer
     Type *buffer = nullptr;
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

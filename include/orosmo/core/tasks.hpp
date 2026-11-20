@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 namespace detail
@@ -104,4 +104,4 @@ class TaskGroup
     std::vector<TaskHandle> mTasks;
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

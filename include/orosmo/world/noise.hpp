@@ -9,7 +9,7 @@
 
 #include <cstdint>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 // Au-delà de cette valeur absolue (ou pour NaN), une coordonnée ne peut plus être ramenée sans débordement à la grille entière :
@@ -96,4 +96,4 @@ struct WarpParams
 // Distorsion de domaine : p' = p + amplitude * (fbm_a(p), fbm_b(p)), puis fbm(p'). Graines du champ dérivées de `seed`.
 float warpedFbm2(float x, float y, std::uint32_t seed, const FbmParams &params, const WarpParams &warp) noexcept;
 
-} // namespace engine::world
+} // namespace orosmo::world

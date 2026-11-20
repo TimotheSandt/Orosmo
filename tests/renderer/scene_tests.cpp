@@ -7,11 +7,11 @@
 #include "rhi/gpu_fixture.hpp"
 #include "support/temp_dir.hpp"
 
-#include <engine/renderer/camera.hpp>
-#include <engine/renderer/image.hpp>
-#include <engine/renderer/light.hpp>
-#include <engine/renderer/mesh.hpp>
-#include <engine/renderer/scene_renderer.hpp>
+#include <orosmo/renderer/camera.hpp>
+#include <orosmo/renderer/image.hpp>
+#include <orosmo/renderer/light.hpp>
+#include <orosmo/renderer/mesh.hpp>
+#include <orosmo/renderer/scene_renderer.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -23,8 +23,8 @@
 #include <filesystem>
 
 namespace fs = std::filesystem;
-namespace rd = engine::renderer;
-namespace rhi = engine::rhi;
+namespace rd = orosmo::renderer;
+namespace rhi = orosmo::rhi;
 
 namespace
 {
@@ -431,7 +431,7 @@ TEST_SUITE("renderer/scene")
         {
             int calls = 0;
             std::string name() const noexcept override { return "count"; }
-            engine::core::Result<> process(rd::FrameContext &, rd::RenderTarget &target) override
+            orosmo::core::Result<> process(rd::FrameContext &, rd::RenderTarget &target) override
             {
                 ++calls;
                 CHECK(target.width() == 8);
@@ -446,7 +446,7 @@ TEST_SUITE("renderer/scene")
         {
             int calls = 0;
             std::string name() const noexcept override { return "recording"; }
-            engine::core::Result<> upscale(rd::FrameContext &, const rd::RenderTarget &source, const rd::UpscaleTarget &destination) override
+            orosmo::core::Result<> upscale(rd::FrameContext &, const rd::RenderTarget &source, const rd::UpscaleTarget &destination) override
             {
                 ++calls;
                 CHECK(source.width() == 8);
@@ -495,7 +495,7 @@ TEST_SUITE("renderer/scene")
         {
             std::string name() const noexcept override { return "temporal"; }
             rd::UpscaleRequirements requirements() const noexcept override { return {.needsJitter = true, .needsHistory = true}; }
-            engine::core::Result<> upscale(rd::FrameContext &, const rd::RenderTarget &, const rd::UpscaleTarget &) override { return {}; }
+            orosmo::core::Result<> upscale(rd::FrameContext &, const rd::RenderTarget &, const rd::UpscaleTarget &) override { return {}; }
         };
         scene.renderer->registerUpscaleMode(std::make_unique<TemporalMode>());
         REQUIRE(scene.renderer->setActiveUpscaleMode("temporal"));
@@ -586,7 +586,7 @@ TEST_SUITE("renderer/scene")
                 return accept;
             }
             void shutdown() override { ++shutdowns; }
-            engine::core::Result<> upscale(rd::FrameContext &, const rd::RenderTarget &, const rd::UpscaleTarget &) override
+            orosmo::core::Result<> upscale(rd::FrameContext &, const rd::RenderTarget &, const rd::UpscaleTarget &) override
             {
                 ++runs;
                 return {};
@@ -652,7 +652,7 @@ TEST_SUITE("renderer/scene")
             bool isSupported(const rhi::Capabilities &) const noexcept override { return supported; }
             bool initialize(rhi::Device &) override { return true; }
             void shutdown() override { ++shutdowns; }
-            engine::core::Result<> generateFrame(rd::FrameContext &context, const rd::FrameGenerationInput &input, rd::FrameGenerationOutput &output) override
+            orosmo::core::Result<> generateFrame(rd::FrameContext &context, const rd::FrameGenerationInput &input, rd::FrameGenerationOutput &output) override
             {
                 hadPrevious = !input.previousColor.isNull();
                 reset = input.resetHistory;
@@ -800,7 +800,7 @@ TEST_SUITE("renderer/scene")
                 ++inits;
                 return true;
             }
-            engine::core::Result<> upscale(rd::FrameContext &, const rd::RenderTarget &, const rd::UpscaleTarget &) override { return {}; }
+            orosmo::core::Result<> upscale(rd::FrameContext &, const rd::RenderTarget &, const rd::UpscaleTarget &) override { return {}; }
         };
         auto unsupported = std::make_unique<Named>();
         unsupported->supported = false;
@@ -822,13 +822,13 @@ TEST_SUITE("renderer/scene")
             bool isSupported(const rhi::Capabilities &) const noexcept override { return true; }
             bool initialize(rhi::Device &) override { return true; }
             void shutdown() override {}
-            engine::core::Result<> generateFrame(rd::FrameContext &, const rd::FrameGenerationInput &input, rd::FrameGenerationOutput &output) override
+            orosmo::core::Result<> generateFrame(rd::FrameContext &, const rd::FrameGenerationInput &input, rd::FrameGenerationOutput &output) override
             {
                 reset = input.resetHistory;
                 hadPrevious = !input.previousColor.isNull();
                 if (fail)
                 {
-                    return engine::core::makeError(ErrorCode::kUnknown, "flaky");
+                    return orosmo::core::makeError(ErrorCode::kUnknown, "flaky");
                 }
                 output.generatedFrame = produce;
                 return {};

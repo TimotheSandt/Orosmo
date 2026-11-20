@@ -1,10 +1,10 @@
-#include "engine/renderer/pipeline_cache.hpp"
+#include "orosmo/renderer/pipeline_cache.hpp"
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <type_traits>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 namespace
@@ -169,4 +169,4 @@ void PipelineCache::clear()
     entries_.clear();
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

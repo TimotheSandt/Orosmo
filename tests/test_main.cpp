@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #if defined(__SANITIZE_ADDRESS__)
 // libshaderc 2023.8 (Ubuntu 24.04, apt) alloue ses options avec `operator new` et les libère avec `free` : ASan signale un
@@ -46,7 +46,7 @@ DOCTEST_REGISTER_LISTENER("trace", 1, TraceListener);
 
 int main(int argc, char **argv)
 {
-    engine::core::Logger::SetMinimumLevel(engine::core::L_FATAL);
+    orosmo::core::Logger::SetMinimumLevel(orosmo::core::L_FATAL);
 
     doctest::Context context;
     context.applyCommandLine(argc, argv);

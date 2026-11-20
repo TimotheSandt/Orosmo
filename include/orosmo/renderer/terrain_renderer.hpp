@@ -4,12 +4,12 @@
 // tableau de textures. Les couches par défaut sont générées (motifs déterministes) ; `setLayers` les remplace.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/core/reflection.hpp"
-#include "engine/renderer/mesh.hpp"
-#include "engine/renderer/scene_renderer.hpp"
-#include "engine/renderer/shader_library.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/core/reflection.hpp"
+#include "orosmo/renderer/mesh.hpp"
+#include "orosmo/renderer/scene_renderer.hpp"
+#include "orosmo/renderer/shader_library.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <glm/glm.hpp>
 
@@ -20,7 +20,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 struct TerrainMaterial
@@ -83,14 +83,14 @@ class TerrainRenderer
     std::unordered_map<std::uint64_t, Tile> tiles_;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer
 
-template <> struct engine::core::Reflect<engine::renderer::TerrainMaterial>
+template <> struct orosmo::core::Reflect<orosmo::renderer::TerrainMaterial>
 {
     static constexpr int kVersion = 1;
     static constexpr auto fields()
     {
-        using M = engine::renderer::TerrainMaterial;
+        using M = orosmo::renderer::TerrainMaterial;
         return std::make_tuple(field("sandHeight", &M::sandHeight, range(-500.0, 500.0), "sable sous cette altitude (m)"),
                                field("snowHeight", &M::snowHeight, range(-500.0, 5000.0), "neige au-dessus (m)"),
                                field("rockSlope", &M::rockSlope, range(0.0, 1.0), "roche au-delà de cette pente (1 - n.y)"),

@@ -2,9 +2,9 @@
 // éditeur de dégradé, éditeur de courbe (cubique monotone). Sans GPU.
 #include "ui/ui_harness.hpp"
 
-#include <engine/ui/color.hpp>
+#include <orosmo/ui/color.hpp>
 
-namespace ui = engine::ui;
+namespace ui = orosmo::ui;
 using tests::UiHarness;
 
 namespace

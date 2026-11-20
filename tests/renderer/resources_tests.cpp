@@ -7,21 +7,21 @@
 #include "rhi/gpu_fixture.hpp"
 #include "support/temp_dir.hpp"
 
-#include <engine/renderer/fullscreen_blit.hpp>
-#include <engine/renderer/gpu_buffer.hpp>
-#include <engine/renderer/gpu_timer.hpp>
-#include <engine/renderer/image.hpp>
-#include <engine/renderer/pipeline_cache.hpp>
-#include <engine/renderer/render_target.hpp>
-#include <engine/renderer/shader_library.hpp>
-#include <engine/renderer/texture.hpp>
+#include <orosmo/renderer/fullscreen_blit.hpp>
+#include <orosmo/renderer/gpu_buffer.hpp>
+#include <orosmo/renderer/gpu_timer.hpp>
+#include <orosmo/renderer/image.hpp>
+#include <orosmo/renderer/pipeline_cache.hpp>
+#include <orosmo/renderer/render_target.hpp>
+#include <orosmo/renderer/shader_library.hpp>
+#include <orosmo/renderer/texture.hpp>
 
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 
 namespace fs = std::filesystem;
-namespace rd = engine::renderer;
+namespace rd = orosmo::renderer;
 
 namespace
 {

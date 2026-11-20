@@ -5,7 +5,7 @@
 #include "rhi/gpu_fixture.hpp"
 #include "support/temp_dir.hpp"
 
-#include <engine/rhi/shader_compiler.hpp>
+#include <orosmo/rhi/shader_compiler.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -94,7 +94,7 @@ TEST_SUITE("rhi/shader")
     {
         auto bad = compileGlsl(ShaderStage::kVertex, "#version 450\nvoid main() {\n  gl_Position = nonsense;\n}\n", {.name = "broken.vert"});
         REQUIRE_FALSE(bad.has_value());
-        CHECK((tests::errorOf(bad) == engine::core::ErrorCode::kParse));
+        CHECK((tests::errorOf(bad) == orosmo::core::ErrorCode::kParse));
         CHECK(bad.error().message.find("broken.vert:3") != std::string::npos);
 
         const char *outOfGroups = R"(#version 450
@@ -103,7 +103,7 @@ layout(location = 0) out vec4 c;
 void main() { c = u.v; })";
         auto r1 = compileGlsl(ShaderStage::kFragment, outOfGroups, {.name = "groups"});
         REQUIRE_FALSE(r1.has_value());
-        CHECK((tests::errorOf(r1) == engine::core::ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(r1) == orosmo::core::ErrorCode::kInvalidArgument));
         CHECK(r1.error().message.find("set 3") != std::string::npos);
 
         const char *highBinding = R"(#version 450
@@ -287,7 +287,7 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
         bool lastOk = false;
         ShaderHotReloader reloader(fileIncludeResolver({dir.path}));
         auto first = reloader.add(dir.path / "m.frag", ShaderStage::kFragment,
-                                  [&](const fs::path &, const engine::core::Result<CompiledShader> &r)
+                                  [&](const fs::path &, const orosmo::core::Result<CompiledShader> &r)
                                   {
                                       ++reloads;
                                       lastOk = r.has_value();
@@ -313,12 +313,12 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
         int added = 0;
         fs::path seen;
         auto first = reloader.add(dir.path / "a.frag", ShaderStage::kFragment,
-                                  [&](const fs::path &file, const engine::core::Result<CompiledShader> &)
+                                  [&](const fs::path &file, const orosmo::core::Result<CompiledShader> &)
                                   {
                                       for (int i = 0; i < 8; ++i) // réalloue le tableau des entrées pendant l'appel
                                       {
                                           (void)reloader.add(dir.path / ("extra" + std::to_string(i) + ".frag"), ShaderStage::kFragment,
-                                                             [](const fs::path &, const engine::core::Result<CompiledShader> &) {});
+                                                             [](const fs::path &, const orosmo::core::Result<CompiledShader> &) {});
                                           ++added;
                                       }
                                       seen = file; // lu après les ajouts : doit rester valide
@@ -338,7 +338,7 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
         ShaderHotReloader reloader;
         int seenBySecondCall = -1;
         auto first = reloader.add(dir.path / "a.frag", ShaderStage::kFragment,
-                                  [&, calls = 0](const fs::path &, const engine::core::Result<CompiledShader> &) mutable
+                                  [&, calls = 0](const fs::path &, const orosmo::core::Result<CompiledShader> &) mutable
                                   {
                                       ++calls;
                                       seenBySecondCall = calls;
@@ -371,7 +371,7 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
         std::size_t lastSize = 0;
         ShaderHotReloader reloader(fileIncludeResolver({dir.path}));
         auto first = reloader.add(dir.path / "s.frag", ShaderStage::kFragment,
-                                  [&](const fs::path &, const engine::core::Result<CompiledShader> &r)
+                                  [&](const fs::path &, const orosmo::core::Result<CompiledShader> &r)
                                   {
                                       ++reloads;
                                       lastOk = r.has_value();

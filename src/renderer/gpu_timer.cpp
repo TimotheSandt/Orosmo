@@ -1,6 +1,6 @@
-#include "engine/renderer/gpu_timer.hpp"
+#include "orosmo/renderer/gpu_timer.hpp"
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 GpuTimer::GpuTimer(rhi::Device &device, const std::string &name) : device_(device)
@@ -95,4 +95,4 @@ std::unique_ptr<core::IGpuTimer> ProfilerGpuTimerFactory::CreateTimer(const std:
     return timer;
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

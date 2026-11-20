@@ -7,7 +7,7 @@
 #include <string>
 #include <utility>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 enum class ErrorCode : std::uint16_t
@@ -55,13 +55,13 @@ using AssertHandler = void (*)(const char *expression, const char *message, std:
 AssertHandler setAssertHandler(AssertHandler handler) noexcept;
 [[noreturn]] void assertFailed(const char *expression, const char *message, std::source_location where);
 
-} // namespace engine::core
+} // namespace orosmo::core
 
 #define ENGINE_ASSERT_ALWAYS(cond, msg)                                                                              \
     do                                                                                                               \
     {                                                                                                                \
         if (!(cond)) [[unlikely]]                                                                                    \
-            ::engine::core::assertFailed(#cond, (msg), std::source_location::current());                            \
+            ::orosmo::core::assertFailed(#cond, (msg), std::source_location::current());                            \
     } while (0)
 
 #ifdef NDEBUG

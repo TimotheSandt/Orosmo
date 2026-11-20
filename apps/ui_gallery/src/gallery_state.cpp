@@ -1,6 +1,6 @@
 #include "gallery_state.hpp"
 
-#include <engine/ui/ui.hpp>
+#include <orosmo/ui/ui.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +8,7 @@
 
 namespace
 {
-std::string idOf(const engine::ui::Event &e) { return e.source != nullptr && !e.source->id().empty() ? e.source->id() : "?"; }
+std::string idOf(const orosmo::ui::Event &e) { return e.source != nullptr && !e.source->id().empty() ? e.source->id() : "?"; }
 } // namespace
 
 void GalleryState::record(std::string line)
@@ -18,15 +18,15 @@ void GalleryState::record(std::string line)
         log.pop_back();
 }
 
-void GalleryState::clicked(const engine::ui::Event &e)
+void GalleryState::clicked(const orosmo::ui::Event &e)
 {
     ++clicks;
     record("click   " + idOf(e));
 }
 
-void GalleryState::changed(const engine::ui::Event &e) { record("change  " + idOf(e)); }
-void GalleryState::hovered(const engine::ui::Event &e) { record(std::string(e.active ? "enter   " : "leave   ") + idOf(e)); }
-void GalleryState::focused(const engine::ui::Event &e) { record(std::string(e.active ? "focus   " : "blur    ") + idOf(e)); }
+void GalleryState::changed(const orosmo::ui::Event &e) { record("change  " + idOf(e)); }
+void GalleryState::hovered(const orosmo::ui::Event &e) { record(std::string(e.active ? "enter   " : "leave   ") + idOf(e)); }
+void GalleryState::focused(const orosmo::ui::Event &e) { record(std::string(e.active ? "focus   " : "blur    ") + idOf(e)); }
 
 std::string GalleryState::summary() const
 {
@@ -49,22 +49,22 @@ std::string GalleryState::controlsSummary() const
 void GalleryState::notifyInfo()
 {
     if (ui != nullptr)
-        ui->notify("Notification " + std::to_string(++notified) + ": information", engine::ui::NotificationKind::kInfo);
+        ui->notify("Notification " + std::to_string(++notified) + ": information", orosmo::ui::NotificationKind::kInfo);
 }
 void GalleryState::notifySuccess()
 {
     if (ui != nullptr)
-        ui->notify("Notification " + std::to_string(++notified) + ": terrain saved", engine::ui::NotificationKind::kSuccess);
+        ui->notify("Notification " + std::to_string(++notified) + ": terrain saved", orosmo::ui::NotificationKind::kSuccess);
 }
 void GalleryState::notifyWarning()
 {
     if (ui != nullptr)
-        ui->notify("Notification " + std::to_string(++notified) + ": low memory", engine::ui::NotificationKind::kWarning);
+        ui->notify("Notification " + std::to_string(++notified) + ": low memory", orosmo::ui::NotificationKind::kWarning);
 }
 void GalleryState::notifyError()
 {
     if (ui != nullptr)
-        ui->notify("Notification " + std::to_string(++notified) + ": export failed", engine::ui::NotificationKind::kError, 6.0f);
+        ui->notify("Notification " + std::to_string(++notified) + ": export failed", orosmo::ui::NotificationKind::kError, 6.0f);
 }
 
 namespace
@@ -129,14 +129,14 @@ void GalleryState::drawCompass()
             const float d = glm::length(p);
             if (d > size * 0.5f - 1.0f)
                 continue;
-            engine::ui::Color color{0.08f, 0.09f, 0.12f, 0.85f};
+            orosmo::ui::Color color{0.08f, 0.09f, 0.12f, 0.85f};
             if (d > size * 0.5f - 4.0f)
                 color = {0.75f, 0.75f, 0.80f, 1.0f};
             const float along = glm::dot(p, dir);
             const float across = std::abs(p.x * dir.y - p.y * dir.x);
             const float half = size * 0.5f - 7.0f;
             if (std::abs(along) < half && across < 3.0f * (1.0f - std::abs(along) / half) + 0.5f)
-                color = along > 0.0f ? engine::ui::Color{0.90f, 0.25f, 0.20f, 1.0f} : engine::ui::Color{0.92f, 0.92f, 0.95f, 1.0f};
+                color = along > 0.0f ? orosmo::ui::Color{0.90f, 0.25f, 0.20f, 1.0f} : orosmo::ui::Color{0.92f, 0.92f, 0.95f, 1.0f};
             compass.setPixel(x, y, color);
         }
     compass.commit();

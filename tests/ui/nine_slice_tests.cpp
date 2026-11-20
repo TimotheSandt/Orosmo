@@ -3,11 +3,11 @@
 #include "ui/ui_harness.hpp"
 #include "support/temp_dir.hpp"
 
-#include <engine/renderer/image.hpp>
-#include <engine/ui/nine_slice.hpp>
+#include <orosmo/renderer/image.hpp>
+#include <orosmo/ui/nine_slice.hpp>
 
-namespace ui = engine::ui;
-namespace rd = engine::renderer;
+namespace ui = orosmo::ui;
+namespace rd = orosmo::renderer;
 
 namespace
 {

@@ -1,12 +1,12 @@
 #include "World.h"
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <algorithm>
 #include <vector>
 
-namespace rd = engine::renderer;
-namespace w = engine::world;
+namespace rd = orosmo::renderer;
+namespace w = orosmo::world;
 
 namespace
 {
@@ -36,7 +36,7 @@ glm::vec3 World::StartPosition(std::uint32_t seed)
 
 glm::vec3 World::StartOrientation() { return glm::normalize(glm::vec3(0.0f, -0.35f, -1.0f)); }
 
-engine::core::Result<> World::Init(engine::rhi::Device &device, rd::ShaderLibrary &library, const std::filesystem::path &shaderDirectory,
+orosmo::core::Result<> World::Init(orosmo::rhi::Device &device, rd::ShaderLibrary &library, const std::filesystem::path &shaderDirectory,
                                    std::uint32_t terrainSeed, bool waitForAllTiles)
 {
     auto lights = rd::LightManager::create(device);
@@ -64,7 +64,7 @@ engine::core::Result<> World::Init(engine::rhi::Device &device, rd::ShaderLibrar
     this->params = TerrainParameters();
     this->seed = terrainSeed;
     this->waitForTiles = waitForAllTiles;
-    this->tasks = std::make_unique<engine::core::TaskSystem>();
+    this->tasks = std::make_unique<orosmo::core::TaskSystem>();
     this->streamer = std::make_unique<w::TileStreamer>(this->params, this->seed, kLod, w::StreamingConfig{.memoryBudgetBytes = kMemoryBudgetBytes},
                                                        *this->tasks);
     LOG_INFO("World terrain ready: seed=", this->seed, ", streamed tiles of ", w::tileSize(this->params, 0), " m");
@@ -100,7 +100,7 @@ void World::Stream(const glm::vec3 &cameraPosition)
 // Le jeu de tuiles affiché change d'un coup, quand toute la nouvelle sélection est prête : jamais de trou ni de recouvrement entre
 // deux niveaux de détail (même règle que terrain-viewer). Une tuile est renvoyée si elle est nouvelle ou si son maillage a été
 // recousu (le streamer refait le maillage EN PLACE quand les voisines changent de niveau : le pointeur seul ne suffit pas).
-engine::core::Result<> World::SyncTiles(bool &complete)
+orosmo::core::Result<> World::SyncTiles(bool &complete)
 {
     complete = false;
     const std::vector<w::TileKey> &selection = this->streamer->selection();
@@ -164,7 +164,7 @@ engine::core::Result<> World::SyncTiles(bool &complete)
     return {};
 }
 
-engine::core::Result<> World::Render(rd::SceneRenderer &renderer, const rd::Camera &camera)
+orosmo::core::Result<> World::Render(rd::SceneRenderer &renderer, const rd::Camera &camera)
 {
     this->Stream(camera.position());
     bool complete = false;
@@ -174,7 +174,7 @@ engine::core::Result<> World::Render(rd::SceneRenderer &renderer, const rd::Came
     }
     if (this->waitForTiles && !complete)
     {
-        return engine::core::makeError(engine::core::ErrorCode::kBusy, "the terrain tiles around the camera are not all generated");
+        return orosmo::core::makeError(orosmo::core::ErrorCode::kBusy, "the terrain tiles around the camera are not all generated");
     }
     renderer.setLights(&this->lightManager);
     return this->terrainRenderer->draw(renderer, camera);

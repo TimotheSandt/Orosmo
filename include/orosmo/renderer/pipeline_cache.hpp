@@ -3,16 +3,16 @@
 // pas (étages incompatibles), le dernier pipeline utilisable est gardé et l'échec est conservé dans `lastError()`.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/renderer/shader_library.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/renderer/shader_library.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <map>
 #include <optional>
 #include <string>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 struct GraphicsState
@@ -67,4 +67,4 @@ class PipelineCache
     std::optional<core::Error> lastError_;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

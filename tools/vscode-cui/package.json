@@ -41,7 +41,7 @@
         "cui.toolPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the cui compiler. Empty: tools/cui, tools/target/release/cui, engine/tools/cui (projects made by `orosmo init`) in the workspace, then the PATH."
+          "description": "Path to the cui compiler. Empty: tools/cui, tools/target/release/cui, orosmo/tools/cui (projects made by `orosmo init`) in the workspace, then the PATH."
         }
       }
     },

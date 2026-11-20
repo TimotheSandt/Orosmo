@@ -1,5 +1,5 @@
 // expect: 7:5: error: '$stats.fps': 'stats' is @Observed (read only); a two-way binding needs a @Mutable field
-import "engine/ui"
+import "orosmo/ui"
 import "state.hpp"
 
 view V {

@@ -2,10 +2,10 @@
 // par `SceneRenderer::drawMesh` ; ne garde aucun état global et ne se « lie » pas.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/renderer/gpu_buffer.hpp"
-#include "engine/renderer/shader_library.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/renderer/gpu_buffer.hpp"
+#include "orosmo/renderer/shader_library.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <glm/glm.hpp>
 
@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 struct MeshData
@@ -116,4 +116,4 @@ class Mesh
     glm::vec3 uploadedOrigin_{0.0f};
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

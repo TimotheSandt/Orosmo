@@ -5,10 +5,10 @@
 // Format choisi par l'extension : .png (hauteurs 16 bits), .exr (hauteurs float), .obj, .gltf, .stl ; --biomes carte.png en plus.
 // Codes de retour : 0 succès, 1 erreur d'utilisation (argument invalide), 2 erreur d'entrée/sortie (lecture ou écriture).
 // Déterministe : même graine et mêmes paramètres -> mêmes octets ; la somme de contrôle des hauteurs est affichée (TEST-03).
-#include <engine/core/serialization.hpp>
-#include <engine/core/tasks.hpp>
-#include <engine/world/checksum.hpp>
-#include <engine/world/export.hpp>
+#include <orosmo/core/serialization.hpp>
+#include <orosmo/core/tasks.hpp>
+#include <orosmo/world/checksum.hpp>
+#include <orosmo/world/export.hpp>
 
 #include <algorithm>
 #include <charconv>
@@ -22,7 +22,7 @@
 #include <string>
 #include <string_view>
 
-namespace w = engine::world;
+namespace w = orosmo::world;
 namespace fs = std::filesystem;
 
 namespace
@@ -166,12 +166,12 @@ int main(int argc, char **argv)
         }
         std::stringstream text;
         text << in.rdbuf();
-        auto json = engine::core::parseJson(text.str());
+        auto json = orosmo::core::parseJson(text.str());
         if (!json)
         {
             return fail(kUsage, paramsFile.generic_string() + ": " + json.error().message);
         }
-        if (auto loaded = engine::core::loadDocument(params, *json); !loaded)
+        if (auto loaded = orosmo::core::loadDocument(params, *json); !loaded)
         {
             return fail(kUsage, paramsFile.generic_string() + ": " + loaded.error().message);
         }
@@ -193,11 +193,11 @@ int main(int argc, char **argv)
         return fail(kUsage, "--origin: the region leaves the noise domain (|x|, |z| < 2^23 m)");
     }
 
-    engine::core::TaskSystem tasks(threads);
+    orosmo::core::TaskSystem tasks(threads);
     const w::HeightField field = w::generateRegion(params, *seed, originX.value_or(0), originZ.value_or(0), *size, *size, &tasks);
     const float lo = field.minHeight();
     const float hi = field.maxHeight();
-    engine::core::Result<> written;
+    orosmo::core::Result<> written;
     if (extension == ".png") written = w::writeHeightPng16(out, field, lo, hi > lo ? hi : lo + 1.0f);
     else if (extension == ".exr") written = w::writeHeightExr(out, field);
     else if (extension == ".obj") written = w::writeObj(out, field);

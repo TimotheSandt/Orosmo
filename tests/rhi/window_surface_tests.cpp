@@ -5,7 +5,7 @@
 #include "support/test_support.hpp"
 #include "rhi/gpu_fixture.hpp"
 
-#include <engine/rhi/shader_compiler.hpp>
+#include <orosmo/rhi/shader_compiler.hpp>
 
 #include <GLFW/glfw3.h>
 

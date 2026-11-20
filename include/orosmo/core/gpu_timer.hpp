@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 // Minuterie GPU vue par le Profiler (couche core). Le Profiler ne connaît pas le RHI : le runtime graphique (couche rhi)
@@ -30,4 +30,4 @@ class IGpuTimerFactory
     virtual std::unique_ptr<IGpuTimer> CreateTimer(const std::string &name) const = 0;
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

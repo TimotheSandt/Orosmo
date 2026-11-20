@@ -3,10 +3,10 @@
 // onFocus) et registre d'actions ; écritures différées (visibles après `update`) ; état visuel lu dans le thème. Sans GPU.
 #include "ui/ui_harness.hpp"
 
-#include <engine/ui/reflect.hpp>
+#include <orosmo/ui/reflect.hpp>
 
-namespace ui = engine::ui;
-namespace rd = engine::renderer;
+namespace ui = orosmo::ui;
+namespace rd = orosmo::renderer;
 using tests::UiHarness;
 
 namespace

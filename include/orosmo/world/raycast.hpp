@@ -3,12 +3,12 @@
 // continue. Sert au picking de la souris et à la hauteur en un point.
 #pragma once
 
-#include "engine/core/math.hpp"
-#include "engine/world/terrain.hpp"
+#include "orosmo/core/math.hpp"
+#include "orosmo/world/terrain.hpp"
 
 #include <optional>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 // Hauteur de la surface maillée (niveau 0) en (x, z) : interpolation dans le triangle de la cellule qui contient le point.
@@ -27,4 +27,4 @@ struct RayHit
 // meshHeightAt rend NaN pour un espacement invalide (<= 0, non fini) ou une coordonnée hors du domaine des indices entiers.
 std::optional<RayHit> raycastTerrain(const TerrainParams &params, std::uint32_t seed, core::Vec3 origin, core::Vec3 direction, float maxDistance);
 
-} // namespace engine::world
+} // namespace orosmo::world

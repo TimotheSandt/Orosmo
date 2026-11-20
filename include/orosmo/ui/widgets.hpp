@@ -16,14 +16,14 @@
 //   ScrollView (scroll)      défilement : voir layout.hpp ; infobulles : Widget::setTooltip (tooltip)
 #pragma once
 
-#include "engine/ui/layout.hpp"
-#include "engine/ui/widget.hpp"
+#include "orosmo/ui/layout.hpp"
+#include "orosmo/ui/widget.hpp"
 
 #include <functional>
 #include <string>
 #include <vector>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 class Label : public Widget
@@ -354,4 +354,4 @@ class Separator : public Widget
     void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
 };
 
-} // namespace engine::ui
+} // namespace orosmo::ui

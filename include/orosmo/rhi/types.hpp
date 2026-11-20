@@ -1,7 +1,7 @@
 // RHI-01, RHI-05, RHI-15, RHI-16 : types de l'interface graphique. Aucun type d'API (GLuint, VkBuffer...) ici.
 #pragma once
 
-#include "engine/rhi/handle.hpp"
+#include "orosmo/rhi/handle.hpp"
 
 #include <array>
 #include <cstddef>
@@ -12,7 +12,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace engine::rhi
+namespace orosmo::rhi
 {
 
 enum class Backend : std::uint8_t
@@ -520,4 +520,4 @@ struct TextureCopy
     std::uint32_t bufferRowLength = 0; // en texels ; 0 : lignes serrées
 };
 
-} // namespace engine::rhi
+} // namespace orosmo::rhi

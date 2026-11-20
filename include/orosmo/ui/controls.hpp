@@ -10,12 +10,12 @@
 // La sélection et le presse-papiers (Maj + flèches, glisser, Ctrl+A, C, X, V) valent aussi pour TextField et NumberField.
 #pragma once
 
-#include "engine/ui/widgets.hpp"
+#include "orosmo/ui/widgets.hpp"
 
 #include <array>
 #include <string>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 class RadioButton : public Widget
@@ -180,4 +180,4 @@ class TextArea : public Widget
     float desiredX_ = -1.0f; // abscisse gardée pendant les déplacements haut / bas
 };
 
-} // namespace engine::ui
+} // namespace orosmo::ui

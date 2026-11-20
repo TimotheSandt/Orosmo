@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 class ArenaAllocator
@@ -119,4 +119,4 @@ template <typename T> class ObjectPool
     std::vector<std::unique_ptr<Slot[]>> mBlocks;
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

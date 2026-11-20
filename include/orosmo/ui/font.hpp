@@ -2,7 +2,7 @@
 // et au mode sans GPU ; `TextRendererFont` adapte le rendu de texte (FreeType + atlas MSDF, `TextRenderer`, text_renderer.hpp).
 #pragma once
 
-#include "engine/renderer/draw_list.hpp"
+#include "orosmo/renderer/draw_list.hpp"
 
 #include <glm/glm.hpp>
 
@@ -11,7 +11,7 @@
 #include <string>
 #include <string_view>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 class TextRenderer; // text_renderer.hpp
@@ -74,4 +74,4 @@ std::size_t utf8Length(std::string_view text, std::size_t i) noexcept;
 // Début du caractère qui précède la position `i`.
 std::size_t utf8Previous(std::string_view text, std::size_t i) noexcept;
 
-} // namespace engine::ui
+} // namespace orosmo::ui

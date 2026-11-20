@@ -1,15 +1,15 @@
 // M1 bis : services système (largeur de console, chemin de l'exécutable, dossier de données, attente précise).
-// Déclarés par core (include/engine/core/system.hpp), définis par platform (src/platform/system.cpp) : seul platform
+// Déclarés par core (include/orosmo/core/system.hpp), définis par platform (src/platform/system.cpp) : seul platform
 // inclut <windows.h> / les en-têtes POSIX.
 #include <doctest/doctest.h>
 
-#include <engine/core/system.hpp>
+#include <orosmo/core/system.hpp>
 
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
 
-using namespace engine::core::system;
+using namespace orosmo::core::system;
 using namespace std::chrono_literals;
 namespace fs = std::filesystem;
 

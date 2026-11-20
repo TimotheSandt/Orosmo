@@ -1,21 +1,21 @@
 {
-  "_doc": "Couches de docs/03 §1, du bas (0) vers le haut. Un fichier ne doit inclure que des fichiers de sa couche ou d'une couche inférieure. 'rules' : premier motif (fnmatch, chemins relatifs à la racine) qui correspond. Cette table décrit la CIBLE appliquée au code ACTUEL (avant migration) : elle sera remplacée par include/engine/<module>/ au fil des jalons.",
+  "_doc": "Couches de docs/03 §1, du bas (0) vers le haut. Un fichier ne doit inclure que des fichiers de sa couche ou d'une couche inférieure. 'rules' : premier motif (fnmatch, chemins relatifs à la racine) qui correspond. Cette table décrit la CIBLE appliquée au code ACTUEL (avant migration) : elle sera remplacée par include/orosmo/<module>/ au fil des jalons.",
   "levels": {
     "core": 0, "platform": 1, "rhi": 2, "renderer": 3, "assets": 4, "anim": 5,
     "scene": 6, "ui": 7, "world": 8, "sim": 9, "game": 10, "apps": 11
   },
   "rules": [
-    ["include/engine/core/*", "core"],
+    ["include/orosmo/core/*", "core"],
     ["src/core/*", "core"],
-    ["include/engine/platform/*", "platform"],
+    ["include/orosmo/platform/*", "platform"],
     ["src/platform/*", "platform"],
-    ["include/engine/rhi/*", "rhi"],
+    ["include/orosmo/rhi/*", "rhi"],
     ["src/rhi/*", "rhi"],
-    ["include/engine/renderer/*", "renderer"],
+    ["include/orosmo/renderer/*", "renderer"],
     ["src/renderer/*", "renderer"],
-    ["include/engine/world/*", "world"],
+    ["include/orosmo/world/*", "world"],
     ["src/world/*", "world"],
-    ["include/engine/ui/*", "ui"],
+    ["include/orosmo/ui/*", "ui"],
     ["src/ui/*", "ui"],
     ["src/ThirdParty/*", "core"],
     ["apps/*", "apps"]
@@ -23,7 +23,7 @@
   "include_roots": ["include"],
   "scan": ["include", "src", "apps"],
   "api_isolation": {
-    "allowed": ["src/rhi/", "src/platform/", "include/engine/platform/"],
+    "allowed": ["src/rhi/", "src/platform/", "include/orosmo/platform/"],
     "_doc": "docs/03 §8.2 : gl, GL_, Vk, vk, MTL, <GLFW/, <windows.h> interdits hors des backends et de platform."
   }
 }

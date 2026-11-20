@@ -1,6 +1,6 @@
 #include "launch_options.hpp"
 
-#include <engine/rhi/device.hpp>
+#include <orosmo/rhi/device.hpp>
 
 #include <algorithm>
 #include <array>
@@ -15,9 +15,9 @@ namespace demo
 namespace
 {
 
-using engine::core::ErrorCode;
-using engine::core::makeError;
-using engine::rhi::Backend;
+using orosmo::core::ErrorCode;
+using orosmo::core::makeError;
+using orosmo::rhi::Backend;
 
 // Ordre d'affichage (menu, liste) : OpenGL d'abord, c'est le défaut.
 constexpr std::array<Backend, 3> kAllBackends = {Backend::kOpenGL, Backend::kVulkan, Backend::kMetal};
@@ -84,7 +84,7 @@ std::optional<Backend> parseBackend(std::string_view value) noexcept
     return std::nullopt;
 }
 
-engine::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv)
+orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv)
 {
     LaunchOptions options;
     for (int index = 1; index < argc; ++index)
@@ -220,7 +220,7 @@ bool promptForBackend(std::istream &input, std::ostream &output, Backend &select
 
 BackendAvailability backendAvailability(Backend api) noexcept
 {
-    if (engine::rhi::isBackendCompiled(api))
+    if (orosmo::rhi::isBackendCompiled(api))
     {
         return BackendAvailability::kAvailable;
     }

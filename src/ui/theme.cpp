@@ -1,10 +1,10 @@
-#include "engine/ui/theme.hpp"
+#include "orosmo/ui/theme.hpp"
 
-#include "engine/core/file_watcher.hpp"
+#include "orosmo/core/file_watcher.hpp"
 
-#include "engine/renderer/image.hpp"
+#include "orosmo/renderer/image.hpp"
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 #include <nlohmann/json.hpp>
 
 #include <charconv>
@@ -12,7 +12,7 @@
 #include <set>
 #include <sstream>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 using core::ErrorCode;
@@ -858,4 +858,4 @@ void ThemeHost::rewatch()
     }
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

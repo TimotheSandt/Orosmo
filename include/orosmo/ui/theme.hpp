@@ -6,8 +6,8 @@
 // et garde le dernier thème valide si le fichier modifié est invalide. Format complet : docs/UI_LANGUAGE.md (« Thèmes »).
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/renderer/draw_list.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/renderer/draw_list.hpp"
 
 #include <glm/glm.hpp>
 
@@ -23,12 +23,12 @@
 #include <variant>
 #include <vector>
 
-namespace engine::core
+namespace orosmo::core
 {
 class FileWatcher;
 }
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 using Color = glm::vec4;
@@ -216,4 +216,4 @@ class ThemeHost
     bool pending_ = false;
 };
 
-} // namespace engine::ui
+} // namespace orosmo::ui

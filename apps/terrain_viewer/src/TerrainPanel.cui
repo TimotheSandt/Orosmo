@@ -1,6 +1,6 @@
 // TOOL-01 / TER-12 : panneau de réglage du visualiseur. La vue décrit ; la logique est dans viewer_state.cpp ; l'apparence vient
 // du thème (res/themes). Spécification du langage : docs/UI_LANGUAGE.md.
-import "engine/ui"
+import "orosmo/ui"
 import "viewer_state.hpp"
 
 view TerrainPanel {

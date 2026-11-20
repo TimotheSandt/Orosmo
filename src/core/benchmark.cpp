@@ -1,4 +1,4 @@
-#include <engine/core/benchmark.hpp>
+#include <orosmo/core/benchmark.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -11,7 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace engine::core::bench
+namespace orosmo::core::bench
 {
 
 namespace
@@ -383,4 +383,4 @@ BenchmarkReport Runner::run(ScenarioRegistry &registry)
     return report;
 }
 
-} // namespace engine::core::bench
+} // namespace orosmo::core::bench

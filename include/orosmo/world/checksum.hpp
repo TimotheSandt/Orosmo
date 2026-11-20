@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <span>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
@@ -43,4 +43,4 @@ inline std::uint64_t checksum64(std::span<const std::uint16_t> values, std::uint
     return hash;
 }
 
-} // namespace engine::world
+} // namespace orosmo::world

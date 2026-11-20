@@ -9,7 +9,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 class DebugDraw
@@ -45,4 +45,4 @@ class DebugDraw
     std::vector<float> vertices_;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

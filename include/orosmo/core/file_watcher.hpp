@@ -10,7 +10,7 @@
 #include <functional>
 #include <vector>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 enum class FileChange : std::uint8_t
@@ -64,4 +64,4 @@ class FileWatcher
     WatchId mNextId = 0;
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

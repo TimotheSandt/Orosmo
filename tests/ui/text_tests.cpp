@@ -4,15 +4,15 @@
 #include "renderer/repo_paths.hpp"
 #include "support/temp_dir.hpp"
 
-#include <engine/ui/font.hpp>
+#include <orosmo/ui/font.hpp>
 
-#include <engine/ui/text_renderer.hpp>
+#include <orosmo/ui/text_renderer.hpp>
 
 #include <algorithm>
 #include <filesystem>
 
-namespace ui = engine::ui;
-namespace rd = engine::renderer;
+namespace ui = orosmo::ui;
+namespace rd = orosmo::renderer;
 
 namespace
 {
@@ -32,7 +32,7 @@ TEST_SUITE("ui/text")
 {
     TEST_CASE("accented letters and typographic punctuation are drawn; line metrics do not change when they are loaded")
     {
-        engine::ui::TextRenderer text;
+        orosmo::ui::TextRenderer text;
         REQUIRE(text.init(800, 600));
         REQUIRE(text.loadFont(roboto().string(), "default", 48));
         const glm::vec2 ascii = text.measureText("Hg", 0.5f);
@@ -58,7 +58,7 @@ TEST_SUITE("ui/text")
 
     TEST_CASE("letters with a flat bottom all end on the same pixel row (the baseline), at any size and position")
     {
-        engine::ui::TextRenderer text;
+        orosmo::ui::TextRenderer text;
         REQUIRE(text.init(800, 600));
         REQUIRE(text.loadFont(roboto().string(), "default", 48));
         int sizes = 0;
@@ -88,7 +88,7 @@ TEST_SUITE("ui/text")
 
     TEST_CASE("letters are evenly spaced: a repeated pair always advances by the same distance (no per-letter rounding)")
     {
-        engine::ui::TextRenderer text;
+        orosmo::ui::TextRenderer text;
         REQUIRE(text.init(800, 600));
         REQUIRE(text.loadFont(roboto().string(), "default", 48));
         for (float scale = 0.26f; scale <= 0.8f; scale += 0.027f)
@@ -114,7 +114,7 @@ TEST_SUITE("ui/text")
 
     TEST_CASE("TextRendererFont: the font named by the style is loaded on first use; an unreadable one falls back to the default")
     {
-        engine::ui::TextRenderer text;
+        orosmo::ui::TextRenderer text;
         REQUIRE(text.init(800, 600));
         REQUIRE(text.loadFont(roboto().string(), "default", 48));
         ui::TextRendererFont font(text);

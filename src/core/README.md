@@ -1,7 +1,7 @@
 # core
 
 Couche 0 de `docs/03` : ne dépend d'aucun autre module du moteur (bibliothèque standard, `glm`, `nlohmann-json`). Code
-dans `include/engine/core/*.hpp`, `namespace engine::core`, `camelCase` / `kPascalCase`. Le `Logger` repris de l'ancien
+dans `include/orosmo/core/*.hpp`, `namespace orosmo::core`, `camelCase` / `kPascalCase`. Le `Logger` repris de l'ancien
 `Utilities` garde ses noms de méthodes (`Logger::Log`, niveaux `L_INFO`...) et ses macros `LOG_*` : seul son emplacement
 a changé. Le module n'appelle pas le système directement (voir `system.hpp`). Archive : `libcore.a`.
 
@@ -23,7 +23,7 @@ a changé. Le module n'appelle pas le système directement (voir `system.hpp`). 
 | `paths.hpp` | — | `GET_RESOURCE_PATH` (préfixe `res/` hors release), `setWorkingDirectoryToExecutable`, `validateAssets` |
 | `profiler.hpp`, `gpu_timer.hpp` | CORE-05 | `Profiler` (repris de l'ancien module `Profiler`, noms inchangés) : `Profile(nom, f)`, `ProfileGPU(nom, f)`, `GetAverageTime(nom)` ; minuteries GPU par une `IGpuTimerFactory` que le renderer installe (`SetGpuTimerFactory`), sinon horloge CPU |
 | `fps_counter.hpp`, `ring_buffer.hpp` | — | `FPSCounter` (images par seconde, limiteur de cadence) et `RingBuffer<T>` (moyenne, min, max) |
-| `benchmark.hpp` | — | `engine::core::bench` : mesures reproductibles (`BenchmarkConfig`, `ScenarioConfig`, `Scenario`, `ScenarioRegistry`, `CounterSink`, `Runner`, `Statistics`, `computeStatistics`, `BenchmarkReport`, `writeReport`) |
+| `benchmark.hpp` | — | `orosmo::core::bench` : mesures reproductibles (`BenchmarkConfig`, `ScenarioConfig`, `Scenario`, `ScenarioRegistry`, `CounterSink`, `Runner`, `Statistics`, `computeStatistics`, `BenchmarkReport`, `writeReport`) |
 | `system.hpp` | M1 bis | Services du système (largeur de console, chemin de l'exécutable, dossier de données, attente précise) : **déclarés ici, définis par `platform`** (`src/platform/system.cpp`). `core` n'inclut aucun en-tête système |
 
 ## Règles d'usage

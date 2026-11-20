@@ -1,14 +1,14 @@
-#include "engine/core/paths.hpp"
+#include "orosmo/core/paths.hpp"
 
-#include "engine/core/log.hpp"
-#include "engine/core/system.hpp"
+#include "orosmo/core/log.hpp"
+#include "orosmo/core/system.hpp"
 
 #include <filesystem>
 #include <system_error>
 
 namespace fs = std::filesystem;
 
-namespace engine::core
+namespace orosmo::core
 {
 
 void setWorkingDirectoryToExecutable()
@@ -51,4 +51,4 @@ bool validateAssets(const std::vector<std::string> &assetPaths, std::vector<std:
     return allAssetsPresent;
 }
 
-} // namespace engine::core
+} // namespace orosmo::core

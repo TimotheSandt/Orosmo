@@ -2,7 +2,7 @@
 // sérialisation, interface automatique (UI-12) et migration d'état en dérivent. Aucune macro, aucun code généré.
 //
 //   struct TerrainParams { float frequency = 1.f; int octaves = 4; };
-//   template <> struct engine::core::Reflect<TerrainParams> {
+//   template <> struct orosmo::core::Reflect<TerrainParams> {
 //       static constexpr int kVersion = 1;
 //       static constexpr auto fields() {
 //           return std::make_tuple(field("frequency", &TerrainParams::frequency, range(0.0, 16.0)),
@@ -11,7 +11,7 @@
 //   };
 #pragma once
 
-#include <engine/core/math.hpp>
+#include <orosmo/core/math.hpp>
 
 #include <cstdint>
 #include <string>
@@ -19,13 +19,13 @@
 #include <type_traits>
 #include <vector>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 template <typename T> struct Reflect; // à spécialiser ; sans spécialisation, T n'est pas réfléchi
 
 // Noms des valeurs d'une énumération continue à partir de 0 (interface automatique : liste déroulante, UI-12). À spécialiser :
-//   template <> struct engine::core::EnumNames<Basis> { static constexpr std::array<const char *, 2> names{"perlin", "simplex"}; };
+//   template <> struct orosmo::core::EnumNames<Basis> { static constexpr std::array<const char *, 2> names{"perlin", "simplex"}; };
 // La sérialisation garde la valeur numérique (format inchangé).
 template <typename E> struct EnumNames;
 template <typename E>
@@ -126,4 +126,4 @@ void forEachField(T &object, Fn &&fn)
 
 template <Reflected T> constexpr int versionOf() { return Reflect<T>::kVersion; }
 
-} // namespace engine::core
+} // namespace orosmo::core

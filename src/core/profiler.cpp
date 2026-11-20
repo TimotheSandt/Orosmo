@@ -1,8 +1,8 @@
-#include "engine/core/profiler.hpp"
+#include "orosmo/core/profiler.hpp"
 
 #include <atomic>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 namespace
@@ -24,4 +24,4 @@ void Profiler::ClearGpuQueries()
     }
 }
 
-} // namespace engine::core
+} // namespace orosmo::core

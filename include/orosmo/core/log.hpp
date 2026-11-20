@@ -23,7 +23,7 @@
 #endif
 #endif
 
-namespace engine::core
+namespace orosmo::core
 {
 
 enum LogLevel : std::int8_t
@@ -162,41 +162,41 @@ void Logger::LogError(LogLevel level,
     }
 }
 
-} // namespace engine::core
+} // namespace orosmo::core
 
-#define LOG_LEVEL ::engine::core::Logger::GetMinimumLevel()
+#define LOG_LEVEL ::orosmo::core::Logger::GetMinimumLevel()
 #ifdef DEBUG
-#define SET_LOG_LEVEL_DEBUG ::engine::core::Logger::SetMinimumLevel(::engine::core::L_DEBUGGING)
+#define SET_LOG_LEVEL_DEBUG ::orosmo::core::Logger::SetMinimumLevel(::orosmo::core::L_DEBUGGING)
 #else
-#define SET_LOG_LEVEL_DEBUG ::engine::core::Logger::SetMinimumLevel(::engine::core::L_DEBUG)
+#define SET_LOG_LEVEL_DEBUG ::orosmo::core::Logger::SetMinimumLevel(::orosmo::core::L_DEBUG)
 #endif
-#define SET_LOG_LEVEL_TRACE ::engine::core::Logger::SetMinimumLevel(::engine::core::L_TRACE)
-#define SET_LOG_LEVEL_INFO ::engine::core::Logger::SetMinimumLevel(::engine::core::L_INFO)
-#define SET_LOG_LEVEL_WARNING ::engine::core::Logger::SetMinimumLevel(::engine::core::L_WARNING)
-#define SET_LOG_LEVEL_ERROR ::engine::core::Logger::SetMinimumLevel(::engine::core::L_ERROR)
-#define SET_LOG_LEVEL_FATAL ::engine::core::Logger::SetMinimumLevel(::engine::core::L_FATAL)
-#define SET_LOG_FILE(filename) ::engine::core::Logger::Initialize(filename)
-#define SET_LOG_FILE_DEFAULT ::engine::core::Logger::Initialize()
-#define FLUSH_LOG_TO_FILE ::engine::core::Logger::FlushToFile()
+#define SET_LOG_LEVEL_TRACE ::orosmo::core::Logger::SetMinimumLevel(::orosmo::core::L_TRACE)
+#define SET_LOG_LEVEL_INFO ::orosmo::core::Logger::SetMinimumLevel(::orosmo::core::L_INFO)
+#define SET_LOG_LEVEL_WARNING ::orosmo::core::Logger::SetMinimumLevel(::orosmo::core::L_WARNING)
+#define SET_LOG_LEVEL_ERROR ::orosmo::core::Logger::SetMinimumLevel(::orosmo::core::L_ERROR)
+#define SET_LOG_LEVEL_FATAL ::orosmo::core::Logger::SetMinimumLevel(::orosmo::core::L_FATAL)
+#define SET_LOG_FILE(filename) ::orosmo::core::Logger::Initialize(filename)
+#define SET_LOG_FILE_DEFAULT ::orosmo::core::Logger::Initialize()
+#define FLUSH_LOG_TO_FILE ::orosmo::core::Logger::FlushToFile()
 
 #ifdef DEBUG
-#define LOG(level, ...) ::engine::core::Logger::Log(level, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_DEBUGGING(...) ::engine::core::Logger::Log(::engine::core::L_DEBUGGING, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_DEBUG(...) ::engine::core::Logger::Log(::engine::core::L_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_TRACE(...) ::engine::core::Logger::Log(::engine::core::L_TRACE, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_INFO(...) ::engine::core::Logger::Log(::engine::core::L_INFO, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_WARNING(...) ::engine::core::Logger::Log(::engine::core::L_WARNING, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_EWARNING(...) ::engine::core::Logger::LogError(::engine::core::L_WARNING, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_ERROR(...) ::engine::core::Logger::LogError(::engine::core::L_ERROR, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_FATAL(...) ::engine::core::Logger::LogError(::engine::core::L_FATAL, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG(level, ...) ::orosmo::core::Logger::Log(level, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_DEBUGGING(...) ::orosmo::core::Logger::Log(::orosmo::core::L_DEBUGGING, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_DEBUG(...) ::orosmo::core::Logger::Log(::orosmo::core::L_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_TRACE(...) ::orosmo::core::Logger::Log(::orosmo::core::L_TRACE, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_INFO(...) ::orosmo::core::Logger::Log(::orosmo::core::L_INFO, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_WARNING(...) ::orosmo::core::Logger::Log(::orosmo::core::L_WARNING, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_EWARNING(...) ::orosmo::core::Logger::LogError(::orosmo::core::L_WARNING, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_ERROR(...) ::orosmo::core::Logger::LogError(::orosmo::core::L_ERROR, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_FATAL(...) ::orosmo::core::Logger::LogError(::orosmo::core::L_FATAL, __FILE__, __LINE__, __VA_ARGS__)
 #else
-#define LOG(level, ...) ::engine::core::Logger::Log(level, __VA_ARGS__)
+#define LOG(level, ...) ::orosmo::core::Logger::Log(level, __VA_ARGS__)
 #define LOG_DEBUGGING(...)
-#define LOG_DEBUG(...) ::engine::core::Logger::Log(::engine::core::L_DEBUG, __VA_ARGS__)
-#define LOG_TRACE(...) ::engine::core::Logger::Log(::engine::core::L_TRACE, __VA_ARGS__)
-#define LOG_INFO(...) ::engine::core::Logger::Log(::engine::core::L_INFO, __VA_ARGS__)
-#define LOG_WARNING(...) ::engine::core::Logger::Log(::engine::core::L_WARNING, __VA_ARGS__)
-#define LOG_EWARNING(...) ::engine::core::Logger::LogError(::engine::core::L_WARNING, __VA_ARGS__)
-#define LOG_ERROR(...) ::engine::core::Logger::LogError(::engine::core::L_ERROR, __VA_ARGS__)
-#define LOG_FATAL(...) ::engine::core::Logger::LogError(::engine::core::L_FATAL, __VA_ARGS__)
+#define LOG_DEBUG(...) ::orosmo::core::Logger::Log(::orosmo::core::L_DEBUG, __VA_ARGS__)
+#define LOG_TRACE(...) ::orosmo::core::Logger::Log(::orosmo::core::L_TRACE, __VA_ARGS__)
+#define LOG_INFO(...) ::orosmo::core::Logger::Log(::orosmo::core::L_INFO, __VA_ARGS__)
+#define LOG_WARNING(...) ::orosmo::core::Logger::Log(::orosmo::core::L_WARNING, __VA_ARGS__)
+#define LOG_EWARNING(...) ::orosmo::core::Logger::LogError(::orosmo::core::L_WARNING, __VA_ARGS__)
+#define LOG_ERROR(...) ::orosmo::core::Logger::LogError(::orosmo::core::L_ERROR, __VA_ARGS__)
+#define LOG_FATAL(...) ::orosmo::core::Logger::LogError(::orosmo::core::L_FATAL, __VA_ARGS__)
 #endif

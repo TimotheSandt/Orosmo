@@ -1,8 +1,8 @@
 #include "viewer_state.hpp"
 
-#include <engine/core/serialization.hpp>
+#include <orosmo/core/serialization.hpp>
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -48,7 +48,7 @@ void ViewerState::savePreset()
     const std::filesystem::path temporary = presetDirectory / "custom.json.tmp";
     {
         std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-        out << engine::core::saveDocument(params).dump(2) << '\n';
+        out << orosmo::core::saveDocument(params).dump(2) << '\n';
         out.close();
         if (!out)
         {
@@ -74,7 +74,7 @@ void ViewerState::savePreset()
 void ViewerState::loadPresets(const std::filesystem::path &directory)
 {
     presetDirectory = directory;
-    std::vector<std::pair<std::string, engine::world::TerrainParams>> found;
+    std::vector<std::pair<std::string, orosmo::world::TerrainParams>> found;
     std::error_code ec;
     for (const auto &entry : std::filesystem::directory_iterator(directory, ec))
     {
@@ -85,9 +85,9 @@ void ViewerState::loadPresets(const std::filesystem::path &directory)
         std::ifstream in(entry.path(), std::ios::binary);
         std::ostringstream text;
         text << in.rdbuf();
-        auto json = engine::core::parseJson(text.str());
-        engine::world::TerrainParams p;
-        if (!json || !engine::core::loadDocument(p, *json))
+        auto json = orosmo::core::parseJson(text.str());
+        orosmo::world::TerrainParams p;
+        if (!json || !orosmo::core::loadDocument(p, *json))
         {
             LOG_WARNING("Viewer: preset ignored (invalid): ", entry.path().generic_string());
             continue;

@@ -6,9 +6,9 @@
 // événements, nouvelle mise en page), puis `draw(list)` (liste de dessin pour `CanvasRenderer`).
 #pragma once
 
-#include "engine/ui/font.hpp"
-#include "engine/ui/theme.hpp"
-#include "engine/ui/widget.hpp"
+#include "orosmo/ui/font.hpp"
+#include "orosmo/ui/theme.hpp"
+#include "orosmo/ui/widget.hpp"
 
 #include <glm/glm.hpp>
 
@@ -21,7 +21,7 @@
 #include <string_view>
 #include <vector>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 // Touches de l'interface (indépendantes de la plateforme ; l'application traduit les siennes).
@@ -272,4 +272,4 @@ class Ui
     glm::vec2 tooltipAt_{0.0f};
 };
 
-} // namespace engine::ui
+} // namespace orosmo::ui

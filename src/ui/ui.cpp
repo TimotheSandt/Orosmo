@@ -1,12 +1,12 @@
-#include "engine/ui/ui.hpp"
+#include "orosmo/ui/ui.hpp"
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <algorithm>
 #include <cctype>
 #include <unordered_set>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 // ── Raccourcis ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -933,4 +933,4 @@ void Ui::draw(renderer::DrawList &list) const
     }
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

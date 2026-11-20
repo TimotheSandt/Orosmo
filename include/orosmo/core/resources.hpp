@@ -6,8 +6,8 @@
 // libération pendant qu'un thread lit la ressource ne l'invalide pas.
 #pragma once
 
-#include <engine/core/error.hpp>
-#include <engine/core/tasks.hpp>
+#include <orosmo/core/error.hpp>
+#include <orosmo/core/tasks.hpp>
 
 #include <algorithm>
 #include <condition_variable>
@@ -20,7 +20,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 template <typename T> struct Handle
@@ -309,4 +309,4 @@ template <typename T> class ResourceCache
     std::condition_variable mLoaded;
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

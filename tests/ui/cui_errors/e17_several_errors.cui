@@ -2,7 +2,7 @@
 // expect: 9:9: error: 'Button' requires the argument 'text'
 // expect: 10:19: error: '.width(.huge)': expected a number, .fit or .fill
 // expect: 11:9: error: 'ScrollView' takes exactly one child (put several in a VBox)
-import "engine/ui"
+import "orosmo/ui"
 
 view V {
     VBox {

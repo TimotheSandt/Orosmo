@@ -2,9 +2,9 @@
 // GLSL 450 → SPIR-V → GLSL cible par le pipeline de shaders du RHI, cache mémoire et disque, rechargement à chaud.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/rhi/device.hpp"
-#include "engine/rhi/shader_compiler.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/rhi/device.hpp"
+#include "orosmo/rhi/shader_compiler.hpp"
 
 #include <array>
 #include <cstdint>
@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 class ShaderLibrary;
@@ -145,4 +145,4 @@ class ShaderLibrary
     std::size_t reloaded_ = 0;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

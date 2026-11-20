@@ -10,7 +10,7 @@
 #include <typeindex>
 #include <unordered_map>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 class EventBus;
@@ -142,4 +142,4 @@ class EventBus
     std::uint64_t mNextId = 0;
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

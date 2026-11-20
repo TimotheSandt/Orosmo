@@ -1,9 +1,9 @@
-#include "engine/world/streaming.hpp"
+#include "orosmo/world/streaming.hpp"
 
 #include <algorithm>
 #include <unordered_set>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 TileStreamer::TileStreamer(TerrainParams params, std::uint32_t seed, LodConfig lod, StreamingConfig config, core::TaskSystem &tasks)
@@ -159,4 +159,4 @@ void TileStreamer::finishPending()
     rebalance(); // les tuiles intégrées comptent : budget et éviction recalculés sans attendre le prochain update()
 }
 
-} // namespace engine::world
+} // namespace orosmo::world

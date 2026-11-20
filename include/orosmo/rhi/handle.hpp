@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-namespace engine::rhi
+namespace orosmo::rhi
 {
 
 template <typename Tag> struct Handle
@@ -125,4 +125,4 @@ template <typename Tag, typename T> class HandlePool
     std::size_t live_ = 0;
 };
 
-} // namespace engine::rhi
+} // namespace orosmo::rhi

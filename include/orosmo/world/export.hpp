@@ -3,21 +3,21 @@
 // graine et les mêmes paramètres (PNG 16 bits et EXR sans compression, écrits ici octet par octet ; biomes par stb).
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/core/reflection.hpp"
-#include "engine/world/terrain.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/core/reflection.hpp"
+#include "orosmo/world/terrain.hpp"
 
 #include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <vector>
 
-namespace engine::core
+namespace orosmo::core
 {
 class TaskSystem;
 }
 
-namespace engine::world
+namespace orosmo::world
 {
 
 // Grille de hauteurs rectangulaire au niveau de détail 0 : l'échantillon (i, j) est l'échantillon global
@@ -97,14 +97,14 @@ std::vector<Biome> biomeMap(const HeightField &field, const BiomeParams &params)
 // PNG RGB 8 bits : eau bleue, sable, herbe, roche, neige.
 core::Result<> writeBiomePng(const std::filesystem::path &path, const HeightField &field, const BiomeParams &params);
 
-} // namespace engine::world
+} // namespace orosmo::world
 
-template <> struct engine::core::Reflect<engine::world::BiomeParams>
+template <> struct orosmo::core::Reflect<orosmo::world::BiomeParams>
 {
     static constexpr int kVersion = 1;
     static constexpr auto fields()
     {
-        using P = engine::world::BiomeParams;
+        using P = orosmo::world::BiomeParams;
         return std::make_tuple(field("seaLevel", &P::seaLevel, range(-1000.0, 1000.0), "niveau de la mer (m)"),
                                field("sandHeight", &P::sandHeight, range(-1000.0, 1000.0), "sable jusqu'à (m)"),
                                field("snowHeight", &P::snowHeight, range(-1000.0, 5000.0), "neige au-dessus (m)"),

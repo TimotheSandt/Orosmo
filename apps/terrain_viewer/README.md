@@ -1,8 +1,8 @@
 # terrain-viewer (TOOL-01, TER-12)
 
-Visualiseur de terrain : caméra libre, tuiles générées en tâche de fond (`engine::world::TileStreamer`, niveaux de détail cousus)
+Visualiseur de terrain : caméra libre, tuiles générées en tâche de fond (`orosmo::world::TileStreamer`, niveaux de détail cousus)
 et dessinées par `TerrainRenderer`, **panneau de réglage écrit dans le langage d'interface** (`src/TerrainPanel.cui`, compilé par
-`cui` vers `engine::ui`) : graine, préréglages (chargés et enregistrés), tous les paramètres du terrain affichés automatiquement
+`cui` vers `orosmo::ui`) : graine, préréglages (chargés et enregistrés), tous les paramètres du terrain affichés automatiquement
 depuis leur réflexion (UI-12), thème clair ou sombre changé en direct (et rechargé à chaud si `bin/res/themes/*.json` est modifié),
 export d'une carte de hauteur 16 bits.
 

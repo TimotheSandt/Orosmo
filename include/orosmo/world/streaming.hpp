@@ -3,9 +3,9 @@
 // demandée par la sélection courante n'est jamais libérée (le budget peut alors être dépassé : `stats().overBudget`).
 #pragma once
 
-#include "engine/core/tasks.hpp"
-#include "engine/world/lod.hpp"
-#include "engine/world/terrain.hpp"
+#include "orosmo/core/tasks.hpp"
+#include "orosmo/world/lod.hpp"
+#include "orosmo/world/terrain.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 struct StreamingConfig
@@ -86,4 +86,4 @@ class TileStreamer
     bool overBudget_ = false;
 };
 
-} // namespace engine::world
+} // namespace orosmo::world

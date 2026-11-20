@@ -1,7 +1,7 @@
 #include "support/test_support.hpp"
 
 #include "launch_options.hpp"
-#include <engine/rhi/device.hpp>
+#include <orosmo/rhi/device.hpp>
 
 #include <sstream>
 
@@ -9,7 +9,7 @@ namespace tests
 {
 
 using demo::BackendAvailability;
-using engine::rhi::Backend;
+using orosmo::rhi::Backend;
 
 TEST_SUITE("Demo launch options")
 {
@@ -59,7 +59,7 @@ TEST_SUITE("Demo launch options")
         const char *argv[] = {"ProceduralGeneration", "--api", "unknown"};
         const auto parsed = demo::parseLaunchOptions(3, argv);
         Assert(!parsed.has_value(), "An invalid graphics API should be refused");
-        Assert(parsed.error().code == engine::core::ErrorCode::kInvalidArgument, "the error should say the argument is invalid");
+        Assert(parsed.error().code == orosmo::core::ErrorCode::kInvalidArgument, "the error should say the argument is invalid");
         AssertEqual(parsed.error().message, std::string("Unknown graphics API: unknown"), "the message should name the value");
     }
 
@@ -204,11 +204,11 @@ TEST_SUITE("Demo launch options")
 
     TEST_CASE("the selectable APIs match the backends compiled into the RHI (RHI-04)")
     {
-        Assert(engine::rhi::isBackendCompiled(engine::rhi::Backend::kOpenGL), "the OpenGL backend is compiled");
-        Assert(!engine::rhi::isBackendCompiled(engine::rhi::Backend::kVulkan), "the Vulkan backend comes back in M4");
-        Assert(demo::isBackendAvailable(Backend::kOpenGL) == engine::rhi::isBackendCompiled(engine::rhi::Backend::kOpenGL),
+        Assert(orosmo::rhi::isBackendCompiled(orosmo::rhi::Backend::kOpenGL), "the OpenGL backend is compiled");
+        Assert(!orosmo::rhi::isBackendCompiled(orosmo::rhi::Backend::kVulkan), "the Vulkan backend comes back in M4");
+        Assert(demo::isBackendAvailable(Backend::kOpenGL) == orosmo::rhi::isBackendCompiled(orosmo::rhi::Backend::kOpenGL),
                     "OpenGL availability should follow the RHI");
-        Assert(demo::isBackendAvailable(Backend::kVulkan) == engine::rhi::isBackendCompiled(engine::rhi::Backend::kVulkan),
+        Assert(demo::isBackendAvailable(Backend::kVulkan) == orosmo::rhi::isBackendCompiled(orosmo::rhi::Backend::kVulkan),
                     "Vulkan availability should follow the RHI");
     }
 }

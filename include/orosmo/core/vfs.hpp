@@ -4,7 +4,7 @@
 // Un chemin qui remonte au-dessus de sa racine (`res://../x`) est refusé.
 #pragma once
 
-#include <engine/core/error.hpp>
+#include <orosmo/core/error.hpp>
 
 #include <cstdint>
 #include <filesystem>
@@ -13,7 +13,7 @@
 #include <string_view>
 #include <vector>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 class Vfs
@@ -54,4 +54,4 @@ class Vfs
     std::map<std::string, std::vector<std::filesystem::path>, std::less<>> mMounts; // montages par ordre d'ajout
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

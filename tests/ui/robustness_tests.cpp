@@ -3,9 +3,9 @@
 // structure des widgets composés, racine retirée pendant la mise à jour, répétitions des fonds en neuf parties.
 #include "ui/ui_harness.hpp"
 
-#include <engine/ui/menus.hpp>
+#include <orosmo/ui/menus.hpp>
 
-namespace ui = engine::ui;
+namespace ui = orosmo::ui;
 using tests::UiHarness;
 
 TEST_SUITE("ui/robustness")
@@ -159,9 +159,9 @@ TEST_SUITE("ui/robustness")
     }
 }
 
-#include <engine/ui/color.hpp>
-#include <engine/ui/controls.hpp>
-#include <engine/ui/reflect.hpp>
+#include <orosmo/ui/color.hpp>
+#include <orosmo/ui/controls.hpp>
+#include <orosmo/ui/reflect.hpp>
 
 #include <cstdint>
 #include <limits>

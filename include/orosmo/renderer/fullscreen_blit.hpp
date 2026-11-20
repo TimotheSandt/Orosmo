@@ -2,17 +2,17 @@
 // le RHI n'a pas de commande de blit). Filtrage = celui de l'échantillonneur donné.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/renderer/pipeline_cache.hpp"
-#include "engine/renderer/shader_library.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/renderer/pipeline_cache.hpp"
+#include "orosmo/renderer/shader_library.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <filesystem>
 #include <map>
 #include <memory>
 #include <utility>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 class FullscreenBlit
@@ -54,4 +54,4 @@ class FullscreenBlit
     std::map<std::pair<std::uint64_t, std::uint64_t>, rhi::BindGroupHandle> groups_;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

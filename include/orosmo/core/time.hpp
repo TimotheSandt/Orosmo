@@ -5,7 +5,7 @@
 #include <chrono>
 #include <cstdint>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 using Nanoseconds = std::chrono::nanoseconds;
@@ -75,4 +75,4 @@ class FixedStepper
     std::uint64_t mTotalSteps = 0;
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

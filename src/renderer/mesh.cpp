@@ -1,4 +1,4 @@
-#include "engine/renderer/mesh.hpp"
+#include "orosmo/renderer/mesh.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -9,7 +9,7 @@
 #include <numeric>
 #include <string>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 namespace
@@ -298,4 +298,4 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(uploadedOrigin_, other.uploadedOrigin_); // va avec modelBuffer_ : l'origine des matrices déjà envoyées
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

@@ -5,7 +5,7 @@
 //   setWorkingDirectoryToExecutable() le dossier courant devient celui de l'exécutable (les chemins ci-dessus sont relatifs)
 //   validateAssets(...)               vérifie la présence de fichiers et journalise ceux qui manquent
 //
-// Le chemin de l'exécutable et le dossier de données de l'utilisateur sont dans engine/core/system.hpp.
+// Le chemin de l'exécutable et le dossier de données de l'utilisateur sont dans orosmo/core/system.hpp.
 #pragma once
 
 #include <string>
@@ -17,7 +17,7 @@
 #define GET_RESOURCE_PATH(path) "res/" path
 #endif
 
-namespace engine::core
+namespace orosmo::core
 {
 
 // Change le dossier courant pour celui de l'exécutable ; journalise une erreur s'il ne peut pas (dossier courant inchangé).
@@ -27,4 +27,4 @@ void setWorkingDirectoryToExecutable();
 // liste (vidée d'abord, chemins au format générique).
 bool validateAssets(const std::vector<std::string> &assetPaths, std::vector<std::string> *missingAssets = nullptr);
 
-} // namespace engine::core
+} // namespace orosmo::core

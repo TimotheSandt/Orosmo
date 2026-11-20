@@ -8,7 +8,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 
-#include "engine/core/fps_counter.hpp"
+#include "orosmo/core/fps_counter.hpp"
 
 class InputManager;
 
@@ -155,7 +155,7 @@ class Window
 
     // Binding utilisé à Init() : Close() libère le contexte avec le même, même si le binding global a changé entretemps.
 
-    engine::core::FPSCounter fpsCounter;
+    orosmo::core::FPSCounter fpsCounter;
 
     std::chrono::time_point<std::chrono::high_resolution_clock> lastTime;
 };

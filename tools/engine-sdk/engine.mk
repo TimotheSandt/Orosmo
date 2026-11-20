@@ -216,7 +216,7 @@ else
     _ENG_CUI_TOOL := $(ENGINE_DIR)/tools/cui
 endif
 
-# .cui → .gen.cpp + .gen.h  (cible engine/ui ; relancé quand la vue ou l'outil cui change : un source inchangé, au même format de
+# .cui → .gen.cpp + .gen.h  (cible orosmo/ui ; relancé quand la vue ou l'outil cui change : un source inchangé, au même format de
 # sortie, n'est pas réécrit, grâce au hachage en tête du .gen.h)
 $(ENGINE_GEN_DIR)/%.gen.cpp: $(GAME_SRC_DIR)/%.cui $(_ENG_CUI_TOOL)
 	@mkdir -p "$(dir $@)"

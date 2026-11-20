@@ -1,13 +1,13 @@
-#include "engine/ui/color.hpp"
+#include "orosmo/ui/color.hpp"
 
-#include "engine/ui/ui.hpp"
+#include "orosmo/ui/ui.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <numbers>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 // ── Conversions ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -754,4 +754,4 @@ void CurveEditor::drawContent(const Ui &ui, renderer::DrawList &list, const Styl
     (void)ui;
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

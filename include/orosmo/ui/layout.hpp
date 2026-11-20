@@ -5,9 +5,9 @@
 // `ScrollView` : un contenu plus grand que la vue, défilement à la molette et par la barre, découpé à la vue.
 #pragma once
 
-#include "engine/ui/widget.hpp"
+#include "orosmo/ui/widget.hpp"
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 enum class Axis : std::uint8_t
@@ -119,4 +119,4 @@ class ScrollView : public Widget
     float dragOffset_ = 0.0f;
 };
 
-} // namespace engine::ui
+} // namespace orosmo::ui

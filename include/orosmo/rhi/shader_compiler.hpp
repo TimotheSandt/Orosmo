@@ -3,9 +3,9 @@
 // constants en UBO). Le backend Vulkan (M4) consomme directement le SPIR-V.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/core/file_watcher.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/core/file_watcher.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <array>
 #include <cstdint>
@@ -18,7 +18,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace engine::rhi
+namespace orosmo::rhi
 {
 
 struct ReflectedBinding
@@ -153,4 +153,4 @@ class ShaderHotReloader
     std::vector<Entry> mEntries;
 };
 
-} // namespace engine::rhi
+} // namespace orosmo::rhi

@@ -6,15 +6,15 @@
 // Les arguments qui ne commencent pas par `--` sont rendus tels quels (fichiers, etc.).
 #pragma once
 
-#include <engine/core/error.hpp>
-#include <engine/core/serialization.hpp>
+#include <orosmo/core/error.hpp>
+#include <orosmo/core/serialization.hpp>
 
 #include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 class Config
@@ -91,4 +91,4 @@ class Config
     Json mCli = Json::object();
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

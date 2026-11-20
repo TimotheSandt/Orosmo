@@ -1,8 +1,8 @@
-#include "engine/rhi/device.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include "opengl/gl_device.hpp"
 
-namespace engine::rhi
+namespace orosmo::rhi
 {
 
 bool isBackendCompiled(Backend backend) noexcept { return backend == Backend::kOpenGL; }
@@ -14,7 +14,7 @@ Result<> prepareWindowHints(const DeviceDesc &desc)
         gl::applyWindowHints(desc);
         return {};
     }
-    return engine::core::makeError(engine::core::ErrorCode::kUnsupported,
+    return orosmo::core::makeError(orosmo::core::ErrorCode::kUnsupported,
                                    std::string("RHI backend '") + toString(desc.backend) + "' is not compiled in this build");
 }
 
@@ -26,8 +26,8 @@ Result<std::unique_ptr<Device>> createDevice(const DeviceDesc &desc)
         case Backend::kVulkan:
         case Backend::kMetal: break;
     }
-    return engine::core::makeError(engine::core::ErrorCode::kUnsupported,
+    return orosmo::core::makeError(orosmo::core::ErrorCode::kUnsupported,
                                    std::string("RHI backend '") + toString(desc.backend) + "' is not compiled in this build");
 }
 
-} // namespace engine::rhi
+} // namespace orosmo::rhi

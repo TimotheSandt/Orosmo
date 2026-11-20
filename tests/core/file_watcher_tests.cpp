@@ -1,11 +1,11 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/file_watcher.hpp>
+#include <orosmo/core/file_watcher.hpp>
 
 #include <filesystem>
 #include <fstream>
 
-using namespace engine::core;
+using namespace orosmo::core;
 namespace fs = std::filesystem;
 
 namespace

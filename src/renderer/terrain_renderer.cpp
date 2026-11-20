@@ -1,11 +1,11 @@
-#include "engine/renderer/terrain_renderer.hpp"
+#include "orosmo/renderer/terrain_renderer.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cstring>
 #include <string>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 using core::ErrorCode;
@@ -219,4 +219,4 @@ core::Result<> TerrainRenderer::draw(SceneRenderer &scene, const Camera &camera)
     return {};
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

@@ -1,11 +1,11 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/config.hpp>
+#include <orosmo/core/config.hpp>
 
 #include <filesystem>
 #include <fstream>
 
-using namespace engine::core;
+using namespace orosmo::core;
 namespace fs = std::filesystem;
 
 namespace
@@ -35,7 +35,7 @@ struct Terrain
 };
 } // namespace
 
-template <> struct engine::core::Reflect<Terrain>
+template <> struct orosmo::core::Reflect<Terrain>
 {
     static constexpr int kVersion = 1;
     static constexpr auto fields()

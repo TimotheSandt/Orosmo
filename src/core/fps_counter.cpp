@@ -1,9 +1,9 @@
-#include "engine/core/fps_counter.hpp"
+#include "orosmo/core/fps_counter.hpp"
 #include <algorithm>
 
-#include <engine/core/system.hpp>
+#include <orosmo/core/system.hpp>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 FPSCounter::FPSCounter()
@@ -239,13 +239,13 @@ void FPSCounter::vsyncLikePacing(unsigned int maxFPS)
 void FPSCounter::platformOptimizedSleep(std::chrono::nanoseconds sleepTime)
 {
     // Attente précise propre à chaque système : src/platform/system.cpp
-    engine::core::system::preciseSleep(sleepTime);
+    orosmo::core::system::preciseSleep(sleepTime);
 }
 
 void FPSCounter::initializePlatformTimer()
 {
     // Windows : résolution du minuteur à 1 ms pour une attente plus précise (src/platform/system.cpp) ; sans effet ailleurs.
-    if (engine::core::system::beginHighResolutionTimer())
+    if (orosmo::core::system::beginHighResolutionTimer())
     {
         this->timerInitialized = true;
     }
@@ -255,7 +255,7 @@ void FPSCounter::cleanupPlatformTimer()
 {
     if (this->timerInitialized)
     {
-        engine::core::system::endHighResolutionTimer();
+        orosmo::core::system::endHighResolutionTimer();
         this->timerInitialized = false;
     }
 }
@@ -286,4 +286,4 @@ void FPSCounter::setSpinThreshold(std::chrono::nanoseconds threshold)
     this->spinThreshold = std::max(threshold, std::chrono::nanoseconds(0));
 }
 
-} // namespace engine::core
+} // namespace orosmo::core

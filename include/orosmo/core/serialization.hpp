@@ -3,8 +3,8 @@
 // ascendante). Champ inconnu : ignoré. Type incompatible ou hors plage : Error (kParse / kOutOfRange), aucune exception.
 #pragma once
 
-#include <engine/core/error.hpp>
-#include <engine/core/reflection.hpp>
+#include <orosmo/core/error.hpp>
+#include <orosmo/core/reflection.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 using Json = nlohmann::json;
@@ -241,4 +241,4 @@ inline Result<Json> fromBinary(std::span<const std::uint8_t> bytes)
     return j;
 }
 
-} // namespace engine::core
+} // namespace orosmo::core

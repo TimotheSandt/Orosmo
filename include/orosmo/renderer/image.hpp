@@ -1,14 +1,14 @@
 // Images CPU (RGBA8, origine en haut à gauche) : lecture d'une texture RHI, PNG, comparaison (captures et images de référence).
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <cstdint>
 #include <filesystem>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 struct Image
@@ -39,4 +39,4 @@ struct ImageDiff
 // Les deux images doivent avoir la même taille (sinon kInvalidArgument).
 core::Result<ImageDiff> compareImages(const Image &a, const Image &b, std::uint8_t tolerance);
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

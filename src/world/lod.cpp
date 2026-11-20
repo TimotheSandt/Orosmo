@@ -1,10 +1,10 @@
-#include "engine/world/lod.hpp"
+#include "orosmo/world/lod.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <unordered_set>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 namespace
@@ -226,4 +226,4 @@ TileMesh buildTileMesh(const TerrainParams &params, std::uint32_t seed, const He
     return mesh;
 }
 
-} // namespace engine::world
+} // namespace orosmo::world

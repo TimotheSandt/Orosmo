@@ -1,13 +1,13 @@
 // RHI-04, RHI-18 : capacités du périphérique. Le moteur les lit ; il ne suppose jamais une fonction optionnelle (règle 11).
 #pragma once
 
-#include "engine/rhi/types.hpp"
+#include "orosmo/rhi/types.hpp"
 
 #include <array>
 #include <cstdint>
 #include <string>
 
-namespace engine::rhi
+namespace orosmo::rhi
 {
 
 struct Capabilities
@@ -51,4 +51,4 @@ struct Capabilities
     bool sparseResources = false;
 };
 
-} // namespace engine::rhi
+} // namespace orosmo::rhi

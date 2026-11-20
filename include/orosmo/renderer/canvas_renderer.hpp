@@ -3,21 +3,21 @@
 // le batch par instances de R2D-01 viendra en M5 (QUESTIONS A21).
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/renderer/draw_list.hpp"
-#include "engine/renderer/gpu_buffer.hpp"
-#include "engine/renderer/pipeline_cache.hpp"
-#include "engine/renderer/render_target.hpp"
-#include "engine/renderer/shader_library.hpp"
-#include "engine/renderer/texture.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/renderer/draw_list.hpp"
+#include "orosmo/renderer/gpu_buffer.hpp"
+#include "orosmo/renderer/pipeline_cache.hpp"
+#include "orosmo/renderer/render_target.hpp"
+#include "orosmo/renderer/shader_library.hpp"
+#include "orosmo/renderer/texture.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <filesystem>
 #include <map>
 #include <memory>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 struct CanvasTarget
@@ -118,4 +118,4 @@ class CanvasRenderer
     std::uint64_t renderCount_ = 0;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

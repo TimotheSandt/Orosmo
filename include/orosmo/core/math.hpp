@@ -7,7 +7,7 @@
 
 #include <cmath>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 using Vec2 = glm::vec2;
@@ -57,4 +57,4 @@ inline bool approxEqual(double a, double b, double eps = 1e-9) { return std::fab
 constexpr double radians(double degrees) { return degrees * (kPi / 180.0); }
 constexpr double degrees(double radiansValue) { return radiansValue * (180.0 / kPi); }
 
-} // namespace engine::core
+} // namespace orosmo::core

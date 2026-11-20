@@ -2,15 +2,15 @@
 // se « lie » pas ; `passDesc` fabrique la description de passe à donner à `CommandEncoder::beginRenderPass`.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 struct RenderTargetInfo
@@ -92,4 +92,4 @@ class RenderTarget
     RenderTargetInfo info_;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

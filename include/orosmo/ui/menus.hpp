@@ -13,14 +13,14 @@
 //   ImageView (image)            image produite par le jeu (mini-carte, boussole, aperçu de carte de hauteur...) : DynamicImage
 #pragma once
 
-#include "engine/ui/layout.hpp"
-#include "engine/ui/widgets.hpp"
+#include "orosmo/ui/layout.hpp"
+#include "orosmo/ui/widgets.hpp"
 
 #include <memory>
 #include <string>
 #include <vector>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 class Dialog : public Widget
@@ -208,4 +208,4 @@ class ImageView : public Widget
     Color tint_{1.0f};
 };
 
-} // namespace engine::ui
+} // namespace orosmo::ui

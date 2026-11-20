@@ -1,11 +1,11 @@
-#include "engine/ui/window_input.hpp"
+#include "orosmo/ui/window_input.hpp"
 
-#include <engine/platform/input_manager.hpp>
-#include <engine/platform/window.hpp>
+#include <orosmo/platform/input_manager.hpp>
+#include <orosmo/platform/window.hpp>
 
 #include <algorithm>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 InputFrame readWindowInput(Window &window, float deltaTime)
@@ -71,4 +71,4 @@ void useSystemClipboard(Ui &ui, Window &window)
     ui.setClipboard([&window] { return window.GetClipboardText(); }, [&window](const std::string &text) { window.SetClipboardText(text); });
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

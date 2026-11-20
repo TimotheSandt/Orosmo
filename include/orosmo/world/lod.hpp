@@ -4,13 +4,13 @@
 // pairs, c'est-à-dire exactement la droite du bord grossier ; les sommets pairs sont les mêmes échantillons des deux côtés.
 #pragma once
 
-#include "engine/world/terrain.hpp"
+#include "orosmo/world/terrain.hpp"
 
 #include <array>
 #include <cstdint>
 #include <vector>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 struct LodConfig
@@ -47,4 +47,4 @@ struct TileMesh
 
 TileMesh buildTileMesh(const TerrainParams &params, std::uint32_t seed, const Heightmap &heights, const CoarserNeighbors &stitch);
 
-} // namespace engine::world
+} // namespace orosmo::world

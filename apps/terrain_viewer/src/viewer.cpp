@@ -2,22 +2,22 @@
 
 #include "TerrainPanel.gen.h"
 
-#include <engine/platform/input_manager.hpp>
-#include <engine/renderer/image.hpp>
-#include <engine/ui/window_input.hpp>
-#include <engine/world/export.hpp>
+#include <orosmo/platform/input_manager.hpp>
+#include <orosmo/renderer/image.hpp>
+#include <orosmo/ui/window_input.hpp>
+#include <orosmo/world/export.hpp>
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <algorithm>
 #include <cmath>
 
-namespace rd = engine::renderer;
-namespace rhi = engine::rhi;
-namespace ui = engine::ui;
-namespace w = engine::world;
-using engine::core::ErrorCode;
-using engine::core::makeError;
+namespace rd = orosmo::renderer;
+namespace rhi = orosmo::rhi;
+namespace ui = orosmo::ui;
+namespace w = orosmo::world;
+using orosmo::core::ErrorCode;
+using orosmo::core::makeError;
 
 namespace
 {
@@ -47,7 +47,7 @@ Viewer::~Viewer()
     window_.Close();
 }
 
-engine::core::Result<std::unique_ptr<Viewer>> Viewer::create(const ViewerOptions &options)
+orosmo::core::Result<std::unique_ptr<Viewer>> Viewer::create(const ViewerOptions &options)
 {
     std::unique_ptr<Viewer> viewer(new Viewer(options));
     if (auto r = viewer->init(); !r)
@@ -57,7 +57,7 @@ engine::core::Result<std::unique_ptr<Viewer>> Viewer::create(const ViewerOptions
     return viewer;
 }
 
-engine::core::Result<> Viewer::init()
+orosmo::core::Result<> Viewer::init()
 {
     const auto &res = options_.resources;
     const auto shaderDir = res / "shader" / "rhi";
@@ -431,7 +431,7 @@ bool Viewer::render()
     auto encoder = device_->createCommandEncoder();
     camera_.setAspect(pw, ph);
     scene_->setOutputResolution(pixels_.x, pixels_.y);
-    engine::core::Result<> status = scene_->beginFrame(*encoder, {.clearColor = {0.55f, 0.68f, 0.86f, 1.0f}});
+    orosmo::core::Result<> status = scene_->beginFrame(*encoder, {.clearColor = {0.55f, 0.68f, 0.86f, 1.0f}});
     if (status)
         status = scene_->setCamera(camera_);
     if (status)

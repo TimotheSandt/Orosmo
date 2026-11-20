@@ -2,9 +2,9 @@
 // graphique, ressource manquante, capture ratée).
 #include "viewer.hpp"
 
-#include <engine/core/system.hpp>
+#include <orosmo/core/system.hpp>
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <charconv>
 #include <cstdlib>
@@ -45,7 +45,7 @@ int main(int argc, char **argv)
     ViewerOptions options;
     // Ressources à côté du binaire, trouvé par le système (lancé par le PATH, argv[0] n'est que le nom de la commande) ; --res
     // les remplace. Aucune résolution de chemin ne lève d'exception (dossier courant supprimé : message et code 2).
-    std::filesystem::path exe = engine::core::system::executablePath();
+    std::filesystem::path exe = orosmo::core::system::executablePath();
     std::error_code pathError;
     if (exe.empty())
         exe = std::filesystem::absolute(argv[0], pathError);

@@ -2,7 +2,7 @@
 // fonctions et lie ces champs ; le visualiseur (viewer.cpp) lit les demandes à chaque image.
 #pragma once
 
-#include <engine/world/terrain.hpp>
+#include <orosmo/world/terrain.hpp>
 
 #include <cstdint>
 #include <filesystem>
@@ -22,7 +22,7 @@ struct ViewerState
 {
     // ── Lié par la vue ──
     std::uint32_t seed = 1;
-    engine::world::TerrainParams params;
+    orosmo::world::TerrainParams params;
     int preset = 0;
     int theme = 0; // index dans themeNames()
     bool live = true;
@@ -47,7 +47,7 @@ struct ViewerState
 
     std::filesystem::path presetDirectory;
     std::vector<std::string> names;
-    std::vector<engine::world::TerrainParams> presets;
+    std::vector<orosmo::world::TerrainParams> presets;
     bool regenerateRequested = false;
     bool themeRequested = false;
     bool exportRequested = false;

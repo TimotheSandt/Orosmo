@@ -1,11 +1,11 @@
-#include "engine/ui/layout.hpp"
+#include "orosmo/ui/layout.hpp"
 
-#include "engine/ui/ui.hpp"
+#include "orosmo/ui/ui.hpp"
 
 #include <algorithm>
 #include <numeric>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 namespace
@@ -391,4 +391,4 @@ void ScrollView::onDrag(Ui &, glm::vec2 mouse)
     }
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

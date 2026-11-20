@@ -1,10 +1,10 @@
-#include "engine/world/raycast.hpp"
+#include "orosmo/world/raycast.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 namespace
@@ -170,4 +170,4 @@ std::optional<RayHit> raycastTerrain(const TerrainParams &params, std::uint32_t 
     return std::nullopt;
 }
 
-} // namespace engine::world
+} // namespace orosmo::world

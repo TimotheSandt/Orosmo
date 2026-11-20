@@ -4,7 +4,7 @@
 
 #include "tests/ui/cui/test_widgets.gen.h"
 
-namespace ui = engine::ui;
+namespace ui = orosmo::ui;
 using tests::UiHarness;
 
 TEST_SUITE("ui/cui")

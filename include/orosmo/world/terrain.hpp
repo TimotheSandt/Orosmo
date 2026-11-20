@@ -3,8 +3,8 @@
 // (ou deux niveaux de détail) qui partagent un échantillon le calculent au même endroit, donc avec la même valeur exacte.
 #pragma once
 
-#include "engine/core/reflection.hpp"
-#include "engine/world/noise.hpp"
+#include "orosmo/core/reflection.hpp"
+#include "orosmo/world/noise.hpp"
 
 #include <array>
 #include <cstddef>
@@ -12,7 +12,7 @@
 #include <functional>
 #include <vector>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 struct TerrainParams
@@ -67,20 +67,20 @@ float sampleZ(const TerrainParams &params, const TileKey &key, std::uint32_t j) 
 // Génère la tuile (déterministe, sans état : appelable depuis n'importe quel thread).
 Heightmap generateTile(const TerrainParams &params, std::uint32_t seed, const TileKey &key);
 
-} // namespace engine::world
+} // namespace orosmo::world
 
 // Réflexion (CORE-12) : les paramètres du terrain s'affichent et se sauvegardent automatiquement (UI-12, préréglages).
-template <> struct engine::core::EnumNames<engine::world::NoiseBasis>
+template <> struct orosmo::core::EnumNames<orosmo::world::NoiseBasis>
 {
     static constexpr std::array<const char *, 3> names{"Perlin", "Simplex", "Worley"};
 };
 
-template <> struct engine::core::Reflect<engine::world::FbmParams>
+template <> struct orosmo::core::Reflect<orosmo::world::FbmParams>
 {
     static constexpr int kVersion = 1;
     static constexpr auto fields()
     {
-        using P = engine::world::FbmParams;
+        using P = orosmo::world::FbmParams;
         return std::make_tuple(field("basis", &P::basis, range(0, 2), "0 Perlin, 1 Simplex, 2 Worley"),
                                field("octaves", &P::octaves, range(1, 16), "nombre d'octaves"),
                                field("frequency", &P::frequency, range(0.0001, 1.0), "fréquence de la première octave (1/m)"),
@@ -89,24 +89,24 @@ template <> struct engine::core::Reflect<engine::world::FbmParams>
     }
 };
 
-template <> struct engine::core::Reflect<engine::world::WarpParams>
+template <> struct orosmo::core::Reflect<orosmo::world::WarpParams>
 {
     static constexpr int kVersion = 1;
     static constexpr auto fields()
     {
-        using P = engine::world::WarpParams;
+        using P = orosmo::world::WarpParams;
         return std::make_tuple(field("amplitude", &P::amplitude, range(0.0, 2000.0), "déplacement maximal (m)"),
                                field("frequency", &P::frequency, range(0.0001, 1.0), "fréquence du champ de déplacement (1/m)"),
                                field("octaves", &P::octaves, range(1, 8), "octaves du champ"));
     }
 };
 
-template <> struct engine::core::Reflect<engine::world::TerrainParams>
+template <> struct orosmo::core::Reflect<orosmo::world::TerrainParams>
 {
     static constexpr int kVersion = 1;
     static constexpr auto fields()
     {
-        using P = engine::world::TerrainParams;
+        using P = orosmo::world::TerrainParams;
         return std::make_tuple(field("relief", &P::relief, {}, "bruit du relief"), field("warp", &P::warp, {}, "distorsion de domaine"),
                                field("heightScale", &P::heightScale, range(0.0, 5000.0), "amplitude (m)"),
                                field("heightOffset", &P::heightOffset, range(-5000.0, 5000.0), "décalage (m)"),

@@ -6,11 +6,11 @@
 #include "renderer/repo_paths.hpp"
 #include "rhi/gpu_fixture.hpp"
 
-#include <engine/renderer/canvas_renderer.hpp>
+#include <orosmo/renderer/canvas_renderer.hpp>
 
 #include <limits>
 
-namespace rd = engine::renderer;
+namespace rd = orosmo::renderer;
 namespace fs = std::filesystem;
 
 namespace
@@ -46,7 +46,7 @@ struct Canvas
 
     rd::CanvasTarget canvasTarget(std::uint32_t size = 16) const { return {target, Format::kRGBA8Unorm, {size, size}}; }
 
-    engine::core::Result<> render(const rd::DrawList &list, bool load = true)
+    orosmo::core::Result<> render(const rd::DrawList &list, bool load = true)
     {
         auto encoder = gpu->createCommandEncoder();
         auto r = canvas->render(*encoder, list, canvasTarget(), load);

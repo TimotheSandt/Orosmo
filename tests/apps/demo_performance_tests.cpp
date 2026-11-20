@@ -1,4 +1,4 @@
-// Panneau de performances de la démo (apps/demo/src/UI/Views/PerformanceView.cui, compilé par cui vers engine::ui) : contenu,
+// Panneau de performances de la démo (apps/demo/src/UI/Views/PerformanceView.cui, compilé par cui vers orosmo::ui) : contenu,
 // rafraîchissement environ 4 fois par seconde, thème res/themes/hud.json. Sans GPU : police à chasse fixe.
 #include "renderer/repo_paths.hpp"
 #include "ui/ui_harness.hpp"
@@ -6,9 +6,9 @@
 #include "UI/Views/PerformanceView.gen.h"
 #include "UI/performance_stats.hpp"
 
-#include <engine/ui/theme.hpp>
+#include <orosmo/ui/theme.hpp>
 
-namespace ui = engine::ui;
+namespace ui = orosmo::ui;
 using tests::UiHarness;
 
 namespace

@@ -3,7 +3,7 @@
 // haut). Les tailles attendues sont calculées à la main dans chaque cas.
 #include "ui/ui_harness.hpp"
 
-namespace ui = engine::ui;
+namespace ui = orosmo::ui;
 using tests::sameRect;
 using tests::UiHarness;
 
@@ -167,10 +167,10 @@ TEST_SUITE("ui/layout")
         h.moveTo({50, items[4]->rect().position.y + 2});
         CHECK(h.ui.hovered() != items[4]);
         // Le dessin est découpé à la vue.
-        engine::renderer::DrawList list2;
+        orosmo::renderer::DrawList list2;
         h.ui.draw(list2);
-        CHECK(list2.count<engine::renderer::PushClip>() == 1);
-        CHECK(list2.count<engine::renderer::PopClip>() == 1);
+        CHECK(list2.count<orosmo::renderer::PushClip>() == 1);
+        CHECK(list2.count<orosmo::renderer::PopClip>() == 1);
     }
 
     TEST_CASE("a theme change (padding) changes the layout at the next frame")
@@ -203,17 +203,17 @@ TEST_SUITE("ui/layout")
         CHECK(child.rect().size.x == doctest::Approx(80)); // dépasse le parent de 60 px
         h.moveTo({60, 10});
         CHECK(h.ui.hovered() == &child); // visible : cliquable là où il est dessiné
-        engine::renderer::DrawList visible;
+        orosmo::renderer::DrawList visible;
         h.ui.draw(visible);
-        CHECK(visible.count<engine::renderer::PushClip>() == 0);
+        CHECK(visible.count<orosmo::renderer::PushClip>() == 0);
 
         parent.overflow = ui::Overflow::kHidden;
         h.moveTo({61, 10});
         CHECK(h.ui.hovered() == nullptr); // coupé : hors du parent, plus touchable
         h.moveTo({10, 10});
         CHECK(h.ui.hovered() == &child);
-        engine::renderer::DrawList hidden;
+        orosmo::renderer::DrawList hidden;
         h.ui.draw(hidden);
-        CHECK(hidden.count<engine::renderer::PushClip>() == 1);
+        CHECK(hidden.count<orosmo::renderer::PushClip>() == 1);
     }
 }

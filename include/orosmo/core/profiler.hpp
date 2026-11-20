@@ -12,10 +12,10 @@
 #include <queue>
 #include <vector>
 #include <memory>
-#include "engine/core/gpu_timer.hpp"
-#include "engine/core/ring_buffer.hpp"
+#include "orosmo/core/gpu_timer.hpp"
+#include "orosmo/core/ring_buffer.hpp"
 
-namespace engine::core
+namespace orosmo::core
 {
 
 inline constexpr std::size_t kProfilerMaxQueries = 12;
@@ -276,4 +276,4 @@ class Profiler
     }
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

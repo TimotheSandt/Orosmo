@@ -1,10 +1,10 @@
-#include "engine/renderer/texture.hpp"
+#include "orosmo/renderer/texture.hpp"
 
 #include <stb_image.h>
 
 #include <memory>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 using core::ErrorCode;
@@ -190,4 +190,4 @@ void Texture::reset() noexcept
     mips_ = 1;
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

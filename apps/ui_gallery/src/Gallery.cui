@@ -1,6 +1,6 @@
 // Galerie de l'interface : chaque composant, conteneur, modificateur et événement du langage (docs/UI_LANGUAGE.md), sur un
 // état C++ (gallery_state.hpp). La vue décrit ; la logique est en C++ ; l'apparence vient du thème (res/themes).
-import "engine/ui"
+import "orosmo/ui"
 import "gallery_state.hpp"
 
 view Gallery {
@@ -36,7 +36,7 @@ view Gallery {
             // ── Colonne de gauche : présentation, thème, journal des événements ──
             Panel {
                 Label("UI gallery").variant("title")
-                Label("engine::ui + .cui language").variant("caption")
+                Label("orosmo::ui + .cui language").variant("caption")
                 Separator()
                 Label("Theme").variant("caption")
                 Dropdown(options: state.themes(), selected: $state.theme).onChange(state.applyTheme).id("theme")

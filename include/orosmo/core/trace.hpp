@@ -5,8 +5,8 @@
 // pourra s'ajouter derrière TraceRecorder (docs/GAPS.md).
 #pragma once
 
-#include <engine/core/error.hpp>
-#include <engine/core/time.hpp>
+#include <orosmo/core/error.hpp>
+#include <orosmo/core/time.hpp>
 
 #include <atomic>
 #include <cstdint>
@@ -17,7 +17,7 @@
 #include <thread>
 #include <vector>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 enum class TraceTrack : std::uint8_t
@@ -105,9 +105,9 @@ class ScopedTrace
     Nanoseconds mStart;
 };
 
-} // namespace engine::core
+} // namespace orosmo::core
 
 #define ENGINE_TRACE_CONCAT_INNER(a, b) a##b
 #define ENGINE_TRACE_CONCAT(a, b) ENGINE_TRACE_CONCAT_INNER(a, b)
 #define ENGINE_TRACE_SCOPE(recorder, name) \
-    ::engine::core::ScopedTrace ENGINE_TRACE_CONCAT(engineTraceScope_, __LINE__)((recorder), (name))
+    ::orosmo::core::ScopedTrace ENGINE_TRACE_CONCAT(engineTraceScope_, __LINE__)((recorder), (name))

@@ -3,8 +3,8 @@
 // par le jeu (couleur d'un biome selon l'altitude, répartition des hauteurs...).
 #pragma once
 
-#include "engine/renderer/draw_list.hpp"
-#include "engine/ui/widgets.hpp"
+#include "orosmo/renderer/draw_list.hpp"
+#include "orosmo/ui/widgets.hpp"
 
 #include <glm/glm.hpp>
 
@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 // ── Conversions (composantes dans [0, 1] ; teinte en [0, 1) = [0°, 360°)) ──
@@ -166,4 +166,4 @@ class CurveEditor : public Widget
     std::optional<Curve> pending_;
 };
 
-} // namespace engine::ui
+} // namespace orosmo::ui

@@ -1,6 +1,6 @@
-// Compilateur du langage d'interface (.cui) vers le module engine::ui (docs/UI_LANGUAGE.md). La cible héritée `UI::View`
+// Compilateur du langage d'interface (.cui) vers le module orosmo::ui (docs/UI_LANGUAGE.md). La cible héritée `UI::View`
 // (générateur, registre des composants lu dans include/UI) a été supprimée avec l'interface héritée : un fichier doit importer
-// "engine/ui".
+// "orosmo/ui".
 mod ast;
 mod engine;
 mod json;
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 const HASH_TAG: &str = "// @cui-hash:";
 // Bump this whenever generator output changes without a corresponding .cui syntax change.
-const OUTPUT_FORMAT_VERSION: &str = "9"; // 9 : cible héritée UI::View supprimée (un fichier sans import "engine/ui" est refusé)
+const OUTPUT_FORMAT_VERSION: &str = "10"; // 10 : en-têtes `orosmo/ui/...`, namespace `orosmo::ui` ; 9 : cible héritée UI::View supprimée
 
 fn main() {
     if let Err(err) = run_cli() {
@@ -154,7 +154,7 @@ fn diagnostic_line(file: &str, line: usize, col: usize, severity: &str, message:
     format!("{file}:{}:{}: {severity}: {message}", line.max(1), col.max(1))
 }
 
-// Message d'un fichier sans `import "engine/ui"` (seule cible depuis la suppression de l'interface héritée `UI::View`).
+// Message d'un fichier sans `import "orosmo/ui"` (seule cible depuis la suppression de l'interface héritée `UI::View`).
 fn missing_import_message() -> String {
     format!("missing `import \"{}\"`: it is the only target of the interface language (the legacy UI::View target was removed)", engine::IMPORT)
 }
@@ -346,6 +346,6 @@ fn file_name(path: &Path) -> String {
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  cui run --output <dir> <file.cui>...\n  cui redirect --output <dir> <file.cui>...\n  cui check [--stdin] <file.cui>\n  cui spec        components, modifiers and theme properties (JSON, for editors)\nEvery .cui file starts with `import \"engine/ui\"`."
+        "Usage:\n  cui run --output <dir> <file.cui>...\n  cui redirect --output <dir> <file.cui>...\n  cui check [--stdin] <file.cui>\n  cui spec        components, modifiers and theme properties (JSON, for editors)\nEvery .cui file starts with `import \"orosmo/ui\"`."
     );
 }

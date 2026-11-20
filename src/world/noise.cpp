@@ -1,10 +1,10 @@
-#include "engine/world/noise.hpp"
+#include "orosmo/world/noise.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 namespace
@@ -363,4 +363,4 @@ float warpedFbm2(float x, float y, std::uint32_t seed, const FbmParams &params, 
     return fbm2(x + warp.amplitude * qx, y + warp.amplitude * qy, seed, params);
 }
 
-} // namespace engine::world
+} // namespace orosmo::world

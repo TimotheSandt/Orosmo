@@ -2,10 +2,10 @@
 // Aucun type d'API graphique dans cet en-tête.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/rhi/capabilities.hpp"
-#include "engine/rhi/handle.hpp"
-#include "engine/rhi/types.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/rhi/capabilities.hpp"
+#include "orosmo/rhi/handle.hpp"
+#include "orosmo/rhi/types.hpp"
 
 #include <cstddef>
 #include <memory>
@@ -14,11 +14,11 @@
 #include <string>
 #include <vector>
 
-namespace engine::rhi
+namespace orosmo::rhi
 {
 
-using engine::core::Error;
-using engine::core::Result;
+using orosmo::core::Error;
+using orosmo::core::Result;
 
 class CommandEncoder
 {
@@ -171,4 +171,4 @@ Result<> prepareWindowHints(const DeviceDesc &desc);
 // Backends compilés dans cette bibliothèque.
 bool isBackendCompiled(Backend backend) noexcept;
 
-} // namespace engine::rhi
+} // namespace orosmo::rhi

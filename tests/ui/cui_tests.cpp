@@ -1,4 +1,4 @@
-// UI-05 / UI-11 : une vue écrite dans le langage d'interface (tests/ui/cui/test_panel.cui), compilée par cui vers engine::ui puis par
+// UI-05 / UI-11 : une vue écrite dans le langage d'interface (tests/ui/cui/test_panel.cui), compilée par cui vers orosmo::ui puis par
 // le compilateur C++ : l'arbre généré, les liaisons dans les deux sens, les événements (appel direct, action nommée, fonction
 // libre qualifiée), les surcharges de style, la mise en page du langage. Les cas d'erreur sont dans tests/ui/cui_errors/
 // (make cui-test) et dans les tests du compilateur (cargo test).
@@ -6,7 +6,7 @@
 
 #include "tests/ui/cui/test_panel.gen.h"
 
-namespace ui = engine::ui;
+namespace ui = orosmo::ui;
 using tests::UiHarness;
 
 TEST_SUITE("ui/cui")

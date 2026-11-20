@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace engine::core::bench
+namespace orosmo::core::bench
 {
 
 struct ScenarioConfig
@@ -130,4 +130,4 @@ class Runner
     BenchmarkConfig mConfig; // par valeur : un temporaire passé au constructeur ne doit pas pendre
 };
 
-} // namespace engine::core::bench
+} // namespace orosmo::core::bench

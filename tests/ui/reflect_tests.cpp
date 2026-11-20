@@ -2,11 +2,11 @@
 // changements écrivent la structure et remontent en onChange du panneau.
 #include "ui/ui_harness.hpp"
 
-#include <engine/ui/reflect.hpp>
-#include <engine/world/terrain.hpp>
+#include <orosmo/ui/reflect.hpp>
+#include <orosmo/world/terrain.hpp>
 
-namespace ui = engine::ui;
-namespace core = engine::core;
+namespace ui = orosmo::ui;
+namespace core = orosmo::core;
 using tests::UiHarness;
 
 namespace
@@ -46,16 +46,16 @@ struct Everything
 };
 } // namespace
 
-template <> struct engine::core::EnumNames<Mode>
+template <> struct orosmo::core::EnumNames<Mode>
 {
     static constexpr std::array<const char *, 2> names{"A", "B"};
 };
-template <> struct engine::core::Reflect<Inner>
+template <> struct orosmo::core::Reflect<Inner>
 {
     static constexpr int kVersion = 1;
     static constexpr auto fields() { return std::make_tuple(field("weight", &Inner::weight, range(0.0, 1.0), "poids")); }
 };
-template <> struct engine::core::Reflect<Everything>
+template <> struct orosmo::core::Reflect<Everything>
 {
     static constexpr int kVersion = 1;
     static constexpr auto fields()
@@ -119,7 +119,7 @@ TEST_SUITE("ui/reflect")
     {
         UiHarness h;
         h.viewport = {400, 800};
-        engine::world::TerrainParams params;
+        orosmo::world::TerrainParams params;
         int changes = 0;
         auto panel = ui::reflectedPanel(params);
         panel->onChange([&](const ui::Event &) { ++changes; });
@@ -155,7 +155,7 @@ TEST_SUITE("ui/reflect")
         const auto &items = h.ui.popup()->children()[0]->children();
         REQUIRE(items.size() == 3);
         h.click(UiHarness::center(*items[2]));
-        CHECK(params.relief.basis == engine::world::NoiseBasis::kWorley);
+        CHECK(params.relief.basis == orosmo::world::NoiseBasis::kWorley);
         CHECK(changes == 2);
         // Repli d'une section : ses contrôles disparaissent.
         auto *relief = p->findAs<ui::Section>("relief");

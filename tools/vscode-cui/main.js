@@ -34,8 +34,8 @@ function resolveTool() {
         candidates.push(
             path.join(root, "tools", exeName()),                       // dépôt du moteur (make cui-tool)
             path.join(root, "tools", "target", "release", exeName()),  // cargo build --release
-            path.join(root, "engine", "tools", exeName()),             // projet créé par `orosmo init`
-            path.join(root, "apps", "demo", "engine", "tools", exeName()),
+            path.join(root, "orosmo", "tools", exeName()),             // projet créé par `orosmo init`
+            path.join(root, "apps", "demo", "orosmo", "tools", exeName()),
         );
     }
     for (const c of candidates) if (fs.existsSync(c)) return c;
@@ -255,7 +255,7 @@ async function provideCompletion(doc, pos) {
         it.insertText = new vscode.SnippetString(`${w} var \${1:name}: \${2:Type}`);
         items.push(it);
     }
-    items.push(Object.assign(new vscode.CompletionItem("import \"engine/ui\"", K.Module), { insertText: 'import "engine/ui"' }));
+    items.push(Object.assign(new vscode.CompletionItem("import \"orosmo/ui\"", K.Module), { insertText: 'import "orosmo/ui"' }));
     items.push(Object.assign(new vscode.CompletionItem("view", K.Keyword), { insertText: new vscode.SnippetString("view ${1:Name} {\n\t$0\n}") }));
     return items;
 }

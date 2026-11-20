@@ -2,8 +2,8 @@
 // Plus de « slot » ni de nom d'uniforme : la liaison passe par un groupe de liaison du RHI (docs/03 §4).
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 enum class FilterMode : std::uint8_t
@@ -92,4 +92,4 @@ class Texture
     std::uint32_t mips_ = 1;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

@@ -1,10 +1,10 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/math.hpp>
+#include <orosmo/core/math.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
 
-using namespace engine::core;
+using namespace orosmo::core;
 
 TEST_SUITE("core/math")
 {

@@ -10,10 +10,10 @@
 #include <memory>
 #include <glm/glm.hpp>
 #include <ft2build.h>
-#include "engine/renderer/draw_list.hpp"
+#include "orosmo/renderer/draw_list.hpp"
 #include FT_FREETYPE_H
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 // Ancrage du texte
@@ -122,8 +122,8 @@ class TextRenderer
 
     // === RENDU AVANCÉ AVEC LAYOUT ===
     // Liste de dessin (UI-02) : `renderText` et `renderTextAdvanced` y ajoutent des séries de glyphes (le dessin est fait par
-    // `engine::renderer::CanvasRenderer`). Sans liste donnée, ils ne produisent rien.
-    void setDrawListSink(engine::renderer::DrawList *list) { drawSink = list; }
+    // `orosmo::renderer::CanvasRenderer`). Sans liste donnée, ils ne produisent rien.
+    void setDrawListSink(orosmo::renderer::DrawList *list) { drawSink = list; }
 
     void renderTextAdvanced(const std::string &text, float x, float y, const TextLayoutParams &params,
                             const glm::vec3 &color = glm::vec3(1.0f), float scale = 1.0f);
@@ -153,7 +153,7 @@ class TextRenderer
         FT_Face face = nullptr;
         std::unordered_map<char32_t, Character> characters; // point de code Unicode -> glyphe
         bool extended = false; // glyphes au-delà de l'ASCII chargés (au premier texte qui en contient)
-        std::shared_ptr<engine::renderer::AtlasImage> atlas; // pixels de l'atlas, partagés avec le dessinateur (CanvasRenderer)
+        std::shared_ptr<orosmo::renderer::AtlasImage> atlas; // pixels de l'atlas, partagés avec le dessinateur (CanvasRenderer)
         unsigned int fontSize = 0;
         int atlasWidth = 0;
         int atlasHeight = 0;
@@ -180,7 +180,7 @@ class TextRenderer
 
     unsigned int screenWidth, screenHeight;
     std::vector<float> batchedVertices;
-    engine::renderer::DrawList *drawSink = nullptr;
+    orosmo::renderer::DrawList *drawSink = nullptr;
 
     // Méthodes privées
     void computeFontMetrics(FontData &fontData);
@@ -201,4 +201,4 @@ class TextRenderer
     void handleOverflow(TextLayout &layout, const TextLayoutParams &params);
 };
 
-} // namespace engine::ui
+} // namespace orosmo::ui

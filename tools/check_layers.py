@@ -9,7 +9,7 @@ n'échoue que sur les violations absentes du fichier (liste de non-régression).
 import argparse, fnmatch, json, os, re, sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-# Les deux formes : "x.h" et <engine/x.hpp> (les en-têtes du projet sont résolus par `resolve`, les autres sont ignorés).
+# Les deux formes : "x.h" et <orosmo/x.hpp> (les en-têtes du projet sont résolus par `resolve`, les autres sont ignorés).
 INC = re.compile(r'^\s*#\s*include\s*(?:"([^"]+)"|<([^>]+)>)')
 
 
@@ -49,8 +49,8 @@ def main():
                 if not n.endswith((".h", ".hpp", ".cpp", ".c")):
                     continue
                 rel = os.path.relpath(os.path.join(dp, n), ROOT).replace(os.sep, "/")
-                # Copies générées ou installées du moteur dans une application (apps/<nom>/engine/) : pas include/engine/.
-                if "/Generated/" in rel or (rel.startswith("apps/") and "/engine/" in rel):
+                # Copies générées ou installées du moteur dans une application (apps/<nom>/orosmo/) : pas include/orosmo/.
+                if "/Generated/" in rel or (rel.startswith("apps/") and "/orosmo/" in rel):
                     continue
                 src_layer = layer_of(cfg, rel)
                 files += 1

@@ -1,11 +1,11 @@
-#include <engine/core/config.hpp>
+#include <orosmo/core/config.hpp>
 
 #include <algorithm>
 #include <fstream>
 #include <map>
 #include <sstream>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 const Json *Config::find(const Json &root, std::string_view dottedKey)
@@ -237,4 +237,4 @@ std::string Config::describe() const
     return out;
 }
 
-} // namespace engine::core
+} // namespace orosmo::core

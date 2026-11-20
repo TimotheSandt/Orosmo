@@ -2,9 +2,9 @@
 // l'ancien `LightManager` (REN-05) ; la disposition est vérifiée par des `static_assert`.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/renderer/gpu_buffer.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/renderer/gpu_buffer.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <glm/glm.hpp>
 
@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 enum class LightType : std::int32_t
@@ -117,4 +117,4 @@ class LightManager
     bool dirty_ = true;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

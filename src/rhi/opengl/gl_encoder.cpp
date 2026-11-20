@@ -3,17 +3,17 @@
 #include "gl_device.hpp"
 #include "gl_translate.hpp"
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <algorithm>
 #include <limits>
 #include <string>
 
-namespace engine::rhi::gl
+namespace orosmo::rhi::gl
 {
 
-using engine::core::ErrorCode;
-using engine::core::makeError;
+using orosmo::core::ErrorCode;
+using orosmo::core::makeError;
 
 class GlEncoder final : public CommandEncoder
 {
@@ -897,4 +897,4 @@ void GlEncoder::writeTimestamp(QueryPoolHandle handle, std::uint32_t index)
     }
 }
 
-} // namespace engine::rhi::gl
+} // namespace orosmo::rhi::gl

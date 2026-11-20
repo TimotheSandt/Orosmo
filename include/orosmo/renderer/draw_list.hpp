@@ -13,7 +13,7 @@
 #include <variant>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 // Atlas de glyphes (RGBA8, MSDF) partagé entre le producteur de texte et le dessinateur ; `id` identifie le contenu (un nouvel atlas
@@ -149,4 +149,4 @@ class DrawList
     }
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

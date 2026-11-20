@@ -1,4 +1,4 @@
-#include <engine/core/benchmark.hpp>
+#include <orosmo/core/benchmark.hpp>
 
 #include <cstdlib>
 #include <exception>
@@ -10,14 +10,14 @@
 //
 //   #include "MyScenario.hpp"
 //
-//   static void registerScenarios(engine::core::bench::ScenarioRegistry &registry)
+//   static void registerScenarios(orosmo::core::bench::ScenarioRegistry &registry)
 //   {
 //       registry.registerScenario("my-scenario", [] { return std::make_unique<MyScenario>(); });
 //   }
 //
-// Un scénario implémente engine::core::bench::Scenario :
+// Un scénario implémente orosmo::core::bench::Scenario :
 //
-//   class MyScenario final : public engine::core::bench::Scenario
+//   class MyScenario final : public orosmo::core::bench::Scenario
 //   {
 //     public:
 //       std::string name() const override { return "my-scenario"; }
@@ -30,20 +30,20 @@
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-static void registerScenarios(engine::core::bench::ScenarioRegistry & /*registry*/)
+static void registerScenarios(orosmo::core::bench::ScenarioRegistry & /*registry*/)
 {
     // Ajouter les scénarios ici.
 }
 
-static engine::core::bench::BenchmarkConfig buildConfig()
+static orosmo::core::bench::BenchmarkConfig buildConfig()
 {
-    engine::core::bench::BenchmarkConfig config;
+    orosmo::core::bench::BenchmarkConfig config;
     config.outputPath = "benchmark_report.json";
     config.build = "release";
 
     // Ajouter une configuration par scénario enregistré :
     //
-    //   engine::core::bench::ScenarioConfig cfg;
+    //   orosmo::core::bench::ScenarioConfig cfg;
     //   cfg.name           = "my-scenario";
     //   cfg.warmupSeconds  = 0.5;
     //   cfg.measureSeconds = 5.0;
@@ -58,10 +58,10 @@ int main()
 {
     try
     {
-        engine::core::bench::ScenarioRegistry registry;
+        orosmo::core::bench::ScenarioRegistry registry;
         registerScenarios(registry);
 
-        const engine::core::bench::BenchmarkConfig config = buildConfig();
+        const orosmo::core::bench::BenchmarkConfig config = buildConfig();
 
         if (config.scenarios.empty())
         {
@@ -69,10 +69,10 @@ int main()
             return EXIT_SUCCESS;
         }
 
-        engine::core::bench::Runner runner(config);
-        const engine::core::bench::BenchmarkReport report = runner.run(registry);
+        orosmo::core::bench::Runner runner(config);
+        const orosmo::core::bench::BenchmarkReport report = runner.run(registry);
 
-        engine::core::bench::writeReport(report, config.outputPath);
+        orosmo::core::bench::writeReport(report, config.outputPath);
         std::cout << "[bench] Report written: " << config.outputPath << "\n";
 
         return EXIT_SUCCESS;

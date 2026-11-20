@@ -1,5 +1,5 @@
 // expect: 6:17: error: '.onClick(helper)': 'helper' is a func of the view; an event must name a C++ function (no logic in the interface language)
-import "engine/ui"
+import "orosmo/ui"
 
 view V {
     func helper(x: double) -> double = x * 2.0

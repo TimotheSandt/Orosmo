@@ -3,18 +3,18 @@
 // l'ancien couple `Renderer` / `Renderer3D` avec les mêmes options, sans état global : tout passe par l'encodeur de l'image.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/renderer/camera.hpp"
-#include "engine/renderer/debug_draw.hpp"
-#include "engine/renderer/fullscreen_blit.hpp"
-#include "engine/renderer/gpu_buffer.hpp"
-#include "engine/renderer/light.hpp"
-#include "engine/renderer/mesh.hpp"
-#include "engine/renderer/pipeline_cache.hpp"
-#include "engine/renderer/render_target.hpp"
-#include "engine/renderer/shader_library.hpp"
-#include "engine/renderer/upscaling.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/renderer/camera.hpp"
+#include "orosmo/renderer/debug_draw.hpp"
+#include "orosmo/renderer/fullscreen_blit.hpp"
+#include "orosmo/renderer/gpu_buffer.hpp"
+#include "orosmo/renderer/light.hpp"
+#include "orosmo/renderer/mesh.hpp"
+#include "orosmo/renderer/pipeline_cache.hpp"
+#include "orosmo/renderer/render_target.hpp"
+#include "orosmo/renderer/shader_library.hpp"
+#include "orosmo/renderer/upscaling.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <array>
 #include <filesystem>
@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 struct SceneRendererConfig
@@ -178,4 +178,4 @@ class SceneRenderer
     std::uint32_t jitterIndex_ = 0;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

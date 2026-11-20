@@ -8,11 +8,11 @@
 # ── Engine (mk/, src/, include/) ───────────────────────────────────────────────────────
 #   make debug                 build engine archives (debug)
 #   make release               build engine archives (release)
-#   make engine                build debug+release, dist, tools, and apps/demo/engine/
+#   make engine                build debug+release, dist, tools, and apps/demo/orosmo/
 #   make dist                  package engine → dist/orosmo-pkg-<platform>.zip
 #   make engine-tool           build the orosmo scaffolding tool (dist/orosmo-<platform>)
-#   make sync-demo             fast sync of current BUILD_TYPE into demo/engine/
-#   make install-demo          copy full dist package into demo/engine/
+#   make sync-demo             fast sync of current BUILD_TYPE into demo/orosmo/
+#   make install-demo          copy full dist package into demo/orosmo/
 #   make clean / fclean        remove engine build artifacts
 #
 # ── Demo (apps/demo/) ──────────────────────────────────────────────────────────────
@@ -29,7 +29,7 @@
 # ── Architecture checks (docs/03 §8) — all blocking since M2: layers, API isolation (graphics APIs, GLFW, <windows.h>),
 #    self-contained headers. Each script exits 1 on a violation (same commands as the CI). ──
 # Les cibles de ce fichier appellent des sous-make (parallèles chacun en interne) : elles-mêmes s'exécutent l'une après l'autre,
-# car plusieurs synchronisent le même SDK partagé (sync-demo remplace apps/demo/engine/includes) et `make -j2 viewer gallery`
+# car plusieurs synchronisent le même SDK partagé (sync-demo remplace apps/demo/orosmo/includes) et `make -j2 viewer gallery`
 # ferait disparaître les en-têtes sous la compilation de l'autre.
 .NOTPARALLEL:
 
@@ -189,7 +189,7 @@ viewer-capture: viewer
 	python3 tools/compare_png.py build/viewer-capture/dark/viewer.png build/viewer-capture/light/viewer.png > /dev/null \
 	    && { echo "viewer-capture : les deux thèmes donnent la même image"; exit 1; } || echo "viewer-capture : OK (deux thèmes, deux images)"
 
-# ── Galerie de l'interface (exemple : tous les widgets, conteneurs, événements et thèmes d'engine::ui) ──
+# ── Galerie de l'interface (exemple : tous les widgets, conteneurs, événements et thèmes d'orosmo::ui) ──
 #   make gallery-run ARGS="--theme framed"   lance la galerie
 #   make gallery-capture                     images sans fenêtre de chaque onglet : build/gallery-capture/<thème>-<onglet>/gallery.png
 GALLERY := apps/ui_gallery/bin/ui-gallery$(if $(filter Windows_NT,$(OS)),.exe)
@@ -214,7 +214,7 @@ gallery-capture: gallery
 # ── BLD-02 : de bout en bout depuis le paquet (sans les sources du moteur) ──
 #   make e2e-init   paquet + outil `orosmo` construits ; `orosmo init --package` d'un projet neuf dans build/e2e/<date>/mygame ;
 #                   compilation et lancement sans fenêtre (capture) ; exemples terrain-gen (somme de contrôle de référence) et
-#                   terrain-viewer compilés depuis le paquet extrait par `orosmo init` (mygame/engine/examples/).
+#                   terrain-viewer compilés depuis le paquet extrait par `orosmo init` (mygame/orosmo/examples/).
 #   Chaque lancement a son dossier (rien n'est effacé). Les dépendances vcpkg du dépôt sont reliées au projet (équivalent de
 #   `make install` dans le projet, sans le réseau).
 E2E_RUN      := build/e2e/$(shell date +%Y%m%d-%H%M%S)
@@ -227,20 +227,20 @@ e2e-init:
 	$(MAKE) -f $(ENGINE_MK) engine-tool
 	mkdir -p $(E2E_RUN)
 	cd $(E2E_RUN) && "$(abspath dist)/orosmo-$(E2E_PLATFORM)$(E2E_EXE)" init --package "$(abspath dist)/orosmo-pkg-$(E2E_PLATFORM).zip" mygame
-	ln -sfn "$(E2E_VCPKG)" $(E2E_RUN)/mygame/engine/vcpkg_installed
+	ln -sfn "$(E2E_VCPKG)" $(E2E_RUN)/mygame/orosmo/vcpkg_installed
 	$(MAKE) -C $(E2E_RUN)/mygame debug
 	cd $(E2E_RUN)/mygame && ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3
 	test -s $(E2E_RUN)/capture/scene.png
-	$(MAKE) -C $(E2E_RUN)/mygame/engine/examples/minimal
-	$(E2E_RUN)/mygame/engine/examples/minimal/bin/minimal$(E2E_EXE)
-	$(MAKE) -C $(E2E_RUN)/mygame/engine/examples/terrain_gen
-	$(E2E_RUN)/mygame/engine/examples/terrain_gen/bin/terrain-gen$(E2E_EXE) --seed 42 --size 256 --out $(E2E_RUN)/tg.png > $(E2E_RUN)/tg.txt
+	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/minimal
+	$(E2E_RUN)/mygame/orosmo/examples/minimal/bin/minimal$(E2E_EXE)
+	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/terrain_gen
+	$(E2E_RUN)/mygame/orosmo/examples/terrain_gen/bin/terrain-gen$(E2E_EXE) --seed 42 --size 256 --out $(E2E_RUN)/tg.png > $(E2E_RUN)/tg.txt
 	grep -q "$(E2E_CHECKSUM)" $(E2E_RUN)/tg.txt
-	$(MAKE) -C $(E2E_RUN)/mygame/engine/examples/terrain_viewer
-	$(E2E_RUN)/mygame/engine/examples/terrain_viewer/bin/terrain-viewer$(E2E_EXE) --headless --seed 42 --capture $(E2E_RUN)/viewer --capture-frames 3
+	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/terrain_viewer
+	$(E2E_RUN)/mygame/orosmo/examples/terrain_viewer/bin/terrain-viewer$(E2E_EXE) --headless --seed 42 --capture $(E2E_RUN)/viewer --capture-frames 3
 	test -s $(E2E_RUN)/viewer/viewer.png
-	$(MAKE) -C $(E2E_RUN)/mygame/engine/examples/ui_gallery
-	$(E2E_RUN)/mygame/engine/examples/ui_gallery/bin/ui-gallery$(E2E_EXE) --headless --capture $(E2E_RUN)/gallery --capture-frames 3
+	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/ui_gallery
+	$(E2E_RUN)/mygame/orosmo/examples/ui_gallery/bin/ui-gallery$(E2E_EXE) --headless --capture $(E2E_RUN)/gallery --capture-frames 3
 	test -s $(E2E_RUN)/gallery/gallery.png
 	@echo "e2e-init : OK ($(E2E_RUN) : orosmo init, compilation, lancement, exemples depuis le paquet)"
 
@@ -321,7 +321,7 @@ clean-all:
 	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=dev
 	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=release
 	$(MAKE) -C apps/demo $(DEMO_ARGS) fclean
-	@rm -rf vcpkg_installed apps/demo/vcpkg_installed apps/demo/engine/vcpkg_installed
+	@rm -rf vcpkg_installed apps/demo/vcpkg_installed apps/demo/orosmo/vcpkg_installed
 	@echo "Removed all engine/demo build artifacts and vcpkg installs"
 
 # install engine deps → prepare full engine → install demo deps → build demo

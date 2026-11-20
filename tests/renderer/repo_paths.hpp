@@ -3,7 +3,7 @@
 // lance), le dossier courant, puis __FILE__ (relatif au dossier de compilation). Échec : chemin vide, le test le signale.
 #pragma once
 
-#include <engine/core/system.hpp>
+#include <orosmo/core/system.hpp>
 
 #include <filesystem>
 
@@ -14,7 +14,7 @@ inline std::filesystem::path repoRoot(const char *sourceFile)
 {
     namespace fs = std::filesystem;
     std::error_code ec;
-    const fs::path starts[] = {engine::core::system::executablePath().parent_path(), fs::current_path(ec),
+    const fs::path starts[] = {orosmo::core::system::executablePath().parent_path(), fs::current_path(ec),
                                fs::absolute(fs::path(sourceFile).parent_path(), ec)};
     for (const fs::path &start : starts)
     {

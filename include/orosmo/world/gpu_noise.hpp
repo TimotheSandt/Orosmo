@@ -4,14 +4,14 @@
 // |GPU - CPU| <= kGpuTolerance * max(1, heightScale).
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/rhi/device.hpp"
-#include "engine/world/terrain.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/rhi/device.hpp"
+#include "orosmo/world/terrain.hpp"
 
 #include <memory>
 #include <vector>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 inline constexpr float kGpuTolerance = 1e-4f;
@@ -39,4 +39,4 @@ class GpuNoise
     std::uint64_t capacity_ = 0;   // octets de buffer_
 };
 
-} // namespace engine::world
+} // namespace orosmo::world

@@ -6,15 +6,15 @@
 #include "support/test_support.hpp"
 #include "rhi/gpu_fixture.hpp"
 
-#include <engine/rhi/device.hpp>
+#include <orosmo/rhi/device.hpp>
 
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <string_view>
 
-using namespace engine::rhi;
-using engine::core::ErrorCode;
+using namespace orosmo::rhi;
+using orosmo::core::ErrorCode;
 
 
 TEST_SUITE("rhi/opengl/device")

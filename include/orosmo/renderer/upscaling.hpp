@@ -2,17 +2,17 @@
 // champs que l'ancien dossier `Graphics/Upscaling/`, exprimés avec des handles du RHI et des commandes explicites.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/renderer/fullscreen_blit.hpp"
-#include "engine/renderer/render_target.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/renderer/fullscreen_blit.hpp"
+#include "orosmo/renderer/render_target.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <glm/vec2.hpp>
 
 #include <cstdint>
 #include <string>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 enum class UpscaleQualityMode : std::uint8_t
@@ -207,4 +207,4 @@ class BilinearBlitUpscaleMode final : public IUpscaleMode
     }
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

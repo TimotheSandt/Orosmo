@@ -1,14 +1,14 @@
 // Tampon GPU à durée de vie liée à un objet C++ (RAII) au-dessus du RHI. Le périphérique doit survivre au tampon.
 #pragma once
 
-#include "engine/core/error.hpp"
-#include "engine/rhi/device.hpp"
+#include "orosmo/core/error.hpp"
+#include "orosmo/rhi/device.hpp"
 
 #include <cstdint>
 #include <span>
 #include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 class GpuBuffer
@@ -55,4 +55,4 @@ class GpuBuffer
     rhi::BufferDesc desc_;
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

@@ -2,9 +2,9 @@
 // texte, éditeur de texte sur plusieurs lignes. Entrées simulées, sans GPU.
 #include "ui/ui_harness.hpp"
 
-#include <engine/ui/controls.hpp>
+#include <orosmo/ui/controls.hpp>
 
-namespace ui = engine::ui;
+namespace ui = orosmo::ui;
 using tests::UiHarness;
 
 namespace
@@ -103,7 +103,7 @@ TEST_SUITE("ui/controls")
         CHECK(f.edit().selected() == "hello world");
         h.keys({ui::kKeyHome});
         h.frame(); // (pas de Maj)
-        engine::ui::InputFrame in = h.input();
+        orosmo::ui::InputFrame in = h.input();
         in.keys = {ui::kKeyRight, ui::kKeyRight, ui::kKeyRight, ui::kKeyRight, ui::kKeyRight};
         in.shift = true;
         h.ui.update(in, h.viewport);

@@ -4,7 +4,7 @@
 #pragma once
 
 #include <doctest/doctest.h>
-#include <engine/core/error.hpp>
+#include <orosmo/core/error.hpp>
 
 #include <optional>
 #include <string>
@@ -13,7 +13,7 @@
 namespace tests
 {
 
-template <typename T> std::optional<engine::core::ErrorCode> errorOf(const engine::core::Result<T> &result)
+template <typename T> std::optional<orosmo::core::ErrorCode> errorOf(const orosmo::core::Result<T> &result)
 {
     if (result)
     {
@@ -23,7 +23,7 @@ template <typename T> std::optional<engine::core::ErrorCode> errorOf(const engin
 }
 
 // Valeur d'un `Result` attendu en succès : le test s'arrête (REQUIRE) avec le message d'erreur au lieu de déréférencer une erreur.
-template <typename T> T valueOf(engine::core::Result<T> result)
+template <typename T> T valueOf(orosmo::core::Result<T> result)
 {
     INFO((result ? std::string() : result.error().message));
     REQUIRE(result.has_value());

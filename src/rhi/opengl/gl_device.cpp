@@ -2,7 +2,7 @@
 
 #include "gl_translate.hpp"
 
-#include <engine/core/log.hpp>
+#include <orosmo/core/log.hpp>
 
 #include <GLFW/glfw3.h>
 
@@ -10,11 +10,11 @@
 #include <cstring>
 #include <string>
 
-namespace engine::rhi::gl
+namespace orosmo::rhi::gl
 {
 
-using engine::core::ErrorCode;
-using engine::core::makeError;
+using orosmo::core::ErrorCode;
+using orosmo::core::makeError;
 
 namespace
 {
@@ -1441,4 +1441,4 @@ GLuint GlDevice::framebufferFor(const FboKey &key, std::uint32_t colorCount,
     return fbo;
 }
 
-} // namespace engine::rhi::gl
+} // namespace orosmo::rhi::gl

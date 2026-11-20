@@ -1,4 +1,4 @@
-#include "engine/renderer/camera.hpp"
+#include "orosmo/renderer/camera.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -8,7 +8,7 @@
 #include <cmath>
 #include <cstring>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 namespace
@@ -92,4 +92,4 @@ CameraData Camera::data(bool relative) const
     return out;
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

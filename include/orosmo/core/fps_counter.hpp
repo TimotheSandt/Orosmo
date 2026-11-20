@@ -5,9 +5,9 @@
 #include <chrono>
 #include <atomic>
 
-#include "engine/core/ring_buffer.hpp"
+#include "orosmo/core/ring_buffer.hpp"
 
-namespace engine::core
+namespace orosmo::core
 {
 
 class FPSCounter
@@ -120,8 +120,8 @@ class FPSCounter
     RingBuffer<double> fpsBuffer;
     RingBuffer<double> elapseTimeBuffer;
 
-    // Résolution du minuteur système demandée (voir engine/core/system.hpp) ; toujours faux hors Windows.
+    // Résolution du minuteur système demandée (voir orosmo/core/system.hpp) ; toujours faux hors Windows.
     bool timerInitialized{false};
 };
 
-} // namespace engine::core
+} // namespace orosmo::core

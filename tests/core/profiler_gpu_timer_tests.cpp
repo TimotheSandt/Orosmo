@@ -2,14 +2,14 @@
 // que le runtime graphique enregistre quand on lie un backend. Ces tests n'utilisent aucun GPU.
 #include <doctest/doctest.h>
 
-#include <engine/core/gpu_timer.hpp>
-#include <engine/core/profiler.hpp>
+#include <orosmo/core/gpu_timer.hpp>
+#include <orosmo/core/profiler.hpp>
 
 #include <chrono>
 #include <memory>
 
 using namespace std::chrono_literals;
-using namespace engine::core;
+using namespace orosmo::core;
 
 namespace
 {

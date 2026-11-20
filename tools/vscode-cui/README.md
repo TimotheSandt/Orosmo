@@ -8,7 +8,7 @@
 - **Survol** : signature et rôle d'un composant ou d'un modificateur.
 
 Les composants viennent du compilateur lui-même (`cui spec`) : reconstruire `cui` (`make cui-tool`) suffit pour que l'extension
-connaisse un nouveau composant. Le compilateur est cherché dans `tools/cui`, `tools/target/release/cui`, `engine/tools/cui` (projet
+connaisse un nouveau composant. Le compilateur est cherché dans `tools/cui`, `tools/target/release/cui`, `orosmo/tools/cui` (projet
 créé par `orosmo init`), puis le `PATH` ; réglage `cui.toolPath` sinon.
 
 ```bash

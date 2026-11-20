@@ -1,7 +1,7 @@
 # demo/Makefile — game project build system
 #
 # Works in two modes:
-#   Template mode  (standalone game project): ENGINE_DIR = engine (default)
+#   Template mode  (standalone game project): ENGINE_DIR = orosmo (default)
 #   In-repo mode   (demo/ inside engine repo): override via config.local.mk
 #
 # ── Quick start ───────────────────────────────────────────────────────────────
@@ -30,10 +30,10 @@ VCPKG        ?= vcpkg
 
 # ── Engine integration ────────────────────────────────────────────────────────
 # Defaults for standalone (template) use. In-repo: override via config.local.mk
-#   ENGINE_DIR  ?= engine
+#   ENGINE_DIR  ?= orosmo
 #   _ENGINE_MK  ?= $(ENGINE_DIR)/make/engine.mk
 #   _VCPKG_ROOT ?= vcpkg_installed
-ENGINE_DIR  ?= engine
+ENGINE_DIR  ?= orosmo
 _ENGINE_MK  ?= $(ENGINE_DIR)/make/engine.mk
 _VCPKG_ROOT ?= vcpkg_installed
 

@@ -1,12 +1,12 @@
-#include "engine/ui/controls.hpp"
+#include "orosmo/ui/controls.hpp"
 
-#include "engine/ui/ui.hpp"
+#include "orosmo/ui/ui.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 namespace
@@ -720,4 +720,4 @@ void TextArea::drawContent(const Ui &ui, renderer::DrawList &list, const Style &
     list.popClip();
 }
 
-} // namespace engine::ui
+} // namespace orosmo::ui

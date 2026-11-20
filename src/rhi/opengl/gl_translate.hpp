@@ -1,7 +1,7 @@
 // Tables de traduction RHI -> OpenGL (formats, états, énumérations).
 #pragma once
 
-#include "engine/rhi/types.hpp"
+#include "orosmo/rhi/types.hpp"
 
 #include <glad/glad.h>
 
@@ -9,7 +9,7 @@
 #include <bit>
 #include <cstdint>
 
-namespace engine::rhi::gl
+namespace orosmo::rhi::gl
 {
 
 struct GlFormat
@@ -187,4 +187,4 @@ inline std::uint32_t fullMipCount(std::uint32_t w, std::uint32_t h, std::uint32_
 
 inline std::uint32_t mipDim(std::uint32_t base, std::uint32_t mip) noexcept { return std::max(1u, base >> mip); }
 
-} // namespace engine::rhi::gl
+} // namespace orosmo::rhi::gl

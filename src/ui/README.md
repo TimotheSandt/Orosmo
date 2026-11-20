@@ -1,14 +1,14 @@
-# ui (`engine::ui`)
+# ui (`orosmo::ui`)
 
 Interface du moteur selon `docs/03` §12 : arbre de widgets, mise en page, thèmes JSON, événements nommés ; produit des listes de
-dessin (`engine::renderer::DrawList`, UI-02) et ne connaît ni le RHI ni le backend. Aucun singleton : chaque application possède
+dessin (`orosmo::renderer::DrawList`, UI-02) et ne connaît ni le RHI ni le backend. Aucun singleton : chaque application possède
 son `Ui` (l'interface héritée `UI::`, son singleton `UI::Manager` et `src/ui/legacy/` ont été supprimés le 2026-11-20, la démo
 utilise ce module).
 
 - **Couche** : `ui` (`docs/03` §1) ; dépend de `core` et de `renderer` (liste de dessin, texte).
 - **Image** : `ui.update(input, viewport)` (rechargement du thème ; entrées appliquées à la mise en page AFFICHÉE ; écritures des
   liaisons puis événements, dans l'ordre ; nouvelle mise en page), puis `ui.draw(list)` et `CanvasRenderer::render(list)`.
-- **API publique** : `include/engine/ui/`.
+- **API publique** : `include/orosmo/ui/`.
 
 | En-tête | Contenu |
 | --- | --- |
@@ -33,21 +33,21 @@ Rechargement : `ThemeHost::load` qui échoue garde le thème courant mais observ
 `ThemeHost::set` installe un thème sans fichier à recharger. Format : `docs/UI_LANGUAGE.md`, section « Thèmes ».
 
 ```cpp
-engine::ui::ThemeHost themes;
+orosmo::ui::ThemeHost themes;
 if (auto r = themes.load("res/themes/dark.json"); !r) { /* r.error().message : "res/themes/dark.json: widgets.button.radius: ..." */ }
 themes.watch(watcher);                       // watcher.poll() puis themes.reloadIfChanged() à chaque image
-const engine::ui::Style &s = themes.current().style("button", engine::ui::WidgetState::kHover);
+const orosmo::ui::Style &s = themes.current().style("button", orosmo::ui::WidgetState::kHover);
 ```
 
 Le canevas (`CanvasRenderer`) dessine les formes du thème : `DrawRect::radius` (coins arrondis), `borderWidth` / `borderColor`
 (bordure intérieure), `softness` (ombre portée).
 
 ```cpp
-engine::ui::FixedFont font;               // ou TextRendererFont(textRenderer)
-engine::ui::Ui ui(font);
-auto panel = std::make_unique<engine::ui::Panel>();
-panel->emplace<engine::ui::Slider>(engine::ui::numberBinding(params.heightScale), 0.0, 500.0).onChange(regenerate);
-panel->add(engine::ui::reflectedPanel(params));     // UI-12
+orosmo::ui::FixedFont font;               // ou TextRendererFont(textRenderer)
+orosmo::ui::Ui ui(font);
+auto panel = std::make_unique<orosmo::ui::Panel>();
+panel->emplace<orosmo::ui::Slider>(orosmo::ui::numberBinding(params.heightScale), 0.0, 500.0).onChange(regenerate);
+panel->add(orosmo::ui::reflectedPanel(params));     // UI-12
 ui.setRoot(std::move(panel));
 // chaque image : ui.update(input, viewport) ; ui.draw(list)
 ```
@@ -57,10 +57,10 @@ prochaine image (même taille). Le presse-papiers du système est branché par l
 exemple `Window::GetClipboardText` / `SetClipboardText`) ; sans lui, un presse-papiers interne.
 
 ```cpp
-engine::ui::DynamicImage minimap(128, 128);
-root->emplace<engine::ui::ImageView>([&] { return minimap.image(); }, engine::ui::ImageFit::kContain);
+orosmo::ui::DynamicImage minimap(128, 128);
+root->emplace<orosmo::ui::ImageView>([&] { return minimap.image(); }, orosmo::ui::ImageFit::kContain);
 // chaque image : minimap.setPixel(x, y, couleur)... ; minimap.commit();
-ui.notify("Terrain enregistré", engine::ui::NotificationKind::kSuccess);   // affichée par un widget Notifications
+ui.notify("Terrain enregistré", orosmo::ui::NotificationKind::kSuccess);   // affichée par un widget Notifications
 ```
 
 Clavier : `InputFrame::shortcuts` porte les combinaisons de l'image (« Ctrl+S », forme de `normalizeShortcut`). Avec le focus dans

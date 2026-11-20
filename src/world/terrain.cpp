@@ -1,8 +1,8 @@
-#include "engine/world/terrain.hpp"
+#include "orosmo/world/terrain.hpp"
 
 #include <cmath>
 
-namespace engine::world
+namespace orosmo::world
 {
 
 float heightAt(const TerrainParams &params, std::uint32_t seed, float x, float z) noexcept
@@ -50,4 +50,4 @@ Heightmap generateTile(const TerrainParams &params, std::uint32_t seed, const Ti
     return map;
 }
 
-} // namespace engine::world
+} // namespace orosmo::world

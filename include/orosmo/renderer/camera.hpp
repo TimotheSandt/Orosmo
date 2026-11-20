@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 // Contenu du tampon uniforme de la caméra (std140, 80 octets) : `shaders/rhi/mesh.vert`.
@@ -98,4 +98,4 @@ class Camera
     glm::vec2 jitter_{0.0f};
 };
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

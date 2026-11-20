@@ -3,13 +3,13 @@
 // coins, les coins sont réduits ensemble (proportionnellement).
 #pragma once
 
-#include "engine/renderer/draw_list.hpp"
-#include "engine/ui/theme.hpp"
-#include "engine/ui/widget.hpp"
+#include "orosmo/renderer/draw_list.hpp"
+#include "orosmo/ui/theme.hpp"
+#include "orosmo/ui/widget.hpp"
 
 #include <vector>
 
-namespace engine::ui
+namespace orosmo::ui
 {
 
 // Sommets (x, y, u, v ; 6 par quadrilatère) de `image` posée sur `rect`. Les coordonnées de texture sont rentrées d'un
@@ -19,4 +19,4 @@ std::vector<float> nineSliceVertices(const ImageStyle &image, const Rect &rect);
 // Ajoute l'image à la liste (une seule commande, quel que soit le nombre de morceaux).
 void appendNineSlice(renderer::DrawList &list, const ImageStyle &image, const Rect &rect, const Color &tint);
 
-} // namespace engine::ui
+} // namespace orosmo::ui

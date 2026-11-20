@@ -1,8 +1,8 @@
-#include <engine/core/file_watcher.hpp>
+#include <orosmo/core/file_watcher.hpp>
 
 #include <algorithm>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 namespace fs = std::filesystem;
@@ -100,4 +100,4 @@ std::size_t FileWatcher::poll()
     return count;
 }
 
-} // namespace engine::core
+} // namespace orosmo::core

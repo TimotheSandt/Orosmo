@@ -1,8 +1,8 @@
-#include "engine/renderer/render_target.hpp"
+#include "orosmo/renderer/render_target.hpp"
 
 #include <cstring>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 using core::ErrorCode;
@@ -227,4 +227,4 @@ void RenderTarget::reset() noexcept
     info_ = {};
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

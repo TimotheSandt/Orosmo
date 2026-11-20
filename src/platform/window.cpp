@@ -1,12 +1,12 @@
-#include <engine/platform/window.hpp>
+#include <orosmo/platform/window.hpp>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
-#include <engine/platform/input_manager.hpp>
-#include <engine/core/profiler.hpp>
-#include <engine/core/log.hpp>
-#include <engine/core/paths.hpp>
+#include <orosmo/platform/input_manager.hpp>
+#include <orosmo/core/profiler.hpp>
+#include <orosmo/core/log.hpp>
+#include <orosmo/core/paths.hpp>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -258,11 +258,11 @@ void Window::SetCursorPosition(glm::dvec2 position)
 
 bool Window::NewFrame()
 {
-    engine::core::Profiler::Profile("PollEvents", &glfwPollEvents);
-    engine::core::Profiler::Process();
+    orosmo::core::Profiler::Profile("PollEvents", &glfwPollEvents);
+    orosmo::core::Profiler::Process();
     this->inputManager->Update();
 
-    if (!engine::core::Profiler::Profile("HealthCheck", &Window::IsWindowHealthy, this))
+    if (!orosmo::core::Profiler::Profile("HealthCheck", &Window::IsWindowHealthy, this))
     {
         LOG_WARNING("Window is not healthy");
         return false;

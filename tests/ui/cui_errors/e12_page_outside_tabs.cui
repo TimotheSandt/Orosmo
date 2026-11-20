@@ -1,5 +1,5 @@
 // expect: 6:9: error: 'Page' is only allowed directly inside 'Tabs'
-import "engine/ui"
+import "orosmo/ui"
 
 view V {
     VBox {
