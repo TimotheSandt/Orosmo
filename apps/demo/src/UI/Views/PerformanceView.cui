@@ -1,31 +1,21 @@
-import "engine/core/profiler.hpp"
+// Panneau de performances de la démo, en haut à gauche. La vue décrit ; les valeurs (rafraîchies environ 4 fois par seconde) sont
+// calculées en C++ (UI/performance_stats.cpp) ; l'apparence vient du thème res/themes/hud.json. Langage : docs/UI_LANGUAGE.md.
+import "engine/ui"
+import "UI/performance_stats.hpp"
 
 view PerformanceView {
-    @Observed var window: Window?
+    @Observed var stats: PerformanceStats
 
-    func toMs(d: nanoseconds) -> double = double(d.count()) * 1e-6
-
-    let fpsScale    = 0.50
-    let metricScale = 0.30
-
-    VBox {
-        Text("FPS: \(window.averageFPS)")
-            .scale(fpsScale)
-
-        Text("Render: \(always toMs(Profiler.averageTime("Render"))) ms")
-            .scale(metricScale)
-        Text("Render World: \(always toMs(Profiler.averageTime("RenderWorld"))) ms")
-            .scale(metricScale)
-        Text("Upscale: \(always toMs(Profiler.averageTime("Upscale"))) ms")
-            .scale(metricScale)
-        Text("UI Upscale: \(always toMs(Profiler.averageTime("UIUpscale"))) ms")
-            .scale(metricScale)
-        Text("Swap Buffers: \(always toMs(Profiler.averageTime("SwapBuffers"))) ms")
-            .scale(metricScale)
+    Panel {
+        Label("FPS: \(stats.shown.fps)").variant("hudTitle").id("fps")
+        Label("Render: \(stats.shown.renderMs) ms").variant("hudMetric").id("render")
+        Label("Render World: \(stats.shown.renderWorldMs) ms").variant("hudMetric").id("renderWorld")
+        Label("Upscale: \(stats.shown.upscaleMs) ms").variant("hudMetric").id("upscale")
+        Label("UI Upscale: \(stats.shown.uiUpscaleMs) ms").variant("hudMetric").id("uiUpscale")
+        Label("Swap Buffers: \(stats.shown.swapBuffersMs) ms").variant("hudMetric").id("swapBuffers")
     }
-    .frame(width: 260, height: 175, anchor: .topLeft)
-    .padding(12)
-    .spacing(4)
-    .color(0.05, 0.05, 0.08, 0.65)
-    .throttle(0.25)
+    .variant("hud")
+    .width(260)
+    .height(.fit)
+    .align(.start)
 }

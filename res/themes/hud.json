@@ -1,0 +1,15 @@
+{
+    "name": "hud",
+    "description": "Panneau de performances de la démo (apps/demo, PerformanceView.cui) : le thème sombre, plus le fond translucide et les tailles de texte de l'ancien panneau.",
+    "extends": "dark.json",
+    "tokens": {
+        "color.hud": "#0d0d14a6",
+        "font.size.hudTitle": 24,
+        "font.size.hudMetric": 14.4
+    },
+    "widgets": {
+        "hud": {"background": "color.hud", "padding": "space.large", "spacing": "space.small", "radius": 0, "borderWidth": 0},
+        "hudTitle": {"fontSize": "font.size.hudTitle", "padding": 0},
+        "hudMetric": {"fontSize": "font.size.hudMetric", "padding": 0}
+    }
+}

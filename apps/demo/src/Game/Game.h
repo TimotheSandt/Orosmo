@@ -8,7 +8,6 @@
 #include "CameraController.h"
 #include <engine/platform/input_manager.hpp>
 #include <engine/core/profiler.hpp>
-#include "UIManager.h"
 #include <engine/platform/window.hpp>
 #include "World.h"
 
@@ -20,6 +19,10 @@
 #include "engine/renderer/scene_renderer.hpp"
 #include "engine/renderer/shader_library.hpp"
 #include "engine/rhi/device.hpp"
+#include "engine/ui/font.hpp"
+#include "engine/ui/text_renderer.hpp"
+#include "engine/ui/ui.hpp"
+#include "UI/performance_stats.hpp"
 
 class Game
 {
@@ -52,6 +55,7 @@ class Game
     void render();
     void endFrame();
     void refreshViewSize();
+    engine::core::Result<> createUi();
     bool renderUi(engine::rhi::CommandEncoder &encoder, const engine::rhi::TextureHandle &composed);
 
   private:
@@ -69,6 +73,13 @@ class Game
     engine::rhi::TextureHandle backbuffer;
     float uiRenderScale = 1.0f;
     bool uiUpscaling = false;
+
+    // Interface (engine::ui) : rendu du texte, police, contexte de l'interface (détruit avant les deux premiers), panneau de
+    // performances (UI/Views/PerformanceView.cui, thème res/themes/hud.json).
+    std::unique_ptr<engine::ui::TextRenderer> text;
+    std::unique_ptr<engine::ui::TextRendererFont> font;
+    std::unique_ptr<engine::ui::Ui> ui;
+    PerformanceStats performance;
 
     engine::renderer::Camera camera;
     CameraController cameraController;
