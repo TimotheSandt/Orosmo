@@ -215,8 +215,9 @@ TEST_SUITE("ui/theme")
         CHECK(host.reloadIfChanged());
         CHECK(host.current().name() == "light2");
 
-        // set() installe un thème sans fichier : une modification signalée juste avant ne le remplace pas.
-        dir.write("light.json", R"({"name": "light3", "extends": "new-base.json", "tokens": {"color.primary": "#336699", "color.text": "#eeeeee", "color.muted": "#555555"}})");
+        // set() installe un thème sans fichier : une modification signalée juste avant ne le remplace pas. Nom de longueur
+        // différente : la taille change, la modification est vue même si l'horodatage ne bouge pas (Windows, G124).
+        dir.write("light.json", R"({"name": "light-three", "extends": "new-base.json", "tokens": {"color.primary": "#336699", "color.text": "#eeeeee", "color.muted": "#555555"}})");
         CHECK(watcher.poll() >= 1);
         host.set(ui::Theme::fallback());
         CHECK_FALSE(host.reloadIfChanged());

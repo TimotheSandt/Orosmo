@@ -62,7 +62,8 @@ struct Offset3D
     std::int32_t z = 0;
 };
 
-// Origine en bas à gauche, Y vers le haut (repère OpenGL, voir src/rhi/README.md, section « Conventions »).
+// Origine en haut à gauche, Y vers le bas : y est la distance depuis le haut de la cible (repère du RHI, A26 ; voir
+// src/rhi/README.md, section « Conventions »). Pour une cible de 100 pixels de haut, la bande haute de 20 pixels est y = 0.
 struct Rect
 {
     std::int32_t x = 0;

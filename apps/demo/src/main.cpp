@@ -137,7 +137,12 @@ int main(int argc, char **argv)
                 LOG_TRACE("Game initialized");
                 game.run();
                 LOG_INFO("Game stopped");
-                if (!game.captureSucceeded())
+                if (!game.headlessSucceeded())
+                {
+                    LOG_ERROR(1, "Headless: a frame failed");
+                    exitCode = EXIT_FAILURE;
+                }
+                else if (!game.captureSucceeded())
                 {
                     LOG_ERROR(1, "Capture requested but not completed");
                     exitCode = EXIT_FAILURE;
