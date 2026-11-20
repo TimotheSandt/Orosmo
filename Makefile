@@ -273,7 +273,12 @@ terrain-gen-check: terrain-gen
 	./$(TERRAIN_GEN) --seed 42 --size 64 --out $(TG_CHECK)/t.stl > /dev/null
 	@./$(TERRAIN_GEN) --seed 42 --size 1 --out $(TG_CHECK)/x.png > /dev/null 2>&1; test $$? -eq 1
 	@./$(TERRAIN_GEN) --seed 42 --size 8 --params $(TG_CHECK)/absent.json --out $(TG_CHECK)/y.png > /dev/null 2>&1; test $$? -eq 2
-	@echo "terrain-gen-check : OK (mêmes octets, somme de contrôle de référence, codes de retour)"
+	@rm -f $(TG_CHECK)/same.png
+	@./$(TERRAIN_GEN) --seed 42 --size 8 --out $(TG_CHECK)/same.png --biomes $(TG_CHECK)/./same.png > /dev/null 2>&1; test $$? -eq 1
+	@test ! -e $(TG_CHECK)/same.png
+	@./$(TERRAIN_GEN) --seed 42 --size 8 --out $(TG_CHECK)/a.png --biomes $(TG_CHECK)/../terrain-gen-check/a.png > /dev/null 2>&1; test $$? -eq 1
+	cmp $(TG_CHECK)/a.png $(TG_CHECK)/b.png
+	@echo "terrain-gen-check : OK (mêmes octets, somme de contrôle de référence, codes de retour, destinations distinctes)"
 
 # ── Core demo (M1): 10 000 tasks, hot-reloaded config, measurements; no window, no graphics ──
 #   make core-demo                     build and run          make core-demo CORE_DEMO_ARGS="--tasks 20000 --trace t.json"
