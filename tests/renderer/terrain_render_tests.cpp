@@ -69,6 +69,11 @@ struct Fixture
     {
         Quad quad(normal);
         REQUIRE(terrain->updateTile({.id = 1, .origin = {0.0f, height, 0.0f}, .vertices = quad.vertices, .indices = quad.indices}).has_value());
+        return render(height);
+    }
+    // Rendu seul : la tuile 1 déjà créée n'est pas recréée.
+    std::array<std::uint8_t, 4> render(float height)
+    {
         rd::Camera camera;
         camera.setAspect(16, 16);
         camera.setPosition({0.0f, height + 6.0f, 12.0f});
@@ -142,8 +147,9 @@ TEST_SUITE("renderer/terrain")
                 layer[i] = 0;
             }
         }
+        (void)f.look(30.0f, {0, 1, 0}); // tuile 1 créée AVANT le changement de couches
         REQUIRE(f.terrain->setLayers(8, magenta).has_value());
-        const auto px = f.look(30.0f, {0, 1, 0});
+        const auto px = f.render(30.0f); // la même tuile, réassociée au nouveau tableau (pas recréée)
         CHECK(px[0] > 240);
         CHECK(px[1] < 15);
         CHECK(px[2] > 240);

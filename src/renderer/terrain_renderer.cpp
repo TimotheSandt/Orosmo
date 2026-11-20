@@ -138,16 +138,25 @@ core::Result<> TerrainRenderer::createLayerTexture(std::uint32_t size, std::span
         return r;
     }
     const rhi::TextureHandle previous = layers_;
-    layers_ = *texture;
-    // Les tuiles existantes pointent vers l'ancien tableau : on refait leur groupe de textures.
+    // Les tuiles existantes pointent vers l'ancien tableau : on refait leur groupe de textures. Transactionnel : un échec remet les
+    // tuiles déjà passées sur l'ancien tableau, qui reste à son propriétaire ; le nouveau est détruit.
+    const TextureBinding fresh{*texture, sampler_};
+    std::vector<Tile *> done;
     for (auto &[id, tile] : tiles_)
     {
-        const TextureBinding binding{layers_, sampler_};
-        if (auto r = tile.mesh.setTextures(std::span(&binding, 1)); !r)
+        if (auto r = tile.mesh.setTextures(std::span(&fresh, 1)); !r)
         {
+            const TextureBinding old{previous, sampler_};
+            for (Tile *t : done)
+            {
+                (void)t->mesh.setTextures(std::span(&old, 1));
+            }
+            device_.destroy(*texture);
             return r;
         }
+        done.push_back(&tile);
     }
+    layers_ = *texture;
     device_.destroy(previous);
     return {};
 }

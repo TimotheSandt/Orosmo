@@ -29,7 +29,10 @@ void main()
     if (pc.shape.y > 0.0)
     {
         float inside = clamp(0.5 - (d + pc.shape.y) / aa, 0.0, 1.0); // 1 à l'intérieur de la bordure
-        c = mix(pc.borderColor, pc.color, inside);
+        // Mélange en prémultiplié (une bordure opaque sur un intérieur transparent garde sa couleur au pixel de transition), puis
+        // retour en couleur droite pour le mélange SrcAlpha du pipeline.
+        vec4 m = mix(vec4(pc.borderColor.rgb * pc.borderColor.a, pc.borderColor.a), vec4(pc.color.rgb * pc.color.a, pc.color.a), inside);
+        c = m.a > 0.0 ? vec4(m.rgb / m.a, m.a) : vec4(0.0);
     }
     FragColor = vec4(c.rgb, c.a * coverage);
 }

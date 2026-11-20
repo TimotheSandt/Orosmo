@@ -295,6 +295,7 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(rotation_, other.rotation_);
     std::swap(scale_, other.scale_);
     std::swap(transformDirty_, other.transformDirty_);
+    std::swap(uploadedOrigin_, other.uploadedOrigin_); // va avec modelBuffer_ : l'origine des matrices déjà envoyées
 }
 
 } // namespace engine::renderer
