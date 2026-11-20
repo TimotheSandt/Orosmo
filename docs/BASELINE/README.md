@@ -53,13 +53,10 @@ Voir `docs/releases/M00.md` : mêmes 102 tests, mêmes ressources (somme MD5 ide
 
 ## Mise à jour du 2026-11-19 : texte posé sur sa ligne de base
 
-`reference/ui-opengl-fixedtext-1280x720.png` (parité de l'interface héritée, `tests/renderer/parity_tests.cpp`) : seul le panneau
-de texte (270 x 185 en haut à gauche) est remplacé. Correction de `TextRenderer::renderText` : le bas de chaque glyphe était
-arrondi (haut arrondi + hauteur arrondie) indépendamment de la ligne de base, d'où des lettres décalées d'un pixel vers le haut
-ou le bas ; il est maintenant arrondi par rapport à la ligne de base (`tests/ui/text_tests.cpp`, « letters with a flat bottom… »).
-Lettres déplacées d'au plus 1 pixel ; le reste de l'image est inchangé. Puis (même jour) espacement régulier : la position
-horizontale de chaque glyphe n'est plus arrondie au pixel (l'arrondi lettre par lettre serrait certaines paires, « rl », « s: »),
-`tests/ui/text_tests.cpp` « letters are evenly spaced… ». Même panneau remplacé, reste inchangé. sha256 `7f8acaf559a1acc1241a03b2d0e37aa74960bcc55e5d62ff119ebb0b5687469e`.
+`reference/ui-opengl-fixedtext-1280x720.png` (parité de l'interface héritée) a été corrigée ce jour-là (texte posé sur sa ligne de
+base, espacement régulier : `tests/ui/text_tests.cpp`). **Supprimée le 2026-11-20** avec l'interface héritée (`include/UI/`) et
+`tests/renderer/parity_tests.cpp` qui l'utilisait : la démo dessine maintenant son panneau avec `engine::ui`, il n'y a plus de rendu
+hérité à reproduire. Le panneau est vérifié par `tests/apps/demo_performance_tests.cpp` (contenu, thème, rafraîchissement).
 
 Régénérer et comparer :
 
