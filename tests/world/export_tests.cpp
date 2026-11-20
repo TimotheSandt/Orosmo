@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -103,6 +104,16 @@ TEST_SUITE("world/export")
         CHECK(field.originZ == 64.0f);
         orosmo::core::TaskSystem tasks(3);
         CHECK(w::generateRegion(p, 9, -40, 7, 64, 48, &tasks).heights == w::generateRegion(p, 9, -40, 7, 64, 48).heights);
+
+        // Dernier indice global hors de std::int64_t : région vide (rien d'alloué ni calculé), refusée par les exports.
+        constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
+        const w::HeightField overflow = w::generateRegion(p, 9, kMax - 1, 0, 3, 2, &tasks);
+        CHECK(overflow.width == 0);
+        CHECK(overflow.heights.empty());
+        CHECK(w::generateRegion(p, 9, 0, kMax, 2, 2).heights.empty());
+        CHECK(w::generateRegion(p, 9, kMax - 2, kMax - 1, 3, 2).heights.size() == 6); // dernier indice = kMax : accepté
+        tests::TempDir dir("engine_export");
+        CHECK((tests::errorOf(w::writeHeightExr(dir.path / "o.exr", overflow)) == orosmo::core::ErrorCode::kInvalidArgument));
     }
 
     TEST_CASE("PNG 16 bits: reopened by an independent decoder (stb), same quantized heights, same bytes at each export")
@@ -204,6 +215,10 @@ TEST_SUITE("world/export")
         auto duplicate = valid; // deux entrées de la table vers la même rangée : l'autre rangée ne serait jamais remplie
         std::copy_n(valid.begin() + static_cast<std::ptrdiff_t>(table), 8, duplicate.begin() + static_cast<std::ptrdiff_t>(table + 8));
         CHECK((tests::errorOf(readBack(duplicate)) == orosmo::core::ErrorCode::kParse));
+
+        // Erreur de lecture APRÈS l'ouverture (un dossier s'ouvre sous Linux, sa lecture échoue en EISDIR ; ailleurs l'ouverture
+        // échoue) : kIo, pas d'exception.
+        CHECK((tests::errorOf(w::readHeightExr(dir.path)) == orosmo::core::ErrorCode::kIo));
     }
 
     TEST_CASE("OBJ and glTF: reopened, vertices, normals and triangles match the height field")
@@ -273,6 +288,58 @@ TEST_SUITE("world/export")
         std::memcpy(&y5, buffer.data() + (5 * 3 + 1) * 4, 4); // POSITION du sommet 5, composante y
         CHECK(y5 == field.heights[5]);
         CHECK(doc["accessors"][0]["max"][1].get<float>() == doctest::Approx(field.maxHeight()));
+
+        // Indices 32 bits (bufferViews[2]) : la même triangulation que l'OBJ, en base 0.
+        auto floatAt = [&](std::size_t offset)
+        {
+            float v = 0;
+            std::memcpy(&v, buffer.data() + offset, 4);
+            return v;
+        };
+        const auto indicesView = doc["bufferViews"][2];
+        const auto indicesOffset = indicesView["byteOffset"].get<std::size_t>();
+        REQUIRE(indicesView["byteLength"].get<std::size_t>() == expected.size() * 4);
+        REQUIRE(indicesOffset + expected.size() * 4 <= buffer.size());
+        std::vector<unsigned> gltfIndices;
+        for (std::size_t k = 0; k < expected.size(); ++k)
+        {
+            std::uint32_t v = 0;
+            for (std::size_t b = 0; b < 4; ++b) // petit-boutiste (glTF)
+                v |= static_cast<std::uint32_t>(buffer[indicesOffset + k * 4 + b]) << (8 * b);
+            gltfIndices.push_back(v + 1);
+        }
+        CHECK(gltfIndices == expected);
+        // NORMAL (bufferViews[1]) : différences centrées (décentrées au bord) recalculées ici en double, puis normalisées.
+        const auto normalsOffset = doc["bufferViews"][1]["byteOffset"].get<std::size_t>();
+        REQUIRE(doc["bufferViews"][1]["byteLength"].get<std::size_t>() == field.heights.size() * 12);
+        for (std::uint32_t j = 0; j < field.height; ++j)
+        {
+            for (std::uint32_t i = 0; i < field.width; ++i)
+            {
+                const std::uint32_t il = i > 0 ? i - 1 : i, ir = std::min(i + 1, field.width - 1);
+                const std::uint32_t jd = j > 0 ? j - 1 : j, ju = std::min(j + 1, field.height - 1);
+                const double sx = -(static_cast<double>(field.at(ir, j)) - field.at(il, j)) / ((ir - il) * static_cast<double>(field.spacing));
+                const double sz = -(static_cast<double>(field.at(i, ju)) - field.at(i, jd)) / ((ju - jd) * static_cast<double>(field.spacing));
+                const double len = std::sqrt(sx * sx + 1.0 + sz * sz);
+                const std::size_t at = normalsOffset + (static_cast<std::size_t>(j) * field.width + i) * 12;
+                CHECK(floatAt(at) == doctest::Approx(sx / len).epsilon(1e-5));
+                CHECK(floatAt(at + 4) == doctest::Approx(1.0 / len).epsilon(1e-5));
+                CHECK(floatAt(at + 8) == doctest::Approx(sz / len).epsilon(1e-5));
+            }
+        }
+
+        // Bornes de POSITION : des valeurs réellement présentes, même au-delà de l'ancienne valeur initiale (1e30).
+        w::HeightField high;
+        high.width = 2;
+        high.height = 2;
+        high.heights = {2e30f, 3e30f, 4e30f, 5e30f};
+        REQUIRE(w::writeGltf(dir.path / "high.gltf", high).has_value());
+        std::ifstream highIn(dir.path / "high.gltf");
+        const nlohmann::json highDoc = nlohmann::json::parse(highIn);
+        CHECK(highDoc["accessors"][0]["min"][1].get<float>() == 2e30f);
+        CHECK(highDoc["accessors"][0]["max"][1].get<float>() == 5e30f);
+        CHECK(highDoc["accessors"][0]["min"][0].get<float>() == 0.0f);
+        CHECK(highDoc["accessors"][0]["max"][0].get<float>() == 1.0f);
     }
 
     TEST_CASE("STL: a closed, consistently oriented solid (every edge shared by two triangles in opposite directions), positive volume")
@@ -369,6 +436,11 @@ TEST_SUITE("world/export")
         const bool water = map[0] == w::Biome::kWater;
         CHECK((rgb[2] > rgb[0]) == water); // eau : bleu dominant
         stbi_image_free(rgb);
+        // /dev/full s'ouvre, mais l'écriture échoue (ENOSPC) : l'erreur est propagée (stbi_write_png l'ignorait).
+        if (std::error_code ec; fs::exists("/dev/full", ec))
+        {
+            CHECK((tests::errorOf(w::writeBiomePng("/dev/full", field, b)) == orosmo::core::ErrorCode::kIo));
+        }
     }
 
     TEST_CASE("TEST-03: reference checksum of an exported region")
@@ -414,6 +486,14 @@ TEST_SUITE("world/raycast")
             REQUIRE(h.has_value());
             CHECK(h->position.y == doctest::Approx(w::meshHeightAt(p, 11, h->position.x, h->position.z)).epsilon(1e-3));
         }
+        // maxDistance infinie : la borne du rayon vaut DBL_MAX, (b - a) * fa débordait (impact à l'infini).
+        w::TerrainParams flat = p;
+        flat.heightScale = 0.0f;
+        flat.heightOffset = 0.0f;
+        const auto unbounded = w::raycastTerrain(flat, 1, {0.5f, 2.0f, 0.5f}, {0.0f, -1.0f, 0.0f}, std::numeric_limits<float>::infinity());
+        REQUIRE(unbounded.has_value());
+        CHECK(unbounded->distance == doctest::Approx(2.0f));
+        CHECK(unbounded->position.y == doctest::Approx(0.0f));
     }
 }
 

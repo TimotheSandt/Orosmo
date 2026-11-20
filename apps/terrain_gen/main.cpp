@@ -155,6 +155,27 @@ int main(int argc, char **argv)
     {
         return fail(kUsage, "unsupported output format '" + extension + "' (.png .exr .obj .gltf .stl)");
     }
+    // Les deux exports doivent viser des fichiers distincts (sinon la carte de biomes remplace le relief) : chemins comparés après
+    // résolution (`.`, `..`, liens symboliques des parties existantes), puis identité du fichier s'il existe déjà (lien physique).
+    // Vérifié avant toute génération : rien n'est écrit.
+    if (!biomes.empty())
+    {
+        auto resolved = [](const fs::path &p)
+        {
+            std::error_code ec;
+            fs::path r = fs::weakly_canonical(p, ec);
+            if (ec)
+            {
+                r = fs::absolute(p, ec).lexically_normal();
+            }
+            return r;
+        };
+        std::error_code ec;
+        if (resolved(out) == resolved(biomes) || fs::equivalent(out, biomes, ec))
+        {
+            return fail(kUsage, "--out and --biomes name the same file: " + out.generic_string());
+        }
+    }
 
     w::TerrainParams params;
     if (!paramsFile.empty())

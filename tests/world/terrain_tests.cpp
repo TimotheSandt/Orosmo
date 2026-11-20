@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <mutex>
 #include <set>
 #include <tuple>
@@ -102,6 +103,15 @@ TEST_SUITE("world/terrain")
             }
         }
         CHECK(w::sampleX(p, {-3, 0, 2}, 5) == doctest::Approx(-3 * 16 * 2 * 4 + 5 * 2 * 4));
+        // Niveau élevé : global * 2^lod dépassait std::int64_t (2^31 * 2^32 avec 256 quadrilatères par tuile) ; en double, la
+        // position est exacte, et l'échantillon partagé avec le niveau inférieur (indice pair) reste le même.
+        w::TerrainParams wide = p;
+        wide.tileResolution = 256;
+        const double far = std::ldexp(8388608.0 * 256.0, 32) * static_cast<double>(wide.sampleSpacing);
+        CHECK(w::sampleX(wide, {8388608, 0, 32}, 0) == static_cast<float>(far));
+        CHECK(w::sampleX(wide, {8388608, 0, 32}, 0) == w::sampleX(wide, {16777216, 0, 31}, 0));
+        CHECK(w::sampleX(wide, {0, 0, 32}, 0) == 0.0f);
+        CHECK(w::sampleZ(wide, {0, -8388608, 32}, 0) == static_cast<float>(-far));
     }
 
     TEST_CASE("TEST-03: reference checksum of a generated tile")
@@ -168,6 +178,20 @@ TEST_SUITE("world/terrain")
         }
         // Distance de vue réglable : un facteur plus grand donne plus de feuilles.
         CHECK(w::selectTiles(p, {.rootLod = 4, .rootRadius = 1, .distanceFactor = 3.0f}, 10.0f, -20.0f).size() > leaves.size());
+
+        // Entrées hors domaine : sélection vide, sans conversion indéfinie vers std::int32_t ni débordement des clés.
+        const float nan = std::numeric_limits<float>::quiet_NaN(), inf = std::numeric_limits<float>::infinity();
+        CHECK(w::selectTiles(p, lod, nan, 0.0f).empty());
+        CHECK(w::selectTiles(p, lod, 0.0f, inf).empty());
+        CHECK(w::selectTiles(p, lod, -1e30f, 0.0f).empty());
+        CHECK(w::selectTiles(p, {.rootLod = 31, .rootRadius = 1, .distanceFactor = 1.5f}, 0.0f, 0.0f).empty());
+        CHECK(w::selectTiles(p, {.rootLod = 4, .rootRadius = -1, .distanceFactor = 1.5f}, 0.0f, 0.0f).empty());
+        w::TerrainParams flatTiles = p;
+        flatTiles.tileResolution = 0; // taille de racine nulle (appel direct, hors des bornes réfléchies)
+        CHECK(w::selectTiles(flatTiles, lod, 0.0f, 0.0f).empty());
+        // Loin mais représentable (racine 512 m : |clé| < 2^27 - 3) : sélection normale.
+        CHECK_FALSE(w::selectTiles(p, lod, 1e10f, -1e10f).empty());
+        CHECK(w::selectTiles(p, lod, 1e11f, 0.0f).empty()); // clé racine ~2^27,5 : niveau 0 hors de std::int32_t
     }
 
     TEST_CASE("TER-03: no crack: every vertex on an edge shared with a coarser leaf lies on the coarse edge")

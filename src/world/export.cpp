@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -220,9 +221,17 @@ HeightField generateRegion(const TerrainParams &params, std::uint32_t seed, std:
                            std::uint32_t height, core::TaskSystem *tasks)
 {
     HeightField f;
+    f.spacing = params.sampleSpacing;
+    // Le dernier indice global (first + n - 1) doit être représentable AVANT toute allocation ou tâche : sinon région vide, que
+    // chaque export refuse (kInvalidArgument).
+    auto fits = [](std::int64_t first, std::uint32_t n)
+    { return n == 0 || first <= std::numeric_limits<std::int64_t>::max() - static_cast<std::int64_t>(n - 1); };
+    if (!fits(firstX, width) || !fits(firstZ, height))
+    {
+        return f;
+    }
     f.width = width;
     f.height = height;
-    f.spacing = params.sampleSpacing;
     auto position = [&](std::int64_t global) { return static_cast<float>(static_cast<double>(global) * static_cast<double>(params.sampleSpacing)); };
     f.originX = position(firstX);
     f.originZ = position(firstZ);
@@ -354,7 +363,17 @@ core::Result<HeightField> readHeightExr(const std::filesystem::path &path)
     std::ifstream in(path, std::ios::binary);
     if (!in)
         return makeError(ErrorCode::kIo, "readHeightExr: cannot open " + path.generic_string());
-    const std::vector<std::uint8_t> d((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    // Lecture contrôlée : istream::read transforme une erreur du système (ex. EISDIR sur un dossier ouvert sous Linux) en badbit,
+    // là où istreambuf_iterator laisserait remonter l'exception de basic_filebuf::underflow.
+    std::vector<std::uint8_t> d;
+    std::array<char, 65536> chunk{};
+    while (in)
+    {
+        in.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+        d.insert(d.end(), chunk.begin(), chunk.begin() + in.gcount());
+    }
+    if (in.bad())
+        return makeError(ErrorCode::kIo, "readHeightExr: cannot read " + path.generic_string());
     // Fichier non fiable : chaque lecture est bornée par `limit` (fin du fichier, ou fin de l'attribut en cours de lecture), les
     // tailles se calculent en 64 bits et sont comparées aux octets restants AVANT toute allocation ou indexation.
     std::size_t pos = 0;
@@ -522,8 +541,10 @@ core::Result<> writeGltf(const std::filesystem::path &path, const HeightField &f
     const std::size_t indicesOffset = buffer.data.size();
     for (std::uint32_t i : m.indices)
         buffer.u32le(i);
-    std::array<float, 3> lo{1e30f, 1e30f, 1e30f}, hi{-1e30f, -1e30f, -1e30f};
-    for (std::size_t v = 0; v < m.positions.size(); v += 3)
+    // Bornes initialisées sur le premier sommet (checkField en garantit au moins quatre) : min/max sont des valeurs du tampon.
+    std::array<float, 3> lo{m.positions[0], m.positions[1], m.positions[2]};
+    std::array<float, 3> hi = lo;
+    for (std::size_t v = 3; v < m.positions.size(); v += 3)
     {
         for (std::size_t c = 0; c < 3; ++c)
         {
@@ -660,12 +681,18 @@ core::Result<> writeBiomePng(const std::filesystem::path &path, const HeightFiel
         const auto &c = kColors[static_cast<std::size_t>(b)];
         rgb.insert(rgb.end(), c.begin(), c.end());
     }
-    std::error_code ec;
-    if (const auto parent = path.parent_path(); !parent.empty())
-        std::filesystem::create_directories(parent, ec);
-    if (stbi_write_png(path.string().c_str(), static_cast<int>(field.width), static_cast<int>(field.height), 3, rgb.data(), static_cast<int>(field.width * 3)) == 0)
-        return makeError(ErrorCode::kIo, "writeBiomePng: cannot write " + path.generic_string());
-    return {};
+    // Encodage en mémoire (mêmes octets que stbi_write_png, qui ignore l'échec de fwrite/fclose), puis writeFile : une écriture
+    // ou une fermeture ratée (disque plein…) devient kIo.
+    std::vector<std::uint8_t> png;
+    auto append = [](void *context, void *data, int size)
+    {
+        auto *out = static_cast<std::vector<std::uint8_t> *>(context);
+        const auto *bytes = static_cast<const std::uint8_t *>(data);
+        out->insert(out->end(), bytes, bytes + size);
+    };
+    if (stbi_write_png_to_func(append, &png, static_cast<int>(field.width), static_cast<int>(field.height), 3, rgb.data(), static_cast<int>(field.width * 3)) == 0)
+        return makeError(ErrorCode::kIo, "writeBiomePng: cannot encode " + path.generic_string());
+    return writeFile(path, png.data(), png.size());
 }
 
 } // namespace orosmo::world

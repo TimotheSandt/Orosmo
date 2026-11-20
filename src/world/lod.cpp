@@ -47,9 +47,22 @@ constexpr std::array<std::array<std::int32_t, 2>, 4> kDirections = {{{-1, 0}, {1
 
 std::vector<TileKey> selectTiles(const TerrainParams &params, const LodConfig &config, float cameraX, float cameraZ)
 {
+    // Entrées validées AVANT les conversions en std::int32_t : taille de racine finie et positive, caméra finie, et marge pour le
+    // rayon, les découpes jusqu'au niveau 0 (clé * 2^rootLod) et les voisines (± 1) : |clé| < 2^31 à tous les niveaux.
     const double rootSize = tileSize(params, config.rootLod);
-    const auto cx = static_cast<std::int32_t>(std::floor(static_cast<double>(cameraX) / rootSize));
-    const auto cz = static_cast<std::int32_t>(std::floor(static_cast<double>(cameraZ) / rootSize));
+    if (!(rootSize > 0.0) || !std::isfinite(rootSize) || config.rootLod > 30 || config.rootRadius < 0)
+    {
+        return {};
+    }
+    const double fx = std::floor(static_cast<double>(cameraX) / rootSize);
+    const double fz = std::floor(static_cast<double>(cameraZ) / rootSize);
+    const double limit = std::ldexp(1.0, 31 - static_cast<int>(config.rootLod)) - static_cast<double>(config.rootRadius) - 2.0;
+    if (!(std::abs(fx) < limit) || !(std::abs(fz) < limit))
+    {
+        return {};
+    }
+    const auto cx = static_cast<std::int32_t>(fx);
+    const auto cz = static_cast<std::int32_t>(fz);
     std::vector<TileKey> work;
     for (std::int32_t z = cz - config.rootRadius; z <= cz + config.rootRadius; ++z)
     {
