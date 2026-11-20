@@ -17,8 +17,6 @@
     ["src/world/*", "world"],
     ["include/Benchmark/*", "core"],
     ["src/Benchmark/*", "core"],
-    ["include/Noise/*", "world"],
-    ["src/Noise/*", "world"],
     ["include/UI/Rendering/TextRenderer.h", "renderer"],
     ["src/ui/legacy/Rendering/TextRenderer.cpp", "renderer"],
     ["include/UI/*", "ui"],
@@ -27,7 +25,7 @@
     ["src/ThirdParty/*", "core"],
     ["apps/*", "apps"]
   ],
-  "include_roots": ["include", "include/UI", "include/Noise", "include/Benchmark"],
+  "include_roots": ["include", "include/UI", "include/Benchmark"],
   "scan": ["include", "src", "apps"],
   "api_isolation": {
     "allowed": ["src/rhi/", "src/platform/", "include/engine/platform/"],
