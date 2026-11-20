@@ -162,7 +162,7 @@ float warpedFbm2(float x, float y, uint seed)
 float samplePosition(int tile, uint i)
 {
     double global = double(tile) * double(pc.tile.w) + double(i);
-    double finest = global * double(1 << pc.tile.z);
+    double finest = global * ldexp(1.0lf, pc.tile.z); // 2^lod sans décalage d'entier (indéfini dès lod = 32)
     return float(finest * double(pc.relief.w));
 }
 
@@ -198,6 +198,10 @@ core::Result<std::unique_ptr<GpuNoise>> GpuNoise::create(rhi::Device &device)
     {
         return makeError(ErrorCode::kUnsupported, "GpuNoise: the device has no compute shaders");
     }
+    if (!device.capabilities().shaderFloat64)
+    {
+        return makeError(ErrorCode::kUnsupported, "GpuNoise: the device has no 64-bit floats in shaders (sample positions)");
+    }
     std::unique_ptr<GpuNoise> noise(new GpuNoise(device));
     auto shader = rhi::createShaderFromGlsl(device, rhi::ShaderStage::kCompute, kSource, {.name = "world/gpu/noise.comp"});
     if (!shader)
@@ -216,6 +220,11 @@ core::Result<std::unique_ptr<GpuNoise>> GpuNoise::create(rhi::Device &device)
 
 GpuNoise::~GpuNoise()
 {
+    if (group_)
+    {
+        device_.destroy(group_);
+        device_.destroy(buffer_);
+    }
     device_.destroy(pipeline_);
     device_.destroy(shader_);
 }
@@ -224,24 +233,40 @@ core::Result<std::vector<float>> GpuNoise::generateTile(const TerrainParams &par
 {
     const std::uint32_t n = params.tileResolution + 1;
     const std::uint64_t bytes = static_cast<std::uint64_t>(n) * n * sizeof(float);
-    rhi::BufferDesc bd;
-    bd.size = bytes;
-    bd.usage = rhi::BufferUsage::kStorage | rhi::BufferUsage::kCopySrc;
-    bd.memory = rhi::MemoryKind::kReadback;
-    bd.debugName = "world.noise.heights";
-    auto buffer = device_.createBuffer(bd);
-    if (!buffer)
+    // Un seul tampon de résultats (et son groupe), réutilisé d'une génération à l'autre et agrandi seulement si besoin : sans
+    // present(), un tampon détruit à chaque appel resterait dans la file de destruction différée et la mémoire GPU grandirait.
+    if (bytes > capacity_)
     {
-        return std::unexpected(buffer.error());
-    }
-    rhi::BindGroupDesc gd;
-    gd.entries.push_back({.binding = 0, .type = rhi::BindingType::kStorageBuffer, .buffer = *buffer});
-    gd.debugName = "world.noise";
-    auto group = device_.createBindGroup(gd);
-    if (!group)
-    {
-        device_.destroy(*buffer);
-        return std::unexpected(group.error());
+        if (group_)
+        {
+            device_.destroy(group_);
+            device_.destroy(buffer_);
+            group_ = {};
+            buffer_ = {};
+            capacity_ = 0;
+        }
+        rhi::BufferDesc bd;
+        bd.size = bytes;
+        bd.usage = rhi::BufferUsage::kStorage | rhi::BufferUsage::kCopySrc;
+        bd.memory = rhi::MemoryKind::kReadback;
+        bd.debugName = "world.noise.heights";
+        auto buffer = device_.createBuffer(bd);
+        if (!buffer)
+        {
+            return std::unexpected(buffer.error());
+        }
+        rhi::BindGroupDesc gd;
+        gd.entries.push_back({.binding = 0, .type = rhi::BindingType::kStorageBuffer, .buffer = *buffer});
+        gd.debugName = "world.noise";
+        auto group = device_.createBindGroup(gd);
+        if (!group)
+        {
+            device_.destroy(*buffer);
+            return std::unexpected(group.error());
+        }
+        buffer_ = *buffer;
+        group_ = *group;
+        capacity_ = bytes;
     }
     Push push{};
     push.tile[0] = key.x;
@@ -262,14 +287,14 @@ core::Result<std::vector<float>> GpuNoise::generateTile(const TerrainParams &par
     push.warp[3] = params.heightOffset;
     auto encoder = device_.createCommandEncoder();
     encoder->bindComputePipeline(pipeline_);
-    encoder->setBindGroup(0, *group);
+    encoder->setBindGroup(0, group_);
     encoder->setPushConstants(std::as_bytes(std::span(&push, 1)));
     encoder->dispatch((n + 7) / 8, (n + 7) / 8, 1);
     auto submitted = device_.submit(std::move(encoder));
     core::Result<std::vector<float>> out = submitted ? core::Result<std::vector<float>>(std::vector<float>{}) : std::unexpected(submitted.error());
     if (submitted)
     {
-        auto data = device_.readBuffer(*buffer, 0, bytes);
+        auto data = device_.readBuffer(buffer_, 0, bytes);
         if (!data)
         {
             out = std::unexpected(data.error());
@@ -281,8 +306,6 @@ core::Result<std::vector<float>> GpuNoise::generateTile(const TerrainParams &par
             out = std::move(heights);
         }
     }
-    device_.destroy(*group);
-    device_.destroy(*buffer);
     return out;
 }
 

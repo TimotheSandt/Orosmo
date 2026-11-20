@@ -8,10 +8,12 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <charconv>
 #include <cmath>
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <string>
 #include <tuple>
 
@@ -168,7 +170,7 @@ GridMesh gridMesh(const HeightField &f)
         for (std::uint32_t i = 0; i < f.width; ++i)
         {
             const auto n = normalAt(f, i, j);
-            m.positions.insert(m.positions.end(), {f.originX + static_cast<float>(i) * f.spacing, f.at(i, j), f.originZ + static_cast<float>(j) * f.spacing});
+            m.positions.insert(m.positions.end(), {f.xAt(i), f.at(i, j), f.zAt(j)});
             m.normals.insert(m.normals.end(), n.begin(), n.end());
         }
     }
@@ -224,6 +226,8 @@ HeightField generateRegion(const TerrainParams &params, std::uint32_t seed, std:
     auto position = [&](std::int64_t global) { return static_cast<float>(static_cast<double>(global) * static_cast<double>(params.sampleSpacing)); };
     f.originX = position(firstX);
     f.originZ = position(firstZ);
+    f.firstX = firstX;
+    f.firstZ = firstZ;
     f.heights.resize(static_cast<std::size_t>(width) * height);
     auto row = [&](std::size_t j)
     {
@@ -272,7 +276,19 @@ core::Result<> writeHeightPng16(const std::filesystem::path &path, const HeightF
     ihdr.u32be(field.height);
     ihdr.data.insert(ihdr.data.end(), {16, 0, 0, 0, 0}); // 16 bits, niveaux de gris, deflate, filtrage standard, non entrelacé
     pngChunk(png, "IHDR", ihdr.data);
-    pngChunk(png, "IDAT", zlibStored(raw));
+    // Un bloc PNG mesure au plus 2^31 - 1 octets : le flux zlib est réparti sur des blocs IDAT consécutifs (sortie inchangée sous
+    // cette taille : un seul bloc).
+    const std::vector<std::uint8_t> zlib = zlibStored(raw);
+    constexpr std::size_t kMaxChunk = 0x7fffffffU;
+    if (zlib.size() <= kMaxChunk)
+    {
+        pngChunk(png, "IDAT", zlib);
+    }
+    for (std::size_t at = 0; zlib.size() > kMaxChunk && at < zlib.size(); at += kMaxChunk)
+    {
+        const std::size_t size = std::min(kMaxChunk, zlib.size() - at);
+        pngChunk(png, "IDAT", std::vector<std::uint8_t>(zlib.begin() + static_cast<std::ptrdiff_t>(at), zlib.begin() + static_cast<std::ptrdiff_t>(at + size)));
+    }
     pngChunk(png, "IEND", {});
     return writeFile(path, png.data.data(), png.data.size());
 }
@@ -338,9 +354,12 @@ core::Result<HeightField> readHeightExr(const std::filesystem::path &path)
     std::ifstream in(path, std::ios::binary);
     if (!in)
         return makeError(ErrorCode::kIo, "readHeightExr: cannot open " + path.generic_string());
-    std::vector<std::uint8_t> d((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const std::vector<std::uint8_t> d((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    // Fichier non fiable : chaque lecture est bornée par `limit` (fin du fichier, ou fin de l'attribut en cours de lecture), les
+    // tailles se calculent en 64 bits et sont comparées aux octets restants AVANT toute allocation ou indexation.
     std::size_t pos = 0;
-    auto need = [&](std::size_t n) { return pos + n <= d.size(); };
+    std::size_t limit = d.size();
+    auto need = [&](std::size_t n) { return pos <= limit && n <= limit - pos; };
     auto u32 = [&]()
     {
         std::uint32_t v = 0;
@@ -349,54 +368,80 @@ core::Result<HeightField> readHeightExr(const std::filesystem::path &path)
         pos += 4;
         return v;
     };
-    auto cstr = [&]()
+    auto cstr = [&]() -> std::optional<std::string> // chaîne terminée par 0 AVANT `limit`
     {
         std::string s;
-        while (pos < d.size() && d[pos] != 0)
+        while (pos < limit && d[pos] != 0)
             s += static_cast<char>(d[pos++]);
+        if (pos >= limit)
+            return std::nullopt;
         ++pos;
         return s;
     };
     if (!need(8) || u32() != 20000630U || (u32() & 0xffU) != 2)
         return makeError(ErrorCode::kParse, "readHeightExr: not an OpenEXR 2 file");
-    std::int32_t xMin = 0, yMin = 0, xMax = -1, yMax = -1;
+    std::int64_t xMin = 0, yMin = 0, xMax = -1, yMax = -1;
     bool singleFloat = false;
     int compression = -1;
     while (pos < d.size() && d[pos] != 0)
     {
-        const std::string name = cstr();
-        const std::string type = cstr();
-        if (!need(4))
+        const auto name = cstr();
+        const auto type = name ? cstr() : std::nullopt;
+        if (!type || !need(4))
             return makeError(ErrorCode::kParse, "readHeightExr: truncated header");
         const std::uint32_t size = u32();
         if (!need(size))
-            return makeError(ErrorCode::kParse, "readHeightExr: truncated attribute " + name);
+            return makeError(ErrorCode::kParse, "readHeightExr: truncated attribute " + *name);
         const std::size_t end = pos + size;
-        if (name == "channels")
+        limit = end; // les lectures de l'attribut restent dans l'attribut
+        bool ok = true;
+        if (*name == "channels")
         {
-            const std::string channel = cstr();
-            const std::uint32_t pixelType = u32();
-            singleFloat = !channel.empty() && pixelType == 2 && d[pos + 12] == 0; // un seul canal, FLOAT
+            const auto channel = cstr();
+            // type de pixel (4), pLinear + réservé (4), échantillonnage x et y (8), puis le 0 qui termine la liste.
+            ok = channel.has_value() && need(17);
+            if (ok)
+            {
+                const std::uint32_t pixelType = u32();
+                singleFloat = !channel->empty() && pixelType == 2 && d[pos + 12] == 0; // un seul canal, FLOAT
+            }
         }
-        else if (name == "compression")
+        else if (*name == "compression")
         {
-            compression = d[pos];
+            ok = need(1);
+            if (ok)
+                compression = d[pos];
         }
-        else if (name == "dataWindow")
+        else if (*name == "dataWindow")
         {
-            xMin = static_cast<std::int32_t>(u32());
-            yMin = static_cast<std::int32_t>(u32());
-            xMax = static_cast<std::int32_t>(u32());
-            yMax = static_cast<std::int32_t>(u32());
+            ok = need(16);
+            if (ok)
+            {
+                xMin = static_cast<std::int32_t>(u32());
+                yMin = static_cast<std::int32_t>(u32());
+                xMax = static_cast<std::int32_t>(u32());
+                yMax = static_cast<std::int32_t>(u32());
+            }
         }
+        if (!ok)
+            return makeError(ErrorCode::kParse, "readHeightExr: malformed attribute " + *name);
         pos = end;
+        limit = d.size();
     }
     ++pos;
     if (!singleFloat || compression != 0 || xMax < xMin || yMax < yMin)
         return makeError(ErrorCode::kUnsupported, "readHeightExr: only single-channel FLOAT, uncompressed scanline files are supported");
+    const std::int64_t width = xMax - xMin + 1; // au plus 2^32 : pas de débordement en 64 bits
+    const std::int64_t height = yMax - yMin + 1;
+    const auto rowBytes = static_cast<std::uint64_t>(width) * 4U;
+    // Les octets annoncés (table des offsets, puis une ligne d'en-tête + pixels par rangée) doivent tenir dans le fichier : cela
+    // borne aussi les allocations par la taille du fichier.
+    const std::uint64_t remaining = pos <= d.size() ? d.size() - pos : 0;
+    if (static_cast<std::uint64_t>(height) > remaining / (8U + 8U + rowBytes))
+        return makeError(ErrorCode::kParse, "readHeightExr: the declared size does not fit in the file");
     HeightField f;
-    f.width = static_cast<std::uint32_t>(xMax - xMin + 1);
-    f.height = static_cast<std::uint32_t>(yMax - yMin + 1);
+    f.width = static_cast<std::uint32_t>(width);
+    f.height = static_cast<std::uint32_t>(height);
     f.heights.resize(static_cast<std::size_t>(f.width) * f.height);
     std::vector<std::uint64_t> offsets(f.height);
     for (auto &o : offsets)
@@ -406,17 +451,23 @@ core::Result<HeightField> readHeightExr(const std::filesystem::path &path)
         o = u32();
         o |= static_cast<std::uint64_t>(u32()) << 32;
     }
+    std::vector<bool> seen(f.height, false);
     for (std::uint32_t j = 0; j < f.height; ++j)
     {
+        if (offsets[j] > d.size())
+            return makeError(ErrorCode::kParse, "readHeightExr: scanline offset outside the file");
         pos = static_cast<std::size_t>(offsets[j]);
-        if (!need(8 + static_cast<std::size_t>(f.width) * 4))
+        if (!need(8 + static_cast<std::size_t>(rowBytes)))
             return makeError(ErrorCode::kParse, "readHeightExr: truncated scanline");
-        const auto y = static_cast<std::int32_t>(u32());
+        const std::int64_t row = static_cast<std::int64_t>(static_cast<std::int32_t>(u32())) - yMin;
         const std::uint32_t bytes = u32();
-        if (y - yMin < 0 || y - yMin >= static_cast<std::int32_t>(f.height) || bytes != f.width * 4)
+        if (row < 0 || row >= height || bytes != rowBytes)
             return makeError(ErrorCode::kParse, "readHeightExr: unexpected scanline");
+        if (seen[static_cast<std::size_t>(row)])
+            return makeError(ErrorCode::kParse, "readHeightExr: scanline read twice");
+        seen[static_cast<std::size_t>(row)] = true;
         for (std::uint32_t i = 0; i < f.width; ++i)
-            f.heights[static_cast<std::size_t>(y - yMin) * f.width + i] = std::bit_cast<float>(u32());
+            f.heights[static_cast<std::size_t>(row) * f.width + i] = std::bit_cast<float>(u32());
     }
     return f;
 }
@@ -428,17 +479,25 @@ core::Result<> writeObj(const std::filesystem::path &path, const HeightField &fi
     const GridMesh m = gridMesh(field);
     std::string out = "# terrain exporté par engine::world (TER-11)\n";
     char line[128];
+    // std::to_chars : même sortie que "%.6f", mais indépendante de LC_NUMERIC (une virgule changerait les octets du fichier).
+    auto triple = [&](const char *prefix, const float *v)
+    {
+        out += prefix;
+        for (int k = 0; k < 3; ++k)
+        {
+            out += ' ';
+            const auto [end, ec] = std::to_chars(line, line + sizeof line, static_cast<double>(v[k]), std::chars_format::fixed, 6);
+            out.append(line, ec == std::errc{} ? end : line);
+        }
+        out += '\n';
+    };
     for (std::size_t v = 0; v < m.positions.size(); v += 3)
     {
-        std::snprintf(line, sizeof line, "v %.6f %.6f %.6f\n", static_cast<double>(m.positions[v]), static_cast<double>(m.positions[v + 1]),
-                      static_cast<double>(m.positions[v + 2]));
-        out += line;
+        triple("v", &m.positions[v]);
     }
     for (std::size_t v = 0; v < m.normals.size(); v += 3)
     {
-        std::snprintf(line, sizeof line, "vn %.6f %.6f %.6f\n", static_cast<double>(m.normals[v]), static_cast<double>(m.normals[v + 1]),
-                      static_cast<double>(m.normals[v + 2]));
-        out += line;
+        triple("vn", &m.normals[v]);
     }
     for (std::size_t t = 0; t < m.indices.size(); t += 3)
     {
@@ -499,11 +558,15 @@ core::Result<> writeStl(const std::filesystem::path &path, const HeightField &fi
         return r;
     // Solide fermé : surface (deux triangles par cellule), fond (même grille au niveau du socle, à l'envers), et jupes reliant le
     // bord de la surface au bord du fond, sommet par sommet : chaque arête est partagée par exactement deux triangles.
-    const float base = field.minHeight() - std::max(baseDepth, 0.0f);
+    // Le socle doit passer STRICTEMENT sous le point le plus bas : sinon le fond touche la surface, des jupes ont une aire nulle
+    // et le fichier n'est plus un solide imprimable (une profondeur trop faible pour la précision du float donne aussi base == min).
+    const float base = field.minHeight() - baseDepth;
+    if (!(baseDepth > 0.0f) || !std::isfinite(base) || !(base < field.minHeight()))
+        return makeError(ErrorCode::kInvalidArgument, "writeStl: the base must lie strictly below the lowest point (baseDepth > 0)");
     using P = std::array<float, 3>;
     std::vector<std::array<P, 3>> triangles;
-    auto top = [&](std::uint32_t i, std::uint32_t j) { return P{field.originX + static_cast<float>(i) * field.spacing, field.at(i, j), field.originZ + static_cast<float>(j) * field.spacing}; };
-    auto bottom = [&](std::uint32_t i, std::uint32_t j) { return P{field.originX + static_cast<float>(i) * field.spacing, base, field.originZ + static_cast<float>(j) * field.spacing}; };
+    auto top = [&](std::uint32_t i, std::uint32_t j) { return P{field.xAt(i), field.at(i, j), field.zAt(j)}; };
+    auto bottom = [&](std::uint32_t i, std::uint32_t j) { return P{field.xAt(i), base, field.zAt(j)}; };
     for (std::uint32_t j = 0; j + 1 < field.height; ++j)
     {
         for (std::uint32_t i = 0; i + 1 < field.width; ++i)
@@ -569,6 +632,9 @@ Biome classify(float height, float slope, const BiomeParams &params) noexcept
 
 std::vector<Biome> biomeMap(const HeightField &field, const BiomeParams &params)
 {
+    // API publique : une grille dont le stockage ne correspond pas à width x height donnerait des lectures hors du vecteur.
+    if (field.heights.size() != static_cast<std::size_t>(field.width) * field.height)
+        return {};
     std::vector<Biome> out(field.heights.size());
     for (std::uint32_t j = 0; j < field.height; ++j)
     {

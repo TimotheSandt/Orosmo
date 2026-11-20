@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <vector>
 
 namespace engine::core
@@ -29,10 +30,22 @@ struct HeightField
     float originX = 0.0f;  // position monde de l'échantillon (0, 0)
     float originZ = 0.0f;
     std::vector<float> heights;
+    // Indices globaux de l'échantillon (0, 0), donnés par generateRegion : les positions exportées se recalculent alors depuis
+    // l'indice global, comme les hauteurs (originX arrondi en float + i * spacing peut tomber sur une autre position).
+    std::optional<std::int64_t> firstX;
+    std::optional<std::int64_t> firstZ;
 
     float at(std::uint32_t i, std::uint32_t j) const noexcept { return heights[static_cast<std::size_t>(j) * width + i]; }
+    float xAt(std::uint32_t i) const noexcept { return positionAt(firstX, originX, i); }
+    float zAt(std::uint32_t j) const noexcept { return positionAt(firstZ, originZ, j); }
     float minHeight() const noexcept;
     float maxHeight() const noexcept;
+
+private:
+    float positionAt(const std::optional<std::int64_t> &first, float origin, std::uint32_t i) const noexcept
+    {
+        return first ? static_cast<float>(static_cast<double>(*first + i) * static_cast<double>(spacing)) : origin + static_cast<float>(i) * spacing;
+    }
 };
 
 // Génère `width` x `height` échantillons à partir de l'échantillon global (firstX, firstZ). `tasks` (facultatif) parallélise par
@@ -56,6 +69,7 @@ core::Result<> writeObj(const std::filesystem::path &path, const HeightField &fi
 // glTF 2.0 en un seul fichier .gltf (tampon intégré en base64) : POSITION, NORMAL, indices 32 bits.
 core::Result<> writeGltf(const std::filesystem::path &path, const HeightField &field);
 // STL binaire FERMÉ (imprimable) : surface, quatre jupes jusqu'au socle, fond ; socle à `baseDepth` m sous le point le plus bas.
+// `baseDepth` doit être > 0 et assez grand pour que le socle passe strictement sous ce point (sinon kInvalidArgument).
 core::Result<> writeStl(const std::filesystem::path &path, const HeightField &field, float baseDepth);
 
 // ── Biomes ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -78,6 +92,7 @@ struct BiomeParams
 };
 
 Biome classify(float height, float slope, const BiomeParams &params) noexcept;
+// Vide si `heights` ne contient pas width x height valeurs.
 std::vector<Biome> biomeMap(const HeightField &field, const BiomeParams &params);
 // PNG RGB 8 bits : eau bleue, sable, herbe, roche, neige.
 core::Result<> writeBiomePng(const std::filesystem::path &path, const HeightField &field, const BiomeParams &params);

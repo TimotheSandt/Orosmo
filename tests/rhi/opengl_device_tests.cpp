@@ -46,6 +46,7 @@ TEST_SUITE("rhi/opengl/device")
         CHECK_FALSE(c.bufferDeviceAddress);
         CHECK_FALSE(c.sparseResources);
         CHECK_FALSE(c.spirvShaders);
+        CHECK(c.shaderFloat64);
         gpu.expectNoValidationErrors();
     }
 

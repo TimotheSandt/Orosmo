@@ -40,6 +40,7 @@ struct Capabilities
     bool bc7Textures = false;
     bool wireframe = false;
     bool spirvShaders = false; // ShaderLanguage::kSpirv accepté
+    bool shaderFloat64 = false; // `double` dans les shaders (OpenGL 4.0+, Vulkan shaderFloat64)
 
     // Capacités optionnelles réservées (RHI-18) : `false` tant que non implémentées.
     bool rayQuery = false;

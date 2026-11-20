@@ -18,11 +18,15 @@
 #include <nlohmann/json.hpp>
 #include <stb_image.h>
 
+#include <algorithm>
+#include <clocale>
 #include <cmath>
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <sstream>
+#include <string_view>
 
 namespace w = engine::world;
 namespace rd = engine::renderer;
@@ -52,9 +56,18 @@ std::vector<std::uint8_t> decodeBase64(const std::string &text)
 {
     auto value = [](char c) -> int
     {
-        if (c >= 'A' && c <= 'Z') return c - 'A';
-        if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-        if (c >= '0' && c <= '9') return c - '0' + 52;
+        if (c >= 'A' && c <= 'Z')
+        {
+            return c - 'A';
+        }
+        if (c >= 'a' && c <= 'z')
+        {
+            return c - 'a' + 26;
+        }
+        if (c >= '0' && c <= '9')
+        {
+            return c - '0' + 52;
+        }
         return c == '+' ? 62 : (c == '/' ? 63 : -1);
     };
     std::vector<std::uint8_t> out;
@@ -99,10 +112,12 @@ TEST_SUITE("world/export")
         const float lo = field.minHeight(), hi = field.maxHeight();
         REQUIRE(w::writeHeightPng16(dir.path / "h.png", field, lo, hi).has_value());
         int width = 0, height = 0, channels = 0;
-        stbi_us *pixels = stbi_load_16((dir.path / "h.png").string().c_str(), &width, &height, &channels, 1);
+        const std::unique_ptr<stbi_us, void (*)(void *)> owned(stbi_load_16((dir.path / "h.png").string().c_str(), &width, &height, &channels, 1),
+                                                                stbi_image_free);
+        const stbi_us *pixels = owned.get();
         REQUIRE(pixels != nullptr);
-        CHECK(width == 33);
-        CHECK(height == 21);
+        REQUIRE(width == 33); // la boucle lit 33 x 21 pixels : s'arrêter si l'image n'a pas cette taille
+        REQUIRE(height == 21);
         CHECK(channels == 1);
         bool sawMin = false, sawMax = false;
         for (std::uint32_t j = 0; j < field.height; ++j)
@@ -116,7 +131,6 @@ TEST_SUITE("world/export")
                 sawMax = sawMax || v == 65535;
             }
         }
-        stbi_image_free(pixels);
         CHECK(sawMin);
         CHECK(sawMax);
         REQUIRE(w::writeHeightPng16(dir.path / "again.png", field, lo, hi).has_value());
@@ -143,6 +157,55 @@ TEST_SUITE("world/export")
         CHECK((tests::errorOf(w::readHeightExr(dir.path / "absent.exr")) == engine::core::ErrorCode::kIo));
     }
 
+    TEST_CASE("EXR from an untrusted file: truncated attributes, oversized windows, bad offsets and duplicate rows are errors")
+    {
+        tests::TempDir dir("engine_export");
+        const w::HeightField field = w::generateRegion(params(), 3, 0, 0, 3, 2);
+        REQUIRE(w::writeHeightExr(dir.path / "h.exr", field).has_value());
+        const auto valid = readBytes(dir.path / "h.exr");
+        auto payloadOf = [&](std::string_view name) // position de la taille de l'attribut (après « nom\0type\0 »)
+        {
+            const auto it = std::search(valid.begin(), valid.end(), name.begin(), name.end());
+            REQUIRE(it != valid.end());
+            auto p = static_cast<std::size_t>(it - valid.begin()) + name.size() + 1;
+            while (valid[p] != 0)
+                ++p;
+            return p + 1;
+        };
+        auto put32 = [](std::vector<std::uint8_t> &b, std::size_t at, std::uint32_t v)
+        {
+            for (int i = 0; i < 4; ++i)
+                b[at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(v >> (8 * i));
+        };
+        auto readBack = [&](const std::vector<std::uint8_t> &bytes)
+        {
+            const fs::path path = dir.path / "bad.exr";
+            std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            return w::readHeightExr(path);
+        };
+        REQUIRE(readBack(valid).has_value());
+        const std::size_t table = valid.size() - 2 * (8 + 8 + 3 * 4); // en-tête, table (8 octets par rangée), rangées
+
+        auto truncated = valid; // attribut « channels » réduit à 2 octets : le nom du canal n'y est plus terminé
+        put32(truncated, payloadOf("channels"), 2);
+        CHECK((tests::errorOf(readBack(truncated)) == engine::core::ErrorCode::kParse));
+
+        auto huge = valid; // fenêtre de 2^32 colonnes : aucune allocation, et pas de débordement de xMax - xMin + 1
+        const std::size_t window = payloadOf("dataWindow") + 4;
+        put32(huge, window, 0x80000000U);
+        put32(huge, window + 8, 0x7fffffffU);
+        CHECK((tests::errorOf(readBack(huge)) == engine::core::ErrorCode::kParse));
+
+        auto outside = valid; // offset au-delà du fichier : refusé avant la lecture de la rangée
+        put32(outside, table, 0xffffff00U);
+        put32(outside, table + 4, 0xffffffffU);
+        CHECK((tests::errorOf(readBack(outside)) == engine::core::ErrorCode::kParse));
+
+        auto duplicate = valid; // deux entrées de la table vers la même rangée : l'autre rangée ne serait jamais remplie
+        std::copy_n(valid.begin() + static_cast<std::ptrdiff_t>(table), 8, duplicate.begin() + static_cast<std::ptrdiff_t>(table + 8));
+        CHECK((tests::errorOf(readBack(duplicate)) == engine::core::ErrorCode::kParse));
+    }
+
     TEST_CASE("OBJ and glTF: reopened, vertices, normals and triangles match the height field")
     {
         tests::TempDir dir("engine_export");
@@ -151,6 +214,7 @@ TEST_SUITE("world/export")
         std::ifstream obj(dir.path / "t.obj");
         std::string line;
         std::vector<float> ys;
+        std::vector<unsigned> faceIndices; // indices de sommet (base 1) de chaque face, dans l'ordre du fichier
         std::size_t normals = 0, faces = 0;
         while (std::getline(obj, line))
         {
@@ -164,7 +228,15 @@ TEST_SUITE("world/export")
                 ys.push_back(y);
             }
             normals += tag == "vn" ? 1 : 0;
-            faces += tag == "f" ? 1 : 0;
+            if (tag == "f")
+            {
+                ++faces;
+                std::string corner;
+                while (s >> corner)
+                {
+                    faceIndices.push_back(static_cast<unsigned>(std::stoul(corner.substr(0, corner.find('/')))));
+                }
+            }
         }
         REQUIRE(ys.size() == field.heights.size());
         for (std::size_t i = 0; i < ys.size(); ++i)
@@ -173,6 +245,17 @@ TEST_SUITE("world/export")
         }
         CHECK(normals == ys.size());
         CHECK(faces == 2u * 8u * 6u);
+        // Chaque face désigne les bons sommets : deux triangles par cellule, anti-horaires vus du dessus.
+        std::vector<unsigned> expected;
+        for (unsigned j = 0; j + 1 < field.height; ++j)
+        {
+            for (unsigned i = 0; i + 1 < field.width; ++i)
+            {
+                const unsigned a = j * field.width + i + 1, b = a + 1, c = a + field.width, d = c + 1;
+                expected.insert(expected.end(), {a, c, b, b, c, d});
+            }
+        }
+        CHECK(faceIndices == expected);
 
         REQUIRE(w::writeGltf(dir.path / "t.gltf", field).has_value());
         std::ifstream in(dir.path / "t.gltf");
@@ -185,6 +268,7 @@ TEST_SUITE("world/export")
         CHECK(buffer.size() == doc["buffers"][0]["byteLength"].get<std::size_t>());
         CHECK(doc["accessors"][0]["count"] == field.heights.size());
         CHECK(doc["accessors"][2]["count"] == 2u * 8u * 6u * 3u);
+        REQUIRE(buffer.size() >= (5 * 3 + 1) * 4 + 4);
         float y5 = 0;
         std::memcpy(&y5, buffer.data() + (5 * 3 + 1) * 4, 4); // POSITION du sommet 5, composante y
         CHECK(y5 == field.heights[5]);
@@ -223,6 +307,47 @@ TEST_SUITE("world/export")
         }
         CHECK(closed);
         CHECK(volume > 0.0); // normales vers l'extérieur
+        // Socle qui ne passe pas sous la surface : pas un solide, refusé.
+        CHECK((tests::errorOf(w::writeStl(dir.path / "flat.stl", field, 0.0f)) == engine::core::ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(w::writeStl(dir.path / "nan.stl", field, std::nanf(""))) == engine::core::ErrorCode::kInvalidArgument));
+    }
+
+    TEST_CASE("exported positions come from the global sample index, like the heights; OBJ numbers ignore the C locale")
+    {
+        w::TerrainParams p = params();
+        p.sampleSpacing = 0.125f;
+        const w::HeightField field = w::generateRegion(p, 1, 33554433, 0, 3, 2);
+        // originX (float) + 2 * 0.125 = 4194304 ; l'échantillon global 33554435 est en 4194304.5 (float), là où sa hauteur est prise.
+        CHECK(field.xAt(2) == static_cast<float>(33554435.0 * 0.125));
+        CHECK(field.xAt(2) == 4194304.5f);
+        tests::TempDir dir("engine_export");
+        const w::HeightField small = w::generateRegion(params(), 5, 0, 0, 3, 3);
+        REQUIRE(w::writeObj(dir.path / "c.obj", small).has_value());
+        const char *previous = std::setlocale(LC_NUMERIC, nullptr);
+        const std::string saved = previous != nullptr ? previous : "C";
+        bool comma = false;
+        for (const char *name : {"fr_FR.UTF-8", "de_DE.UTF-8", "fr_FR.utf8", "de_DE.utf8"})
+        {
+            if (std::setlocale(LC_NUMERIC, name) != nullptr)
+            {
+                comma = true;
+                break;
+            }
+        }
+        if (!comma)
+        {
+            MESSAGE("no locale with a decimal comma on this system: only the C locale output is checked");
+        }
+        const auto written = w::writeObj(dir.path / "l.obj", small);
+        std::setlocale(LC_NUMERIC, saved.c_str());
+        REQUIRE(written.has_value());
+        CHECK(readBytes(dir.path / "l.obj") == readBytes(dir.path / "c.obj"));
+        // Grille dont le stockage ne correspond pas à la forme annoncée : biomeMap ne lit pas hors du vecteur.
+        w::HeightField bad;
+        bad.width = 2;
+        bad.height = 2;
+        bad.heights = {1.0f};
+        CHECK(w::biomeMap(bad, {}).empty());
     }
 
     TEST_CASE("biomes: classification by height and slope, and a reopened RGB map")
@@ -248,6 +373,9 @@ TEST_SUITE("world/export")
 
     TEST_CASE("TEST-03: reference checksum of an exported region")
     {
+        // Valeur d'or fixée à l'écriture de TER-11 (M3, lot B) par cette même fonction sur Linux x64, puis retrouvée à l'identique
+        // par la CI Linux arm64 et Windows (MinGW). Elle couvre generateRegion (graine 42, 64 x 64, params() ci-dessus) : la
+        // changer n'est permis que pour une modification VOLONTAIRE de l'algorithme de bruit ou de génération (voir noise_tests).
         const w::HeightField field = w::generateRegion(params(), 42, 0, 0, 64, 64);
         const std::uint64_t sum = w::checksum64(field.heights);
         if (sum != 0x535edcc509c49bd1ULL)
@@ -276,7 +404,9 @@ TEST_SUITE("world/raycast")
         REQUIRE(hit.has_value());
         CHECK(hit->position.y == doctest::Approx(w::meshHeightAt(p, 11, x, z)).epsilon(1e-4));
         CHECK_FALSE(w::raycastTerrain(p, 11, {x, 500.0f, z}, {0.0f, 1.0f, 0.0f}, 2000.0f).has_value());
-        CHECK(w::raycastTerrain(p, 11, {x, -500.0f, z}, {1.0f, 0.0f, 0.0f}, 10.0f)->distance == 0.0f); // départ sous la surface
+        const auto below = w::raycastTerrain(p, 11, {x, -500.0f, z}, {1.0f, 0.0f, 0.0f}, 10.0f); // départ sous la surface
+        REQUIRE(below.has_value());
+        CHECK(below->distance == 0.0f);
         for (int k = 0; k < 20; ++k) // rayons obliques : le point touché est sur la surface
         {
             const engine::core::Vec3 o{static_cast<float>(k) * 3.1f, 120.0f, -static_cast<float>(k) * 1.7f};
@@ -289,6 +419,65 @@ TEST_SUITE("world/raycast")
 
 TEST_SUITE("world/render")
 {
+    TEST_CASE("TER-13: the FIRST crossing along the ray, even over a crest thinner than the old fixed step; degenerate inputs")
+    {
+        w::TerrainParams p = params();
+        p.sampleSpacing = 1.0f;
+        p.heightScale = 1.0f;
+        p.relief.frequency = 0.5f;
+        p.relief.octaves = 1;
+        p.warp.amplitude = 0.0f;
+        // Rayons presque horizontaux, au ras de la surface : aucune traversée ne doit précéder le point rendu (contrôle brutal par
+        // 4000 échantillons le long du rayon), et un rayon manqué ne doit traverser nulle part.
+        int hits = 0;
+        for (int k = 0; k < 200; ++k)
+        {
+            const float x = -20.0f + 0.37f * static_cast<float>(k), z = 3.0f - 0.11f * static_cast<float>(k);
+            const engine::core::Vec3 o{x, w::meshHeightAt(p, 7, x, z) + 0.05f, z};
+            const engine::core::Vec3 d{std::cos(0.7f * static_cast<float>(k)), -0.01f, std::sin(0.7f * static_cast<float>(k))};
+            const float range = 6.0f;
+            const auto h = w::raycastTerrain(p, 7, o, d, range);
+            const float len = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+            const float end = h ? h->distance : range;
+            bool crossedBefore = false;
+            for (int i = 1; i < 4000; ++i)
+            {
+                const float t = end * static_cast<float>(i) / 4000.0f;
+                const engine::core::Vec3 q = o + d * (t / len);
+                crossedBefore = crossedBefore || q.y < w::meshHeightAt(p, 7, q.x, q.z) - 1e-4f;
+            }
+            CHECK_FALSE(crossedBefore);
+            if (h)
+            {
+                ++hits;
+                CHECK(h->position.y == doctest::Approx(w::meshHeightAt(p, 7, h->position.x, h->position.z)).epsilon(1e-4));
+            }
+        }
+        CHECK(hits > 20);
+
+        // Progression garantie : à 262144 m, un pas de 0.015625 m ne changeait plus t en float (boucle sans fin).
+        w::TerrainParams fine = params();
+        fine.sampleSpacing = 0.0625f;
+        const auto down = w::raycastTerrain(fine, 3, {0.0f, 300000.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, 400000.0f);
+        REQUIRE(down.has_value());
+        CHECK(down->position.y == doctest::Approx(w::meshHeightAt(fine, 3, 0.0f, 0.0f)).epsilon(1e-4));
+        // Cellule dont les deux bords tombent sur le même float : hauteur finie.
+        CHECK(std::isfinite(w::meshHeightAt(fine, 3, 1048576.0f, 0.0f)));
+
+        // Direction finie dont le carré de la norme déborde en float.
+        w::TerrainParams flat = params();
+        flat.heightScale = 0.0f;
+        flat.heightOffset = 0.0f;
+        const auto huge = w::raycastTerrain(flat, 1, {0.0f, 1.0f, 0.0f}, {0.0f, -1e20f, 0.0f}, 10.0f);
+        REQUIRE(huge.has_value());
+        CHECK(huge->distance == doctest::Approx(1.0f));
+        // Espacement invalide (appel direct, hors des bornes réfléchies) : pas de conversion indéfinie.
+        w::TerrainParams zero = params();
+        zero.sampleSpacing = 0.0f;
+        CHECK(std::isnan(w::meshHeightAt(zero, 1, 1.0f, 1.0f)));
+        CHECK_FALSE(w::raycastTerrain(zero, 1, {0.0f, 10.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, 100.0f).has_value());
+    }
+
     TEST_CASE("TER-13: consistent with rendering: the rendered depth at the image centre gives the same point as the ray")
     {
         Gpu gpu;

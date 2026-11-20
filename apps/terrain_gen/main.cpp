@@ -10,7 +10,9 @@
 #include <engine/world/checksum.hpp>
 #include <engine/world/export.hpp>
 
+#include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -116,7 +118,8 @@ int main(int argc, char **argv)
         else if (arg == "--spacing")
         {
             spacing = number<float>(*v);
-            if (!spacing || !(*spacing > 0.0f)) return fail(kUsage, "invalid --spacing: " + std::string(*v));
+            // Plage réfléchie de TerrainParams::sampleSpacing.
+            if (!spacing || !(*spacing >= 0.0625f && *spacing <= 64.0f)) return fail(kUsage, "invalid --spacing (0.0625 to 64): " + std::string(*v));
         }
         else if (arg == "--origin")
         {
@@ -128,7 +131,7 @@ int main(int argc, char **argv)
         else if (arg == "--base-depth")
         {
             const auto d = number<float>(*v);
-            if (!d || *d < 0.0f) return fail(kUsage, "invalid --base-depth: " + std::string(*v));
+            if (!d || !(*d > 0.0f)) return fail(kUsage, "invalid --base-depth (> 0): " + std::string(*v));
             baseDepth = *d;
         }
         else if (arg == "--threads")
@@ -176,6 +179,18 @@ int main(int argc, char **argv)
     if (spacing)
     {
         params.sampleSpacing = *spacing;
+    }
+
+    // Domaine de validité du bruit (noise.hpp) : toute la région doit rester sous 2^23 m ; au-delà, les positions n'ont plus de
+    // partie fractionnaire et le relief dégénère.
+    const auto extent = [&](std::int64_t first)
+    {
+        return std::max(std::abs(static_cast<double>(first)), std::abs(static_cast<double>(first) + static_cast<double>(*size))) *
+               static_cast<double>(params.sampleSpacing);
+    };
+    if (extent(originX.value_or(0)) >= 8388608.0 || extent(originZ.value_or(0)) >= 8388608.0)
+    {
+        return fail(kUsage, "--origin: the region leaves the noise domain (|x|, |z| < 2^23 m)");
     }
 
     engine::core::TaskSystem tasks(threads);

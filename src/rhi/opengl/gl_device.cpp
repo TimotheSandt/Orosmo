@@ -243,6 +243,7 @@ Result<> GlDevice::init(const DeviceDesc &desc)
     caps_.bc7Textures = false; // aucun format compressé exposé par `Format` pour l'instant
     caps_.wireframe = true;
     caps_.spirvShaders = false; // GL_ARB_gl_spirv : non utilisé avant le lot B
+    caps_.shaderFloat64 = true;  // cœur de GL 4.0 (GL_ARB_gpu_shader_fp64)
     maxImageUnits_ = getInt(GL_MAX_IMAGE_UNITS);
 
     // Tampons de stockage : OpenGL 4.3 n'en garantit que 8 ; la limite est exposée et vérifiée à la liaison (setBindGroup), un

@@ -68,6 +68,7 @@ class TileStreamer
         std::shared_ptr<ResidentTile> result;
     };
     void collectFinished();
+    void rebalance(); // recalcule overBudget_ sur les tuiles résidentes de la sélection, puis évince
     void evict();
 
     TerrainParams params_;
