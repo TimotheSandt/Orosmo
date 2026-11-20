@@ -30,10 +30,11 @@ void GalleryState::focused(const engine::ui::Event &e) { record(std::string(e.ac
 
 std::string GalleryState::summary() const
 {
-    char buffer[200];
-    std::snprintf(buffer, sizeof buffer, "name=%s volume=%.2f count=%d fruit=%s seed=%u clicks=%d", name.c_str(), static_cast<double>(volume), count,
+    // Le nom est copié tel quel (pas de tampon fixe qui le couperait au milieu d'un caractère UTF-8 et perdrait la suite).
+    char rest[160];
+    std::snprintf(rest, sizeof rest, " volume=%.2f count=%d fruit=%s seed=%u clicks=%d", static_cast<double>(volume), count,
                   fruits()[static_cast<std::size_t>(fruit) % 4].c_str(), seed, clicks);
-    return buffer;
+    return "name=" + name + rest;
 }
 
 std::string GalleryState::controlsSummary() const

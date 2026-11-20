@@ -28,6 +28,11 @@
 #
 # ── Architecture checks (docs/03 §8) — all blocking since M2: layers, API isolation (graphics APIs, GLFW, <windows.h>),
 #    self-contained headers. Each script exits 1 on a violation (same commands as the CI). ──
+# Les cibles de ce fichier appellent des sous-make (parallèles chacun en interne) : elles-mêmes s'exécutent l'une après l'autre,
+# car plusieurs synchronisent le même SDK partagé (sync-demo remplace apps/demo/engine/includes) et `make -j2 viewer gallery`
+# ferait disparaître les en-têtes sous la compilation de l'autre.
+.NOTPARALLEL:
+
 .PHONY: check check-repo check-layers check-api check-headers
 check: check-repo check-layers check-api check-headers
 

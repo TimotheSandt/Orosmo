@@ -43,15 +43,29 @@ void ViewerState::savePreset()
     std::error_code ec;
     std::filesystem::create_directories(presetDirectory, ec);
     const std::filesystem::path path = presetDirectory / "custom.json";
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    out << engine::core::saveDocument(params).dump(2) << '\n';
-    if (!out)
+    // Écrit à côté puis remplace : un échec (disque plein, quota) laisse l'ancien custom.json intact. La fermeture est vérifiée :
+    // c'est elle qui vide le tampon.
+    const std::filesystem::path temporary = presetDirectory / "custom.json.tmp";
     {
-        status = "Cannot write " + path.generic_string();
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+        out << engine::core::saveDocument(params).dump(2) << '\n';
+        out.close();
+        if (!out)
+        {
+            std::filesystem::remove(temporary, ec);
+            status = "Cannot write " + path.generic_string();
+            LOG_ERROR(1, status);
+            return;
+        }
+    }
+    std::filesystem::rename(temporary, path, ec);
+    if (ec)
+    {
+        std::filesystem::remove(temporary, ec);
+        status = "Cannot replace " + path.generic_string();
         LOG_ERROR(1, status);
         return;
     }
-    out.close();
     loadPresets(presetDirectory);
     selectPreset("custom");
     status = "Saved " + path.filename().generic_string();

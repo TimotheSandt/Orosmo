@@ -56,7 +56,7 @@ class Viewer
     engine::ui::InputFrame readInput(float deltaTime);
     void handleRequests();
     void restartStreaming();
-    void syncTiles();
+    bool syncTiles();
     void moveCamera(float deltaTime);
     bool render();
     void exportHeightmap();
@@ -93,4 +93,6 @@ class Viewer
     glm::dvec2 lastCursor_{0.0};
     std::uint32_t renderedFrames_ = 0;
     bool captureFailed_ = false;
+    bool captured_ = false;       // capture écrite
+    bool selectionShown_ = false; // toute la sélection courante est sur le GPU
 };

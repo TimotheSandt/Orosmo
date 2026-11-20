@@ -2,6 +2,8 @@
 // graphique, ressource manquante, capture ratée).
 #include "viewer.hpp"
 
+#include <engine/core/system.hpp>
+
 #include "Logger.h"
 
 #include <charconv>
@@ -41,7 +43,12 @@ template <typename T> std::optional<T> number(std::string_view s)
 int main(int argc, char **argv)
 {
     ViewerOptions options;
-    const std::filesystem::path exe = std::filesystem::absolute(argv[0]);
+    // Ressources à côté du binaire, trouvé par le système (lancé par le PATH, argv[0] n'est que le nom de la commande) ; --res
+    // les remplace. Aucune résolution de chemin ne lève d'exception (dossier courant supprimé : message et code 2).
+    std::filesystem::path exe = engine::core::system::executablePath();
+    std::error_code pathError;
+    if (exe.empty())
+        exe = std::filesystem::absolute(argv[0], pathError);
     options.resources = exe.parent_path() / "res";
     for (int i = 1; i < argc; ++i)
     {
@@ -80,7 +87,14 @@ int main(int argc, char **argv)
             else if (arg == "--res")
                 options.resources = std::string(*v);
             else if (arg == "--capture")
-                options.captureDirectory = std::filesystem::absolute(std::string(*v));
+            {
+                options.captureDirectory = std::filesystem::absolute(std::string(*v), pathError);
+                if (pathError)
+                {
+                    std::cerr << "terrain-viewer: cannot resolve " << *v << ": " << pathError.message() << "\n";
+                    return kRuntime;
+                }
+            }
             else if (arg == "--backend")
             {
                 if (*v == "vulkan")

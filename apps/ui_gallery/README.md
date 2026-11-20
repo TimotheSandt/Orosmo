@@ -26,6 +26,10 @@ make gallery-capture                           # images sans fenêtre : build/ga
 apps/ui_gallery/bin/ui-gallery --headless --tab widgets --click fruit --capture /tmp/out   # liste déroulante ouverte
 ```
 
+Capture : `--click` demande au moins 3 images (`--capture-frames`, 5 par défaut ; le clic agit au relâchement) ; un identifiant
+introuvable, ou une fenêtre fermée avant l'écriture, donne le code 2. `--size` : 640x400 au moins. Les ressources sont lues à
+côté de l'exécutable (`bin/res`, thèmes rechargés à chaud depuis là) ou dans `--res DIR`.
+
 Clavier : Tab / Maj+Tab pour le focus, Entrée / Espace pour activer, Échap pour quitter (hors saisie) ou fermer un menu, une
 fenêtre ; Ctrl+A / C / X / V / Z / Y dans les champs de texte (presse-papiers du système, annuler, rétablir), Page précédente /
 suivante dans l'éditeur ; touches répétées quand elles sont tenues. Menus : Tab jusqu'à « File », puis flèches, Entrée, Échap.
