@@ -38,11 +38,11 @@ if (auto r = scene->beginFrame(*encoder, {.clearColor = {0.07f, 0.13f, 0.17f, 1}
 bool sceneOk = scene->setCamera(camera).has_value();
 sceneOk = sceneOk && scene->drawMesh(mesh, camera).has_value();            // un pipeline qui ne se lie pas échoue ici
 sceneOk = scene->endFrame({composed, rhi::Format::kRGBA8Unorm, {w, h}}).has_value() && sceneOk; // ferme la passe dans tous les cas
-ui.Collect(list, w, h);
+ui.update(input, {float(w), float(h)});                        // orosmo::ui::Ui : entrées, événements, mise en page
+ui.draw(list);                                                 // liste de dessin de l'image
 if (auto drawn = canvas->render(*encoder, list, {composed, rhi::Format::kRGBA8Unorm, {w, h}}); !drawn)
 {
-    log(drawn.error());       // kNotFound : une couche en cache a disparu ; toute autre erreur : liste ou cible invalide
-    ui.InvalidateLayers();    // la prochaine liste redessine toutes les couches en entier
+    log(drawn.error());       // liste ou cible invalide : l'image est dessinée sans l'interface
 }
 if (auto shown = scene->blit().copy(*encoder, composed, scene->blit().linearSampler(), *frame, rhi::Format::kRGBA8Unorm); !shown)
 {
