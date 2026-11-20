@@ -202,6 +202,7 @@ void Ui::setRoot(std::unique_ptr<Widget> root)
     if (updating_)
     {
         pendingRoot_ = std::move(root);
+        hasPendingRoot_ = true; // setRoot(nullptr) pendant la mise à jour retire aussi l'arbre à la fin de l'image
         return;
     }
     closePopup();
@@ -238,18 +239,23 @@ Widget *Ui::hitTestIn(Widget &w, glm::vec2 p)
     {
         return nullptr;
     }
-    // Un enfant qui dépasse de son parent reste cliquable là où il est dessiné, sauf si le parent coupe son contenu.
+    // Un enfant qui dépasse de son parent reste cliquable là où il est dessiné, sauf si le parent coupe son contenu : alors
+    // seulement dans la zone de découpage de ses enfants, la même qu'au dessin (ScrollView : sa zone intérieure).
     const bool inside = w.rect().contains(p);
-    if (!inside && (w.clipsChildren() || w.overflow == Overflow::kHidden))
+    const bool clips = w.clipsChildren() || w.overflow == Overflow::kHidden;
+    if (!inside && clips)
     {
         return nullptr;
     }
-    const auto children = w.children();
-    for (auto it = children.rbegin(); it != children.rend(); ++it)
+    if (!clips || (w.clipsChildren() ? w.childClip() : w.rect()).contains(p))
     {
-        if (Widget *hit = hitTestIn(**it, p))
+        const auto children = w.children();
+        for (auto it = children.rbegin(); it != children.rend(); ++it)
         {
-            return hit;
+            if (Widget *hit = hitTestIn(**it, p))
+            {
+                return hit;
+            }
         }
     }
     return inside ? &w : nullptr;
@@ -362,7 +368,9 @@ void Ui::defer(std::function<void()> action) { deferred_.push_back(std::move(act
 
 void Ui::flushDeferred()
 {
-    // Une action peut en programmer d'autres (un changement qui en déclenche un autre) : on vide jusqu'à stabilité, borné.
+    // Une action peut en programmer d'autres (un changement qui en déclenche un autre) : on vide jusqu'à stabilité, borné à
+    // huit vagues par image. Ce qui reste (chaîne plus longue) est GARDÉ, dans l'ordre, pour l'image suivante : aucune écriture
+    // n'est perdue.
     for (int round = 0; round < 8 && !deferred_.empty(); ++round)
     {
         std::vector<std::function<void()>> batch;
@@ -372,7 +380,6 @@ void Ui::flushDeferred()
             action();
         }
     }
-    deferred_.clear();
 }
 
 // ── Fenêtres surgissantes ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -621,9 +628,10 @@ void Ui::layout(glm::vec2 viewport)
         auto [y, h] = axis(root_->alignY, root_->height, viewport.y - root_->margin.vertical(), m.y);
         root_->layout(*this, {{x + root_->margin.left, y + root_->margin.top}, {w, h}});
     }
-    for (const ModalEntry &modal : modals_)
+    // Parcours indexé : mesurer un dialogue peut en inscrire un autre (dialogue ouvert dans le panneau d'un dialogue), après lui.
+    for (std::size_t i = 0; i < modals_.size(); ++i)
     {
-        Widget &panel = *modal.panel;
+        Widget &panel = *modals_[i].panel;
         const glm::vec2 m = glm::min(panel.measure(*this, viewport * 0.9f), viewport);
         panel.layout(*this, {glm::round((viewport - m) * 0.5f), m});
     }
@@ -644,6 +652,25 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         for (const PopupEntry &p : popups_)
             if (p.owned)
                 collect(*p.owned, alive);
+        // Fenêtre dont le propriétaire a disparu (menu d'un arbre remplacé) : fermée. Les widgets des fenêtres POSSÉDÉES qui vont
+        // être détruites sortent d'abord de `alive` (les vues empruntées à un arbre disparu ne sont pas parcourues).
+        for (std::size_t i = 0; i < popups_.size(); ++i)
+        {
+            if (!alive.contains(popups_[i].owner) || (!popups_[i].owned && !alive.contains(popups_[i].view)))
+            {
+                std::unordered_set<const Widget *> doomed;
+                for (std::size_t j = i; j < popups_.size(); ++j)
+                    if (popups_[j].owned)
+                        collect(*popups_[j].owned, doomed);
+                for (const Widget *w : doomed)
+                    alive.erase(w);
+                for (Widget **p : {&hovered_, &active_, &focused_})
+                    if (*p != nullptr && !alive.contains(*p))
+                        *p = nullptr;
+                popups_.resize(i);
+                break;
+            }
+        }
         for (Widget **p : {&hovered_, &active_, &focused_})
         {
             if (*p != nullptr && !alive.contains(*p))
@@ -651,16 +678,20 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
                 *p = nullptr;
             }
         }
-        // Fenêtre dont le propriétaire a disparu (menu d'un arbre remplacé) : fermée.
-        for (std::size_t i = 0; i < popups_.size(); ++i)
-        {
-            if (!alive.contains(popups_[i].owner) || (!popups_[i].owned && !alive.contains(popups_[i].view)))
-            {
-                popups_.resize(i); // contenus empruntés à un arbre disparu : rien à détruire
-                break;
-            }
-        }
         std::erase_if(modals_, [&](const ModalEntry &m) { return !alive.contains(m.owner); });
+    }
+    // Le focus ne reste pas sur un widget devenu inactif ou masqué (lui ou une branche parente : page d'onglet cachée), ni hors
+    // de la fenêtre modale ouverte (les touches ordinaires iraient sinon derrière le voile).
+    if (focused_ != nullptr)
+    {
+        bool reachable = focused_->enabled();
+        for (const Widget *w = focused_; reachable && w != nullptr; w = w->parent())
+            reachable = w->visible();
+        const auto inPopup = std::any_of(popups_.begin(), popups_.end(), [&](const PopupEntry &p) { return inSubtree(p.view, focused_); });
+        if (reachable && !modals_.empty() && !inPopup && !inSubtree(modals_.back().panel, focused_))
+            reachable = false;
+        if (!reachable)
+            focus(nullptr);
     }
 
     // Notifications : le temps passe ; celles qui ont fini disparaissent.
@@ -788,11 +819,12 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         focus(first ? items.front() : items.back());
         return true;
     };
-    for (int key : input.keys)
+    auto dispatchKey = [&](int key, bool shift)
     {
+        shift_ = shift; // Maj au moment de CET appui (les widgets la lisent par shiftHeld)
         if (key == kKeyTab && !(focused_ != nullptr && focused_->wantsTab()))
         {
-            focusNext(input.shift);
+            focusNext(shift);
         }
         else if ((key == kKeyDown || key == kKeyUp) && !popups_.empty() && !(focused_ != nullptr && inAnyPopup(focused_)) && enterPopup(key == kKeyDown))
         {
@@ -814,18 +846,33 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         {
             modals_.back().owner->onKey(*this, kKeyEscape);
         }
-    }
-    if (!input.text.empty() && focused_ != nullptr)
+    };
+    if (!input.events.empty())
     {
-        focused_->onText(*this, input.text);
+        // Ordre réel de saisie : « a » puis Retour arrière n'est pas Retour arrière puis « a ».
+        for (const InputFrame::Event &e : input.events)
+        {
+            if (e.key != kKeyNone)
+                dispatchKey(e.key, e.shift);
+            else if (!e.text.empty() && focused_ != nullptr)
+                focused_->onText(*this, e.text);
+        }
     }
+    else
+    {
+        for (int key : input.keys)
+            dispatchKey(key, input.shift);
+        if (!input.text.empty() && focused_ != nullptr)
+            focused_->onText(*this, input.text);
+    }
+    shift_ = input.shift;
     for (const std::string &raw : input.shortcuts)
     {
         const std::string s = normalizeShortcut(raw);
         if (s.empty())
             continue;
         // Champ de texte : commandes d'édition (Super sur macOS comme Ctrl ailleurs).
-        if (focused_ != nullptr && focused_->acceptsText())
+        if (focused_ != nullptr && focused_->handlesEditCommands())
         {
             static const std::pair<const char *, int> kEdit[] = {
                 {"Ctrl+A", kKeySelectAll}, {"Ctrl+C", kKeyCopy}, {"Ctrl+X", kKeyCut},        {"Ctrl+V", kKeyPaste},      {"Ctrl+Z", kKeyUndo},
@@ -846,8 +893,9 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
 
     flushDeferred();
     updating_ = false;
-    if (pendingRoot_)
+    if (hasPendingRoot_)
     {
+        hasPendingRoot_ = false;
         setRoot(std::move(pendingRoot_));
     }
     layout(viewport);

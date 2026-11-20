@@ -50,7 +50,7 @@ class Button : public Widget
 {
   public:
     explicit Button(std::string text = {}, std::string styleName = "button");
-    Button &setText(std::string text) { text_ = std::move(text); return *this; }
+    Button &setText(std::string text) { text_ = std::move(text); source_ = nullptr; return *this; } // remplace un texte lié
     Button &bindText(std::function<std::string()> text) { source_ = std::move(text); return *this; }
     std::string text() const { return source_ ? source_() : text_; }
     // Raccourci clavier qui clique le bouton (« Ctrl+R », « F5 » ; normalizeShortcut).
@@ -93,6 +93,8 @@ class Checkbox : public Widget
     void toggle(Ui &ui);
     std::string text_;
     Binding<bool> value_;
+    bool pending_ = false;    // valeur programmée, pas encore écrite (fin de l'image)
+    bool hasPending_ = false;
 };
 
 class Slider : public Widget
@@ -255,6 +257,8 @@ class NumberField : public TextField
   public:
     NumberField(Binding<double> value, bool integer, double min = -kUnboundedNumber, double max = kUnboundedNumber);
     static constexpr double kUnboundedNumber = 1.0e300;
+    // Affichage : écriture la plus courte qui relit la même valeur en float (défaut, paramètres float) ou en double.
+    NumberField &setDoublePrecision(bool on) noexcept { doublePrecision_ = on; return *this; }
 
   protected:
     bool commit(Ui &ui, const std::string &text) override;
@@ -263,6 +267,7 @@ class NumberField : public TextField
   private:
     Binding<double> number_;
     bool integer_;
+    bool doublePrecision_ = false;
     double min_;
     double max_;
 };
@@ -272,6 +277,7 @@ class ColorPicker : public Widget
   public:
     ColorPicker(Binding<Color> value, bool alpha = false);
     Color color() const { return value_.value(); }
+    void clearChildren() override {} // curseurs internes : pas de contenu effaçable
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
@@ -311,6 +317,7 @@ class Tabs : public VBox
     int selected() const;
     void select(Ui &ui, int index);
     std::size_t pageCount() const noexcept { return pages_.size(); }
+    void clearChildren() override; // retire les pages et leurs onglets ; l'en-tête reste
 
   private:
     HBox *header_;
@@ -327,6 +334,7 @@ class Section : public VBox
     VBox &body() noexcept { return *body_; }
     bool expanded() const noexcept { return expanded_; }
     void setExpanded(bool expanded) noexcept { expanded_ = expanded; }
+    void clearChildren() override { body_->clearChildren(); } // vide le contenu ; l'en-tête et le corps restent
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;

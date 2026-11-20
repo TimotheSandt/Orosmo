@@ -183,6 +183,7 @@ struct KeyPress
     bool ctrl = false;
     bool alt = false;
     bool super = false;
+    std::size_t textOffset = 0; // octets de GetTextInput() saisis AVANT cet appui (« a » puis Retour arrière, ou l'inverse)
 };
 
 struct MouseButtonEvent

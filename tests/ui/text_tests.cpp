@@ -51,6 +51,9 @@ TEST_SUITE("ui/text")
         CHECK(glyphQuads(list) == 3); // É, t, é : trois glyphes
         // Une séquence UTF-8 invalide ne fait pas sortir de la chaîne et ne compte pas comme une lettre.
         CHECK(text.measureTextWidth(std::string("a\xc3"), 0.5f) == doctest::Approx(text.measureTextWidth("a", 0.5f)));
+        // Formes trop longues : C0 8A n'est pas un saut de ligne (la mesure continue), C0 AF n'est pas « / ».
+        CHECK(text.measureTextWidth(std::string("a\xc0\x8a" "bbbb"), 0.5f) == doctest::Approx(text.measureTextWidth("abbbb", 0.5f)));
+        CHECK(text.measureTextWidth(std::string("\xc0\xaf"), 0.5f) < text.measureTextWidth("/", 0.5f));
     }
 
     TEST_CASE("letters with a flat bottom all end on the same pixel row (the baseline), at any size and position")

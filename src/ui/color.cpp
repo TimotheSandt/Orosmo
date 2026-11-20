@@ -387,7 +387,7 @@ ColorEditor::ColorEditor(Binding<Color> value, bool alpha) : VBox("box"), value_
 {
     original_ = value_.value();
     auto &top = emplace<HBox>();
-    top.emplace<ColorWheel>(value_);
+    top.emplace<ColorWheel>(value_).onChange([this](const Event &) { fire(EventKind::kChange); });
     auto &side = top.emplace<VBox>();
     side.setWidth(SizeSpec::fill());
     side.emplace<Label>("Format", "caption");
@@ -402,7 +402,11 @@ ColorEditor::ColorEditor(Binding<Color> value, bool alpha) : VBox("box"), value_
                                      Color next = *c;
                                      if (!alpha_)
                                          next.a = value_.value().a;
-                                     value_.set(next);
+                                     if (next != value_.value()) // saisie invalide ou couleur identique : aucun événement
+                                     {
+                                         value_.set(next);
+                                         fire(EventKind::kChange);
+                                     }
                                  }
                              })
                                                : std::function<void(const std::string &)>()};
@@ -446,12 +450,28 @@ void ColorEditor::rebuildChannels()
     {
         const double max = specs[i].max;
         Binding<double> b;
-        b.get = [this, toSpace, i, max] { return static_cast<double>(toSpace(value_.value())[i]) * max; };
+        // Teinte d'un gris (saturation nulle) : le RGB ne la contient pas ; celle choisie est gardée dans hue_ pour que la
+        // saturation, ajoutée ensuite, parte de cette teinte et non du rouge.
+        const bool hueSpace = format != ColorFormat::kRgb;
+        b.get = [this, toSpace, i, max, hueSpace] {
+            const glm::vec3 s = toSpace(value_.value());
+            if (hueSpace && i == 0)
+            {
+                if (s[1] <= 0.0f)
+                    return static_cast<double>(hue_) * max;
+                hue_ = s[0];
+            }
+            return static_cast<double>(s[i]) * max;
+        };
         if (value_.writable())
-            b.set = [this, toSpace, fromSpace, i, max](const double &v) {
+            b.set = [this, toSpace, fromSpace, i, max, hueSpace](const double &v) {
                 const Color c = value_.value();
                 glm::vec3 s = toSpace(c);
+                if (hueSpace && s[1] <= 0.0f)
+                    s[0] = hue_;
                 s[i] = static_cast<float>(v / max);
+                if (hueSpace && i == 0)
+                    hue_ = s[0];
                 value_.set(Color(fromSpace(s), c.a));
             };
         channels_->emplace<Slider>(std::move(b), 0.0, max, 1.0).setPrefix(specs[i].prefix).setWidth(SizeSpec::fill());
@@ -579,6 +599,8 @@ class GradientBar final : public Widget
     }
     void write(Ui &ui, const Gradient &g)
     {
+        if (!owner_->value_.writable()) // liaison en lecture seule : on peut choisir un arrêt, pas le déplacer
+            return;
         pending_ = g;
         ui.defer([this, g] {
             owner_->value_.set(g);
@@ -682,7 +704,11 @@ void CurveEditor::onDrag(Ui &ui, glm::vec2 mouse)
     else if (i + 1 == c.points.size())
         p.x = c.points.back().x;
     else
-        p.x = std::clamp(p.x, c.points[i - 1].x + 0.001f, c.points[i + 1].x - 0.001f); // l'ordre des points est gardé
+    {
+        // L'ordre des points est gardé, avec une marge de 0,001 si l'intervalle la contient ; sinon, bornes exactes des voisins.
+        const float lo = c.points[i - 1].x + 0.001f, hi = c.points[i + 1].x - 0.001f;
+        p.x = lo <= hi ? std::clamp(p.x, lo, hi) : std::clamp(p.x, c.points[i - 1].x, c.points[i + 1].x);
+    }
     c.points[i] = p;
     write(ui, c);
 }
@@ -723,8 +749,8 @@ void CurveEditor::drawContent(const Ui &ui, renderer::DrawList &list, const Styl
     }
     const float size = std::max(8.0f, style.width * 0.6f);
     for (std::size_t i = 0; i < c.points.size(); ++i)
-        marker(list, toScreen(a, c.points[i]), static_cast<int>(i) == dragging_ ? size * 1.3f : size, style.background.a > 0.5f ? style.background : Color(0, 0, 0, 1),
-               style.accent);
+        marker(list, toScreen(a, c.points[i]), static_cast<int>(i) == dragging_ ? size * 1.3f : size, Color(glm::vec3(style.background), 1.0f),
+               style.accent); // fond du thème, rendu opaque (le marqueur doit cacher la courbe)
     (void)ui;
 }
 

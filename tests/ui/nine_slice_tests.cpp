@@ -76,6 +76,23 @@ TEST_SUITE("ui/nineslice")
         CHECK(tests::sameRect(quadRect(v, 0), {0, 0}, {2, 4})); // deux coins de 4 dans 4 px : réduits à 2
     }
 
+    TEST_CASE("repeat: the number of repetitions is bounded; a tiny scale cannot loop forever; the theme refuses such a scale")
+    {
+        // Période de 4e-10 px : l'ancienne boucle `d += période` ne progressait plus en float.
+        const auto v = ui::nineSliceVertices(image12(ui::SliceFill::kRepeat, ui::SliceFill::kRepeat, 1e-10f), {{100, 100}, {300, 200}});
+        CHECK(quads(v) <= 9u * 4096u);
+        tests::TempDir dir("ui_nineslice");
+        rd::Image png;
+        png.width = 12;
+        png.height = 12;
+        png.rgba.assign(12 * 12 * 4, 200);
+        REQUIRE(rd::savePng(png, dir.path / "wood.png").has_value());
+        dir.write("t.json", R"({"images": {"wood": {"file": "wood.png", "slice": 4, "edges": "repeat", "scale": 1e-10}}})");
+        auto theme = ui::Theme::load(dir.path / "t.json");
+        REQUIRE_FALSE(theme.has_value());
+        CHECK(theme.error().message.find("scale") != std::string::npos);
+    }
+
     TEST_CASE("theme: images are read from JSON (file relative to the theme), set per widget and per state, errors are named")
     {
         tests::TempDir dir("ui_nineslice");

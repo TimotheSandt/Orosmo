@@ -121,6 +121,13 @@ char32_t NextCodepoint(const std::string &text, std::size_t &index)
         }
         cp = (cp << 6U) | (b & 0x3FU);
     }
+    // Forme la plus courte seulement (C0 AF n'est pas « / »), ni demi-code de substitution, ni valeur au-delà de U+10FFFF.
+    static constexpr char32_t kMinimum[] = {0, 0, 0x80U, 0x800U, 0x10000U};
+    if (cp < kMinimum[n] || (cp >= 0xD800U && cp <= 0xDFFFU) || cp > 0x10FFFFU)
+    {
+        ++index;
+        return 0xFFFD;
+    }
     index += n;
     return cp;
 }

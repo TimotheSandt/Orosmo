@@ -94,6 +94,15 @@ struct InputFrame
     std::vector<std::string> shortcuts;
     bool shift = false;
     float deltaTime = 1.0f / 60.0f;
+    // Touches et texte DANS L'ORDRE de saisie, chaque touche avec l'état de Maj au moment de son appui (Maj+Tab relâché avant la
+    // fin de l'image reste un retour en arrière). Non vide : remplace `keys` et `text` (readWindowInput le remplit).
+    struct Event
+    {
+        int key = 0;      // Key ; kKeyNone (0) pour du texte
+        bool shift = false;
+        std::string text; // UTF-8, si key == kKeyNone
+    };
+    std::vector<Event> events;
 };
 
 // Actions appelées par leur nom (docs/03 §12, mode développement) : un événement du langage d'interface qui nomme une fonction
@@ -234,6 +243,7 @@ class Ui
     ActionRegistry actions_;
     std::unique_ptr<Widget> root_;
     std::unique_ptr<Widget> pendingRoot_;
+    bool hasPendingRoot_ = false; // une demande en attente, même pour une racine nulle
     bool updating_ = false;
     std::vector<std::function<void()>> deferred_;
 

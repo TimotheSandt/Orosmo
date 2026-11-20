@@ -179,7 +179,7 @@ par **état**. Un thème peut en étendre un autre ; les variantes claire et som
 - **Images en neuf parties** (section `images`) : un fond qui n'est pas une simple couleur, valable pour toutes les tailles sans
   rien déformer. L'image est découpée par `slice` (un nombre, ou `[gauche, haut, droite, bas]` en texels) en quatre coins (taille
   fixe), quatre bords et un centre ; `edges` et `center` valent `"stretch"` (étiré), `"repeat"` (répété à sa taille, la dernière
-  répétition est coupée) ou `"none"` (supprimé : un cadre sans centre, ou des coins seuls) ; `scale` = pixels par texel. Si le
+  répétition est coupée) ou `"none"` (supprimé : un cadre sans centre, ou des coins seuls) ; `scale` = pixels par texel (de 0,01 à 100 ; une répétition reste bornée à 4096 motifs par bande, au-delà la bande est étirée). Si le
   widget est plus petit que deux coins, ils sont réduits ensemble. Un widget la prend par `"image": "<nom>"` (par état ;
   `"none"` la retire), teintée par `"imageTint"` ; elle se dessine par-dessus `background` (souvent transparent). Exemple livré :
   `res/themes/framed.json` (cadres biseautés, `res/themes/images/`).
@@ -258,4 +258,5 @@ régénère `Generated/%.gen.cpp` quand le `.cui` change ; un hachage du source 
 - `once` dans une interpolation n'est pas figé par cette cible : le texte est relu à chaque image.
 - Pas de boucle ni de condition dans le langage (règle 12) : une liste de widgets variable se construit en C++, ou par `ParamPanel`.
 - Pas de rechargement à chaud de la vue elle-même (UI-08, P1) : le thème se recharge, la vue se recompile.
-- Pas de presse-papiers, de sélection de texte ni de navigation à la manette (UI-09).
+- Pas de navigation à la manette (UI-09). La sélection de texte et le presse-papiers existent (champs de texte, éditeur
+  multiligne ; presse-papiers du système par `ui::useSystemClipboard`) ; la composition IME n'est pas affichée (G107).
