@@ -262,6 +262,16 @@ jobs:
       - name: Tests
         run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test WERROR=0
 
+      # parity_tests.cpp writes the rendered image to the temporary directory when it is outside the tolerance.
+      - name: Upload the parity image (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-linux-arm64
+          path: /tmp/engine_ui_parity_actual.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: terrain-gen determinism (TOOL-02, TEST-03)
         run: make terrain-gen-check WERROR=0
 
