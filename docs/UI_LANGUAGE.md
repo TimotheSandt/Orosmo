@@ -11,20 +11,19 @@ reste du programme : aucun interprète à l'exécution.
 
 Exemple complet : `apps/ui_gallery/src/Gallery.cui` (chaque composant, modificateur, événement et thème ; `make gallery-run`).
 
-## 1. Deux cibles
+## 1. Cible
 
-| Cible | Choisie par | Produit | Documentation |
-| --- | --- | --- | --- |
-| **`engine/ui`** (M3) | `import "engine/ui"` en tête du fichier | `struct Vue` + `cui::buildVue(ui, …)` pour le module `engine::ui` (`include/engine/ui/`) | ce document |
-| `UI::View` (héritée) | pas d'import `engine/ui` | classe dérivée de `UI::View` (interface `include/UI/`, démo `PerformanceView.cui`) | `docs/UI_DSL_Spec.md` |
-
-La suite décrit la cible `engine/ui`. Les deux cibles partagent la grammaire (§2) et le format des erreurs (§8).
+Un seul produit : `struct Vue` + `cui::buildVue(ui, …)` pour le module `engine::ui` (`include/engine/ui/`). Chaque fichier
+commence par `import "engine/ui"` ; un fichier sans cet import est refusé (`missing `import "engine/ui"`…`). L'ancienne cible
+`UI::View` (interface héritée `include/UI/`, registre des composants lu dans les en-têtes, options `--headers` et `--registry`)
+a été supprimée le 2026-11-20 avec l'interface héritée ; le panneau de la démo (`apps/demo/src/UI/Views/PerformanceView.cui`)
+utilise cette cible.
 
 ## 2. Grammaire
 
 ```
 fichier     := import* vue*
-import      := "import" CHAÎNE                    // "engine/ui" choisit la cible ; les autres deviennent des #include
+import      := "import" CHAÎNE                    // "engine/ui" est obligatoire ; les autres deviennent des #include
 vue         := "view" NOM "{" (champ | let | func | cpp)* élément "}"     // exactement un élément racine
 champ       := ("@Mutable" | "@Observed" | "@Snapshot") "var" NOM ":" TYPE ["=" expr]
 let         := "let" NOM [":" TYPE] "=" expr       // constante : static constexpr
@@ -239,17 +238,16 @@ Messages vérifiés par les tests (extrait) :
 | propriété de thème inconnue | `unknown theme property 'colour' (properties: background, …)` |
 | structure | `'Page' is only allowed directly inside 'Tabs'` ; `'ScrollView' takes exactly one child (put several in a VBox)` |
 | état local | `@State is not supported with engine/ui: keep the state in C++ and bind it with @Mutable` |
-| liaison sur la cible héritée | `two-way bindings ($...) need `import "engine/ui"`` |
+| import manquant | `missing `import "engine/ui"`: it is the only target of the interface language (…)` |
 | lexique | `Unexpected character '#'` ; `Unterminated string literal` |
 
 ## 9. Intégration au build
 
 ```bash
-cui run [--headers include] --output Generated/ src/Panel.cui   # Generated/Panel.gen.h, Panel.gen.cpp (+ Generated/Panel.cui)
+cui run --output Generated/ src/Panel.cui   # Generated/Panel.gen.h, Panel.gen.cpp (+ Generated/Panel.cui)
 ```
 
-`--headers` n'est utile qu'à la cible héritée (registre des composants lu dans les en-têtes). Le SDK (`tools/engine-sdk/engine.mk`)
-régénère `Generated/%.gen.cpp` quand le `.cui` change ; un hachage du source (et de la version du format de sortie) en tête du
+Le SDK (`tools/engine-sdk/engine.mk`) régénère `Generated/%.gen.cpp` quand le `.cui` change ; un hachage du source (et de la version du format de sortie) en tête du
 `.gen.h` évite de réécrire un fichier inchangé.
 
 ## 10. Limites

@@ -88,7 +88,7 @@ Le moteur compile en bibliothèques statiques (`libgraphics.a`, `libui.a`, `libn
 - Vision, checklist, architecture : [docs/](docs/README.md)
 - Backends graphiques : [docs/GRAPHICS_BACKENDS.md](docs/GRAPHICS_BACKENDS.md)
 - **Utiliser le moteur depuis une release** (`engine init`, paquet, projet minimal, stabilité de l'API) : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)
-- Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `engine/ui`) ; cible héritée `UI::View` : [docs/UI_DSL_Spec.md](docs/UI_DSL_Spec.md)
+- Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `engine/ui`)
 - Nettoyage M00 : [docs/CLEANUP_PLAN.md](docs/CLEANUP_PLAN.md), [docs/releases/M00.md](docs/releases/M00.md)
 
 ## Licence

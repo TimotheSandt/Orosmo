@@ -19,16 +19,18 @@ writes it to `tools/target/release/cui` instead.
 ## Usage
 
 ```sh
-tools/cui scan --headers include --output Generated/registry.json
-tools/cui run --headers include --output Generated apps/demo/src/UI/Views/PerformanceView.cui
-tools/cui check --registry Generated/registry.json apps/demo/src/UI/Views/PerformanceView.cui
+tools/cui run --output Generated apps/demo/src/UI/Views/PerformanceView.cui
+tools/cui check apps/demo/src/UI/Views/PerformanceView.cui          # JSON diagnostics (--stdin: source on stdin)
+tools/cui spec                                                       # components, modifiers, theme properties (JSON)
 ```
 
 Names starting with `cui_` are reserved for the generated code (a field or a `let` with such a name is refused).
 
 ## Targets and tests
 
-- A file that starts with `import "engine/ui"` is compiled for the engine's `engine::ui` module (no `--headers` needed);
-  the other files keep the legacy `UI::View` target. Specification (French): [docs/UI_LANGUAGE.md](../../docs/UI_LANGUAGE.md).
+- Every file starts with `import "engine/ui"` and is compiled for the engine's `engine::ui` module; a file without it is
+  refused. The legacy `UI::View` target (component registry scanned from `include/UI`, `scan` / `build` commands, `--headers`
+  and `--registry` options) was removed with the legacy interface. Specification (French):
+  [docs/UI_LANGUAGE.md](../../docs/UI_LANGUAGE.md).
 - Diagnostics: `file:line:column: error: message` (all errors of a file); `#line` directives map C++ errors back to the `.cui`.
 - `make cui-test` (repository root): `cargo test -p cui` + the invalid inputs of `tests/ui/cui_errors/` through the real binary.

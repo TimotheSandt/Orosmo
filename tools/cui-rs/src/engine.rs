@@ -1,13 +1,20 @@
 // Cible `engine/ui` (UI-05) : un fichier qui commence par `import "engine/ui"` est compilé vers le module `engine::ui` du moteur
-// (docs/03 §12) au lieu de l'interface héritée `UI::`. Le langage DÉCRIT (règle 12) : l'arbre de widgets, les liaisons (`$chemin` :
+// (docs/03 §12) ; c'est la seule cible du langage. Le langage DÉCRIT (règle 12) : l'arbre de widgets, les liaisons (`$chemin` :
 // dans les deux sens) et les événements, qui NOMMENT une fonction C++ (`.onClick(state.regenerate)` : appel direct ;
 // `.onClick(regenerate)` : action retrouvée par nom dans `Ui::actions()` au moment de l'événement). L'apparence vient du thème
 // (`.style(...)` nomme des jetons). Chaque instruction C++ générée est précédée d'une directive `#line` vers le `.cui` : une erreur
 // du compilateur C++ montre le fichier, la ligne du langage d'interface.
 
 use crate::ast::{Element, Expr, FileAst, FuncDecl, LetDecl, Modifier, StringPart, ViewDecl, ViewField, WrappedField};
-use crate::validator::ValidationError;
 use std::collections::BTreeMap;
+
+// Erreur de compilation d'une vue, à la position (ligne, colonne) de l'élément ou du modificateur fautif.
+#[derive(Clone, Debug)]
+pub struct CompileError {
+    pub message: String,
+    pub line: usize,
+    pub col: usize,
+}
 
 pub const IMPORT: &str = "engine/ui";
 
@@ -1008,7 +1015,7 @@ pub struct Output {
 }
 
 // Vérifie et génère ; en cas d'erreur, renvoie TOUTES les erreurs trouvées (ligne, colonne, message).
-pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<ValidationError>> {
+pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<CompileError>> {
     let file_for_line = file.replace('\\', "/");
     let mut header = Vec::new();
     let mut source = Vec::new();
@@ -1139,7 +1146,7 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Vali
 
         if !diags.is_empty() {
             for (line, col, message) in diags {
-                errors.push(ValidationError { view: view.name.clone(), message, is_warning: false, line, col });
+                errors.push(CompileError { message, line, col });
             }
             continue;
         }
