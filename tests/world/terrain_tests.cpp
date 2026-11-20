@@ -102,6 +102,15 @@ TEST_SUITE("world/terrain")
             }
         }
         CHECK(w::sampleX(p, {-3, 0, 2}, 5) == doctest::Approx(-3 * 16 * 2 * 4 + 5 * 2 * 4));
+        // Niveau élevé : global * 2^lod dépassait std::int64_t (2^31 * 2^32 avec 256 quadrilatères par tuile) ; en double, la
+        // position est exacte, et l'échantillon partagé avec le niveau inférieur (indice pair) reste le même.
+        w::TerrainParams wide = p;
+        wide.tileResolution = 256;
+        const double far = std::ldexp(8388608.0 * 256.0, 32) * static_cast<double>(wide.sampleSpacing);
+        CHECK(w::sampleX(wide, {8388608, 0, 32}, 0) == static_cast<float>(far));
+        CHECK(w::sampleX(wide, {8388608, 0, 32}, 0) == w::sampleX(wide, {16777216, 0, 31}, 0));
+        CHECK(w::sampleX(wide, {0, 0, 32}, 0) == 0.0f);
+        CHECK(w::sampleZ(wide, {0, -8388608, 32}, 0) == static_cast<float>(-far));
     }
 
     TEST_CASE("TEST-03: reference checksum of a generated tile")

@@ -1,5 +1,6 @@
 #include "orosmo/world/terrain.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace orosmo::world
@@ -24,8 +25,11 @@ namespace
 float samplePosition(const TerrainParams &params, std::int32_t tile, std::uint32_t lod, std::uint32_t i) noexcept
 {
     const std::int64_t global = static_cast<std::int64_t>(tile) * static_cast<std::int64_t>(params.tileResolution) + static_cast<std::int64_t>(i);
-    const std::int64_t finest = global * (std::int64_t{1} << lod); // indice au niveau 0
-    return static_cast<float>(static_cast<double>(finest) * static_cast<double>(params.sampleSpacing));
+    // Indice au niveau 0 = global * 2^lod, calculé en double : multiplier par une puissance de deux est exact (même valeur que le
+    // produit entier arrondi en double, donc mêmes positions qu'avant), sans débordement signé pour un niveau élevé (lod >= 32 avec
+    // une grande clé). lod est borné avant la conversion en int : au-delà de 2048, 2^lod est infini de toute façon.
+    const double finest = global == 0 ? 0.0 : static_cast<double>(global) * std::ldexp(1.0, static_cast<int>(std::min(lod, 2048U)));
+    return static_cast<float>(finest * static_cast<double>(params.sampleSpacing));
 }
 } // namespace
 
