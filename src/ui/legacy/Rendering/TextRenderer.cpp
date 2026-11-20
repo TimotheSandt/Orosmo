@@ -789,11 +789,12 @@ void TextRenderer::renderText(const std::string &text, float x, float y, float s
             continue;
         }
 
-        const float xpos = maybeRound(cursorX + static_cast<float>(ch.bearing.x) * renderScale);
+        // Horizontalement, position exacte (MSDF : net entre deux pixels) : arrondir chaque lettre à part rendait l'espacement
+        // irrégulier (deux lettres serrées d'un pixel, les suivantes écartées). Verticalement, alignement sur la ligne de base.
+        const float xpos = cursorX + static_cast<float>(ch.bearing.x) * renderScale;
         const float baselineY = maybeRound(cursorY + lineAscender);
         const float glyphTop = maybeRound(baselineY - static_cast<float>(ch.bearing.y) * renderScale);
-        const float w =
-            std::max(1.0f, snapToPixels ? std::round(static_cast<float>(ch.size.x) * renderScale) : static_cast<float>(ch.size.x) * renderScale);
+        const float w = std::max(1.0f, static_cast<float>(ch.size.x) * renderScale);
         // Bas du glyphe arrondi par rapport à la ligne de base (et non haut + hauteur arrondis chacun de leur côté) : les lettres
         // posées sur la ligne de base y restent toutes, sans décalage d'un pixel d'une lettre à l'autre.
         const float glyphBottom = snapToPixels ? baselineY + std::round(static_cast<float>(ch.size.y - ch.bearing.y) * renderScale)
