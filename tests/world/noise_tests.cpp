@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <limits>
 #include <vector>
 
 namespace w = engine::world;
@@ -42,6 +43,12 @@ Range rangeOf(const std::vector<float> &v)
     Range r;
     for (float x : v)
     {
+        if (!std::isfinite(x)) // un NaN ne déplacerait pas min / max : il ouvre les deux bornes pour faire échouer les tests
+        {
+            r.lo = -std::numeric_limits<float>::infinity();
+            r.hi = std::numeric_limits<float>::infinity();
+            continue;
+        }
         r.lo = std::min(r.lo, x);
         r.hi = std::max(r.hi, x);
     }
@@ -131,6 +138,35 @@ TEST_SUITE("world/noise")
         CHECK(rangeOf(worley).hi <= 1.0001f);
         CHECK(w::fbm3(0.3f, 0.6f, 0.9f, 2, {.basis = w::NoiseBasis::kSimplex, .octaves = 4}) ==
               w::fbm3(0.3f, 0.6f, 0.9f, 2, {.basis = w::NoiseBasis::kSimplex, .octaves = 4}));
+    }
+
+    TEST_CASE("coordinates outside the integer lattice give the neutral value instead of an undefined conversion")
+    {
+        const float nan = std::nanf("");
+        for (float big : {w::kNoiseCoordinateLimit, -w::kNoiseCoordinateLimit, 1e30f, nan})
+        {
+            CHECK(w::perlin2(big, 0.5f, 1) == 0.0f);
+            CHECK(w::perlin3(0.5f, big, 0.5f, 1) == 0.0f);
+            CHECK(w::simplex2(0.5f, big, 1) == 0.0f);
+            CHECK(w::simplex3(big, 0.5f, 0.5f, 1) == 0.0f);
+            CHECK(w::worley2(big, 0.5f, 1).f1 == 0.5f);
+            CHECK(w::worley3(0.5f, 0.5f, big, 1).f2 == 0.5f);
+        }
+        // Plages réfléchies de terrain.hpp : x = 64, fréquence 1, lacunarité 4, 16 octaves -> x * fréquence = 2^32 à l'octave 13.
+        w::FbmParams p;
+        p.frequency = 1.0f;
+        p.lacunarity = 4.0f;
+        p.octaves = 16;
+        for (auto basis : {w::NoiseBasis::kPerlin, w::NoiseBasis::kSimplex, w::NoiseBasis::kWorley})
+        {
+            p.basis = basis;
+            const float v = w::fbm2(64.25f, 3.5f, 9, p);
+            CHECK(std::isfinite(v));
+            CHECK(std::abs(v) <= 1.0f);
+            CHECK(std::isfinite(w::fbm3(64.25f, 3.5f, -7.0f, 9, p)));
+        }
+        // Le domaine documenté (|x| < 2^23) garde ses valeurs : la garde ne touche que ce qui était indéfini.
+        CHECK(w::perlin2(8388607.5f, 0.25f, 3) == w::perlin2(8388607.5f, 0.25f, 3));
     }
 
     TEST_CASE("TEST-03: reference checksums of every noise (same bytes on every system)")

@@ -12,6 +12,11 @@
 namespace engine::world
 {
 
+// Au-delà de cette valeur absolue (ou pour NaN), une coordonnée ne peut plus être ramenée sans débordement à la grille entière :
+// Perlin et Simplex rendent 0, Worley rend f1 = f2 = 0,5 (soit 0 pour la base Worley du fBm). Comportement défini et identique
+// sur tous les systèmes ; une octave fBm dont la fréquence fait sortir la coordonnée de ce domaine contribue donc 0.
+inline constexpr float kNoiseCoordinateLimit = 536870912.0f; // 2^29
+
 // ── Hachage ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 // Hachage entier 32 bits à faible biais (« lowbias32 », C. Wellons), bijectif.

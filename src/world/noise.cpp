@@ -73,6 +73,10 @@ inline float lerp(float a, float b, float t) noexcept { return a + t * (b - a); 
 
 inline std::int32_t floorToInt(float v) noexcept { return static_cast<std::int32_t>(std::floor(v)); }
 
+// Garde des fonctions de base : au-delà de kNoiseCoordinateLimit (ou NaN), `floorToInt` sortirait de std::int32_t et les sommes
+// d'indices (i + j + k, i + 1) déborderaient : comportement indéfini. Ces coordonnées donnent la valeur neutre, la même partout.
+inline bool inDomain(float v) noexcept { return std::fabs(v) < kNoiseCoordinateLimit; }
+
 inline float grad2(std::uint32_t h, float x, float y) noexcept
 {
     const Vec2f g = kGradients2[h & 7U];
@@ -114,6 +118,10 @@ float basis3(NoiseBasis basis, float x, float y, float z, std::uint32_t seed) no
 
 float perlin2(float x, float y, std::uint32_t seed) noexcept
 {
+    if (!inDomain(x) || !inDomain(y))
+    {
+        return 0.0f;
+    }
     const std::int32_t ix = floorToInt(x);
     const std::int32_t iy = floorToInt(y);
     const float fx = x - static_cast<float>(ix);
@@ -129,6 +137,10 @@ float perlin2(float x, float y, std::uint32_t seed) noexcept
 
 float perlin3(float x, float y, float z, std::uint32_t seed) noexcept
 {
+    if (!inDomain(x) || !inDomain(y) || !inDomain(z))
+    {
+        return 0.0f;
+    }
     const std::int32_t ix = floorToInt(x);
     const std::int32_t iy = floorToInt(y);
     const std::int32_t iz = floorToInt(z);
@@ -153,6 +165,10 @@ float perlin3(float x, float y, float z, std::uint32_t seed) noexcept
 
 float simplex2(float x, float y, std::uint32_t seed) noexcept
 {
+    if (!inDomain(x) || !inDomain(y))
+    {
+        return 0.0f;
+    }
     const float s = (x + y) * kF2;
     const std::int32_t i = floorToInt(x + s);
     const std::int32_t j = floorToInt(y + s);
@@ -181,6 +197,10 @@ float simplex2(float x, float y, std::uint32_t seed) noexcept
 
 float simplex3(float x, float y, float z, std::uint32_t seed) noexcept
 {
+    if (!inDomain(x) || !inDomain(y) || !inDomain(z))
+    {
+        return 0.0f;
+    }
     const float s = (x + y + z) * kF3;
     const std::int32_t i = floorToInt(x + s);
     const std::int32_t j = floorToInt(y + s);
@@ -224,6 +244,10 @@ float simplex3(float x, float y, float z, std::uint32_t seed) noexcept
 
 Worley worley2(float x, float y, std::uint32_t seed) noexcept
 {
+    if (!inDomain(x) || !inDomain(y))
+    {
+        return {0.5f, 0.5f};
+    }
     const std::int32_t ix = floorToInt(x);
     const std::int32_t iy = floorToInt(y);
     const float fx = x - static_cast<float>(ix);
@@ -254,6 +278,10 @@ Worley worley2(float x, float y, std::uint32_t seed) noexcept
 
 Worley worley3(float x, float y, float z, std::uint32_t seed) noexcept
 {
+    if (!inDomain(x) || !inDomain(y) || !inDomain(z))
+    {
+        return {0.5f, 0.5f};
+    }
     const std::int32_t ix = floorToInt(x);
     const std::int32_t iy = floorToInt(y);
     const std::int32_t iz = floorToInt(z);
