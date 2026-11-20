@@ -1,8 +1,9 @@
 # ui (`engine::ui`)
 
 Interface du moteur selon `docs/03` §12 : arbre de widgets, mise en page, thèmes JSON, événements nommés ; produit des listes de
-dessin (`engine::renderer::DrawList`, UI-02) et ne connaît ni le RHI ni le backend. L'interface héritée (`UI::`, `include/UI/`)
-reste dans `src/ui/legacy/` tant que la démo l'utilise.
+dessin (`engine::renderer::DrawList`, UI-02) et ne connaît ni le RHI ni le backend. Aucun singleton : chaque application possède
+son `Ui` (l'interface héritée `UI::`, son singleton `UI::Manager` et `src/ui/legacy/` ont été supprimés le 2026-11-20, la démo
+utilise ce module).
 
 - **Couche** : `ui` (`docs/03` §1) ; dépend de `core` et de `renderer` (liste de dessin, texte).
 - **Image** : `ui.update(input, viewport)` (rechargement du thème ; entrées appliquées à la mise en page AFFICHÉE ; écritures des
@@ -20,12 +21,14 @@ reste dans `src/ui/legacy/` tant que la démo l'utilise.
 | `window_input.hpp` | `readWindowInput(window, dt)` : entrées de l'image lues sur une fenêtre `platform` (souris, texte, touches répétées, raccourcis) ; `useSystemClipboard(ui, window)` |
 | `menus.hpp` | UI-03 : `Dialog` (fenêtre modale), `MenuBar`, `Menu` (sous-menus), `MenuItem` (raccourci, case cochée), `ContextMenu` (clic droit), `Notifications` (nombre et hauteur maximaux), `DynamicImage` + `ImageView` (image produite par le jeu : mini-carte, boussole) |
 | `ui.hpp` | `Ui` : racine, thème, police, `ActionRegistry` (actions par nom), entrées de l'image (`InputFrame`, `Key`), survol / appui / focus / tabulation, pile de fenêtres surgissantes (menus, sous-menus), fenêtres modales, notifications (`notify`), presse-papiers (`setClipboard`), infobulle, `wantsMouse` / `wantsKeyboard`, écritures et événements différés |
-| `font.hpp` | `Font` ; `FixedFont` (tests, sans GPU) ; `TextRendererFont` (FreeType + MSDF de `UI::TextRenderer`) |
+| `font.hpp` | `Font` ; `FixedFont` (tests, sans GPU) ; `TextRendererFont` (adapte `TextRenderer` à `Font`) |
+| `text_renderer.hpp` | `TextRenderer` : polices FreeType, atlas MSDF construit à la demande (ASCII, puis Latin-1 / Latin étendu A au premier texte qui en contient), mesure, mise en page (retour à la ligne, alignement, débordement), séries de glyphes ajoutées à la `DrawList` donnée par `setDrawListSink` |
 | `nine_slice.hpp` | UI-07 : fonds en neuf parties (`ImageStyle` du thème : coins fixes, bords et centre étirés, répétés ou supprimés) → `DrawImage` |
 | `reflect.hpp` | UI-12 : `reflectedPanel(objet)` : une structure `core::Reflect<T>` en widgets adaptés au type et à la plage ; `fieldLabel` ; `core::EnumNames<E>` pour les listes |
 
 Thèmes livrés : `res/themes/base.json` (structure : chaque propriété de chaque widget renvoie à un jeton), `dark.json` et
-`light.json` (jetons seulement), `framed.json` (hérite de `dark.json` et ajoute des cadres en neuf parties, `res/themes/images/`).
+`light.json` (jetons seulement), `framed.json` (hérite de `dark.json` et ajoute des cadres en neuf parties, `res/themes/images/`),
+`hud.json` (hérite de `dark.json` : panneau de performances de la démo, styles `hud`, `hudTitle`, `hudMetric`).
 Rechargement : `ThemeHost::load` qui échoue garde le thème courant mais observe le thème demandé (et les parents qu'il cherchait) ;
 `ThemeHost::set` installe un thème sans fichier à recharger. Format : `docs/UI_LANGUAGE.md`, section « Thèmes ».
 

@@ -4,10 +4,9 @@
 
 use crate::compile_source;
 use crate::lexer::{Lexer, TokenType};
-use crate::registry::Registry;
 
 fn engine(src: &str) -> Result<(String, String), Vec<String>> {
-    compile_source(&format!("import \"engine/ui\"\n{src}"), "v.cui", "v", None).map(|(h, c, _)| (h, c))
+    compile_source(&format!("import \"engine/ui\"\n{src}"), "v.cui", "v")
 }
 
 fn errors(src: &str) -> Vec<String> {
@@ -102,21 +101,11 @@ fn invalid_sources_give_exact_messages() {
 }
 
 #[test]
-fn the_legacy_target_includes_the_header_named_after_the_file() {
-    // Registre réel des composants hérités (doxygen des en-têtes include/UI).
-    let include = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../include");
-    let registry = crate::scanner::Scanner::new().scan_directory(&include).unwrap();
-    let src = "view F {\n    VBox {\n    }\n}\n";
-    let (_, cpp, _) = compile_source(src, "st.cui", "st", Some(&registry)).unwrap();
-    assert!(cpp.contains("#include \"st.gen.h\""), "{cpp}");
-    assert!(!cpp.contains("#include \"F.gen.h\""));
-}
-
-#[test]
-fn the_legacy_target_refuses_two_way_bindings() {
-    let registry = Registry::default();
-    let err = compile_source("view F {\n    VBox($x)\n}\n", "f.cui", "f", Some(&registry)).unwrap_err();
-    assert_eq!(err, vec!["f.cui:2:5: error: two-way bindings ($...) need `import \"engine/ui\"`".to_string()]);
+fn a_file_without_the_engine_ui_import_is_refused() {
+    // La cible héritée UI::View a été supprimée : sans `import "engine/ui"`, rien n'est généré.
+    let err = compile_source("view F {\n    VBox {}\n}\n", "f.cui", "f").unwrap_err();
+    assert_eq!(err.len(), 1, "{err:?}");
+    assert!(err[0].starts_with("f.cui:1:1: error: missing `import \"engine/ui\"`"), "{err:?}");
 }
 
 #[test]
@@ -191,11 +180,4 @@ fn review_m3_names_numbers_arguments_and_descendants() {
     let err = errors("view V {\n    Unknown {\n        Label(\"x\").widht(30)\n    }\n}\n");
     assert!(err.iter().any(|e| e.contains("unknown component 'Unknown'")), "{err:?}");
     assert!(err.iter().any(|e| e.contains("'Label' has no modifier 'widht'")), "{err:?}");
-}
-
-#[test]
-fn the_legacy_target_refuses_bindings_in_declarations_too() {
-    let registry = Registry::default();
-    let err = compile_source("view F {\n    let x = $y\n    VBox {}\n}\n", "f.cui", "f", Some(&registry)).unwrap_err();
-    assert_eq!(err, vec!["f.cui:2:5: error: two-way bindings ($...) need `import \"engine/ui\"`".to_string()]);
 }

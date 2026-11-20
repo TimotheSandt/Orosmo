@@ -41,7 +41,7 @@ class CanvasRenderer
     // est d'abord effacée en transparent. L'encodeur ne doit avoir aucune passe ouverte. Les couches contiennent une couleur
     // prémultipliée et sont composées comme telle. Erreurs : liste mal formée, taille de couche invalide, erreur de l'encodeur
     // pendant le rendu, ou kNotFound si une `DrawLayerImage` vise une couche qui n'existe pas (le contenu mis en cache par
-    // l'interface est perdu : l'appelant redemande une liste complète, `UI::Manager::InvalidateLayers`).
+    // par l'appelant est perdu : il doit redemander une liste complète, sans image de couche).
     core::Result<> render(rhi::CommandEncoder &encoder, const DrawList &list, const CanvasTarget &target, bool loadExisting = true);
 
     // Libère les textures d'atlas et de couches (les handles sont détruits ; la prochaine liste les recrée).

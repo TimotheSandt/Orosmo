@@ -7,7 +7,7 @@ Chaque fichier annonce ce qu'on attend, en commentaire :
                                                 désigne la ligne LIGNE du .cui (directives #line)
 Un fichier refusé par cui ne doit laisser aucun code généré.
 
-Usage : check_cui_errors.py --cui <binaire cui> --headers <include/> --cases <dossier> --out <dossier temporaire>
+Usage : check_cui_errors.py --cui <binaire cui> --cases <dossier> --out <dossier temporaire>
                             [--cxx auto | "<commande du compilateur C++ avec ses -I>"]
 --cxx auto : $CXX (ou c++) avec les en-têtes du dépôt et ceux de chaque triplet vcpkg installé (comme check_headers.py).
 """
@@ -30,7 +30,7 @@ def run_case(path: Path, args: argparse.Namespace) -> list[str]:
     out.mkdir(parents=True, exist_ok=True)
     for old in out.glob("*"):
         old.unlink()
-    cmd = [args.cui, "run", "--headers", args.headers, "--output", str(out), str(path)]
+    cmd = [args.cui, "run", "--output", str(out), str(path)]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     failures: list[str] = []
     display = str(path)
@@ -72,7 +72,7 @@ def run_case(path: Path, args: argparse.Namespace) -> list[str]:
 
 def auto_compiler(root: Path) -> str:
     flags = [os.environ.get("CXX", "c++"), "-std=c++23", "-DGLM_ENABLE_EXPERIMENTAL"]
-    for d in ("include", "include/UI", "tests"):
+    for d in ("include", "tests"):
         flags.append(f"-I{root / d}")
     base = Path(os.environ.get("VCPKG_INSTALLED_ROOT") or root / "vcpkg_installed")
     for inc in sorted(base.glob("*/include")):
@@ -83,7 +83,6 @@ def auto_compiler(root: Path) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--cui", required=True)
-    parser.add_argument("--headers", required=True)
     parser.add_argument("--cases", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--cxx", default="")

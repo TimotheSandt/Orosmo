@@ -1,6 +1,7 @@
 #include "Game/Game.h"
 #include "Graphics/Backends/GraphicsAPI.h"
 #include <engine/core/log.hpp>
+#include <engine/core/paths.hpp>
 #include <engine/platform/window.hpp>
 
 #include <random>

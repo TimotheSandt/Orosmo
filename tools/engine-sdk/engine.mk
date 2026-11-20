@@ -207,9 +207,7 @@ $(ENGINE_LIBS):
 
 # ── CUI precompiler ───────────────────────────────────────────────────────────
 
-_ENG_CUI_HEADERS := $(_ENG_INC_BASE)
 _ENG_CUI_SRCS    := $(shell find $(GAME_SRC_DIR) -type f -name "*.cui" 2>/dev/null)
-_ENG_SCANNED_H   := $(shell find $(_ENG_CUI_HEADERS) -type f -name "*.h" 2>/dev/null)
 
 GEN_CPP_SOURCES      := $(patsubst $(GAME_SRC_DIR)/%.cui,$(ENGINE_GEN_DIR)/%.gen.cpp,$(_ENG_CUI_SRCS))
 GEN_REDIRECT_SOURCES := $(patsubst $(GAME_SRC_DIR)/%.cui,$(ENGINE_GEN_DIR)/%.cui,$(_ENG_CUI_SRCS))
@@ -220,10 +218,11 @@ else
     _ENG_CUI_TOOL := $(ENGINE_DIR)/tools/cui
 endif
 
-# .cui → .gen.cpp + .gen.h  (reruns when any engine header changes)
-$(ENGINE_GEN_DIR)/%.gen.cpp: $(GAME_SRC_DIR)/%.cui $(_ENG_SCANNED_H)
+# .cui → .gen.cpp + .gen.h  (cible engine/ui ; relancé quand la vue ou l'outil cui change : un source inchangé, au même format de
+# sortie, n'est pas réécrit, grâce au hachage en tête du .gen.h)
+$(ENGINE_GEN_DIR)/%.gen.cpp: $(GAME_SRC_DIR)/%.cui $(_ENG_CUI_TOOL)
 	@mkdir -p "$(dir $@)"
-	$(_ENG_CUI_TOOL) run --headers $(_ENG_CUI_HEADERS) --output "$(dir $@)" $<
+	$(_ENG_CUI_TOOL) run --output "$(dir $@)" $<
 
 # Redirect shim: Generated/Foo.cui → #include "Foo.gen.h"
 $(ENGINE_GEN_DIR)/%.cui: $(GAME_SRC_DIR)/%.cui

@@ -3,7 +3,7 @@
 #include "engine/ui/theme.hpp"
 
 #include <engine/core/log.hpp>
-#include "Rendering/TextRenderer.h"
+#include "engine/ui/text_renderer.hpp"
 
 #include <cmath>
 #include <string>
@@ -129,7 +129,7 @@ void TextRendererFont::draw(renderer::DrawList &list, std::string_view text, glm
 {
     select(face);
     renderer_->setDrawListSink(&list);
-    renderer_->renderText(std::string(text), position.x, position.y, size / baseSize_, glm::vec3(color), ::UI::TextAnchor::TopLeft);
+    renderer_->renderText(std::string(text), position.x, position.y, size / baseSize_, glm::vec3(color), TextAnchor::TopLeft);
     renderer_->setDrawListSink(nullptr);
 }
 

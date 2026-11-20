@@ -528,8 +528,7 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
     }
 
     // Liste interrompue par une erreur : rien n'est évincé (une couche que la suite aurait référencée resterait sinon détruite).
-    // Le contenu des couches redessinées avant l'erreur n'est pas fiable : l'appelant redemande une liste complète
-    // (`UI::Manager::InvalidateLayers`).
+    // Le contenu des couches redessinées avant l'erreur n'est pas fiable : l'appelant redemande une liste complète.
     if (!status)
     {
         return status;

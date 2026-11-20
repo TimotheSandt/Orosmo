@@ -42,14 +42,6 @@ function resolveTool() {
     return exeName(); // dans le PATH
 }
 
-function resolveRegistry() {
-    const raw = vscode.workspace.getConfiguration("cui").get("registryPath") || "";
-    if (!raw) return "";
-    if (path.isAbsolute(raw)) return raw;
-    const folders = vscode.workspace.workspaceFolders;
-    return folders && folders.length ? path.join(folders[0].uri.fsPath, raw) : raw;
-}
-
 function run(tool, args, input) {
     return new Promise(resolve => {
         let proc;
@@ -99,10 +91,7 @@ let warnedMissingTool = false;
 
 async function check(doc) {
     const tool = resolveTool();
-    const args = ["check", "--stdin"];
-    const registry = resolveRegistry();
-    if (registry && fs.existsSync(registry)) args.push("--registry", registry);
-    args.push(doc.fileName);
+    const args = ["check", "--stdin", doc.fileName];
     const version = doc.version;
     const r = await run(tool, args, doc.getText());
     // Un contrôle plus récent a pu finir avant celui-ci, ou le document a été fermé : ce résultat est périmé.

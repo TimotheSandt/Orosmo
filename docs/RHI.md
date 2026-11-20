@@ -6,7 +6,7 @@ Guide d'ensemble (état de fin de M2). Détails : [`src/rhi/README.md`](../src/r
 
 ```
  apps/demo       Game, World, CameraController                    (application)
- ui              UI::Manager::Collect -> DrawList                  (l'interface ne dessine pas)
+ ui              engine::ui::Ui::draw -> DrawList                  (l'interface ne dessine pas)
  renderer        SceneRenderer, CanvasRenderer, Mesh, Camera, LightManager, ShaderLibrary, PipelineCache,
                  RenderTarget, Texture, GpuBuffer, GpuTimer, Image    -> include/engine/renderer/
  rhi             Device, CommandEncoder, handles, shader_compiler     -> include/engine/rhi/
@@ -70,7 +70,6 @@ Exemple complet et compilé : `apps/demo/src/Game/Game.cpp` (`Game::createGraphi
 
 | Test | Ce qu'il fixe |
 | --- | --- |
-| `tests/renderer/parity_tests.cpp` | scène de terrain (graine 1) et interface (`ui.png`, texte figé) identiques aux captures de l'ancien rendu : `docs/BASELINE/reference/` |
 | capture de la démo (`--capture`) | `scene.png` comparé à la référence par `tools/compare_png.py` (CI, tolérance pour llvmpipe) |
 | `tests/rhi/*`, `tests/renderer/*` | périphérique, ressources, shaders, fenêtre, dessinateur 2D, minuteries GPU |
 

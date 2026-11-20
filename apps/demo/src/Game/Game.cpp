@@ -7,6 +7,7 @@
 
 #include <engine/core/paths.hpp>
 #include "UI/Views/PerformanceView.gen.h"
+#include "engine/renderer/draw_list.hpp"
 #include "engine/renderer/image.hpp"
 
 
@@ -109,9 +110,10 @@ engine::core::Result<> Game::init()
         return engine::core::makeError(ready.error().code, "Failed to initialize the world: " + ready.error().message);
     }
 
-    // Initialize UI system
-    UI::Manager::Instance().Init(this->viewWidth, this->viewHeight);
-    UI::Manager::Instance().GetRootContainer()->AddChild(UI::CreatePerformanceView(&window));
+    if (auto created = this->createUi(); !created)
+    {
+        return created;
+    }
 
     LOG_INFO("Game initialized");
     return {};
@@ -136,7 +138,10 @@ void Game::stop()
         this->world->Destroy();
         this->world.reset();
     }
-    UI::Manager::Instance().Shutdown();
+    // L'interface référence la police, qui référence le rendu du texte.
+    ui.reset();
+    font.reset();
+    text.reset();
     // Ordre inverse de la création : tout ce qui référence le périphérique avant lui, la fenêtre en dernier.
     composed.reset();
     uiTarget.reset();
@@ -282,20 +287,44 @@ void Game::update()
     }
 
     this->world->Update();
-    UI::Manager::Instance().Update(deltaTime, this->viewWidth, this->viewHeight);
+    this->performance.tick(deltaTime, [&]() { return samplePerformance(this->window.GetAverageFPS()); });
+    engine::ui::InputFrame input; // le panneau n'est pas interactif : pas d'entrées, seulement le temps écoulé
+    input.deltaTime = deltaTime;
+    this->ui->update(input, {static_cast<float>(this->viewWidth), static_cast<float>(this->viewHeight)});
+}
+
+// Interface : police de l'application (Roboto, taille de base 48 px), thème du panneau (res/themes/hud.json), vue générée par cui.
+engine::core::Result<> Game::createUi()
+{
+    using engine::core::ErrorCode;
+    using engine::core::makeError;
+    this->text = std::make_unique<engine::ui::TextRenderer>();
+    if (!this->text->init(static_cast<unsigned>(this->viewWidth), static_cast<unsigned>(this->viewHeight)) ||
+        !this->text->loadFont(GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"), "default", 48))
+    {
+        return makeError(ErrorCode::kNotFound, "UI: cannot load the font " GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"));
+    }
+    this->text->setActiveFont("default");
+    this->font = std::make_unique<engine::ui::TextRendererFont>(*this->text);
+    this->ui = std::make_unique<engine::ui::Ui>(*this->font);
+    if (auto theme = this->ui->themes().load(GET_RESOURCE_PATH("themes/hud.json")); !theme)
+    {
+        return makeError(theme.error().code, "UI: " + theme.error().message);
+    }
+    this->ui->setRoot(cui::buildPerformanceView(*this->ui, this->performance));
+    return {};
 }
 
 // L'interface se pose sur l'image composée : directement, ou rendue à échelle réduite sur une cible TRANSPARENTE puis composée
 // par-dessus la scène (touches de debug 5 à 8, ancien `Renderer2D::SetRenderScale`) : seule l'interface perd en définition.
-// Si son rendu échoue, le contenu des couches mis en cache par Collect n'existe pas : l'interface redessinera tout à l'image suivante.
+// L'interface (engine::ui) produit une liste complète à chaque image : un échec ne laisse rien à invalider.
 bool Game::renderUi(rhi::CommandEncoder &encoder, const rhi::TextureHandle &composedTexture)
 {
     rd::DrawList list;
-    UI::Manager::Instance().Collect(list, this->viewWidth, this->viewHeight);
+    this->ui->draw(list);
     auto failed = [&](const std::string &what, const engine::core::Error &error)
     {
         LOG_ERROR(1, what, error.message);
-        UI::Manager::Instance().InvalidateLayers();
         return false;
     };
 

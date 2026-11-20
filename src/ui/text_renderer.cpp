@@ -1,4 +1,4 @@
-#include "UI/Rendering/TextRenderer.h"
+#include "engine/ui/text_renderer.hpp"
 
 #include <engine/core/log.hpp>
 
@@ -16,7 +16,7 @@
 
 #include FT_OUTLINE_H
 
-namespace UI
+namespace engine::ui
 {
 
 namespace
@@ -1261,4 +1261,4 @@ float TextRenderer::findOptimalScale(const std::string &text, float maxWidth, fl
     return bestScale;
 }
 
-} // namespace UI
+} // namespace engine::ui

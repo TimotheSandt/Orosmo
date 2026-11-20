@@ -99,7 +99,8 @@ corrompu ou rejeté par la réflexion : recompilé). Cache de **pipelines** nati
   utilisent l'origine basse, ses rectangles et ses lectures sont retournés par le backend ; l'utilisateur ne voit que la convention.
 - **Vulkan (M4)** : hauteur de viewport négative (cœur 1.1) pour garder y = +1 en haut ; profondeur [0, 1] native.
 - Preuves : `tests/rhi/opengl_state_tests.cpp` (« A26: a counter-clockwise triangle... »), tous les tests de lecture de pixels, et
-  les images de référence, identiques avant et après le changement (`parity_tests.cpp`, capture de la démo).
+  les images de référence, identiques avant et après le changement (capture de la démo ; `parity_tests.cpp` à l'époque, supprimé
+  le 2026-11-20 avec l'interface héritée).
 
 ## Surface : hors écran ou fenêtre (B2, RHI-08)
 

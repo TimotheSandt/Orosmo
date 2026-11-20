@@ -42,11 +42,6 @@
           "type": "string",
           "default": "",
           "description": "Path to the cui compiler. Empty: tools/cui, tools/target/release/cui, engine/tools/cui (projects made by `engine init`) in the workspace, then the PATH."
-        },
-        "cui.registryPath": {
-          "type": "string",
-          "default": "",
-          "description": "registry.json from `cui scan` (legacy UI::View target only; files with `import \"engine/ui\"` need none)."
         }
       }
     },

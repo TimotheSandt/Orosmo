@@ -271,8 +271,10 @@ $(LIB_GRAPHICS): $(Graphics_OBJS)
 	$(AR) rcs $@ $^
 	@echo "Archived [Graphics]    $(BUILD_TYPE): $@"
 
+# Archive recréée (rm) : `ar rcs` garderait les objets des fichiers supprimés (ancienne interface src/ui/legacy/).
 $(LIB_UI): $(UI_OBJS)
 	@mkdir -p "$(dir $@)"
+	rm -f $@
 	$(AR) rcs $@ $^
 	@echo "Archived [UI]          $(BUILD_TYPE): $@"
 

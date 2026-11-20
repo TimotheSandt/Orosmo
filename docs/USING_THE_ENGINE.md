@@ -107,7 +107,7 @@ Deux exemples plus complets sont dans le paquet : `examples/terrain_gen` (ligne 
 Un programme qui dessine charge les **shaders du RHI** (`shaders/rhi/` du paquet) ; une interface `engine::ui` a besoin d'une
 **police** (`res/fonts/Roboto-Regular.ttf`) et d'un **thème** (`res/themes/dark.json`, `light.json`, qui étendent `base.json`). Les
 exemples et le projet d'`engine init` les copient dans `bin/res/` à la compilation ; le chemin est donné au moteur
-(`SceneRenderer::create(..., {.shaderDirectory = ...})`, `ThemeHost::load(...)`, `UI::TextRenderer::loadFont(...)`).
+(`SceneRenderer::create(..., {.shaderDirectory = ...})`, `ThemeHost::load(...)`, `engine::ui::TextRenderer::loadFont(...)`).
 
 ## 6. Interface
 
@@ -126,7 +126,7 @@ présentée comme utilisable : celle de M3 (proposée : `v0.3.0`).
 | --- | --- | --- |
 | `core`, `rhi`, `renderer`, `world`, `ui` | **figé pour 0.3.x** | noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
 | `platform` (`Window`, `InputManager`) | **provisoire** | noms encore en `PascalCase`, hors de l'espace `engine::platform` : ils changeront avec la migration de l'interface héritée (`docs/GAPS.md` G96) |
-| en-têtes hérités (`Graphics/`, `UI/`, `Noise/`, `Profiler/`, `Utilities/`) | **hérités** | gardés pour la démo et la cible `UI::View` du langage ; à éviter dans un nouveau code |
+| en-têtes hérités (`Graphics/`, `Noise/`, `Benchmark/`) | **hérités** | gardés pour la démo le temps de leur migration ; à éviter dans un nouveau code (l'interface héritée `UI/` et la cible `UI::View` du langage ont été supprimées) |
 
 ## 8. Limites connues
 

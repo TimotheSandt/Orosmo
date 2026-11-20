@@ -15,7 +15,7 @@ engine-<platform>/
       renderer/        SceneRenderer, Camera (reverse-Z), CanvasRenderer, DrawList, TerrainRenderer, DebugDraw
       world/           deterministic noise, terrain tiles, LOD streaming, GPU noise, export (PNG16/EXR/OBJ/glTF/STL)
       ui/              engine::ui — widgets, layout, JSON themes, reflected parameter panels
-    Graphics/, UI/, Noise/, Profiler/, Utilities/, Benchmark/ — legacy headers (UI::View target of the .cui language)
+    Graphics/, Noise/, Benchmark/ — legacy headers (being migrated to engine/)
   lib/
     debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libworld, libui, … (link them all:
                        ENGINE_LINK_LIBS)
@@ -162,7 +162,7 @@ A program that renders needs the RHI shaders and, for `engine::ui`, a font and a
 
 ## Interface language
 
-`.cui` files that start with `import "engine/ui"` describe an `engine::ui` panel: widgets, two-way bindings (`$state.value`),
+`.cui` files (each starts with `import "engine/ui"`, the only target) describe an `engine::ui` panel: widgets, two-way bindings (`$state.value`),
 events that name C++ functions (`.onClick(state.regenerate)`), local theme overrides by token. Errors are reported as
 `file:line:column: error: message`, and `#line` directives map C++ errors back to the `.cui` line. Specification:
 `docs/UI_LANGUAGE.md` in the engine repository.

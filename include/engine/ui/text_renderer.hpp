@@ -1,4 +1,6 @@
-// include/UI/Rendering/TextRenderer.h
+// Rendu de texte de l'interface : polices FreeType, atlas MSDF construit à la demande, mise en page (retour à la ligne,
+// alignement, débordement) et séries de glyphes ajoutées à une `renderer::DrawList` (dessinées par `CanvasRenderer`).
+// Utilisé par `TextRendererFont` (font.hpp) ; aucun appel graphique ici.
 #pragma once
 
 #include <string>
@@ -11,7 +13,7 @@
 #include "engine/renderer/draw_list.hpp"
 #include FT_FREETYPE_H
 
-namespace UI
+namespace engine::ui
 {
 
 // Ancrage du texte
@@ -104,7 +106,7 @@ class TextRenderer
     TextRenderer();
     ~TextRenderer();
 
-    // Initialisation (après contexte OpenGL)
+    // Initialisation (FreeType ; aucun contexte graphique requis)
     bool init(unsigned int screenWidth, unsigned int screenHeight);
 
     // Chargement de polices
@@ -199,4 +201,4 @@ class TextRenderer
     void handleOverflow(TextLayout &layout, const TextLayoutParams &params);
 };
 
-} // namespace UI
+} // namespace engine::ui
