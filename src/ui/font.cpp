@@ -2,7 +2,7 @@
 
 #include "engine/ui/theme.hpp"
 
-#include "Logger.h"
+#include <engine/core/log.hpp>
 #include "Rendering/TextRenderer.h"
 
 #include <cmath>

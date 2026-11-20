@@ -3,7 +3,7 @@
 #include "gl_device.hpp"
 #include "gl_translate.hpp"
 
-#include "Logger.h"
+#include <engine/core/log.hpp>
 
 #include <algorithm>
 #include <limits>

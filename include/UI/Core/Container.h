@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "Component.h"
-#include "Utilities.h"
+#include <engine/core/paths.hpp>
 
 namespace UI
 {

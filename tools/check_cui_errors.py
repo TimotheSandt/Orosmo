@@ -72,7 +72,7 @@ def run_case(path: Path, args: argparse.Namespace) -> list[str]:
 
 def auto_compiler(root: Path) -> str:
     flags = [os.environ.get("CXX", "c++"), "-std=c++23", "-DGLM_ENABLE_EXPERIMENTAL"]
-    for d in ("include", "include/UI", "include/Utilities", "tests"):
+    for d in ("include", "include/UI", "tests"):
         flags.append(f"-I{root / d}")
     base = Path(os.environ.get("VCPKG_INSTALLED_ROOT") or root / "vcpkg_installed")
     for inc in sorted(base.glob("*/include")):

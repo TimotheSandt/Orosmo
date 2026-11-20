@@ -2,7 +2,7 @@
 
 #include <engine/core/serialization.hpp>
 
-#include "Logger.h"
+#include <engine/core/log.hpp>
 
 #include <algorithm>
 #include <fstream>

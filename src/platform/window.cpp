@@ -5,8 +5,8 @@
 
 #include <engine/platform/input_manager.hpp>
 #include "Profiler.h"
-#include "Logger.h"
-#include "Utilities.h"
+#include <engine/core/log.hpp>
+#include <engine/core/paths.hpp>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -561,7 +561,7 @@ void Window::CallbackPosition(int x, int y)
 
 void Window::CallbackFocus(int focused)
 {
-    UNUSED(focused);
+    (void)focused;
 
     LOG_DEBUGGING("Window focus changed");
 

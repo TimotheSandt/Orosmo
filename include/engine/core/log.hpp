@@ -1,3 +1,6 @@
+// Journal du moteur (repris de l'ancien `Utilities/Logger.h`, comportement inchangé) : messages horodatés regroupés quand
+// ils se répètent, couleur par niveau dans la console, fichier de journal optionnel (`SET_LOG_FILE`), pile d'appels en DEBUG.
+// S'utilise par les macros `LOG_INFO(...)`, `LOG_ERROR(code, ...)`, etc. définies en bas de ce fichier.
 #pragma once
 
 #include <vector>
@@ -19,6 +22,9 @@
 #define LOGGER_HAS_STACKTRACE 1
 #endif
 #endif
+
+namespace engine::core
+{
 
 enum LogLevel : std::int8_t
 {
@@ -156,39 +162,41 @@ void Logger::LogError(LogLevel level,
     }
 }
 
-#define LOG_LEVEL Logger::GetMinimumLevel()
+} // namespace engine::core
+
+#define LOG_LEVEL ::engine::core::Logger::GetMinimumLevel()
 #ifdef DEBUG
-#define SET_LOG_LEVEL_DEBUG Logger::SetMinimumLevel(L_DEBUGGING)
+#define SET_LOG_LEVEL_DEBUG ::engine::core::Logger::SetMinimumLevel(::engine::core::L_DEBUGGING)
 #else
-#define SET_LOG_LEVEL_DEBUG Logger::SetMinimumLevel(L_DEBUG)
+#define SET_LOG_LEVEL_DEBUG ::engine::core::Logger::SetMinimumLevel(::engine::core::L_DEBUG)
 #endif
-#define SET_LOG_LEVEL_TRACE Logger::SetMinimumLevel(L_TRACE)
-#define SET_LOG_LEVEL_INFO Logger::SetMinimumLevel(L_INFO)
-#define SET_LOG_LEVEL_WARNING Logger::SetMinimumLevel(L_WARNING)
-#define SET_LOG_LEVEL_ERROR Logger::SetMinimumLevel(L_ERROR)
-#define SET_LOG_LEVEL_FATAL Logger::SetMinimumLevel(L_FATAL)
-#define SET_LOG_FILE(filename) Logger::Initialize(filename)
-#define SET_LOG_FILE_DEFAULT Logger::Initialize()
-#define FLUSH_LOG_TO_FILE Logger::FlushToFile()
+#define SET_LOG_LEVEL_TRACE ::engine::core::Logger::SetMinimumLevel(::engine::core::L_TRACE)
+#define SET_LOG_LEVEL_INFO ::engine::core::Logger::SetMinimumLevel(::engine::core::L_INFO)
+#define SET_LOG_LEVEL_WARNING ::engine::core::Logger::SetMinimumLevel(::engine::core::L_WARNING)
+#define SET_LOG_LEVEL_ERROR ::engine::core::Logger::SetMinimumLevel(::engine::core::L_ERROR)
+#define SET_LOG_LEVEL_FATAL ::engine::core::Logger::SetMinimumLevel(::engine::core::L_FATAL)
+#define SET_LOG_FILE(filename) ::engine::core::Logger::Initialize(filename)
+#define SET_LOG_FILE_DEFAULT ::engine::core::Logger::Initialize()
+#define FLUSH_LOG_TO_FILE ::engine::core::Logger::FlushToFile()
 
 #ifdef DEBUG
-#define LOG(level, ...) Logger::Log(level, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_DEBUGGING(...) Logger::Log(L_DEBUGGING, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_DEBUG(...) Logger::Log(L_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_TRACE(...) Logger::Log(L_TRACE, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_INFO(...) Logger::Log(L_INFO, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_WARNING(...) Logger::Log(L_WARNING, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_EWARNING(...) Logger::LogError(L_WARNING, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_ERROR(...) Logger::LogError(L_ERROR, __FILE__, __LINE__, __VA_ARGS__)
-#define LOG_FATAL(...) Logger::LogError(L_FATAL, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG(level, ...) ::engine::core::Logger::Log(level, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_DEBUGGING(...) ::engine::core::Logger::Log(::engine::core::L_DEBUGGING, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_DEBUG(...) ::engine::core::Logger::Log(::engine::core::L_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_TRACE(...) ::engine::core::Logger::Log(::engine::core::L_TRACE, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_INFO(...) ::engine::core::Logger::Log(::engine::core::L_INFO, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_WARNING(...) ::engine::core::Logger::Log(::engine::core::L_WARNING, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_EWARNING(...) ::engine::core::Logger::LogError(::engine::core::L_WARNING, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_ERROR(...) ::engine::core::Logger::LogError(::engine::core::L_ERROR, __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_FATAL(...) ::engine::core::Logger::LogError(::engine::core::L_FATAL, __FILE__, __LINE__, __VA_ARGS__)
 #else
-#define LOG(level, ...) Logger::Log(level, __VA_ARGS__)
+#define LOG(level, ...) ::engine::core::Logger::Log(level, __VA_ARGS__)
 #define LOG_DEBUGGING(...)
-#define LOG_DEBUG(...) Logger::Log(L_DEBUG, __VA_ARGS__)
-#define LOG_TRACE(...) Logger::Log(L_TRACE, __VA_ARGS__)
-#define LOG_INFO(...) Logger::Log(L_INFO, __VA_ARGS__)
-#define LOG_WARNING(...) Logger::Log(L_WARNING, __VA_ARGS__)
-#define LOG_EWARNING(...) Logger::LogError(L_WARNING, __VA_ARGS__)
-#define LOG_ERROR(...) Logger::LogError(L_ERROR, __VA_ARGS__)
-#define LOG_FATAL(...) Logger::LogError(L_FATAL, __VA_ARGS__)
+#define LOG_DEBUG(...) ::engine::core::Logger::Log(::engine::core::L_DEBUG, __VA_ARGS__)
+#define LOG_TRACE(...) ::engine::core::Logger::Log(::engine::core::L_TRACE, __VA_ARGS__)
+#define LOG_INFO(...) ::engine::core::Logger::Log(::engine::core::L_INFO, __VA_ARGS__)
+#define LOG_WARNING(...) ::engine::core::Logger::Log(::engine::core::L_WARNING, __VA_ARGS__)
+#define LOG_EWARNING(...) ::engine::core::Logger::LogError(::engine::core::L_WARNING, __VA_ARGS__)
+#define LOG_ERROR(...) ::engine::core::Logger::LogError(::engine::core::L_ERROR, __VA_ARGS__)
+#define LOG_FATAL(...) ::engine::core::Logger::LogError(::engine::core::L_FATAL, __VA_ARGS__)
 #endif

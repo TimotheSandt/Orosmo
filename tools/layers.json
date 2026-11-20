@@ -15,8 +15,6 @@
     ["src/renderer/*", "renderer"],
     ["include/engine/world/*", "world"],
     ["src/world/*", "world"],
-    ["include/Utilities/*", "core"],
-    ["src/Utilities/*", "core"],
     ["include/Profiler/*", "core"],
     ["src/Profiler/*", "core"],
     ["include/Benchmark/*", "core"],
@@ -45,7 +43,7 @@
     ["src/ThirdParty/*", "core"],
     ["apps/*", "apps"]
   ],
-  "include_roots": ["include", "include/Graphics", "include/UI", "include/Utilities", "include/Noise", "include/Profiler", "include/Benchmark"],
+  "include_roots": ["include", "include/Graphics", "include/UI", "include/Noise", "include/Profiler", "include/Benchmark"],
   "scan": ["include", "src", "apps"],
   "api_isolation": {
     "allowed": ["src/rhi/", "src/platform/", "include/engine/platform/"],

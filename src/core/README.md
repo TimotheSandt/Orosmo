@@ -1,9 +1,9 @@
 # core
 
-Couche 0 de `docs/03` : ne dépend d'aucun autre module du moteur (bibliothèque standard, `glm`, `nlohmann-json`, et le
-logger existant `Utilities/Logger.h`). Code neuf dans `include/engine/core/*.hpp`, `namespace engine::core`, `camelCase` /
-`kPascalCase` ; le code hérité (`Logger`, `Profiler`, `Utilities`) garde ses noms et migre plus tard, mais n'appelle plus le
-système directement depuis M1 bis (voir `system.hpp`). Archive : `libcore.a`.
+Couche 0 de `docs/03` : ne dépend d'aucun autre module du moteur (bibliothèque standard, `glm`, `nlohmann-json`). Code
+dans `include/engine/core/*.hpp`, `namespace engine::core`, `camelCase` / `kPascalCase`. Le `Logger` repris de l'ancien
+`Utilities` garde ses noms de méthodes (`Logger::Log`, niveaux `L_INFO`...) et ses macros `LOG_*` : seul son emplacement
+a changé. Le module n'appelle pas le système directement (voir `system.hpp`). Archive : `libcore.a`.
 
 | Fichier | ID | Rôle |
 | --- | --- | --- |
@@ -19,6 +19,8 @@ système directement depuis M1 bis (voir `system.hpp`). Archive : `libcore.a`.
 | `vfs.hpp` | CORE-11 | `Vfs` : `res://`, `user://`, montages superposés, `..` refusé |
 | `reflection.hpp`, `serialization.hpp` | CORE-12 | `Reflect<T>` + `field(...)`, JSON et MessagePack, documents versionnés + migrations |
 | `file_watcher.hpp` | CORE-13 | `FileWatcher` par interrogation (fichier ou dossier récursif) |
+| `log.hpp` | CORE-01 | `Logger` et macros `LOG_INFO`, `LOG_WARNING`, `LOG_ERROR(code, ...)`, `SET_LOG_FILE`, `FLUSH_LOG_TO_FILE` : console colorée, répétitions regroupées, fichier de journal, pile d'appels en DEBUG (`<stacktrace>` : sous GCC 13, lier `-lstdc++_libbacktrace`, GCC 14+ `-lstdc++exp`, fait dans `tools/engine-sdk/engine.mk`) |
+| `paths.hpp` | — | `GET_RESOURCE_PATH` (préfixe `res/` hors release), `setWorkingDirectoryToExecutable`, `validateAssets` |
 | `system.hpp` | M1 bis | Services du système (largeur de console, chemin de l'exécutable, dossier de données, attente précise) : **déclarés ici, définis par `platform`** (`src/platform/system.cpp`). `core` n'inclut aucun en-tête système |
 
 ## Règles d'usage
@@ -32,6 +34,6 @@ système directement depuis M1 bis (voir `system.hpp`). Archive : `libcore.a`.
 
 ## Tests et démo
 
-Tests : `tests/core/*.cpp` (+ `tests/suites/logger_tests.cpp` pour le logger existant) ; `make demo-test`.
+Tests : `tests/core/*.cpp` (le logger : `tests/core/log_tests.cpp`) ; `make demo-test`.
 Démo sans fenêtre : `make core-demo` (10 000 tâches, rechargement à chaud d'une configuration, mesures) ;
 `make core-demo CORE_DEMO_ARGS="--help"` liste les réglages.

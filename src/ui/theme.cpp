@@ -4,7 +4,7 @@
 
 #include "engine/renderer/image.hpp"
 
-#include "Logger.h"
+#include <engine/core/log.hpp>
 #include <nlohmann/json.hpp>
 
 #include <charconv>

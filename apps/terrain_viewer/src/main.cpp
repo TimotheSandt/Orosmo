@@ -4,7 +4,7 @@
 
 #include <engine/core/system.hpp>
 
-#include "Logger.h"
+#include <engine/core/log.hpp>
 
 #include <charconv>
 #include <cstdlib>

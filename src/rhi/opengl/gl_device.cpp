@@ -2,7 +2,7 @@
 
 #include "gl_translate.hpp"
 
-#include "Logger.h"
+#include <engine/core/log.hpp>
 
 #include <GLFW/glfw3.h>
 

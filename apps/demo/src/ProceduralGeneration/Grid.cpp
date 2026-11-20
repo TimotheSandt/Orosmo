@@ -1,6 +1,6 @@
 #include "Grid.h"
 
-#include "Utilities.h"
+#include <engine/core/paths.hpp>
 
 namespace
 {

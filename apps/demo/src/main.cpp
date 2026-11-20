@@ -1,6 +1,6 @@
 #include "Game/Game.h"
 #include "Graphics/Backends/GraphicsAPI.h"
-#include "Logger.h"
+#include <engine/core/log.hpp>
 #include <engine/platform/window.hpp>
 
 #include <random>
@@ -17,7 +17,7 @@ int main(int argc, char **argv)
     try
     {
         const std::filesystem::path launchDirectory = std::filesystem::current_path();
-        SetWorkingDirectoryToExe();
+        engine::core::setWorkingDirectoryToExecutable();
 
 #ifdef DEBUG
         SET_LOG_FILE("logs/log.log");
@@ -72,7 +72,7 @@ int main(int argc, char **argv)
             GET_RESOURCE_PATH("shader/rhi/ui_rect.frag"),    GET_RESOURCE_PATH("shader/rhi/ui_glyph.vert"), GET_RESOURCE_PATH("shader/rhi/ui_glyph.frag"),
             GET_RESOURCE_PATH("shader/rhi/ui_layer.vert"),   GET_RESOURCE_PATH("shader/rhi/ui_layer.frag")};
 
-        if (!ValidateAssets(requiredAssets))
+        if (!engine::core::validateAssets(requiredAssets))
         {
             FLUSH_LOG_TO_FILE;
             return EXIT_FAILURE;
