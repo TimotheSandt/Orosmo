@@ -12,7 +12,7 @@ compilateur produit maintenant du code `engine::ui` avec événements nommés, l
 clair/sombre en direct, export). Le paquet de release contient shaders, ressources et exemples ; `engine init` est vérifié de bout
 en bout. Détail : `docs/releases/M3.md`.
 
-Cette PR contient aussi M2 (PR #7 restée ouverte) : la 3e passe de CodeRabbit sur M2 est relevée dans `docs/GAPS.md` (G104), non
+M2 (PR #7) est déjà fusionné dans `main` ; la 3e passe de CodeRabbit sur M2 est relevée dans `docs/GAPS.md` (G104), non
 traitée.
 
 ## Identifiants
