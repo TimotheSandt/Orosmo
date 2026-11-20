@@ -64,6 +64,7 @@ class MenuItem : public Widget
 
     bool interactive() const override { return true; }
     bool focusable() const override { return true; }
+    bool focusOnClick() const override { return false; }
     void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
     void onKey(Ui &ui, int key) override;
     bool onShortcut(Ui &ui, std::string_view shortcut) override;
@@ -91,6 +92,7 @@ class Menu : public Widget
     Widget *detached() const noexcept override { return items_.get(); }
     bool interactive() const override { return true; }
     bool focusable() const override { return true; }
+    bool focusOnClick() const override { return false; }
     void onPress(Ui &ui, glm::vec2 mouse) override;
     void onKey(Ui &ui, int key) override;
     void onHoverChanged(Ui &ui, bool hovered) override;

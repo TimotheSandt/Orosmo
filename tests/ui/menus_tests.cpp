@@ -105,6 +105,36 @@ TEST_SUITE("ui/menus")
         CHECK(saved == 0);
     }
 
+    TEST_CASE("Menus: a clicked item does not stay highlighted when its menu reopens; a click does not take the focus from a field")
+    {
+        UiHarness h;
+        bool enabled = false;
+        std::string name = "x";
+        auto root = std::make_unique<ui::VBox>();
+        auto &bar = root->emplace<ui::MenuBar>();
+        auto &view = bar.emplace<ui::Menu>("View");
+        auto &first = view.items().emplace<ui::MenuItem>("Player", "", ui::Binding<bool>::ref(enabled));
+        auto &second = view.items().emplace<ui::MenuItem>("Enabled");
+        auto &field = root->emplace<ui::TextField>(ui::Binding<std::string>::ref(name));
+        h.ui.setRoot(std::move(root));
+        h.frame();
+        h.click(UiHarness::center(field));
+        REQUIRE(h.ui.focused() == &field);
+        h.click(UiHarness::center(view));
+        CHECK(h.ui.focused() == &field); // le menu ne prend pas le focus au clic
+        CHECK(view.state() != ui::WidgetState::kFocus);
+        h.click(UiHarness::center(first));
+        CHECK(enabled);
+        h.click(UiHarness::center(view));
+        h.click(UiHarness::center(second));
+        h.moveTo({390, 290}); // le pointeur loin des menus
+        h.click(UiHarness::center(view)); // rouvert : rien n'est resté survolé, appuyé ou avec le focus
+        h.moveTo({390, 290});
+        CHECK(first.state() == ui::WidgetState::kNormal);
+        CHECK(second.state() == ui::WidgetState::kNormal);
+        CHECK(view.state() != ui::WidgetState::kFocus);
+    }
+
     TEST_CASE("ContextMenu: a right click on its parent (or inside it) opens it at the pointer; elsewhere, nothing")
     {
         UiHarness h;

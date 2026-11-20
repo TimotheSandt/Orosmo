@@ -296,6 +296,8 @@ class Widget
     // ── Comportement (redéfini par les widgets) ──
     virtual bool interactive() const { return false; } // reçoit les clics (le survol, l'état appuyé)
     virtual bool focusable() const { return false; }   // prend le focus clavier (Tab, clic)
+    // Un clic donne le focus au widget (faux pour les menus : ils ne le prennent qu'au clavier, et le focus courant reste).
+    virtual bool focusOnClick() const { return true; }
     virtual bool clipsChildren() const { return false; }
     virtual bool acceptsText() const { return false; }  // reçoit la saisie de texte (l'application ne doit pas lire les touches)
     virtual void onPress(Ui &ui, glm::vec2 mouse);
