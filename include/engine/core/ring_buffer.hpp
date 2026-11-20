@@ -1,17 +1,22 @@
+// Tampon circulaire de mesures (moyenne, min, max, historique) utilisé par le Profiler et le compteur d'images.
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <type_traits>
 #include <engine/core/log.hpp>
 
-#define MIN_CAPACITY size_t(10)
-#define MAX_CAPACITY size_t(0x8000)
-#define DEFAULT_CAPACITY size_t(100)
+namespace engine::core
+{
+
+inline constexpr std::size_t kRingBufferMinCapacity = 10;
+inline constexpr std::size_t kRingBufferMaxCapacity = 0x8000;
+inline constexpr std::size_t kRingBufferDefaultCapacity = 100;
 
 template <typename Type> class RingBuffer
 {
   public:
-    RingBuffer() noexcept { this->Init(DEFAULT_CAPACITY); }
+    RingBuffer() noexcept { this->Init(kRingBufferDefaultCapacity); }
 
     RingBuffer(size_t capacity) noexcept { this->Init(capacity); }
 
@@ -51,7 +56,7 @@ template <typename Type> class RingBuffer
 
     void Init(size_t capacity) noexcept
     {
-        capacity = std::min(std::max(capacity, MIN_CAPACITY), MAX_CAPACITY);
+        capacity = std::min(std::max(capacity, kRingBufferMinCapacity), kRingBufferMaxCapacity);
         if (this->buffer != nullptr)
         {
             delete[] this->buffer;
@@ -100,7 +105,7 @@ template <typename Type> class RingBuffer
 
     void Resize(size_t newCapacity) noexcept
     {
-        newCapacity = std::min(std::max(newCapacity, MIN_CAPACITY), MAX_CAPACITY);
+        newCapacity = std::min(std::max(newCapacity, kRingBufferMinCapacity), kRingBufferMaxCapacity);
         if (newCapacity == this->capacity)
         {
             return;
@@ -224,3 +229,5 @@ template <typename Type> class RingBuffer
     size_t size = 0;
     Type *buffer = nullptr;
 };
+
+} // namespace engine::core

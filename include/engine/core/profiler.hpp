@@ -1,7 +1,10 @@
+// Mesures nommées par image (CPU, ou GPU quand un fournisseur IGpuTimerFactory est installé) : Profiler::Profile,
+// Profiler::ProfileGPU, moyennes / min / max par nom (Profiler::GetAverageTime).
 #pragma once
 
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 #include <functional>
@@ -9,13 +12,16 @@
 #include <queue>
 #include <vector>
 #include <memory>
-#include "GpuTimer.h"
-#include "RingBuffer.h"
+#include "engine/core/gpu_timer.hpp"
+#include "engine/core/ring_buffer.hpp"
 
-#define MAX_QUERIES 12
-#define BUFFER_SIZE 512
-#define SAVE_HISTORY_EVERY_MS 3000
-#define QUERY_TIMEOUT_MS 10000
+namespace engine::core
+{
+
+inline constexpr std::size_t kProfilerMaxQueries = 12;
+inline constexpr std::size_t kProfilerBufferSize = 512;
+inline constexpr int kProfilerSaveHistoryEveryMs = 3000;
+inline constexpr int kProfilerQueryTimeoutMs = 10000;
 
 class Profiler
 {
@@ -139,7 +145,7 @@ class Profiler
         {
             auto now = std::chrono::high_resolution_clock::now();
             if (profilerData.history.size() != 0 &&
-                (now - profilerData.history.back().time) > std::chrono::milliseconds(SAVE_HISTORY_EVERY_MS))
+                (now - profilerData.history.back().time) > std::chrono::milliseconds(kProfilerSaveHistoryEveryMs))
             {
                 profilerData.buffer.Clear();
             }
@@ -172,7 +178,7 @@ class Profiler
             else
             {
                 auto now = std::chrono::high_resolution_clock::now();
-                if ((now - getQueryData()[name].lastUpdate) >= std::chrono::milliseconds(QUERY_TIMEOUT_MS))
+                if ((now - getQueryData()[name].lastUpdate) >= std::chrono::milliseconds(kProfilerQueryTimeoutMs))
                 {
                     PopQuery(name);
                 }
@@ -190,7 +196,7 @@ class Profiler
         getTimer(name).Push(time);
         auto now = std::chrono::high_resolution_clock::now();
         if (getProfilerData()[name].history.size() == 0 ||
-            (now - getProfilerData()[name].history.back().time).count() >= SAVE_HISTORY_EVERY_MS)
+            (now - getProfilerData()[name].history.back().time).count() >= kProfilerSaveHistoryEveryMs)
         {
             getProfilerData()[name].history.push_back({now, getTimer(name).GetAverage(), getTimer(name).GetMax(), getTimer(name).GetMin()});
         }
@@ -199,7 +205,7 @@ class Profiler
     static void AddQuery(const std::string &name, std::unique_ptr<IGpuTimer> query)
     {
         std::lock_guard<std::mutex> lock(getQueryMutex());
-        if (getQueries(name).size() >= MAX_QUERIES)
+        if (getQueries(name).size() >= kProfilerMaxQueries)
         {
             getQueries(name).pop();
         }
@@ -224,7 +230,7 @@ class Profiler
 
     struct ProfilerData
     {
-        RingBuffer<std::chrono::nanoseconds> buffer{BUFFER_SIZE};
+        RingBuffer<std::chrono::nanoseconds> buffer{kProfilerBufferSize};
         std::vector<TimerData> history;
     };
 
@@ -269,3 +275,5 @@ class Profiler
         return mutex;
     }
 };
+
+} // namespace engine::core

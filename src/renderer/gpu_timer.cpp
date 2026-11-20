@@ -62,7 +62,7 @@ std::optional<std::chrono::nanoseconds> GpuTimer::elapsed() const
 
 namespace
 {
-class ProfilerTimer final : public IGpuTimer
+class ProfilerTimer final : public core::IGpuTimer
 {
   public:
     ProfilerTimer(const ProfilerGpuTimerFactory &factory, rhi::Device &device, const std::string &name) : factory_(factory), timer_(device, name) {}
@@ -89,7 +89,7 @@ class ProfilerTimer final : public IGpuTimer
 };
 } // namespace
 
-std::unique_ptr<IGpuTimer> ProfilerGpuTimerFactory::CreateTimer(const std::string &name) const
+std::unique_ptr<core::IGpuTimer> ProfilerGpuTimerFactory::CreateTimer(const std::string &name) const
 {
     auto timer = std::make_unique<ProfilerTimer>(*this, device_, name);
     return timer;

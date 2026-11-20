@@ -1,4 +1,4 @@
-import "Profiler/Profiler.h"
+import "engine/core/profiler.hpp"
 
 view PerformanceView {
     @Observed var window: Window?

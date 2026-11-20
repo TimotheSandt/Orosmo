@@ -4,6 +4,9 @@
 #include <memory>
 #include <string>
 
+namespace engine::core
+{
+
 // Minuterie GPU vue par le Profiler (couche core). Le Profiler ne connaît pas le RHI : le runtime graphique (couche rhi)
 // fournit une IGpuTimerFactory quand on lui lie un backend (voir GraphicsRuntime.cpp). Sans fournisseur, ou si la
 // fabrique ne renvoie aucun minuteur (pas de périphérique), le Profiler mesure avec l'horloge CPU.
@@ -26,3 +29,5 @@ class IGpuTimerFactory
     // nullptr si aucun minuteur n'est disponible maintenant (par exemple pas de périphérique actif).
     virtual std::unique_ptr<IGpuTimer> CreateTimer(const std::string &name) const = 0;
 };
+
+} // namespace engine::core

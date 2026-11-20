@@ -1,7 +1,10 @@
-#include "FPSCounter.h"
+#include "engine/core/fps_counter.hpp"
 #include <algorithm>
 
 #include <engine/core/system.hpp>
+
+namespace engine::core
+{
 
 FPSCounter::FPSCounter()
     : lastTime(std::chrono::high_resolution_clock::now()), frameStartTime(std::chrono::high_resolution_clock::now()),
@@ -282,3 +285,5 @@ void FPSCounter::setSpinThreshold(std::chrono::nanoseconds threshold)
 {
     this->spinThreshold = std::max(threshold, std::chrono::nanoseconds(0));
 }
+
+} // namespace engine::core

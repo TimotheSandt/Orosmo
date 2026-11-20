@@ -11,6 +11,7 @@
 
 
 namespace rd = engine::renderer;
+using engine::core::Profiler;
 namespace rhi = engine::rhi;
 
 namespace

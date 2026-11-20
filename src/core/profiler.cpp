@@ -1,6 +1,9 @@
-#include "Profiler.h"
+#include "engine/core/profiler.hpp"
 
 #include <atomic>
+
+namespace engine::core
+{
 
 namespace
 {
@@ -20,3 +23,5 @@ void Profiler::ClearGpuQueries()
         data.queries = {};
     }
 }
+
+} // namespace engine::core

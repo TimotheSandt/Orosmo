@@ -1,10 +1,14 @@
+// Compteur d'images et limiteur de cadence (moyenne glissante, attente précise par core::system::preciseSleep).
 #pragma once
 
 #include <thread>
 #include <chrono>
 #include <atomic>
 
-#include "RingBuffer.h"
+#include "engine/core/ring_buffer.hpp"
+
+namespace engine::core
+{
 
 class FPSCounter
 {
@@ -119,3 +123,5 @@ class FPSCounter
     // Résolution du minuteur système demandée (voir engine/core/system.hpp) ; toujours faux hors Windows.
     bool timerInitialized{false};
 };
+
+} // namespace engine::core
