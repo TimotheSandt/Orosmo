@@ -165,9 +165,12 @@ est dans `docs/releases/`). *L'étiquette est posée par l'auteur ; à contester
 supprimées, et la démo passe sur `engine::ui` et `engine::world` (nettoyage « Orosmo », `docs/releases/M3.md`). `platform`
 reste provisoire (G96).
 
-**A32. Nom Orosmo : jusqu'où renommer ? (2026-11-20, proposition).** L'auteur a renommé le projet **Orosmo**. Fait : nom affiché
-(`mk/config.mk`, outil `engine`, README, CLAUDE.md, SDK, extension VS Code, dossier de données `Orosmo/`). **Pas fait**, car ce sont
+**A32. Nom Orosmo : jusqu'où renommer ? (2026-11-20, tranchée).** L'auteur a renommé le projet **Orosmo**. Fait : nom affiché
+(`mk/config.mk`, bannière de l'outil, README, CLAUDE.md, SDK, extension VS Code, dossier de données `Orosmo/`). **Pas fait**, car ce sont
 des décisions d'architecture (`docs/03` §2 et §7) qui cassent l'API de tous les projets : l'espace de noms `engine::`, le dossier
 `include/engine/` et le nom de l'outil en ligne de commande `engine` (`engine init`). Proposition : garder `engine::` et
 `include/engine/` (neutres, courts, déjà figés pour 0.3.x), et renommer seulement l'outil en `orosmo` (`orosmo init`) au début de
-M4, avec une note de changement incompatible. *À trancher par l'auteur.*
+M4, avec une note de changement incompatible. **Décision de l'auteur (2026-11-20)** : renommer l'outil tout de suite
+(aucun projet extérieur ne l'utilise, seulement la démo) : `orosmo init`, `orosmo update`, fichiers de release
+`orosmo-<plateforme>[.exe]` et `orosmo-pkg-<plateforme>.zip` (`chore/rename-cli-orosmo`). `engine::`, `include/engine/` et le
+dossier `engine/` des projets restent.

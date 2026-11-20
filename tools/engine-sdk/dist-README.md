@@ -6,7 +6,7 @@ to build a game project against this engine without having to compile the engine
 ## Contents
 
 ```
-engine-<platform>/
+orosmo-pkg-<platform>/
   includes/
     engine/          — public API (stable within a minor version, see docs/USING_THE_ENGINE.md in the repository):
       core/            errors (std::expected), logger, tasks, file watcher, reflection + JSON/MessagePack serialization
@@ -27,7 +27,7 @@ engine-<platform>/
     terrain_gen/     — command-line generator (no window, no GPU):  make -C examples/terrain_gen
     terrain_viewer/  — viewer with a .cui control panel:            make -C examples/terrain_viewer
     ui_gallery/      — every widget, layout, event and theme of engine::ui: make -C examples/ui_gallery
-  vcpkg.json         — third-party dependencies (make install in a project created by `engine init`)
+  vcpkg.json         — third-party dependencies (make install in a project created by `orosmo init`)
   .gitignore, README.md
 ```
 
@@ -46,7 +46,7 @@ No Python, no Rust toolchain required. The CUI precompiler ships as a native bin
 ### 1 — Point your Makefile at the engine
 
 ```makefile
-ENGINE_DIR   := path/to/engine-<platform>   # this directory
+ENGINE_DIR   := path/to/orosmo-pkg-<platform>   # this directory
 GAME_SRC_DIR := src
 BUILD_TYPE   ?= release                      # debug | dev | release
 include $(ENGINE_DIR)/make/engine.mk
@@ -71,7 +71,7 @@ SHELL := /bin/sh
 CXX ?= g++
 CC  ?= gcc
 
-ENGINE_DIR   := path/to/engine-<platform>
+ENGINE_DIR   := path/to/orosmo-pkg-<platform>
 GAME_SRC_DIR := src
 BUILD_TYPE   ?= release
 
@@ -157,7 +157,7 @@ Recommended workflows:
 
 Both examples build from this package alone: `ENGINE_DIR` defaults to the package root when they sit in `examples/`.
 A program that renders needs the RHI shaders and, for `engine::ui`, a font and a theme at run time: the examples copy
-`shaders/rhi`, `res/fonts` and `res/themes` into `bin/res/`. The template project created by `engine init` does the same.
+`shaders/rhi`, `res/fonts` and `res/themes` into `bin/res/`. The template project created by `orosmo init` does the same.
 
 ## Interface language
 

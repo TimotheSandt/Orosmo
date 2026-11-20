@@ -57,12 +57,12 @@ make all-debug
 | `make debug` / `make release` | Archives du moteur dans `lib/<type>/` |
 | `make all-debug` / `make all-release` | Moteur → `apps/demo/engine/` → démo |
 | `make sync-demo` | Copie le moteur construit dans `apps/demo/engine/` |
-| `make dist` / `make engine-tool` | Paquet du moteur / outil `engine init` |
+| `make dist` / `make engine-tool` | Paquet du moteur / outil `orosmo init` |
 | `make terrain-gen` / `make terrain-gen-check` | Générateur en ligne de commande (TOOL-02) / son déterminisme et ses codes de retour |
 | `make viewer-run ARGS="--seed 42 --preset mountains"` / `make viewer-capture` | Visualiseur de terrain (TOOL-01) / images sans fenêtre, thèmes sombre et clair |
 | `make gallery-run` / `make gallery-capture` | Galerie de l'interface : chaque widget, conteneur, événement et thème (exemple) |
 | `make cui-test` | Tests du compilateur du langage d'interface (cargo test + entrées invalides de bout en bout) |
-| `make e2e-init` | De bout en bout depuis le paquet : `engine init`, compilation, lancement, exemples (BLD-02) |
+| `make e2e-init` | De bout en bout depuis le paquet : `orosmo init`, compilation, lancement, exemples (BLD-02) |
 | `make clean` / `make fclean` / `make demo-fclean` | Nettoyage |
 | `sh tools/check-repo.sh` | Contrôle d'hygiène du dépôt (binaires, casse, CRLF) |
 | `sh tools/format_sources.sh` | Formatage (`clang-format`) |
@@ -87,7 +87,7 @@ Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `lib
 
 - Vision, checklist, architecture : [docs/](docs/README.md)
 - Couche graphique (RHI) : [docs/RHI.md](docs/RHI.md)
-- **Utiliser le moteur depuis une release** (`engine init`, paquet, projet minimal, stabilité de l'API) : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)
+- **Utiliser le moteur depuis une release** (`orosmo init`, paquet, projet minimal, stabilité de l'API) : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)
 - Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `engine/ui`)
 - Nettoyage M00 : [docs/CLEANUP_PLAN.md](docs/CLEANUP_PLAN.md), [docs/releases/M00.md](docs/releases/M00.md)
 

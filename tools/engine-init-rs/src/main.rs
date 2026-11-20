@@ -61,16 +61,16 @@ fn platform() -> &'static str {
     }
 }
 
-fn engine_asset_name() -> String {
+fn tool_asset_name() -> String {
     if cfg!(windows) {
-        format!("engine-{}.exe", platform())
+        format!("orosmo-{}.exe", platform())
     } else {
-        format!("engine-{}", platform())
+        format!("orosmo-{}", platform())
     }
 }
 
 fn engine_pkg_name() -> String {
-    format!("engine-pkg-{}.zip", platform())
+    format!("orosmo-pkg-{}.zip", platform())
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ fn main() {
 fn take_package_option(args: &mut Vec<String>) -> Result<Option<PathBuf>, String> {
     if let Some(i) = args.iter().position(|a| a == "--package") {
         if i + 1 >= args.len() {
-            return Err("--package expects the path of an engine-pkg-<platform>.zip".to_string());
+            return Err("--package expects the path of an orosmo-pkg-<platform>.zip".to_string());
         }
         let path = PathBuf::from(args.remove(i + 1));
         args.remove(i);
@@ -115,7 +115,7 @@ fn run() -> Result<(), String> {
     }
 }
 
-// ── engine init [project-name] ────────────────────────────────────────────────
+// ── orosmo init [project-name] ────────────────────────────────────────────────
 
 fn cmd_init(args: &[String]) -> Result<(), String> {
     let (name, dir, in_place) = match args.first() {
@@ -163,7 +163,7 @@ fn cmd_init(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-// ── engine update [path] ──────────────────────────────────────────────────────
+// ── orosmo update [path] ──────────────────────────────────────────────────────
 
 fn cmd_update(args: &[String]) -> Result<(), String> {
     let project_dir = args.first()
@@ -358,7 +358,7 @@ fn extract_engine(project_dir: &Path, release: Option<&Release>) -> Result<(), S
 
     Err(format!(
         "no engine package available: {REPO_HOST} unreachable and this binary has no embedded payload.\n\
-         Download engine-pkg-{}.zip from {REPO_HOST}/{GITHUB_REPO} and run 'engine update' when online.",
+         Download orosmo-pkg-{}.zip from {REPO_HOST}/{GITHUB_REPO} and run 'orosmo update' when online.",
         platform()
     ))
 }
@@ -458,12 +458,12 @@ fn is_text_file(name: &str) -> bool {
 }
 
 // ── Tool binary self-update ───────────────────────────────────────────────────
-// If engine[.exe] exists in the project dir and a newer release is available,
+// If orosmo[.exe] exists in the project dir and a newer release is available,
 // replaces it with the binary from the GitHub release.
 
 fn update_tool_binary(project_dir: &Path, release: Option<&Release>) -> Result<(), String> {
     let ext = if cfg!(windows) { ".exe" } else { "" };
-    let dest = project_dir.join(format!("engine{ext}"));
+    let dest = project_dir.join(format!("orosmo{ext}"));
     if !dest.exists() {
         return Ok(());
     }
@@ -471,17 +471,17 @@ fn update_tool_binary(project_dir: &Path, release: Option<&Release>) -> Result<(
     let release = match release {
         Some(r) => r,
         None => {
-            println!("  [skip] engine{ext} (GitHub unreachable, binary not updated)");
+            println!("  [skip] orosmo{ext} (GitHub unreachable, binary not updated)");
             return Ok(());
         }
     };
 
     if !is_newer(&release.tag, ENGINE_VERSION) {
-        println!("  [skip] engine{ext} (already up to date — v{ENGINE_VERSION})");
+        println!("  [skip] orosmo{ext} (already up to date — v{ENGINE_VERSION})");
         return Ok(());
     }
 
-    let asset_name = engine_asset_name();
+    let asset_name = tool_asset_name();
     let url = release.find_asset(&asset_name)
         .ok_or_else(|| format!("release {} has no asset '{asset_name}'", release.tag))?;
 
@@ -567,7 +567,7 @@ fn merge_config_mk(path: &Path, template: &str, project_dir: &Path) -> Result<()
 
     let mut content = existing;
     if !content.ends_with('\n') { content.push('\n'); }
-    content.push_str("\n# Added by engine update\n");
+    content.push_str("\n# Added by orosmo update\n");
     for line in &new_lines {
         content.push_str(line);
         content.push('\n');
@@ -710,11 +710,11 @@ fn print_usage() {
     if !ENGINE_HOMEPAGE.is_empty() { eprintln!("  {ENGINE_HOMEPAGE}"); }
     eprintln!();
     eprintln!("Usage:");
-    eprintln!("  engine init [project-name]   create a new project");
-    eprintln!("  engine update [path]         update engine package and template files");
-    eprintln!("  --package <engine-pkg.zip>   use this local package instead of downloading the latest release");
+    eprintln!("  orosmo init [project-name]   create a new project");
+    eprintln!("  orosmo update [path]         update engine package and template files");
+    eprintln!("  --package <orosmo-pkg.zip>   use this local package instead of downloading the latest release");
     eprintln!();
-    eprintln!("'engine init' with no argument initialises the current directory,");
+    eprintln!("'orosmo init' with no argument initialises the current directory,");
     eprintln!("using the directory name as the project name.");
     eprintln!();
     eprintln!("Both commands download the engine package from the latest release on {REPO_HOST}.");
@@ -723,16 +723,16 @@ fn print_usage() {
     eprintln!("Created files:");
     eprintln!("  engine/          pre-built engine (headers, libraries, tools)");
     eprintln!("  src/             C++ sources from the reference demo project");
-    eprintln!("  Makefile         build system  — updated by 'engine update'");
-    eprintln!("  .gitignore       standard ignores — updated by 'engine update'");
+    eprintln!("  Makefile         build system  — updated by 'orosmo update'");
+    eprintln!("  .gitignore       standard ignores — updated by 'orosmo update'");
     eprintln!("  config.mk        project config (name, version, ...) — yours to edit");
     eprintln!("  config.local.mk  machine-specific paths — gitignored");
     eprintln!();
-    eprintln!("'engine update' (in a project directory):");
+    eprintln!("'orosmo update' (in a project directory):");
     eprintln!("  - Downloads and replaces engine/ with the latest release");
     eprintln!("  - Updates Makefile and .gitignore if unmodified (prompts otherwise)");
     eprintln!("  - Appends new fields to config.mk without touching existing values");
-    eprintln!("  - Updates a local engine[.exe] binary if one exists in the project");
+    eprintln!("  - Updates a local orosmo[.exe] binary if one exists in the project");
 }
 
 #[cfg(test)]

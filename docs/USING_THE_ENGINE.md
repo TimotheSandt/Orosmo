@@ -3,7 +3,7 @@
 DOC-01 / BLD-01. Guide pour écrire un programme avec une **release** du moteur, sans compiler le moteur lui-même. Pour
 travailler sur le moteur (le dépôt), voir le [README](../README.md).
 
-Ce qui est décrit ici est vérifié par `make e2e-init` (CI Linux x64, à chaque poussée) : paquet construit, `engine init
+Ce qui est décrit ici est vérifié par `make e2e-init` (CI Linux x64, à chaque poussée) : paquet construit, `orosmo init
 --package` d'un projet neuf, compilation, lancement sans fenêtre, et les trois exemples compilés depuis le paquet. Sous Windows
 et macOS, la même étape tourne en CI mais n'a pas encore été observée verte (`docs/GAPS.md`).
 
@@ -11,8 +11,8 @@ et macOS, la même étape tourne en CI mais n'a pas encore été observée verte
 
 | Fichier | Rôle |
 | --- | --- |
-| `engine-<plateforme>[.exe]` | outil en ligne de commande : `engine init` (nouveau projet), `engine update` (mise à jour) |
-| `engine-pkg-<plateforme>.zip` | le paquet : en-têtes, bibliothèques statiques debug et release, `make/engine.mk`, compilateur `cui`, shaders du RHI, police et thèmes, exemples, `vcpkg.json` |
+| `orosmo-<plateforme>[.exe]` | outil en ligne de commande : `orosmo init` (nouveau projet), `orosmo update` (mise à jour) |
+| `orosmo-pkg-<plateforme>.zip` | le paquet : en-têtes, bibliothèques statiques debug et release, `make/engine.mk`, compilateur `cui`, shaders du RHI, police et thèmes, exemples, `vcpkg.json` |
 
 Plateformes : `linux-x64`, `linux-arm64`, `windows-x64` (MinGW), `macos-arm64`, `macos-x64`. Le contenu détaillé du paquet est dans
 son `README.md` (copie de `tools/engine-sdk/dist-README.md`).
@@ -29,24 +29,24 @@ Ni Rust ni Python ne sont nécessaires pour utiliser une release (`cui` est livr
 
 ## 3. Créer un projet
 
-### Avec l'outil `engine` (recommandé)
+### Avec l'outil `orosmo` (recommandé)
 
 ```bash
-./engine-linux-x64 init mygame          # télécharge le paquet de la dernière release (repli : paquet intégré à l'outil)
-./engine-linux-x64 init --package engine-pkg-linux-x64.zip mygame   # hors ligne, avec un paquet déjà téléchargé
+./orosmo-linux-x64 init mygame          # télécharge le paquet de la dernière release (repli : paquet intégré à l'outil)
+./orosmo-linux-x64 init --package orosmo-pkg-linux-x64.zip mygame   # hors ligne, avec un paquet déjà téléchargé
 cd mygame
 make install                            # dépendances vcpkg du moteur (une fois)
 make debug && make run                  # bin/debug/main
 ```
 
-`engine init` crée `engine/` (le paquet), `src/` (le projet de référence : la démo du moteur), `Makefile`, `.gitignore`,
-`config.mk` (nom, version : à vous) et `config.local.mk` (chemins de la machine, ignoré par git). `engine update` remplace `engine/`
+`orosmo init` crée `engine/` (le paquet), `src/` (le projet de référence : la démo du moteur), `Makefile`, `.gitignore`,
+`config.mk` (nom, version : à vous) et `config.local.mk` (chemins de la machine, ignoré par git). `orosmo update` remplace `engine/`
 par la dernière release, met à jour `Makefile` et `.gitignore` s'ils n'ont pas été modifiés, et ajoute à `config.mk` les champs
 nouveaux sans toucher aux vôtres ; `--package` marche aussi.
 
 ### Avec le paquet seul (`ENGINE_DIR`)
 
-Décompressez `engine-pkg-<plateforme>.zip` où vous voulez, puis, dans le `Makefile` de votre projet :
+Décompressez `orosmo-pkg-<plateforme>.zip` où vous voulez, puis, dans le `Makefile` de votre projet :
 
 ```makefile
 ENGINE_DIR   := chemin/vers/engine-pkg      # le dossier décompressé
@@ -58,7 +58,7 @@ include $(ENGINE_DIR)/make/engine.mk
 `engine.mk` fournit `ENGINE_CXXFLAGS`, `ENGINE_INCLUDES`, `ENGINE_LIBS` / `ENGINE_LINK_LIBS`, `ENGINE_LDFLAGS`, `ENGINE_EXE_EXT` et
 les règles du langage d'interface (`GEN_CPP_SOURCES`). Les dépendances tierces sont cherchées dans
 `$(ENGINE_DIR)/vcpkg_installed/<triplet>` : installez-y les dépendances du `vcpkg.json` du paquet (c'est ce que fait `make install`
-dans un projet créé par `engine init`), ou faites-en un lien vers une installation existante (ce que fait `make e2e-init`).
+dans un projet créé par `orosmo init`), ou faites-en un lien vers une installation existante (ce que fait `make e2e-init`).
 
 ## 4. Projet minimal
 
@@ -106,7 +106,7 @@ Deux exemples plus complets sont dans le paquet : `examples/terrain_gen` (ligne 
 
 Un programme qui dessine charge les **shaders du RHI** (`shaders/rhi/` du paquet) ; une interface `engine::ui` a besoin d'une
 **police** (`res/fonts/Roboto-Regular.ttf`) et d'un **thème** (`res/themes/dark.json`, `light.json`, qui étendent `base.json`). Les
-exemples et le projet d'`engine init` les copient dans `bin/res/` à la compilation ; le chemin est donné au moteur
+exemples et le projet d'`orosmo init` les copient dans `bin/res/` à la compilation ; le chemin est donné au moteur
 (`SceneRenderer::create(..., {.shaderDirectory = ...})`, `ThemeHost::load(...)`, `engine::ui::TextRenderer::loadFont(...)`).
 
 ## 6. Interface

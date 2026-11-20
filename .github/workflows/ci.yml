@@ -177,7 +177,7 @@ jobs:
       - name: UI gallery (every widget, layout, theme; headless captures)
         run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make gallery-capture
 
-      - name: End to end from the package (BLD-02; engine init, build, run, examples)
+      - name: End to end from the package (BLD-02; orosmo init, build, run, examples)
         run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make e2e-init
 
       - name: Upload capture

@@ -28,8 +28,8 @@ config.local.mk
 /tools/*/target/
 /tools/cui
 /tools/cui.exe
-/tools/engine
-/tools/engine.exe
+/tools/orosmo
+/tools/orosmo.exe
 
 # ── Editors, IDEs, assistants, OS ─────────────────────────────────────────────
 .vscode/
