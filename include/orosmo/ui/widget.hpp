@@ -160,7 +160,9 @@ template <typename T> Binding<double> numberBinding(T &value)
                     return;
                 if constexpr (std::is_integral_v<T>)
                 {
-                    const double r = v < 0.0 ? -std::floor(-v + 0.5) : std::floor(v + 0.5);
+                    // std::round : demi vers l'extérieur, sans erreur d'arrondi (floor(v + 0.5) donnait 1 pour 0.49999999999999994 et
+                    // décalait les impairs au-delà de 2^52).
+                    const double r = std::round(v);
                     // Bornes EXACTES en double : lowest() (0 ou -2^n) et 2^n, borne supérieure exclue ; max() converti en double
                     // pourrait être arrondi à 2^n, qui ne tient plus dans T.
                     const double lo = static_cast<double>(std::numeric_limits<T>::lowest());
