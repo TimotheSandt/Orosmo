@@ -393,7 +393,8 @@ ColorEditor::ColorEditor(Binding<Color> value, bool alpha) : VBox("box"), value_
 {
     original_ = value_.value();
     auto &top = emplace<HBox>();
-    top.emplace<ColorWheel>(value_).onChange([this](const Event &) { fire(EventKind::kChange); });
+    wheel_ = &top.emplace<ColorWheel>(value_);
+    wheel_->onChange([this](const Event &) { fire(EventKind::kChange); });
     auto &side = top.emplace<VBox>();
     side.setWidth(SizeSpec::fill());
     side.emplace<Label>("Format", "caption");
@@ -456,16 +457,16 @@ void ColorEditor::rebuildChannels()
     {
         const double max = specs[i].max;
         Binding<double> b;
-        // Teinte d'un gris (saturation nulle) : le RGB ne la contient pas ; celle choisie est gardée dans hue_ pour que la
-        // saturation, ajoutée ensuite, parte de cette teinte et non du rouge.
+        // Teinte d'un gris (saturation nulle) : le RGB ne la contient pas ; celle choisie (à la roue ou au curseur H) est gardée
+        // par la roue, pour que la saturation, ajoutée ensuite, parte de cette teinte et non du rouge ni d'une autre teinte.
         const bool hueSpace = format != ColorFormat::kRgb;
         b.get = [this, toSpace, i, max, hueSpace] {
             const glm::vec3 s = toSpace(value_.value());
             if (hueSpace && i == 0)
             {
                 if (s[1] <= 0.0f)
-                    return static_cast<double>(hue_) * max;
-                hue_ = s[0];
+                    return static_cast<double>(wheel_->hue()) * max;
+                wheel_->setHue(s[0]);
             }
             return static_cast<double>(s[i]) * max;
         };
@@ -474,10 +475,10 @@ void ColorEditor::rebuildChannels()
                 const Color c = value_.value();
                 glm::vec3 s = toSpace(c);
                 if (hueSpace && s[1] <= 0.0f)
-                    s[0] = hue_;
+                    s[0] = wheel_->hue();
                 s[i] = static_cast<float>(v / max);
                 if (hueSpace && i == 0)
-                    hue_ = s[0];
+                    wheel_->setHue(s[0]);
                 value_.set(Color(fromSpace(s), c.a));
             };
         channels_->emplace<Slider>(std::move(b), 0.0, max, 1.0).setPrefix(specs[i].prefix).setWidth(SizeSpec::fill());

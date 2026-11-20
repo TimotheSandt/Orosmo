@@ -58,7 +58,9 @@ class ColorWheel : public Widget
   public:
     explicit ColorWheel(Binding<Color> value);
     Color color() const;
+    // Teinte gardée (0..1) : celle d'un gris n'est pas dans le RGB. L'éditeur de couleur la partage avec ses curseurs.
     float hue() const noexcept { return hue_; }
+    void setHue(float hue) noexcept { hue_ = hue; }
 
     bool interactive() const override { return true; }
     void onPress(Ui &ui, glm::vec2 mouse) override;
@@ -114,9 +116,9 @@ class ColorEditor : public VBox
     ColorFormat format_ = ColorFormat::kRgb;
     int formatIndex_ = 0;
     VBox *channels_;
+    ColorWheel *wheel_; // sa teinte (choisie à la roue ou aux curseurs) est la teinte gardée d'un gris
     Color original_;
     std::string hex_;
-    float hue_ = 0.0f; // dernière teinte (0..1) choisie ou lue : celle d'un gris n'est pas dans le RGB
 };
 
 // Éditeur de dégradé : la barre du dégradé et ses arrêts ; glisser un arrêt le déplace, cliquer sur la barre en ajoute un (de la

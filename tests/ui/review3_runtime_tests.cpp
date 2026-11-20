@@ -14,6 +14,19 @@ using tests::UiHarness;
 
 namespace
 {
+std::vector<ui::Slider *> slidersOf(ui::Widget &root)
+{
+    std::vector<ui::Slider *> out;
+    std::function<void(ui::Widget &)> walk = [&](ui::Widget &w) {
+        if (auto *s = dynamic_cast<ui::Slider *>(&w))
+            out.push_back(s);
+        for (const auto &c : w.children())
+            walk(*c);
+    };
+    walk(root);
+    return out;
+}
+
 template <typename T> T *firstOf(ui::Widget &root)
 {
     if (auto *t = dynamic_cast<T *>(&root))
@@ -266,5 +279,52 @@ TEST_SUITE("ui/review3")
             CHECK(changes == 0);
             h.release({1, 1});
         }
+    }
+
+    TEST_CASE("ColorEditor: a grey's hue is shared by the wheel and the sliders")
+    {
+        UiHarness h;
+        h.viewport = {600, 600};
+        ui::Color color{0.5f, 0.5f, 0.5f, 1.0f};
+        auto root = std::make_unique<ui::Overlay>();
+        auto &editor = root->emplace<ui::ColorEditor>(ui::Binding<ui::Color>::ref(color));
+        editor.setAlign(ui::Align::kStart, ui::Align::kStart);
+        editor.setWidth(ui::SizeSpec::fixed(420)).setHeight(ui::SizeSpec::fixed(380));
+        h.ui.setRoot(std::move(root));
+        h.frame();
+        auto *format = editor.findAs<ui::Dropdown>("format");
+        REQUIRE(format != nullptr);
+        h.click(UiHarness::center(*format));
+        REQUIRE(h.ui.popup() != nullptr);
+        h.click(UiHarness::center(*h.ui.popup()->children()[0]->children()[1])); // HSV
+        h.frame();
+        REQUIRE(editor.format() == ui::ColorFormat::kHsv);
+        auto *wheel = firstOf<ui::ColorWheel>(editor);
+        REQUIRE(wheel != nullptr);
+        auto sliders = slidersOf(editor);
+        REQUIRE(sliders.size() == 3); // H, S, V
+
+        // Teinte choisie à la roue pour un gris (la couleur ne change pas) : le curseur H la montre, S part d'elle.
+        const float outer = std::min(wheel->rect().size.x, wheel->rect().size.y) * 0.5f;
+        h.click(UiHarness::center(*wheel) + glm::vec2(0, outer * 0.9f)); // bas de l'anneau : teinte 1/4
+        REQUIRE(wheel->hue() == doctest::Approx(0.25f).epsilon(0.02));
+        CHECK(color == ui::Color{0.5f, 0.5f, 0.5f, 1.0f});
+        h.frame();
+        CHECK(sliders[0]->value() == doctest::Approx(wheel->hue() * 360.0f).epsilon(0.01));
+        h.ui.focus(sliders[1]);
+        h.keys({ui::kKeyEnd}); // S = 100 %
+        h.frame();
+        const glm::vec3 hsv = ui::rgbToHsv(glm::vec3(color));
+        CHECK(hsv.y == doctest::Approx(1.0f).epsilon(0.01));
+        CHECK(hsv.x == doctest::Approx(0.25f).epsilon(0.02));
+
+        // Retour au gris, puis teinte réglée au curseur H : la roue la prend.
+        h.ui.focus(sliders[1]);
+        h.keys({ui::kKeyHome}); // S = 0
+        h.frame();
+        h.ui.focus(sliders[0]);
+        h.keys({ui::kKeyHome}); // H = 0
+        h.frame();
+        CHECK(wheel->hue() == doctest::Approx(0.0f).epsilon(0.01));
     }
 }
