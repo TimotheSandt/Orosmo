@@ -82,6 +82,32 @@ TEST_SUITE("ui/text")
         CHECK(sizes > 15);
     }
 
+    TEST_CASE("letters are evenly spaced: a repeated pair always advances by the same distance (no per-letter rounding)")
+    {
+        UI::TextRenderer text;
+        REQUIRE(text.init(800, 600));
+        REQUIRE(text.loadFont(roboto().string(), "default", 48));
+        for (float scale = 0.26f; scale <= 0.8f; scale += 0.027f)
+        {
+            rd::DrawList list;
+            text.setDrawListSink(&list);
+            text.renderText("rlrlrlrlrlrl", 5.3f, 10.0f, scale);
+            text.setDrawListSink(nullptr);
+            std::vector<float> lefts;
+            for (const auto &c : list.commands)
+                if (const auto *g = std::get_if<rd::DrawGlyphs>(&c))
+                    for (std::size_t q = 0; q + 24 <= g->vertices.size(); q += 24)
+                        lefts.push_back(g->vertices[q]);
+            REQUIRE(lefts.size() == 12);
+            CAPTURE(scale);
+            const float step = lefts[2] - lefts[0]; // « rl » : même avance à chaque répétition
+            for (std::size_t i = 2; i + 2 < lefts.size(); i += 2)
+                CHECK(lefts[i + 2] - lefts[i] == doctest::Approx(step).epsilon(1e-4));
+            for (std::size_t i = 1; i + 2 < lefts.size(); i += 2)
+                CHECK(lefts[i + 2] - lefts[i] == doctest::Approx(step).epsilon(1e-4));
+        }
+    }
+
     TEST_CASE("TextRendererFont: the font named by the style is loaded on first use; an unreadable one falls back to the default")
     {
         UI::TextRenderer text;
