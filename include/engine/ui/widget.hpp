@@ -319,6 +319,9 @@ class Widget
     virtual void onKey(Ui &ui, int key);                // engine::ui::Key
     virtual void onText(Ui &ui, std::string_view text); // UTF-8 saisi
     virtual void onFocusChanged(Ui &ui, bool focused);
+    // Raccourci clavier normalisé (`normalizeShortcut` : "Ctrl+S", "Ctrl+Shift+Z", "F5") ; vrai si le widget l'a pris (élément
+    // de menu, bouton). L'interface le propose aux widgets visibles et actifs, dans l'ordre de l'arbre.
+    virtual bool onShortcut(Ui &ui, std::string_view shortcut);
 
     // Programme l'événement : il est appelé à la fin de `Ui::update`, après les écritures différées qui le précèdent.
     void emit(Ui &ui, EventKind kind, bool active = true);

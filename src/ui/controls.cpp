@@ -50,12 +50,63 @@ void TextEditState::moveTo(std::size_t position, bool extend)
     caret = std::min(position, text.size());
     if (!extend)
         anchor = caret;
+    groupOpen_ = false; // un déplacement termine le pas d'annulation en cours
 }
 
 void TextEditState::selectAll()
 {
     anchor = 0;
     caret = text.size();
+    groupOpen_ = false;
+}
+
+void TextEditState::beginEdit(EditKind kind, std::string_view inserted)
+{
+    const bool coalesce = groupOpen_ && kind != EditKind::kOther && kind == lastKind_ && !hasSelection();
+    if (!coalesce)
+    {
+        undo_.push_back({text, caret, anchor});
+        if (undo_.size() > kMaxHistory)
+            undo_.erase(undo_.begin());
+    }
+    redo_.clear();
+    lastKind_ = kind;
+    groupOpen_ = kind != EditKind::kOther && inserted.find_first_of(" \n\t") == std::string_view::npos;
+}
+
+bool TextEditState::undo()
+{
+    if (undo_.empty())
+        return false;
+    redo_.push_back({text, caret, anchor});
+    Snapshot s = std::move(undo_.back());
+    undo_.pop_back();
+    text = std::move(s.text);
+    caret = s.caret;
+    anchor = s.anchor;
+    groupOpen_ = false;
+    return true;
+}
+
+bool TextEditState::redo()
+{
+    if (redo_.empty())
+        return false;
+    undo_.push_back({text, caret, anchor});
+    Snapshot s = std::move(redo_.back());
+    redo_.pop_back();
+    text = std::move(s.text);
+    caret = s.caret;
+    anchor = s.anchor;
+    groupOpen_ = false;
+    return true;
+}
+
+void TextEditState::resetHistory() noexcept
+{
+    undo_.clear();
+    redo_.clear();
+    groupOpen_ = false;
 }
 
 // ── RadioButton ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -310,39 +361,58 @@ TextArea::TextArea(Binding<std::string> value) : Widget("textArea"), value_(std:
 
 std::string TextArea::text() const { return syncing_ ? value_.value() : edit_.text; }
 
-std::vector<TextArea::Line> TextArea::lines() const
+std::vector<TextArea::Line> TextArea::lines(const Ui &ui, const Style &style) const
 {
     std::vector<Line> out;
-    const std::string &t = syncing_ ? edit_.text : edit_.text;
+    const std::string &t = edit_.text;
+    const float width = inset(rect_, style.padding).size.x - gutter(ui, style);
     std::size_t begin = 0;
-    for (;;)
+    for (std::size_t number = 0;; ++number)
     {
         const std::size_t nl = t.find('\n', begin);
-        if (nl == std::string::npos)
+        const std::size_t end = nl == std::string::npos ? t.size() : nl;
+        std::size_t start = begin;
+        // Retour automatique : la plus longue partie qui tient, coupée après la dernière espace s'il y en a une.
+        while (wrap_ && width > 0.0f && start < end)
         {
-            out.push_back({begin, t.size()});
-            break;
+            const std::string_view rest = std::string_view(t).substr(start, end - start);
+            if (ui.font().measure(rest, style.fontSize, style.font.get()).x <= width)
+                break;
+            std::size_t fit = ui.font().caretIndex(rest, style.fontSize, width, style.font.get());
+            while (fit > 0 && ui.font().measure(rest.substr(0, fit), style.fontSize, style.font.get()).x > width)
+                fit = utf8Previous(rest, fit);
+            if (fit == 0)
+                fit = utf8Length(rest, 0); // au moins un caractère par rangée
+            const std::size_t space = rest.substr(0, fit).find_last_of(' ');
+            const std::size_t cut = space != std::string_view::npos && space > 0 ? space + 1 : fit;
+            out.push_back({start, start + cut, start == begin, false, number});
+            start += cut;
         }
-        out.push_back({begin, nl});
+        out.push_back({start, end, start == begin, true, number});
+        if (nl == std::string::npos)
+            break;
         begin = nl + 1;
     }
     return out;
 }
 
-std::size_t TextArea::lineOf(std::size_t position) const
+std::size_t TextArea::lineOf(const std::vector<Line> &ls, std::size_t position)
 {
-    const auto ls = lines();
+    // À la coupure d'un retour automatique, le curseur est au début de la rangée suivante.
     for (std::size_t i = 0; i < ls.size(); ++i)
-        if (position <= ls[i].end)
+        if (position < ls[i].end || (position == ls[i].end && ls[i].last))
             return i;
     return ls.size() - 1;
 }
+
+std::size_t TextArea::rowCount(const Ui &ui) const { return lines(ui, style(ui.theme())).size(); }
 
 float TextArea::gutter(const Ui &ui, const Style &style) const
 {
     if (!lineNumbers_)
         return 0.0f;
-    const std::string widest(std::to_string(lines().size()).size() + 1, '0');
+    const auto count = static_cast<std::size_t>(std::count(edit_.text.begin(), edit_.text.end(), '\n')) + 1;
+    const std::string widest(std::to_string(count).size() + 1, '0');
     return ui.font().measure(widest, style.fontSize, style.font.get()).x + style.spacing;
 }
 
@@ -351,7 +421,7 @@ std::size_t TextArea::positionAt(const Ui &ui, glm::vec2 mouse) const
     const Style s = style(ui.theme());
     const Rect content = inset(rect_, s.padding);
     const float lh = lineHeight(ui, s);
-    const auto ls = lines();
+    const auto ls = lines(ui, s);
     const auto row = static_cast<std::size_t>(std::clamp((mouse.y - content.position.y + scroll_) / lh, 0.0f, static_cast<float>(ls.size() - 1)));
     const Line &l = ls[row];
     const std::string_view text = std::string_view(edit_.text).substr(l.begin, l.end - l.begin);
@@ -374,7 +444,7 @@ void TextArea::revealCaret(const Ui &ui)
     const Style s = style(ui.theme());
     const float lh = lineHeight(ui, s);
     const float view = inset(rect_, s.padding).size.y;
-    const float y = static_cast<float>(lineOf(edit_.caret)) * lh;
+    const float y = static_cast<float>(lineOf(lines(ui, s), edit_.caret)) * lh;
     if (y < scroll_)
         scroll_ = y;
     else if (y + lh > scroll_ + view)
@@ -387,7 +457,11 @@ void TextArea::onFocusChanged(Ui &ui, bool focused)
     Widget::onFocusChanged(ui, focused);
     if (focused)
     {
-        edit_.text = value_.value();
+        if (std::string v = value_.value(); v != edit_.text)
+        {
+            edit_.text = std::move(v); // changée hors de l'éditeur : l'historique ne s'applique plus
+            edit_.resetHistory();
+        }
         edit_.caret = std::min(edit_.caret, edit_.text.size());
         edit_.anchor = edit_.caret;
         syncing_ = false;
@@ -419,6 +493,7 @@ void TextArea::onText(Ui &ui, std::string_view text)
             clean.push_back(c);
     if (clean.empty())
         return;
+    edit_.beginEdit(TextEditState::EditKind::kTyping, clean);
     edit_.insert(clean);
     desiredX_ = -1.0f;
     changed(ui);
@@ -427,12 +502,12 @@ void TextArea::onText(Ui &ui, std::string_view text)
 void TextArea::onKey(Ui &ui, int key)
 {
     const bool extend = ui.shiftHeld();
-    const auto ls = lines();
-    const std::size_t row = lineOf(edit_.caret);
     const Style s = style(ui.theme());
+    const auto ls = lines(ui, s);
+    const std::size_t row = lineOf(ls, edit_.caret);
     auto xOf = [&](std::size_t pos)
     {
-        const Line &l = ls[lineOf(pos)];
+        const Line &l = ls[lineOf(ls, pos)];
         return ui.font().measure(std::string_view(edit_.text).substr(l.begin, pos - l.begin), s.fontSize, s.font.get()).x;
     };
     auto toRow = [&](std::size_t r)
@@ -472,8 +547,8 @@ void TextArea::onKey(Ui &ui, int key)
         edit_.moveTo(ls[row].begin, extend);
         desiredX_ = -1.0f;
         break;
-    case kKeyEnd:
-        edit_.moveTo(ls[row].end, extend);
+    case kKeyEnd: // fin de la rangée (avant l'espace de coupure d'un retour automatique)
+        edit_.moveTo(ls[row].last || ls[row].end == ls[row].begin ? ls[row].end : utf8Previous(edit_.text, ls[row].end), extend);
         desiredX_ = -1.0f;
         break;
     case kKeySelectAll: edit_.selectAll(); break;
@@ -485,6 +560,7 @@ void TextArea::onKey(Ui &ui, int key)
         if (edit_.hasSelection() && !readOnly_)
         {
             ui.setClipboardText(edit_.selected());
+            edit_.beginEdit(TextEditState::EditKind::kOther);
             edit_.eraseSelection();
             edited = true;
         }
@@ -492,6 +568,7 @@ void TextArea::onKey(Ui &ui, int key)
     case kKeyPaste:
         if (!readOnly_)
         {
+            edit_.beginEdit(TextEditState::EditKind::kOther);
             edit_.insert(ui.clipboardText());
             edited = true;
         }
@@ -499,6 +576,7 @@ void TextArea::onKey(Ui &ui, int key)
     case kKeyEnter:
         if (!readOnly_)
         {
+            edit_.beginEdit(TextEditState::EditKind::kTyping, "\n");
             edit_.insert("\n");
             edited = true;
         }
@@ -506,13 +584,17 @@ void TextArea::onKey(Ui &ui, int key)
     case kKeyTab:
         if (!readOnly_)
         {
+            edit_.beginEdit(TextEditState::EditKind::kTyping, "    ");
             edit_.insert("    ");
             edited = true;
         }
         break;
+    case kKeyUndo: edited = !readOnly_ && edit_.undo(); break;
+    case kKeyRedo: edited = !readOnly_ && edit_.redo(); break;
     case kKeyBackspace:
         if (!readOnly_ && (edit_.hasSelection() || edit_.caret > 0))
         {
+            edit_.beginEdit(TextEditState::EditKind::kDeleting);
             if (!edit_.hasSelection())
                 edit_.anchor = utf8Previous(edit_.text, edit_.caret);
             edit_.eraseSelection();
@@ -522,6 +604,7 @@ void TextArea::onKey(Ui &ui, int key)
     case kKeyDelete:
         if (!readOnly_ && (edit_.hasSelection() || edit_.caret < edit_.text.size()))
         {
+            edit_.beginEdit(TextEditState::EditKind::kDeleting);
             if (!edit_.hasSelection())
                 edit_.anchor = edit_.caret + utf8Length(edit_.text, edit_.caret);
             edit_.eraseSelection();
@@ -546,7 +629,7 @@ bool TextArea::onWheel(Ui &ui, glm::vec2 wheel)
 {
     const Style s = style(ui.theme());
     const float lh = lineHeight(ui, s);
-    const float content = static_cast<float>(lines().size()) * lh;
+    const float content = static_cast<float>(lines(ui, s).size()) * lh;
     const float maxScroll = std::max(0.0f, content - inset(rect_, s.padding).size.y);
     if (maxScroll <= 0.0f || wheel.y == 0.0f)
         return false;
@@ -567,7 +650,7 @@ void TextArea::drawContent(const Ui &ui, renderer::DrawList &list, const Style &
     const Rect content = inset(rect_, style.padding);
     const float lh = lineHeight(ui, style);
     const float g = gutter(ui, style);
-    const auto ls = lines();
+    const auto ls = lines(ui, style);
     list.pushClip(content.position, content.size);
     const std::size_t first = static_cast<std::size_t>(scroll_ / lh);
     const std::size_t s0 = edit_.selectionStart();
@@ -592,13 +675,13 @@ void TextArea::drawContent(const Ui &ui, renderer::DrawList &list, const Style &
             const float xb = s1 > l.end ? xAt(l.end) + 4.0f : xAt(b); // la fin de ligne sélectionnée se voit
             list.rect({xa, y}, {std::max(xb - xa, 0.0f), lh}, selection);
         }
-        if (lineNumbers_)
+        if (lineNumbers_ && l.first)
         {
-            drawText(ui, list, std::to_string(i + 1), {{content.position.x, y}, {g - style.spacing, lh}}, style, Align::kEnd, &style.muted);
+            drawText(ui, list, std::to_string(l.number + 1), {{content.position.x, y}, {g - style.spacing, lh}}, style, Align::kEnd, &style.muted);
         }
         if (!line.empty())
             ui.font().draw(list, line, {x0, y}, style.fontSize, style.foreground, style.font.get());
-        if (editing && edit_.caret >= l.begin && edit_.caret <= l.end && lineOf(edit_.caret) == i && std::fmod(ui.time(), 1.0f) < 0.6f)
+        if (editing && edit_.caret >= l.begin && edit_.caret <= l.end && lineOf(ls, edit_.caret) == i && std::fmod(ui.time(), 1.0f) < 0.6f)
             list.rect({std::round(xAt(edit_.caret)), y}, {std::max(1.0f, style.borderWidth), lh}, style.foreground);
     }
     if (lineNumbers_) // séparation entre les numéros et le texte

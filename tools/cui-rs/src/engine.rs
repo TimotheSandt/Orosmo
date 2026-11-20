@@ -175,6 +175,7 @@ static COMPONENTS: &[Component] = &[
             p("text", Kind::BindString, Default::Required),
             p("lineNumbers", Kind::Bool, Default::Value("false")),
             p("readOnly", Kind::Bool, Default::Value("false")),
+            p("wrap", Kind::Bool, Default::Value("true")),
         ],
         children: Children::None,
         events: EV_CHANGE,
@@ -245,6 +246,7 @@ fn extra_modifiers(component: &str) -> &'static [&'static str] {
         "Label" => &["textAlign"],
         "Plot" => &["range"],
         "ImageView" => &["fit"],
+        "Button" => &["shortcut"],
         _ => &[],
     }
 }
@@ -630,7 +632,7 @@ impl<'a> Gen<'a> {
             self.emit(format!("{var}->setDefault({});", a[4]));
         }
         if comp.name == "TextArea" {
-            self.emit(format!("{var}->setLineNumbers({}).setReadOnly({});", a[1], a[2]));
+            self.emit(format!("{var}->setLineNumbers({}).setReadOnly({}).setWrap({});", a[1], a[2], a[3]));
         }
         if comp.name == "Label" || comp.name == "Button" {
             let text_expr = args[0];
@@ -880,6 +882,15 @@ impl<'a> Gen<'a> {
                         }
                         _ => self.err(line, col, "'.textAlign' expects .start, .center or .end"),
                     }
+                }
+            }
+            "shortcut" => {
+                if let Some(e) = one(self) {
+                    if !is_constant_text(e) {
+                        return self.err(line, col, "'.shortcut' expects a constant string, for example .shortcut(\"Ctrl+R\")");
+                    }
+                    let v = expr_cpp(e, &self.scope).unwrap_or_default();
+                    self.emit(format!("{var}->setShortcut({v});"));
                 }
             }
             "fit" => {
@@ -1170,7 +1181,7 @@ fn component_doc(name: &str) -> &'static str {
         "RadioButton" => "One choice of a group: the buttons bound to the same int; selected when it equals `value`.",
         "RangeSlider" => "Two handles (low, high) on one track; the handles cannot cross.",
         "SpinBox" => "Number field with - and + buttons (and the wheel).",
-        "TextArea" => "Multi-line text editor: selection, clipboard, optional line numbers, read only.",
+        "TextArea" => "Multi-line text editor: selection, clipboard, undo / redo (Ctrl+Z / Ctrl+Y), word wrap, optional line numbers, read only.",
         "ColorWheel" => "Hue ring and saturation-value square.",
         "ColorEditor" => "Wheel, format (RGB, HSV, HSL) with its sliders, alpha, hexadecimal field, before / after preview.",
         "GradientEditor" => "Gradient bar: click adds a stop, drag moves it, right click removes it; the chosen stop is edited below.",
@@ -1178,7 +1189,7 @@ fn component_doc(name: &str) -> &'static str {
         "Dialog" => "Modal window, open while `open` is true; Escape, its close button or a click outside (dismiss) closes it. .width / .height size the window.",
         "MenuBar" => "Row of Menu; hovering another title while a menu is open switches to it.",
         "Menu" => "Title that opens its items (MenuItem, Menu for a submenu, Separator).",
-        "MenuItem" => "Menu entry: click runs onClick; optional shortcut text and checked binding.",
+        "MenuItem" => "Menu entry: click, Enter or its shortcut (installed, works with the menu closed) runs onClick; optional checked binding.",
         "ContextMenu" => "Invisible child of a widget: a right click on that widget opens its items at the pointer.",
         "Notifications" => "Stack of Ui::notify messages: at most `max` and `maxHeight` pixels (0: no limit), the oldest go.",
         "ImageView" => "Image produced by the game (DynamicImage: minimap, compass...), re-read every frame; .fit(.contain|.cover|.stretch).",
@@ -1218,6 +1229,7 @@ fn modifier_doc(name: &str) -> &'static str {
         "variant" => "Theme style name (widgets.<name> of the theme).",
         "textAlign" => "Label text alignment: .start, .center, .end.",
         "range" => "Plot: fixed bounds (min, max).",
+        "shortcut" => "Button: keyboard shortcut that clicks it (\"Ctrl+R\", \"F5\").",
         "fit" => "ImageView: .contain (whole image), .cover (fills, cropped), .stretch (fills, distorted).",
         "overflow" => "What goes beyond the widget: .visible (default, still clickable) or .hidden (clipped).",
         "font" => "",
@@ -1264,7 +1276,7 @@ pub fn spec_json() -> String {
     }
     let mods = COMMON_MODIFIERS
         .iter()
-        .chain(["textAlign", "range", "fit", "onClick", "onChange", "onHover", "onFocus"].iter())
+        .chain(["textAlign", "range", "fit", "shortcut", "onClick", "onChange", "onHover", "onFocus"].iter())
         .map(|m| format!("{{\"name\":\"{m}\",\"doc\":\"{}\"}}", e(modifier_doc(m))))
         .collect::<Vec<_>>()
         .join(",");

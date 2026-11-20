@@ -122,6 +122,11 @@ class TextArea : public Widget
     explicit TextArea(Binding<std::string> value);
     TextArea &setLineNumbers(bool on) { lineNumbers_ = on; return *this; }
     TextArea &setReadOnly(bool on) { readOnly_ = on; return *this; }
+    // Retour à la ligne automatique à la largeur du widget (aux espaces si possible). Par défaut : oui.
+    TextArea &setWrap(bool on) { wrap_ = on; return *this; }
+    bool wraps() const noexcept { return wrap_; }
+    // Rangées affichées (une ligne longue en donne plusieurs avec le retour automatique) ; après une mise en page.
+    std::size_t rowCount(const Ui &ui) const;
     std::string text() const;
     const TextEditState &edit() const noexcept { return edit_; }
     float scroll() const noexcept { return scroll_; }
@@ -143,13 +148,17 @@ class TextArea : public Widget
     void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
 
   private:
+    // Rangée affichée : une ligne du texte, ou un morceau d'une ligne coupée par le retour automatique.
     struct Line
     {
         std::size_t begin;
-        std::size_t end; // sans le '\n'
+        std::size_t end;    // sans le '\n'
+        bool first = true;  // début d'une ligne du texte (numéro affiché)
+        bool last = true;   // fin d'une ligne du texte
+        std::size_t number = 0; // numéro de la ligne du texte (0 : la première)
     };
-    std::vector<Line> lines() const;
-    std::size_t lineOf(std::size_t position) const;
+    std::vector<Line> lines(const Ui &ui, const Style &style) const;
+    static std::size_t lineOf(const std::vector<Line> &lines, std::size_t position);
     std::size_t positionAt(const Ui &ui, glm::vec2 mouse) const;
     float gutter(const Ui &ui, const Style &style) const;
     void changed(Ui &ui);
@@ -159,6 +168,7 @@ class TextArea : public Widget
     TextEditState edit_;
     bool lineNumbers_ = false;
     bool readOnly_ = false;
+    bool wrap_ = true;
     bool syncing_ = true; // le tampon suit la valeur liée tant que le champ n'a pas le focus
     float scroll_ = 0.0f;
     float desiredX_ = -1.0f; // abscisse gardée pendant les déplacements haut / bas

@@ -14,13 +14,13 @@ view Gallery {
             Menu("File") {
                 MenuItem("Open dialog...", shortcut: "Ctrl+O").onClick(state.openDialog).id("menuDialog")
                 Menu("Notify") {
-                    MenuItem("Information").onClick(state.notifyInfo)
+                    MenuItem("Information", shortcut: "Ctrl+I").onClick(state.notifyInfo)
                     MenuItem("Success").onClick(state.notifySuccess)
                     MenuItem("Warning").onClick(state.notifyWarning)
                     MenuItem("Error").onClick(state.notifyError)
                 }
                 Separator()
-                MenuItem("Clear the log").onClick(state.clearLog)
+                MenuItem("Clear the log", shortcut: "Ctrl+L").onClick(state.clearLog)
             }
             .id("menuFile")
             Menu("View") {
@@ -45,6 +45,8 @@ view Gallery {
                 Label("Enter / Space: activate").variant("caption")
                 Label("Right click on a slider: default value").variant("caption")
                 Label("Hover a widget: tooltip").variant("caption")
+                Label("Menus: Tab to File, then arrows, Enter, Escape").variant("caption")
+                Label("Shortcuts: Ctrl+O, Ctrl+I, Ctrl+L, F5").variant("caption")
                 Separator()
                 HBox {
                     Label("Events").variant("caption").width(.fill)
@@ -73,8 +75,8 @@ view Gallery {
                             Grid(2) {
                                 Label("Button")
                                 HBox {
-                                    Button("Click me").onClick(state.clicked).onHover(state.hovered).onFocus(state.focused).id("button")
-                                        .tooltip("onClick, onHover and onFocus name C++ functions")
+                                    Button("Click me").shortcut("F5").onClick(state.clicked).onHover(state.hovered).onFocus(state.focused).id("button")
+                                        .tooltip("onClick, onHover and onFocus name C++ functions; F5 clicks it (.shortcut)")
                                     Button("Submit").enabled(state.canSubmit()).onClick(state.clicked).id("submit")
                                         .tooltip(".enabled(expression): needs a name and 'Enabled'")
                                     Button("Named action").onClick(galleryAction).id("action")
@@ -132,9 +134,10 @@ view Gallery {
                                     .tooltip("- / + buttons, the wheel, or type a number")
                                 Label("Text field")
                                 TextField($state.name).width(.fill).id("name2")
-                                    .tooltip("focus selects all; Shift + arrows or drag select; Ctrl+A, C, X, V")
+                                    .tooltip("focus selects all; Shift + arrows or drag select; Ctrl+A, C, X, V; Ctrl+Z / Ctrl+Y")
                                 Label("Text editor")
                                 TextArea($state.notes, lineNumbers: true).width(.fill).height(120).id("notes")
+                                    .tooltip("word wrap at the width; undo / redo: Ctrl+Z / Ctrl+Y; keys repeat when held")
                                 Label("Values").variant("caption")
                                 Label("\(state.controlsSummary())").variant("caption").id("controlsSummary")
                             }

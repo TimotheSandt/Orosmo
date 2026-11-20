@@ -3,10 +3,88 @@
 #include "Logger.h"
 
 #include <algorithm>
+#include <cctype>
 #include <unordered_set>
 
 namespace engine::ui
 {
+
+// ── Raccourcis ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+std::string normalizeShortcut(std::string_view text)
+{
+    auto lower = [](std::string_view s)
+    {
+        std::string out(s);
+        for (char &c : out)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return out;
+    };
+    bool ctrl = false, alt = false, shift = false, super = false;
+    std::string key;
+    std::size_t start = 0;
+    while (start <= text.size())
+    {
+        // « + » seul comme touche : "Ctrl++" ; sinon « + » sépare.
+        std::size_t end = text.find('+', start);
+        if (end == start && end + 1 == text.size())
+            end = std::string_view::npos;
+        std::string_view part = text.substr(start, end == std::string_view::npos ? std::string_view::npos : end - start);
+        while (!part.empty() && std::isspace(static_cast<unsigned char>(part.front())))
+            part.remove_prefix(1);
+        while (!part.empty() && std::isspace(static_cast<unsigned char>(part.back())))
+            part.remove_suffix(1);
+        const std::string l = lower(part);
+        if (l == "ctrl" || l == "control" || l == "ctl")
+            ctrl = true;
+        else if (l == "alt" || l == "option" || l == "opt")
+            alt = true;
+        else if (l == "shift" || l == "maj")
+            shift = true;
+        else if (l == "super" || l == "cmd" || l == "command" || l == "meta" || l == "win")
+            super = true;
+        else if (!part.empty())
+        {
+            if (!key.empty())
+                return {}; // deux touches
+            if (part.size() == 1)
+                key = static_cast<char>(std::toupper(static_cast<unsigned char>(part[0])));
+            else
+            {
+                static const std::pair<const char *, const char *> kNames[] = {
+                    {"del", "Delete"},         {"delete", "Delete"},     {"suppr", "Delete"},  {"enter", "Enter"},      {"return", "Enter"},
+                    {"esc", "Escape"},         {"escape", "Escape"},     {"tab", "Tab"},       {"space", "Space"},      {"backspace", "Backspace"},
+                    {"left", "Left"},          {"right", "Right"},       {"up", "Up"},         {"down", "Down"},        {"home", "Home"},
+                    {"end", "End"},            {"pageup", "PageUp"},     {"pgup", "PageUp"},   {"pagedown", "PageDown"}, {"pgdn", "PageDown"},
+                    {"insert", "Insert"},      {"ins", "Insert"},        {"plus", "+"},        {"minus", "-"},
+                };
+                key.clear();
+                for (const auto &[from, to] : kNames)
+                    if (l == from)
+                        key = to;
+                if (key.empty() && (l[0] == 'f') && l.size() <= 3 && std::all_of(l.begin() + 1, l.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); }))
+                    key = "F" + l.substr(1);
+                if (key.empty())
+                    return {};
+            }
+        }
+        if (end == std::string_view::npos)
+            break;
+        start = end + 1;
+    }
+    if (key.empty())
+        return {};
+    std::string out;
+    if (ctrl)
+        out += "Ctrl+";
+    if (alt)
+        out += "Alt+";
+    if (shift)
+        out += "Shift+";
+    if (super)
+        out += "Super+";
+    return out + key;
+}
 
 // ── ActionRegistry ───────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -340,6 +418,60 @@ bool Ui::popupOpenFor(const Widget &owner) const noexcept
 
 Widget *Ui::popup() const noexcept { return popups_.empty() ? nullptr : popups_.back().view; }
 
+Widget *Ui::popupOwnerOf(const Widget &w) const noexcept
+{
+    for (auto it = popups_.rbegin(); it != popups_.rend(); ++it)
+        if (inSubtree(it->view, &w))
+            return it->owner;
+    return nullptr;
+}
+
+void Ui::closePopupOf(const Widget &owner)
+{
+    for (std::size_t i = 0; i < popups_.size(); ++i)
+    {
+        if (popups_[i].owner == &owner)
+        {
+            closePopupsFrom(i);
+            return;
+        }
+    }
+}
+
+namespace
+{
+bool offerShortcut(Ui &ui, Widget &w, std::string_view shortcut)
+{
+    if (!w.visible() || !w.enabled())
+        return false;
+    if (w.onShortcut(ui, shortcut))
+        return true;
+    for (const auto &child : w.children())
+        if (offerShortcut(ui, *child, shortcut))
+            return true;
+    // Sous-arbre détaché (éléments d'un menu fermé, corps d'une boîte fermée) : un menu fermé garde ses raccourcis.
+    if (Widget *d = w.detached(); d != nullptr && d->visible())
+    {
+        if (d->onShortcut(ui, shortcut))
+            return true;
+        for (const auto &child : d->children())
+            if (offerShortcut(ui, *child, shortcut))
+                return true;
+    }
+    return false;
+}
+} // namespace
+
+bool Ui::dispatchShortcut(std::string_view shortcut)
+{
+    const std::string s = normalizeShortcut(shortcut);
+    if (s.empty())
+        return false;
+    if (!modals_.empty())
+        return offerShortcut(*this, *modals_.back().panel, s);
+    return root_ && offerShortcut(*this, *root_, s);
+}
+
 void Ui::forgetSubtree(const Widget *root)
 {
     for (Widget **p : {&hovered_, &active_, &focused_})
@@ -634,11 +766,24 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         }
     }
 
+    const auto enterPopup = [&](bool first)
+    {
+        std::vector<Widget *> items;
+        collectFocusable(*popups_.back().view, items);
+        if (items.empty())
+            return false;
+        focus(first ? items.front() : items.back());
+        return true;
+    };
     for (int key : input.keys)
     {
         if (key == kKeyTab && !(focused_ != nullptr && focused_->wantsTab()))
         {
             focusNext(input.shift);
+        }
+        else if ((key == kKeyDown || key == kKeyUp) && !popups_.empty() && !(focused_ != nullptr && inAnyPopup(focused_)) && enterPopup(key == kKeyDown))
+        {
+            // Menu ouvert à la souris : les flèches entrent dans la fenêtre du dessus (premier ou dernier élément).
         }
         else if (key == kKeyEscape && !popups_.empty() && !(focused_ != nullptr && inAnyPopup(focused_)))
         {
@@ -660,6 +805,28 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
     if (!input.text.empty() && focused_ != nullptr)
     {
         focused_->onText(*this, input.text);
+    }
+    for (const std::string &raw : input.shortcuts)
+    {
+        const std::string s = normalizeShortcut(raw);
+        if (s.empty())
+            continue;
+        // Champ de texte : commandes d'édition (Super sur macOS comme Ctrl ailleurs).
+        if (focused_ != nullptr && focused_->acceptsText())
+        {
+            static const std::pair<const char *, int> kEdit[] = {
+                {"Ctrl+A", kKeySelectAll}, {"Ctrl+C", kKeyCopy}, {"Ctrl+X", kKeyCut},        {"Ctrl+V", kKeyPaste},      {"Ctrl+Z", kKeyUndo},
+                {"Ctrl+Y", kKeyRedo},      {"Ctrl+Shift+Z", kKeyRedo}, {"Super+A", kKeySelectAll}, {"Super+C", kKeyCopy}, {"Super+X", kKeyCut},
+                {"Super+V", kKeyPaste},    {"Super+Z", kKeyUndo},  {"Super+Shift+Z", kKeyRedo},
+            };
+            const auto edit = std::find_if(std::begin(kEdit), std::end(kEdit), [&](const auto &e) { return s == e.first; });
+            if (edit != std::end(kEdit))
+            {
+                focused_->onKey(*this, edit->second);
+                continue;
+            }
+        }
+        (void)dispatchShortcut(s);
     }
 
     wantsMouse_ = active_ != nullptr || !modals_.empty() || (hit != nullptr && (blocksMouse(*this, hit) || inAnyPopup(hit)));

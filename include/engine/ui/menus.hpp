@@ -55,11 +55,18 @@ class Dialog : public Widget
 class MenuItem : public Widget
 {
   public:
+    // `shortcut` est affiché ET installé : la combinaison (normalizeShortcut) déclenche l'élément même menu fermé.
     explicit MenuItem(std::string text, std::string shortcut = {}, Binding<bool> checked = {});
     const std::string &text() const noexcept { return text_; }
+    const std::string &shortcut() const noexcept { return shortcut_; }
+    // Coche (si liée), événement onClick, fermeture des menus.
+    void activate(Ui &ui);
 
     bool interactive() const override { return true; }
+    bool focusable() const override { return true; }
     void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
+    void onKey(Ui &ui, int key) override;
+    bool onShortcut(Ui &ui, std::string_view shortcut) override;
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
@@ -77,12 +84,15 @@ class Menu : public Widget
     explicit Menu(std::string title);
     // Éléments du menu (MenuItem, Menu pour un sous-menu, Separator).
     VBox &items() noexcept { return *items_; }
-    void open(Ui &ui);
+    // Ouvre le menu ; `focusFirst` (clavier) : le premier élément prend le focus.
+    void open(Ui &ui, bool focusFirst = false);
     bool inBar() const;
 
     Widget *detached() const noexcept override { return items_.get(); }
     bool interactive() const override { return true; }
+    bool focusable() const override { return true; }
     void onPress(Ui &ui, glm::vec2 mouse) override;
+    void onKey(Ui &ui, int key) override;
     void onHoverChanged(Ui &ui, bool hovered) override;
 
   protected:
@@ -94,6 +104,9 @@ class Menu : public Widget
     std::unique_ptr<VBox> items_;
 };
 
+// Clavier : Tab amène le focus sur un titre ; Bas / Entrée / Espace ouvrent le menu ; Haut / Bas parcourent les éléments ;
+// Droite ouvre un sous-menu (ou passe au menu suivant de la barre), Gauche le ferme (ou passe au précédent) ; Entrée / Espace
+// activent ; Échap ferme le menu du dessus et rend le focus à son titre.
 class MenuBar : public HBox
 {
   public:

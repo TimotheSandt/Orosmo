@@ -15,6 +15,7 @@
 #include <engine/rhi/device.hpp>
 #include <engine/ui/font.hpp>
 #include <engine/ui/ui.hpp>
+#include <engine/ui/window_input.hpp>
 
 #include "Logger.h"
 #include "Rendering/TextRenderer.h"
@@ -53,43 +54,6 @@ void usage(std::ostream &out)
            "           [--capture DIR [--capture-frames N] [--headless] [--hover ID] [--click ID]] [--size WxH]\n"
            "  --hover ID / --click ID : during a capture, the pointer rests on / clicks the widget with this id\n"
            "                            (a tooltip appears after 0.6 s: use --capture-frames 60)\n";
-}
-
-ui::InputFrame readInput(Window &window, float dt)
-{
-    ui::InputFrame in;
-    in.deltaTime = dt;
-    InputManager &input = InputManager::GetInstance(window.GetWindow());
-    in.mouse = glm::vec2(window.GetCursorPosition());
-    in.mouseDown = input.IsMouseButtonPressed(MouseButton::LEFT) || input.IsMouseButtonJustPressed(MouseButton::LEFT);
-    in.secondaryDown = input.IsMouseButtonPressed(MouseButton::RIGHT) || input.IsMouseButtonJustPressed(MouseButton::RIGHT);
-    in.wheel = input.GetMouseScroll();
-    in.text = input.GetTextInput();
-    in.shift = input.IsKeyPressed(KeyButton::LEFT_SHIFT) || input.IsKeyPressed(KeyButton::RIGHT_SHIFT);
-    const std::pair<KeyButton, int> keys[] = {
-        {KeyButton::BACKSPACE, ui::kKeyBackspace}, {KeyButton::DELETE, ui::kKeyDelete}, {KeyButton::ENTER, ui::kKeyEnter},
-        {KeyButton::ESCAPE, ui::kKeyEscape},       {KeyButton::TAB, ui::kKeyTab},       {KeyButton::LEFT, ui::kKeyLeft},
-        {KeyButton::RIGHT, ui::kKeyRight},         {KeyButton::UP, ui::kKeyUp},         {KeyButton::DOWN, ui::kKeyDown},
-        {KeyButton::HOME, ui::kKeyHome},           {KeyButton::END, ui::kKeyEnd},       {KeyButton::SPACE, ui::kKeySpace},
-    };
-    for (const auto &[button, key] : keys)
-        if (input.IsKeyJustPressed(button))
-            in.keys.push_back(key);
-    if (input.IsKeyJustPressed(KeyButton::PAGE_UP))
-        in.keys.push_back(ui::kKeyPageUp);
-    if (input.IsKeyJustPressed(KeyButton::PAGE_DOWN))
-        in.keys.push_back(ui::kKeyPageDown);
-    // Raccourcis Ctrl+A / C / X / V (touches physiques : sur AZERTY, le « A » est à la place du Q d'un clavier QWERTY).
-    if (input.IsKeyPressed(KeyButton::LEFT_CONTROL) || input.IsKeyPressed(KeyButton::RIGHT_CONTROL))
-    {
-        const KeyButton selectAll = InputManager::GetKeyLayout() == KeyLayout::AZERTY ? KeyButton::Q : KeyButton::A;
-        const std::pair<KeyButton, int> shortcuts[] = {
-            {selectAll, ui::kKeySelectAll}, {KeyButton::C, ui::kKeyCopy}, {KeyButton::X, ui::kKeyCut}, {KeyButton::V, ui::kKeyPaste}};
-        for (const auto &[button, key] : shortcuts)
-            if (input.IsKeyJustPressed(button))
-                in.keys.push_back(key);
-    }
-    return in;
 }
 
 int run(const Options &o)
@@ -137,8 +101,8 @@ int run(const Options &o)
     ui::TextRendererFont font(text);
     engine::core::FileWatcher watcher; // avant l'interface : son ThemeHost s'en désinscrit à sa destruction
     ui::Ui interface(font);
-    if (!o.headless) // presse-papiers du système (champs de texte : Ctrl+C / X / V)
-        interface.setClipboard([&] { return window.GetClipboardText(); }, [&](const std::string &t) { window.SetClipboardText(t); });
+    if (!o.headless)
+        ui::useSystemClipboard(interface, window); // champs de texte : Ctrl+C / X / V
 
     GalleryState state;
     state.ui = &interface;
@@ -199,7 +163,7 @@ int run(const Options &o)
             watcher.poll();
         }
         state.tick(dt);
-        ui::InputFrame input = o.headless ? ui::InputFrame{} : readInput(window, dt);
+        ui::InputFrame input = o.headless ? ui::InputFrame{} : ui::readWindowInput(window, dt);
         if (capturing)
         {
             // Entrées simulées (images de démonstration reproductibles) : le pointeur sur un widget, un clic à la 2e image.

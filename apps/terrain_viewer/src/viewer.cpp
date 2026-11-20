@@ -4,6 +4,7 @@
 
 #include <engine/platform/input_manager.hpp>
 #include <engine/renderer/image.hpp>
+#include <engine/ui/window_input.hpp>
 #include <engine/world/export.hpp>
 
 #include "Logger.h"
@@ -118,6 +119,8 @@ engine::core::Result<> Viewer::init()
     text_.setActiveFont("default");
     font_ = std::make_unique<ui::TextRendererFont>(text_);
     ui_ = std::make_unique<ui::Ui>(*font_);
+    if (!options_.headless)
+        ui::useSystemClipboard(*ui_, window_); // window_ est déclarée avant ui_ : elle vit plus longtemps
 
     state_.seed = options_.seed;
     state_.loadPresets(res / "presets");
@@ -222,34 +225,13 @@ void Viewer::syncTiles()
 
 ui::InputFrame Viewer::readInput(float deltaTime)
 {
-    ui::InputFrame in;
-    in.deltaTime = deltaTime;
     if (options_.headless)
     {
+        ui::InputFrame in;
+        in.deltaTime = deltaTime;
         return in;
     }
-    InputManager &input = InputManager::GetInstance(window_.GetWindow());
-    const glm::dvec2 cursor = window_.GetCursorPosition();
-    in.mouse = glm::vec2(cursor);
-    in.mouseDown = input.IsMouseButtonPressed(MouseButton::LEFT) || input.IsMouseButtonJustPressed(MouseButton::LEFT);
-    in.secondaryDown = input.IsMouseButtonPressed(MouseButton::RIGHT) || input.IsMouseButtonJustPressed(MouseButton::RIGHT);
-    in.wheel = input.GetMouseScroll();
-    in.text = input.GetTextInput();
-    in.shift = input.IsKeyPressed(KeyButton::LEFT_SHIFT) || input.IsKeyPressed(KeyButton::RIGHT_SHIFT);
-    const std::pair<KeyButton, int> keys[] = {
-        {KeyButton::BACKSPACE, ui::kKeyBackspace}, {KeyButton::DELETE, ui::kKeyDelete}, {KeyButton::ENTER, ui::kKeyEnter},
-        {KeyButton::ESCAPE, ui::kKeyEscape},       {KeyButton::TAB, ui::kKeyTab},       {KeyButton::LEFT, ui::kKeyLeft},
-        {KeyButton::RIGHT, ui::kKeyRight},         {KeyButton::UP, ui::kKeyUp},         {KeyButton::DOWN, ui::kKeyDown},
-        {KeyButton::HOME, ui::kKeyHome},           {KeyButton::END, ui::kKeyEnd},       {KeyButton::SPACE, ui::kKeySpace},
-    };
-    for (const auto &[button, key] : keys)
-    {
-        if (input.IsKeyJustPressed(button))
-        {
-            in.keys.push_back(key);
-        }
-    }
-    return in;
+    return ui::readWindowInput(window_, deltaTime); // touches répétées, raccourcis (Ctrl+A / C / X / V / Z dans les champs)
 }
 
 // Caméra libre (mêmes touches que la démo) : clic droit pour tourner (hors de l'interface) ; ZQSD en AZERTY, WASD sinon, et les

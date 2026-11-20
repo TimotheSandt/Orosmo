@@ -46,7 +46,13 @@ enum Key : int
     kKeyCopy,      // Ctrl+C
     kKeyCut,       // Ctrl+X
     kKeyPaste,     // Ctrl+V
+    kKeyUndo,      // Ctrl+Z
+    kKeyRedo,      // Ctrl+Y, Ctrl+Maj+Z
 };
+
+// Forme normalisée d'un raccourci : modificateurs dans l'ordre Ctrl, Alt, Shift, Super (« Control », « Cmd », « Meta »... acceptés,
+// casse indifférente), puis la touche (lettre en majuscule, "F5", "Delete", "PageUp"...). Vide si le texte n'est pas un raccourci.
+std::string normalizeShortcut(std::string_view text);
 
 // Où s'ouvre une fenêtre surgissante par rapport à son ancre.
 enum class PopupPlacement : std::uint8_t
@@ -82,7 +88,10 @@ struct InputFrame
     bool secondaryDown = false; // bouton secondaire (droit) enfoncé
     glm::vec2 wheel{0.0f};      // molette (y > 0 : vers le haut)
     std::string text;           // texte saisi pendant l'image (UTF-8)
-    std::vector<int> keys;      // touches appuyées pendant l'image (Key)
+    std::vector<int> keys;      // touches appuyées pendant l'image (Key), répétition du clavier comprise
+    // Combinaisons appuyées pendant l'image ("Ctrl+S", "Ctrl+Shift+Z", "F5" ; voir normalizeShortcut). Avec le focus dans un champ de
+    // texte, Ctrl+A / C / X / V / Z / Y y sont des commandes d'édition ; sinon, raccourcis des éléments de menu et des boutons.
+    std::vector<std::string> shortcuts;
     bool shift = false;
     float deltaTime = 1.0f / 60.0f;
 };
@@ -155,6 +164,12 @@ class Ui
     void closePopup(); // toutes
     bool popupOpenFor(const Widget &owner) const noexcept;
     bool anyPopupOpen() const noexcept { return !popups_.empty(); }
+    // Propriétaire de la fenêtre surgissante qui contient `w` (la plus haute), nul si `w` n'est dans aucune.
+    Widget *popupOwnerOf(const Widget &w) const noexcept;
+    // Ferme la fenêtre de `owner` et celles ouvertes au-dessus d'elle (sous-menus).
+    void closePopupOf(const Widget &owner);
+    // Propose le raccourci (normalisé) aux widgets (fenêtre modale ouverte : à elle seule) ; vrai si l'un l'a pris.
+    bool dispatchShortcut(std::string_view shortcut);
     // Fenêtre du dessus (nulle : aucune).
     Widget *popup() const noexcept;
 
