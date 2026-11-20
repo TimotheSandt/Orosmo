@@ -39,7 +39,7 @@ void Logger::Initialize(const std::string &sFilename)
         std::stringstream ss;
         if (const std::filesystem::path base = engine::core::system::userDataDirectory(); !base.empty())
         {
-            ss << (base / "ProceduralGeneration").string() << '/';
+            ss << (base / "Orosmo").string() << '/';
         }
         ss << "logs/log_" << std::put_time(std::localtime(&time_t), "%Y-%m-%d") << ".log";
         filename = ss.str();

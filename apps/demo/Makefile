@@ -481,7 +481,7 @@ info:
 .PHONY: installer create_windows_installer create_linux_installer
 
 BUILD_ARTIFACTS_DIR := build
-TMP_DEB_DIR         := /tmp/proceduralgeneration_deb
+TMP_DEB_DIR         := /tmp/$(PACKAGE)_deb
 
 ifeq ($(ENGINE_OS),Windows)
     INSTALLER_FILE := $(PROJECT_NAME)-$(VERSION)-x64-setup.exe
