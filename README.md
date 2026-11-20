@@ -70,9 +70,9 @@ make all-debug
 ## Organisation
 
 ```
-include/      en-têtes publics du moteur, par module (Graphics, UI, Noise, Profiler, Utilities, Benchmark)
-src/          implémentations, même découpage ; README.md par module
-apps/demo/    application de démonstration (sources, Makefile, installeurs, benchmark)
+include/engine/  en-têtes publics du moteur, un dossier par module : core, platform, rhi, renderer, world, ui
+src/          implémentations, même découpage (src/rhi/<backend>/ pour les API graphiques) ; README.md par module
+apps/         demo (terrain engine::world + panneau de performances), terrain_viewer, terrain_gen, ui_gallery, minimal, core_demo, rhi_demo
 tests/        tests (doctest) et tests des outils Python (tests/tools)
 shaders/      shaders GLSL (copiés vers <bin>/res/shader/)
 res/          polices, icône (copiés vers <bin>/res/)
@@ -81,12 +81,12 @@ tools/        précompilateur .cui (cui-rs), outil engine-init-rs, SDK (engine-s
 docs/         spécification, plan, rapports (voir docs/README.md)
 ```
 
-Le moteur compile en bibliothèques statiques (`libgraphics.a`, `libui.a`, `libnoise.a`, `libprofiler.a`, `libutilities.a`, `libthirdparty.a`, `libbenchmark.a`) ; la démo les relie via `apps/demo/engine/`.
+Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libworld.a`, `libui.a`, `libthirdparty.a`) ; la démo les relie via `apps/demo/engine/`.
 
 ## Documentation
 
 - Vision, checklist, architecture : [docs/](docs/README.md)
-- Backends graphiques : [docs/GRAPHICS_BACKENDS.md](docs/GRAPHICS_BACKENDS.md)
+- Couche graphique (RHI) : [docs/RHI.md](docs/RHI.md)
 - **Utiliser le moteur depuis une release** (`engine init`, paquet, projet minimal, stabilité de l'API) : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)
 - Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `engine/ui`)
 - Nettoyage M00 : [docs/CLEANUP_PLAN.md](docs/CLEANUP_PLAN.md), [docs/releases/M00.md](docs/releases/M00.md)

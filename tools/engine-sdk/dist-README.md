@@ -15,7 +15,6 @@ engine-<platform>/
       renderer/        SceneRenderer, Camera (reverse-Z), CanvasRenderer, DrawList, TerrainRenderer, DebugDraw
       world/           deterministic noise, terrain tiles, LOD streaming, GPU noise, export (PNG16/EXR/OBJ/glTF/STL)
       ui/              engine::ui — widgets, layout, JSON themes, reflected parameter panels
-    Graphics/, Noise/, Benchmark/ — legacy headers (being migrated to engine/)
   lib/
     debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libworld, libui, … (link them all:
                        ENGINE_LINK_LIBS)

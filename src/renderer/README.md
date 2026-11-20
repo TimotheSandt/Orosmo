@@ -41,10 +41,10 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | `shaders/rhi/ui_*.vert/frag` | rectangle, glyphes MSDF, image de couche : GLSL 450, push constants, quad généré par `gl_VertexIndex` |
 
 Un rectangle = un dessin : le batch par instances (R2D-01) vient en M5 (`docs/QUESTIONS.md` A21). La taille logique de la liste est indépendante de
-la taille de la cible (échelle d'interface, HiDPI). Parité : `tests/renderer/parity_tests.cpp` rejoue `ui.png` de l'ancien rendu.
+la taille de la cible (échelle d'interface, HiDPI). (La parité avec `ui.png` de l'ancien rendu était vérifiée par `parity_tests.cpp`, supprimé avec l'interface héritée.)
 
 La scène est **toujours** dessinée dans sa propre cible, puis copiée vers la destination (1:1 sans échelle) : l'ancien « rendu direct à
-l'écran » n'existe plus, ce qui supprime la profondeur du framebuffer par défaut. Parité vérifiée par `tests/renderer/parity_tests.cpp`.
+l'écran » n'existe plus, ce qui supprime la profondeur du framebuffer par défaut. Parité vérifiée en M2 par `parity_tests.cpp` (supprimé avec l'ancien terrain) ; la capture de la démo est comparée à `docs/BASELINE/reference/` par la CI.
 
 ## Règles
 
