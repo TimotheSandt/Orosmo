@@ -97,6 +97,7 @@ class SpinBox : public Widget
     SpinBox(Binding<double> value, double min, double max, double step = 1.0, bool integer = true);
     double value() const { return value_.value(); }
     void step(Ui &ui, double direction);
+    void clearChildren() override {} // champ et boutons internes : pas de contenu effaçable
 
     bool onWheel(Ui &ui, glm::vec2 wheel) override;
 

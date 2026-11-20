@@ -824,6 +824,14 @@ Widget &Tabs::addPage(std::string title, std::unique_ptr<Widget> page)
     return added;
 }
 
+void Tabs::clearChildren()
+{
+    Widget::clearChildren();
+    pages_.clear();
+    local_ = 0;
+    header_ = &emplace<HBox>();
+}
+
 int Tabs::selected() const
 {
     const int n = static_cast<int>(pages_.size());

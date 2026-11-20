@@ -50,7 +50,7 @@ class Button : public Widget
 {
   public:
     explicit Button(std::string text = {}, std::string styleName = "button");
-    Button &setText(std::string text) { text_ = std::move(text); return *this; }
+    Button &setText(std::string text) { text_ = std::move(text); source_ = nullptr; return *this; } // remplace un texte lié
     Button &bindText(std::function<std::string()> text) { source_ = std::move(text); return *this; }
     std::string text() const { return source_ ? source_() : text_; }
     // Raccourci clavier qui clique le bouton (« Ctrl+R », « F5 » ; normalizeShortcut).
@@ -272,6 +272,7 @@ class ColorPicker : public Widget
   public:
     ColorPicker(Binding<Color> value, bool alpha = false);
     Color color() const { return value_.value(); }
+    void clearChildren() override {} // curseurs internes : pas de contenu effaçable
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
@@ -311,6 +312,7 @@ class Tabs : public VBox
     int selected() const;
     void select(Ui &ui, int index);
     std::size_t pageCount() const noexcept { return pages_.size(); }
+    void clearChildren() override; // retire les pages et leurs onglets ; l'en-tête reste
 
   private:
     HBox *header_;
@@ -327,6 +329,7 @@ class Section : public VBox
     VBox &body() noexcept { return *body_; }
     bool expanded() const noexcept { return expanded_; }
     void setExpanded(bool expanded) noexcept { expanded_ = expanded; }
+    void clearChildren() override { body_->clearChildren(); } // vide le contenu ; l'en-tête et le corps restent
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;

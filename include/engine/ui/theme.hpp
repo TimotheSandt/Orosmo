@@ -100,6 +100,7 @@ struct FontFace
 {
     std::string name;
     std::filesystem::path path;
+    std::int64_t stamp = 0; // date de modification du fichier au chargement du thème : un fichier remplacé est relu
 };
 using FontRef = std::shared_ptr<const FontFace>;
 
@@ -160,6 +161,7 @@ class Theme
     const std::vector<std::filesystem::path> &sources() const noexcept { return sources_; }
 
   private:
+    Theme() = default; // seulement par ThemeBuilder (load, parse, fallback) : un thème a toujours un style "default"
     using StyleSet = std::array<Style, kWidgetStateCount>;
     std::string name_;
     std::map<std::string, TokenValue, std::less<>> tokens_;
@@ -180,8 +182,10 @@ class ThemeHost
     ThemeHost(const ThemeHost &) = delete;
     ThemeHost &operator=(const ThemeHost &) = delete;
 
-    // Charge et remplace le thème courant ; en cas d'erreur, le thème courant est gardé et l'erreur renvoyée.
+    // Charge et remplace le thème courant ; en cas d'erreur, le thème courant est gardé et l'erreur renvoyée, mais `path` devient
+    // le thème demandé : ses fichiers (même ceux qui manquent encore) sont observés et le corriger l'installe.
     core::Result<> load(const std::filesystem::path &path);
+    // Installe un thème construit ailleurs, sans fichier à recharger (la provenance précédente est oubliée).
     void set(Theme theme);
     // Observe les fichiers du thème (le fichier et ses parents). Une modification signalée par `watcher.poll()` est appliquée au
     // prochain `reloadIfChanged()` (appelé par `Ui::update`) : un fichier invalide laisse le thème précédent en place, l'erreur
@@ -199,9 +203,11 @@ class ThemeHost
     const std::filesystem::path &path() const noexcept { return path_; }
 
   private:
+    void install(Theme theme);
     void rewatch();
 
     Theme theme_;
+    std::vector<std::filesystem::path> attempted_; // fichiers lus par le dernier chargement ÉCHOUÉ (observés en plus)
     std::filesystem::path path_;
     std::uint64_t revision_ = 0;
     std::optional<core::Error> lastError_;

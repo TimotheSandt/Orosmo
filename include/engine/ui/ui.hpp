@@ -234,6 +234,7 @@ class Ui
     ActionRegistry actions_;
     std::unique_ptr<Widget> root_;
     std::unique_ptr<Widget> pendingRoot_;
+    bool hasPendingRoot_ = false; // une demande en attente, même pour une racine nulle
     bool updating_ = false;
     std::vector<std::function<void()>> deferred_;
 

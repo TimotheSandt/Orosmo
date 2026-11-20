@@ -99,11 +99,12 @@ void TextRendererFont::select(const FontFace *face) const
         renderer_->setActiveFont(defaultName_);
         return;
     }
-    const std::string key = face->path.generic_string();
+    // Clé : fichier + date de modification lue au chargement du thème ; un fichier remplacé (thème rechargé) est relu.
+    const std::string key = face->path.generic_string() + "@" + std::to_string(face->stamp);
     auto it = loaded_.find(key);
     if (it == loaded_.end())
     {
-        const bool ok = renderer_->loadFont(key, key, static_cast<unsigned int>(baseSize_));
+        const bool ok = renderer_->loadFont(face->path.generic_string(), key, static_cast<unsigned int>(baseSize_));
         if (!ok)
         {
             LOG_WARNING("UI: font '", face->name, "' (", key, ") cannot be loaded; the default font is used");

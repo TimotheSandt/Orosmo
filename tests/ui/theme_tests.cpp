@@ -31,8 +31,12 @@ TEST_SUITE("ui/theme")
 {
     TEST_CASE("colors are read as #rrggbb or #rrggbbaa; anything else is refused")
     {
-        CHECK(near(*ui::parseColor("#ff8000"), {1.0f, 128.0f / 255.0f, 0.0f, 1.0f}));
-        CHECK(near(*ui::parseColor("#00000080"), {0.0f, 0.0f, 0.0f, 128.0f / 255.0f}));
+        const auto orange = ui::parseColor("#ff8000");
+        const auto halfBlack = ui::parseColor("#00000080");
+        REQUIRE(orange.has_value());
+        REQUIRE(halfBlack.has_value());
+        CHECK(near(*orange, {1.0f, 128.0f / 255.0f, 0.0f, 1.0f}));
+        CHECK(near(*halfBlack, {0.0f, 0.0f, 0.0f, 128.0f / 255.0f}));
         CHECK_FALSE(ui::parseColor("ff8000").has_value());
         CHECK_FALSE(ui::parseColor("#ff80").has_value());
         CHECK_FALSE(ui::parseColor("#gg0000").has_value());
@@ -69,10 +73,18 @@ TEST_SUITE("ui/theme")
         REQUIRE(theme->token("brand").has_value());
         CHECK(near(std::get<ui::Color>(*theme->token("brand")), *ui::parseColor("#336699")));
         // Valeurs d'une surcharge locale : jeton, couleur ou nombre.
-        CHECK(std::get<float>(*theme->resolve("radius.small")) == 3.0f);
-        CHECK(std::get<float>(*theme->resolve("12")) == 12.0f);
-        CHECK(near(std::get<ui::Color>(*theme->resolve("#00ff00")), {0, 1, 0, 1}));
-        CHECK((theme->resolve("nope").error().code == engine::core::ErrorCode::kNotFound));
+        const auto radius = theme->resolve("radius.small");
+        const auto twelve = theme->resolve("12");
+        const auto green = theme->resolve("#00ff00");
+        const auto nope = theme->resolve("nope");
+        REQUIRE((radius && std::holds_alternative<float>(*radius)));
+        REQUIRE((twelve && std::holds_alternative<float>(*twelve)));
+        REQUIRE((green && std::holds_alternative<ui::Color>(*green)));
+        REQUIRE_FALSE(nope.has_value());
+        CHECK(std::get<float>(*radius) == 3.0f);
+        CHECK(std::get<float>(*twelve) == 12.0f);
+        CHECK(near(std::get<ui::Color>(*green), {0, 1, 0, 1}));
+        CHECK((nope.error().code == engine::core::ErrorCode::kNotFound));
     }
 
     TEST_CASE("errors name the file and the JSON path")
@@ -95,7 +107,8 @@ TEST_SUITE("ui/theme")
         expectError(R"({"tokens": {"a": "#12"}})", "tokens.a: invalid color");
         expectError(R"({"widget": {}})", "widget: unknown key");
         expectError(R"([1, 2])", "not a JSON object");
-        auto missing = ui::Theme::parse(R"({"extends": "missing.json"})", {}, "t.json");
+        tests::TempDir empty("ui_theme_missing"); // dossier vide : aucun missing.json du dossier de lancement n'est trouvé
+        auto missing = ui::Theme::parse(R"({"extends": "missing.json"})", empty.path, "t.json");
         REQUIRE_FALSE(missing.has_value());
         CHECK((missing.error().code == engine::core::ErrorCode::kIo));
         CHECK(missing.error().message.find("missing.json: cannot read the theme file") != std::string::npos);
@@ -135,6 +148,8 @@ TEST_SUITE("ui/theme")
         INFO((framed ? std::string() : framed.error().message));
         REQUIRE(framed.has_value());
         REQUIRE(framed->style("button", ui::WidgetState::kNormal).image != nullptr);
+        REQUIRE(framed->style("button", ui::WidgetState::kHover).image != nullptr);
+        REQUIRE(framed->style("panel", ui::WidgetState::kNormal).image != nullptr);
         CHECK(framed->style("button", ui::WidgetState::kHover).image->name == "frame.buttonHover");
         CHECK(framed->style("panel", ui::WidgetState::kNormal).image->edges == ui::SliceFill::kRepeat);
         CHECK(framed->style("slider", ui::WidgetState::kNormal).image == nullptr);
@@ -169,6 +184,43 @@ TEST_SUITE("ui/theme")
         CHECK(host.lastError()->message.find("t.json") != std::string::npos);
         CHECK(host.revision() == first + 1);
         CHECK(host.current().style("button", ui::WidgetState::kNormal).radius == 9.0f); // l'ancien thème reste
+        host.unwatch();
+    }
+
+    TEST_CASE("hot reload: set() forgets the reload source; a failed load watches the requested theme and the parents it looked for")
+    {
+        tests::TempDir dir("ui_theme_reload");
+        dir.write("base.json", kBase);
+        dir.write("dark.json", R"({"name": "dark", "extends": "base.json", "tokens": {"color.primary": "#336699", "color.text": "#eeeeee", "color.muted": "#555555"}})");
+        dir.write("light.json", R"({"name": "light", "extends": "base.json", "tokens": {"color.primary": "not a color"}})");
+        engine::core::FileWatcher watcher;
+        ui::ThemeHost host;
+        REQUIRE(host.load(dir.path / "dark.json").has_value());
+        host.watch(watcher);
+
+        // Thème demandé invalide : le sombre reste, mais corriger light.json installe le clair.
+        CHECK_FALSE(host.load(dir.path / "light.json").has_value());
+        CHECK(host.current().name() == "dark");
+        dir.write("light.json", R"({"name": "light", "extends": "base.json", "tokens": {"color.primary": "#336699", "color.text": "#eeeeee", "color.muted": "#555555"}})");
+        CHECK(watcher.poll() >= 1);
+        CHECK(host.reloadIfChanged());
+        CHECK(host.current().name() == "light");
+
+        // Un nouveau parent qui n'existe pas encore : sa création relance le chargement.
+        dir.write("light.json", R"({"name": "light2", "extends": "new-base.json", "tokens": {"color.primary": "#336699", "color.text": "#eeeeee", "color.muted": "#555555"}})");
+        CHECK(watcher.poll() >= 1);
+        CHECK_FALSE(host.reloadIfChanged());
+        dir.write("new-base.json", kBase);
+        CHECK(watcher.poll() >= 1);
+        CHECK(host.reloadIfChanged());
+        CHECK(host.current().name() == "light2");
+
+        // set() installe un thème sans fichier : une modification signalée juste avant ne le remplace pas.
+        dir.write("light.json", R"({"name": "light3", "extends": "new-base.json", "tokens": {"color.primary": "#336699", "color.text": "#eeeeee", "color.muted": "#555555"}})");
+        CHECK(watcher.poll() >= 1);
+        host.set(ui::Theme::fallback());
+        CHECK_FALSE(host.reloadIfChanged());
+        CHECK(host.current().name() == "fallback");
         host.unwatch();
     }
 

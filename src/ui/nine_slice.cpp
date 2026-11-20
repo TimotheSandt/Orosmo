@@ -40,10 +40,20 @@ template <typename Fn> void tile(SliceFill fill, float d0, float d1, float s0, f
         emit(d0, d1, s0, s1);
         return;
     }
+    // Nombre de répétitions borné et calculé d'avance (positions d0 + k * période, sans accumulation) : une période minuscule
+    // ne fait ni boucler sans fin ni exploser la liste de dessin ; au-delà du budget, la bande est étirée.
+    constexpr double kMaxRepeats = 4096.0;
     const float period = (s1 - s0) * scale;
-    for (float d = d0; d < d1 - 1e-4f; d += period)
+    const double count = period > 0.0f ? std::ceil((static_cast<double>(d1) - d0 - 1e-4) / period) : kMaxRepeats + 1.0;
+    if (!(count <= kMaxRepeats))
     {
-        const float end = std::min(d + period, d1);
+        emit(d0, d1, s0, s1);
+        return;
+    }
+    for (int k = 0; k < static_cast<int>(count); ++k)
+    {
+        const float d = d0 + static_cast<float>(k) * period;
+        const float end = std::min(d0 + static_cast<float>(k + 1) * period, d1);
         emit(d, end, s0, s0 + (end - d) / scale); // la dernière répétition est coupée, pas comprimée
     }
 }

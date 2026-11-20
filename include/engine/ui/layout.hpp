@@ -97,6 +97,7 @@ class ScrollView : public Widget
 
     bool interactive() const override { return maxScroll_ > 0.0f; }
     bool clipsChildren() const override { return true; }
+    Rect childClip() const override { return viewport_; }
     bool onWheel(Ui &ui, glm::vec2 wheel) override;
     void onPress(Ui &ui, glm::vec2 mouse) override;
     void onDrag(Ui &ui, glm::vec2 mouse) override;

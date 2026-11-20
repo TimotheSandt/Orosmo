@@ -303,7 +303,14 @@ void Widget::emit(Ui &ui, EventKind kind, bool active)
     {
         return;
     }
-    ui.defer([this, kind, active, h] { h(Event{kind, this, active}); });
+    ui.defer(
+        [this, alive = std::weak_ptr<char>(lifetime_), kind, active, h]
+        {
+            if (!alive.expired()) // la source a pu être détruite par un gestionnaire précédent de la même image
+            {
+                h(Event{kind, this, active});
+            }
+        });
 }
 
 } // namespace engine::ui

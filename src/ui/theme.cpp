@@ -116,13 +116,13 @@ core::Result<> mergeFile(RawTheme &raw, const std::filesystem::path &path, std::
     {
         return makeError(ErrorCode::kParse, path.generic_string() + ": cycle in \"extends\"");
     }
+    raw.sources.push_back(path); // avant la lecture : un parent qui manque encore est observé lui aussi
     auto text = readText(path);
     if (!text)
     {
         return std::unexpected(text.error());
     }
     visiting.insert(canonical);
-    raw.sources.push_back(path);
     auto merged = mergeDocument(raw, *text, path.parent_path(), path.generic_string(), visiting);
     visiting.erase(canonical);
     return merged;
@@ -480,8 +480,8 @@ struct ThemeBuilder
                 return std::unexpected(r.error());
             if (auto s = def.find("scale"); s != def.end())
             {
-                if (!s->is_number() || s->get<float>() <= 0.0f)
-                    return fail(path + ".scale", "expected a positive number");
+                if (!s->is_number() || !(s->get<float>() >= 0.01f && s->get<float>() <= 100.0f))
+                    return fail(path + ".scale", "expected a number from 0.01 to 100");
                 style->scale = s->get<float>();
             }
             for (auto k = def.begin(); k != def.end(); ++k)
@@ -500,7 +500,8 @@ struct ThemeBuilder
             {
                 return makeError(ErrorCode::kIo, source + ": fonts." + name + ": cannot read " + file.generic_string());
             }
-            theme.fonts_[name] = std::make_shared<FontFace>(FontFace{name, file});
+            const auto written = std::filesystem::last_write_time(file, ec);
+            theme.fonts_[name] = std::make_shared<FontFace>(FontFace{name, file, ec ? 0 : static_cast<std::int64_t>(written.time_since_epoch().count())});
             theme.sources_.push_back(file);
         }
 
@@ -621,15 +622,27 @@ struct ThemeBuilder
     }
 };
 
-core::Result<Theme> Theme::load(const std::filesystem::path &path)
+namespace
+{
+// Theme::load, en rendant aussi les fichiers lus ou tentés (même en cas d'échec) : ThemeHost les observe.
+core::Result<Theme> loadTracked(const std::filesystem::path &path, std::vector<std::filesystem::path> &attempted)
 {
     RawTheme raw;
     std::set<std::filesystem::path> visiting;
-    if (auto merged = mergeFile(raw, path, visiting); !merged)
+    auto merged = mergeFile(raw, path, visiting);
+    attempted = raw.sources;
+    if (!merged)
     {
         return std::unexpected(merged.error());
     }
     return ThemeBuilder::build(std::move(raw), path.generic_string());
+}
+} // namespace
+
+core::Result<Theme> Theme::load(const std::filesystem::path &path)
+{
+    std::vector<std::filesystem::path> attempted;
+    return loadTracked(path, attempted);
 }
 
 core::Result<Theme> Theme::parse(std::string_view json, const std::filesystem::path &baseDirectory, std::string_view sourceName)
@@ -739,19 +752,34 @@ ThemeHost::~ThemeHost() { unwatch(); }
 
 core::Result<> ThemeHost::load(const std::filesystem::path &path)
 {
-    auto theme = Theme::load(path);
+    std::vector<std::filesystem::path> attempted;
+    auto theme = loadTracked(path, attempted);
+    path_ = path;
+    pending_ = false;
     if (!theme)
     {
         lastError_ = theme.error();
+        attempted_ = std::move(attempted);
+        if (watcher_ != nullptr)
+        {
+            rewatch();
+        }
         return std::unexpected(theme.error());
     }
-    path_ = path;
-    set(std::move(*theme));
+    install(std::move(*theme));
     return {};
 }
 
 void ThemeHost::set(Theme theme)
 {
+    path_.clear();
+    pending_ = false;
+    install(std::move(theme));
+}
+
+void ThemeHost::install(Theme theme)
+{
+    attempted_.clear();
     theme_ = std::move(theme);
     lastError_.reset();
     ++revision_;
@@ -792,15 +820,22 @@ bool ThemeHost::reloadIfChanged()
     {
         return false;
     }
-    auto theme = Theme::load(path_);
+    std::vector<std::filesystem::path> attempted;
+    auto theme = loadTracked(path_, attempted);
     if (!theme)
     {
         lastError_ = theme.error();
         LOG_ERROR(1, "Theme reload failed, the previous theme is kept: ", theme.error().message);
+        // Observe aussi ce que la tentative a lu ou cherché (un nouveau parent qui n'existe pas encore, par exemple).
+        attempted_ = std::move(attempted);
+        if (watcher_ != nullptr)
+        {
+            rewatch();
+        }
         return false;
     }
     LOG_INFO("Theme reloaded: ", path_.generic_string());
-    set(std::move(*theme));
+    install(std::move(*theme));
     return true;
 }
 
@@ -812,7 +847,12 @@ void ThemeHost::rewatch()
         watcher->unwatch(id);
     }
     watchIds_.clear();
-    for (const std::filesystem::path &source : theme_.sources())
+    std::vector<std::filesystem::path> files = theme_.sources();
+    files.insert(files.end(), attempted_.begin(), attempted_.end());
+    std::ranges::sort(files);
+    const auto [first, last] = std::ranges::unique(files);
+    files.erase(first, last);
+    for (const std::filesystem::path &source : files)
     {
         watchIds_.push_back(watcher->watch(source, [this](const core::FileEvent &) { pending_ = true; }));
     }

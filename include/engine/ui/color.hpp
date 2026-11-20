@@ -105,6 +105,7 @@ class ColorEditor : public VBox
     ColorEditor(Binding<Color> value, bool alpha = false);
     Color color() const { return value_.value(); }
     ColorFormat format() const noexcept { return format_; }
+    void clearChildren() override {} // structure interne : pas de contenu effaçable
 
   private:
     void rebuildChannels();
@@ -126,6 +127,7 @@ class GradientEditor : public VBox
     explicit GradientEditor(Binding<Gradient> value);
     Gradient gradient() const { return value_.value(); }
     int selected() const noexcept { return selected_; }
+    void clearChildren() override {} // structure interne : pas de contenu effaçable
 
   private:
     friend class GradientBar;
