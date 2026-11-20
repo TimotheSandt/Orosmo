@@ -19,10 +19,12 @@
 #include <stb_image.h>
 
 #include <algorithm>
+#include <clocale>
 #include <cmath>
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string_view>
 
@@ -54,9 +56,18 @@ std::vector<std::uint8_t> decodeBase64(const std::string &text)
 {
     auto value = [](char c) -> int
     {
-        if (c >= 'A' && c <= 'Z') return c - 'A';
-        if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-        if (c >= '0' && c <= '9') return c - '0' + 52;
+        if (c >= 'A' && c <= 'Z')
+        {
+            return c - 'A';
+        }
+        if (c >= 'a' && c <= 'z')
+        {
+            return c - 'a' + 26;
+        }
+        if (c >= '0' && c <= '9')
+        {
+            return c - '0' + 52;
+        }
         return c == '+' ? 62 : (c == '/' ? 63 : -1);
     };
     std::vector<std::uint8_t> out;
@@ -101,10 +112,12 @@ TEST_SUITE("world/export")
         const float lo = field.minHeight(), hi = field.maxHeight();
         REQUIRE(w::writeHeightPng16(dir.path / "h.png", field, lo, hi).has_value());
         int width = 0, height = 0, channels = 0;
-        stbi_us *pixels = stbi_load_16((dir.path / "h.png").string().c_str(), &width, &height, &channels, 1);
+        const std::unique_ptr<stbi_us, void (*)(void *)> owned(stbi_load_16((dir.path / "h.png").string().c_str(), &width, &height, &channels, 1),
+                                                                stbi_image_free);
+        const stbi_us *pixels = owned.get();
         REQUIRE(pixels != nullptr);
-        CHECK(width == 33);
-        CHECK(height == 21);
+        REQUIRE(width == 33); // la boucle lit 33 x 21 pixels : s'arrêter si l'image n'a pas cette taille
+        REQUIRE(height == 21);
         CHECK(channels == 1);
         bool sawMin = false, sawMax = false;
         for (std::uint32_t j = 0; j < field.height; ++j)
@@ -118,7 +131,6 @@ TEST_SUITE("world/export")
                 sawMax = sawMax || v == 65535;
             }
         }
-        stbi_image_free(pixels);
         CHECK(sawMin);
         CHECK(sawMax);
         REQUIRE(w::writeHeightPng16(dir.path / "again.png", field, lo, hi).has_value());
@@ -202,6 +214,7 @@ TEST_SUITE("world/export")
         std::ifstream obj(dir.path / "t.obj");
         std::string line;
         std::vector<float> ys;
+        std::vector<unsigned> faceIndices; // indices de sommet (base 1) de chaque face, dans l'ordre du fichier
         std::size_t normals = 0, faces = 0;
         while (std::getline(obj, line))
         {
@@ -215,7 +228,15 @@ TEST_SUITE("world/export")
                 ys.push_back(y);
             }
             normals += tag == "vn" ? 1 : 0;
-            faces += tag == "f" ? 1 : 0;
+            if (tag == "f")
+            {
+                ++faces;
+                std::string corner;
+                while (s >> corner)
+                {
+                    faceIndices.push_back(static_cast<unsigned>(std::stoul(corner.substr(0, corner.find('/')))));
+                }
+            }
         }
         REQUIRE(ys.size() == field.heights.size());
         for (std::size_t i = 0; i < ys.size(); ++i)
@@ -224,6 +245,17 @@ TEST_SUITE("world/export")
         }
         CHECK(normals == ys.size());
         CHECK(faces == 2u * 8u * 6u);
+        // Chaque face désigne les bons sommets : deux triangles par cellule, anti-horaires vus du dessus.
+        std::vector<unsigned> expected;
+        for (unsigned j = 0; j + 1 < field.height; ++j)
+        {
+            for (unsigned i = 0; i + 1 < field.width; ++i)
+            {
+                const unsigned a = j * field.width + i + 1, b = a + 1, c = a + field.width, d = c + 1;
+                expected.insert(expected.end(), {a, c, b, b, c, d});
+            }
+        }
+        CHECK(faceIndices == expected);
 
         REQUIRE(w::writeGltf(dir.path / "t.gltf", field).has_value());
         std::ifstream in(dir.path / "t.gltf");
@@ -236,6 +268,7 @@ TEST_SUITE("world/export")
         CHECK(buffer.size() == doc["buffers"][0]["byteLength"].get<std::size_t>());
         CHECK(doc["accessors"][0]["count"] == field.heights.size());
         CHECK(doc["accessors"][2]["count"] == 2u * 8u * 6u * 3u);
+        REQUIRE(buffer.size() >= (5 * 3 + 1) * 4 + 4);
         float y5 = 0;
         std::memcpy(&y5, buffer.data() + (5 * 3 + 1) * 4, 4); // POSITION du sommet 5, composante y
         CHECK(y5 == field.heights[5]);
@@ -274,6 +307,47 @@ TEST_SUITE("world/export")
         }
         CHECK(closed);
         CHECK(volume > 0.0); // normales vers l'extérieur
+        // Socle qui ne passe pas sous la surface : pas un solide, refusé.
+        CHECK((tests::errorOf(w::writeStl(dir.path / "flat.stl", field, 0.0f)) == engine::core::ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(w::writeStl(dir.path / "nan.stl", field, std::nanf(""))) == engine::core::ErrorCode::kInvalidArgument));
+    }
+
+    TEST_CASE("exported positions come from the global sample index, like the heights; OBJ numbers ignore the C locale")
+    {
+        w::TerrainParams p = params();
+        p.sampleSpacing = 0.125f;
+        const w::HeightField field = w::generateRegion(p, 1, 33554433, 0, 3, 2);
+        // originX (float) + 2 * 0.125 = 4194304 ; l'échantillon global 33554435 est en 4194304.5 (float), là où sa hauteur est prise.
+        CHECK(field.xAt(2) == static_cast<float>(33554435.0 * 0.125));
+        CHECK(field.xAt(2) == 4194304.5f);
+        tests::TempDir dir("engine_export");
+        const w::HeightField small = w::generateRegion(params(), 5, 0, 0, 3, 3);
+        REQUIRE(w::writeObj(dir.path / "c.obj", small).has_value());
+        const char *previous = std::setlocale(LC_NUMERIC, nullptr);
+        const std::string saved = previous != nullptr ? previous : "C";
+        bool comma = false;
+        for (const char *name : {"fr_FR.UTF-8", "de_DE.UTF-8", "fr_FR.utf8", "de_DE.utf8"})
+        {
+            if (std::setlocale(LC_NUMERIC, name) != nullptr)
+            {
+                comma = true;
+                break;
+            }
+        }
+        if (!comma)
+        {
+            MESSAGE("no locale with a decimal comma on this system: only the C locale output is checked");
+        }
+        const auto written = w::writeObj(dir.path / "l.obj", small);
+        std::setlocale(LC_NUMERIC, saved.c_str());
+        REQUIRE(written.has_value());
+        CHECK(readBytes(dir.path / "l.obj") == readBytes(dir.path / "c.obj"));
+        // Grille dont le stockage ne correspond pas à la forme annoncée : biomeMap ne lit pas hors du vecteur.
+        w::HeightField bad;
+        bad.width = 2;
+        bad.height = 2;
+        bad.heights = {1.0f};
+        CHECK(w::biomeMap(bad, {}).empty());
     }
 
     TEST_CASE("biomes: classification by height and slope, and a reopened RGB map")
@@ -299,6 +373,9 @@ TEST_SUITE("world/export")
 
     TEST_CASE("TEST-03: reference checksum of an exported region")
     {
+        // Valeur d'or fixée à l'écriture de TER-11 (M3, lot B) par cette même fonction sur Linux x64, puis retrouvée à l'identique
+        // par la CI Linux arm64 et Windows (MinGW). Elle couvre generateRegion (graine 42, 64 x 64, params() ci-dessus) : la
+        // changer n'est permis que pour une modification VOLONTAIRE de l'algorithme de bruit ou de génération (voir noise_tests).
         const w::HeightField field = w::generateRegion(params(), 42, 0, 0, 64, 64);
         const std::uint64_t sum = w::checksum64(field.heights);
         if (sum != 0x535edcc509c49bd1ULL)
@@ -327,7 +404,9 @@ TEST_SUITE("world/raycast")
         REQUIRE(hit.has_value());
         CHECK(hit->position.y == doctest::Approx(w::meshHeightAt(p, 11, x, z)).epsilon(1e-4));
         CHECK_FALSE(w::raycastTerrain(p, 11, {x, 500.0f, z}, {0.0f, 1.0f, 0.0f}, 2000.0f).has_value());
-        CHECK(w::raycastTerrain(p, 11, {x, -500.0f, z}, {1.0f, 0.0f, 0.0f}, 10.0f)->distance == 0.0f); // départ sous la surface
+        const auto below = w::raycastTerrain(p, 11, {x, -500.0f, z}, {1.0f, 0.0f, 0.0f}, 10.0f); // départ sous la surface
+        REQUIRE(below.has_value());
+        CHECK(below->distance == 0.0f);
         for (int k = 0; k < 20; ++k) // rayons obliques : le point touché est sur la surface
         {
             const engine::core::Vec3 o{static_cast<float>(k) * 3.1f, 120.0f, -static_cast<float>(k) * 1.7f};

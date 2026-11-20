@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <charconv>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -169,7 +170,7 @@ GridMesh gridMesh(const HeightField &f)
         for (std::uint32_t i = 0; i < f.width; ++i)
         {
             const auto n = normalAt(f, i, j);
-            m.positions.insert(m.positions.end(), {f.originX + static_cast<float>(i) * f.spacing, f.at(i, j), f.originZ + static_cast<float>(j) * f.spacing});
+            m.positions.insert(m.positions.end(), {f.xAt(i), f.at(i, j), f.zAt(j)});
             m.normals.insert(m.normals.end(), n.begin(), n.end());
         }
     }
@@ -225,6 +226,8 @@ HeightField generateRegion(const TerrainParams &params, std::uint32_t seed, std:
     auto position = [&](std::int64_t global) { return static_cast<float>(static_cast<double>(global) * static_cast<double>(params.sampleSpacing)); };
     f.originX = position(firstX);
     f.originZ = position(firstZ);
+    f.firstX = firstX;
+    f.firstZ = firstZ;
     f.heights.resize(static_cast<std::size_t>(width) * height);
     auto row = [&](std::size_t j)
     {
@@ -273,7 +276,19 @@ core::Result<> writeHeightPng16(const std::filesystem::path &path, const HeightF
     ihdr.u32be(field.height);
     ihdr.data.insert(ihdr.data.end(), {16, 0, 0, 0, 0}); // 16 bits, niveaux de gris, deflate, filtrage standard, non entrelacé
     pngChunk(png, "IHDR", ihdr.data);
-    pngChunk(png, "IDAT", zlibStored(raw));
+    // Un bloc PNG mesure au plus 2^31 - 1 octets : le flux zlib est réparti sur des blocs IDAT consécutifs (sortie inchangée sous
+    // cette taille : un seul bloc).
+    const std::vector<std::uint8_t> zlib = zlibStored(raw);
+    constexpr std::size_t kMaxChunk = 0x7fffffffU;
+    if (zlib.size() <= kMaxChunk)
+    {
+        pngChunk(png, "IDAT", zlib);
+    }
+    for (std::size_t at = 0; zlib.size() > kMaxChunk && at < zlib.size(); at += kMaxChunk)
+    {
+        const std::size_t size = std::min(kMaxChunk, zlib.size() - at);
+        pngChunk(png, "IDAT", std::vector<std::uint8_t>(zlib.begin() + static_cast<std::ptrdiff_t>(at), zlib.begin() + static_cast<std::ptrdiff_t>(at + size)));
+    }
     pngChunk(png, "IEND", {});
     return writeFile(path, png.data.data(), png.data.size());
 }
@@ -464,17 +479,25 @@ core::Result<> writeObj(const std::filesystem::path &path, const HeightField &fi
     const GridMesh m = gridMesh(field);
     std::string out = "# terrain exporté par engine::world (TER-11)\n";
     char line[128];
+    // std::to_chars : même sortie que "%.6f", mais indépendante de LC_NUMERIC (une virgule changerait les octets du fichier).
+    auto triple = [&](const char *prefix, const float *v)
+    {
+        out += prefix;
+        for (int k = 0; k < 3; ++k)
+        {
+            out += ' ';
+            const auto [end, ec] = std::to_chars(line, line + sizeof line, static_cast<double>(v[k]), std::chars_format::fixed, 6);
+            out.append(line, ec == std::errc{} ? end : line);
+        }
+        out += '\n';
+    };
     for (std::size_t v = 0; v < m.positions.size(); v += 3)
     {
-        std::snprintf(line, sizeof line, "v %.6f %.6f %.6f\n", static_cast<double>(m.positions[v]), static_cast<double>(m.positions[v + 1]),
-                      static_cast<double>(m.positions[v + 2]));
-        out += line;
+        triple("v", &m.positions[v]);
     }
     for (std::size_t v = 0; v < m.normals.size(); v += 3)
     {
-        std::snprintf(line, sizeof line, "vn %.6f %.6f %.6f\n", static_cast<double>(m.normals[v]), static_cast<double>(m.normals[v + 1]),
-                      static_cast<double>(m.normals[v + 2]));
-        out += line;
+        triple("vn", &m.normals[v]);
     }
     for (std::size_t t = 0; t < m.indices.size(); t += 3)
     {
@@ -535,11 +558,15 @@ core::Result<> writeStl(const std::filesystem::path &path, const HeightField &fi
         return r;
     // Solide fermé : surface (deux triangles par cellule), fond (même grille au niveau du socle, à l'envers), et jupes reliant le
     // bord de la surface au bord du fond, sommet par sommet : chaque arête est partagée par exactement deux triangles.
-    const float base = field.minHeight() - std::max(baseDepth, 0.0f);
+    // Le socle doit passer STRICTEMENT sous le point le plus bas : sinon le fond touche la surface, des jupes ont une aire nulle
+    // et le fichier n'est plus un solide imprimable (une profondeur trop faible pour la précision du float donne aussi base == min).
+    const float base = field.minHeight() - baseDepth;
+    if (!(baseDepth > 0.0f) || !std::isfinite(base) || !(base < field.minHeight()))
+        return makeError(ErrorCode::kInvalidArgument, "writeStl: the base must lie strictly below the lowest point (baseDepth > 0)");
     using P = std::array<float, 3>;
     std::vector<std::array<P, 3>> triangles;
-    auto top = [&](std::uint32_t i, std::uint32_t j) { return P{field.originX + static_cast<float>(i) * field.spacing, field.at(i, j), field.originZ + static_cast<float>(j) * field.spacing}; };
-    auto bottom = [&](std::uint32_t i, std::uint32_t j) { return P{field.originX + static_cast<float>(i) * field.spacing, base, field.originZ + static_cast<float>(j) * field.spacing}; };
+    auto top = [&](std::uint32_t i, std::uint32_t j) { return P{field.xAt(i), field.at(i, j), field.zAt(j)}; };
+    auto bottom = [&](std::uint32_t i, std::uint32_t j) { return P{field.xAt(i), base, field.zAt(j)}; };
     for (std::uint32_t j = 0; j + 1 < field.height; ++j)
     {
         for (std::uint32_t i = 0; i + 1 < field.width; ++i)
@@ -605,6 +632,9 @@ Biome classify(float height, float slope, const BiomeParams &params) noexcept
 
 std::vector<Biome> biomeMap(const HeightField &field, const BiomeParams &params)
 {
+    // API publique : une grille dont le stockage ne correspond pas à width x height donnerait des lectures hors du vecteur.
+    if (field.heights.size() != static_cast<std::size_t>(field.width) * field.height)
+        return {};
     std::vector<Biome> out(field.heights.size());
     for (std::uint32_t j = 0; j < field.height; ++j)
     {
