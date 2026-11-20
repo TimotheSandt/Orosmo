@@ -125,8 +125,8 @@ présentée comme utilisable : celle de M3 (proposée : `v0.3.0`).
 | Module (`include/engine/…`) | Statut | Remarque |
 | --- | --- | --- |
 | `core`, `rhi`, `renderer`, `world`, `ui` | **figé pour 0.3.x** | noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
-| `platform` (`Window`, `InputManager`) | **provisoire** | noms encore en `PascalCase`, hors de l'espace `engine::platform` : ils changeront avec la migration de l'interface héritée (`docs/GAPS.md` G96) |
-| en-têtes hérités (`Graphics/`, `Noise/`, `Benchmark/`) | **hérités** | gardés pour la démo le temps de leur migration ; à éviter dans un nouveau code (l'interface héritée `UI/` et la cible `UI::View` du langage ont été supprimées) |
+| `platform` (`Window`, `InputManager`) | **provisoire** | noms encore en `PascalCase`, hors de l'espace `engine::platform` : ils changeront (`docs/GAPS.md` G96) |
+| `core` : `Logger`, `Profiler`, `FPSCounter`, `RingBuffer` | **repris tels quels** | anciens modules `Utilities` et `Profiler` déplacés dans `engine::core` (2026-11-20) : noms de méthodes encore en `PascalCase` (G122) |
 
 ## 8. Limites connues
 

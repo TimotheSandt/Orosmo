@@ -72,7 +72,7 @@ make all-debug                          # moteur (debug, -Wpedantic -Werror) -> 
 make run                                # lance la démo (OpenGL par défaut ; --api vulkan non fiable avant M4)
 
 # 3. Tests et contrôles
-make demo-test                          # doctest : 117 cas (construit les archives release d'abord)
+make demo-test                          # doctest : 404 cas (construit les archives release d'abord)
 make demo-test SANITIZE=address,undefined   # ASan + UBSan (partir d'un arbre propre : make fclean)
 make check                              # dépôt, couches, isolation des API, en-têtes autonomes (bloquant depuis M2)
 make demo-test-unit                     # tests sans GPU ni fenêtre ; make demo-test-gpu : seulement l'intégration graphique

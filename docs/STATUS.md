@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour à la fin de M3 (2026-11-19). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour à la fin de M3 (2026-11-19), puis après le nettoyage « Orosmo » (2026-11-20). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -19,6 +19,7 @@ Mis à jour à la fin de M3 (2026-11-19). États détaillés et preuves de l'aud
 | **M2 lot B6 : bascule de la démo, retrait de l'ancien rendu, isolation bloquante** | **Lot B livré côté code ; lot C à faire** | `docs/releases/M2-B6.md` : la démo présente via le RHI (`scene.png` identique à la référence, écart max 0/255) ; `IGraphicsDevice`, backends OpenGL/Vulkan/Metal et façades supprimés (−16 800 lignes, étiquette `archive/pre-M2-B6-legacy-graphics`) ; `check_api_isolation.py --graphics-only --strict` : **0 infraction** ; 259 cas doctest verts |
 | **M2 lot C : plateforme (fenêtre, entrées, mode sans fenêtre), isolation totale** | **Lot C livré côté code ; M2 terminé côté code, à proposer à `main`** | `docs/releases/M2.md` : `Window` et `InputManager` dans `src/platform/` avec GLFW caché (poignée `void *`), DPI (`GetContentScale`, tampon en pixels réels), molette (le `TODO` disparaît), `--headless`, `--vsync` ; `check_api_isolation.py --strict` **sans baseline : 0 infraction** (GLFW et `<windows.h>` compris) ; capture sans fenêtre **identique** à la référence ; 264 cas doctest verts |
 | **M3 Premier générateur de terrain et interface de base (lots A à F)** | **Livré côté code ; à proposer à `main` (première release utilisable, v0.3.0 proposée)** | `docs/releases/M3.md` : module `engine::world` (bruit déterministe CPU et GPU, tuiles, niveaux de détail cousus, streaming, export, lancer de rayon), repère Vulkan du RHI et reverse-Z, dessin de debug, rendu du terrain, module `engine::ui` (widgets, mise en page, thèmes JSON, paramètres réfléchis), compilateur du langage vers `engine::ui`, `terrain-gen`, visualiseur, paquet et `engine init` vérifiés de bout en bout ; 386 cas doctest verts depuis un clone propre, ASan + UBSan propres, `make check`, `cui-test`, `terrain-gen-check`, `viewer-capture`, `e2e-init` verts (Linux) |
+| **Nettoyage « Orosmo » (après la revue de M3)** | **Fait, dans `dev`** | `docs/releases/M3.md` § Nettoyage : modules hérités `Utilities`, `Profiler`, `Benchmark`, `Noise`, `Graphics`, `UI` retirés ou déplacés dans `engine::core` / la démo ; démo sur `engine::world` et `engine::ui` ; 404 cas doctest verts, ASan + UBSan propres, `make check`, `cui-test`, `terrain-gen-check`, `e2e-init` verts ; capture de la démo identique à la nouvelle référence (0 pixel d'écart, llvmpipe) |
 
 ## Identifiants de `docs/02` touchés par M3
 
