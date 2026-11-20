@@ -1,51 +1,59 @@
+// Options de lancement de la démo : choix de l'API graphique (backend du RHI), graine du terrain, mode sans fenêtre, capture.
+// Propres à la démo (elles vivaient dans l'ancien module Graphics) ; seul OpenGL est disponible avant M4 (Vulkan) et M9 (Metal).
 #pragma once
+
+#include <engine/core/error.hpp>
+#include <engine/rhi/types.hpp>
 
 #include <cstdint>
 #include <iosfwd>
 #include <optional>
 #include <string>
-#include <string>
+#include <string_view>
 
-enum class GraphicsAPI : std::uint8_t
+namespace demo
 {
-    OpenGL,
-    Vulkan,
-    Metal
+
+enum class BackendAvailability : std::uint8_t
+{
+    kAvailable,
+    kNotBuilt,
+    kUnsupportedPlatform,
 };
 
-enum class GraphicsAPIAvailability : std::uint8_t
+struct LaunchOptions
 {
-    Available,
-    NotBuilt,
-    UnsupportedPlatform
-};
-
-struct GraphicsLaunchOptions
-{
-    GraphicsAPI api = GraphicsAPI::OpenGL;
+    engine::rhi::Backend api = engine::rhi::Backend::kOpenGL;
     bool showHelp = false;
     bool listApis = false;
     bool chooseApiInteractively = false;
     bool apiExplicitlyRequested = false;
-    // --capture <dir> [--capture-frames N] : render N frames, save scene.png and ui.png in <dir>, exit (TOOL-03).
+    // --capture <dir> [--capture-frames N] : N images rendues, puis <dir>/scene.png et ui.png écrites, puis sortie (TOOL-03).
     std::string captureDirectory;
     std::uint32_t captureFrames = 10;
-    // --seed N : terrain seed of the demo (default: drawn at random by main() and logged). --capture implies seed 1 unless given.
+    // --seed N : graine du terrain (défaut : tirée au hasard par main() et journalisée). --capture implique la graine 1 sauf --seed.
     std::optional<std::uint32_t> seed;
-    // --headless (PLAT-04) : no window at all (offscreen device, fixed 1280x720 view, fixed time step, no input). The demo renders
-    // --capture-frames N frames (default 10), saves the images if --capture is given, then exits.
+    // --headless (PLAT-04) : aucune fenêtre (périphérique hors écran, vue fixe 1280x720, pas de temps fixe, aucune entrée). La démo
+    // rend --capture-frames N images (10 par défaut), enregistre les images si --capture est donné, puis quitte.
     bool headless = false;
-    // --vsync : synchronise la présentation sur le rafraîchissement de l'écran (désactivée par défaut, comme avant ; sans effet en headless).
+    // --vsync : présentation synchronisée sur le rafraîchissement de l'écran (désactivée par défaut ; sans effet en headless).
     bool vsync = false;
 };
 
-std::string GraphicsAPIToString(GraphicsAPI api) noexcept;
-std::optional<GraphicsAPI> ParseGraphicsAPI(std::string value) noexcept;
+// Nom affiché : « OpenGL », « Vulkan », « Metal ».
+std::string_view backendDisplayName(engine::rhi::Backend api) noexcept;
+// « opengl » / « gl », « vulkan » / « vk », « metal » (casse indifférente).
+std::optional<engine::rhi::Backend> parseBackend(std::string_view value) noexcept;
 
-GraphicsLaunchOptions ParseGraphicsLaunchOptions(int argc, const char *const *argv);
-void PrintGraphicsAPIUsage(std::ostream &out);
-bool PromptForGraphicsAPI(std::istream &input, std::ostream &output, GraphicsAPI &selectedApi);
+// Argument inconnu ou valeur invalide : erreur kInvalidArgument (message prêt à afficher).
+engine::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv);
+void printUsage(std::ostream &out);
+// Menu interactif (--choose-api) : faux si l'entrée est fermée ou le choix inconnu (`selected` inchangé).
+bool promptForBackend(std::istream &input, std::ostream &output, engine::rhi::Backend &selected);
 
-GraphicsAPIAvailability GetGraphicsAPIAvailability(GraphicsAPI api) noexcept;
-bool IsGraphicsAPIAvailable(GraphicsAPI api) noexcept;
-std::string GetGraphicsAPIAvailabilityMessage(GraphicsAPI api);
+// Suit les backends compilés dans le RHI (RHI-04) ; Metal n'existe que sur les plateformes Apple.
+BackendAvailability backendAvailability(engine::rhi::Backend api) noexcept;
+bool isBackendAvailable(engine::rhi::Backend api) noexcept;
+std::string backendAvailabilityMessage(engine::rhi::Backend api);
+
+} // namespace demo

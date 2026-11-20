@@ -1,215 +1,185 @@
-#include "Graphics/Backends/GraphicsAPI.h"
+#include "launch_options.hpp"
 
+#include <engine/rhi/device.hpp>
+
+#include <algorithm>
 #include <array>
 #include <cctype>
-#include <sstream>
-#include <stdexcept>
+#include <charconv>
+#include <ostream>
+#include <istream>
+
+namespace demo
+{
 
 namespace
 {
 
-bool EqualsIgnoreCase(std::string left, std::string right) noexcept
+using engine::core::ErrorCode;
+using engine::core::makeError;
+using engine::rhi::Backend;
+
+// Ordre d'affichage (menu, liste) : OpenGL d'abord, c'est le défaut.
+constexpr std::array<Backend, 3> kAllBackends = {Backend::kOpenGL, Backend::kVulkan, Backend::kMetal};
+
+bool equalsIgnoreCase(std::string_view left, std::string_view right) noexcept
 {
-    if (left.size() != right.size())
-    {
-        return false;
-    }
-
-    for (std::size_t index = 0; index < left.size(); ++index)
-    {
-        if (std::tolower(static_cast<unsigned char>(left[index])) != std::tolower(static_cast<unsigned char>(right[index])))
-        {
-            return false;
-        }
-    }
-
-    return true;
+    return left.size() == right.size() && std::equal(left.begin(), left.end(), right.begin(), [](char a, char b)
+                                                     { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); });
 }
 
-std::string JoinAvailableApis()
+// Entier décimal non signé occupant toute la chaîne, au plus `maximum` ; rien sinon (signe, texte, dépassement).
+std::optional<std::uint32_t> parseUnsigned(std::string_view text, std::uint32_t maximum) noexcept
 {
-    constexpr std::array<GraphicsAPI, 3> allApis = {
-        GraphicsAPI::OpenGL,
-        GraphicsAPI::Vulkan,
-        GraphicsAPI::Metal,
-    };
-
-    std::ostringstream builder;
-    for (std::size_t index = 0; index < allApis.size(); ++index)
+    std::uint32_t value = 0;
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (text.empty() || error != std::errc{} || end != text.data() + text.size() || value > maximum)
     {
-        if (index != 0)
-        {
-            builder << ", ";
-        }
-        builder << GraphicsAPIToString(allApis[index]);
+        return std::nullopt;
     }
-    return builder.str();
+    return value;
+}
+
+std::string joinBackendNames()
+{
+    std::string names;
+    for (const Backend api : kAllBackends)
+    {
+        if (!names.empty())
+        {
+            names += ", ";
+        }
+        names += backendDisplayName(api);
+    }
+    return names;
 }
 
 } // namespace
 
-std::string GraphicsAPIToString(GraphicsAPI api) noexcept
+std::string_view backendDisplayName(Backend api) noexcept
 {
     switch (api)
     {
-        case GraphicsAPI::OpenGL:
-            return "OpenGL";
-        case GraphicsAPI::Vulkan:
-            return "Vulkan";
-        case GraphicsAPI::Metal:
-            return "Metal";
+        case Backend::kOpenGL: return "OpenGL";
+        case Backend::kVulkan: return "Vulkan";
+        case Backend::kMetal: return "Metal";
     }
-
     return "Unknown";
 }
 
-std::optional<GraphicsAPI> ParseGraphicsAPI(std::string value) noexcept
+std::optional<Backend> parseBackend(std::string_view value) noexcept
 {
-    if (EqualsIgnoreCase(value, "opengl") || EqualsIgnoreCase(value, "gl"))
+    if (equalsIgnoreCase(value, "opengl") || equalsIgnoreCase(value, "gl"))
     {
-        return GraphicsAPI::OpenGL;
+        return Backend::kOpenGL;
     }
-    if (EqualsIgnoreCase(value, "vulkan") || EqualsIgnoreCase(value, "vk"))
+    if (equalsIgnoreCase(value, "vulkan") || equalsIgnoreCase(value, "vk"))
     {
-        return GraphicsAPI::Vulkan;
+        return Backend::kVulkan;
     }
-    if (EqualsIgnoreCase(value, "metal"))
+    if (equalsIgnoreCase(value, "metal"))
     {
-        return GraphicsAPI::Metal;
+        return Backend::kMetal;
     }
-
     return std::nullopt;
 }
 
-GraphicsLaunchOptions ParseGraphicsLaunchOptions(int argc, const char *const *argv)
+engine::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv)
 {
-    GraphicsLaunchOptions options;
-
+    LaunchOptions options;
     for (int index = 1; index < argc; ++index)
     {
         const std::string argument(argv[index]);
+        // Valeur de l'option courante (argument suivant), ou rien s'il manque.
+        auto next = [&]() -> std::optional<std::string>
+        {
+            if (index + 1 >= argc)
+            {
+                return std::nullopt;
+            }
+            return std::string(argv[++index]);
+        };
 
         if (argument == "--help" || argument == "-h")
         {
             options.showHelp = true;
-            continue;
         }
-        if (argument == "--list-apis")
+        else if (argument == "--list-apis")
         {
             options.listApis = true;
-            continue;
         }
-        if (argument == "--vsync")
+        else if (argument == "--vsync")
         {
             options.vsync = true;
-            continue;
         }
-        if (argument == "--headless")
+        else if (argument == "--headless")
         {
             options.headless = true;
-            continue;
         }
-        if (argument == "--choose-api")
+        else if (argument == "--choose-api")
         {
             options.chooseApiInteractively = true;
-            continue;
         }
-        if (argument == "--api")
+        else if (argument == "--api" || argument.starts_with("--api="))
         {
-            if (index + 1 >= argc)
+            std::optional<std::string> value = argument == "--api" ? next() : std::optional<std::string>(argument.substr(6));
+            if (!value)
             {
-                throw std::invalid_argument("Missing value after --api");
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after --api");
             }
-
-            const auto parsedApi = ParseGraphicsAPI(argv[++index]);
-            if (!parsedApi.has_value())
+            const auto api = parseBackend(*value);
+            if (!api)
             {
-                throw std::invalid_argument("Unknown graphics API: " + std::string(argv[index]));
+                return makeError(ErrorCode::kInvalidArgument, "Unknown graphics API: " + *value);
             }
-
-            options.api = *parsedApi;
+            options.api = *api;
             options.apiExplicitlyRequested = true;
-            continue;
         }
-        if (argument.rfind("--api=", 0) == 0)
+        else if (argument == "--seed")
         {
-            const auto parsedApi = ParseGraphicsAPI(argument.substr(6));
-            if (!parsedApi.has_value())
+            const auto value = next();
+            if (!value)
             {
-                throw std::invalid_argument("Unknown graphics API: " + argument.substr(6));
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after --seed");
             }
-
-            options.api = *parsedApi;
-            options.apiExplicitlyRequested = true;
-            continue;
+            const auto seed = parseUnsigned(*value, 0x7fffffffU);
+            if (!seed)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --seed: " + *value);
+            }
+            options.seed = *seed;
         }
-
-        if (argument == "--seed")
+        else if (argument == "--capture" || argument == "--capture-frames")
         {
-            if (index + 1 >= argc)
+            const auto value = next();
+            if (!value)
             {
-                throw std::invalid_argument("Missing value after --seed");
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after " + argument);
             }
-            const std::string value(argv[++index]);
-            std::size_t parsedChars = 0;
-            unsigned long parsed = 0;
-            try
-            {
-                parsed = std::stoul(value, &parsedChars);
-            }
-            catch (const std::exception &)
-            {
-                parsedChars = 0;
-            }
-            if (parsedChars != value.size() || parsed > 0x7fffffffUL)
-            {
-                throw std::invalid_argument("Invalid value for --seed: " + value);
-            }
-            options.seed = static_cast<std::uint32_t>(parsed);
-            continue;
-        }
-        if (argument == "--capture" || argument == "--capture-frames")
-        {
-            if (index + 1 >= argc)
-            {
-                throw std::invalid_argument("Missing value after " + argument);
-            }
-            const std::string value(argv[++index]);
             if (argument == "--capture")
             {
-                options.captureDirectory = value;
+                options.captureDirectory = *value;
+                continue;
             }
-            else
+            const auto frames = parseUnsigned(*value, 100000U);
+            if (!frames || *frames == 0)
             {
-                std::size_t parsedChars = 0;
-                unsigned long frames = 0;
-                try
-                {
-                    frames = std::stoul(value, &parsedChars);
-                }
-                catch (const std::exception &)
-                {
-                    parsedChars = 0;
-                }
-                if (parsedChars != value.size() || frames == 0 || frames > 100000)
-                {
-                    throw std::invalid_argument("Invalid frame count for --capture-frames: " + value);
-                }
-                options.captureFrames = static_cast<std::uint32_t>(frames);
+                return makeError(ErrorCode::kInvalidArgument, "Invalid frame count for --capture-frames: " + *value);
             }
-            continue;
+            options.captureFrames = *frames;
         }
-
-        throw std::invalid_argument("Unknown argument: " + argument);
+        else
+        {
+            return makeError(ErrorCode::kInvalidArgument, "Unknown argument: " + argument);
+        }
     }
-
     return options;
 }
 
-void PrintGraphicsAPIUsage(std::ostream &out)
+void printUsage(std::ostream &out)
 {
     out << "Usage: ProceduralGeneration [--api <name>] [--choose-api] [--list-apis] [--seed N] [--headless] [--vsync] [--capture <dir> [--capture-frames N]] [--help]\n";
-    out << "Available API names: " << JoinAvailableApis() << '\n';
+    out << "Available API names: " << joinBackendNames() << '\n';
     out << "Example: ProceduralGeneration --api opengl\n";
     out << "Capture : renders N frames (default 10) at 1280x720 with seed 1 (unless --seed), writes <dir>/scene.png and\n";
     out << "          <dir>/ui.png (the UI shows live FPS: only scene.png is reproducible), then exits.\n";
@@ -217,17 +187,14 @@ void PrintGraphicsAPIUsage(std::ostream &out)
     out << "          combine it with --capture <dir> to save the images.\n";
 }
 
-bool PromptForGraphicsAPI(std::istream &input, std::ostream &output, GraphicsAPI &selectedApi)
+bool promptForBackend(std::istream &input, std::ostream &output, Backend &selected)
 {
-    constexpr std::array<GraphicsAPI, 3> allApis = {GraphicsAPI::OpenGL, GraphicsAPI::Vulkan, GraphicsAPI::Metal};
-
     output << "Select a graphics API:\n";
-    for (std::size_t index = 0; index < allApis.size(); ++index)
+    for (std::size_t index = 0; index < kAllBackends.size(); ++index)
     {
-        output << "  " << (index + 1) << ". " << GraphicsAPIToString(allApis[index]) << " - "
-               << GetGraphicsAPIAvailabilityMessage(allApis[index]) << '\n';
+        output << "  " << (index + 1) << ". " << backendDisplayName(kAllBackends[index]) << " - " << backendAvailabilityMessage(kAllBackends[index]) << '\n';
     }
-    output << "Press Enter for " << GraphicsAPIToString(GraphicsAPI::OpenGL) << ".\n";
+    output << "Press Enter for " << backendDisplayName(Backend::kOpenGL) << ".\n";
     output << "> ";
 
     std::string choice;
@@ -235,57 +202,50 @@ bool PromptForGraphicsAPI(std::istream &input, std::ostream &output, GraphicsAPI
     {
         return false;
     }
-
     if (choice.empty())
     {
-        selectedApi = GraphicsAPI::OpenGL;
+        selected = Backend::kOpenGL;
         return true;
     }
-
-    for (std::size_t index = 0; index < allApis.size(); ++index)
+    for (std::size_t index = 0; index < kAllBackends.size(); ++index)
     {
         if (choice == std::to_string(index + 1))
         {
-            selectedApi = allApis[index];
+            selected = kAllBackends[index];
             return true;
         }
     }
-
     return false;
 }
 
-GraphicsAPIAvailability GetGraphicsAPIAvailability(GraphicsAPI api) noexcept
+BackendAvailability backendAvailability(Backend api) noexcept
 {
-    switch (api)
+    if (engine::rhi::isBackendCompiled(api))
     {
-        case GraphicsAPI::OpenGL:
-            return GraphicsAPIAvailability::Available;
-        case GraphicsAPI::Vulkan: // l'ancien backend est retiré (A1) ; réécrit sur le RHI en M4
-            return GraphicsAPIAvailability::NotBuilt;
-        case GraphicsAPI::Metal:
-#ifdef __APPLE__
-            return GraphicsAPIAvailability::NotBuilt;
-#else
-            return GraphicsAPIAvailability::UnsupportedPlatform;
-#endif
+        return BackendAvailability::kAvailable;
     }
-
-    return GraphicsAPIAvailability::UnsupportedPlatform;
+#ifndef __APPLE__
+    if (api == Backend::kMetal)
+    {
+        return BackendAvailability::kUnsupportedPlatform;
+    }
+#endif
+    return BackendAvailability::kNotBuilt; // Vulkan réécrit sur le RHI en M4, Metal en M9
 }
 
-bool IsGraphicsAPIAvailable(GraphicsAPI api) noexcept { return GetGraphicsAPIAvailability(api) == GraphicsAPIAvailability::Available; }
+bool isBackendAvailable(Backend api) noexcept { return backendAvailability(api) == BackendAvailability::kAvailable; }
 
-std::string GetGraphicsAPIAvailabilityMessage(GraphicsAPI api)
+std::string backendAvailabilityMessage(Backend api)
 {
-    switch (GetGraphicsAPIAvailability(api))
+    const std::string name(backendDisplayName(api));
+    switch (backendAvailability(api))
     {
-        case GraphicsAPIAvailability::Available:
-            return std::string(GraphicsAPIToString(api)) + " backend is available.";
-        case GraphicsAPIAvailability::NotBuilt:
-            return std::string(GraphicsAPIToString(api)) + " backend selection is recognized, but this backend is not available yet (Vulkan: M4, Metal: M9).";
-        case GraphicsAPIAvailability::UnsupportedPlatform:
-            return std::string(GraphicsAPIToString(api)) + " backend is not supported on this platform.";
+        case BackendAvailability::kAvailable: return name + " backend is available.";
+        case BackendAvailability::kNotBuilt:
+            return name + " backend selection is recognized, but this backend is not available yet (Vulkan: M4, Metal: M9).";
+        case BackendAvailability::kUnsupportedPlatform: return name + " backend is not supported on this platform.";
     }
-
     return "Unknown graphics backend state.";
 }
+
+} // namespace demo

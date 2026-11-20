@@ -1,5 +1,5 @@
 #include "Game/Game.h"
-#include "Graphics/Backends/GraphicsAPI.h"
+#include "launch_options.hpp"
 #include <engine/core/log.hpp>
 #include <engine/platform/window.hpp>
 
@@ -25,19 +25,28 @@ int main(int argc, char **argv)
         SET_LOG_FILE_DEFAULT;
 #endif
 
-        const GraphicsLaunchOptions launchOptions = ParseGraphicsLaunchOptions(argc, argv);
+        const auto parsedOptions = demo::parseLaunchOptions(argc, argv);
+        if (!parsedOptions)
+        {
+            LOG_ERROR(1, parsedOptions.error().message);
+            std::cerr << parsedOptions.error().message << '\n';
+            demo::printUsage(std::cout);
+            FLUSH_LOG_TO_FILE;
+            return EXIT_FAILURE;
+        }
+        const demo::LaunchOptions &launchOptions = *parsedOptions;
 
         if (launchOptions.showHelp)
         {
-            PrintGraphicsAPIUsage(std::cout);
+            demo::printUsage(std::cout);
             return EXIT_SUCCESS;
         }
 
         if (launchOptions.listApis)
         {
-            for (const GraphicsAPI api : {GraphicsAPI::OpenGL, GraphicsAPI::Vulkan, GraphicsAPI::Metal})
+            for (const engine::rhi::Backend api : {engine::rhi::Backend::kOpenGL, engine::rhi::Backend::kVulkan, engine::rhi::Backend::kMetal})
             {
-                std::cout << GraphicsAPIToString(api) << ": " << GetGraphicsAPIAvailabilityMessage(api) << '\n';
+                std::cout << demo::backendDisplayName(api) << ": " << demo::backendAvailabilityMessage(api) << '\n';
             }
             return EXIT_SUCCESS;
         }
@@ -46,22 +55,22 @@ int main(int argc, char **argv)
         const std::string captureDirectory =
             launchOptions.captureDirectory.empty() ? std::string() : (launchDirectory / launchOptions.captureDirectory).string();
 
-        GraphicsAPI selectedApi = launchOptions.api;
+        engine::rhi::Backend selectedApi = launchOptions.api;
         const bool shouldPromptForApi = launchOptions.chooseApiInteractively;
-        if (shouldPromptForApi && !PromptForGraphicsAPI(std::cin, std::cout, selectedApi))
+        if (shouldPromptForApi && !demo::promptForBackend(std::cin, std::cout, selectedApi))
         {
             LOG_ERROR(1, "Interactive graphics API selection failed");
-            PrintGraphicsAPIUsage(std::cout);
+            demo::printUsage(std::cout);
             FLUSH_LOG_TO_FILE;
             return EXIT_FAILURE;
         }
 
         // Seul le backend OpenGL du RHI existe avant M4 (Vulkan) et M9 (Metal) : refus clair avec la raison (RHI-04).
-        if (!IsGraphicsAPIAvailable(selectedApi))
+        if (!demo::isBackendAvailable(selectedApi))
         {
-            LOG_ERROR(1, GetGraphicsAPIAvailabilityMessage(selectedApi));
-            std::cerr << GetGraphicsAPIAvailabilityMessage(selectedApi) << '\n';
-            PrintGraphicsAPIUsage(std::cout);
+            LOG_ERROR(1, demo::backendAvailabilityMessage(selectedApi));
+            std::cerr << demo::backendAvailabilityMessage(selectedApi) << '\n';
+            demo::printUsage(std::cout);
             FLUSH_LOG_TO_FILE;
             return EXIT_FAILURE;
         }
@@ -90,7 +99,7 @@ int main(int argc, char **argv)
                 return EXIT_FAILURE;
             }
             Game &game = **created;
-            LOG_INFO("Starting game with graphics API: ", GraphicsAPIToString(selectedApi));
+            LOG_INFO("Starting game with graphics API: ", demo::backendDisplayName(selectedApi));
             // The seed is chosen HERE, explicitly (rule 9: no clock inside the generation). Captures use seed 1 unless
             // given; otherwise a random seed is drawn and logged so that the terrain can be replayed with --seed N.
             std::uint32_t terrainSeed = 1u;

@@ -49,10 +49,9 @@ reviews:
       instructions: >-
         API publique. Aucun type d'API graphique (GLuint, VkBuffer, GLFWwindow*) ni <windows.h> (docs/03 §2).
         Chaque en-tête doit se compiler seul (#pragma once, inclusions complètes). Pas de logique d'état global.
-    - path: "src/Graphics/Backends/**"
+    - path: "src/rhi/**"
       instructions: >-
-        Seul endroit où gl*, Vk*, vk*, MTL* sont permis (règle 4 de CLAUDE.md : src/rhi/<backend>/, aujourd'hui
-        src/Graphics/Backends/<API>/). Capacités optionnelles lues du matériel, jamais supposées (règle 11). Pas de stub
+        Seul endroit où gl*, Vk*, vk*, MTL* sont permis (règle 4 de CLAUDE.md : src/rhi/<backend>/). Capacités optionnelles lues du matériel, jamais supposées (règle 11). Pas de stub
         qui prétend marcher (règle 3).
     - path: "src/**"
       instructions: >-
@@ -119,7 +118,7 @@ reviews:
           Ne signaler que les violations NOUVELLES (lignes ajoutées après le tag pre-cleanup / M00). Les violations
           historiques sont connues et suivies : fichiers listés dans
           tools/baseline/layers.txt, docs/GAPS.md (G5, G19, G47) ; elles migrent aux jalons M1-M4 et ne doivent pas faire
-          échouer ce contrôle. Échouer si la PR ajoute un appel gl*/Vk*/MTL* hors de src/Graphics/Backends/ (ou src/rhi/),
+          échouer ce contrôle. Échouer si la PR ajoute un appel gl*/Vk*/MTL* hors de src/rhi/,
           un include GLFW ou <windows.h> hors des backends et de src/platform/, une exception dans le flux normal, rand() ou l'horloge dans de la génération procédurale,
           ou coche « Fait » dans docs/STATUS.md sans fichier, test et résultat.
 
