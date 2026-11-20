@@ -45,16 +45,16 @@ Preuves sous Linux (g++ 13.3, Mesa 26.1.6, Intel Arc ; la CI exécute aussi sous
 | UI-07 | Partiel | Partiel | `theme.hpp` `Theme` (jetons, alias, propriétés par widget et par état, `extends`), `ThemeHost` (rechargement à chaud, dernier thème valide gardé), `res/themes/{base,dark,light}.json`, `.style(...)` du langage ; `tests/ui/theme_tests.cpp` (7 cas) ; canevas : coins arrondis, bordures, ombres (`tests/renderer/canvas_tests.cpp`) ; **manque** : jeton de famille de police (G111) |
 | UI-11 | Partiel | **Fait** | `docs/UI_LANGUAGE.md` (grammaire, composants, événements, thèmes, erreurs, limites) ; tests valides (`tests/ui/cui/test_panel.cui`) et invalides avec messages attendus (`tests/ui/cui_errors/`, `tools/check_cui_errors.py`, `tools/cui-rs/src/tests.rs`) |
 | UI-12 | Absent | **Fait** | `reflect.hpp` `reflectedPanel` (booléen, énumération nommée par `core::EnumNames`, entiers et flottants bornés ou non, chaîne, couleur, vecteurs, structures imbriquées) ; `tests/ui/reflect_tests.cpp` (3 cas) ; `ParamPanel` du langage |
-| PLAT-05 | Absent | Partiel | `InputManager::GetTextInput` (rappel de caractères, UTF-8), `AppendUtf8` ; `tests/platform/text_input_tests.cpp` ; **manque** : IME, presse-papiers (G107) |
+| PLAT-05 | Absent | Partiel | `InputManager::GetTextInput` (rappel de caractères, UTF-8), `AppendUtf8` ; `tests/platform/text_input_tests.cpp` ; presse-papiers du système (`Window::GetClipboardText` / `SetClipboardText`, `ui::useSystemClipboard`) ; **manque** : composition IME (G107) |
 | TEST-03 | Partiel | Partiel | sommes de contrôle de référence (bruit, tuile, région, `terrain-gen`) vérifiées sous Linux x64 (CI : Linux x64 et arm64, Windows et macOS non observés) |
 | BLD-02 | Partiel | Partiel | `make e2e-init` (paquet, `engine init --package`, compilation, lancement sans fenêtre, exemples) en CI Linux ; Windows et macOS rapportés, jamais observés |
 | BLD-01 | Partiel | Partiel | `docs/USING_THE_ENGINE.md` (prérequis par système, `engine init`, `ENGINE_DIR`) ; Windows et macOS non vérifiés |
 | DOC-01 | Partiel | Partiel | `docs/USING_THE_ENGINE.md`, `docs/UI_LANGUAGE.md`, README de `src/world`, `src/ui`, `apps/terrain_gen`, `apps/terrain_viewer` ; manquent toujours le schéma des modules et `ADD_A_BACKEND.md` |
 
-| UI-07 (ajouts) | Partiel | **Fait** | polices par thème (section `fonts`, propriété `font`, `.style(font:)`) : `tests/ui/text_tests.cpp` ; images en neuf parties : `tests/ui/nine_slice_tests.cpp` ; le reste comme ci-dessus |
+| UI-07 (ajouts) | Partiel | Partiel | polices par thème (section `fonts`, propriété `font`, `.style(font:)`) : `tests/ui/text_tests.cpp` ; images en neuf parties : `tests/ui/nine_slice_tests.cpp` ; le reste comme ci-dessus ; **reste** (revue de M3) : des tailles en dur dans les widgets (largeur minimale d'un champ, pas de défilement : G111) |
 | REN-36 (ajouts) | Partiel | Partiel | texte UTF-8 (Latin-1, Latin étendu A, ponctuation) : `tests/ui/text_tests.cpp` ; parité `ui.png` inchangée ; **manque** : autres écritures, mise en forme complexe (G106) |
 
-Totaux après M3 et ses ajouts : Fait 32, Partiel 42, Absent 77, Incompatible 1 (avant M3 : 16 / 47 / 88 / 1).
+Totaux après M3 et ses ajouts : Fait 31, Partiel 43, Absent 77, Incompatible 1 (UI-07 reste Partiel : G111) (avant M3 : 16 / 47 / 88 / 1).
 
 ## Identifiants de `docs/02` touchés par la revue de la PR #7 (G97 à G100)
 

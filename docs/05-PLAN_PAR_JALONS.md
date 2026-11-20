@@ -103,7 +103,7 @@ de `renderer` (génération sans GPU) ; le calcul GPU passe par le RHI (`src/wor
 
 **État (2026-11-19)** : les six lots sont fusionnés dans `dev` (branches `feat/TER-01-noise` … `docs/DOC-01-using-the-engine`) ;
 bilan, preuves et écarts dans `docs/releases/M3.md`. Écarts au plan : l'API de `platform` reste en `PascalCase` (A31, G105) ;
-l'interface héritée `UI::` reste pour la démo (A30) ; Windows et macOS ne sont pas observés (G110).
+l'interface héritée `UI::` reste pour la démo (A30) ; Windows n'est pas observé, et sous macOS le parcours complet (`make e2e-init`, qui lance la démo en OpenGL) est **bloqué** jusqu'à M4 : le RHI demande OpenGL 4.3, macOS s'arrête à 4.1 ; la compilation et les tests sans GPU y tournent en CI (G110).
 
 **Démo** : visualiseur avec graine et paramètres modifiables en direct dans une interface décrite dans le langage maison, thème changeable ; `terrain-gen --seed 42 --size 4096 --out relief.png` produit une carte de hauteur identique à chaque lancement.
 **Terminé** : somme de contrôle de référence ; pas de fissure entre niveaux de détail ; budget mémoire respecté ; exports vérifiés en les rouvrant ; tests de compilation du langage verts ; `docs/UI_LANGUAGE.md` écrit. La release de fin de M3 est utilisable : `docs/USING_THE_ENGINE.md` écrit, `engine init` + compilation vérifiés en CI sur les trois systèmes, API publique figée.

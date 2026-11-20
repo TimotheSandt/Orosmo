@@ -41,9 +41,9 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | TOOL-01 | Visualiseur de terrain | Partiel | `apps/terrain_viewer` livré (M3) ; caméra et export vérifiés à la main seulement (G109). | M4 |
 | UI-01 | UIManager | Partiel | Composant, conteneur, VBox/HBox, `DeferredValue<T>` à double tampon, mixin CRTP : présents et testés. « Migré sur le RHI » : non (dépend de `Graphics` actuel, cycle `UI`↔`Graphics`). `Manager` est un singleton … | M2 |
 | UI-05 | Langage d'interface : compilateur vers C++ | Fait (M3) | Cible `engine/ui` du compilateur `cui` : voir STATUS « M3 » et `docs/UI_LANGUAGE.md`. | — |
-| UI-06 | Mise en page complète | Fait (M3) | `engine::ui` : VBox, HBox, Grid, Overlay, ScrollView, tailles fit/fixed/fill, marges, alignement. | — |
-| UI-07 | Thèmes en JSON | Fait (M3) | Jetons, états, variantes, polices, images en neuf parties, rechargement, surcharge locale. | — |
-| UI-11 | Spécification et tests du langage | Fait (M3) | `docs/UI_LANGUAGE.md`, cargo test, `make cui-test`. | — |
+| UI-06 | Mise en page complète | Fait (M3) | `engine::ui` : VBox, HBox, Grid, Overlay, ScrollView, tailles fit/fixed/fill, marges, alignement. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
+| UI-07 | Thèmes en JSON | Partiel (M3) | Jetons, états, variantes, polices, images en neuf parties, rechargement, surcharge locale : voir STATUS « M3 ». **Reste** des tailles en dur dans les widgets (largeur minimale d'un champ = 10 caractères, pas de défilement…) : G111. | M5 |
+| UI-11 | Spécification et tests du langage | Fait (M3) | `docs/UI_LANGUAGE.md`, cargo test, `make cui-test`. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | ASSET-01 | Import glTF 2.0 | Absent | Aucun import de modèle. | M6 |
 | CORE-02 | Gestion d'erreurs | Absent | Aucune erreur attendue ne passe par `std::expected` ; plusieurs `throw` dans le flux normal (violation de la règle 10). Pas d'assertion avec message. | M1 |
 | CORE-04 | Système de tâches | Absent | Pas de pool, de dépendances ni d'attente de groupe. | M1 |
@@ -54,20 +54,20 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | REN-10 | Matériaux PBR | Absent | Pas de PBR (grep `metallic\|roughness\|albedo` : 0) ; textures sur `Mesh::AddTexture` mais pas de modèle de matériau. | M6 |
 | REN-17 | HDR et tonemapping | Absent | Pas de cible HDR ni de tonemapping. | M5 |
 | REN-30 | Culling CPU | Absent | Absent. | M5 |
-| REN-34 | Dessin de debug | Fait (M3) | `DebugDraw`, `SceneRenderer::drawDebug`. | — |
+| REN-34 | Dessin de debug | Fait (M3) | `DebugDraw`, `SceneRenderer::drawDebug`. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | REN-37 | Modes de fusion des matériaux | Absent | Pas de `BlendMode` par matériau ; seulement deux interrupteurs d'état global. | M5 |
 | RHI-07 | Groupes de liaison | Absent | Pas de groupes 0/1/2 ; le Vulkan « patche » `layout(binding)` en `set = 0` (une seule table). | M2 |
 | RHI-09 | Compute | Absent | Aucun appel de calcul, aucun tampon de stockage utilisé hors SSBO des lumières. | M2 |
 | RHI-14 | Tests de rendu | Absent | Outil de comparaison (`tools/compare_png.py`) et image de référence OpenGL existent (M0) ; pas encore de test automatisé « image de référence par backend » ni de rapport de différence dans la CI. | M2 |
 | RHI-16 | Textures 3D et images de stockage | Absent | Pas de textures 3D, d'images de stockage ; RGBA16F/R32F absents des formats (seuls R32UI et RG16F). | M2 |
-| TER-03 | Maillage à niveaux de détail | Fait (M3) | Quadtree équilibré, bords cousus. | — |
+| TER-03 | Maillage à niveaux de détail | Fait (M3) | Quadtree équilibré, bords cousus. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | TER-04 | Streaming | Partiel | Streaming asynchrone sous budget (M3) ; absence de saccade non mesurée (G108). | M4 |
-| TER-07 | Texturage du terrain | Fait (M3) | `TerrainRenderer` : pente/altitude, triplanaire, tableau de textures. | — |
-| TER-11 | Export | Fait (M3) | PNG 16 bits, EXR, OBJ, glTF, STL fermé, biomes, relus par les tests. | — |
-| TER-12 | Interface de réglage | Fait (M3) | Panneau du visualiseur en langage d'interface, préréglages enregistrables, réflexion. | — |
-| TOOL-02 | Générateur en ligne de commande | Fait (M3) | `apps/terrain_gen`, `make terrain-gen-check`. | — |
+| TER-07 | Texturage du terrain | Fait (M3) | `TerrainRenderer` : pente/altitude, triplanaire, tableau de textures. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
+| TER-11 | Export | Fait (M3) | PNG 16 bits, EXR, OBJ, glTF, STL fermé, biomes, relus par les tests. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
+| TER-12 | Interface de réglage | Fait (M3) | Panneau du visualiseur en langage d'interface, préréglages enregistrables, réflexion. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
+| TOOL-02 | Générateur en ligne de commande | Fait (M3) | `apps/terrain_gen`, `make terrain-gen-check`. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | UI-02 | Rendu indépendant du backend | Absent | Les composants dessinent directement via sprites ; aucune liste de dessin intermédiaire, pas d'adaptateur vers un batch 2D. | M2 |
-| UI-03 | Widgets de base | Fait (M3) | `engine::ui` : tous les widgets de la liste, infobulles. | — |
+| UI-03 | Widgets de base | Fait (M3) | `engine::ui` : tous les widgets de la liste, infobulles. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | TOOL-03 | Capture d'écran | Partiel | Fait en M0 pour OpenGL (`--capture`, `Screenshot::SavePng`, `tools/compare_png.py`) ; Vulkan refusé jusqu'en M4 ; `ui.png` non reproductible (FPS affichés) ; pas de capture sans fenêtre (PLAT-04). | M0 (fait) ; M2 (usage RHI-14) |
 
 ## P1
@@ -132,12 +132,12 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | TER-06 | Biomes | Absent | Absent. | M7 |
 | TER-08 | Végétation et dispersion | Absent | Absent. | M7 |
 | TER-09 | Planètes sphériques | Absent | Absent. | M7 |
-| TER-13 | Lancer de rayon sur le terrain | Fait (M3) | `raycastTerrain`, cohérent avec la profondeur rendue. | — |
+| TER-13 | Lancer de rayon sur le terrain | Fait (M3) | `raycastTerrain`, cohérent avec la profondeur rendue. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | UI-04 | Outils de debug | Absent | Absent. | M8 |
 | UI-08 | Rechargement à chaud de l'interface | Absent | Absent. | M8 |
 | UI-09 | Navigation et accessibilité de base | Absent | Absent. | M8 |
 | UI-10 | Inspecteur d'interface | Absent | Absent. | M8 |
-| UI-12 | Paramètres réfléchis → curseurs | Fait (M3) | `reflectedPanel`, `ParamPanel` du langage. | — |
+| UI-12 | Paramètres réfléchis → curseurs | Fait (M3) | `reflectedPanel`, `ParamPanel` du langage. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 
 ## P2
 
@@ -384,9 +384,12 @@ code). Chemins de M2 ; depuis M3, `src/UI/` est `src/ui/legacy/`. À traiter sur
 | G107 | Saisie de texte partielle | **Traités** : sélection et presse-papiers (`feat/UI-03-widgets-more`) ; annuler / rétablir, retour à la ligne automatique de `TextArea`, répétition des touches tenues, raccourcis (`InputFrame::shortcuts`, Ctrl+A / C / X / V / Z / Y dans la galerie ET le visualiseur par `ui::readWindowInput`), menus au clavier, raccourcis installés des `MenuItem` et des boutons (`feat/UI-03-widget-limits`, `tests/ui/editing_tests.cpp`). **Reste** : composition IME : le texte validé par un IME arrive (rappel de caractères de GLFW), mais la chaîne en cours de composition n'est ni affichée dans le champ ni placée sous le curseur : GLFW 3.3 (celui du dépôt) et 3.4 n'ont pas d'API de pré-édition ; il faudrait une couche native par système (IMM32 / TSF sous Windows, XIM / IBus sous X11, `text-input` sous Wayland, `NSTextInputClient` sous macOS) dans `src/platform/` | M5 |
 | G108 | Streaming non mesuré | Pas de mesure de saccade (TER-04) ; un changement de paramètre recrée le `TileStreamer` (toutes les tuiles régénérées) ; le jeu de tuiles affiché change d'un coup quand la sélection est prête | M4 |
 | G109 | Visualiseur vérifié à la main | `make viewer-capture` (CI) prouve le rendu, le panneau et le changement de thème ; caméra libre, export PNG et préréglage « Save » ne sont pas exercés automatiquement (lancement fenêtré de 6 s sans erreur sous Linux, X11) | M4 |
-| G110 | Windows et macOS | `make e2e-init`, `terrain-gen-check`, `cui-test` en CI Windows et macOS jamais observés verts ; **macOS : aucun rendu avant M4** (OpenGL 4.1, le RHI demande 4.3) | M4 |
+| G110 | Windows et macOS | `make e2e-init` et `terrain-gen-check` en CI Windows et macOS jamais observés verts ; `make cui-test` n'est lancé que par le job Linux x64 (non configuré sous Windows et macOS, pas un résultat attendu) ; **macOS : aucun rendu avant M4** (OpenGL 4.1, le RHI demande 4.3) | M4 |
 | G111 | Thème : constantes | **Police traitée** (section `fonts`, propriété `font`). Reste : quelques constantes de comportement dans le code (décalage de l'infobulle, pas de défilement = 3 lignes du thème, largeur minimale d'un champ = 10 caractères) | M5 |
-| G112 | Deux modules d'interface | `engine::ui` (neuf) et `UI::` (hérité, démo, `PerformanceView.cui`) coexistent (A30) ; `once` n'est pas figé par la cible `engine/ui` ; les erreurs d'argument sont placées sur l'élément ou le modificateur ; la coloration de l'extension VS Code ne connaît pas `$` | M5 |
+| G112 | Deux modules d'interface | `engine::ui` (neuf) et `UI::` (hérité, démo, `PerformanceView.cui`) coexistent (A30) ; `once` n'est pas figé par la cible `engine/ui` ; les erreurs d'argument sont placées sur l'élément ou le modificateur | M5 |
 | G113 | Cache du code généré | Le hachage en tête des `.gen.h` couvre le source et `OUTPUT_FORMAT_VERSION`, pas la version du compilateur `cui` : changer le générateur sans incrémenter cette constante garde d'anciens fichiers | M4 |
 | G114 | Projet d'`engine init` | Le modèle de projet est la démo complète (terrain, interface héritée) ; un modèle minimal (`apps/minimal`) existe dans le paquet mais `engine init` ne le propose pas | M4 |
 | G115 | Correction de `InputManager` | `glfwGetCursorPos` écrivait des `double` dans les `float` de `MouseMoveData` (position fausse, `delta.x` écrasé) : corrigé en M3 (lot E) ; aucun test automatisé (pas de souris simulée, comme G95) | — |
+| G116 | Revue CodeRabbit de M3 (PR #8) : performances | Reportées, sans effet sur le résultat : `coarserNeighbors` reconstruit l'index des feuilles pour chaque feuille (N² par image, `src/world/lod.cpp`) ; `Font::caretIndex` remesure chaque préfixe, et la coupure d'une très longue ligne sans espace dans `TextArea` devient quadratique ou pire (`src/ui/font.cpp`) ; l'éditeur de courbe et de dégradé recalcule l'interpolation pour chaque colonne (`src/ui/color.cpp`) | M5 |
+| G117 | Revue de M3 : corrections sans test automatisé | Vérifiées à la main ou par lecture : visualiseur (capture seulement quand toute la sélection est sur le GPU, ancienne sélection gardée si un envoi échoue : `make viewer-capture` passe, l'échec d'envoi n'est pas simulable) ; `TerrainRenderer::setLayers` transactionnel (échec du RHI non simulable) ; `Mesh::swap` échange l'origine envoyée ; préréglage écrit par remplacement atomique ; galerie (Échap, identifiant introuvable, fenêtre fermée) ; `.NOTPARALLEL` du Makefile | M4 |
+| G118 | Revue de M3 : Windows non vérifié | Paquet Windows vidé avant copie (`mk/engine.mk`, PowerShell), chemins `\\` normalisés par `tools/check_cui_errors.py` : écrits, jamais exécutés sous Windows (G110). Non traité : `renderer::loadPng` passe `path.string()` (page de codes ANSI) à `stbi_load`, un chemin hors de cette page échoue (`kIo`) ; il faudrait lire le fichier en `std::ifstream` puis `stbi_load_from_memory` | M4 |
