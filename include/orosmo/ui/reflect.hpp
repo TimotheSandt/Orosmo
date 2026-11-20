@@ -15,10 +15,12 @@
 #include "orosmo/core/reflection.hpp"
 #include "orosmo/ui/widgets.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -35,6 +37,10 @@ bool namesColor(std::string_view name);
 
 template <typename M> std::unique_ptr<Widget> reflectedControl(M &member, const core::Range &range, std::string_view name, Widget &panel);
 
+// Bornes d'un champ numérique flottant : les valeurs finies du type de destination (un double hors de ±FLT_MAX n'a pas de float :
+// la conversion serait indéfinie ; un double accepte 1e301).
+template <typename F> constexpr double floatFieldLimit() noexcept { return static_cast<double>(std::numeric_limits<F>::max()); }
+
 template <int N, typename V> std::unique_ptr<Widget> vectorFields(V &v)
 {
     auto row = std::make_unique<HBox>();
@@ -42,7 +48,7 @@ template <int N, typename V> std::unique_ptr<Widget> vectorFields(V &v)
     for (int i = 0; i < N; ++i)
     {
         Binding<double> b{[p = &v, i] { return static_cast<double>((*p)[i]); }, [p = &v, i](const double &x) { (*p)[i] = static_cast<float>(x); }};
-        auto &field = row->emplace<NumberField>(std::move(b), false);
+        auto &field = row->emplace<NumberField>(std::move(b), false, -floatFieldLimit<float>(), floatFieldLimit<float>());
         field.setWidth(SizeSpec::fill());
         field.onChange([rowPtr](const Event &) { rowPtr->fire(EventKind::kChange); });
     }
@@ -88,16 +94,28 @@ template <typename M> std::unique_ptr<Widget> reflectedControl(M &member, const 
     }
     else if constexpr (std::is_integral_v<M>)
     {
+        // Bornes du type (max() converti peut valoir 2^n : la liaison sature alors à max()).
+        const double lowest = static_cast<double>(std::numeric_limits<M>::lowest());
+        const double highest = static_cast<double>(std::numeric_limits<M>::max());
         if (range.bounded)
-            return std::make_unique<Slider>(numberBinding(member), range.min, range.max, 1.0);
-        return std::make_unique<NumberField>(numberBinding(member), true, static_cast<double>(std::numeric_limits<M>::lowest()),
-                                             static_cast<double>(std::numeric_limits<M>::max()));
+        {
+            // Entiers de la plage seulement : [0.5, 3.5] donne 1..3 (le curseur ne propose ni 0.5 ni 3.5, qui seraient arrondis
+            // hors de la plage).
+            const double lo = std::max(std::ceil(range.min), lowest);
+            const double hi = std::min(std::floor(range.max), highest);
+            if (lo <= hi)
+                return std::make_unique<Slider>(numberBinding(member), lo, hi, 1.0);
+            // Aucun entier dans la plage ([0.2, 0.8]) : champ dont toute saisie est refusée (bornes vides), sans curseur qui
+            // écrirait une valeur hors plage.
+            return std::make_unique<NumberField>(numberBinding(member), true, lo, hi);
+        }
+        return std::make_unique<NumberField>(numberBinding(member), true, lowest, highest);
     }
     else if constexpr (std::is_floating_point_v<M>)
     {
         if (range.bounded)
             return std::make_unique<Slider>(numberBinding(member), range.min, range.max);
-        auto field = std::make_unique<NumberField>(numberBinding(member), false);
+        auto field = std::make_unique<NumberField>(numberBinding(member), false, -floatFieldLimit<M>(), floatFieldLimit<M>());
         field->setDoublePrecision(std::is_same_v<M, double>); // un double ne repasse pas par float (16777217 resterait 16777216)
         return field;
     }
@@ -142,11 +160,17 @@ template <typename M> std::unique_ptr<Widget> reflectedControl(M &member, const 
 
 // Panneau de réglage de `object` (qui doit vivre plus longtemps que le panneau). Tout changement d'un champ, à n'importe quelle
 // profondeur, émet `onChange` sur le panneau renvoyé. Identifiant de chaque contrôle : `idPrefix` + chemin du champ
-// ("relief.octaves"). Valeurs par défaut (clic droit sur un curseur) : celles de `defaults`, sinon d'un `T{}`.
+// ("relief.octaves"). Valeurs par défaut (clic droit sur un curseur) : celles de `defaults` ; sinon celles d'un `T{}` construit
+// seulement dans ce cas (T constructible par défaut), ou à défaut la valeur de chaque curseur à sa création.
 template <core::Reflected T> std::unique_ptr<Widget> reflectedPanel(T &object, std::string_view idPrefix, const T *defaults)
 {
-    const T fallback{};
-    const T &reference = defaults != nullptr ? *defaults : fallback;
+    std::optional<T> fallback;
+    if constexpr (std::is_default_constructible_v<T>)
+    {
+        if (defaults == nullptr)
+            defaults = &fallback.emplace();
+    }
+    const T *reference = defaults;
     auto grid = std::make_unique<Grid>(2, "box");
     Widget &panel = *grid;
     std::apply(
@@ -164,7 +188,7 @@ template <core::Reflected T> std::unique_ptr<Widget> reflectedPanel(T &object, s
                     section.columnSpan = 2;
                     section.setTooltip(help);
                     section.setId(std::string(idPrefix) + f.name);
-                    auto inner = reflectedPanel(member, std::string(idPrefix) + f.name + ".", &(reference.*(f.member)));
+                    auto inner = reflectedPanel(member, std::string(idPrefix) + f.name + ".", reference != nullptr ? &(reference->*(f.member)) : nullptr);
                     inner->onChange([&panel](const Event &) { panel.fire(EventKind::kChange); });
                     section.body().add(std::move(inner));
                 }
@@ -177,8 +201,9 @@ template <core::Reflected T> std::unique_ptr<Widget> reflectedPanel(T &object, s
                     control->setWidth(SizeSpec::fill());
                     if constexpr (std::is_arithmetic_v<M> && !std::is_same_v<M, bool>)
                     {
-                        if (auto *slider = dynamic_cast<Slider *>(control.get()))
-                            slider->setDefault(static_cast<double>(reference.*(f.member)));
+                        auto *slider = dynamic_cast<Slider *>(control.get());
+                        if (slider != nullptr && reference != nullptr)
+                            slider->setDefault(static_cast<double>(reference->*(f.member)));
                     }
                     control->onChange([&panel](const Event &) { panel.fire(EventKind::kChange); });
                     grid->add(std::move(control));
