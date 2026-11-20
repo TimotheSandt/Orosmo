@@ -87,4 +87,52 @@ TEST_SUITE("ui/review3")
             CHECK_FALSE(h.ui.wantsKeyboard());
         }
     }
+
+    TEST_CASE("showModal closes popups opened outside the modal and keeps those opened from it (submenus too), frame after frame")
+    {
+        UiHarness h;
+        h.viewport = {600, 500};
+        bool open = false;
+        int outsideChoice = 0;
+        int insideChoice = 0;
+        auto root = std::make_unique<ui::VBox>();
+        auto &outside = root->emplace<ui::Dropdown>(std::vector<std::string>{"a", "b"}, ui::Binding<int>::ref(outsideChoice));
+        auto &dialog = root->emplace<ui::Dialog>("Title", ui::Binding<bool>::ref(open), false);
+        dialog.panel().setWidth(ui::SizeSpec::fixed(300));
+        auto &inside = dialog.body().emplace<ui::Dropdown>(std::vector<std::string>{"c", "d"}, ui::Binding<int>::ref(insideChoice));
+        auto &menu = dialog.body().emplace<ui::Menu>("Menu");
+        auto &sub = menu.items().emplace<ui::Menu>("Sub");
+        sub.items().emplace<ui::MenuItem>("Leaf");
+        h.ui.setRoot(std::move(root));
+        h.frame();
+
+        // Liste ouverte hors de la modale : fermée quand la modale s'ouvre (avant qu'elle reçoive les entrées).
+        h.click(UiHarness::center(outside));
+        REQUIRE(h.ui.popupOpenFor(outside));
+        open = true;
+        h.frame();
+        REQUIRE(h.ui.modalOpen());
+        CHECK_FALSE(h.ui.anyPopupOpen());
+
+        // Liste ouverte depuis la modale : reste ouverte, image après image.
+        h.click(UiHarness::center(inside));
+        REQUIRE(h.ui.popupOpenFor(inside));
+        for (int i = 0; i < 3; ++i)
+            h.frame();
+        CHECK(h.ui.popupOpenFor(inside));
+        h.keys({ui::kKeyEscape}); // ferme la liste (la boîte reste)
+        CHECK_FALSE(h.ui.anyPopupOpen());
+        CHECK(open);
+
+        // Menu de la modale et son sous-menu (ouverts au survol) : gardés.
+        h.moveTo(UiHarness::center(menu));
+        REQUIRE(h.ui.popupOpenFor(menu));
+        h.moveTo(UiHarness::center(sub));
+        REQUIRE(h.ui.popupOpenFor(sub));
+        for (int i = 0; i < 3; ++i)
+            h.frame();
+        CHECK(h.ui.popupOpenFor(menu));
+        CHECK(h.ui.popupOpenFor(sub));
+        CHECK(h.ui.modalOpen());
+    }
 }

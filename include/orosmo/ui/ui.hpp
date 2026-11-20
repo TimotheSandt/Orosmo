@@ -185,7 +185,8 @@ class Ui
 
     // Fenêtre modale (Dialog) : appelé pendant la mise en page par le widget qui la possède ; centrée, au-dessus de l'arbre, sur un
     // voile ; seule elle reçoit la souris et le clavier (Tab reste dedans). Échap ou un clic en dehors sont transmis à `owner`
-    // (onKey(kKeyEscape), onOutsideClick).
+    // (onKey(kKeyEscape), onOutsideClick). Les fenêtres surgissantes ouvertes hors de la fenêtre modale active sont fermées à la
+    // fin de la mise en page ; celles ouvertes depuis elle (et leurs sous-menus) restent.
     void showModal(Widget &owner, Widget &panel);
     bool modalOpen() const noexcept { return !modals_.empty(); }
 
@@ -236,7 +237,10 @@ class Ui
         Widget *panel = nullptr;
     };
     void pushPopup(Widget &owner, std::unique_ptr<Widget> owned, Widget &view, const Rect &anchor, PopupPlacement placement);
-    void closePopupsFrom(std::size_t level);
+    // `flush` : exécuter les actions différées tout de suite hors de `update` (faux pendant la mise en page : à l'image suivante).
+    void closePopupsFrom(std::size_t level, bool flush = true);
+    // Ferme les fenêtres surgissantes dont le propriétaire n'est pas dans la fenêtre modale active (ni dans une fenêtre gardée).
+    void closePopupsOutsideModal();
     void forgetSubtree(const Widget *root);
 
     const Font *font_;

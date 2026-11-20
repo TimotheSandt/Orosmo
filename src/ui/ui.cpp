@@ -510,7 +510,7 @@ void Ui::forgetSubtree(const Widget *root)
     }
 }
 
-void Ui::closePopupsFrom(std::size_t level)
+void Ui::closePopupsFrom(std::size_t level, bool flush)
 {
     while (popups_.size() > level)
     {
@@ -519,12 +519,12 @@ void Ui::closePopupsFrom(std::size_t level)
         forgetSubtree(entry.view);
         if (entry.owned)
         {
-            // Détruit après l'image : un événement en attente peut encore viser un widget de la fenêtre.
-            Widget *raw = entry.owned.release();
-            defer([raw] { delete raw; });
+            // Détruit après l'image : un événement en attente peut encore viser un widget de la fenêtre. Possédé par l'action
+            // elle-même : libéré aussi si elle n'est jamais exécutée (interface détruite avant l'image suivante).
+            defer([owned = std::shared_ptr<Widget>(std::move(entry.owned))]() mutable { owned.reset(); });
         }
     }
-    if (!updating_)
+    if (flush && !updating_)
     {
         flushDeferred();
     }
@@ -578,6 +578,31 @@ void Ui::showModal(Widget &owner, Widget &panel)
     if (std::none_of(modals_.begin(), modals_.end(), [&](const ModalEntry &m) { return m.panel == &panel; }))
     {
         modals_.push_back({&owner, &panel});
+    }
+}
+
+void Ui::closePopupsOutsideModal()
+{
+    if (modals_.empty() || popups_.empty())
+        return;
+    // Une fenêtre est gardée si son propriétaire est dans la fenêtre modale active, ou dans une fenêtre gardée au-dessous d'elle
+    // (sous-menu d'un menu de la modale). La pile se ferme à partir de la première qui ne l'est pas. Idempotent : appelé à chaque
+    // mise en page, il ne ferme jamais celles de la modale.
+    // Les propriétaires sont cherchés par adresse dans les sous-arbres vivants (modale, fenêtres gardées), sans les déréférencer :
+    // un gestionnaire de l'image a pu en détruire un (la fenêtre est alors fermée ici).
+    std::unordered_set<const Widget *> inside;
+    collect(*modals_.back().panel, inside);
+    for (std::size_t i = 0; i < popups_.size(); ++i)
+    {
+        if (inside.contains(popups_[i].owner))
+            collect(*popups_[i].view, inside);
+        else
+        {
+            // Pendant la mise en page : les actions différées (perte du focus, destruction) attendent l'image suivante, sans
+            // exécuter de gestionnaire au milieu de la mise en page.
+            closePopupsFrom(i, false);
+            return;
+        }
     }
 }
 
@@ -641,6 +666,9 @@ void Ui::layout(glm::vec2 viewport)
         const glm::vec2 m = glm::min(panel.measure(*this, viewport * 0.9f), viewport);
         panel.layout(*this, {glm::round((viewport - m) * 0.5f), m});
     }
+    // Toutes les modales sont inscrites (une modale imbriquée s'inscrit pendant la mesure de la précédente) : la souris et le
+    // clavier vont à la dernière, les fenêtres surgissantes ouvertes hors d'elle se ferment.
+    closePopupsOutsideModal();
     layoutPopups();
 }
 
