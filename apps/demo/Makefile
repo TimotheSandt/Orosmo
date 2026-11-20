@@ -121,7 +121,7 @@ SRC_DIR  := src
 OBJ_DIR  := obj/$(BUILD_TYPE)
 BIN_DIR  := bin/$(BUILD_TYPE)
 TEST_DIR  ?= tests
-# Projet créé par `engine init` : sans res/ propre, les ressources du paquet (police, thèmes) ; shaders du RHI du paquet.
+# Projet créé par `orosmo init` : sans res/ propre, les ressources du paquet (police, thèmes) ; shaders du RHI du paquet.
 RES_DIR   ?= $(if $(wildcard res),res,$(if $(wildcard $(ENGINE_DIR)/res),$(ENGINE_DIR)/res,res))
 # Shaders, copied to $(BIN_DIR)/res/shader (runtime path "res/shader/...").
 # In the engine repo they live at the repository root; see DEMO_ARGS in the root Makefile.

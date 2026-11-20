@@ -34,7 +34,7 @@ function resolveTool() {
         candidates.push(
             path.join(root, "tools", exeName()),                       // dépôt du moteur (make cui-tool)
             path.join(root, "tools", "target", "release", exeName()),  // cargo build --release
-            path.join(root, "engine", "tools", exeName()),             // projet créé par `engine init`
+            path.join(root, "engine", "tools", exeName()),             // projet créé par `orosmo init`
             path.join(root, "apps", "demo", "engine", "tools", exeName()),
         );
     }

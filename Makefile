@@ -9,8 +9,8 @@
 #   make debug                 build engine archives (debug)
 #   make release               build engine archives (release)
 #   make engine                build debug+release, dist, tools, and apps/demo/engine/
-#   make dist                  package engine → dist/engine-<platform>/
-#   make engine-tool           build the engine scaffolding binary
+#   make dist                  package engine → dist/orosmo-pkg-<platform>.zip
+#   make engine-tool           build the orosmo scaffolding tool (dist/orosmo-<platform>)
 #   make sync-demo             fast sync of current BUILD_TYPE into demo/engine/
 #   make install-demo          copy full dist package into demo/engine/
 #   make clean / fclean        remove engine build artifacts
@@ -212,9 +212,9 @@ gallery-capture: gallery
 	./$(GALLERY) --headless --theme light --tab windows --click notifyWarning --capture build/gallery-capture/light-notification
 
 # ── BLD-02 : de bout en bout depuis le paquet (sans les sources du moteur) ──
-#   make e2e-init   paquet + outil `engine` construits ; `engine init --package` d'un projet neuf dans build/e2e/<date>/mygame ;
+#   make e2e-init   paquet + outil `orosmo` construits ; `orosmo init --package` d'un projet neuf dans build/e2e/<date>/mygame ;
 #                   compilation et lancement sans fenêtre (capture) ; exemples terrain-gen (somme de contrôle de référence) et
-#                   terrain-viewer compilés depuis le paquet extrait par `engine init` (mygame/engine/examples/).
+#                   terrain-viewer compilés depuis le paquet extrait par `orosmo init` (mygame/engine/examples/).
 #   Chaque lancement a son dossier (rien n'est effacé). Les dépendances vcpkg du dépôt sont reliées au projet (équivalent de
 #   `make install` dans le projet, sans le réseau).
 E2E_RUN      := build/e2e/$(shell date +%Y%m%d-%H%M%S)
@@ -226,7 +226,7 @@ E2E_CHECKSUM  = $(shell sed -n 's/^checksum: //p' docs/BASELINE/terrain-gen-seed
 e2e-init:
 	$(MAKE) -f $(ENGINE_MK) engine-tool
 	mkdir -p $(E2E_RUN)
-	cd $(E2E_RUN) && "$(abspath dist)/engine-$(E2E_PLATFORM)$(E2E_EXE)" init --package "$(abspath dist)/engine-pkg-$(E2E_PLATFORM).zip" mygame
+	cd $(E2E_RUN) && "$(abspath dist)/orosmo-$(E2E_PLATFORM)$(E2E_EXE)" init --package "$(abspath dist)/orosmo-pkg-$(E2E_PLATFORM).zip" mygame
 	ln -sfn "$(E2E_VCPKG)" $(E2E_RUN)/mygame/engine/vcpkg_installed
 	$(MAKE) -C $(E2E_RUN)/mygame debug
 	cd $(E2E_RUN)/mygame && ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3
@@ -242,7 +242,7 @@ e2e-init:
 	$(MAKE) -C $(E2E_RUN)/mygame/engine/examples/ui_gallery
 	$(E2E_RUN)/mygame/engine/examples/ui_gallery/bin/ui-gallery$(E2E_EXE) --headless --capture $(E2E_RUN)/gallery --capture-frames 3
 	test -s $(E2E_RUN)/gallery/gallery.png
-	@echo "e2e-init : OK ($(E2E_RUN) : engine init, compilation, lancement, exemples depuis le paquet)"
+	@echo "e2e-init : OK ($(E2E_RUN) : orosmo init, compilation, lancement, exemples depuis le paquet)"
 
 # ── UI-11 : tests du compilateur du langage d'interface ──
 #   make cui-test   tests unitaires (cargo test) + entrées invalides de bout en bout (binaire cui : messages fichier:ligne:colonne ;
@@ -251,7 +251,7 @@ CUI_BIN := tools/cui$(if $(filter Windows_NT,$(OS)),.exe)
 .PHONY: cui-test
 cui-test:
 	$(MAKE) -f $(ENGINE_MK) cui-tool
-	cargo test --manifest-path tools/Cargo.toml -p cui -p engine
+	cargo test --manifest-path tools/Cargo.toml -p cui -p orosmo
 	python3 tools/check_cui_errors.py --cui $(CUI_BIN) --cases tests/ui/cui_errors --out build/cui-errors --cxx auto
 
 # ── TOOL-02 : terrain-gen (sans fenêtre ni GPU) ──

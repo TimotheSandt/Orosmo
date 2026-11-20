@@ -15,15 +15,15 @@
 #   lib/<build>/libcore.a  lib/<build>/libplatform.a  lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libworld.a lib/<build>/libthirdparty.a
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
-#   dist/engine-<platform>/
-#     dist/         — engine package (embedded in engine[.exe] as a zip)
+#   dist/pkg-<platform>/          — staging, zipped into dist/orosmo-pkg-<platform>.zip
+#     (the zip is also embedded in the orosmo[.exe] tool)
 #       includes/   — public headers
 #       lib/        — debug + release archives
 #       make/       — engine.mk
 #       tools/      — CUI precompiler
 #
-# ── engine tool (make engine-tool) ───────────────────────────────────────────
-#   dist/engine-<platform>/engine[.exe]  — scaffolding tool (engine init/update)
+# ── orosmo tool (make engine-tool) ───────────────────────────────────────────
+#   dist/orosmo-<platform>[.exe]  — scaffolding tool (orosmo init/update)
 
 SHELL := sh
 
@@ -192,31 +192,31 @@ CARGO_TARGET_DIR  ?= build/cargo-tools
 
 ifeq ($(DETECTED_OS),Windows)
     CUI_EXE         := $(CARGO_TARGET_DIR)/release/cui.exe
-    ENGINE_INIT_EXE := $(CARGO_TARGET_DIR)/release/engine.exe
+    ENGINE_INIT_EXE := $(CARGO_TARGET_DIR)/release/orosmo.exe
 else
     CUI_EXE         := $(CARGO_TARGET_DIR)/release/cui
-    ENGINE_INIT_EXE := $(CARGO_TARGET_DIR)/release/engine
+    ENGINE_INIT_EXE := $(CARGO_TARGET_DIR)/release/orosmo
 endif
 
 _CUI_INSTALLED := tools/$(notdir $(CUI_EXE))
 
 # ── Distribution paths ─────────────────────────────────────────────────────────
 # Layout (GitHub release artifacts):
-#   dist/engine-<platform>[.exe]      — standalone engine tool binary
-#   dist/engine-pkg-<platform>.zip    — engine package (headers, libs, tools)
+#   dist/orosmo-<platform>[.exe]      — standalone orosmo tool binary
+#   dist/orosmo-pkg-<platform>.zip    — engine package (headers, libs, tools)
 #
 # Staging directory (build-time only, not uploaded):
 #   dist/pkg-<platform>/              — package contents before zipping
 _DIST_STAGING    := dist/pkg-$(ENGINE_PLATFORM)
 DIST_PKG_DIR     := $(_DIST_STAGING)
-ENGINE_PKG_ZIP   := dist/engine-pkg-$(ENGINE_PLATFORM).zip
+ENGINE_PKG_ZIP   := dist/orosmo-pkg-$(ENGINE_PLATFORM).zip
 ENGINE_PAYLOAD_DIR := build/engine-payload
 ENGINE_PAYLOAD_ZIP := $(ENGINE_PAYLOAD_DIR)/engine-$(ENGINE_PLATFORM)-$(shell date +%s%N 2>/dev/null || date +%s).zip
 
 ifeq ($(DETECTED_OS),Windows)
-    ENGINE_TOOL_EXE := dist/engine-$(ENGINE_PLATFORM).exe
+    ENGINE_TOOL_EXE := dist/orosmo-$(ENGINE_PLATFORM).exe
 else
-    ENGINE_TOOL_EXE := dist/engine-$(ENGINE_PLATFORM)
+    ENGINE_TOOL_EXE := dist/orosmo-$(ENGINE_PLATFORM)
 endif
 
 # ── Main targets ──────────────────────────────────────────────────────────────
@@ -424,7 +424,7 @@ $(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) dist
 	ENGINE_HOMEPAGE="$(ENGINE_HOMEPAGE)" \
 	ENGINE_PAYLOAD_ZIP="$(abspath $(ENGINE_PAYLOAD_ZIP))" \
 	CARGO_TARGET_DIR="$(abspath $(CARGO_TARGET_DIR))" \
-	    $(CARGO) build --release --manifest-path $(TOOLS_WORKSPACE) --bin engine
+	    $(CARGO) build --release --manifest-path $(TOOLS_WORKSPACE) --bin orosmo
 	@echo "Built: $(ENGINE_INIT_EXE)"
 
 $(ENGINE_TOOL_EXE): $(ENGINE_INIT_EXE)
