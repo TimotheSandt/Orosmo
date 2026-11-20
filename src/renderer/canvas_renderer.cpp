@@ -365,7 +365,7 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
                 status = std::unexpected(!atlas ? atlas.error() : pipe.error());
                 continue;
             }
-            GlyphPush push{{surface.logical.x, surface.logical.y, g->msdfPixelRange, g->msdfWeight}, {g->color.r, g->color.g, g->color.b, 1.0f}};
+            GlyphPush push{{surface.logical.x, surface.logical.y, g->msdfPixelRange, g->msdfWeight}, {g->color.r, g->color.g, g->color.b, g->alpha}};
             encoder.setPipeline(*pipe);
             encoder.setBindGroup(1, (*atlas)->group);
             encoder.setPushConstants(bytesOf(push));

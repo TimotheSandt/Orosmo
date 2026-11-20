@@ -69,9 +69,13 @@ class TextRendererFont final : public Font
     mutable std::map<std::string, bool> loaded_; // fichier -> chargé (faux : illisible, police par défaut)
 };
 
+// Décodage UTF-8 commun à l'édition et au rendu (mêmes unités) : point de code qui commence à `text[i]` et sa longueur en octets
+// (`length`). Une séquence invalide (octet de continuation isolé, F8–FF, séquence tronquée ou trop longue, demi-code de
+// substitution, valeur au-delà de U+10FFFF) donne U+FFFD sur UN octet.
+char32_t utf8Decode(std::string_view text, std::size_t i, std::size_t &length) noexcept;
 // Longueur en octets du caractère UTF-8 qui commence à `text[i]` (1 pour un octet invalide).
 std::size_t utf8Length(std::string_view text, std::size_t i) noexcept;
-// Début du caractère qui précède la position `i`.
+// Début du caractère qui précède la position `i` (un seul octet en arrière si celui-ci est invalide).
 std::size_t utf8Previous(std::string_view text, std::size_t i) noexcept;
 
 } // namespace orosmo::ui

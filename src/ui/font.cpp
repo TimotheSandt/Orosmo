@@ -11,23 +11,52 @@
 namespace orosmo::ui
 {
 
-std::size_t utf8Length(std::string_view text, std::size_t i) noexcept
+char32_t utf8Decode(std::string_view text, std::size_t i, std::size_t &length) noexcept
 {
-    const auto c = static_cast<unsigned char>(text[i]);
-    std::size_t n = 1;
-    if ((c & 0xE0U) == 0xC0U)
+    length = 1;
+    const auto b0 = static_cast<unsigned char>(text[i]);
+    if (b0 < 0x80U)
+        return b0;
+    std::size_t n = 0;
+    char32_t cp = 0;
+    if (b0 >= 0xC0U && b0 < 0xE0U)
+    {
         n = 2;
-    else if ((c & 0xF0U) == 0xE0U)
+        cp = b0 & 0x1FU;
+    }
+    else if (b0 >= 0xE0U && b0 < 0xF0U)
+    {
         n = 3;
-    else if ((c & 0xF8U) == 0xF0U)
+        cp = b0 & 0x0FU;
+    }
+    else if (b0 >= 0xF0U && b0 < 0xF8U)
+    {
         n = 4;
+        cp = b0 & 0x07U;
+    }
+    else // continuation isolée (80–BF) ou F8–FF
+        return 0xFFFD;
     if (i + n > text.size())
-        return 1;
+        return 0xFFFD;
     for (std::size_t k = 1; k < n; ++k)
     {
-        if ((static_cast<unsigned char>(text[i + k]) & 0xC0U) != 0x80U)
-            return 1;
+        const auto b = static_cast<unsigned char>(text[i + k]);
+        if ((b & 0xC0U) != 0x80U)
+            return 0xFFFD;
+        cp = (cp << 6U) | (b & 0x3FU);
     }
+    // Forme la plus courte seulement (C0 AF n'est pas « / »), ni demi-code de substitution, ni valeur au-delà de U+10FFFF.
+    static constexpr char32_t kMinimum[] = {0, 0, 0x80U, 0x800U, 0x10000U};
+    if (cp < kMinimum[n] || (cp >= 0xD800U && cp <= 0xDFFFU) || cp > 0x10FFFFU)
+        return 0xFFFD;
+    length = n;
+    return cp;
+}
+
+std::size_t utf8Length(std::string_view text, std::size_t i) noexcept
+{
+    std::size_t n = 1;
+    (void)utf8Decode(text, i, n);
     return n;
 }
 
@@ -35,10 +64,14 @@ std::size_t utf8Previous(std::string_view text, std::size_t i) noexcept
 {
     if (i == 0)
         return 0;
-    std::size_t j = i - 1;
-    while (j > 0 && (static_cast<unsigned char>(text[j]) & 0xC0U) == 0x80U && i - j < 4)
-        --j;
-    return j;
+    // Une séquence valide qui finit exactement en `i` commence par un octet de tête (jamais une continuation) : c'est l'unité
+    // précédente. Sinon l'octet `i - 1` est une unité à lui seul (invalide, ou ASCII).
+    for (std::size_t back = 2; back <= 4 && back <= i; ++back)
+    {
+        if (utf8Length(text, i - back) == back)
+            return i - back;
+    }
+    return i - 1;
 }
 
 std::size_t Font::caretIndex(std::string_view text, float size, float x, const FontFace *face) const
@@ -73,6 +106,7 @@ void FixedFont::draw(renderer::DrawList &list, std::string_view text, glm::vec2 
 {
     renderer::DrawGlyphs run;
     run.color = glm::vec3(color);
+    run.alpha = color.a;
     float x = position.x;
     const float w = advance_ * size;
     for (std::size_t i = 0; i < text.size(); i += utf8Length(text, i))
@@ -129,7 +163,7 @@ void TextRendererFont::draw(renderer::DrawList &list, std::string_view text, glm
 {
     select(face);
     renderer_->setDrawListSink(&list);
-    renderer_->renderText(std::string(text), position.x, position.y, size / baseSize_, glm::vec3(color), TextAnchor::TopLeft);
+    renderer_->renderText(std::string(text), position.x, position.y, size / baseSize_, color, TextAnchor::TopLeft); // alpha compris
     renderer_->setDrawListSink(nullptr);
 }
 
