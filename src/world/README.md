@@ -39,5 +39,6 @@ const float h = w::warpedFbm2(x, z, seed, relief, {.amplitude = 20.0f, .frequenc
 
 - Domaine : |coordonnée| < 2^23 (précision du float). Les planètes (coordonnées mondiales en `double`, CORE-09) passeront par
   des coordonnées locales à la tuile.
-- Le bruit de l'ancien module `Noise` (`include/Noise/`) reste utilisé par la démo historique (image de référence) ; le nouveau
-  code utilise `engine::world`.
+- Utilisateurs : `terrain-gen`, `terrain-viewer` et la démo (`apps/demo/src/Game/World.cpp` : streaming autour de la caméra) ;
+  l'ancien module `Noise` est supprimé. Le passage des tuiles résidentes au `TerrainRenderer` (positions relatives à l'origine,
+  remplacement d'un coup de la sélection) est écrit dans chaque application : `world` ne peut pas dépendre de `renderer`.

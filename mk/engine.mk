@@ -11,8 +11,7 @@
 #   VCPKG_INSTALLED_ROOT, VCPKG_TRIPLET
 #
 # ── Output ────────────────────────────────────────────────────────────────────
-#   lib/<build>/libgraphics.a    lib/<build>/libui.a
-#   lib/<build>/libnoise.a
+#   lib/<build>/libui.a
 #   lib/<build>/libcore.a  lib/<build>/libplatform.a  lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libworld.a lib/<build>/libthirdparty.a
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
@@ -138,9 +137,7 @@ INCLUDES ?= \
     -isystem $(VCPKG_INSTALLED_DIR)/include
 
 # ── Subsystem archives ────────────────────────────────────────────────────────
-LIB_GRAPHICS   := $(LIB_DIR)/$(BUILD_TYPE)/libgraphics.a
 LIB_UI         := $(LIB_DIR)/$(BUILD_TYPE)/libui.a
-LIB_NOISE      := $(LIB_DIR)/$(BUILD_TYPE)/libnoise.a
 LIB_CORE       := $(LIB_DIR)/$(BUILD_TYPE)/libcore.a
 LIB_PLATFORM   := $(LIB_DIR)/$(BUILD_TYPE)/libplatform.a
 LIB_RHI        := $(LIB_DIR)/$(BUILD_TYPE)/librhi.a
@@ -148,12 +145,10 @@ LIB_RENDERER   := $(LIB_DIR)/$(BUILD_TYPE)/librenderer.a
 LIB_WORLD      := $(LIB_DIR)/$(BUILD_TYPE)/libworld.a
 LIB_THIRDPARTY := $(LIB_DIR)/$(BUILD_TYPE)/libthirdparty.a
 
-ENGINE_LIBS := $(LIB_GRAPHICS) $(LIB_UI) $(LIB_NOISE) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_WORLD) $(LIB_THIRDPARTY)
+ENGINE_LIBS := $(LIB_UI) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_WORLD) $(LIB_THIRDPARTY)
 
 # ── Per-subsystem sources ─────────────────────────────────────────────────────
-Graphics_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/Graphics   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 UI_SRCS         := $(shell find $(LIBRARIES_SRC_DIR)/ui         -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-Noise_SRCS      := $(shell find $(LIBRARIES_SRC_DIR)/Noise      -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Core_SRCS       := $(shell find $(LIBRARIES_SRC_DIR)/core       -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Platform_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/platform   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Rhi_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/rhi        -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
@@ -165,9 +160,7 @@ obj_from_src = \
     $(patsubst $(LIBRARIES_SRC_DIR)/%.cpp,$(OBJ_DIR_TYPE)/Libraries/%.o,$(filter %.cpp,$(1))) \
     $(patsubst $(LIBRARIES_SRC_DIR)/%.c,$(OBJ_DIR_TYPE)/Libraries/%.o,$(filter %.c,$(1)))
 
-Graphics_OBJS   := $(call obj_from_src,$(Graphics_SRCS))
 UI_OBJS         := $(call obj_from_src,$(UI_SRCS))
-Noise_OBJS      := $(call obj_from_src,$(Noise_SRCS))
 Core_OBJS       := $(call obj_from_src,$(Core_SRCS))
 Platform_OBJS   := $(call obj_from_src,$(Platform_SRCS))
 Rhi_OBJS        := $(call obj_from_src,$(Rhi_SRCS))
@@ -175,7 +168,7 @@ Renderer_OBJS   := $(call obj_from_src,$(Renderer_SRCS))
 World_OBJS      := $(call obj_from_src,$(World_SRCS))
 ThirdParty_OBJS := $(call obj_from_src,$(ThirdParty_SRCS))
 
-ALL_ENGINE_OBJS := $(Graphics_OBJS) $(UI_OBJS) $(Noise_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(World_OBJS) $(ThirdParty_OBJS)
+ALL_ENGINE_OBJS := $(UI_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(World_OBJS) $(ThirdParty_OBJS)
 
 # ── Git remote detection ──────────────────────────────────────────────────────
 # Reads the 'origin' remote and extracts the host and owner/repo slug.
@@ -266,22 +259,12 @@ engine: install-demo
 	@echo "Engine fully prepared in apps/demo/engine/"
 
 # ── Archive rules ─────────────────────────────────────────────────────────────
-$(LIB_GRAPHICS): $(Graphics_OBJS)
-	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Graphics]    $(BUILD_TYPE): $@"
-
 # Archive recréée (rm) : `ar rcs` garderait les objets des fichiers supprimés (ancienne interface src/ui/legacy/).
 $(LIB_UI): $(UI_OBJS)
 	@mkdir -p "$(dir $@)"
 	rm -f $@
 	$(AR) rcs $@ $^
 	@echo "Archived [UI]          $(BUILD_TYPE): $@"
-
-$(LIB_NOISE): $(Noise_OBJS)
-	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Noise]       $(BUILD_TYPE): $@"
 
 $(LIB_CORE): $(Core_OBJS)
 	@mkdir -p "$(dir $@)"

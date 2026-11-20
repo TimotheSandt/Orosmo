@@ -48,7 +48,7 @@ Voir `docs/releases/M00.md` : mêmes 102 tests, mêmes ressources (somme MD5 ide
 
 | Fichier | Contenu |
 | --- | --- |
-| `reference/scene-opengl-seed1-1280x720.png` | Scène 3D OpenGL, graine 1, 1280x720, 10 images, Intel Arc (Mesa 26.1.6). sha256 `8937f52b311633aafddf834a12ca5bf08ae0bb99c963511fc24bc0b09478974f` |
+| `reference/scene-opengl-seed1-1280x720.png` | Scène 3D OpenGL, graine 1, 1280x720, 10 images, Intel Arc (Mesa 26.1.6). sha256 `8937f52b311633aafddf834a12ca5bf08ae0bb99c963511fc24bc0b09478974f`. **Remplacée le 2026-11-20** (voir plus bas : terrain `engine::world`) |
 | `tests-M0.txt` | Résumé doctest de `make demo-test` depuis un clone propre de `dev` : 118 cas, 647 assertions, 0 échec |
 
 ## Mise à jour du 2026-11-19 : texte posé sur sa ligne de base
@@ -68,3 +68,25 @@ python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720
 Vérifié : 3 captures consécutives identiques (même sha256), 5 ou 30 images donnent la même image, `--seed 7` donne une autre image, et l'image produite après les correctifs de M0 (PCG défini, tests doctest, `-Werror`) est **identique pixel pour pixel** à la référence (`compare_png.py` : 0 pixel, écart max 0).
 
 Limites : la référence vient d'une seule machine ; un autre GPU ou pilote (ou llvmpipe en CI) peut différer de quelques pixels, d'où la tolérance dans la CI. `ui.png` n'est pas une référence (FPS affichés). Vulkan : capture refusée jusqu'en M4 (voir `docs/GAPS.md` G29). Pour la démo sans capture, `docs/BASELINE/run-opengl.txt` reste le journal de démarrage de référence.
+
+## Mise à jour du 2026-11-20 : la démo sur `engine::world`
+
+La démo ne génère plus son terrain avec l'ancien module `Noise` (grille fixe de 500 x 500 m) mais avec `engine::world`
+(tuiles diffusées autour de la caméra par `TileStreamer`, dessinées par `TerrainRenderer`, graine 1 en capture). La caméra part
+40 m au-dessus du sol en (0, 0), regard vers -z légèrement plongeant ; la lumière directionnelle garde sa couleur et son
+intensité, sa direction est celle des shaders (vers la lumière). L'ancienne image (caméra presque au ras du sol, terrain sombre)
+n'a plus de sens : `reference/scene-opengl-seed1-1280x720.png` est remplacée.
+
+| Élément | Valeur |
+| --- | --- |
+| Commande | `LIBGL_ALWAYS_SOFTWARE=1 apps/demo/bin/debug/main --api opengl --headless --capture <dossier> --capture-frames 5` |
+| Rendu | Mesa llvmpipe (LLVM 20.1.2, 256 bits), OpenGL 4.6 core, Mesa 26.1.6 : le même pilote logiciel que la CI (Xvfb) |
+| sha256 | `2c4746d3ba0e9cb959da0682562d98482d09b0f228bd7763c92b27489ee8ef14` |
+
+Vérifié : deux captures de 5 images et une de 30 images donnent le même fichier (même sha256) ; `--seed 7` donne une autre image
+(73 % des pixels diffèrent) ; la même capture sur le GPU (Intel Arc, Mesa 26.1.6, sans `LIBGL_ALWAYS_SOFTWARE`) reste dans la
+tolérance de la CI (`compare_png.py --tolerance 8 --max-diff-percent 2` : 0 pixel au-delà, écart max 3/255). En capture et sans
+fenêtre, chaque image attend que toutes les tuiles visibles soient générées : l'image ne dépend pas de la vitesse des threads.
+
+`reference/ui-opengl-fixedtext-1280x720.png` n'est plus vérifiée : son test (`tests/renderer/parity_tests.cpp`, parité de
+l'interface héritée) est supprimé. Le fichier reste pour l'historique (`docs/releases/M2-B5.md`, `M3.md`).

@@ -183,9 +183,7 @@ ENGINE_INCLUDES := \
 _ENG_LIB_DIR := $(ENGINE_DIR)/lib/$(BUILD_TYPE)
 
 ENGINE_LIBS := \
-    $(_ENG_LIB_DIR)/libgraphics.a \
     $(_ENG_LIB_DIR)/libui.a \
-    $(_ENG_LIB_DIR)/libnoise.a \
     $(_ENG_LIB_DIR)/libcore.a \
     $(_ENG_LIB_DIR)/libplatform.a \
     $(_ENG_LIB_DIR)/librhi.a \

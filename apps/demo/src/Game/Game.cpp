@@ -98,14 +98,18 @@ engine::core::Result<> Game::init()
 {
     this->refreshViewSize();
 
-    this->camera.setPosition(glm::vec3(0.0f, 1.0f, 0.0f));
+    // Départ au-dessus du sol, regard vers le relief (la hauteur du terrain ne dépend que de la graine).
+    this->camera.setPosition(World::StartPosition(this->terrainSeed));
+    this->camera.setOrientation(World::StartOrientation());
     this->camera.setFovDegrees(75.0f);
     this->camera.setNearPlane(0.1f);
     this->camera.setFarPlane(1000.0f);
     this->camera.setAspect(static_cast<unsigned>(this->viewWidth), static_cast<unsigned>(this->viewHeight));
 
     this->world = std::make_unique<World>();
-    if (auto ready = this->world->Init(*device, *shaders, kShaderDirectory, this->terrainSeed); !ready)
+    // Capture et mode sans fenêtre : chaque image attend toutes les tuiles visibles (image complète, reproductible).
+    const bool waitForTiles = this->headless || !this->captureDirectory.empty();
+    if (auto ready = this->world->Init(*device, *shaders, kShaderDirectory, this->terrainSeed, waitForTiles); !ready)
     {
         return engine::core::makeError(ready.error().code, "Failed to initialize the world: " + ready.error().message);
     }
