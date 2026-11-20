@@ -37,6 +37,6 @@ a changé. Le module n'appelle pas le système directement (voir `system.hpp`). 
 
 ## Tests et démo
 
-Tests : `tests/core/*.cpp` (le logger : `tests/core/log_tests.cpp` ; le Profiler : `profiler_tests.cpp`, `profiler_gpu_timer_tests.cpp`) ; `make demo-test`.
+Tests : `tests/core/*.cpp` (le logger : `tests/core/log_tests.cpp` ; le Profiler : `profiler_tests.cpp`, `profiler_gpu_timer_tests.cpp` ; le benchmark : `benchmark_tests.cpp`) ; `make demo-test`.
 Démo sans fenêtre : `make core-demo` (10 000 tâches, rechargement à chaud d'une configuration, mesures) ;
 `make core-demo CORE_DEMO_ARGS="--help"` liste les réglages.
