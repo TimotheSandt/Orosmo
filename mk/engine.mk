@@ -13,7 +13,7 @@
 # ── Output ────────────────────────────────────────────────────────────────────
 #   lib/<build>/libgraphics.a    lib/<build>/libui.a
 #   lib/<build>/libnoise.a       lib/<build>/libprofiler.a
-#   lib/<build>/libcore.a  lib/<build>/libplatform.a  lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libworld.a  lib/<build>/libutilities.a   lib/<build>/libthirdparty.a
+#   lib/<build>/libcore.a  lib/<build>/libplatform.a  lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libworld.a lib/<build>/libthirdparty.a
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
 #   dist/engine-<platform>/
@@ -142,7 +142,6 @@ LIB_GRAPHICS   := $(LIB_DIR)/$(BUILD_TYPE)/libgraphics.a
 LIB_UI         := $(LIB_DIR)/$(BUILD_TYPE)/libui.a
 LIB_NOISE      := $(LIB_DIR)/$(BUILD_TYPE)/libnoise.a
 LIB_PROFILER   := $(LIB_DIR)/$(BUILD_TYPE)/libprofiler.a
-LIB_UTILITIES  := $(LIB_DIR)/$(BUILD_TYPE)/libutilities.a
 LIB_CORE       := $(LIB_DIR)/$(BUILD_TYPE)/libcore.a
 LIB_PLATFORM   := $(LIB_DIR)/$(BUILD_TYPE)/libplatform.a
 LIB_RHI        := $(LIB_DIR)/$(BUILD_TYPE)/librhi.a
@@ -151,14 +150,13 @@ LIB_WORLD      := $(LIB_DIR)/$(BUILD_TYPE)/libworld.a
 LIB_THIRDPARTY := $(LIB_DIR)/$(BUILD_TYPE)/libthirdparty.a
 LIB_BENCHMARK  := $(LIB_DIR)/$(BUILD_TYPE)/libbenchmark.a
 
-ENGINE_LIBS := $(LIB_GRAPHICS) $(LIB_UI) $(LIB_NOISE) $(LIB_PROFILER) $(LIB_UTILITIES) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_WORLD) $(LIB_THIRDPARTY)
+ENGINE_LIBS := $(LIB_GRAPHICS) $(LIB_UI) $(LIB_NOISE) $(LIB_PROFILER) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_WORLD) $(LIB_THIRDPARTY)
 
 # ── Per-subsystem sources ─────────────────────────────────────────────────────
 Graphics_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/Graphics   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 UI_SRCS         := $(shell find $(LIBRARIES_SRC_DIR)/ui         -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Noise_SRCS      := $(shell find $(LIBRARIES_SRC_DIR)/Noise      -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Profiler_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/Profiler   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-Utilities_SRCS  := $(shell find $(LIBRARIES_SRC_DIR)/Utilities  -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Core_SRCS       := $(shell find $(LIBRARIES_SRC_DIR)/core       -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Platform_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/platform   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Rhi_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/rhi        -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
@@ -175,7 +173,6 @@ Graphics_OBJS   := $(call obj_from_src,$(Graphics_SRCS))
 UI_OBJS         := $(call obj_from_src,$(UI_SRCS))
 Noise_OBJS      := $(call obj_from_src,$(Noise_SRCS))
 Profiler_OBJS   := $(call obj_from_src,$(Profiler_SRCS))
-Utilities_OBJS  := $(call obj_from_src,$(Utilities_SRCS))
 Core_OBJS       := $(call obj_from_src,$(Core_SRCS))
 Platform_OBJS   := $(call obj_from_src,$(Platform_SRCS))
 Rhi_OBJS        := $(call obj_from_src,$(Rhi_SRCS))
@@ -184,7 +181,7 @@ World_OBJS      := $(call obj_from_src,$(World_SRCS))
 ThirdParty_OBJS := $(call obj_from_src,$(ThirdParty_SRCS))
 Benchmark_OBJS  := $(call obj_from_src,$(Benchmark_SRCS))
 
-ALL_ENGINE_OBJS := $(Graphics_OBJS) $(UI_OBJS) $(Noise_OBJS) $(Profiler_OBJS) $(Utilities_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(World_OBJS) $(ThirdParty_OBJS) $(Benchmark_OBJS)
+ALL_ENGINE_OBJS := $(Graphics_OBJS) $(UI_OBJS) $(Noise_OBJS) $(Profiler_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(World_OBJS) $(ThirdParty_OBJS) $(Benchmark_OBJS)
 
 # ── Git remote detection ──────────────────────────────────────────────────────
 # Reads the 'origin' remote and extracts the host and owner/repo slug.
@@ -294,11 +291,6 @@ $(LIB_PROFILER): $(Profiler_OBJS)
 	@mkdir -p "$(dir $@)"
 	$(AR) rcs $@ $^
 	@echo "Archived [Profiler]    $(BUILD_TYPE): $@"
-
-$(LIB_UTILITIES): $(Utilities_OBJS)
-	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Utilities]   $(BUILD_TYPE): $@"
 
 $(LIB_CORE): $(Core_OBJS)
 	@mkdir -p "$(dir $@)"

@@ -1,6 +1,6 @@
 #include "UI/Rendering/TextRenderer.h"
 
-#include "Logger.h"
+#include <engine/core/log.hpp>
 
 #include <algorithm>
 #include <atomic>

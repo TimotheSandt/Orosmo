@@ -1,6 +1,56 @@
 #include "Noise.h"
 
 #include <cmath>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/rotate_vector.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
+
+// Anciennes aides de Utilities (lerp, rotate), propres à ce bruit hérité.
+namespace
+{
+float lerp(float a, float b, float t) { return a + t * (b - a); }
+
+void rotate(float &x, float &y, float angle)
+{
+    glm::vec2 v = glm::rotate(glm::vec2(x, y), angle);
+    x = v.x;
+    y = v.y;
+}
+
+void rotate(float &x, float &y, float &z, float angle)
+{
+    glm::vec3 axis = glm::normalize(glm::vec3(1, 1, 1));
+    glm::quat q = glm::angleAxis(angle, axis);
+    glm::vec3 rotatedQuat = q * glm::vec3(x, y, z);
+    x = rotatedQuat.x;
+    y = rotatedQuat.y;
+    z = rotatedQuat.z;
+}
+
+void rotate(float &x, float &y, float &z, float &w, float angle)
+{
+    glm::mat4 rotXY(1.0f);
+    rotXY[0][0] = std::cos(angle);
+    rotXY[0][1] = std::sin(angle);
+    rotXY[1][0] = -std::sin(angle);
+    rotXY[1][1] = std::cos(angle);
+
+    glm::mat4 rotZW(1.0f);
+    rotZW[2][2] = std::cos(angle);
+    rotZW[2][3] = std::sin(angle);
+    rotZW[3][2] = -std::sin(angle);
+    rotZW[3][3] = std::cos(angle);
+
+    glm::mat4 combinedRot = rotZW * rotXY;
+    glm::vec4 rotatedCombined = combinedRot * glm::vec4(x, y, z, w);
+    x = rotatedCombined.x;
+    y = rotatedCombined.y;
+    z = rotatedCombined.z;
+    w = rotatedCombined.w;
+}
+} // namespace
 
 uint64_t hash(uint64_t x)
 {

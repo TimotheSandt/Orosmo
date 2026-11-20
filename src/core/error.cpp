@@ -3,7 +3,7 @@
 #include <atomic>
 #include <cstdlib>
 
-#include "Utilities/Logger.h"
+#include <engine/core/log.hpp>
 
 namespace engine::core
 {

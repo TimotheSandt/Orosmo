@@ -18,7 +18,7 @@
 #include <engine/ui/ui.hpp>
 #include <engine/ui/window_input.hpp>
 
-#include "Logger.h"
+#include <engine/core/log.hpp>
 #include "Rendering/TextRenderer.h"
 
 #include <charconv>

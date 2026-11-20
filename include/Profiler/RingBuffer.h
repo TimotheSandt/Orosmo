@@ -2,7 +2,7 @@
 
 #include <chrono>
 #include <type_traits>
-#include "Logger.h"
+#include <engine/core/log.hpp>
 
 #define MIN_CAPACITY size_t(10)
 #define MAX_CAPACITY size_t(0x8000)

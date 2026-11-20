@@ -1,6 +1,6 @@
 #include "Core/Container.h"
-#include "Logger.h"
-#include "Utilities.h"
+#include <engine/core/log.hpp>
+#include <engine/core/paths.hpp>
 
 #include <algorithm>
 #include <cmath>

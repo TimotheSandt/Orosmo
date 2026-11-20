@@ -5,7 +5,7 @@
 
 #include <utility>
 
-#include "Utilities.h"
+#include <engine/core/paths.hpp>
 #include "UI/Views/PerformanceView.gen.h"
 #include "engine/renderer/image.hpp"
 

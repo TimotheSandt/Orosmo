@@ -8,7 +8,7 @@
 #include <functional>
 #include <iostream>
 #include <utility>
-#include "Logger.h"
+#include <engine/core/log.hpp>
 
 #undef DELETE
 

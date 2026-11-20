@@ -1,6 +1,5 @@
-#include "Logger.h"
+#include "engine/core/log.hpp"
 
-#include "Utilities.h"
 #include <engine/core/system.hpp>
 
 #include <iostream>
@@ -9,24 +8,8 @@
 #include <filesystem>
 #include <algorithm>
 
-#ifdef _WIN32
-#include <io.h>
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
-
-namespace
+namespace engine::core
 {
-int GetCurrentProcessIdForLog()
-{
-#ifdef _WIN32
-    return _getpid();
-#else
-    return getpid();
-#endif
-}
-} // namespace
 
 std::vector<Logger::LogMessage> Logger::logs;
 std::mutex Logger::logMutex;
@@ -51,8 +34,13 @@ void Logger::Initialize(const std::string &sFilename)
         auto now = std::chrono::system_clock::now();
         auto time_t = std::chrono::system_clock::to_time_t(now);
 
+        // Dossier de données de l'application (APPDATA, Application Support, XDG_DATA_HOME : src/platform/system.cpp), sinon
+        // le dossier courant (comme avant).
         std::stringstream ss;
-        ss << GetUserDataPath();
+        if (const std::filesystem::path base = engine::core::system::userDataDirectory(); !base.empty())
+        {
+            ss << (base / "ProceduralGeneration").string() << '/';
+        }
         ss << "logs/log_" << std::put_time(std::localtime(&time_t), "%Y-%m-%d") << ".log";
         filename = ss.str();
         std::filesystem::create_directories(std::filesystem::path(filename).parent_path());
@@ -88,7 +76,7 @@ void Logger::Initialize(const std::string &sFilename)
     // Write session header
     auto now = std::chrono::system_clock::now();
     *logFile << "\n=== Logger Session Started: " << FormatTimestamp(now) << " ===" << std::endl;
-    *logFile << "Process ID: " << GetCurrentProcessIdForLog() << std::endl;
+    *logFile << "Process ID: " << engine::core::system::processId() << std::endl;
     *logFile << "Working Directory: " << std::filesystem::current_path() << std::endl;
     *logFile << std::endl;
     logFile->flush();
@@ -566,3 +554,5 @@ std::string Logger::CaptureStackTrace()
     return ss.str();
 }
 #endif
+
+} // namespace engine::core

@@ -1,6 +1,6 @@
 #include "World.h"
 
-#include "Logger.h"
+#include <engine/core/log.hpp>
 
 namespace rd = engine::renderer;
 
