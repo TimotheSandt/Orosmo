@@ -597,8 +597,17 @@ void GlEncoder::setScissor(const Rect &r)
 {
     if (check(inPass_, ErrorCode::kInvalidArgument, "setScissor: outside a render pass"))
     {
-        const GLint y = passToWindow_ ? static_cast<GLint>(passExtent_.height) - (r.y + static_cast<GLint>(r.height)) : r.y;
-        glScissor(r.x, y, static_cast<GLsizei>(r.width), static_cast<GLsizei>(r.height));
+        // Retournement en 64 bits : r.y + r.height peut dépasser GLint (rectangle très grand ou très décalé).
+        const std::int64_t y64 =
+            passToWindow_ ? static_cast<std::int64_t>(passExtent_.height) - (static_cast<std::int64_t>(r.y) + static_cast<std::int64_t>(r.height))
+                          : static_cast<std::int64_t>(r.y);
+        const auto clampGl = [](std::int64_t v) {
+            return static_cast<GLint>(std::clamp<std::int64_t>(v, std::numeric_limits<GLint>::min(), std::numeric_limits<GLint>::max()));
+        };
+        const auto clampSize = [](std::uint32_t v) {
+            return static_cast<GLsizei>(std::min<std::uint64_t>(v, static_cast<std::uint64_t>(std::numeric_limits<GLsizei>::max())));
+        };
+        glScissor(r.x, clampGl(y64), clampSize(r.width), clampSize(r.height));
     }
 }
 
