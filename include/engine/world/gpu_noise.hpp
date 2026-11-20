@@ -19,7 +19,8 @@ inline constexpr float kGpuTolerance = 1e-4f;
 class GpuNoise
 {
   public:
-    // Exige le calcul (Capabilities::compute) et des flottants 64 bits dans les shaders (OpenGL 4.0+).
+    // Exige le calcul (Capabilities::compute) et des flottants 64 bits dans les shaders (Capabilities::shaderFloat64) : sinon
+    // kUnsupported.
     static core::Result<std::unique_ptr<GpuNoise>> create(rhi::Device &device);
     ~GpuNoise();
     GpuNoise(const GpuNoise &) = delete;
@@ -33,6 +34,9 @@ class GpuNoise
     rhi::Device &device_;
     rhi::ShaderHandle shader_;
     rhi::PipelineHandle pipeline_;
+    rhi::BufferHandle buffer_;     // résultats, réutilisé entre les appels
+    rhi::BindGroupHandle group_;
+    std::uint64_t capacity_ = 0;   // octets de buffer_
 };
 
 } // namespace engine::world

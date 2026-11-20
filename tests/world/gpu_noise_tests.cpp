@@ -57,4 +57,44 @@ TEST_SUITE("world/gpu")
         }
         gpu.expectNoValidationErrors();
     }
+
+    TEST_CASE("TER-01: offscreen generations in series reuse one result buffer (no growth of the deferred-destruction queue)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        auto noise = w::GpuNoise::create(*gpu.device);
+        REQUIRE(noise.has_value());
+        w::TerrainParams p;
+        p.tileResolution = 32;
+        REQUIRE((*noise)->generateTile(p, 1, {0, 0, 0}).has_value());
+        const auto before = gpu.device->stats();
+        for (int i = 0; i < 20; ++i) // sans present() : rien ne vide la file de destruction différée
+        {
+            REQUIRE((*noise)->generateTile(p, 1, {i, 0, 0}).has_value());
+        }
+        const auto after = gpu.device->stats();
+        CHECK(after.buffers == before.buffers);
+        CHECK(after.bindGroups == before.bindGroups);
+        CHECK(after.pendingDestruction == before.pendingDestruction);
+        // Une tuile plus grande agrandit le tampon une fois, puis le réutilise.
+        p.tileResolution = 64;
+        REQUIRE((*noise)->generateTile(p, 1, {0, 0, 0}).has_value());
+        REQUIRE((*noise)->generateTile(p, 1, {1, 0, 0}).has_value());
+        CHECK(gpu.device->stats().buffers == before.buffers);
+        // lod = 32 : 2^lod en double, pas de décalage d'entier indéfini ; mêmes hauteurs que le processeur.
+        w::TerrainParams far;
+        far.tileResolution = 4;
+        far.sampleSpacing = 0.0625f;
+        far.relief = {w::NoiseBasis::kPerlin, 1, 1.0f / 8192.0f, 2.0f, 0.5f};
+        far.warp = {0.0f, 1.0f / 300.0f, 1};
+        const w::TileKey key{0, 0, 32};
+        const auto heights = (*noise)->generateTile(far, 5, key);
+        REQUIRE(heights.has_value());
+        const w::Heightmap cpu = w::generateTile(far, 5, key);
+        for (std::size_t i = 0; i < cpu.heights.size(); ++i)
+        {
+            CHECK(std::fabs((*heights)[i] - cpu.heights[i]) <= w::kGpuTolerance * std::max(1.0f, far.heightScale));
+        }
+        gpu.expectNoValidationErrors();
+    }
 }
