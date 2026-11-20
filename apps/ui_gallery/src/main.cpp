@@ -4,6 +4,7 @@
 #include "gallery_state.hpp"
 
 #include <engine/core/file_watcher.hpp>
+#include <engine/core/system.hpp>
 #include <engine/platform/input_manager.hpp>
 #include <engine/platform/window.hpp>
 #include <engine/renderer/canvas_renderer.hpp>
@@ -53,7 +54,8 @@ void usage(std::ostream &out)
     out << "ui-gallery [--theme dark|light|framed] [--tab widgets|controls|color|windows|layout|parameters|themes] [--res DIR]\n"
            "           [--capture DIR [--capture-frames N] [--headless] [--hover ID] [--click ID]] [--size WxH]\n"
            "  --hover ID / --click ID : during a capture, the pointer rests on / clicks the widget with this id\n"
-           "                            (a tooltip appears after 0.6 s: use --capture-frames 60)\n";
+           "                            (a tooltip appears after 0.6 s: use --capture-frames 60; --click needs 3 frames at least)\n"
+           "  --size WxH : 640x400 at least\n";
 }
 
 int run(const Options &o)
@@ -145,6 +147,7 @@ int run(const Options &o)
     std::uint32_t frames = 0;
     double watchClock = 0.0;
     const bool capturing = !o.capture.empty();
+    bool written = false;
     while (o.headless || !window.ShouldClose())
     {
         if (!o.headless && !window.NewFrame())
@@ -163,6 +166,9 @@ int run(const Options &o)
             watcher.poll();
         }
         state.tick(dt);
+        // Échap appartient à l'interface si un champ de texte, une fenêtre surgissante ou une fenêtre modale l'attend (état AVANT
+        // la mise à jour : le champ qui annule sa saisie perd le focus pendant celle-ci).
+        const bool uiTakesEscape = interface.wantsKeyboard() || interface.popup() != nullptr || interface.modalOpen();
         ui::InputFrame input = o.headless ? ui::InputFrame{} : ui::readWindowInput(window, dt);
         if (capturing)
         {
@@ -170,7 +176,13 @@ int run(const Options &o)
             input = ui::InputFrame{};
             input.deltaTime = dt;
             const std::string &id = !o.click.empty() ? o.click : o.hover;
-            if (ui::Widget *target = id.empty() ? nullptr : interface.find(id); target != nullptr && frames >= 1)
+            ui::Widget *target = id.empty() ? nullptr : interface.find(id);
+            if (!id.empty() && target == nullptr && frames >= 1)
+            {
+                std::cerr << "ui-gallery: no widget with id '" << id << "' (--hover / --click)\n";
+                return 2;
+            }
+            if (target != nullptr && frames >= 1)
             {
                 input.mouse = target->rect().position + target->rect().size * 0.5f;
                 input.mouseDown = !o.click.empty() && frames == 1;
@@ -182,7 +194,7 @@ int run(const Options &o)
             state.themeRequested = false;
             loadTheme();
         }
-        if (!o.headless && !interface.wantsKeyboard() && interface.popup() == nullptr &&
+        if (!o.headless && !uiTakesEscape && !interface.wantsKeyboard() && interface.popup() == nullptr && !interface.modalOpen() &&
             InputManager::GetInstance(window.GetWindow()).IsKeyJustPressed(KeyButton::ESCAPE))
             window.RequestClose();
 
@@ -222,12 +234,18 @@ int run(const Options &o)
                 return 2;
             }
             std::cout << "ui-gallery: " << out.generic_string() << "\n";
+            written = true;
             (void)(*device)->present();
             break;
         }
         (void)(*device)->present();
     }
     (*device)->waitIdle();
+    if (capturing && !written)
+    {
+        std::cerr << "ui-gallery: the window closed before the capture was written\n";
+        return 2;
+    }
     return 0;
 }
 
@@ -242,7 +260,13 @@ template <typename T> std::optional<T> number(std::string_view s)
 int main(int argc, char **argv)
 {
     Options o;
-    o.resources = fs::absolute(argv[0]).parent_path() / "res";
+    // Ressources à côté du binaire trouvé par le système (pas argv[0], qui peut n'être que le nom de la commande) ; --res les
+    // remplace. Résolution sans exception.
+    fs::path exe = engine::core::system::executablePath();
+    std::error_code pathError;
+    if (exe.empty())
+        exe = fs::absolute(argv[0], pathError);
+    o.resources = exe.parent_path() / "res";
     for (int i = 1; i < argc; ++i)
     {
         const std::string_view a = argv[i];
@@ -265,7 +289,14 @@ int main(int argc, char **argv)
         else if (hasValue && a == "--res")
             o.resources = argv[++i];
         else if (hasValue && a == "--capture")
-            o.capture = fs::absolute(argv[++i]);
+        {
+            o.capture = fs::absolute(argv[++i], pathError);
+            if (pathError)
+            {
+                std::cerr << "ui-gallery: cannot resolve " << argv[i] << ": " << pathError.message() << "\n";
+                return 2;
+            }
+        }
         else if (hasValue && a == "--capture-frames" && number<std::uint32_t>(argv[i + 1]))
             o.frames = *number<std::uint32_t>(argv[++i]);
         else if (hasValue && a == "--size")
@@ -274,7 +305,7 @@ int main(int argc, char **argv)
             const auto x = v.find('x');
             auto w = x == std::string_view::npos ? std::nullopt : number<int>(v.substr(0, x));
             auto h = x == std::string_view::npos ? std::nullopt : number<int>(v.substr(x + 1));
-            if (!w || !h || *w < 320 || *h < 240)
+            if (!w || !h || *w < 640 || *h < 400) // la colonne latérale (300 px) et les onglets doivent tenir
             {
                 usage(std::cerr);
                 return 1;
@@ -292,6 +323,12 @@ int main(int argc, char **argv)
     if (o.headless && o.capture.empty())
     {
         std::cerr << "ui-gallery: --headless needs --capture DIR\n";
+        return 1;
+    }
+    if (!o.click.empty() && o.frames < 3)
+    {
+        // Le clic agit au relâchement (image 2) : la capture doit venir après.
+        std::cerr << "ui-gallery: --click needs --capture-frames 3 or more\n";
         return 1;
     }
     SET_LOG_FILE("logs/ui-gallery.log");

@@ -33,10 +33,10 @@ obj/gen/%.o: $(ENGINE_GEN_DIR)/%.gen.cpp
 
 # Ressources à côté de l'exécutable : police, thèmes (rechargés à chaud depuis bin/res/themes), shaders du RHI, préréglages.
 resources:
-	@mkdir -p $(RES_OUT)/fonts $(RES_OUT)/themes $(RES_OUT)/shader/rhi
-	cp $(ENGINE_RES)/fonts/Roboto-Regular.ttf $(RES_OUT)/fonts/
-	cp -r $(ENGINE_RES)/themes/. $(RES_OUT)/themes/
-	cp $(ENGINE_SHADERS)/rhi/* $(RES_OUT)/shader/rhi/
+	@mkdir -p "$(RES_OUT)/fonts" "$(RES_OUT)/themes" "$(RES_OUT)/shader/rhi"
+	cp "$(ENGINE_RES)/fonts/Roboto-Regular.ttf" "$(RES_OUT)/fonts/"
+	cp -r "$(ENGINE_RES)/themes/." "$(RES_OUT)/themes/"
+	cp "$(ENGINE_SHADERS)/rhi/"* "$(RES_OUT)/shader/rhi/"  # chemins entre guillemets (espaces) ; seul * reste dehors
 
 run: all
 	./$(TARGET) $(ARGS)

@@ -176,9 +176,10 @@ void Viewer::restartStreaming()
     streamer_ = std::make_unique<w::TileStreamer>(state_.params, state_.seed, lod, config, tasks_);
 }
 
-// Le jeu de tuiles affiché change d'un coup, quand toute la nouvelle sélection est prête : jamais de trou ni de recouvrement
-// entre deux niveaux de détail pendant la génération.
-void Viewer::syncTiles()
+// Le jeu de tuiles affiché change d'un coup, quand toute la nouvelle sélection est prête ET envoyée : jamais de trou ni de
+// recouvrement entre deux niveaux de détail. Un envoi qui échoue retire les tuiles nouvelles de cette tentative et garde
+// l'ancienne sélection à l'écran (nouvel essai à l'image suivante). Vrai si la sélection courante est entièrement affichée.
+bool Viewer::syncTiles()
 {
     const auto &selection = streamer_->selection();
     std::vector<const w::ResidentTile *> ready;
@@ -188,10 +189,11 @@ void Viewer::syncTiles()
         const w::ResidentTile *tile = streamer_->find(key);
         if (tile == nullptr)
         {
-            return;
+            return false;
         }
         ready.push_back(tile);
     }
+    std::vector<std::uint64_t> added; // envoyées par cette tentative, absentes de l'affichage précédent
     std::vector<std::uint64_t> ids;
     ids.reserve(ready.size());
     for (std::size_t i = 0; i < ready.size(); ++i)
@@ -215,12 +217,22 @@ void Viewer::syncTiles()
         if (auto r = terrain_->updateTile({.id = id, .origin = origin, .vertices = relative, .indices = mesh.indices}); !r)
         {
             LOG_ERROR(1, "Viewer: tile upload: ", r.error().message);
-            continue;
+            for (std::uint64_t a : added)
+            {
+                terrain_->removeTile(a);
+                shown_.erase(a);
+            }
+            return false;
+        }
+        if (it == shown_.end())
+        {
+            added.push_back(id);
         }
         shown_[id] = ready[i];
     }
     terrain_->retainOnly(ids);
     std::erase_if(shown_, [&](const auto &entry) { return std::find(ids.begin(), ids.end(), entry.first) == ids.end(); });
+    return true;
 }
 
 ui::InputFrame Viewer::readInput(float deltaTime)
@@ -300,7 +312,10 @@ void Viewer::handleRequests()
         state_.themeRequested = false;
         loadTheme();
     }
-    // Pendant un glissement, la régénération attend 0,2 s sans changement (pas une régénération par image).
+    // Pendant un glissement, la régénération attend 0,2 s sans changement (pas une régénération par image). « Live update »
+    // décoché entre-temps : la demande différée est annulée (le bouton Generate reste disponible).
+    if (!state_.live)
+        state_.paramsChangedAt = -1.0;
     if (state_.paramsChangedAt >= 0.0 && time_ - state_.paramsChangedAt > 0.2)
     {
         state_.paramsChangedAt = -1.0;
@@ -374,7 +389,7 @@ void Viewer::frame(float deltaTime)
             streamer_->update(p.x, p.z);
         }
     }
-    syncTiles();
+    selectionShown_ = syncTiles();
 
     const w::StreamingStats s = streamer_->stats();
     stats_.tiles = static_cast<int>(s.residentTiles);
@@ -437,8 +452,10 @@ bool Viewer::render()
         return false;
     }
     ++renderedFrames_;
-    if (!options_.captureDirectory.empty() && renderedFrames_ >= options_.captureFrames)
+    // La capture attend aussi que toute la sélection soit sur le GPU (un envoi échoué la repousse).
+    if (!options_.captureDirectory.empty() && !captured_ && renderedFrames_ >= options_.captureFrames && selectionShown_)
     {
+        captured_ = true;
         std::error_code ec;
         std::filesystem::create_directories(options_.captureDirectory, ec);
         const auto path = options_.captureDirectory / "viewer.png";
@@ -462,8 +479,9 @@ int Viewer::run()
     {
         // Pas de temps fixe : mêmes images à chaque lancement.
         const std::uint32_t frames = std::max<std::uint32_t>(options_.captureFrames, 1);
+        const bool capturing = !options_.captureDirectory.empty();
         std::uint32_t attempts = 0;
-        while (renderedFrames_ < frames && attempts++ < frames * 4)
+        while ((capturing ? !captured_ : renderedFrames_ < frames) && attempts++ < frames * 4 + 16)
         {
             if (!options_.headless && !window_.NewFrame())
             {
@@ -476,7 +494,11 @@ int Viewer::run()
                 break;
             }
         }
-        return captureFailed_ || renderedFrames_ < frames ? 2 : 0;
+        if (capturing && !captured_)
+        {
+            LOG_ERROR(1, "Viewer: capture: the selection never reached the GPU within the frame budget");
+        }
+        return captureFailed_ || renderedFrames_ < frames || (capturing && !captured_) ? 2 : 0;
     }
     while (!window_.ShouldClose())
     {

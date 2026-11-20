@@ -40,13 +40,13 @@ view Gallery {
                 Separator()
                 Label("Theme").variant("caption")
                 Dropdown(options: state.themes(), selected: $state.theme).onChange(state.applyTheme).id("theme")
-                    .tooltip("dark, light, or framed (nine-slice images). Edit res/themes/*.json: reloaded live")
+                    .tooltip("dark, light, or framed (nine-slice images). Edit the themes next to the binary (bin/res/themes/*.json, or --res DIR): reloaded live")
                 Label("Tab / Shift+Tab: move the focus").variant("caption")
                 Label("Enter / Space: activate").variant("caption")
                 Label("Right click on a slider: default value").variant("caption")
                 Label("Hover a widget: tooltip").variant("caption")
                 Label("Menus: Tab to File, then arrows, Enter, Escape").variant("caption")
-                Label("Shortcuts: Ctrl+O, Ctrl+I, Ctrl+L, F5").variant("caption")
+                Label("Shortcuts: Ctrl+O, Ctrl+I, Ctrl+L (F5: Widgets)").variant("caption")
                 Separator()
                 HBox {
                     Label("Events").variant("caption").width(.fill)
@@ -170,17 +170,6 @@ view Gallery {
                         VBox {
                             Label("Modal dialog: Escape, its close button or a click outside closes it").variant("caption")
                             Button("Open the dialog").onClick(state.openDialog).id("openDialog")
-                            Dialog("Settings", open: $state.dialogOpen) {
-                                Label("A modal window: the rest of the interface receives nothing.")
-                                TextField($state.name).width(.fill)
-                                Checkbox("Enabled", checked: $state.enabled)
-                                HBox {
-                                    Button("OK").onClick(state.closeDialog).id("dialogOk")
-                                }
-                                .align(x: .end)
-                            }
-                            .width(380)
-                            .id("dialog")
                             Label("Context menu: right click in the box below").variant("caption")
                             Panel {
                                 Label("Right click here")
@@ -324,6 +313,19 @@ view Gallery {
             .height(.fill)
         }
         .height(.fill)
+        // ── Fenêtre modale : hors des pages (File > Open dialog l'ouvre depuis n'importe quel onglet) ; dans la colonne
+        // principale, où elle ne prend aucune place (dans l'Overlay, elle serait étirée et prendrait les clics) ──
+        Dialog("Settings", open: $state.dialogOpen) {
+            Label("A modal window: the rest of the interface receives nothing.")
+            TextField($state.name).width(.fill)
+            Checkbox("Enabled", checked: $state.enabled)
+            HBox {
+                Button("OK").onClick(state.closeDialog).id("dialogOk")
+            }
+            .align(x: .end)
+        }
+        .width(380)
+        .id("dialog")
         }
         .margin(12)
         .height(.fill)

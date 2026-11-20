@@ -11,6 +11,8 @@ make terrain-gen-check   # mêmes octets avec 1 et 4 threads, somme de contrôle
 ```
 
 - Formats (extension de `--out`) : `.png` (hauteurs 16 bits, 0 = min, 65535 = max), `.exr` (float, mètres), `.obj`, `.gltf`, `.stl`.
+- `--spacing` : 0,0625 à 64 m (plage de `TerrainParams::sampleSpacing`) ; `--origin X Z` : la région doit rester dans le domaine
+  du bruit (|x|, |z| < 2^23 m) ; `--base-depth` (STL) : strictement positif.
 - `--params` : document JSON `{"version": 1, "data": {...}}` de `TerrainParams` (réflexion CORE-12, champs absents = défauts).
 - Sortie standard : graine, taille, bornes des hauteurs, **somme de contrôle** des hauteurs (identique sur tous les systèmes, TEST-03).
 - Codes de retour : **0** succès, **1** erreur d'utilisation (argument invalide, format inconnu, paramètres hors plage), **2**

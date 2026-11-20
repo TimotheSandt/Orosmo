@@ -373,6 +373,7 @@ dist: $(_CUI_INSTALLED)
 	@$(MAKE) -f mk/engine.mk BUILD_TYPE=debug debug
 	@$(MAKE) -f mk/engine.mk BUILD_TYPE=release release
 ifeq ($(DETECTED_OS),Windows)
+	@powershell -NoProfile -Command "if (Test-Path '$(_DIST_STAGING)') { Remove-Item -Path '$(_DIST_STAGING)' -Recurse -Force }"  # comme Unix : pas de fichier d'un paquet précédent
 	@mkdir -p "$(DIST_PKG_DIR)/includes" "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
 	          "$(DIST_PKG_DIR)/make" "$(DIST_PKG_DIR)/tools"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination '$(DIST_PKG_DIR)/includes' -Recurse -Force"
