@@ -25,7 +25,9 @@ reste dans `src/ui/legacy/` tant que la démo l'utilise.
 | `reflect.hpp` | UI-12 : `reflectedPanel(objet)` : une structure `core::Reflect<T>` en widgets adaptés au type et à la plage ; `fieldLabel` ; `core::EnumNames<E>` pour les listes |
 
 Thèmes livrés : `res/themes/base.json` (structure : chaque propriété de chaque widget renvoie à un jeton), `dark.json` et
-`light.json` (jetons seulement). Format : `docs/UI_LANGUAGE.md`, section « Thèmes ».
+`light.json` (jetons seulement), `framed.json` (hérite de `dark.json` et ajoute des cadres en neuf parties, `res/themes/images/`).
+Rechargement : `ThemeHost::load` qui échoue garde le thème courant mais observe le thème demandé (et les parents qu'il cherchait) ;
+`ThemeHost::set` installe un thème sans fichier à recharger. Format : `docs/UI_LANGUAGE.md`, section « Thèmes ».
 
 ```cpp
 engine::ui::ThemeHost themes;
@@ -59,9 +61,15 @@ ui.notify("Terrain enregistré", engine::ui::NotificationKind::kSuccess);   // a
 ```
 
 Clavier : `InputFrame::shortcuts` porte les combinaisons de l'image (« Ctrl+S », forme de `normalizeShortcut`). Avec le focus dans
-un champ de texte, Ctrl+A / C / X / V / Z / Y (ou Super sur macOS) y sont des commandes d'édition (`TextEditState` : sélection,
-presse-papiers, annuler / rétablir par mots) ; sinon l'interface les propose aux widgets (`Widget::onShortcut`) : les `MenuItem`
+un champ de texte, Ctrl+A / C / X / V / Z / Y et Ctrl+Maj+Z (sur macOS : Super+A / C / X / V / Z et Super+Maj+Z pour rétablir)
+y sont des commandes d'édition (`TextEditState` : sélection, presse-papiers, annuler / rétablir par mots ; un `TextArea` en lecture
+seule ou lié sans setter garde la sélection et la copie, `Widget::handlesEditCommands`) ; sinon l'interface les propose aux widgets (`Widget::onShortcut`) : les `MenuItem`
 (raccourci affiché ET installé, menu fermé compris) et les boutons (`Button::setShortcut`). Les menus se parcourent au clavier
-(flèches, Entrée, Échap).
+(flèches, Entrée, Échap). `InputFrame::events` (rempli par `readWindowInput`) garde l'ordre réel du texte et des touches, et
+l'état de Maj de chaque appui.
+
+Contrats de robustesse : un événement différé dont la source a été détruite n'est pas livré ; les actions différées au-delà de
+huit vagues passent à l'image suivante ; le focus quitte un widget inactif, masqué ou hors de la fenêtre modale ;
+`clearChildren` garde la structure des widgets composés (Tabs, Section, éditeurs).
 
 Limites (docs/GAPS.md) : pas de navigation à la manette (UI-09) ; `Plot` en barres seulement ; composition IME non affichée (G107).
