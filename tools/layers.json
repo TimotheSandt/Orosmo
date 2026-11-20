@@ -33,13 +33,12 @@
     ["src/Graphics/AccelerationStructure.cpp", "rhi"],
     ["include/Graphics/*", "renderer"],
     ["src/Graphics/*", "renderer"],
-    ["include/UI/*", "ui"],
     ["include/engine/ui/*", "ui"],
     ["src/ui/*", "ui"],
     ["src/ThirdParty/*", "core"],
     ["apps/*", "apps"]
   ],
-  "include_roots": ["include", "include/Graphics", "include/UI", "include/Noise", "include/Benchmark"],
+  "include_roots": ["include", "include/Graphics", "include/Noise", "include/Benchmark"],
   "scan": ["include", "src", "apps"],
   "api_isolation": {
     "allowed": ["src/rhi/", "src/platform/", "include/engine/platform/"],
