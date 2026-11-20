@@ -665,7 +665,7 @@ void TextArea::drawContent(const Ui &ui, renderer::DrawList &list, const Style &
             break;
         const Line &l = ls[i];
         const std::string_view line = std::string_view(edit_.text).substr(l.begin, l.end - l.begin);
-        const float x0 = content.position.x + g;
+        const float x0 = std::round(content.position.x + g);
         auto xAt = [&](std::size_t pos) { return x0 + ui.font().measure(line.substr(0, pos - l.begin), style.fontSize, style.font.get()).x; };
         if (editing && s1 > s0 && s0 <= l.end && s1 >= l.begin)
         {
@@ -680,7 +680,7 @@ void TextArea::drawContent(const Ui &ui, renderer::DrawList &list, const Style &
             drawText(ui, list, std::to_string(l.number + 1), {{content.position.x, y}, {g - style.spacing, lh}}, style, Align::kEnd, &style.muted);
         }
         if (!line.empty())
-            ui.font().draw(list, line, {x0, y}, style.fontSize, style.foreground, style.font.get());
+            ui.font().draw(list, line, {x0, std::round(y)}, style.fontSize, style.foreground, style.font.get());
         if (editing && edit_.caret >= l.begin && edit_.caret <= l.end && lineOf(ls, edit_.caret) == i && std::fmod(ui.time(), 1.0f) < 0.6f)
             list.rect({std::round(xAt(edit_.caret)), y}, {std::max(1.0f, style.borderWidth), lh}, style.foreground);
     }

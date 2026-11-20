@@ -52,6 +52,36 @@ TEST_SUITE("ui/text")
         CHECK(text.measureTextWidth(std::string("a\xc3"), 0.5f) == doctest::Approx(text.measureTextWidth("a", 0.5f)));
     }
 
+    TEST_CASE("letters with a flat bottom all end on the same pixel row (the baseline), at any size and position")
+    {
+        UI::TextRenderer text;
+        REQUIRE(text.init(800, 600));
+        REQUIRE(text.loadFont(roboto().string(), "default", 48));
+        int sizes = 0;
+        for (float scale = 0.26f; scale <= 0.8f; scale += 0.027f)
+        {
+            for (float y : {0.0f, 10.3f, 21.5f, 33.8f})
+            {
+                rd::DrawList list;
+                text.setDrawListSink(&list);
+                text.renderText("xzmnhkriElLTH", 5.0f, y, scale);
+                text.setDrawListSink(nullptr);
+                std::vector<float> bottoms;
+                for (const auto &c : list.commands)
+                    if (const auto *g = std::get_if<rd::DrawGlyphs>(&c))
+                        for (std::size_t q = 0; q + 24 <= g->vertices.size(); q += 24)
+                            bottoms.push_back(g->vertices[q + 5]); // 2e sommet : bas gauche du glyphe
+                REQUIRE(bottoms.size() == 13);
+                const auto [lo, hi] = std::minmax_element(bottoms.begin(), bottoms.end());
+                CAPTURE(scale);
+                CAPTURE(y);
+                CHECK(*hi - *lo == 0.0f);
+            }
+            ++sizes;
+        }
+        CHECK(sizes > 15);
+    }
+
     TEST_CASE("TextRendererFont: the font named by the style is loaded on first use; an unreadable one falls back to the default")
     {
         UI::TextRenderer text;

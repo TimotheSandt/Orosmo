@@ -51,6 +51,14 @@ Voir `docs/releases/M00.md` : mêmes 102 tests, mêmes ressources (somme MD5 ide
 | `reference/scene-opengl-seed1-1280x720.png` | Scène 3D OpenGL, graine 1, 1280x720, 10 images, Intel Arc (Mesa 26.1.6). sha256 `8937f52b311633aafddf834a12ca5bf08ae0bb99c963511fc24bc0b09478974f` |
 | `tests-M0.txt` | Résumé doctest de `make demo-test` depuis un clone propre de `dev` : 118 cas, 647 assertions, 0 échec |
 
+## Mise à jour du 2026-11-19 : texte posé sur sa ligne de base
+
+`reference/ui-opengl-fixedtext-1280x720.png` (parité de l'interface héritée, `tests/renderer/parity_tests.cpp`) : seul le panneau
+de texte (270 x 185 en haut à gauche) est remplacé. Correction de `TextRenderer::renderText` : le bas de chaque glyphe était
+arrondi (haut arrondi + hauteur arrondie) indépendamment de la ligne de base, d'où des lettres décalées d'un pixel vers le haut
+ou le bas ; il est maintenant arrondi par rapport à la ligne de base (`tests/ui/text_tests.cpp`, « letters with a flat bottom… »).
+Lettres déplacées d'au plus 1 pixel ; le reste de l'image est inchangé. sha256 `f83d5bf74cd6b5cb5ad4d4a490a84acdc0a1771e51b611dc60766f8e64fd1d00`.
+
 Régénérer et comparer :
 
 ```bash

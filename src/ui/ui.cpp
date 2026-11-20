@@ -478,8 +478,20 @@ void Ui::forgetSubtree(const Widget *root)
     {
         if (*p != nullptr && inSubtree(root, *p))
         {
-            if (*p == hovered_)
+            // Le widget survit (contenu emprunté d'un menu) : ses états survolé, appuyé, focus sont remis à zéro, sinon il reste
+            // dessiné « survolé » à la prochaine ouverture.
+            if (p == &hovered_)
                 hovered_->hovered_ = false;
+            else if (p == &active_)
+                active_->pressed_ = false;
+            else
+            {
+                Widget *w = focused_;
+                focused_ = nullptr;
+                w->focused_ = false;
+                w->onFocusChanged(*this, false);
+                continue;
+            }
             *p = nullptr;
         }
     }
@@ -710,7 +722,8 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         }
         else
         {
-            focus(target != nullptr && target->focusable() ? target : nullptr);
+            if (target == nullptr || target->focusOnClick())
+                focus(target != nullptr && target->focusable() ? target : nullptr);
             active_ = target;
             if (active_ != nullptr)
             {
