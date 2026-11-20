@@ -139,19 +139,53 @@ TileMesh buildTileMesh(const TerrainParams &params, std::uint32_t seed, const He
     const std::uint32_t n = heights.samplesPerSide();
     const auto spacing = static_cast<float>(sampleSpacing(params, heights.key.lod));
     std::vector<float> h = heights.heights;
-    // Couture : sur un bord voisin d'une feuille deux fois plus grossière, le sommet impair prend la moyenne de ses deux voisins
-    // pairs (les deux tuiles partagent ces sommets pairs) : il tombe exactement sur l'arête du côté grossier.
-    auto stitchLine = [&](auto index)
+    const std::vector<float> &original = heights.heights;
+    // Couture : sur un bord voisin d'une feuille deux fois plus grossière, chaque sommet d'indice GLOBAL impair prend la moyenne
+    // de ses deux voisins pairs (les échantillons du côté grossier sont les indices globaux pairs) : il tombe exactement sur
+    // l'arête du côté grossier. L'indice global (et non local) traite aussi une résolution impaire, où la parité locale et la
+    // parité globale diffèrent d'une tuile à l'autre ; un voisin hors de la tuile (extrémité impaire) est recalculé par heightAt.
+    const auto res = static_cast<std::int64_t>(heights.resolution);
+    auto alongPosition = [&](std::int32_t tile, std::int64_t t) // position d'un indice local, éventuellement -1 ou n
     {
-        for (std::uint32_t t = 1; t + 1 < n; t += 2)
+        TileKey k = heights.key;
+        k.x = tile;
+        if (t < 0)
         {
-            h[index(t)] = 0.5f * (h[index(t - 1)] + h[index(t + 1)]);
+            k.x = tile - 1;
+            t += res;
+        }
+        else if (t > res)
+        {
+            k.x = tile + 1;
+            t -= res;
+        }
+        return sampleX(params, k, static_cast<std::uint32_t>(t));
+    };
+    // index(t) : case du sommet t du bord ; tile : coordonnée de la tuile le long du bord ; height(t) : hauteur hors tuile.
+    auto stitchLine = [&](auto index, std::int32_t tile, auto heightOutside)
+    {
+        const std::int64_t first = static_cast<std::int64_t>(tile) * res;
+        for (std::uint32_t t = 0; t < n; ++t)
+        {
+            if (((first + t) & 1) == 0)
+            {
+                continue;
+            }
+            const float a = t > 0 ? original[index(t - 1)] : heightOutside(alongPosition(tile, -1));
+            const float b = t + 1 < n ? original[index(t + 1)] : heightOutside(alongPosition(tile, static_cast<std::int64_t>(n)));
+            h[index(t)] = 0.5f * (a + b);
         }
     };
-    if (stitch[static_cast<std::size_t>(Edge::kWest)]) stitchLine([&](std::uint32_t t) { return static_cast<std::size_t>(t) * n; });
-    if (stitch[static_cast<std::size_t>(Edge::kEast)]) stitchLine([&](std::uint32_t t) { return static_cast<std::size_t>(t) * n + (n - 1); });
-    if (stitch[static_cast<std::size_t>(Edge::kSouth)]) stitchLine([&](std::uint32_t t) { return static_cast<std::size_t>(t); });
-    if (stitch[static_cast<std::size_t>(Edge::kNorth)]) stitchLine([&](std::uint32_t t) { return static_cast<std::size_t>(n - 1) * n + t; });
+    const float west = sampleX(params, heights.key, 0);
+    const float east = sampleX(params, heights.key, n - 1);
+    const float south = sampleZ(params, heights.key, 0);
+    const float north = sampleZ(params, heights.key, n - 1);
+    auto atX = [&](float x) { return [&params, seed, x](float z) { return heightAt(params, seed, x, z); }; };
+    auto atZ = [&](float z) { return [&params, seed, z](float x) { return heightAt(params, seed, x, z); }; };
+    if (stitch[static_cast<std::size_t>(Edge::kWest)]) stitchLine([&](std::uint32_t t) { return static_cast<std::size_t>(t) * n; }, heights.key.z, atX(west));
+    if (stitch[static_cast<std::size_t>(Edge::kEast)]) stitchLine([&](std::uint32_t t) { return static_cast<std::size_t>(t) * n + (n - 1); }, heights.key.z, atX(east));
+    if (stitch[static_cast<std::size_t>(Edge::kSouth)]) stitchLine([&](std::uint32_t t) { return static_cast<std::size_t>(t); }, heights.key.x, atZ(south));
+    if (stitch[static_cast<std::size_t>(Edge::kNorth)]) stitchLine([&](std::uint32_t t) { return static_cast<std::size_t>(n - 1) * n + t; }, heights.key.x, atZ(north));
 
     mesh.vertices.reserve(static_cast<std::size_t>(n) * n * TileMesh::kFloatsPerVertex);
     for (std::uint32_t j = 0; j < n; ++j)

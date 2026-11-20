@@ -171,7 +171,13 @@ TEST_SUITE("world/terrain")
 
     TEST_CASE("TER-03: no crack: every vertex on an edge shared with a coarser leaf lies on the coarse edge")
     {
-        const w::TerrainParams p = smallParams();
+        // Résolutions paire et impaires (plage réfléchie 4..256) : avec une résolution impaire, la parité locale d'un sommet
+        // n'est pas sa parité globale, et l'extrémité d'un bord peut être un sommet impair.
+        for (const std::uint32_t resolution : {16U, 5U, 7U})
+        {
+        CAPTURE(resolution);
+        w::TerrainParams p = smallParams();
+        p.tileResolution = resolution;
         const auto leaves = w::selectTiles(p, {.rootLod = 3, .rootRadius = 1, .distanceFactor = 1.5f}, 0.0f, 0.0f);
         const std::uint32_t n = p.tileResolution + 1;
         std::size_t checkedEdges = 0;
@@ -204,6 +210,7 @@ TEST_SUITE("world/terrain")
             }
         }
         CHECK(checkedEdges > 0);
+        }
     }
 
     TEST_CASE("TER-03: a tile mesh has (res+1)^2 vertices, 6 res^2 indices, unit normals facing up")
