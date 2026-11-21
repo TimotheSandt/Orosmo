@@ -102,6 +102,34 @@ TEST_SUITE("ui/review3")
         }
     }
 
+    TEST_CASE("closing a popup never walks the parents of a hovered widget destroyed by its own onHover handler")
+    {
+        UiHarness h;
+        h.viewport = {600, 500};
+        int choice = 0;
+        auto root = std::make_unique<ui::VBox>();
+        auto &box = root->emplace<ui::VBox>();
+        auto &button = box.emplace<ui::Button>("Hover me");
+        auto &dropdown = root->emplace<ui::Dropdown>(std::vector<std::string>{"a", "b"}, ui::Binding<int>::ref(choice));
+        button.onHover([&](const ui::Event &e) {
+            if (e.active)
+            {
+                box.clearChildren(); // le bouton survolé est détruit, sans prévenir Ui
+                h.ui.closePopup();   // la fermeture parcourt les widgets survolé / appuyé / focalisé
+            }
+        });
+        h.ui.setRoot(std::move(root));
+        h.frame();
+        h.click(UiHarness::center(dropdown));
+        REQUIRE(h.ui.popupOpenFor(dropdown));
+        const glm::vec2 over = UiHarness::center(button);
+        h.moveTo(over); // survol (différé) -> destruction puis fermeture : aucun accès au bouton détruit (ASan)
+        CHECK(box.children().empty());
+        CHECK_FALSE(h.ui.anyPopupOpen());
+        CHECK(h.ui.hovered() == nullptr);
+        h.frame();
+    }
+
     TEST_CASE("showModal closes popups opened outside the modal and keeps those opened from it (submenus too), frame after frame")
     {
         UiHarness h;
