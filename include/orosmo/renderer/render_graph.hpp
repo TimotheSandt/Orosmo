@@ -4,9 +4,12 @@
 // les passes sur un encodeur, chacune mesurée par le `Profiler` (minuterie GPU quand un fournisseur est installé). Les barrières
 // restent au RHI (docs/03 §3 règle 1) : le graphe ne fait qu'ordonner.
 //
-// Règles de dépendance (indépendantes de l'ordre de déclaration entre ressources différentes) :
-//   - les écrivains d'une même ressource s'exécutent dans leur ordre de déclaration ;
-//   - une passe qui lit une ressource sans l'écrire voit son contenu FINAL : elle suit tous ses écrivains ;
+// Règles de dépendance (par ressource ; l'ordre de déclaration ne compte qu'entre les accès à une même ressource) :
+//   - les écrivains d'une même ressource s'exécutent dans leur ordre de déclaration (une passe qui lit et écrit est un écrivain) ;
+//   - `read` voit la version laissée par le dernier écrivain déclaré AVANT la passe, et l'écrivain suivant attend la passe
+//     (écriture après lecture) ; sans écrivain déclaré avant elle, la passe voit le contenu FINAL (elle suit tous les écrivains) ;
+//   - `readFinal` voit toujours le contenu final, même si des écrivains sont déclarés après (ex. la mise à l'échelle du renderer,
+//     déclarée avant les post-traitements des plugins) ;
 //   - une ressource importée sans écrivain est lue telle qu'elle est (contenu d'avant l'image).
 // Une passe est gardée si elle a un effet de bord (`sideEffect`), si elle écrit une ressource importée (visible hors du graphe), ou
 // si une passe gardée lit ce qu'elle écrit. Les autres sont écartées. Un cycle est refusé par `compile` (kInvalidArgument).
@@ -118,8 +121,10 @@ class RenderGraph
     class PassBuilder
     {
       public:
-        PassBuilder &read(RgTexture texture);
+        PassBuilder &read(RgTexture texture);  // version courante (voir les règles en tête du fichier)
         PassBuilder &read(RgBuffer buffer);
+        PassBuilder &readFinal(RgTexture texture); // contenu final, après tous les écrivains de l'image
+        PassBuilder &readFinal(RgBuffer buffer);
         PassBuilder &write(RgTexture texture); // écriture hors attachement (passe générique : sa propre passe, stockage, copie)
         PassBuilder &write(RgBuffer buffer);
         // Attachements d'une passe kRaster (même taille pour tous). `kLoad` lit l'ancien contenu (la passe suit l'écrivain précédent).
@@ -192,6 +197,7 @@ class RenderGraph
     enum class Access : std::uint8_t
     {
         kRead,
+        kReadFinal,
         kWrite,
         kColor,
         kDepth,

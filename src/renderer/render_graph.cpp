@@ -55,6 +55,18 @@ RenderGraph::PassBuilder &RenderGraph::PassBuilder::read(RgBuffer buffer)
     return *this;
 }
 
+RenderGraph::PassBuilder &RenderGraph::PassBuilder::readFinal(RgTexture texture)
+{
+    graph_->addUse(pass_, {.texture = true, .resource = texture.index, .access = Access::kReadFinal});
+    return *this;
+}
+
+RenderGraph::PassBuilder &RenderGraph::PassBuilder::readFinal(RgBuffer buffer)
+{
+    graph_->addUse(pass_, {.texture = false, .resource = buffer.index, .access = Access::kReadFinal});
+    return *this;
+}
+
 RenderGraph::PassBuilder &RenderGraph::PassBuilder::write(RgTexture texture)
 {
     graph_->addUse(pass_, {.texture = true, .resource = texture.index, .access = Access::kWrite});
@@ -284,52 +296,92 @@ core::Result<> RenderGraph::compile()
         return r;
     }
 
-    // Arêtes : écrivains d'une ressource dans l'ordre de déclaration ; un lecteur pur suit le dernier écrivain.
+    // Arêtes, ressource par ressource, en suivant l'ordre de déclaration des passes qui y accèdent :
+    //   - écriture après écriture : chaque écrivain suit le précédent ;
+    //   - lecture après écriture : `read` suit le dernier écrivain déclaré avant lui (ou tous, s'il n'y en a pas), `readFinal`
+    //     suit le dernier écrivain ;
+    //   - écriture après lecture : un écrivain suit les lecteurs de la version précédente (ordre seulement : ces lecteurs ne
+    //     sont pas gardés pour autant).
+    // `predecessors` sert à l'ordre, `dataPredecessors` (sans les écritures après lecture) aux passes gardées.
     const std::size_t n = passes_.size();
     std::vector<std::vector<std::pair<std::uint32_t, std::string>>> successors(n); // (passe suivante, ressource)
     std::vector<std::vector<std::uint32_t>> predecessors(n);
+    std::vector<std::vector<std::uint32_t>> dataPredecessors(n);
     std::set<std::pair<std::uint32_t, std::uint32_t>> edges;
-    const auto addEdge = [&](std::uint32_t from, std::uint32_t to, const std::string &resource)
+    std::set<std::pair<std::uint32_t, std::uint32_t>> dataEdges;
+    const auto addEdge = [&](std::uint32_t from, std::uint32_t to, const std::string &resource, bool data)
     {
-        if (from != to && edges.insert({from, to}).second)
+        if (from == to)
+        {
+            return;
+        }
+        if (edges.insert({from, to}).second)
         {
             successors[from].push_back({to, resource});
             predecessors[to].push_back(from);
         }
+        if (data && dataEdges.insert({from, to}).second)
+        {
+            dataPredecessors[to].push_back(from);
+        }
     };
     const auto linkResource = [&](bool texture, std::uint32_t resource, const std::string &name)
     {
-        std::vector<std::uint32_t> writers;
-        std::vector<std::uint32_t> readers;
+        std::optional<std::uint32_t> lastWriter;
+        std::vector<std::uint32_t> versionReaders; // lecteurs de la version de lastWriter
+        std::vector<std::uint32_t> finalReaders;
         for (std::uint32_t p = 0; p < n; ++p)
         {
             bool writes = false;
             bool reads = false;
+            bool readsFinal = false;
             for (const ResourceUse &u : passes_[p].uses)
             {
-                if (u.texture == texture && u.resource == resource)
+                if (u.texture != texture || u.resource != resource)
                 {
-                    (u.access == Access::kRead ? reads : writes) = true;
+                    continue;
+                }
+                if (u.access == Access::kRead)
+                {
+                    reads = true;
+                }
+                else if (u.access == Access::kReadFinal)
+                {
+                    readsFinal = true;
+                }
+                else
+                {
+                    writes = true;
                 }
             }
             if (writes)
             {
-                writers.push_back(p);
+                if (lastWriter)
+                {
+                    addEdge(*lastWriter, p, name, true);
+                }
+                for (const std::uint32_t r : versionReaders)
+                {
+                    addEdge(r, p, name, false);
+                }
+                versionReaders.clear();
+                lastWriter = p;
+            }
+            else if (readsFinal || (reads && !lastWriter))
+            {
+                finalReaders.push_back(p);
             }
             else if (reads)
             {
-                readers.push_back(p);
+                addEdge(*lastWriter, p, name, true);
+                versionReaders.push_back(p);
             }
         }
-        for (std::size_t i = 1; i < writers.size(); ++i)
+        if (lastWriter)
         {
-            addEdge(writers[i - 1], writers[i], name);
-        }
-        if (!writers.empty())
-        {
-            for (const std::uint32_t r : readers)
+            for (const std::uint32_t r : finalReaders)
             {
-                addEdge(writers.back(), r, name);
+                addEdge(*lastWriter, r, name, true);
             }
         }
     };
@@ -429,7 +481,8 @@ core::Result<> RenderGraph::compile()
         bool root = passes_[p].sideEffect;
         for (const ResourceUse &u : passes_[p].uses)
         {
-            if (u.access != Access::kRead && (u.texture ? textures_[u.resource].imported : buffers_[u.resource].imported))
+            const bool reading = u.access == Access::kRead || u.access == Access::kReadFinal;
+            if (!reading && (u.texture ? textures_[u.resource].imported : buffers_[u.resource].imported))
             {
                 root = true;
             }
@@ -444,7 +497,7 @@ core::Result<> RenderGraph::compile()
     {
         const std::uint32_t p = stack.back();
         stack.pop_back();
-        for (const std::uint32_t before : predecessors[p])
+        for (const std::uint32_t before : dataPredecessors[p])
         {
             if (!kept_[before])
             {
@@ -588,7 +641,7 @@ core::Result<> RenderGraph::allocateTransients()
             life.last = static_cast<std::int64_t>(pos);
             if (u.texture)
             {
-                life.usage = life.usage | (u.access == Access::kRead ? rhi::TextureUsage::kSampled
+                life.usage = life.usage | (u.access == Access::kRead || u.access == Access::kReadFinal ? rhi::TextureUsage::kSampled
                                                                       : (u.access == Access::kWrite ? rhi::TextureUsage::kNone : rhi::TextureUsage::kRenderTarget));
             }
         }

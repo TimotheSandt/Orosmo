@@ -791,14 +791,15 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
                 }
                 return activeUpscaleMode_->upscale(context, sceneTarget_, output);
             });
-        upscale.read(known.sceneColor).write(known.output);
+        // readFinal : les post-traitements des plugins, déclarés plus tard, s'exécutent avant la mise à l'échelle.
+        upscale.readFinal(known.sceneColor).write(known.output);
         if (known.sceneDepth.valid())
         {
-            upscale.read(known.sceneDepth);
+            upscale.readFinal(known.sceneDepth);
         }
         if (known.motionVectors.valid())
         {
-            upscale.read(known.motionVectors);
+            upscale.readFinal(known.motionVectors);
         }
         if (previousHistory.valid())
         {
@@ -832,18 +833,18 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
                                              generatedFrame_ = out.generatedFrame;
                                              return core::Result<>{};
                                          });
-        generation.read(known.sceneColor).sideEffect(); // son image appartient au mode : effet hors du graphe
+        generation.readFinal(known.sceneColor).sideEffect(); // son image appartient au mode : effet hors du graphe
         if (previousHistory.valid())
         {
             generation.read(previousHistory);
         }
         if (known.sceneDepth.valid())
         {
-            generation.read(known.sceneDepth);
+            generation.readFinal(known.sceneDepth);
         }
         if (known.motionVectors.valid())
         {
-            generation.read(known.motionVectors);
+            generation.readFinal(known.motionVectors);
         }
     }
 
@@ -865,7 +866,7 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
                          resetHistoryNextFrame_ = false; // la demande de réinitialisation a été transmise avec un historique neuf
                          return {};
                      })
-            .read(known.sceneColor)
+            .readFinal(known.sceneColor)
             .write(nextHistory);
     }
 

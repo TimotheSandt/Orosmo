@@ -39,10 +39,39 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | `render_feature.hpp` | `RenderFeature` (plugin : `supports`, `prepare(FrameData)`, `declarePasses(RenderGraphBuilder&)`) et `RenderGraphBuilder` (graphe de l'image + ressources connues : `sceneColor`, `sceneDepth`, `motionVectors`, `output`, tailles ; `addSceneInput`) |
 | `frame_data.hpp` | `FrameData` (docs/03 §10, std140, 640 octets, `static_assert` sur tailles et offsets), `FrameEnvironment`, `splitDouble`, `frameNoiseSeed` ; côté GLSL : `shaders/rhi/frame_data.glsl` (`#include "frame_data.glsl"`, groupe 0 binding 2) |
 
-**Règles de dépendance.** Les écrivains d'une ressource s'exécutent dans leur ordre de déclaration ; une passe qui lit sans écrire voit
-le contenu **final** (elle suit tous les écrivains), quel que soit l'ordre dans lequel les passes ont été déclarées ; une ressource
-importée sans écrivain est lue telle quelle. Sont gardées : les passes à effet de bord (`sideEffect`), celles qui écrivent une
-ressource importée, et tout ce dont elles dépendent. À égalité, l'ordre de déclaration est conservé.
+**Règles de dépendance** (par ressource ; l'ordre de déclaration ne compte qu'entre les accès à une même ressource) :
+
+- les écrivains d'une ressource (`write`, `writeColor`, `writeDepth` ; une passe qui lit et écrit est un écrivain) s'exécutent dans
+  leur ordre de déclaration ;
+- `read` voit la version laissée par le dernier écrivain déclaré **avant** la passe, et l'écrivain suivant attend cette passe
+  (écriture après lecture) ; sans écrivain déclaré avant elle, la passe voit le contenu **final** ;
+- `readFinal` voit toujours le contenu final (après tous les écrivains de l'image, même déclarés plus tard) ;
+- une ressource importée sans écrivain est lue telle quelle (contenu d'avant l'image).
+
+Sont gardées : les passes à effet de bord (`sideEffect`), celles qui écrivent une ressource importée, et tout ce dont elles lisent
+les données (une écriture après lecture ordonne sans garder le lecteur). À égalité, l'ordre de déclaration est conservé. Un cycle est
+refusé par `compile` avec le chemin des passes.
+
+**API en bref** (entrées et sorties d'une passe) :
+
+```cpp
+RenderGraph &graph = builder.graph();                                       // dans RenderFeature::declarePasses
+const RgTexture scene = builder.resources().sceneColor;                     // ressource importée par le renderer
+const RgTexture bright = graph.createTexture("bloom.bright", {.format = rhi::Format::kRGBA16Float,
+                                                               .size = builder.resources().renderSize}); // transitoire
+graph.addPass("bloom.extract", PassType::kRaster, [=](RenderPassContext &ctx) -> core::Result<> {
+         ctx.encoder().setBindGroup(0, ctx.frame()->group);                 // groupe 0 : caméra, lumières, FrameData
+         /* lier ctx.texture(scene) au groupe 1, dessiner un triangle plein écran */ return {};
+     })
+    .read(scene)                 // entrée : la scène telle qu'elle est à ce point de la déclaration
+    .writeColor(bright);         // sortie : attachement (le graphe ouvre et referme la passe de rendu)
+graph.addPass("bloom.apply", PassType::kGeneric, applyFn).read(bright).write(scene); // réécrit la scène
+```
+
+Une passe `kGeneric` enregistre ce qu'elle veut (ses propres passes de rendu, compute, copies) et déclare ses accès par `read` /
+`write` ; `ctx.texture(h)` / `ctx.buffer(h)` donnent la ressource GPU, `ctx.desc(h)` sa description. Les usages d'une texture
+transitoire sont déduits des accès (attachement : `kRenderTarget`, lecture : `kSampled`) ; un accès en stockage ou en copie doit être
+déclaré dans `RgTextureDesc::usage`. `findTexture(nom)` retrouve une ressource déclarée par une autre passe (ex. un AOV, REN-21).
 
 **Image de `SceneRenderer`.** `endFrame` déclare, dans cet ordre : `scene` (raster : couleur, vecteurs de mouvement, profondeur ; joue
 les dessins enregistrés), `post.<nom>` (un par `IPostProcessPass`), `upscale` (mode actif, ou copie 1:1), `frame-generation`,
@@ -56,12 +85,13 @@ pipeline et la transformation sont résolus à `drawMesh`, les segments de debug
 dessine les casters, puis appelle `builder.addSceneInput(atlas)` : la passe d'ombre s'exécute avant `scene`, n'est jamais écartée, et
 la texture (`ctx.texture(atlas)`) est liée au groupe 1 des matériaux qui la lisent. Ni le renderer ni les backends ne changent.
 
-**Ajouter un post-traitement ou un effet HDR (REN-17 à 19, REN-21).** Un plugin qui lit `resources().sceneColor` (et `sceneDepth`,
-`motionVectors` au besoin), écrit une texture transitoire, puis une passe qui l'écrit dans `sceneColor` (`write`) : déclarée après
-`scene`, elle s'exécute avant `upscale`, qui lit le contenu final de la scène. Pour écrire **après** la mise à l'échelle (interface,
-superpositions), une passe qui écrit `resources().output` : les écrivains de la sortie suivent leur ordre de déclaration, et les
-plugins sont déclarés après `upscale`. C'est ainsi que la démo branche l'interface (`CanvasRenderer`) et la présentation
-(`apps/demo/src/Game/Game.cpp`, `Game::OverlayFeature`).
+**Ajouter un post-traitement ou un effet HDR (REN-17 à 19, REN-21).** Un plugin qui lit `resources().sceneColor` avec `read` (et
+`sceneDepth`, `motionVectors` au besoin), écrit une texture transitoire, puis une passe qui la réécrit dans `sceneColor` (`write`) :
+elle s'exécute après `scene` et avant `upscale`, `frame-generation` et `history`, qui lisent la scène avec `readFinal` bien qu'elles
+soient déclarées avant les plugins. Pour écrire **après** la mise à l'échelle (interface, superpositions), une passe qui écrit
+`resources().output` : les écrivains de la sortie suivent leur ordre de déclaration, et les plugins sont déclarés après `upscale`.
+C'est ainsi que la démo branche l'interface (`CanvasRenderer`) et la présentation (`apps/demo/src/Game/Game.cpp`,
+`Game::OverlayFeature`, passes `ui` et `present`).
 
 ### Dessin 2D (B5)
 

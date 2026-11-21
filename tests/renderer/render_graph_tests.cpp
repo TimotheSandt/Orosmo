@@ -167,6 +167,49 @@ TEST_SUITE("renderer/render_graph")
         }
     }
 
+    TEST_CASE("RenderGraph (REN-01): read sees the version declared before it, readFinal the final one; a writer waits for earlier readers")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            GraphGpu g(backend);
+            REQUIRE(g.gpu.device);
+            const TextureHandle out = g.gpu.target(Format::kRGBA8Unorm, {4, 4}, "out");
+            const TextureHandle resultTexture = g.gpu.target(Format::kRGBA8Unorm, {4, 4}, "result");
+            rd::RenderGraph graph(*g.gpu.device);
+            std::vector<std::string> log;
+
+            // Chaîne de post-traitement : extraire la couleur dans une transitoire puis la réécrire. La consommatrice (readFinal),
+            // déclarée AVANT la chaîne, la voit quand même finie ; la chaîne ne forme pas de cycle (extract lit la version de src).
+            const rd::RgTexture color = graph.importTexture("color", out, {.size = {4, 4}});
+            const rd::RgTexture result = graph.importTexture("result", resultTexture, {.size = {4, 4}});
+            const rd::RgTexture tmp = graph.createTexture("tmp", {.size = {4, 4}});
+            const rd::RgTexture dead = graph.createTexture("dead", {.size = {4, 4}});
+            graph.addPass("src", rd::PassType::kRaster, note(log, "src")).writeColor(color);
+            graph.addPass("consume", rd::PassType::kGeneric, note(log, "consume")).readFinal(color).write(result);
+            graph.addPass("extract", rd::PassType::kGeneric, note(log, "extract")).read(color).write(tmp);
+            graph.addPass("unused-peek", rd::PassType::kGeneric, note(log, "unused-peek")).read(color).write(dead); // écartée
+            graph.addPass("apply", rd::PassType::kGeneric, note(log, "apply")).read(tmp).write(color);
+            REQUIRE(graph.compile().has_value());
+            CHECK(graph.executionOrder() == std::vector<std::string>{"src", "extract", "apply", "consume"});
+            // L'écriture après lecture ordonne sans garder : un lecteur inutile reste écarté.
+            CHECK(graph.culledPasses() == std::vector<std::string>{"unused-peek"});
+
+            // Écriture après lecture : `overwrite` ne dépend que de src, mais `reader` lit la version de src ; reader attend
+            // make-b (déclarée après lui) : sans l'arête lecture -> écriture, overwrite passerait avant reader.
+            graph.reset();
+            const rd::RgTexture a = graph.importTexture("color", out, {.size = {4, 4}});
+            const rd::RgTexture b = graph.createTexture("b", {.size = {4, 4}});
+            graph.addPass("src", rd::PassType::kRaster, note(log, "src")).writeColor(a);
+            graph.addPass("reader", rd::PassType::kGeneric, note(log, "reader")).read(a).read(b).sideEffect();
+            graph.addPass("overwrite", rd::PassType::kRaster, note(log, "overwrite")).writeColor(a, LoadOp::kLoad);
+            graph.addPass("make-b", rd::PassType::kRaster, note(log, "make-b")).writeColor(b);
+            REQUIRE(graph.compile().has_value());
+            CHECK(graph.executionOrder() == std::vector<std::string>{"src", "make-b", "reader", "overwrite"});
+            g.gpu.run([&](CommandEncoder &e) { REQUIRE(graph.execute(e).has_value()); });
+            g.gpu.expectNoValidationErrors();
+        }
+    }
+
     TEST_CASE("RenderGraph (REN-01): a cycle is refused with a clear error; invalid declarations are refused; a failing pass stops the frame")
     {
         FOR_EACH_BACKEND(backend)
@@ -488,6 +531,16 @@ TEST_SUITE("renderer/render_graph")
                     builder.addSceneInput(shadow);
                     const rd::RgTexture orphan = graph.createTexture("orphan", {.size = {8, 8}});
                     graph.addPass("orphan", rd::PassType::kRaster, [](rd::RenderPassContext &) -> core::Result<> { return {}; }).writeColor(orphan);
+                    // Post-traitement de la scène (REN-17/18) : lit la couleur, écrit une transitoire, la réécrit dans la scène ;
+                    // déclaré après la mise à l'échelle, il s'exécute avant elle (elle lit le contenu final de la scène).
+                    const rd::RgTexture scene = builder.resources().sceneColor;
+                    const rd::RgTexture blurred = graph.createTexture("post.tmp", {.size = builder.resources().renderSize});
+                    graph.addPass("post.extract", rd::PassType::kRaster, [](rd::RenderPassContext &) -> core::Result<> { return {}; })
+                        .read(scene)
+                        .writeColor(blurred);
+                    graph.addPass("post.apply", rd::PassType::kGeneric, [](rd::RenderPassContext &) -> core::Result<> { return {}; })
+                        .read(blurred)
+                        .write(scene);
                     graph
                         .addPass("overlay", rd::PassType::kRaster,
                                  [pipeline = pipeline](rd::RenderPassContext &ctx) -> core::Result<>
@@ -543,6 +596,9 @@ TEST_SUITE("renderer/render_graph")
             INFO("order: ", order.size());
             CHECK(position(order, "shadow") < position(order, "scene"));
             CHECK(position(order, "upscale") < position(order, "overlay"));
+            CHECK(position(order, "scene") < position(order, "post.extract"));
+            CHECK(position(order, "post.extract") < position(order, "post.apply"));
+            CHECK(position(order, "post.apply") < position(order, "upscale"));
             CHECK(renderer->renderGraph().culledPasses() == std::vector<std::string>{"orphan"});
             CHECK(feature->prepared == 1);
             CHECK(feature->preparedDelta == 0.25f);

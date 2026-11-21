@@ -43,12 +43,13 @@ class RenderGraphBuilder
     {
         if (auto scene = graph_.pass(scenePass_))
         {
-            scene->read(texture);
+            scene->readFinal(texture); // déclarée avant les plugins : sans readFinal, elle lirait le contenu d'avant l'image
         }
     }
 
-    // Une passe qui écrit la sortie APRÈS la mise à l'échelle (interface, superpositions) : `writeOutput` dans une passe déclarée
-    // ici suit automatiquement l'écriture de la mise à l'échelle (écrivains dans l'ordre de déclaration).
+    // Écrire APRÈS la mise à l'échelle (interface, superpositions) : une passe déclarée ici qui écrit `resources().output` suit
+    // l'écriture de la mise à l'échelle (écrivains dans l'ordre de déclaration). Écrire AVANT (post-traitement de la scène) :
+    // une passe qui écrit `resources().sceneColor` ; la mise à l'échelle la lit avec `readFinal`, donc après elle.
 
   private:
     RenderGraph &graph_;
