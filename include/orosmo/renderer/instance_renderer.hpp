@@ -1,7 +1,8 @@
 // REN-28 : dessin instancié. Toutes les instances d'une image (InstanceBatchBuilder, déjà triées par (maillage, matériau)) sont
 // envoyées dans UN tampon de sommets à pas d'instance ; chaque lot est UN drawIndexed (firstInstance = début du lot dans le tampon).
 // Les maillages et matériaux sont enregistrés une fois et désignés par leur identifiant (ceux qu'utilisent ObjectSet et
-// InstanceBatchBuilder). Dessine dans la passe ouverte de SceneRenderer (passContext), sur tous les backends du RHI.
+// InstanceBatchBuilder). `draw` enregistre ses dessins dans SceneRenderer (drawCustom) : ils sont joués dans la passe « scene » du
+// graphe (REN-01), à leur place parmi les autres dessins, avant les post-traitements ; sur tous les backends du RHI.
 #pragma once
 
 #include "orosmo/core/error.hpp"
@@ -58,7 +59,8 @@ class InstanceRenderer
     std::size_t materialCount() const noexcept { return materials_.size(); }
     const std::shared_ptr<ShaderProgram> &defaultProgram() const noexcept { return defaultProgram_; }
 
-    // Envoie les instances de `batches` (après build) et dessine un lot par draw call dans la passe ouverte de `scene`.
+    // Envoie les instances de `batches` (après build) et enregistre un draw call par lot dans `scene` (entre beginFrame, setCamera et
+    // endFrame ; les maillages doivent rester valides jusqu'à endFrame).
     // `wireframe` : un second passage en fil de fer par lot (comme SceneRenderer::drawMesh avec une caméra en fil de fer).
     // Une seule fois par image et par InstanceRenderer : le tampon d'instances est réécrit à chaque appel, et les écritures d'une
     // image sont toutes visibles avant ses commandes (un second appel dans la même image remplacerait les instances du premier).

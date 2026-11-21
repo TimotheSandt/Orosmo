@@ -111,21 +111,34 @@ core::Result<InstanceDrawStats> InstanceRenderer::draw(SceneRenderer &scene, con
             return makeError(ErrorCode::kNotFound, "InstanceRenderer::draw: unknown material " + std::to_string(batch.key.material));
         }
     }
-    auto context = scene.passContext();
-    if (!context)
+    auto info = scene.sceneDrawInfo();
+    if (!info)
     {
-        return std::unexpected(context.error());
+        return std::unexpected(info.error());
     }
     if (batches.batches().empty())
     {
         return stats;
     }
-    if (auto r = upload(batches, context->cameraOrigin, stats); !r)
+    if (auto r = upload(batches, info->cameraOrigin, stats); !r)
     {
         return std::unexpected(r.error());
     }
 
-    rhi::CommandEncoder &e = *context->encoder;
+    // Pipelines, constantes et tampons résolus maintenant ; le rappel les joue dans la passe « scene » (endFrame).
+    struct Command
+    {
+        rhi::PipelineHandle pipeline; // nul : même pipeline que la commande précédente
+        rhi::BindGroupHandle textures;
+        std::vector<std::byte> pushConstants;
+        rhi::BufferHandle vertexBuffer;
+        rhi::BufferHandle indexBuffer;
+        std::uint32_t indexCount = 0;
+        std::uint32_t instanceCount = 0;
+        std::uint32_t firstInstance = 0;
+    };
+    std::vector<Command> commands;
+    commands.reserve(batches.batches().size() * (wireframe ? 2 : 1));
     rhi::PipelineHandle current;
     for (int pass = 0; pass < (wireframe ? 2 : 1); ++pass)
     {
@@ -147,14 +160,14 @@ core::Result<InstanceDrawStats> InstanceRenderer::draw(SceneRenderer &scene, con
             }
             state.raster.cull = material.cull;
             state.raster.fill = lines ? rhi::FillMode::kLine : rhi::FillMode::kFill;
-            // Mêmes règles que SceneRenderer::draw : reverse-Z, le fil de fer passe à profondeur égale.
+            // Mêmes règles que SceneRenderer::drawMesh : reverse-Z, le fil de fer passe à profondeur égale.
             state.depth = {true, true, lines ? rhi::CompareOp::kGreaterEqual : rhi::CompareOp::kGreater};
-            state.depthFormat = context->depthFormat;
+            state.depthFormat = info->depthFormat;
             state.colorTargets.clear();
-            for (std::size_t i = 0; i < context->colorFormats.size(); ++i)
+            for (std::size_t i = 0; i < info->colorFormats.size(); ++i)
             {
                 rhi::ColorTargetState t;
-                t.format = context->colorFormats[i];
+                t.format = info->colorFormats[i];
                 t.writeMask = i == 0 ? rhi::ColorWriteMask::kAll : rhi::ColorWriteMask::kNone;
                 state.colorTargets.push_back(t);
             }
@@ -164,38 +177,67 @@ core::Result<InstanceDrawStats> InstanceRenderer::draw(SceneRenderer &scene, con
             {
                 return std::unexpected(pipeline.error());
             }
+            Command command;
             if (*pipeline != current)
             {
-                e.setPipeline(*pipeline);
-                e.setBindGroup(0, context->frameGroup);
+                command.pipeline = *pipeline;
                 current = *pipeline;
                 ++stats.pipelineChanges;
             }
-            if (!material.textures.isNull())
-            {
-                e.setBindGroup(1, material.textures);
-            }
+            command.textures = material.textures;
             if (const std::uint32_t pushSize = pipelines_.pushConstantSize(*pipeline); pushSize > 0)
             {
-                std::vector<std::byte> push(pushSize, std::byte{0});
+                command.pushConstants.assign(pushSize, std::byte{0});
                 if (const std::size_t n = std::min<std::size_t>(pushSize, material.pushConstants.size()); n > 0)
                 {
-                    std::memcpy(push.data(), material.pushConstants.data(), n);
+                    std::memcpy(command.pushConstants.data(), material.pushConstants.data(), n);
                 }
                 if (pushSize >= sizeof(std::int32_t))
                 {
                     const std::int32_t flag = lines ? 1 : 0; // convention mesh.frag : premier entier = fil de fer
-                    std::memcpy(push.data(), &flag, sizeof flag);
+                    std::memcpy(command.pushConstants.data(), &flag, sizeof flag);
                 }
-                e.setPushConstants(push);
             }
-            e.setVertexBuffer(0, mesh.vertexBuffer());
-            e.setVertexBuffer(1, instanceBuffer_.handle());
-            e.setIndexBuffer(mesh.indexBuffer(), rhi::IndexType::kUint32);
-            e.drawIndexed(mesh.indexCount(), batch.instanceCount, 0, 0, batch.firstInstance);
+            command.vertexBuffer = mesh.vertexBuffer();
+            command.indexBuffer = mesh.indexBuffer();
+            command.indexCount = mesh.indexCount();
+            command.instanceCount = batch.instanceCount;
+            command.firstInstance = batch.firstInstance;
+            commands.push_back(std::move(command));
             ++stats.drawCalls;
             stats.instances += batch.instanceCount;
         }
+    }
+
+    const rhi::BufferHandle instances = instanceBuffer_.handle();
+    auto record = scene.drawCustom(
+        [commands = std::move(commands), instances](rhi::CommandEncoder &e, rhi::BindGroupHandle frameGroup) -> core::Result<>
+        {
+            for (const Command &c : commands)
+            {
+                if (!c.pipeline.isNull())
+                {
+                    e.setPipeline(c.pipeline);
+                    e.setBindGroup(0, frameGroup);
+                }
+                if (!c.textures.isNull())
+                {
+                    e.setBindGroup(1, c.textures);
+                }
+                if (!c.pushConstants.empty())
+                {
+                    e.setPushConstants(c.pushConstants);
+                }
+                e.setVertexBuffer(0, c.vertexBuffer);
+                e.setVertexBuffer(1, instances);
+                e.setIndexBuffer(c.indexBuffer, rhi::IndexType::kUint32);
+                e.drawIndexed(c.indexCount, c.instanceCount, 0, 0, c.firstInstance);
+            }
+            return {};
+        });
+    if (!record)
+    {
+        return std::unexpected(record.error());
     }
     return stats;
 }

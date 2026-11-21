@@ -23,7 +23,7 @@ static void reportPerformance(std::chrono::steady_clock::duration elapsed)
 {
     using orosmo::core::Profiler;
     LOG_INFO("Perf: loopMs=", std::chrono::duration<double, std::milli>(elapsed).count());
-    for (const char *name : {"Render", "RenderScene", "Upscale", "UIUpscale", "SwapBuffers"})
+    for (const char *name : {"Render", "RenderGraph/scene", "RenderGraph/upscale", "RenderGraph/ui", "RenderGraph/present", "SwapBuffers"})
     {
         LOG_INFO("Perf: ", name, " avgMs=", Profiler::GetAverageTimeMs(name));
     }

@@ -250,6 +250,49 @@ TEST_SUITE("renderer/instancing")
         }
     }
 
+    TEST_CASE("InstanceRenderer: instances are played in the scene pass with drawMesh, sharing its depth (REN-01, REN-28)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            InstancingScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            auto program = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag");
+            REQUIRE(program.has_value());
+            auto wall = rd::Mesh::create(*scene.gpu.device, squareData(16.0f, {1, 0, 0}, "wall")); // rouge, plein écran, z = -3
+            REQUIRE(wall.has_value());
+            wall->setProgram(*program);
+            wall->setPosition({0.0f, 0.0f, -3.0f});
+            auto tile = rd::Mesh::create(*scene.gpu.device, squareData(4.0f, {1, 1, 1}, "tile"));
+            REQUIRE(tile.has_value());
+            const std::uint32_t mesh = *scene.instances->addMesh(*tile);
+            const std::uint32_t material = scene.instances->addMaterial({});
+            rd::InstanceBatchBuilder batches;
+            batches.add({mesh, material}, at(-2.0f, 0.0f, -5.0f), {0, 1, 0, 1}); // derrière le mur : caché
+            batches.add({mesh, material}, at(2.0f, 0.0f, -1.0f), {0, 0, 1, 1});  // devant le mur : visible
+            batches.build();
+            const TextureHandle out = scene.gpu.target(Format::kRGBA8Unorm, {kSize, kSize}, "output");
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    CHECK(failsWith(scene.renderer->drawCustom([](CommandEncoder &, BindGroupHandle) -> orosmo::core::Result<> { return {}; }),
+                                    ErrorCode::kInvalidArgument)); // aucune image ouverte
+                    REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                    REQUIRE(scene.renderer->setCamera(scene.camera).has_value());
+                    CHECK(failsWith(scene.renderer->drawCustom({}), ErrorCode::kInvalidArgument)); // rappel vide
+                    auto drawn = scene.instances->draw(*scene.renderer, batches); // enregistré AVANT le mur
+                    REQUIRE(drawn.has_value());
+                    REQUIRE(scene.renderer->drawMesh(*wall, scene.camera).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {kSize, kSize}}).has_value());
+                });
+            const auto left = rgba(scene.gpu.pixel(out, 1, 4));
+            const auto right = rgba(scene.gpu.pixel(out, 6, 4));
+            INFO("left ", int(left[0]), " ", int(left[1]), " ", int(left[2]), " right ", int(right[0]), " ", int(right[1]), " ", int(right[2]));
+            CHECK((near(left[0], 255) && near(left[1], 0))); // le mur cache l'instance verte
+            CHECK((near(right[2], 255) && near(right[0], 0))); // l'instance bleue passe devant le mur dessiné après elle
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
     TEST_CASE("LOD cross-fade: two levels dithered with complementary thresholds cover every pixel exactly once (REN-31)")
     {
         FOR_EACH_BACKEND(backend)
