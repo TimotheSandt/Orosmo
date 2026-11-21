@@ -1,8 +1,11 @@
 name: Build & Release Engine
 
-# Tags v* publish a release. A push to main builds the same four packages WITHOUT publishing (the release job needs a tag):
+# Tags v* publish a release. A push to main builds the same five packages WITHOUT publishing (the release job needs a tag):
 # it proves the release build before anyone tags, and it fills the vcpkg cache of main, which is the only branch a tag run can
 # read caches from (caches made on dev or in pull requests are invisible to a tag).
+# A tag on a commit that main already built successfully REUSES that build's packages (job `reuse`) instead of rebuilding:
+# the release publishes exactly the files proven on main, in under a minute. Otherwise (tag elsewhere, failed or expired
+# main build) the tag run builds as before.
 on:
   push:
     tags:
@@ -19,7 +22,50 @@ env:
   VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-archives
 
 jobs:
+  # ── Reuse the packages of main's build for the tagged commit ───────────────────────────────
+  # Only for a tag. Finds the push run of this workflow on main for the same commit: a run still in progress is WAITED for
+  # (up to 45 minutes: tagging right after the merge is the normal case); a successful run counts only if its five package
+  # artifacts (one per platform of the matrix below) are still there (7-day retention). Empty output: build again.
+  reuse:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run_id: ${{ steps.find.outputs.run_id }}
+    steps:
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          PLATFORMS: "5"   # entries of the build matrix
+        run: |
+          run_id=""
+          deadline=$((SECONDS + 2700))
+          while true; do
+            json=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build-engine.yml/runs?head_sha=$SHA&event=push&branch=main")
+            ok=$(echo "$json" | jq -r '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")][0].id // empty')
+            pending=$(echo "$json" | jq '[.workflow_runs[] | select(.status != "completed")] | length')
+            echo "main builds of $SHA: success=${ok:-none}, not finished=$pending"
+            if [ -n "$ok" ]; then run_id="$ok"; break; fi
+            if [ "${pending:-0}" -eq 0 ] || [ "$SECONDS" -ge "$deadline" ]; then break; fi
+            sleep 30
+          done
+          if [ -n "$run_id" ]; then
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" \
+                  --jq '[.artifacts[] | select(.expired == false and (.name | startswith("orosmo-")))] | length')
+            echo "run $run_id: $n/$PLATFORMS package artifacts available"
+            if [ "$n" -ne "$PLATFORMS" ]; then run_id=""; fi
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          if [ -n "$run_id" ]; then echo "Reusing the packages of main run $run_id"; else echo "No reusable main build: building"; fi
+
   build:
+    needs: reuse
+    # Push to main / manual run: `reuse` is skipped (empty output) and the build runs; tag: only without a reusable main build.
+    if: ${{ !cancelled() && needs.reuse.outputs.run_id == '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -223,11 +269,15 @@ jobs:
 
   # ── GitHub Release ─────────────────────────────────────────────────────────────
   release:
-    needs: build
+    needs: [reuse, build]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    # Packages from this run's build, or reused from main's build of the same commit (build skipped).
+    if: >-
+      ${{ !cancelled() && startsWith(github.ref, 'refs/tags/') &&
+          (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.reuse.outputs.run_id != '')) }}
     permissions:
       contents: write
+      actions: read   # download the artifacts of another run (main's build)
 
     steps:
       - uses: actions/checkout@v4
@@ -243,11 +293,29 @@ jobs:
             exit 1
           fi
 
-      - name: Download all artifacts
+      - name: Download the packages of this run
+        if: needs.reuse.outputs.run_id == ''
         uses: actions/download-artifact@v4
         with:
           path: dist/
+          pattern: orosmo-*
           merge-multiple: true
+
+      - name: Download the packages of main's build (same commit)
+        if: needs.reuse.outputs.run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          pattern: orosmo-*
+          merge-multiple: true
+          run-id: ${{ needs.reuse.outputs.run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: List the release files
+        run: |
+          ls -l dist/
+          test "$(ls dist/ | wc -l)" -eq 10   # 5 platforms x (orosmo tool + package)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

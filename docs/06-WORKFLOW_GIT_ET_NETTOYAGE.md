@@ -58,6 +58,10 @@ Le workflow `.github/workflows/build-engine.yml` construit l'outil `orosmo` et l
    git push origin v0.1.0
    ```
    Le workflow se déclenche sur les tags `v*` (un tag de jalon comme `M1` ne le déclenche pas) et **refuse un tag qui n'est pas contenu dans `main`**. Ne pas utiliser `gh release create` : le workflow crée la release lui-même.
+   **Tag sur le dernier commit de `main`** (le cas normal) : le workflow **réutilise** les paquets du build de `main` fait à la
+   fusion (job `reuse` : même commit, build réussi, paquets encore là, 7 jours) et publie en moins d'une minute, sans recompiler ;
+   si ce build tourne encore, il l'attend (45 min au plus). Sinon (autre commit, build de `main` en échec, paquets expirés), il
+   recompile les cinq plateformes, comme avant.
 3. Linux est vérifié depuis un clone propre (G64). Windows et macOS ne l'ont été que par la CI de build et de tests, jamais par `engine-tool` : la répétition de l'étape 1 est leur première preuve.
 
 ## 4. Bugs signalés par l'auteur
