@@ -29,6 +29,7 @@ struct StreamingStats
     std::size_t memoryBytes = 0;    // mémoire des tuiles résidentes
     std::size_t evictions = 0;      // depuis la création
     std::size_t generated = 0;      // depuis la création
+    std::size_t failed = 0;         // générations échouées depuis la création (tuile non publiée, redemandée plus tard)
     bool overBudget = false;        // la sélection courante seule dépasse le budget
 };
 
@@ -66,7 +67,11 @@ class TileStreamer
         CoarserNeighbors stitch{};
         core::TaskHandle task;
         std::shared_ptr<ResidentTile> result;
+        std::shared_ptr<bool> complete; // vrai seulement si la tâche est allée au bout (pas d'exception, ex. bad_alloc)
     };
+    // Une génération échouée n'est pas relancée avant ce nombre d'images (pas de nouvelle tentative à chaque image sous
+    // pression mémoire).
+    static constexpr std::uint64_t kRetryDelayFrames = 60;
     void collectFinished();
     void rebalance(); // recalcule overBudget_ sur les tuiles résidentes de la sélection, puis évince
     void evict();
@@ -83,6 +88,8 @@ class TileStreamer
     std::size_t memory_ = 0;
     std::size_t evictions_ = 0;
     std::size_t generated_ = 0;
+    std::size_t failed_ = 0;
+    std::unordered_map<TileKey, std::uint64_t, TileKeyHash> retryAt_; // clé échouée -> première image d'une nouvelle tentative
     bool overBudget_ = false;
 };
 
