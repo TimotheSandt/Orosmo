@@ -126,6 +126,10 @@ orosmo::core::Result<> Game::init()
     {
         return orosmo::core::makeError(ready.error().code, "Failed to initialize the demo scene: " + ready.error().message);
     }
+    if (auto ready = this->scene->initInstances(*this->device, *this->shaders, *this->pipelines, kShaderDirectory, this->instanceCount); !ready)
+    {
+        return orosmo::core::makeError(ready.error().code, "Failed to create the instanced objects: " + ready.error().message);
+    }
 
     if (auto created = this->createUi(); !created)
     {

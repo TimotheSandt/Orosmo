@@ -8,6 +8,10 @@
 layout(location = 0) in vec3 normal;
 layout(location = 1) in vec3 crntPos;
 layout(location = 2) in vec3 color;
+#ifdef OROSMO_INSTANCED
+// REN-31 : seuil de tramage par instance (lod.hpp) ; les seuils f et -f de deux niveaux couvrent chaque pixel une fois.
+layout(location = 3) flat in float dither;
+#endif
 
 layout(location = 0) out vec4 FragColor;
 
@@ -92,6 +96,18 @@ vec4 fillRender()
 
 void main()
 {
+#ifdef OROSMO_INSTANCED
+    if (dither != 0.0f)
+    {
+        const float bayer[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+        const ivec2 p = ivec2(gl_FragCoord.xy) & 3;
+        const float n = bayer[p.y * 4 + p.x] / 16.0f;
+        if ((dither > 0.0f && n < dither) || (dither < 0.0f && n >= -dither))
+        {
+            discard;
+        }
+    }
+#endif
     if (pc.wireframe == 1)
     {
         FragColor = wireframeRender();

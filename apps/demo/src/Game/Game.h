@@ -46,6 +46,8 @@ class Game
 
     // TOOL-03: after `frames` rendered frames, save <directory>/scene.png (3D) and ui.png, then close.
     void enableCapture(std::string directory, std::uint32_t frames);
+    // --instances N (REN-28) : N objets instanciés ajoutés à la scène par init() ; 0 (défaut) : aucun.
+    void setInstanceCount(std::uint32_t count) noexcept { this->instanceCount = count; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
@@ -122,6 +124,7 @@ class Game
     demo::UiMode uiMode = demo::UiMode::kHud;
     std::string initialTheme = "dark";
     std::string initialTab = "scene";
+    std::uint32_t instanceCount = 0;
     std::string hoverId;
     std::string clickId;
     std::string captureDirectory;

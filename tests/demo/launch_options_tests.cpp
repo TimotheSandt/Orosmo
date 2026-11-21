@@ -169,6 +169,18 @@ TEST_SUITE("Demo launch options")
         AssertEqual(options.captureFrames, 25u, "Capture frame count should be parsed");
     }
 
+    TEST_CASE("launch options parse --instances; none by default (REN-28)")
+    {
+        const char *none[] = {"Orosmo"};
+        AssertEqual(demo::parseLaunchOptions(1, none)->instances, 0u, "No instanced objects by default");
+        const char *argv[] = {"Orosmo", "--instances", "10000"};
+        AssertEqual(demo::parseLaunchOptions(3, argv)->instances, 10000u, "--instances should be parsed");
+        const char *bad[] = {"Orosmo", "--instances", "many"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "A non-numeric --instances is refused");
+        const char *missing[] = {"Orosmo", "--instances"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--instances without a value is refused");
+    }
+
     TEST_CASE("launch options default to no capture")
     {
         const char *argv[] = {"Orosmo"};
