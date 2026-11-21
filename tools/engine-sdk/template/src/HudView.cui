@@ -1,0 +1,18 @@
+// Starter HUD view compiled by cui into HudView.gen.h / HudView.gen.cpp.
+import "orosmo/ui"
+import "hud_state.hpp"
+
+view HudView {
+    @Mutable var state: HudState
+
+    Panel {
+        Label("\(state.title)").variant("title").id("title")
+        Label("Frame: \(state.frame)").variant("caption").id("frame")
+        Checkbox("Rotate cube", checked: $state.rotate).id("rotate")
+        Button("Reset counter").onClick(state.resetFrame).id("reset")
+    }
+    .width(240)
+    .height(.fit)
+    .margin(12)
+    .align(.start)
+}
