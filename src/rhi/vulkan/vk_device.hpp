@@ -228,6 +228,9 @@ class VulkanDevice final : public Device
     Result<> resize(Extent2D size) override;                                                                           // vk_swapchain.cpp
     void setVSync(bool enabled) override;                                                                              // vk_swapchain.cpp
     void waitIdle() override;
+    // Attend le GPU et dit si l'inactivité est CONFIRMÉE (vkDeviceWaitIdle réussi, ou périphérique perdu : plus aucun travail ne
+    // tourne). Sur une erreur récupérable (mémoire), rien n'est libéré : l'appelant ne doit rien détruire de ce que le GPU peut lire.
+    Result<> waitIdleChecked();
 
     std::uint64_t validationErrorCount() const noexcept override { return validationErrors_.load(); }
     DeviceStats stats() const noexcept override;
@@ -286,7 +289,9 @@ class VulkanDevice final : public Device
 
     // Enregistre `record` dans un tampon à usage unique, le soumet et ATTEND qu'il soit fini (chemin lent : envois, lectures,
     // création de tampons avec données initiales). Passe d'abord par `flushPending`.
-    Result<> immediate(const std::function<void(VkCommandBuffer)> &record);
+    // `accepted` (facultatif) dit si la soumission a été acceptée : après un échec d'attente, la copie peut encore être en vol et
+    // les tampons qu'elle touche doivent attendre la série acceptée (`queueRelease`) au lieu d'être détruits.
+    Result<> immediate(const std::function<void(VkCommandBuffer)> &record, bool *accepted = nullptr);
 
     // Dispositions de texture en attente : les textures neuves sont UNDEFINED ; `flushPending` (appelé avant toute soumission et
     // tout `immediate`) les fait passer en disposition de repos, ce qui garde correct un encodeur jamais soumis.
@@ -352,6 +357,10 @@ class VulkanDevice final : public Device
     Result<> initSwapchain(const DeviceDesc &desc); // après la création du périphérique : image de fond, chaîne d'échange
     void shutdownSwapchain() noexcept;
     void drainPendingInit(VkCommandBuffer commandBuffer);
+    void releaseReadback(const Staging &staging, bool immediateRelease);
+    Result<> checkDepthCopy(const TextureRes &texture, const char *what) const;
+    void abandonBatchInit(); // le lot n'est pas parti : ses textures neuves redeviennent UNDEFINED
+    void recycleUnsubmitted(VkCommandBuffer commandBuffer, const core::Error &error);
     void destroyTextureNow(TextureRes &texture) noexcept;
 
     VkInstance instance_ = VK_NULL_HANDLE;
@@ -389,6 +398,7 @@ class VulkanDevice final : public Device
     };
     std::vector<Pending> pending_;
     std::vector<TextureHandle> pendingInitialization_;
+    std::vector<TextureHandle> batchInitialized_; // textures initialisées par le lot ouvert (rétablies si le lot est abandonné)
     VkCommandBuffer batch_ = VK_NULL_HANDLE;
     std::vector<Staging> batchStaging_;
     std::uint64_t batchBytes_ = 0;

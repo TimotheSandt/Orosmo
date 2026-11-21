@@ -90,6 +90,8 @@ Result<ResolvedRegion> resolveRegion(const TextureRes &texture, const TextureCop
         size = {lw - static_cast<std::uint32_t>(std::max(copy.offset.x, 0)), lh - static_cast<std::uint32_t>(std::max(copy.offset.y, 0)),
                 is3D ? ld - static_cast<std::uint32_t>(std::max(copy.offset.z, 0)) : (layered ? texture.layers - copy.layer : 1)};
     }
+    if (!is3D && copy.offset.z != 0)
+        return makeError(ErrorCode::kInvalidArgument, "texture region: a non-zero z offset is only valid for 3D textures (" + texture.desc.debugName + ")");
     if (size.width == 0 || size.height == 0 || size.depth == 0 || copy.offset.x < 0 || copy.offset.y < 0 || copy.offset.z < 0)
         return makeError(ErrorCode::kInvalidArgument, "texture region: empty or negative region (" + texture.desc.debugName + ")");
     const bool fits = static_cast<std::uint64_t>(copy.offset.x) + size.width <= lw && static_cast<std::uint64_t>(copy.offset.y) + size.height <= lh &&
@@ -107,6 +109,15 @@ Result<ResolvedRegion> resolveRegion(const TextureRes &texture, const TextureCop
         r.layerCount = layered ? size.depth : 1;
     }
     return r;
+}
+
+Result<> VulkanDevice::checkDepthCopy(const TextureRes &texture, const char *what) const
+{
+    // Repli D24S8 -> D32S8 : les octets D24 (4 octets par texel) seraient lus comme D32F, donc faux sans erreur. Refusé.
+    if (texture.desc.format == Format::kD24UnormS8Uint && texture.format != VK_FORMAT_D24_UNORM_S8_UINT)
+        return makeError(ErrorCode::kUnsupported,
+                         std::string(what) + ": D24S8 copies are not supported when the device replaces it with D32S8 (" + texture.desc.debugName + ")");
+    return {};
 }
 
 VkBufferImageCopy bufferImageCopy(const TextureRes &texture, const ResolvedRegion &region, std::uint64_t bufferOffset, std::uint32_t bufferRowLength)
@@ -208,6 +219,16 @@ Result<> VulkanDevice::updateBuffer(BufferHandle handle, std::uint64_t offset, s
     return {};
 }
 
+// Tampon de lecture : libéré tout de suite si la copie est finie ou n'est jamais partie ; sinon (attente échouée après
+// soumission acceptée) gardé jusqu'à la série acceptée.
+void VulkanDevice::releaseReadback(const Staging &staging, bool immediateRelease)
+{
+    if (immediateRelease)
+        destroyStaging(staging);
+    else
+        queueRelease([this, staging]() { destroyStaging(staging); }, false);
+}
+
 Result<std::vector<std::byte>> VulkanDevice::readBuffer(BufferHandle handle, std::uint64_t offset, std::uint64_t size)
 {
     BufferRes *buffer = buffers_.get(handle);
@@ -232,6 +253,7 @@ Result<std::vector<std::byte>> VulkanDevice::readBuffer(BufferHandle handle, std
     if (!staging)
         return std::unexpected(staging.error());
     const VkBuffer source = buffer->buffer;
+    bool accepted = false;
     auto r = immediate(
         [&](VkCommandBuffer cb)
         {
@@ -239,13 +261,14 @@ Result<std::vector<std::byte>> VulkanDevice::readBuffer(BufferHandle handle, std
             const VkBufferCopy region{offset, 0, size};
             vkCmdCopyBuffer(cb, source, staging->buffer, 1, &region);
             memoryBarrierAll(cb);
-        });
+        },
+        &accepted);
     if (r)
     {
         vmaInvalidateAllocation(allocator_, staging->allocation, 0, size);
         std::memcpy(out.data(), staging->mapped, size);
     }
-    destroyStaging(*staging);
+    releaseReadback(*staging, r.has_value() || !accepted);
     if (!r)
         return std::unexpected(r.error());
     return out;
@@ -395,6 +418,8 @@ Result<> VulkanDevice::updateTexture(TextureHandle handle, const TextureCopy &co
         return makeError(ErrorCode::kNotFound, "updateTexture: stale or null texture handle");
     if (handle == backbuffer_)
         return makeError(ErrorCode::kInvalidArgument, "updateTexture: the backbuffer cannot be written by upload; render into it");
+    if (auto r = checkDepthCopy(*texture, "updateTexture"); !r)
+        return r;
     auto region = resolveRegion(*texture, copy);
     if (!region)
         return std::unexpected(region.error());
@@ -427,6 +452,8 @@ Result<std::vector<std::byte>> VulkanDevice::readTexture(TextureHandle handle, c
     TextureRes *texture = textures_.get(handle);
     if (texture == nullptr)
         return makeError(ErrorCode::kNotFound, "readTexture: stale or null texture handle");
+    if (auto r = checkDepthCopy(*texture, "readTexture"); !r)
+        return std::unexpected(r.error());
     auto region = resolveRegion(*texture, copy);
     if (!region)
         return std::unexpected(region.error());
@@ -437,6 +464,7 @@ Result<std::vector<std::byte>> VulkanDevice::readTexture(TextureHandle handle, c
         return std::unexpected(staging.error());
     const VkBufferImageCopy imageCopy = bufferImageCopy(*texture, *region, 0, 0);
     const TextureRes snapshot = *texture; // image, disposition, aspect (la texture ne bouge pas pendant l'appel)
+    bool accepted = false;
     auto r = immediate(
         [&](VkCommandBuffer cb)
         {
@@ -444,7 +472,8 @@ Result<std::vector<std::byte>> VulkanDevice::readTexture(TextureHandle handle, c
             vkCmdCopyImageToBuffer(cb, snapshot.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging->buffer, 1, &imageCopy);
             transitionImage(cb, snapshot.image, snapshot.aspect, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, snapshot.restLayout);
             memoryBarrierAll(cb);
-        });
+        },
+        &accepted);
     std::vector<std::byte> out;
     if (r)
     {
@@ -452,7 +481,7 @@ Result<std::vector<std::byte>> VulkanDevice::readTexture(TextureHandle handle, c
         out.resize(bytes);
         std::memcpy(out.data(), staging->mapped, bytes);
     }
-    destroyStaging(*staging);
+    releaseReadback(*staging, r.has_value() || !accepted);
     if (!r)
         return std::unexpected(r.error());
     return out;
@@ -477,7 +506,9 @@ Result<SamplerHandle> VulkanDevice::createSampler(const SamplerDesc &desc)
     info.compareOp = toVk(desc.compare.value_or(CompareOp::kAlways));
     info.minLod = desc.minLod;
     // Pas de mips (mipFilter vide) : un seul niveau, comme OpenGL.
-    info.maxLod = desc.mipFilter.has_value() ? std::min(desc.maxLod, VK_LOD_CLAMP_NONE) : std::min(desc.minLod, desc.maxLod);
+    // Sans mipFilter, OpenGL reste au niveau 0 mais minifie avec minFilter : en Vulkan, le filtre de minification ne s'applique que
+    // si le LOD calculé dépasse 0, donc la plage va de minLod à minLod + 0,25 (mipmapMode NEAREST arrondit toujours au niveau 0).
+    info.maxLod = desc.mipFilter.has_value() ? std::min(desc.maxLod, VK_LOD_CLAMP_NONE) : desc.minLod + 0.25f;
     // Couleurs de bord : les trois valeurs fixes de Vulkan (noir transparent, noir opaque, blanc opaque) ; la plus proche est prise.
     const auto &c = desc.borderColor;
     if (c[3] < 0.5f)
