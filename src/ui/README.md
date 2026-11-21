@@ -54,7 +54,7 @@ ui.setRoot(std::move(panel));
 
 Image du jeu : le jeu écrit les pixels d'une `DynamicImage` puis appelle `commit()` ; la texture est mise à jour en place à la
 prochaine image (même taille). Le presse-papiers du système est branché par l'application (`ui.setClipboard(get, set)`, par
-exemple `Window::GetClipboardText` / `SetClipboardText`) ; sans lui, un presse-papiers interne.
+exemple `platform::Window::getClipboardText` / `setClipboardText`) ; sans lui, un presse-papiers interne.
 
 ```cpp
 orosmo::ui::DynamicImage minimap(128, 128);

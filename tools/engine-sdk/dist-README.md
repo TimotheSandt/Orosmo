@@ -10,7 +10,7 @@ orosmo-pkg-<platform>/
   includes/
     orosmo/          — public API (stable within a minor version, see docs/USING_THE_ENGINE.md in the repository):
       core/            errors (std::expected), logger, tasks, file watcher, reflection + JSON/MessagePack serialization
-      platform/        Window, InputManager (names still PascalCase: will change, see "API stability")
+      platform/        orosmo::platform — Window, InputManager (camelCase API, kPascalCase enum values)
       rhi/             graphics abstraction (Device, CommandEncoder, handles) — OpenGL 4.3+ backend before M4
       renderer/        SceneRenderer, Camera (reverse-Z), CanvasRenderer, DrawList, Mesh, LightManager, DebugDraw
       ui/              orosmo::ui — widgets, layout, JSON themes, reflected parameter panels
