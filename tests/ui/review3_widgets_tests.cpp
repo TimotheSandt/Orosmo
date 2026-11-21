@@ -24,10 +24,12 @@ struct Numbers
     double big = 1.0;
     float small = 1.0f;
     orosmo::core::Vec3 offset{0.0f};
-    int between = 2;   // plage [0.5, 3.5] : entiers 1..3
-    int closed = 0;    // plage [0, 3]
-    int noInteger = 0; // plage [0.2, 0.8] : aucun entier
-    std::int64_t atLimit = 0; // plage [2^63, 2^63] : 2^63 n'est pas un int64
+    int between = 2;          // plage [1, 3]
+    int closed = 0;           // plage [0, 3]
+    int halves = 2;           // plage [0.5, 3.5] : bornes non entières, refusée
+    int noInteger = 0;        // plage [0.2, 0.8] : bornes non entières, refusée
+    unsigned negative = 0;    // plage [-1, 3] : hors du type, refusée
+    std::int64_t atLimit = 0; // plage [2^63, 2^63] : 2^63 n'est pas un int64, refusée
 };
 
 // Compte ses constructions par défaut (pour vérifier qu'aucun T{} n'est construit quand des valeurs par défaut sont données).
@@ -68,24 +70,25 @@ float glyphAlpha(const rd::DrawList &list)
 
 template <> struct orosmo::core::Reflect<Numbers>
 {
-    static constexpr int kVersion = 1;
+    [[maybe_unused]] static constexpr int kVersion = 1;
     static constexpr auto fields()
     {
         using N = Numbers;
         return std::make_tuple(field("big", &N::big), field("small", &N::small), field("offset", &N::offset),
-                               field("between", &N::between, range(0.5, 3.5)), field("closed", &N::closed, range(0.0, 3.0)),
-                               field("noInteger", &N::noInteger, range(0.2, 0.8)),
+                               field("between", &N::between, range(1.0, 3.0)), field("closed", &N::closed, range(0.0, 3.0)),
+                               field("halves", &N::halves, range(0.5, 3.5)), field("noInteger", &N::noInteger, range(0.2, 0.8)),
+                               field("negative", &N::negative, range(-1.0, 3.0)),
                                field("atLimit", &N::atLimit, range(9223372036854775808.0, 9223372036854775808.0)));
     }
 };
 template <> struct orosmo::core::Reflect<Counted>
 {
-    static constexpr int kVersion = 1;
+    [[maybe_unused]] static constexpr int kVersion = 1;
     static constexpr auto fields() { return std::make_tuple(field("level", &Counted::level, range(0.0, 1.0))); }
 };
 template <> struct orosmo::core::Reflect<NoDefault>
 {
-    static constexpr int kVersion = 1;
+    [[maybe_unused]] static constexpr int kVersion = 1;
     static constexpr auto fields() { return std::make_tuple(field("level", &NoDefault::level, range(0.0, 1.0))); }
 };
 
@@ -138,7 +141,7 @@ TEST_SUITE("ui/review3")
         CHECK(v.offset.x == -3e38f);
     }
 
-    TEST_CASE("an integer slider is bounded by the integers of its range; a range without an integer refuses every entry")
+    TEST_CASE("an integer field takes a range of integers inside its type; any other range refuses the field (placeholder, nothing written)")
     {
         UiHarness h;
         Numbers v;
@@ -158,18 +161,20 @@ TEST_SUITE("ui/review3")
         h.keys({ui::kKeyEnd});
         CHECK(v.closed == 3);
 
-        CHECK(p->findAs<ui::Slider>("noInteger") == nullptr);
-        auto *none = p->findAs<ui::NumberField>("noInteger");
-        REQUIRE(none != nullptr);
-        enter(h, *none, "1");
+        // Bornes non entières ([0.5, 3.5], [0.2, 0.8]), hors du type ([-1, 3] pour un unsigned) ou 2^63 pour un int64 (borne
+        // exclue du type : max() converti en double l'atteint) : ni curseur ni champ numérique, une pastille « plage invalide ».
+        for (const char *refused : {"halves", "noInteger", "negative", "atLimit"})
+        {
+            CAPTURE(refused);
+            CHECK(p->findAs<ui::Slider>(refused) == nullptr);
+            CHECK(p->findAs<ui::NumberField>(refused) == nullptr);
+            auto *placeholder = p->findAs<ui::Label>(refused);
+            REQUIRE(placeholder != nullptr);
+            CHECK(placeholder->text() == "plage invalide");
+        }
+        CHECK(v.halves == 2);
         CHECK(v.noInteger == 0);
-        enter(h, *none, "0.5");
-        CHECK(v.noInteger == 0);
-
-        // 2^63 : borne exclue d'int64 (max() converti en double l'atteint) : aucun entier, champ refusé, pas de curseur qui
-        // saturerait à INT64_MAX, hors de la plage.
-        CHECK(p->findAs<ui::Slider>("atLimit") == nullptr);
-        REQUIRE(p->findAs<ui::NumberField>("atLimit") != nullptr);
+        CHECK(v.negative == 0);
         CHECK(v.atLimit == 0);
     }
 

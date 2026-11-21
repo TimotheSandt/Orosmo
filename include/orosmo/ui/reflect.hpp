@@ -12,6 +12,7 @@
 //   std::vector                → libellé « [n] » en lecture seule (pas d'édition de liste ; docs/GAPS.md)
 #pragma once
 
+#include "orosmo/core/log.hpp"
 #include "orosmo/core/reflection.hpp"
 #include "orosmo/ui/widgets.hpp"
 
@@ -99,18 +100,17 @@ template <typename M> std::unique_ptr<Widget> reflectedControl(M &member, const 
         const double highest = static_cast<double>(std::numeric_limits<M>::max());
         if (range.bounded)
         {
-            // Entiers de la plage seulement : [0.5, 3.5] donne 1..3 (le curseur ne propose ni 0.5 ni 3.5, qui seraient arrondis
-            // hors de la plage).
-            // Borne haute : le plus grand double ENTIER strictement sous 2^n (borne exclue du type), pas max() converti, qui
-            // vaut 2^n pour int64 : range(2^63, 2^63) n'a alors aucun entier représentable et le champ est refusé.
+            // La plage d'un champ entier est elle-même faite d'entiers, dans le type : range(1, 3), pas range(0.5, 3.5) (décision de
+            // l'auteur, 2026-11-21). Borne haute : le plus grand double ENTIER strictement sous 2^n (borne exclue du type), pas
+            // max() converti, qui vaut 2^n pour int64. Sinon le champ est refusé : erreur journalisée et pastille « plage
+            // invalide » à la place du contrôle (rien ne peut être écrit), au lieu d'une plage corrigée en silence.
             const double below = std::floor(std::nextafter(std::ldexp(1.0, std::numeric_limits<M>::digits), 0.0));
-            const double lo = std::max(std::ceil(range.min), lowest);
-            const double hi = std::min(std::floor(range.max), below);
-            if (lo <= hi)
-                return std::make_unique<Slider>(numberBinding(member), lo, hi, 1.0);
-            // Aucun entier dans la plage ([0.2, 0.8]) : champ dont toute saisie est refusée (bornes vides), sans curseur qui
-            // écrirait une valeur hors plage.
-            return std::make_unique<NumberField>(numberBinding(member), true, lo, hi);
+            const bool integral = range.min == std::floor(range.min) && range.max == std::floor(range.max);
+            if (integral && range.min >= lowest && range.max <= below && range.min <= range.max)
+                return std::make_unique<Slider>(numberBinding(member), range.min, range.max, 1.0);
+            LOG_ERROR(1, "reflectedPanel: invalid range [", range.min, ", ", range.max, "] for the integer field '", name,
+                      "' (bounds must be integers inside the type): field refused");
+            return std::make_unique<Label>("plage invalide");
         }
         return std::make_unique<NumberField>(numberBinding(member), true, lowest, highest);
     }
