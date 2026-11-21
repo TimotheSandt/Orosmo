@@ -230,7 +230,7 @@ BackendAvailability backendAvailability(Backend api) noexcept
         return BackendAvailability::kUnsupportedPlatform;
     }
 #endif
-    return BackendAvailability::kNotBuilt; // Vulkan réécrit sur le RHI en M4, Metal en M9
+    return BackendAvailability::kNotBuilt; // Metal : M9
 }
 
 bool isBackendAvailable(Backend api) noexcept { return backendAvailability(api) == BackendAvailability::kAvailable; }
@@ -242,7 +242,7 @@ std::string backendAvailabilityMessage(Backend api)
     {
         case BackendAvailability::kAvailable: return name + " backend is available.";
         case BackendAvailability::kNotBuilt:
-            return name + " backend selection is recognized, but this backend is not available yet (Vulkan: M4, Metal: M9).";
+            return name + " backend selection is recognized, but this backend is not available yet (Metal: M9).";
         case BackendAvailability::kUnsupportedPlatform: return name + " backend is not supported on this platform.";
     }
     return "Unknown graphics backend state.";
