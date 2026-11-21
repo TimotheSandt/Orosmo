@@ -3,8 +3,10 @@
 
 #include <orosmo/core/log.hpp>
 #include <orosmo/core/paths.hpp>
+#include <orosmo/core/profiler.hpp>
 #include <orosmo/platform/window.hpp>
 
+#include <chrono>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -14,6 +16,18 @@
 #include <vector>
 
 namespace platform = orosmo::platform;
+
+// Bilan lu par `tools/perf_compare.py` : durée totale de la boucle et moyennes du Profiler (le temps de "Render"
+// est mesuré par les requêtes de temps du GPU quand le backend les fournit, sinon par l'horloge du processeur).
+static void reportPerformance(std::chrono::steady_clock::duration elapsed)
+{
+    using orosmo::core::Profiler;
+    LOG_INFO("Perf: loopMs=", std::chrono::duration<double, std::milli>(elapsed).count());
+    for (const char *name : {"Render", "RenderScene", "Upscale", "UIUpscale", "SwapBuffers"})
+    {
+        LOG_INFO("Perf: ", name, " avgMs=", Profiler::GetAverageTimeMs(name));
+    }
+}
 
 int main(int argc, char **argv)
 {
@@ -148,7 +162,9 @@ int main(int argc, char **argv)
             else
             {
                 LOG_TRACE("Game initialized");
+                const auto runStart = std::chrono::steady_clock::now();
                 game.run();
+                reportPerformance(std::chrono::steady_clock::now() - runStart);
                 LOG_INFO("Game stopped");
                 if (!game.headlessSucceeded())
                 {

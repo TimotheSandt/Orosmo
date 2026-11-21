@@ -985,7 +985,11 @@ void VulkanDevice::shutdown() noexcept
     if (instance_ != VK_NULL_HANDLE)
     {
         if (messenger_ != VK_NULL_HANDLE)
+        {
+            // Ligne de bilan lue par `make demo-vulkan-check` : le nombre doit être 0 (validation de synchronisation comprise).
+            LOG_INFO("Vulkan validation: ", validationErrors_.load(), " error/warning message(s) during the run");
             vkDestroyDebugUtilsMessengerEXT(instance_, messenger_, nullptr);
+        }
         vkDestroyInstance(instance_, nullptr);
     }
     device_ = VK_NULL_HANDLE;
