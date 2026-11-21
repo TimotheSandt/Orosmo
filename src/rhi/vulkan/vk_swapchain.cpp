@@ -68,6 +68,72 @@ Extent2D framebufferSizeOf(void *window)
     return {static_cast<std::uint32_t>(std::max(w, 0)), static_cast<std::uint32_t>(std::max(h, 0))};
 }
 
+// Énumération WSI à deux appels (comptage puis remplissage) : relancée sur VK_INCOMPLETE, erreur propagée sinon (jamais de liste
+// à moitié remplie).
+template <typename T, typename Call>
+Result<std::vector<T>> enumerateWsi(VulkanDevice &device, Call call, const char *what)
+{
+    std::vector<T> items;
+    VkResult result = VK_SUCCESS;
+    do
+    {
+        std::uint32_t count = 0;
+        result = call(&count, static_cast<T *>(nullptr));
+        if (result != VK_SUCCESS)
+            break;
+        items.assign(count, T{});
+        result = call(&count, items.data());
+        if (result == VK_SUCCESS)
+            items.resize(count);
+    } while (result == VK_INCOMPLETE);
+    if (auto r = device.fromVk(result, what); !r)
+        return std::unexpected(r.error());
+    return items;
+}
+
+// Capacités que la présentation exige de la surface (copie par blit dans l'image de la chaîne, alpha annoncé).
+Result<> checkSurfaceCapabilities(const VkSurfaceCapabilitiesKHR &caps)
+{
+    if ((caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) == 0)
+        return makeError(ErrorCode::kUnsupported, "Vulkan: the swapchain images cannot be a transfer destination");
+    if (caps.supportedCompositeAlpha == 0)
+        return makeError(ErrorCode::kUnsupported, "Vulkan: the surface advertises no composite alpha mode");
+    return {};
+}
+
+// Format de la surface : seuls ceux qui acceptent le blit en destination ; UNORM RGBA/BGRA d'abord (la copie de l'image de fond ne
+// doit rien convertir en sRGB), espace de couleur sRGB ensuite.
+Result<VkSurfaceFormatKHR> chooseSurfaceFormat(VulkanDevice &device, VkSurfaceKHR surface)
+{
+    auto formats = enumerateWsi<VkSurfaceFormatKHR>(
+        device, [&](std::uint32_t *count, VkSurfaceFormatKHR *out) { return vkGetPhysicalDeviceSurfaceFormatsKHR(device.physicalDevice(), surface, count, out); },
+        "vkGetPhysicalDeviceSurfaceFormatsKHR");
+    if (!formats)
+        return std::unexpected(formats.error());
+    VkSurfaceFormatKHR chosen{};
+    int best = -1;
+    for (const VkSurfaceFormatKHR &f : *formats)
+    {
+        VkFormatProperties props{};
+        vkGetPhysicalDeviceFormatProperties(device.physicalDevice(), f.format, &props);
+        if ((props.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT) == 0)
+            continue;
+        int score = 0;
+        if (f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+            score += 10;
+        if (f.format == VK_FORMAT_R8G8B8A8_UNORM || f.format == VK_FORMAT_B8G8R8A8_UNORM)
+            score += 100;
+        if (score > best)
+        {
+            best = score;
+            chosen = f;
+        }
+    }
+    if (best < 0)
+        return makeError(ErrorCode::kUnsupported, "Vulkan: the surface offers no format usable as a blit destination");
+    return chosen;
+}
+
 } // namespace
 
 // ── Image de fond ──────────────────────────────────────────────────────────
@@ -76,6 +142,15 @@ Result<> VulkanDevice::initSwapchain(const DeviceDesc &desc)
 {
     if (windowed_)
     {
+        // Une surface qui ne sait pas recevoir la copie est refusée ici (le démarrage échoue, la démo peut basculer), pas au
+        // premier `present()`. Les capacités ne dépendent pas de la taille : une fenêtre réduite ne gêne pas ce contrôle.
+        VkSurfaceCapabilitiesKHR caps{};
+        if (auto r = fromVk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice(), swapchain_->surface, &caps), "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"); !r)
+            return r;
+        if (auto r = checkSurfaceCapabilities(caps); !r)
+            return r;
+        if (auto format = chooseSurfaceFormat(*this, swapchain_->surface); !format)
+            return std::unexpected(format.error());
         const Extent2D size = framebufferSizeOf(swapchain_->window);
         backbufferSize_ = {std::max(1u, size.width), std::max(1u, size.height)};
     }
@@ -135,6 +210,7 @@ Result<TextureHandle> VulkanDevice::beginFrame()
             if (auto r = recreateBackbuffer(*this, backbuffer_, size, current); !r)
                 return std::unexpected(r.error());
             backbufferSize_ = size;
+            swapchain_->dirty = true; // Wayland : `currentExtent` ne suit pas la fenêtre, la chaîne doit être refaite à la nouvelle taille
         }
     }
     return backbuffer_;
@@ -169,14 +245,31 @@ void VulkanDevice::setVSync(bool enabled)
 namespace
 {
 
+void destroySemaphores(VulkanDevice &device, std::vector<VkSemaphore> &list)
+{
+    for (VkSemaphore s : list)
+        vkDestroySemaphore(device.device(), s, nullptr);
+    list.clear();
+}
+
+// `retire` vrai (reconstruction) : les sémaphores de présentation passent dans `retired`, détruits plus tard. Faux (arrêt, GPU
+// arrêté) : détruits tout de suite.
 void destroySwapchainObjects(VulkanDevice &device, Swapchain &sc, bool keepHandle)
 {
-    for (VkSemaphore s : sc.renderDone)
-        vkDestroySemaphore(device.device(), s, nullptr);
-    for (VkSemaphore s : sc.acquired)
-        vkDestroySemaphore(device.device(), s, nullptr);
-    sc.renderDone.clear();
-    sc.acquired.clear();
+    if (keepHandle)
+    {
+        sc.retired.insert(sc.retired.end(), sc.renderDone.begin(), sc.renderDone.end());
+        sc.retired.insert(sc.retired.end(), sc.acquired.begin(), sc.acquired.end());
+        sc.renderDone.clear();
+        sc.acquired.clear();
+        sc.retiredPresents = 0;
+    }
+    else
+    {
+        destroySemaphores(device, sc.renderDone);
+        destroySemaphores(device, sc.acquired);
+        destroySemaphores(device, sc.retired);
+    }
     sc.images.clear();
     if (!keepHandle && sc.handle != VK_NULL_HANDLE)
     {
@@ -202,40 +295,22 @@ static Result<> buildSwapchain(VulkanDevice &device, Swapchain &sc, bool vsync)
     }
     if (extent.width == 0 || extent.height == 0)
         return makeError(ErrorCode::kBusy, "swapchain: zero-size surface");
-    if ((caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) == 0)
-        return makeError(ErrorCode::kUnsupported, "Vulkan: the swapchain images cannot be a transfer destination");
+    if (auto r = checkSurfaceCapabilities(caps); !r)
+        return r;
 
-    std::uint32_t formatCount = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device.physicalDevice(), sc.surface, &formatCount, nullptr);
-    std::vector<VkSurfaceFormatKHR> formats(formatCount);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device.physicalDevice(), sc.surface, &formatCount, formats.data());
-    if (formats.empty())
-        return makeError(ErrorCode::kUnsupported, "Vulkan: the surface offers no format");
-    // UNORM d'abord (la copie de l'image de fond ne doit rien convertir en sRGB), BGRA ou RGBA.
-    VkSurfaceFormatKHR chosen = formats[0];
-    int best = -1;
-    for (const VkSurfaceFormatKHR &f : formats)
-    {
-        int score = 0;
-        if (f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
-            score += 10;
-        if (f.format == VK_FORMAT_R8G8B8A8_UNORM || f.format == VK_FORMAT_B8G8R8A8_UNORM)
-            score += 100;
-        if (score > best)
-        {
-            best = score;
-            chosen = f;
-        }
-    }
+    auto chosen = chooseSurfaceFormat(device, sc.surface);
+    if (!chosen)
+        return std::unexpected(chosen.error());
 
-    std::uint32_t modeCount = 0;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device.physicalDevice(), sc.surface, &modeCount, nullptr);
-    std::vector<VkPresentModeKHR> modes(modeCount);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device.physicalDevice(), sc.surface, &modeCount, modes.data());
+    auto modes = enumerateWsi<VkPresentModeKHR>(
+        device, [&](std::uint32_t *count, VkPresentModeKHR *out) { return vkGetPhysicalDeviceSurfacePresentModesKHR(device.physicalDevice(), sc.surface, count, out); },
+        "vkGetPhysicalDeviceSurfacePresentModesKHR");
+    if (!modes)
+        return std::unexpected(modes.error());
     VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR; // toujours disponible
     if (!vsync)
     {
-        for (VkPresentModeKHR m : modes)
+        for (VkPresentModeKHR m : *modes)
         {
             if (m == VK_PRESENT_MODE_MAILBOX_KHR)
                 mode = m;
@@ -244,26 +319,37 @@ static Result<> buildSwapchain(VulkanDevice &device, Swapchain &sc, bool vsync)
         }
     }
 
+    // Mode alpha : opaque s'il est annoncé, sinon le premier annoncé (la valeur interdite par le masque rendrait la création invalide).
+    VkCompositeAlphaFlagBitsKHR alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    for (VkCompositeAlphaFlagBitsKHR candidate : {VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+                                                  VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR, VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR})
+    {
+        if ((caps.supportedCompositeAlpha & candidate) != 0)
+        {
+            alpha = candidate;
+            break;
+        }
+    }
+
     std::uint32_t imageCount = std::max(caps.minImageCount + 1, 3u);
     if (caps.maxImageCount > 0)
         imageCount = std::min(imageCount, caps.maxImageCount);
 
-    device.waitIdle(); // l'ancienne chaîne et ses sémaphores ne servent plus
+    device.waitIdle(); // l'ancienne chaîne ne sert plus ; ses sémaphores sont mis de côté (`retired`), pas détruits
     VkSwapchainKHR old = sc.handle;
     destroySwapchainObjects(device, sc, true);
 
     auto info = makeStruct<VkSwapchainCreateInfoKHR>(VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR);
     info.surface = sc.surface;
     info.minImageCount = imageCount;
-    info.imageFormat = chosen.format;
-    info.imageColorSpace = chosen.colorSpace;
+    info.imageFormat = chosen->format;
+    info.imageColorSpace = chosen->colorSpace;
     info.imageExtent = extent;
     info.imageArrayLayers = 1;
     info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     info.preTransform = caps.currentTransform;
-    info.compositeAlpha = (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
-                                                                                                      : VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+    info.compositeAlpha = alpha;
     info.presentMode = mode;
     info.clipped = VK_TRUE;
     info.oldSwapchain = old;
@@ -274,27 +360,50 @@ static Result<> buildSwapchain(VulkanDevice &device, Swapchain &sc, bool vsync)
     sc.handle = VK_NULL_HANDLE;
     if (auto r = device.fromVk(result, "vkCreateSwapchainKHR"); !r)
         return r;
-    sc.handle = created;
-    sc.format = chosen.format;
-    sc.extent = extent;
-    std::uint32_t count = 0;
-    vkGetSwapchainImagesKHR(device.device(), sc.handle, &count, nullptr);
-    sc.images.resize(count);
-    vkGetSwapchainImagesKHR(device.device(), sc.handle, &count, sc.images.data());
+
+    // Tout ce qui suit est construit à part : la chaîne n'est activée (`sc.handle`, `dirty = false`) que si tout a réussi ;
+    // sinon la chaîne partielle est détruite et la reconstruction reste à refaire à la présentation suivante.
+    std::vector<VkImage> images;
+    std::vector<VkSemaphore> renderDone;
+    std::vector<VkSemaphore> acquired;
+    auto fail = [&](const Error &error) -> Result<>
+    {
+        destroySemaphores(device, renderDone);
+        destroySemaphores(device, acquired);
+        vkDestroySwapchainKHR(device.device(), created, nullptr);
+        return std::unexpected(error);
+    };
+    auto list = enumerateWsi<VkImage>(
+        device, [&](std::uint32_t *count, VkImage *out) { return vkGetSwapchainImagesKHR(device.device(), created, count, out); }, "vkGetSwapchainImagesKHR");
+    if (!list)
+        return fail(list.error());
+    images = std::move(*list);
+    if (images.empty())
+        return fail(makeError(ErrorCode::kUnknown, "swapchain: the driver returned no image").error());
 
     auto semaphoreInfo = makeStruct<VkSemaphoreCreateInfo>(VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO);
-    for (std::uint32_t i = 0; i < count; ++i)
+    const auto createSemaphores = [&](std::vector<VkSemaphore> &out, std::size_t count) -> Result<>
     {
-        VkSemaphore s = VK_NULL_HANDLE;
-        vkCreateSemaphore(device.device(), &semaphoreInfo, nullptr, &s);
-        sc.renderDone.push_back(s);
-    }
-    for (std::uint32_t i = 0; i < kFramesInFlight + 1; ++i)
-    {
-        VkSemaphore s = VK_NULL_HANDLE;
-        vkCreateSemaphore(device.device(), &semaphoreInfo, nullptr, &s);
-        sc.acquired.push_back(s);
-    }
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            VkSemaphore s = VK_NULL_HANDLE;
+            if (auto r = device.fromVk(vkCreateSemaphore(device.device(), &semaphoreInfo, nullptr, &s), "vkCreateSemaphore"); !r)
+                return r;
+            out.push_back(s);
+        }
+        return {};
+    };
+    if (auto r = createSemaphores(renderDone, images.size()); !r)
+        return fail(r.error());
+    if (auto r = createSemaphores(acquired, kFramesInFlight + 1); !r)
+        return fail(r.error());
+
+    sc.handle = created;
+    sc.format = chosen->format;
+    sc.extent = extent;
+    sc.images = std::move(images);
+    sc.renderDone = std::move(renderDone);
+    sc.acquired = std::move(acquired);
     sc.dirty = false;
     return {};
 }
@@ -306,15 +415,45 @@ Result<> VulkanDevice::present()
     {
         Swapchain &sc = *swapchain_;
         TextureRes *source = textures_.get(backbuffer_);
+        VkCommandBuffer cb = VK_NULL_HANDLE;
+        // Un tampon non soumis (échec, chaîne périmée) retourne à la réserve ; reset : il peut être resté en cours d'enregistrement.
+        const auto giveBack = [&]
+        {
+            if (cb != VK_NULL_HANDLE)
+            {
+                vkResetCommandBuffer(cb, 0);
+                freeCommandBuffers_.push_back(cb);
+                cb = VK_NULL_HANDLE;
+            }
+        };
+        // Après l'acquisition, un échec laisse une image acquise et jamais présentée : la chaîne est retirée (reconstruite à la
+        // prochaine présentation, ce qui rend toutes ses images).
+        const auto abandonChain = [&](Result<> error) -> Result<>
+        {
+            giveBack();
+            sc.dirty = true;
+            return error;
+        };
         for (int attempt = 0; attempt < 2; ++attempt)
         {
             if (sc.dirty || sc.handle == VK_NULL_HANDLE)
             {
                 if (auto r = buildSwapchain(*this, sc, vsync_); !r)
                 {
+                    giveBack();
                     ++frame_;
                     return r.error().code == ErrorCode::kBusy ? Result<>{} : r; // fenêtre réduite : image perdue, sans erreur
                 }
+            }
+            // Préparatifs faillibles avant l'acquisition : une fois l'image acquise, il ne reste que la soumission et la présentation.
+            if (cb == VK_NULL_HANDLE)
+            {
+                if (auto r = flushPending(); !r)
+                    return r;
+                auto commandBuffer = acquireCommandBuffer();
+                if (!commandBuffer)
+                    return std::unexpected(commandBuffer.error());
+                cb = *commandBuffer;
             }
             VkSemaphore acquired = sc.acquired[sc.acquireCursor++ % sc.acquired.size()];
             std::uint32_t imageIndex = 0;
@@ -325,16 +464,13 @@ Result<> VulkanDevice::present()
                 continue;
             }
             if (acquire != VK_SUCCESS && acquire != VK_SUBOPTIMAL_KHR)
+            {
+                giveBack();
                 return fromVk(acquire, "vkAcquireNextImageKHR");
+            }
             if (acquire == VK_SUBOPTIMAL_KHR)
                 sc.dirty = true; // utilisable cette fois, reconstruite à la suivante
 
-            if (auto r = flushPending(); !r)
-                return r;
-            auto commandBuffer = acquireCommandBuffer();
-            if (!commandBuffer)
-                return std::unexpected(commandBuffer.error());
-            const VkCommandBuffer cb = *commandBuffer;
             const VkImage target = sc.images[imageIndex];
             // Copie l'image de fond dans l'image de la chaîne (conversion de format et mise à l'échelle par le blit), puis présente.
             transitionImage(cb, source->image, source->aspect, source->restLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -348,14 +484,17 @@ Result<> VulkanDevice::present()
             transitionImage(cb, target, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
             transitionImage(cb, source->image, source->aspect, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, source->restLayout);
             if (auto r = fromVk(vkEndCommandBuffer(cb), "vkEndCommandBuffer"); !r)
-                return r;
+                return abandonChain(r);
             SubmitSync sync;
             sync.waits.emplace_back(acquired, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
             sync.signals.push_back(sc.renderDone[imageIndex]);
             const VkCommandBuffer cbs[] = {cb};
             auto serial = submitCommandBuffers(cbs, sync);
             if (!serial)
-                return std::unexpected(serial.error());
+                return abandonChain(std::unexpected(serial.error())); // non soumis : le tampon retourne à la réserve
+            cb = VK_NULL_HANDLE;                                    // soumis : `submitRaw` l'a mis en retrait avec sa série
+            frameSerials_[frame_ % kFramesInFlight] = *serial;
+            ++frame_;
 
             auto present = makeStruct<VkPresentInfoKHR>(VK_STRUCTURE_TYPE_PRESENT_INFO_KHR);
             present.waitSemaphoreCount = 1;
@@ -367,11 +506,12 @@ Result<> VulkanDevice::present()
             if (shown == VK_ERROR_OUT_OF_DATE_KHR || shown == VK_SUBOPTIMAL_KHR)
                 sc.dirty = true;
             else if (shown != VK_SUCCESS)
-                return fromVk(shown, "vkQueuePresentKHR");
-            frameSerials_[frame_ % kFramesInFlight] = *serial;
-            ++frame_;
+                return abandonChain(fromVk(shown, "vkQueuePresentKHR"));
+            else if (!sc.retired.empty() && ++sc.retiredPresents >= sc.images.size() + kFramesInFlight)
+                destroySemaphores(*this, sc.retired); // assez de présentations depuis la reconstruction : le moteur n'attend plus ces sémaphores
             return {};
         }
+        giveBack();
         return makeError(ErrorCode::kUnknown, "present: the swapchain stayed out of date after a rebuild");
     }
     if (auto r = flushPending(); !r)
