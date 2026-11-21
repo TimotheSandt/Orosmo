@@ -268,3 +268,27 @@ fn a_cui_cpp_block_is_copied_exactly() {
     .unwrap();
     assert!(header.contains("std::string greeting = \"a  b\";\n        int twice(int v) { return v * 2; }"), "{header}");
 }
+
+#[test]
+fn source_hash_changes_with_compiler_fingerprint_or_version() {
+    let src = "import \"orosmo/ui\"\nview V { Label(\"ok\") }\n";
+    assert_eq!(crate::COMPILER_FINGERPRINT.len(), 16);
+    assert!(crate::COMPILER_FINGERPRINT.chars().all(|c| c.is_ascii_hexdigit()));
+
+    let h_base = crate::source_hash_with_meta("10", "0.3.1", "0123456789abcdef", src);
+    let h_diff_fp = crate::source_hash_with_meta("10", "0.3.1", "fedcba9876543210", src);
+    let h_diff_ver = crate::source_hash_with_meta("10", "0.3.2", "0123456789abcdef", src);
+    let h_diff_fmt = crate::source_hash_with_meta("11", "0.3.1", "0123456789abcdef", src);
+    assert_ne!(h_base, h_diff_fp);
+    assert_ne!(h_base, h_diff_ver);
+    assert_ne!(h_base, h_diff_fmt);
+    assert_eq!(
+        crate::source_hash(src),
+        crate::source_hash_with_meta(
+            crate::OUTPUT_FORMAT_VERSION,
+            crate::COMPILER_VERSION,
+            crate::COMPILER_FINGERPRINT,
+            src
+        )
+    );
+}
