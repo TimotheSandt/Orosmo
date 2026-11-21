@@ -947,10 +947,16 @@ void VulkanDevice::shutdown() noexcept
     if (device_ != VK_NULL_HANDLE)
     {
         vkDeviceWaitIdle(device_);
-        collectReleases();
+        collectReleases(true);
         for (Pending &p : pending_)
             p.release();
         pending_.clear();
+        // Lot de transferts jamais soumis (mise à jour suivie d'aucune soumission) : ses tampons de transfert partent ici, son
+        // tampon de commandes avec la réserve.
+        for (const Staging &s : batchStaging_)
+            destroyStaging(s);
+        batchStaging_.clear();
+        batch_ = VK_NULL_HANDLE;
     }
     shutdownSwapchain(); // chaîne d'échange, image de fond (une texture du périphérique)
     if (device_ != VK_NULL_HANDLE)
