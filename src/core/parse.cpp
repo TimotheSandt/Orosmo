@@ -2,6 +2,7 @@
 
 #include <cerrno>
 #include <charconv>
+#include <cmath>
 #include <string>
 #include <system_error>
 
@@ -53,7 +54,11 @@ template <typename T, typename F> std::optional<T> parseWith(std::string_view te
         char *end = nullptr;
         errno = 0;
         const T value = convert(copy.c_str(), &end, cLocale());
-        if (errno == ERANGE || end != copy.c_str() + copy.size())
+        if (end != copy.c_str() + copy.size())
+            return std::nullopt;
+        // ERANGE : débordement (infini) et sous-flux vers zéro sont refusés comme par from_chars ; un résultat subnormal non
+        // nul est représentable (la libc signale aussi ERANGE pour lui) et reste accepté.
+        if (errno == ERANGE && (std::isinf(value) || value == T{}))
             return std::nullopt;
         return value;
     }

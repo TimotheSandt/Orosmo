@@ -7,11 +7,15 @@ TOOL = os.path.join(ROOT, "tools", "build_progress.py")
 spec = importlib.util.spec_from_file_location("build_progress", TOOL)
 bp = importlib.util.module_from_spec(spec); spec.loader.exec_module(bp)
 
-# Même définition que mk/engine.mk et tools/engine-sdk/engine.mk.
-MAKEFILE = textwrap.dedent("""\
-    ORS_Q := $(if $(ORS_PROGRESS),$(if $(filter 1,$(V)),,@))
-    ors_compile = @printf '%s\\n' '$(if $(ORS_PROGRESS),@@ors begin $(abspath $@) $< $(1),  $(1) $<)'
-    ors_end = $(if $(ORS_PROGRESS),@printf '%s\\n' '@@ors end $(abspath $@)')
+# Les macros de marqueurs sont lues dans mk/engine.mk (la définition réelle, pas une copie) ; le SDK livré a les mêmes.
+def _macros(path):
+    keep = ("ORS_Q :=", "_ors_sq =", "ors_compile =", "ors_link =", "ors_end =")
+    with open(os.path.join(ROOT, path), encoding="utf-8") as f:
+        return "".join(line for line in f if line.startswith(keep))
+
+
+MACROS = _macros("mk/engine.mk")
+MAKEFILE = MACROS + textwrap.dedent("""\
     all: a.o b.o
     %.o: %.c
     \t$(call ors_compile,CC)
@@ -86,6 +90,28 @@ class Plan(unittest.TestCase):
             # Identité absolue : deux applications qui compilent chacune obj/main.o restent deux étapes distinctes.
             self.assertEqual(stale, {os.path.join(os.path.realpath(tmp), "b.o")})
             self.assertEqual(total, {os.path.join(os.path.realpath(tmp), n) for n in ("a.o", "b.o")})
+
+    def test_sdk_and_engine_macros_are_identical(self):
+        self.assertEqual(_macros("mk/engine.mk"), _macros("tools/engine-sdk/engine.mk"))
+
+    def test_a_directory_with_apostrophes_still_compiles_and_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "o'brien's")
+            os.makedirs(project)
+            with open(os.path.join(project, "Makefile"), "w") as f:
+                f.write(MAKEFILE)
+            for name in ("a.c", "b.c"):
+                with open(os.path.join(project, name), "w") as f:
+                    f.write(name)
+            subprocess.run(["make", "-s", "-C", project, "a.o"], check=True, capture_output=True)
+            stale, total = bp.plan(["make", "-C", project, "all"], dict(os.environ, ORS_PROGRESS="1"))
+            root = os.path.realpath(project)
+            self.assertEqual(stale, {os.path.join(root, "b.o")})
+            self.assertEqual(total, {os.path.join(root, "a.o"), os.path.join(root, "b.o")})
+            run = subprocess.run(["make", "-C", project, "b.o", "ORS_PROGRESS=1"], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertIn("@@ors begin " + os.path.join(root, "b.o"), run.stdout)
+            self.assertIn("@@ors end " + os.path.join(root, "b.o"), run.stdout)
 
     def test_without_a_terminal_make_runs_as_usual(self):
         with tempfile.TemporaryDirectory() as tmp:
