@@ -100,5 +100,6 @@ class Game
     bool headlessFrameFailed = false; // mode sans fenêtre : une image a échoué (code de sortie de la démo)
     bool captureFailed = false; // une image de la capture a été refusée (submit ou scène) : la capture ne serait pas fiable
     std::optional<orosmo::core::Error> sceneError; // premier échec de la scène pendant l'image en cours
+    bool uiFailed = false; // l'interface de l'image en cours n'a pas été dessinée entièrement
     bool headless = false;
 };

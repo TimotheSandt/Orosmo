@@ -369,14 +369,13 @@ TEST_SUITE("world/terrain")
         CHECK(streamer.stats().residentTiles == streamer.selection().size());
     }
 
-    TEST_CASE("TER-04: a generation that fails (bad_alloc) is not published and is retried later, not at every frame")
+    TEST_CASE("TER-04: a generation that fails (exception in the task) is not published and is retried later, not at every frame")
     {
-#if defined(__SANITIZE_ADDRESS__)
-        MESSAGE("skipped under ASan: the huge allocation that makes the generation fail is reported as an error by ASan");
-#else
         orosmo::core::TaskSystem tasks(1);
         w::TerrainParams p = smallParams();
-        p.tileResolution = 1u << 21; // (2^21 + 1)^2 hauteurs : environ 17 To, l'allocation échoue (bad_alloc dans la tâche)
+        // (2^32 - 1)^2 hauteurs : plus que vector::max_size(), resize lance length_error AVANT toute allocation (déterministe sur
+        // tous les systèmes, même sous ASan ; une allocation énorme mais possible serait acceptée par macOS puis tuée).
+        p.tileResolution = 0xFFFFFFFEu;
         w::TileStreamer streamer(p, 1, {.rootLod = 0, .rootRadius = 0, .distanceFactor = 1.5f}, {.memoryBudgetBytes = 1u << 20, .maxJobsInFlight = 4}, tasks);
         streamer.update(0.0f, 0.0f);
         REQUIRE(!streamer.selection().empty());
@@ -386,15 +385,14 @@ TEST_SUITE("world/terrain")
         CHECK(streamer.stats().failed > 0);
         CHECK(streamer.find(streamer.selection().front()) == nullptr);
         const std::size_t failed = streamer.stats().failed;
-        for (int i = 0; i < 10; ++i)
+        // Échec constaté à l'image 1 : nouvelle tentative permise à partir de l'image 1 + 60. Images 2 à 60 : rien n'est relancé.
+        for (int frame = 2; frame <= 60; ++frame)
             streamer.update(0.0f, 0.0f);
         CHECK(streamer.stats().pendingTiles == 0); // pas de nouvelle tentative à chaque image
-        for (int i = 0; i < 60; ++i)
-            streamer.update(0.0f, 0.0f);
-        CHECK(streamer.stats().pendingTiles > 0); // redemandée après le délai
+        streamer.update(0.0f, 0.0f);               // image 61 : relancée (aucune collecte entre le lancement et la vérification)
+        CHECK(streamer.stats().pendingTiles > 0);
         streamer.finishPending();
         CHECK(streamer.stats().failed > failed);
         CHECK(streamer.stats().residentTiles == 0);
-#endif
     }
 }

@@ -428,7 +428,8 @@ void Game::render()
     Profiler::ProfileGPU("RenderWorld", [&]() { keep(this->world->Render(*sceneRenderer, this->camera), "world"); });
     Profiler::ProfileGPU("Upscale", [&]() { keep(sceneRenderer->endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame"); });
 
-    Profiler::ProfileGPU("UIUpscale", [&]() { (void)renderUi(encoder, composed.color(0)); });
+    // Interface refusée (liste ou cible invalide) : une partie a pu être encodée, l'image n'est ni comptée ni capturée (ui.png).
+    Profiler::ProfileGPU("UIUpscale", [&]() { this->uiFailed = !renderUi(encoder, composed.color(0)); });
 
     // Présentation : l'image composée est copiée (étirée si la vue n'a pas la taille de la fenêtre) sur le backbuffer.
     (void)sceneRenderer->blit().copy(encoder, composed.color(0), sceneRenderer->blit().linearSampler(), backbuffer, rhi::Format::kRGBA8Unorm, "present");
@@ -443,8 +444,9 @@ void Game::endFrame()
         LOG_ERROR(1, "Frame: ", result.error().message);
     }
     // Image valide : soumise ET scène dessinée sans erreur (sinon la capture lirait une cible incomplète).
-    const bool submitted = result.has_value() && !this->sceneError;
+    const bool submitted = result.has_value() && !this->sceneError && !this->uiFailed;
     this->sceneError.reset();
+    this->uiFailed = false;
 
     if (!submitted)
     {
