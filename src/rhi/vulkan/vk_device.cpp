@@ -7,9 +7,11 @@
 #include <orosmo/core/log.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <cstdlib>
 #include <cstring>
 #include <set>
+#include <system_error>
 #include <string_view>
 
 namespace orosmo::rhi::vk
@@ -320,7 +322,9 @@ Result<> VulkanDevice::pickPhysicalDevice(const DeviceDesc &)
     if (count == 0)
         return makeError(ErrorCode::kUnsupported, "Vulkan: no physical device (no GPU driver with an ICD)");
     std::vector<VkPhysicalDevice> devices(count);
-    vkEnumeratePhysicalDevices(instance_, &count, devices.data());
+    if (const VkResult listed = vkEnumeratePhysicalDevices(instance_, &count, devices.data()); listed != VK_SUCCESS && listed != VK_INCOMPLETE)
+        return fromVk(listed, "vkEnumeratePhysicalDevices");
+    devices.resize(count); // le nombre peut avoir baissé entre les deux appels
 
     const char *wanted = std::getenv("ENGINE_VULKAN_DEVICE"); // indice, ou fragment du nom du GPU
     std::string reasons;
@@ -391,8 +395,20 @@ Result<> VulkanDevice::pickPhysicalDevice(const DeviceDesc &)
         if (wanted != nullptr && *wanted != '\0')
         {
             const std::string w = wanted;
-            const bool index = std::all_of(w.begin(), w.end(), [](unsigned char c) { return std::isdigit(c) != 0; });
-            if ((index && std::stoul(w) == i) || (!index && name.find(w) != std::string::npos))
+            const bool index = !w.empty() && std::all_of(w.begin(), w.end(), [](unsigned char c) { return std::isdigit(c) != 0; });
+            bool match = false;
+            if (index)
+            {
+                // Indice non représentable (trop de chiffres) : aucun GPU ne correspond, sans exception.
+                std::uint64_t wantedIndex = 0;
+                const auto parsed = std::from_chars(w.data(), w.data() + w.size(), wantedIndex);
+                match = parsed.ec == std::errc{} && wantedIndex == i;
+            }
+            else
+            {
+                match = name.find(w) != std::string::npos;
+            }
+            if (match)
                 score += 100000;
         }
         if (score > bestScore)
@@ -519,7 +535,13 @@ void VulkanDevice::fillCapabilities()
     caps_.compute = true;
     caps_.indirectDraw = true;
     caps_.multiDrawIndirect = features_.multiDrawIndirect != VK_FALSE;
-    caps_.timestampQueries = l.timestampComputeAndGraphics != VK_FALSE && l.timestampPeriod > 0.0f;
+    // Les horodatages dépendent de la famille de files CHOISIE (timestampValidBits), pas seulement de timestampComputeAndGraphics.
+    std::uint32_t familyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &familyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> families(familyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &familyCount, families.data());
+    const bool familyWritesTimestamps = queueFamily_ < familyCount && families[queueFamily_].timestampValidBits > 0;
+    caps_.timestampQueries = familyWritesTimestamps && l.timestampPeriod > 0.0f;
     caps_.anisotropy = features_.samplerAnisotropy != VK_FALSE;
     caps_.bc7Textures = features_.textureCompressionBC != VK_FALSE;
     caps_.wireframe = features_.fillModeNonSolid != VK_FALSE;
@@ -595,7 +617,10 @@ Result<> VulkanDevice::waitSerial(Serial serial)
 
 void VulkanDevice::queueRelease(std::function<void()> release, bool waitFrames)
 {
-    pending_.push_back({lastSubmitted_, frame_, waitFrames, std::move(release)});
+    // Un lot de transfert ouvert part avec la série SUIVANTE : une ressource détruite après y avoir été copiée doit attendre cette
+    // série, pas celle de la dernière soumission (sinon elle serait libérée avant la fin de la copie).
+    const Serial serial = batch_ != VK_NULL_HANDLE ? lastSubmitted_ + 1 : lastSubmitted_;
+    pending_.push_back({serial, frame_, waitFrames, std::move(release)});
 }
 
 void VulkanDevice::collectReleases(bool ignoreFrames)
@@ -717,8 +742,19 @@ Result<> VulkanDevice::submitRaw(std::span<const VkCommandBuffer> commandBuffers
     return {};
 }
 
-Result<> VulkanDevice::immediate(const std::function<void(VkCommandBuffer)> &record)
+// Un refus récupérable (mémoire) garantit que le tampon n'est pas parti : il retourne à la réserve (sinon chaque essai en alloue un).
+void VulkanDevice::recycleUnsubmitted(VkCommandBuffer commandBuffer, const core::Error &error)
 {
+    if (error.code == ErrorCode::kDeviceLost)
+        return; // l'état est indéfini : il disparaîtra avec la réserve
+    vkResetCommandBuffer(commandBuffer, 0);
+    freeCommandBuffers_.push_back(commandBuffer);
+}
+
+Result<> VulkanDevice::immediate(const std::function<void(VkCommandBuffer)> &record, bool *accepted)
+{
+    if (accepted != nullptr)
+        *accepted = false;
     if (auto r = flushPending(); !r)
         return r;
     auto commandBuffer = acquireCommandBuffer();
@@ -732,7 +768,12 @@ Result<> VulkanDevice::immediate(const std::function<void(VkCommandBuffer)> &rec
     }
     const VkCommandBuffer cbs[] = {*commandBuffer};
     if (auto r = submitRaw(cbs, {}); !r)
+    {
+        recycleUnsubmitted(*commandBuffer, r.error());
         return r;
+    }
+    if (accepted != nullptr)
+        *accepted = true;
     return waitSerial(lastSubmitted_);
 }
 
@@ -748,8 +789,24 @@ void VulkanDevice::drainPendingInit(VkCommandBuffer commandBuffer)
             continue; // détruite avant sa première utilisation, ou déjà initialisée
         transitionImage(commandBuffer, texture->image, texture->aspect, VK_IMAGE_LAYOUT_UNDEFINED, texture->restLayout);
         texture->layoutInitialized = true;
+        batchInitialized_.push_back(handle);
     }
     pendingInitialization_.clear();
+}
+
+// Le lot ouvert est abandonné (fin ou soumission refusée) : la transition UNDEFINED -> repos n'a pas eu lieu, la prochaine
+// soumission doit la refaire.
+void VulkanDevice::abandonBatchInit()
+{
+    for (TextureHandle handle : batchInitialized_)
+    {
+        if (TextureRes *texture = textures_.get(handle); texture != nullptr)
+        {
+            texture->layoutInitialized = false;
+            pendingInitialization_.push_back(handle);
+        }
+    }
+    batchInitialized_.clear();
 }
 
 Result<VkCommandBuffer> VulkanDevice::batch(std::vector<Staging> staging)
@@ -793,15 +850,19 @@ Result<> VulkanDevice::flushPending()
         freeCommandBuffers_.push_back(cb);
         for (const Staging &s : staging)
             destroyStaging(s);
+        abandonBatchInit();
         return r;
     }
     const VkCommandBuffer cbs[] = {cb};
     if (auto r = submitRaw(cbs, {}); !r)
     {
+        recycleUnsubmitted(cb, r.error());
         for (const Staging &s : staging)
             destroyStaging(s);
+        abandonBatchInit();
         return r;
     }
+    batchInitialized_.clear();
     if (!staging.empty())
         queueRelease([this, staging = std::move(staging)]() { for (const Staging &s : staging) destroyStaging(s); }, false);
     return {};
@@ -929,13 +990,26 @@ DeviceStats VulkanDevice::stats() const noexcept
     return s;
 }
 
-void VulkanDevice::waitIdle()
+Result<> VulkanDevice::waitIdleChecked()
 {
     if (device_ == VK_NULL_HANDLE)
-        return;
+        return {};
     (void)flushPending();
-    vkDeviceWaitIdle(device_);
-    collectReleases(true);
+    const VkResult idle = vkDeviceWaitIdle(device_);
+    if (idle == VK_SUCCESS || idle == VK_ERROR_DEVICE_LOST)
+    {
+        // Périphérique perdu : plus aucun travail ne s'exécute, la libération est sûre. L'erreur est tout de même rendue.
+        collectReleases(true);
+        return idle == VK_SUCCESS ? Result<>{} : fromVk(idle, "vkDeviceWaitIdle");
+    }
+    // Inactivité NON confirmée (erreur de mémoire) : on ne libère rien que le GPU puisse encore lire.
+    return fromVk(idle, "vkDeviceWaitIdle");
+}
+
+void VulkanDevice::waitIdle()
+{
+    if (auto r = waitIdleChecked(); !r)
+        LOG_ERROR(1, "Vulkan waitIdle: ", r.error().message);
 }
 
 // ── Arrêt ─────────────────────────────────────────────────────────────
@@ -946,10 +1020,20 @@ void VulkanDevice::shutdown() noexcept
 {
     if (device_ != VK_NULL_HANDLE)
     {
-        vkDeviceWaitIdle(device_);
-        collectReleases(true);
-        for (Pending &p : pending_)
-            p.release();
+        VkResult idle = vkDeviceWaitIdle(device_);
+        if (idle != VK_SUCCESS && idle != VK_ERROR_DEVICE_LOST)
+            idle = vkDeviceWaitIdle(device_); // erreur de mémoire passagère : un second essai
+        if (idle == VK_SUCCESS || idle == VK_ERROR_DEVICE_LOST)
+        {
+            collectReleases(true);
+            for (Pending &p : pending_)
+                p.release();
+        }
+        else
+        {
+            // Inactivité jamais confirmée : on ne détruit pas ce que le GPU peut lire (fuite assumée, journalisée).
+            LOG_ERROR(1, "Vulkan shutdown: vkDeviceWaitIdle failed (", static_cast<int>(idle), "), ", pending_.size(), " deferred release(s) leaked");
+        }
         pending_.clear();
         // Lot de transferts jamais soumis (mise à jour suivie d'aucune soumission) : ses tampons de transfert partent ici, son
         // tampon de commandes avec la réserve.

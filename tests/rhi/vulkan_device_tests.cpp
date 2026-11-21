@@ -8,6 +8,7 @@
 #include <orosmo/rhi/device.hpp>
 
 #include <array>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -243,4 +244,54 @@ TEST_SUITE("rhi/vulkan/device")
         CHECK(device->stats().buffers == 1);
         // `b` reste vivant : l'arrêt du périphérique le libère
     }
+
+    TEST_CASE("a non-zero z offset is refused for a 2D copy")
+    {
+        auto device = makeVulkan();
+        SKIP_TEST_IF_NULL(device.get(), "Vulkan 1.3 device");
+        TextureDesc desc;
+        desc.format = Format::kRGBA8Unorm;
+        desc.size = {4, 4, 1};
+        desc.usage = TextureUsage::kSampled | TextureUsage::kCopySrc | TextureUsage::kCopyDst;
+        auto texture = device->createTexture(desc);
+        REQUIRE(texture.has_value());
+        TextureCopy copy;
+        copy.offset = {0, 0, 1};
+        copy.size = {1, 1, 1};
+        const std::array<std::uint8_t, 4> texel{1, 2, 3, 4};
+        CHECK((tests::errorOf(device->updateTexture(*texture, copy, std::as_bytes(std::span(texel)))) == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(device->readTexture(*texture, copy)) == ErrorCode::kInvalidArgument));
+        CHECK(device->validationErrorCount() == 0);
+    }
+
+    TEST_CASE("a buffer destroyed right after an unsubmitted update is kept until that copy is done")
+    {
+        auto device = makeVulkan();
+        SKIP_TEST_IF_NULL(device.get(), "Vulkan 1.3 device");
+        BufferDesc desc;
+        desc.size = 64;
+        desc.usage = BufferUsage::kStorage | BufferUsage::kCopySrc;
+        auto buffer = device->createBuffer(desc);
+        REQUIRE(buffer.has_value());
+        const std::array<std::uint8_t, 4> patch{1, 2, 3, 4};
+        REQUIRE(device->updateBuffer(*buffer, 0, std::as_bytes(std::span(patch))).has_value());
+        device->destroy(*buffer); // la copie est dans un lot encore ouvert
+        for (int i = 0; i < 4; ++i)
+        {
+            REQUIRE(device->beginFrame().has_value());
+            REQUIRE(device->present().has_value());
+        }
+        device->waitIdle();
+        CHECK(device->validationErrorCount() == 0);
+    }
+
+#ifndef _WIN32
+    TEST_CASE("an out-of-range ENGINE_VULKAN_DEVICE index does not throw")
+    {
+        setenv("ENGINE_VULKAN_DEVICE", "99999999999999999999999999999999", 1);
+        std::unique_ptr<Device> device;
+        CHECK_NOTHROW(device = makeVulkan());
+        unsetenv("ENGINE_VULKAN_DEVICE");
+    }
+#endif
 }
