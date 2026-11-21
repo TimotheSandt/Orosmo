@@ -8,7 +8,7 @@ fn main() {
         .parent().unwrap(); // project root
 
     let demo_dir = root.join("apps").join("demo");
-    let src_dir  = root.join("apps").join("demo").join("src");
+    let src_dir  = root.join("tools").join("engine-sdk").join("template").join("src");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let tpl_dir = out_dir.join("templates");
@@ -23,7 +23,7 @@ fn main() {
         println!("cargo:rerun-if-changed={}", src_path.display());
     }
 
-    // C++ source tree: apps/demo/src/ → templates/src.zip (preserving directory structure)
+    // C++ source tree: tools/engine-sdk/template/src/ → templates/src.zip (preserving directory structure)
     let zip_path = tpl_dir.join("src.zip");
     let zip_file = fs::File::create(&zip_path).expect("failed to create src.zip");
     let mut writer = zip::ZipWriter::new(zip_file);
@@ -32,7 +32,7 @@ fn main() {
     zip_dir(&src_dir, &src_dir, &mut writer, opts);
     writer.finish().expect("failed to finalize src.zip");
 
-    // Emit rerun-if-changed for every file under apps/demo/src/
+    // Emit rerun-if-changed for every file under tools/engine-sdk/template/src/
     visit_files(&src_dir, &mut |p| println!("cargo:rerun-if-changed={}", p.display()));
 
     // ── Engine identity from mk/config.mk ──────────────────────────────
