@@ -1,8 +1,9 @@
 # TOOL-01 : terrain-viewer. Utilise le SDK moteur synchronisé dans apps/demo/orosmo (`make viewer` à la racine du dépôt).
 # Le panneau src/TerrainPanel.cui est compilé par cui (cible orosmo/ui) puis avec le reste.
 # Dans le dépôt : le SDK synchronisé (apps/demo/orosmo) ; dans le paquet du moteur (examples/<nom>/) : la racine du paquet.
-ENGINE_DIR   ?= $(if $(wildcard ../../make/engine.mk),../..,../demo/orosmo)
-GAME_SRC_DIR := src
+ENGINE_DIR           ?= $(if $(wildcard ../../make/engine.mk),../..,../demo/orosmo)
+ENGINE_EXTRA_MODULES := world terrain_renderer
+GAME_SRC_DIR         := src
 BUILD_TYPE   ?= release
 SHELL        := sh
 include $(ENGINE_DIR)/make/engine.mk
@@ -21,15 +22,21 @@ all: $(TARGET) resources
 
 $(TARGET): $(OBJS) $(ENGINE_LIBS)
 	@mkdir -p bin
-	$(CXX) $(ENGINE_CXXFLAGS) $(OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(ors_end)
 
 obj/%.o: src/%.cpp | $(GEN_CPP_SOURCES)
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -Isrc -c $< -o $@
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -Isrc -c $< -o $@
+	$(ors_end)
 
 obj/gen/%.o: $(ENGINE_GEN_DIR)/%.gen.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -Isrc -c $< -o $@
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -Isrc -c $< -o $@
+	$(ors_end)
 
 # Ressources à côté de l'exécutable : police, thèmes (rechargés à chaud depuis bin/res/themes), shaders du RHI, préréglages.
 resources:

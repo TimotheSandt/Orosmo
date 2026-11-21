@@ -722,7 +722,7 @@ fn print_usage() {
     eprintln!();
     eprintln!("Created files:");
     eprintln!("  orosmo/          pre-built engine (headers, libraries, tools)");
-    eprintln!("  src/             C++ sources from the reference demo project");
+    eprintln!("  src/             generic starter C++ project (RHI scene + UI)");
     eprintln!("  Makefile         build system  — updated by 'orosmo update'");
     eprintln!("  .gitignore       standard ignores — updated by 'orosmo update'");
     eprintln!("  config.mk        project config (name, version, ...) — yours to edit");

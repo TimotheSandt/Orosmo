@@ -1,7 +1,8 @@
 # TOOL-02 : terrain-gen (sans fenêtre ni GPU). Utilise le SDK moteur synchronisé dans apps/demo/orosmo (`make terrain-gen` à la racine).
 # Dans le dépôt : le SDK synchronisé (apps/demo/orosmo) ; dans le paquet du moteur (examples/<nom>/) : la racine du paquet.
-ENGINE_DIR   ?= $(if $(wildcard ../../make/engine.mk),../..,../demo/orosmo)
-GAME_SRC_DIR := .
+ENGINE_DIR           ?= $(if $(wildcard ../../make/engine.mk),../..,../demo/orosmo)
+ENGINE_EXTRA_MODULES := world
+GAME_SRC_DIR         := .
 BUILD_TYPE   ?= release
 SHELL        := sh
 include $(ENGINE_DIR)/make/engine.mk
@@ -14,11 +15,15 @@ all: $(TARGET)
 
 $(TARGET): obj/main.o $(ENGINE_LIBS)
 	@mkdir -p bin
-	$(CXX) $(ENGINE_CXXFLAGS) obj/main.o $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) obj/main.o $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(ors_end)
 
 obj/main.o: main.cpp
 	@mkdir -p obj
-	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ors_end)
 
 run: $(TARGET)
 	./$(TARGET) $(ARGS)

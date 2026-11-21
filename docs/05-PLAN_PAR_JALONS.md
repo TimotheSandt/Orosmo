@@ -84,7 +84,7 @@ Les identifiants de `docs/02` restent ceux de la table de rattachement (M2). Un 
   - **Mettre à jour** `tools/engine-sdk/dist-README.md` et le corps de la release (`build-engine.yml`) : archives `librhi.a` et `libplatform.a`, en-têtes `include/orosmo/…`, API du RHI.
   - **Test de bout en bout en CI** : à partir du paquet construit (sans les sources du moteur), créer un projet vide avec `engine init`, le compiler et le lancer (capture ou mode sans fenêtre) sur Linux, Windows et macOS ; échec de la CI si le chemin documenté casse.
   - **Stabilité de l'API** : figer les en-têtes publics `include/orosmo/…` (migration `PascalCase` → `camelCase` terminée pour les modules livrés), table des changements incompatibles dans `docs/releases/`, numéro de version sémantique ; les identifiants de `docs/02` livrés doivent être `Fait` ou limités dans le guide.
-  - **Exemple fourni** : le visualiseur et `terrain-gen` compilables depuis le paquet comme exemples de projet.
+  - **Exemple fourni** : exemples compilables depuis le paquet (`examples/minimal`, `examples/ui_gallery` ; note A34 du 2026-11-20 : `world`, `TerrainRenderer`, `terrain-gen` et `terrain-viewer` restent dans le dépôt pour les démos internes et sont exclus de la release cœur générique).
 
 ### Découpage de M3 en lots (proposé et appliqué par l'IA le 2026-11-19, `docs/QUESTIONS.md` A29 ; même portée, ordre explicite)
 
@@ -107,6 +107,21 @@ l'interface héritée `UI::` reste pour la démo (A30) ; Windows n'est pas obser
 
 **Démo** : visualiseur avec graine et paramètres modifiables en direct dans une interface décrite dans le langage maison, thème changeable ; `terrain-gen --seed 42 --size 4096 --out relief.png` produit une carte de hauteur identique à chaque lancement.
 **Terminé** : somme de contrôle de référence ; pas de fissure entre niveaux de détail ; budget mémoire respecté ; exports vérifiés en les rouvrant ; tests de compilation du langage verts ; `docs/UI_LANGUAGE.md` écrit. La release de fin de M3 est utilisable : `docs/USING_THE_ENGINE.md` écrit, `engine init` + compilation vérifiés en CI sur les trois systèmes, API publique figée.
+
+## M3 bis · Release générique et confort de build (entre M3 et M4)
+
+Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusion de M3 dans `main` et avant M4.
+
+- **Release cœur générique** (A34) : `orosmo-pkg-<plateforme>.zip` ne contient que le moteur générique (`core`, `platform`, `rhi`,
+  `renderer` sans `TerrainRenderer`, `ui`, `cui`) ; `world`, `TerrainRenderer`, les shaders `terrain.*`, `terrain-gen` et
+  `terrain-viewer` restent dans le dépôt (`ENGINE_EXTRA_MODULES`). Modèle de projet `orosmo init` et exemple `minimal` génériques.
+- **Jalon M11** (modules et addons, `MOD-01` à `MOD-04`) ajouté au plan.
+- **Affichage de la compilation** : barre de progression dans un terminal (fichiers compilés, en cours, restants, à jour) ;
+  `sync-demo` garde les dates des copies (plus de recompilation de la démo à chaque `make all-debug`).
+
+**Démo** : `make all-debug` dans un terminal (barre), puis `make e2e-init` (paquet sans module procédural, projet créé et lancé).
+**Terminé** : `e2e-init` vérifie l'absence de `world` dans le paquet ; tests, ASan / UBSan et `make check` verts ; note de version
+`docs/releases/M3bis.md`.
 
 ## M4 · Backend Vulkan
 
@@ -168,6 +183,20 @@ l'interface héritée `UI::` reste pour la démo (A30) ; Windows n'est pas obser
 - Emballage : binaires des démos, README principal.
 
 **Terminé** : passe de confirmation de `docs/04` (§« Confirmation de la couverture ») sans écart non justifié.
+
+## M11 · Système de modules et d'addons (décidé par l'auteur le 2026-11-20, A34)
+
+Objectif : garder une release cœur 100 % générique par défaut, tout en rendant trivial l'ajout de modules optionnels d'aide au développement (génération procédurale `world`, physique légère, audio, utilitaires métier, etc.), selon **deux modes** : inclus directement dans la release (`bundled`) ou distribués en **addon séparé**. *(Ce jalon peut être avancé avant M7 si l'auteur souhaite réutiliser `world` ou un autre module en addon plus tôt.)*
+
+- **MOD-01 — Contrat et manifeste de module** : format déclaratif (`module.json`) décrivant un module optionnel : nom, version et plage ABI moteur compatible, en-têtes publics, archives statiques, shaders et ressources à copier, dépendances sur d'autres modules Orosmo et dépendances vcpkg éventuelles, points d'accroche (ex. plugin `RenderFeature`, types réfléchis).
+- **MOD-02 — Deux modes de distribution (`bundled` ou `addon`)** :
+  - *Intégré (`bundled`)* : un module présent dans le dépôt (comme `world` aujourd'hui) peut être inclus dans la release via une simple déclaration de packaging, sans duplication manuelle dans `mk/engine.mk` ni `tools/engine-sdk/engine.mk`.
+  - *Addon externe (`addon`)* : un module peut être empaqueté séparément (`orosmo-addon-<nom>-<plateforme>.zip`), depuis ce dépôt ou un dépôt externe, contre une release du moteur.
+- **MOD-03 — Intégration CLI et build (`orosmo` + `engine.mk`)** : commandes `orosmo addon list|add|remove|update` (ou `orosmo module ...`), installation dans `orosmo/addons/<nom>/` (ou `modules/`), découverte et liaison automatiques par `engine.mk` (chemins `-I`, archives `.a`, copie des shaders/ressources, installation des dépendances vcpkg propres au module).
+- **MOD-04 — Preuve de bout en bout (module pilote)** : empaqueter un module pilote (ex. `world` + `terrain_renderer`, ou un module utilitaire dédié) via `MOD-01..03` et prouver en CI qu'un projet créé avec `orosmo init` reste 100 % générique par défaut, puis compile et s'exécute avec le module après `orosmo addon add <module>`, sans modifier le cœur du moteur.
+
+**Démo** : `orosmo init mygame` produit un projet générique sans module procédural ; `orosmo addon add <module>` installe le module (en local ou depuis une release), `make debug` lie automatiquement ses archives, shaders et ressources sans édition manuelle du `Makefile`.
+**Terminé** : manifeste spécifié et validé par tests, les deux modes (`bundled` et `addon`) vérifiés en CI de bout en bout, guide `docs/MODULES_AND_ADDONS.md` écrit, zéro régression sur la release cœur générique.
 
 ## Fonctions non rattachées à un jalon
 

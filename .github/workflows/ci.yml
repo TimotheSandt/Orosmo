@@ -19,11 +19,19 @@ env:
   # vcpkg stores every built package as an archive here; the directory is cached below (restore, then save even
   # when a later step fails), so a failed build no longer throws away the 15-30 minutes of dependency builds.
   VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-archives
+  # ccache : résultats de compilation gardés d'un run à l'autre (cache restauré puis sauvé, une clé par job). Un fichier dont
+  # l'entrée préprocessée, les options et le compilateur n'ont pas changé n'est pas recompilé. Branché en tête du PATH
+  # (/usr/lib/ccache, libexec de Homebrew, lib/ccache/bin de MSYS2) : g++, gcc, c++ et cc passent par lui sans toucher aux Makefiles.
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  CCACHE_MAXSIZE: 500M
+  CCACHE_COMPRESS: "true"
 
 jobs:
   # ── Plan: do not repeat a run that already exists ────────────────────────────────────────────────
-  # A pull request run is skipped when (1) the PR comes from this repository, (2) the target branch is already contained
-  # in the PR head (so the merge commit that pull_request tests has the same content as the head) and (3) a push run of
+  # A pull request run is skipped when (1) the PR comes from this repository, (2) the merge commit that pull_request tests has
+  # the same content as the PR head (target already contained in the head, or same tree: `main` only adds the merge commit of
+  # the previous PR, whose content `dev` already has) and (3) a push run of
   # this workflow for the head commit FINISHED SUCCESSFULLY. A push run that is still queued or running is WAITED for (up to
   # 45 minutes), because opening the PR right after the push is the normal case: GitHub shows a job skipped by a condition as
   # green, so skipping before the result exists (or after a failure) would hide it behind a green PR check, and not waiting
@@ -52,8 +60,14 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           skip=false
-          if [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] \
-             && git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"; then
+          # Même contenu : la cible est déjà dans la tête, OU la fusion testée par pull_request a exactement l'arbre de la tête
+          # (cas habituel : `main` a seulement le commit de fusion de la PR précédente, dont le contenu est déjà dans `dev`).
+          same_tree=false
+          if git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA" \
+             || [ "$(git rev-parse "HEAD^{tree}")" = "$(git rev-parse "$HEAD_SHA^{tree}")" ]; then
+            same_tree=true
+          fi
+          if [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] && [ "$same_tree" = true ]; then
             deadline=$((SECONDS + 2700))
             while true; do
               json=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&event=push")
@@ -100,7 +114,7 @@ jobs:
             libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
             libfreetype-dev libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
             libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            xvfb libgl1-mesa-dri mesa-vulkan-drivers
+            xvfb libgl1-mesa-dri mesa-vulkan-drivers ccache
 
       - name: Bootstrap vcpkg
         run: |
@@ -131,6 +145,18 @@ jobs:
       - name: Link dependencies (apt + vcpkg)
         run: sh tools/setup-linux-deps.sh
 
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-linux-x64-${{ github.run_id }}
+          restore-keys: ccache-linux-x64-
+
+      - name: Enable ccache
+        run: |
+          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
+          ccache --zero-stats
+
       - name: Repository checks
         run: |
           sh tools/check-repo.sh
@@ -142,7 +168,7 @@ jobs:
         run: make -j"$(nproc)" all-debug
 
       - name: Tests
-        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test
+        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" demo-test
 
       - name: terrain-gen determinism (TOOL-02, TEST-03)
         run: make terrain-gen-check
@@ -178,7 +204,18 @@ jobs:
         run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make gallery-capture
 
       - name: End to end from the package (BLD-02; orosmo init, build, run, examples)
-        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make e2e-init
+        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" e2e-init
+
+      - name: ccache statistics
+        if: always()
+        run: ccache --show-stats
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-linux-x64-${{ github.run_id }}
 
       - name: Upload capture
         uses: actions/upload-artifact@v4
@@ -227,7 +264,7 @@ jobs:
             libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
             libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
             libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            xvfb libgl1-mesa-dri
+            xvfb libgl1-mesa-dri ccache
 
       - name: Bootstrap vcpkg
         run: |
@@ -256,14 +293,37 @@ jobs:
       - name: Link dependencies (apt + vcpkg)
         run: TRIPLET=arm64-linux sh tools/setup-linux-deps.sh
 
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-linux-arm64-${{ github.run_id }}
+          restore-keys: ccache-linux-arm64-
+
+      - name: Enable ccache
+        run: |
+          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
+          ccache --zero-stats
+
       - name: Build (debug)
         run: make -j"$(nproc)" all-debug WERROR=0
 
       - name: Tests
-        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test WERROR=0
+        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" demo-test WERROR=0
 
       - name: terrain-gen determinism (TOOL-02, TEST-03)
-        run: make terrain-gen-check WERROR=0
+        run: make -j"$(nproc)" terrain-gen-check WERROR=0
+
+      - name: ccache statistics
+        if: always()
+        run: ccache --show-stats
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-linux-arm64-${{ github.run_id }}
 
   # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
   sanitizers:
@@ -285,7 +345,7 @@ jobs:
             libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
             libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
             libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            xvfb libgl1-mesa-dri
+            xvfb libgl1-mesa-dri ccache
       - name: Bootstrap vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
@@ -309,11 +369,34 @@ jobs:
           key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
       - name: Link dependencies
         run: sh tools/setup-linux-deps.sh
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-linux-asan-${{ github.run_id }}
+          restore-keys: ccache-linux-asan-
+
+      - name: Enable ccache
+        run: |
+          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
+          ccache --zero-stats
       - name: Tests under ASan + UBSan
         env:
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test SANITIZE=address,undefined
+        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" demo-test SANITIZE=address,undefined
+
+      - name: ccache statistics
+        if: always()
+        run: ccache --show-stats
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-linux-asan-${{ github.run_id }}
 
   # ── Windows and macOS: same entry points through vcpkg manifest mode. ─────────────────────
   # `continue-on-error`: these two jobs have never been observed green (no Windows/macOS machine was
@@ -349,11 +432,11 @@ jobs:
           path-type: inherit   # keep the Windows PATH (cargo from dtolnay/rust-toolchain)
           install: >-
             mingw-w64-x86_64-gcc mingw-w64-x86_64-make mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-python git zip unzip tar
+            mingw-w64-x86_64-python mingw-w64-x86_64-ccache git zip unzip tar
 
       - name: Setup macOS tools
         if: runner.os == 'macOS'
-        run: brew install ninja cmake zip
+        run: brew install ninja cmake zip ccache
 
       - name: Bootstrap vcpkg (Unix)
         if: runner.os != 'Windows'
@@ -398,30 +481,67 @@ jobs:
           path: .vcpkg-archives
           key: vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
 
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.triplet }}-${{ github.run_id }}
+          restore-keys: ccache-${{ matrix.triplet }}-
+
+      - name: Enable ccache
+        if: runner.os == 'macOS'
+        run: |
+          echo "$(brew --prefix)/opt/ccache/libexec" >> "$GITHUB_PATH"
+          ccache --zero-stats
+
+      - name: Enable ccache
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          # Lanceurs gcc/g++ de ccache (MSYS2) en tête du PATH, s'ils existent ; sinon compilation directe (journalisé).
+          if [ -d /mingw64/lib/ccache/bin ]; then echo "$(cygpath -w /mingw64/lib/ccache/bin)" >> "$GITHUB_PATH"; else echo "ccache: /mingw64/lib/ccache/bin absent"; fi
+          ccache --zero-stats
+
       # WERROR=0 until the first green run on these systems (warnings are errors on Linux).
       - name: Build and test (Unix)
         if: runner.os != 'Windows'
         run: |
           make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          make demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          make terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make -j3 demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make -j3 terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       # BLD-02 : never observed on these systems (docs/GAPS.md) ; reported, not blocking.
       - name: End to end from the package (Unix)
         if: runner.os != 'Windows'
         continue-on-error: true
-        run: make e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+        run: make -j3 e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           mingw32-make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          mingw32-make demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          mingw32-make terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make -j3 demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make -j3 terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       - name: End to end from the package (Windows)
         if: runner.os == 'Windows'
         continue-on-error: true
         shell: msys2 {0}
-        run: mingw32-make e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+        run: mingw32-make -j3 e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+
+      - name: ccache statistics (Unix)
+        if: always() && runner.os != 'Windows'
+        run: ccache --show-stats
+
+      - name: ccache statistics (Windows)
+        if: always() && runner.os == 'Windows'
+        shell: msys2 {0}
+        run: ccache --show-stats
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.triplet }}-${{ github.run_id }}

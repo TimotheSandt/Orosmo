@@ -30,6 +30,11 @@ git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.
 make all-debug                           # relie les paquets apt tout seul, puis moteur -> démo (debug)
 ```
 
+Dans un terminal, `make` affiche une barre de progression (`tools/build_progress.py`) au lieu des commandes : fichiers compilés,
+en cours, restants et à jour (sautés), puis un résumé ; les avertissements, erreurs et sorties des tests s'affichent au-dessus.
+`make V=1 …` montre les commandes complètes ; `ORS_NO_PROGRESS=1 make …` garde l'affichage habituel. Hors terminal (CI,
+redirection vers un fichier), rien ne change. Il faut Python 3 (sinon, affichage habituel).
+
 `vcpkg.json` marque `glfw3`, `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad`, `msdfgen`, `nlohmann-json` et `spirv-cross` (sans options par défaut : noyau seulement, sans skia). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
 
 `make clean-all` supprime `vcpkg_installed/` : relance ensuite `~/vcpkg/vcpkg install` (12 s, les archives sont en cache), `make` relie le reste.
@@ -81,7 +86,11 @@ tools/        précompilateur .cui (cui-rs), outil engine-init-rs, SDK (engine-s
 docs/         spécification, plan, rapports (voir docs/README.md)
 ```
 
-Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libworld.a`, `libui.a`, `libthirdparty.a`) ; la démo les relie via `apps/demo/orosmo/`.
+Le moteur compile en bibliothèques statiques, une par module :
+- **Cœur distribué en release** (`dist/orosmo-pkg-<plateforme>.zip`, `orosmo init`) : `libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libui.a`, `libthirdparty.a`.
+- **Modules procéduraux internes au dépôt** (utilisés par `apps/demo`, `apps/terrain_gen`, `apps/terrain_viewer` et les tests, exclus de la release — décision A34) : `libworld.a`, `libterrain_renderer.a`.
+
+Dans le dépôt, la démo les relie via `apps/demo/orosmo/` (avec `ENGINE_EXTRA_MODULES="world terrain_renderer"`).
 
 ## Documentation
 
