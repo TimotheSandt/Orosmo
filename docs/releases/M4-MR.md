@@ -49,7 +49,10 @@ make demo-vulkan-check                           # mêmes images dans la toléra
 
 ## Tests
 
-PREUVES_MR
+Depuis un clone propre de `dev` (Linux x64, g++ 13.3, Mesa 26.1.6, Intel Arc) : `make all-debug` sans avertissement, `make demo-test` **413 / 413**
+(13 521 assertions), suites GPU en Vulkan **125 / 125**, ASan + UBSan **413 / 413** sans signalement, `make check` (couches, isolation
+des API, en-têtes), `make demo-vulkan-check` (images dans la tolérance, validation Vulkan à 0), `make cui-test`, tests Python (14),
+`make demo-capture`, `make e2e-init` (paquet sans `world` ni `terrain` : 0 occurrence).
 
 ## Non prouvé
 
