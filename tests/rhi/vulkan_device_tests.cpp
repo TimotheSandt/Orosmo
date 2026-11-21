@@ -3,6 +3,7 @@
 #include <doctest/doctest.h>
 
 #include "support/result_support.hpp"
+#include "rhi/gpu_fixture.hpp"
 #include "support/test_support.hpp"
 
 #include <orosmo/rhi/device.hpp>
@@ -242,5 +243,129 @@ TEST_SUITE("rhi/vulkan/device")
         device->destroy(*a); // périmé : sans effet
         CHECK(device->stats().buffers == 1);
         // `b` reste vivant : l'arrêt du périphérique le libère
+    }
+
+    TEST_CASE("encoder: several slices of one 3D mip are transitioned once, and the validation layers stay silent")
+    {
+        Gpu gpu(Backend::kVulkan);
+        SKIP_TEST_IF_NULL(gpu.device.get(), "Vulkan 1.3 device");
+        if (gpu->capabilities().maxColorAttachments < 2)
+            return;
+        TextureDesc td;
+        td.dimension = TextureDimension::k3D;
+        td.size = {4, 4, 2};
+        td.usage = TextureUsage::kRenderTarget | TextureUsage::kCopySrc;
+        auto volume = gpu->createTexture(td);
+        REQUIRE(volume.has_value());
+        const char *fs = R"(#version 450
+layout(location = 0) out vec4 a;
+layout(location = 1) out vec4 b;
+void main() { a = vec4(1.0, 0.0, 0.0, 1.0); b = vec4(0.0, 1.0, 0.0, 1.0); })";
+        const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVsGlsl450), gpu.shader(ShaderStage::kFragment, fs),
+                                                 {ColorTargetState{}, ColorTargetState{}});
+        RenderPassDesc pass;
+        pass.colors.push_back({.texture = *volume, .layer = 0});
+        pass.colors.push_back({.texture = *volume, .layer = 1});
+        gpu.run(
+            [&](CommandEncoder &e)
+            {
+                e.beginRenderPass(pass);
+                e.setPipeline(pipe);
+                e.draw(3);
+                e.endRenderPass();
+            });
+        TextureCopy c;
+        c.offset = {1, 1, 1};
+        c.size = {1, 1, 1};
+        auto px = gpu->readTexture(*volume, c);
+        REQUIRE(px.has_value());
+        CHECK(rgba(*px) == std::array<std::uint8_t, 4>{0, 255, 0, 255});
+        gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("encoder: offsets equal to the buffer size and a non-zero dynamic offset on a 'to the end' entry are refused")
+    {
+        Gpu gpu(Backend::kVulkan);
+        SKIP_TEST_IF_NULL(gpu.device.get(), "Vulkan 1.3 device");
+        const std::vector<std::byte> data(256, std::byte{0});
+        const BufferHandle vertex = gpu.buffer(BufferUsage::kVertex | BufferUsage::kIndex, data, 0, "vi");
+        auto vbad = gpu->createCommandEncoder();
+        vbad->setVertexBuffer(0, vertex, 256);
+        CHECK((tests::errorOf(gpu->submit(std::move(vbad))) == ErrorCode::kOutOfRange));
+        auto ibad = gpu->createCommandEncoder();
+        ibad->setIndexBuffer(vertex, IndexType::kUint16, 256);
+        CHECK((tests::errorOf(gpu->submit(std::move(ibad))) == ErrorCode::kOutOfRange));
+
+        const std::uint64_t align = gpu->capabilities().minUniformAlignment;
+        const BufferHandle ubuf = gpu.buffer(BufferUsage::kUniform, std::vector<std::byte>(align * 2, std::byte{0}), 0, "u");
+        const char *fs = R"(#version 450
+layout(std140, set = 0, binding = 0) uniform U { vec4 color; } u;
+layout(location = 0) out vec4 outColor;
+void main() { outColor = u.color; })";
+        const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVsGlsl450), gpu.shader(ShaderStage::kFragment, fs));
+        BindGroupDesc gd;
+        gd.entries = {{.binding = 0, .type = BindingType::kUniformBuffer, .buffer = ubuf, .size = 0, .dynamicOffset = true}};
+        auto group = gpu->createBindGroup(gd);
+        REQUIRE(group.has_value());
+        const auto offset = static_cast<std::uint32_t>(align);
+        auto bad = gpu->createCommandEncoder();
+        bad->setBindGroup(0, *group, std::span(&offset, 1));
+        CHECK((tests::errorOf(gpu->submit(std::move(bad))) == ErrorCode::kUnsupported));
+        const std::uint32_t zero = 0;
+        auto good = gpu->createCommandEncoder();
+        good->setBindGroup(0, *group, std::span(&zero, 1));
+        CHECK(gpu->submit(std::move(good)).has_value());
+        (void)pipe;
+    }
+
+    TEST_CASE("encoder: a texture destroyed after setBindGroup makes the draw fail instead of using the stale descriptor set")
+    {
+        Gpu gpu(Backend::kVulkan);
+        SKIP_TEST_IF_NULL(gpu.device.get(), "Vulkan 1.3 device");
+        TextureDesc td;
+        td.size = {2, 2, 1};
+        td.usage = TextureUsage::kSampled | TextureUsage::kCopyDst;
+        auto tex = gpu->createTexture(td);
+        auto sampler = gpu->createSampler({});
+        REQUIRE((tex.has_value() && sampler.has_value()));
+        const char *fs = R"(#version 450
+layout(set = 0, binding = 0) uniform sampler2D tex;
+layout(location = 0) out vec4 outColor;
+void main() { outColor = texture(tex, vec2(0.5)); })";
+        const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVsGlsl450), gpu.shader(ShaderStage::kFragment, fs));
+        BindGroupDesc gd;
+        gd.entries = {{.binding = 0, .type = BindingType::kSampledTexture, .texture = *tex, .sampler = *sampler}};
+        auto group = gpu->createBindGroup(gd);
+        REQUIRE(group.has_value());
+        const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {4, 4});
+        auto encoder = gpu->createCommandEncoder();
+        encoder->beginRenderPass(passOn(color));
+        encoder->setPipeline(pipe);
+        encoder->setBindGroup(0, *group);
+        encoder->draw(3); // crée et met en cache le jeu de descripteurs
+        gpu->destroy(*tex);
+        encoder->draw(3); // le groupe référence une texture détruite
+        encoder->endRenderPass();
+        CHECK((tests::errorOf(gpu->submit(std::move(encoder))) == ErrorCode::kNotFound));
+    }
+
+    TEST_CASE("pipelines: array bindings that overlap another binding after the stages are merged are refused")
+    {
+        Gpu gpu(Backend::kVulkan);
+        SKIP_TEST_IF_NULL(gpu.device.get(), "Vulkan 1.3 device");
+        const char *vs = R"(#version 450
+layout(std140, set = 0, binding = 0) uniform A { vec4 a; } arr[2];
+void main() { gl_Position = arr[0].a + arr[1].a; })";
+        const char *fs = R"(#version 450
+layout(std140, set = 0, binding = 1) uniform B { vec4 b; } single;
+layout(location = 0) out vec4 outColor;
+void main() { outColor = single.b; })";
+        GraphicsPipelineDesc d;
+        d.vertex = gpu.shader(ShaderStage::kVertex, vs);
+        d.fragment = gpu.shader(ShaderStage::kFragment, fs);
+        d.colorTargets = {ColorTargetState{}};
+        auto r = gpu->createGraphicsPipeline(d);
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kInvalidArgument));
     }
 }

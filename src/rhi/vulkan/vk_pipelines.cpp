@@ -185,7 +185,16 @@ Result<std::array<std::vector<DescriptorBinding>, kGroupCount>> mergeInterfaces(
         }
     }
     for (auto &list : groups)
+    {
         std::ranges::sort(list, [](const DescriptorBinding &a, const DescriptorBinding &b) { return a.binding < b.binding; });
+        // Une liaison tableau de n éléments occupe les entrées b .. b+n-1 : deux déclarations ne doivent pas se recouvrir.
+        for (std::size_t i = 1; i < list.size(); ++i)
+        {
+            if (static_cast<std::uint64_t>(list[i - 1].binding) + list[i - 1].count > list[i].binding)
+                return makeError(ErrorCode::kInvalidArgument, "pipeline (" + name + "): binding " + std::to_string(list[i].binding) +
+                                                                  " overlaps the array that starts at binding " + std::to_string(list[i - 1].binding));
+        }
+    }
     return groups;
 }
 
@@ -280,6 +289,7 @@ void VulkanDevice::shutdownPipelines() noexcept
                 {
                     std::ofstream out(temp, std::ios::binary | std::ios::trunc);
                     out.write(data.data(), static_cast<std::streamsize>(size));
+                    out.close(); // vide le tampon : une erreur d'écriture différée doit être vue avant le renommage
                     if (!out)
                         ec = std::make_error_code(std::errc::io_error);
                 }
@@ -401,6 +411,19 @@ Result<VkPipelineLayout> VulkanDevice::pipelineLayoutFor(const std::array<const 
         if (existing == key)
             return layout;
     }
+    // Les décalages dynamiques sont comptés sur toute la disposition de pipeline (limites du périphérique).
+    std::uint32_t dynamicUniform = 0;
+    std::uint32_t dynamicStorage = 0;
+    for (const SetLayout *set : sets)
+    {
+        if (set == nullptr)
+            continue;
+        for (const DescriptorBinding &b : set->bindings)
+            (b.type == BindingType::kUniformBuffer ? dynamicUniform : dynamicStorage) += isBufferDescriptor(b.type) ? b.count : 0;
+    }
+    if (dynamicUniform > properties_.limits.maxDescriptorSetUniformBuffersDynamic || dynamicStorage > properties_.limits.maxDescriptorSetStorageBuffersDynamic)
+        return makeError(ErrorCode::kOutOfRange, "pipeline layout: more dynamic uniform (" + std::to_string(dynamicUniform) + ") or storage (" +
+                                                     std::to_string(dynamicStorage) + ") buffer descriptors than the device allows");
     const VkPushConstantRange range{pushStages, 0, pushSize};
     auto info = makeStruct<VkPipelineLayoutCreateInfo>(VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO);
     info.setLayoutCount = static_cast<std::uint32_t>(layouts.size());
@@ -475,6 +498,14 @@ Result<PipelineHandle> VulkanDevice::createGraphicsPipeline(const GraphicsPipeli
                                                           desc.debugName + ")");
         if (t.blend.enabled && formatInfo(t.format).kind == FormatKind::kUint)
             return makeError(ErrorCode::kInvalidArgument, "createGraphicsPipeline: blending on an integer target (" + desc.debugName + ")");
+        if (t.blend.enabled)
+        {
+            VkFormatProperties props{};
+            vkGetPhysicalDeviceFormatProperties(physicalDevice_, vkFormat(t.format), &props);
+            if ((props.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) == 0)
+                return makeError(ErrorCode::kUnsupported, std::string("createGraphicsPipeline: format ") + toString(t.format) + " cannot be blended (" +
+                                                              desc.debugName + ")");
+        }
         if (!features_.independentBlend && !sameBlend(t, desc.colorTargets.front()))
             return makeError(ErrorCode::kUnsupported, "createGraphicsPipeline: per-target blending needs independentBlend (" + desc.debugName + ")");
     }
@@ -756,6 +787,21 @@ Result<VkDescriptorSet> VulkanDevice::descriptorSetFor(BindGroupHandle handle, c
     BindGroupRes *group = bindGroups_.get(handle);
     if (group == nullptr)
         return makeError(ErrorCode::kNotFound, "bind group: stale or null handle");
+    // Un jeu en cache référence des vues et des tampons : si une ressource du groupe a été détruite depuis, il est périmé.
+    for (const BindGroupEntry &e : group->entries)
+    {
+        bool alive = true;
+        switch (e.type)
+        {
+            case BindingType::kUniformBuffer:
+            case BindingType::kStorageBuffer: alive = buffers_.get(e.buffer) != nullptr; break;
+            case BindingType::kSampledTexture: alive = textures_.get(e.texture) != nullptr && samplers_.get(e.sampler) != nullptr; break;
+            case BindingType::kStorageImage: alive = textures_.get(e.texture) != nullptr; break;
+        }
+        if (!alive)
+            return makeError(ErrorCode::kNotFound, "bind group: a resource of the group (" + group->debugName + ", binding " + std::to_string(e.binding) +
+                                                       ") was destroyed");
+    }
     for (const auto &cached : group->sets)
     {
         if (cached.layoutId == layout.id)
