@@ -8,9 +8,10 @@ PerformanceSample samplePerformance(double averageFps)
     PerformanceSample s;
     s.fps = averageFps;
     s.renderMs = Profiler::GetAverageTimeMs("Render");
-    s.renderSceneMs = Profiler::GetAverageTimeMs("RenderScene");
-    s.upscaleMs = Profiler::GetAverageTimeMs("Upscale");
-    s.uiUpscaleMs = Profiler::GetAverageTimeMs("UIUpscale");
+    // Passes du graphe de l'image (REN-01), une mesure GPU par passe.
+    s.renderSceneMs = Profiler::GetAverageTimeMs("RenderGraph/scene");
+    s.upscaleMs = Profiler::GetAverageTimeMs("RenderGraph/upscale");
+    s.uiUpscaleMs = Profiler::GetAverageTimeMs("RenderGraph/ui");
     s.swapBuffersMs = Profiler::GetAverageTimeMs("SwapBuffers");
     return s;
 }

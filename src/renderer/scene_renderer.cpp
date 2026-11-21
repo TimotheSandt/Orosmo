@@ -62,6 +62,19 @@ core::Result<std::unique_ptr<SceneRenderer>> SceneRenderer::create(rhi::Device &
         return std::unexpected(camera.error());
     }
     renderer->cameraBuffer_ = std::move(*camera);
+    rhi::BufferDesc fb;
+    fb.size = sizeof(FrameData);
+    fb.usage = rhi::BufferUsage::kUniform | rhi::BufferUsage::kCopyDst;
+    fb.debugName = "frame.data";
+    auto frameBuffer = GpuBuffer::create(device, fb);
+    if (!frameBuffer)
+    {
+        return std::unexpected(frameBuffer.error());
+    }
+    renderer->frameBuffer_ = std::move(*frameBuffer);
+    renderer->frameResources_.buffer = renderer->frameBuffer_.handle();
+    renderer->frameResources_.data = &renderer->frameData_;
+    renderer->graph_.setFrameResources(&renderer->frameResources_);
     auto lights = LightManager::create(device, 1);
     if (!lights)
     {
@@ -87,7 +100,45 @@ SceneRenderer::~SceneRenderer()
     {
         activeUpscaleMode_->shutdown();
     }
+    graph_.reset(); // les passes retiennent des pointeurs vers ce renderer et ses plugins
+    features_.clear();
     device_.destroy(frameGroup_);
+}
+
+core::Result<RenderFeature *> SceneRenderer::addFeature(std::unique_ptr<RenderFeature> feature)
+{
+    if (feature == nullptr)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::addFeature: null feature");
+    }
+    if (!feature->supports(device_.capabilities()))
+    {
+        return makeError(ErrorCode::kUnsupported, "SceneRenderer::addFeature: '" + feature->name() + "' is not supported by this device");
+    }
+    for (const auto &existing : features_)
+    {
+        if (existing->name() == feature->name())
+        {
+            return makeError(ErrorCode::kAlreadyExists, "SceneRenderer::addFeature: a feature named '" + feature->name() + "' is registered");
+        }
+    }
+    features_.push_back(std::move(feature));
+    return features_.back().get();
+}
+
+void SceneRenderer::removeFeature(const std::string &name)
+{
+    std::erase_if(features_, [&](const std::unique_ptr<RenderFeature> &f) { return f->name() == name; });
+}
+
+std::vector<std::string> SceneRenderer::featureNames() const
+{
+    std::vector<std::string> names;
+    for (const auto &f : features_)
+    {
+        names.push_back(f->name());
+    }
+    return names;
 }
 
 void SceneRenderer::setOutputResolution(int width, int height) noexcept
@@ -219,9 +270,8 @@ bool SceneRenderer::needsHistory() const noexcept
     return (modeRuns() && activeUpscaleMode_->requirements().needsHistory) || (frameGenMode_ != nullptr && frameGenMode_->description().needsHistory);
 }
 
-core::Result<> SceneRenderer::rebuildFrameGroup()
+core::Result<> SceneRenderer::rebuildFrameGroup(LightManager &lights)
 {
-    LightManager &lights = lights_ != nullptr ? *lights_ : defaultLights_;
     if (!frameGroup_.isNull() && groupCamera_ == cameraBuffer_.handle() && groupLights_ == lights.buffer().handle())
     {
         return {};
@@ -229,6 +279,7 @@ core::Result<> SceneRenderer::rebuildFrameGroup()
     rhi::BindGroupDesc desc;
     desc.entries.push_back({.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = cameraBuffer_.handle(), .size = sizeof(CameraData)});
     desc.entries.push_back({.binding = 1, .type = rhi::BindingType::kStorageBuffer, .buffer = lights.buffer().handle()});
+    desc.entries.push_back({.binding = kFrameDataBinding, .type = rhi::BindingType::kUniformBuffer, .buffer = frameBuffer_.handle(), .size = sizeof(FrameData)});
     desc.debugName = "scene.frame";
     auto group = device_.createBindGroup(desc);
     if (!group)
@@ -237,6 +288,7 @@ core::Result<> SceneRenderer::rebuildFrameGroup()
     }
     device_.destroy(frameGroup_);
     frameGroup_ = *group;
+    frameResources_.group = frameGroup_;
     groupCamera_ = cameraBuffer_.handle();
     groupLights_ = lights.buffer().handle();
     return {};
@@ -244,7 +296,7 @@ core::Result<> SceneRenderer::rebuildFrameGroup()
 
 core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const FrameOptions &options)
 {
-    if (passOpen_)
+    if (frameOpen_)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::beginFrame: the previous frame was not ended");
     }
@@ -307,17 +359,15 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
             }
         }
     }
-    if (auto r = rebuildFrameGroup(); !r)
+    if (auto r = rebuildFrameGroup(activeLights()); !r)
     {
         return r;
     }
-    PassOptions pass;
-    pass.clearColor = options.clearColor;
-    pass.depthLoad = options.clearDepth ? rhi::LoadOp::kClear : rhi::LoadOp::kLoad;
-    pass.clearDepth = 0.0f; // reverse-Z (REN-02) : 0 est le plus lointain
+    frameOptions_ = options;
+    draws_.clear();
+    debugVertices_.clear();
     encoder_ = &encoder;
-    encoder.beginRenderPass(sceneTarget_.passDesc(pass));
-    passOpen_ = true;
+    frameOpen_ = true;
     return {};
 }
 
@@ -329,11 +379,15 @@ core::Result<> SceneRenderer::setCamera(Camera &camera)
     }
     camera.setJitter(currentJitter_);
     cameraOrigin_ = cameraRelative_ ? camera.position() : glm::vec3(0.0f);
+    // Données par image (REN-03) : mêmes matrices que le tampon de la caméra.
+    cameraView_ = cameraRelative_ ? camera.relativeViewMatrix() : camera.viewMatrix();
+    cameraProjection_ = camera.projectionMatrix();
+    cameraWorld_ = glm::dvec3(camera.position());
     const CameraData data = camera.data(cameraRelative_);
     return cameraBuffer_.update(0, std::as_bytes(std::span(&data, 1)));
 }
 
-core::Result<> SceneRenderer::draw(Mesh &mesh, const Camera &, bool lines)
+core::Result<> SceneRenderer::record(Mesh &mesh, bool lines)
 {
     GraphicsState state;
     state.vertexBuffers = mesh.vertexBuffers();
@@ -359,48 +413,39 @@ core::Result<> SceneRenderer::draw(Mesh &mesh, const Camera &, bool lines)
     {
         return std::unexpected(pipeline.error());
     }
-    // Les lumières ont pu changer depuis beginFrame (setLights pendant l'image) : le groupe suit avant chaque dessin.
-    if (auto r = rebuildFrameGroup(); !r)
-    {
-        return r;
-    }
-    rhi::CommandEncoder &e = *encoder_;
-    e.setPipeline(*pipeline);
-    e.setBindGroup(0, frameGroup_);
-    if (!mesh.textureGroup().isNull())
-    {
-        e.setBindGroup(1, mesh.textureGroup());
-    }
-    e.setBindGroup(2, mesh.modelGroup());
-    // Taille de la révision qui a construit CE pipeline (après un rechargement qui ne se lie pas, c'est l'ancienne).
+    SceneDraw draw;
+    draw.pipeline = *pipeline;
+    // Taille de la révision qui a construit CE pipeline (après un rechargement qui ne se lie pas, c'est l'ancienne). Les valeurs
+    // sont celles de CE dessin : copiées maintenant.
     const std::uint32_t pushSize = pipelines_.pushConstantSize(*pipeline);
     if (pushSize > 0)
     {
-        std::vector<std::byte> push(pushSize, std::byte{0});
+        draw.pushConstants.assign(pushSize, std::byte{0});
         if (const std::size_t n = std::min<std::size_t>(pushSize, mesh.pushConstants().size()); n > 0) // memcpy(…, nullptr, 0) est un comportement indéfini
         {
-            std::memcpy(push.data(), mesh.pushConstants().data(), n);
+            std::memcpy(draw.pushConstants.data(), mesh.pushConstants().data(), n);
         }
         if (pushSize >= sizeof(std::int32_t))
         {
             const std::int32_t flag = lines ? 1 : 0; // convention mesh.frag : premier entier = fil de fer
-            std::memcpy(push.data(), &flag, sizeof flag);
+            std::memcpy(draw.pushConstants.data(), &flag, sizeof flag);
         }
-        e.setPushConstants(push);
     }
-    e.setVertexBuffer(0, mesh.vertexBuffer());
-    if (mesh.instanced())
-    {
-        e.setVertexBuffer(1, mesh.instanceBuffer());
-    }
-    e.setIndexBuffer(mesh.indexBuffer(), rhi::IndexType::kUint32);
-    e.drawIndexed(mesh.indexCount(), mesh.instanceCount());
+    draw.lights = &activeLights(); // les lumières choisies au moment du dessin, comme avant l'enregistrement différé
+    draw.textureGroup = mesh.textureGroup();
+    draw.modelGroup = mesh.modelGroup();
+    draw.vertexBuffer = mesh.vertexBuffer();
+    draw.instanceBuffer = mesh.instanced() ? mesh.instanceBuffer() : rhi::BufferHandle{};
+    draw.indexBuffer = mesh.indexBuffer();
+    draw.count = mesh.indexCount();
+    draw.instanceCount = mesh.instanceCount();
+    draws_.push_back(std::move(draw));
     return {};
 }
 
 core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
 {
-    if (!passOpen_)
+    if (!frameOpen_)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: no frame is open");
     }
@@ -412,24 +457,37 @@ core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
     {
         return r;
     }
-    if (auto r = draw(mesh, camera, false); !r)
+    if (auto r = record(mesh, false); !r)
     {
         return r;
     }
-    return camera.wireframe() ? draw(mesh, camera, true) : core::Result<>{};
+    return camera.wireframe() ? record(mesh, true) : core::Result<>{};
 }
 
-core::Result<ScenePassContext> SceneRenderer::passContext()
+core::Result<SceneDrawInfo> SceneRenderer::sceneDrawInfo() const
 {
-    if (!passOpen_)
+    if (!frameOpen_)
     {
-        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::passContext: no frame is open");
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::sceneDrawInfo: no frame is open");
     }
-    if (auto r = rebuildFrameGroup(); !r) // les lumières ont pu changer depuis beginFrame
+    return SceneDrawInfo{sceneTarget_.info().colorFormats, rhi::Format::kD32Float, cameraOrigin_};
+}
+
+core::Result<> SceneRenderer::drawCustom(SceneDrawCallback draw)
+{
+    if (!frameOpen_)
     {
-        return std::unexpected(r.error());
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawCustom: no frame is open");
     }
-    return ScenePassContext{encoder_, frameGroup_, sceneTarget_.info().colorFormats, rhi::Format::kD32Float, cameraOrigin_};
+    if (!draw)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawCustom: empty callback");
+    }
+    SceneDraw recorded;
+    recorded.lights = &activeLights();
+    recorded.custom = std::move(draw);
+    draws_.push_back(std::move(recorded));
+    return {};
 }
 
 core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
@@ -438,7 +496,7 @@ core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
     {
         return {};
     }
-    if (!passOpen_)
+    if (!frameOpen_)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawDebug: no frame is open");
     }
@@ -451,10 +509,6 @@ core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
         }
         debugProgram_ = *program;
     }
-    if (auto r = rebuildFrameGroup(); !r)
-    {
-        return r;
-    }
     // Rendu relatif à la caméra : les positions sont ramenées à l'origine de la caméra avant l'envoi.
     std::vector<float> vertices = debug.vertices();
     if (cameraRelative_)
@@ -465,24 +519,6 @@ core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
             vertices[v + 1] -= cameraOrigin_.y;
             vertices[v + 2] -= cameraOrigin_.z;
         }
-    }
-    const std::uint64_t bytes = vertices.size() * sizeof(float);
-    if (!debugBuffer_.valid() || debugBuffer_.size() < bytes)
-    {
-        rhi::BufferDesc desc;
-        desc.size = std::max<std::uint64_t>(bytes, 64 * 1024);
-        desc.usage = rhi::BufferUsage::kVertex | rhi::BufferUsage::kCopyDst;
-        desc.debugName = "debug.lines";
-        auto buffer = GpuBuffer::create(device_, desc);
-        if (!buffer)
-        {
-            return std::unexpected(buffer.error());
-        }
-        debugBuffer_ = std::move(*buffer);
-    }
-    if (auto r = debugBuffer_.update(0, std::as_bytes(std::span(vertices))); !r)
-    {
-        return r;
     }
     GraphicsState state;
     state.topology = rhi::PrimitiveTopology::kLineList;
@@ -509,138 +545,419 @@ core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
     {
         return std::unexpected(pipeline.error());
     }
-    rhi::CommandEncoder &e = *encoder_;
-    e.setPipeline(*pipeline);
-    e.setBindGroup(0, frameGroup_);
-    e.setVertexBuffer(0, debugBuffer_.handle());
-    e.draw(static_cast<std::uint32_t>(vertices.size() / DebugDraw::kFloatsPerVertex));
+    // Les segments de toute l'image partagent un tampon, envoyé une fois à endFrame : chaque appel garde sa tranche.
+    SceneDraw draw;
+    draw.pipeline = *pipeline;
+    draw.lights = &activeLights();
+    draw.debugLines = true;
+    draw.vertexOffset = debugVertices_.size() * sizeof(float);
+    draw.count = static_cast<std::uint32_t>(vertices.size() / DebugDraw::kFloatsPerVertex);
+    debugVertices_.insert(debugVertices_.end(), vertices.begin(), vertices.end());
+    draws_.push_back(std::move(draw));
+    return {};
+}
+
+core::Result<> SceneRenderer::uploadDebugLines()
+{
+    if (debugVertices_.empty())
+    {
+        return {};
+    }
+    const std::uint64_t bytes = debugVertices_.size() * sizeof(float);
+    if (!debugBuffer_.valid() || debugBuffer_.size() < bytes)
+    {
+        rhi::BufferDesc desc;
+        desc.size = std::max<std::uint64_t>(bytes, 64 * 1024);
+        desc.usage = rhi::BufferUsage::kVertex | rhi::BufferUsage::kCopyDst;
+        desc.debugName = "debug.lines";
+        auto buffer = GpuBuffer::create(device_, desc);
+        if (!buffer)
+        {
+            return std::unexpected(buffer.error());
+        }
+        debugBuffer_ = std::move(*buffer);
+    }
+    return debugBuffer_.update(0, std::as_bytes(std::span(debugVertices_)));
+}
+
+core::Result<> SceneRenderer::playDraws(rhi::CommandEncoder &e)
+{
+    for (const SceneDraw &draw : draws_)
+    {
+        // Les lumières ont pu changer pendant l'image (setLights après beginFrame) : le groupe suit avant chaque dessin.
+        if (auto r = rebuildFrameGroup(*draw.lights); !r)
+        {
+            return r;
+        }
+        if (draw.custom)
+        {
+            if (auto r = draw.custom(e, frameGroup_); !r)
+            {
+                return r;
+            }
+            continue;
+        }
+        e.setPipeline(draw.pipeline);
+        e.setBindGroup(0, frameGroup_);
+        if (draw.debugLines)
+        {
+            e.setVertexBuffer(0, debugBuffer_.handle(), draw.vertexOffset);
+            e.draw(draw.count);
+            continue;
+        }
+        if (!draw.textureGroup.isNull())
+        {
+            e.setBindGroup(1, draw.textureGroup);
+        }
+        e.setBindGroup(2, draw.modelGroup);
+        if (!draw.pushConstants.empty())
+        {
+            e.setPushConstants(draw.pushConstants);
+        }
+        e.setVertexBuffer(0, draw.vertexBuffer);
+        if (!draw.instanceBuffer.isNull())
+        {
+            e.setVertexBuffer(1, draw.instanceBuffer);
+        }
+        e.setIndexBuffer(draw.indexBuffer, rhi::IndexType::kUint32);
+        e.drawIndexed(draw.count, draw.instanceCount);
+    }
+    return {};
+}
+
+core::Result<> SceneRenderer::updateFrameData()
+{
+    FrameData f;
+    f.view = cameraView_;
+    f.proj = cameraProjection_;
+    f.viewProj = cameraProjection_ * cameraView_;
+    f.invView = glm::inverse(f.view);
+    f.invProj = glm::inverse(f.proj);
+    f.invViewProj = glm::inverse(f.viewProj);
+    f.prevViewProj = hasPreviousFrame_ ? previousViewProj_ : f.viewProj;
+    const glm::vec3 shaderOrigin = cameraRelative_ ? glm::vec3(0.0f) : glm::vec3(cameraWorld_);
+    f.cameraRelativeOrigin = glm::vec4(shaderOrigin, 0.0f);
+    const SplitDouble x = splitDouble(cameraWorld_.x);
+    const SplitDouble y = splitDouble(cameraWorld_.y);
+    const SplitDouble z = splitDouble(cameraWorld_.z);
+    f.cameraWorldHigh = {x.high, y.high, z.high, 0.0f};
+    f.cameraWorldLow = {x.low, y.low, z.low, 0.0f};
+    f.jitter = {currentJitter_.x, currentJitter_.y, hasPreviousFrame_ ? previousJitter_.x : currentJitter_.x,
+                hasPreviousFrame_ ? previousJitter_.y : currentJitter_.y};
+    const auto w = static_cast<float>(frameWidth_);
+    const auto h = static_cast<float>(frameHeight_);
+    f.viewport = {w, h, 1.0f / w, 1.0f / h};
+    timeSeconds_ += static_cast<double>(deltaTime_);
+    f.time = {static_cast<float>(timeSeconds_), deltaTime_, static_cast<float>(frameIndex_), frameNoiseSeed(frameIndex_)};
+    // Lumière principale : la première lumière directionnelle des lumières actives.
+    for (const Light &light : activeLights().lights())
+    {
+        if (light.type == LightType::kDirectional)
+        {
+            const float length = glm::length(light.direction);
+            f.sunDirection = glm::vec4(length > 0.0f ? light.direction / length : light.direction, 1.0f);
+            f.sunColor = glm::vec4(light.color * light.strength, 0.0f);
+            break;
+        }
+    }
+    f.planet = environment_.planet;
+    f.scatteringRayleigh = environment_.scatteringRayleigh;
+    f.scatteringMie = environment_.scatteringMie;
+    f.exposure = {environment_.exposure, 0.0f, 0.0f, 0.0f};
+    frameData_ = f;
+    previousViewProj_ = f.viewProj;
+    previousJitter_ = currentJitter_;
+    hasPreviousFrame_ = true;
+    ++frameIndex_;
+    return frameBuffer_.update(0, std::as_bytes(std::span(&frameData_, 1)));
+}
+
+core::Result<> SceneRenderer::ensureHistory(RenderTarget &target, bool &fresh)
+{
+    const std::uint32_t w = static_cast<std::uint32_t>(frameWidth_);
+    const std::uint32_t h = static_cast<std::uint32_t>(frameHeight_);
+    fresh = false;
+    if (!target.valid())
+    {
+        RenderTargetInfo info;
+        info.size = {w, h};
+        info.colorFormats = {rhi::Format::kRGBA8Unorm};
+        info.depth = false;
+        info.debugName = "scene.history";
+        auto created = RenderTarget::create(device_, info);
+        if (!created)
+        {
+            return std::unexpected(created.error());
+        }
+        target = std::move(*created);
+        fresh = true;
+    }
+    else if (target.width() != w || target.height() != h)
+    {
+        if (auto r = target.resize(w, h); !r)
+        {
+            return r;
+        }
+        fresh = true;
+    }
+    return {};
+}
+
+core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
+{
+    graph_.reset();
+    const rhi::Extent2D renderSize{static_cast<std::uint32_t>(frameWidth_), static_cast<std::uint32_t>(frameHeight_)};
+    RenderGraphBuilder::Resources known;
+    known.renderSize = renderSize;
+    known.outputSize = output.size;
+    known.sceneColor = graph_.importTexture("scene.color", sceneTarget_.color(0), {.format = sceneTarget_.info().colorFormats[0], .size = renderSize});
+    if (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1)
+    {
+        known.motionVectors = graph_.importTexture("scene.motion", sceneTarget_.color(1), {.format = rhi::Format::kRG16Float, .size = renderSize});
+    }
+    if (!sceneTarget_.depth().isNull())
+    {
+        known.sceneDepth = graph_.importTexture("scene.depth", sceneTarget_.depth(), {.format = rhi::Format::kD32Float, .size = renderSize});
+    }
+    if (!output.texture.isNull())
+    {
+        known.output = graph_.importTexture("output", output.texture, {.format = output.format, .size = output.size});
+    }
+
+    // ── Passe de scène : joue les dessins enregistrés ────────────────────────────────────────────────────────────────
+    {
+        auto scene = graph_.addPass("scene", PassType::kRaster, [this](RenderPassContext &ctx) { return playDraws(ctx.encoder()); });
+        scene.writeColor(known.sceneColor, rhi::LoadOp::kClear, frameOptions_.clearColor);
+        if (known.motionVectors.valid())
+        {
+            scene.writeColor(known.motionVectors, rhi::LoadOp::kClear, frameOptions_.clearColor);
+        }
+        if (known.sceneDepth.valid())
+        {
+            scene.writeDepth(known.sceneDepth, frameOptions_.clearDepth ? rhi::LoadOp::kClear : rhi::LoadOp::kLoad, 0.0f); // reverse-Z : 0 au loin
+        }
+    }
+
+    // ── Post-traitements : modifient la cible de la scène, dans l'ordre d'ajout ───────────────────────────────────────
+    for (std::size_t i = 0; i < postProcessPasses_.size(); ++i)
+    {
+        IPostProcessPass *post = postProcessPasses_[i].get();
+        std::string name = "post." + post->name();
+        if (graph_.pass(name))
+        {
+            name += "#" + std::to_string(i);
+        }
+        graph_
+            .addPass(std::move(name), PassType::kGeneric,
+                     [this, post](RenderPassContext &ctx)
+                     {
+                         FrameContext context{device_, ctx.encoder(), *blit_};
+                         return post->process(context, sceneTarget_);
+                     })
+            .read(known.sceneColor)
+            .write(known.sceneColor);
+    }
+
+    // ── Historique en double tampon : lecture de l'image précédente, copie de l'image courante dans l'autre tampon ──────
+    // L'historique n'est « l'image précédente » que s'il a été écrit avec succès à l'image précédente, à la même taille. Il est
+    // marqué invalide tout de suite : seule une copie réussie à la fin de CETTE image le revalide (un retour anticipé le laisse
+    // invalide, de même qu'une image qui n'en a pas besoin).
+    const bool history = needsHistory();
+    bool previousValid = false;
+    RgTexture previousHistory;
+    RgTexture nextHistory;
+    const std::uint32_t next = historyValid_ ? (lastHistory_ ^ 1u) : lastHistory_;
+    if (history)
+    {
+        bool fresh = false;
+        if (historyValid_)
+        {
+            RenderTarget &previous = history_[lastHistory_];
+            previousValid = previous.valid() && previous.width() == renderSize.width && previous.height() == renderSize.height;
+        }
+        if (auto r = ensureHistory(history_[next], fresh); !r)
+        {
+            return r;
+        }
+        if (previousValid)
+        {
+            previousHistory = graph_.importTexture("history.previous", history_[lastHistory_].color(0), {.size = renderSize});
+        }
+        nextHistory = graph_.importTexture("history.next", history_[next].color(0), {.size = renderSize});
+    }
+    historyValid_ = false;
+    const bool resetHistory = resetHistoryNextFrame_ || !previousValid;
+    const rhi::TextureHandle previous = previousValid ? history_[lastHistory_].color(0) : rhi::TextureHandle{};
+
+    // ── Mise à l'échelle (ou copie 1:1) vers la sortie ────────────────────────────────────────────────────────────────
+    if (modeRuns() || !scaled())
+    {
+        if (!known.output.valid())
+        {
+            return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::endFrame: the output texture is null");
+        }
+        auto upscale = graph_.addPass(
+            "upscale", PassType::kGeneric,
+            [this, output, previous, resetHistory](RenderPassContext &ctx) -> core::Result<>
+            {
+                FrameContext context{device_, ctx.encoder(), *blit_};
+                if (!modeRuns())
+                {
+                    // Sans mise à l'échelle (ou sans mode), l'ancien rendu allait droit à l'écran : on garde une copie 1:1.
+                    return blit_->copy(ctx.encoder(), sceneTarget_.color(0), blit_->nearestSampler(), output.texture, output.format, "present");
+                }
+                if (activeUpscaleMode_->advanced())
+                {
+                    auto *advanced = static_cast<IAdvancedUpscaleMode *>(activeUpscaleMode_); // advanced() : pas de RTTI
+                    UpscaleInput input;
+                    input.color = sceneTarget_.color(0);
+                    input.depth = sceneTarget_.depth();
+                    input.motionVectors = (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1) ? sceneTarget_.color(1) : rhi::TextureHandle{};
+                    input.historyColor = previous;
+                    input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
+                    input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+                    input.jitter = currentJitter_;
+                    input.deltaTimeSeconds = deltaTime_;
+                    input.resetHistory = resetHistory;
+                    UpscaleOutput out;
+                    out.output = output.texture;
+                    return advanced->execute(context, input, out);
+                }
+                return activeUpscaleMode_->upscale(context, sceneTarget_, output);
+            });
+        // readFinal : les post-traitements des plugins, déclarés plus tard, s'exécutent avant la mise à l'échelle.
+        upscale.readFinal(known.sceneColor).write(known.output);
+        if (known.sceneDepth.valid())
+        {
+            upscale.readFinal(known.sceneDepth);
+        }
+        if (known.motionVectors.valid())
+        {
+            upscale.readFinal(known.motionVectors);
+        }
+        if (previousHistory.valid())
+        {
+            upscale.read(previousHistory);
+        }
+    }
+
+    // ── Génération d'images ───────────────────────────────────────────────────────────────────────────────────────────
+    if (frameGenMode_ != nullptr)
+    {
+        auto generation = graph_.addPass("frame-generation", PassType::kGeneric,
+                                         [this, previous, resetHistory](RenderPassContext &ctx) -> core::Result<>
+                                         {
+                                             FrameContext context{device_, ctx.encoder(), *blit_};
+                                             FrameGenerationInput input;
+                                             input.currentColor = sceneTarget_.color(0);
+                                             input.previousColor = previous;
+                                             input.depth = sceneTarget_.depth();
+                                             input.motionVectors =
+                                                 (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1) ? sceneTarget_.color(1) : rhi::TextureHandle{};
+                                             input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
+                                             input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+                                             input.jitter = currentJitter_;
+                                             input.deltaTimeSeconds = deltaTime_;
+                                             input.resetHistory = resetHistory;
+                                             FrameGenerationOutput out;
+                                             if (auto r = frameGenMode_->generateFrame(context, input, out); !r)
+                                             {
+                                                 return r;
+                                             }
+                                             generatedFrame_ = out.generatedFrame;
+                                             return core::Result<>{};
+                                         });
+        generation.readFinal(known.sceneColor).sideEffect(); // son image appartient au mode : effet hors du graphe
+        if (previousHistory.valid())
+        {
+            generation.read(previousHistory);
+        }
+        if (known.sceneDepth.valid())
+        {
+            generation.readFinal(known.sceneDepth);
+        }
+        if (known.motionVectors.valid())
+        {
+            generation.readFinal(known.motionVectors);
+        }
+    }
+
+    // ── Copie de l'image courante dans l'historique, après ses lecteurs ──────────────────────────────────────────────
+    if (history)
+    {
+        graph_
+            .addPass("history", PassType::kGeneric,
+                     [this, next](RenderPassContext &ctx) -> core::Result<>
+                     {
+                         if (auto r = blit_->copy(ctx.encoder(), sceneTarget_.color(0), blit_->nearestSampler(), history_[next].color(0),
+                                                  rhi::Format::kRGBA8Unorm, "history");
+                             !r)
+                         {
+                             return r;
+                         }
+                         historyValid_ = true;
+                         lastHistory_ = next;
+                         resetHistoryNextFrame_ = false; // la demande de réinitialisation a été transmise avec un historique neuf
+                         return {};
+                     })
+            .readFinal(known.sceneColor)
+            .write(nextHistory);
+    }
+
+    // ── Plugins ───────────────────────────────────────────────────────────────────────────────────────────────────────
+    RenderGraphBuilder builder(graph_, known, device_.capabilities(), "scene");
+    for (const auto &feature : features_)
+    {
+        if (auto r = feature->prepare(frameData_); !r)
+        {
+            return makeError(r.error().code, "feature '" + feature->name() + "': " + r.error().message, r.error().where);
+        }
+        if (auto r = feature->declarePasses(builder); !r)
+        {
+            return makeError(r.error().code, "feature '" + feature->name() + "': " + r.error().message, r.error().where);
+        }
+    }
     return {};
 }
 
 core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
 {
-    if (!passOpen_)
+    if (!frameOpen_)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::endFrame: no frame is open");
     }
-    encoder_->endRenderPass();
-    passOpen_ = false;
+    frameOpen_ = false;
     generatedFrame_ = {}; // pas de handle d'une image précédente si cette fin d'image échoue avant la génération
-    FrameContext context{device_, *encoder_, *blit_};
-
-    for (const auto &pass : postProcessPasses_)
-    {
-        if (auto r = pass->process(context, sceneTarget_); !r)
-        {
-            return r;
-        }
-    }
-    // Historique : alloué (ou redimensionné) AVANT ses consommateurs, qui y lisent l'image précédente ; la couleur courante n'y
-    // est copiée qu'après eux. Une cible neuve ou redimensionnée ne contient pas d'image précédente : resetHistory.
-    const bool history = needsHistory();
-    bool historyFresh = false;
-    if (history)
-    {
-        const std::uint32_t w = static_cast<std::uint32_t>(frameWidth_);
-        const std::uint32_t h = static_cast<std::uint32_t>(frameHeight_);
-        if (!historyTarget_.valid())
-        {
-            RenderTargetInfo info;
-            info.size = {w, h};
-            info.colorFormats = {rhi::Format::kRGBA8Unorm};
-            info.depth = false;
-            info.debugName = "scene.history";
-            auto target = RenderTarget::create(device_, info);
-            if (!target)
-            {
-                return std::unexpected(target.error());
-            }
-            historyTarget_ = std::move(*target);
-            historyFresh = true;
-        }
-        else if (historyTarget_.width() != w || historyTarget_.height() != h)
-        {
-            if (auto r = historyTarget_.resize(w, h); !r)
-            {
-                return r;
-            }
-            historyFresh = true;
-        }
-    }
-    // L'historique n'est « l'image précédente » que s'il a été écrit avec succès à l'image précédente, à la même taille. Il est
-    // marqué invalide tout de suite : seule une copie réussie à la fin de CETTE image le revalide (un retour anticipé le laisse
-    // invalide, de même qu'une image qui n'en a pas besoin).
-    const bool previousValid = history && historyValid_ && !historyFresh;
-    historyValid_ = false;
-    const bool resetHistory = resetHistoryNextFrame_ || !previousValid;
-    const rhi::TextureHandle previous = previousValid ? historyTarget_.color(0) : rhi::TextureHandle{};
-
-    if (modeRuns())
-    {
-        if (activeUpscaleMode_->advanced())
-        {
-            auto *advanced = static_cast<IAdvancedUpscaleMode *>(activeUpscaleMode_); // advanced() : pas de RTTI
-            UpscaleInput input;
-            input.color = sceneTarget_.color(0);
-            input.depth = sceneTarget_.depth();
-            input.motionVectors = (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1) ? sceneTarget_.color(1) : rhi::TextureHandle{};
-            input.historyColor = previous;
-            input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
-            input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
-            input.jitter = currentJitter_;
-            input.deltaTimeSeconds = deltaTime_;
-            input.resetHistory = resetHistory;
-            UpscaleOutput out;
-            out.output = output.texture;
-            if (auto r = advanced->execute(context, input, out); !r)
-            {
-                return r;
-            }
-        }
-        else if (auto r = activeUpscaleMode_->upscale(context, sceneTarget_, output); !r)
-        {
-            return r;
-        }
-    }
-    else if (!scaled())
-    {
-        // Sans mise à l'échelle (ou sans mode), l'ancien rendu allait droit à l'écran : on garde une copie 1:1.
-        if (auto r = blit_->copy(*encoder_, sceneTarget_.color(0), blit_->nearestSampler(), output.texture, output.format, "present"); !r)
-        {
-            return r;
-        }
-    }
-    if (frameGenMode_ != nullptr)
-    {
-        FrameGenerationInput input;
-        input.currentColor = sceneTarget_.color(0);
-        input.previousColor = previous;
-        input.depth = sceneTarget_.depth();
-        input.motionVectors = (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1) ? sceneTarget_.color(1) : rhi::TextureHandle{};
-        input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
-        input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
-        input.jitter = currentJitter_;
-        input.deltaTimeSeconds = deltaTime_;
-        input.resetHistory = resetHistory;
-        FrameGenerationOutput out;
-        if (auto r = frameGenMode_->generateFrame(context, input, out); !r)
-        {
-            return r;
-        }
-        generatedFrame_ = out.generatedFrame;
-    }
-    if (history)
-    {
-        if (auto r = blit_->copy(*encoder_, sceneTarget_.color(0), blit_->nearestSampler(), historyTarget_.color(0), rhi::Format::kRGBA8Unorm, "history");
-            !r)
-        {
-            return r;
-        }
-        historyValid_ = true;
-        resetHistoryNextFrame_ = false; // la demande de réinitialisation a été transmise avec un historique neuf
-    }
+    rhi::CommandEncoder &encoder = *encoder_;
     encoder_ = nullptr;
-    return {};
+    // Les dessins enregistrés ne survivent pas à l'image, qu'elle réussisse ou non.
+    struct ClearDraws
+    {
+        SceneRenderer &self;
+        ~ClearDraws()
+        {
+            self.draws_.clear();
+            self.debugVertices_.clear();
+        }
+    } clearDraws{*this};
+
+    if (auto r = rebuildFrameGroup(activeLights()); !r)
+    {
+        return r;
+    }
+    if (auto r = uploadDebugLines(); !r)
+    {
+        return r;
+    }
+    if (auto r = updateFrameData(); !r)
+    {
+        return r;
+    }
+    if (auto r = buildGraph(output); !r)
+    {
+        return r;
+    }
+    return graph_.execute(encoder);
 }
 
 core::Result<> SceneRenderer::saveColorPng(const std::filesystem::path &path) const
