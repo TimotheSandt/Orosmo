@@ -119,9 +119,6 @@ ifeq ($(_ENGINE_MK_FOUND),)
     GEN_CPP_SOURCES      :=
     GEN_REDIRECT_SOURCES :=
 else
-    # Modules du dépôt (world, terrain_renderer) : liés seulement si le SDK les contient (SDK synchronisé du dépôt) ; un projet
-    # créé depuis une release (SDK générique) n'en a pas et ne lie rien de plus.
-    ENGINE_EXTRA_MODULES ?= $(if $(wildcard $(ENGINE_DIR)/includes/orosmo/world),world) $(if $(wildcard $(ENGINE_DIR)/includes/orosmo/renderer/terrain_renderer.hpp),terrain_renderer)
     include $(_ENGINE_MK)
 endif
 

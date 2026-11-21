@@ -23,7 +23,6 @@ orosmo-pkg-<platform>/
   res/fonts, res/themes — default font and the dark/light themes of orosmo::ui
   examples/
     minimal/         — the smallest program linked to the engine (orosmo::core tasks + reflection, no window): make -C examples/minimal
-    ui_gallery/      — every widget, layout, event and theme of orosmo::ui: make -C examples/ui_gallery
   vcpkg.json         — third-party dependencies (make install in a project created by `orosmo init`)
   .gitignore, README.md
 ```
@@ -152,7 +151,7 @@ Recommended workflows:
 
 ## Examples and resources
 
-Both examples build from this package alone: `ENGINE_DIR` defaults to the package root when they sit in `examples/`.
+The `examples/minimal` example builds from this package alone (`ENGINE_DIR` defaults to the package root when it sits in `examples/`). For a full 3D + UI showcase, see `apps/demo/` in the Orosmo repository.
 A program that renders needs the RHI shaders and, for `orosmo::ui`, a font and a theme at run time: the examples copy
 `shaders/rhi`, `res/fonts` and `res/themes` into `bin/res/`. The template project created by `orosmo init` does the same.
 

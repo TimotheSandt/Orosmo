@@ -196,6 +196,8 @@ Objectif : garder une release cœur 100 % générique par défaut, tout en renda
 - **MOD-03 — Intégration CLI et build (`orosmo` + `engine.mk`)** : commandes `orosmo addon list|add|remove|update`, où `add` accepte un **fichier local, un dossier ou une URL** (le nom d'un registre vient en M12) ; installation dans `orosmo/addons/<nom>/` ; découverte et liaison automatiques par `engine.mk` (chemins `-I`, archives `.a`, copie des shaders/ressources, dépendances vcpkg propres au module) ; verrou des versions installées (`orosmo.lock`).
 - **MOD-04 — Preuve de bout en bout (module pilote)** : empaqueter un module pilote via `MOD-01..03` et prouver en CI qu'un projet créé avec `orosmo init` reste 100 % générique par défaut, puis compile et s'exécute avec le module après `orosmo addon add`, sans modifier le cœur du moteur. Candidat naturel : le monde procédural retiré du cœur (branche `archive/procedural-world`), qui devient ainsi le premier addon.
 
+- **MOD-09 — Modèles de démarrage multiples** (A40) : `orosmo init --template minimal|starter|demo|<nom>` ; l'utilisateur peut enregistrer un de ses projets comme modèle par défaut.
+
 **Démo** : `orosmo init mygame` produit un projet générique ; `orosmo addon add ./mon-addon.zip` installe le module, `make debug` lie automatiquement ses archives, shaders et ressources sans édition manuelle du `Makefile`.
 **Terminé** : manifeste spécifié et validé par tests, les deux modes (`bundled` et `addon`) vérifiés en CI de bout en bout, guide `docs/MODULES_AND_ADDONS.md` écrit, zéro régression sur la release cœur générique.
 

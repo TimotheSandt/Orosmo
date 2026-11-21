@@ -1,18 +1,22 @@
-// Galerie de l'interface : chaque composant, conteneur, modificateur et événement du langage (docs/UI_LANGUAGE.md), sur un
-// état C++ (gallery_state.hpp). La vue décrit ; la logique est en C++ ; l'apparence vient du thème (res/themes).
+// Unified Orosmo demo UI: live 3D scene controls, engine actions, and complete orosmo::ui showcase.
 import "orosmo/ui"
-import "gallery_state.hpp"
+import "UI/demo_ui_state.hpp"
+import "UI/performance_stats.hpp"
 
-view Gallery {
-    @Mutable var state: GalleryState
+view DemoView {
+    @Mutable var state: DemoUiState
+    @Observed var stats: PerformanceStats
     let sideWidth = 300
 
     Overlay {
         VBox {
-        // ── Barre de menus (UI-03) : survoler un autre titre pendant qu'un menu est ouvert passe à lui ──
+        // ── Menu bar ──
         MenuBar {
             Menu("File") {
                 MenuItem("Open dialog...", shortcut: "Ctrl+O").onClick(state.openDialog).id("menuDialog")
+                MenuItem("Save config JSON").onClick(state.saveConfigJson)
+                MenuItem("Load config JSON").onClick(state.loadConfigJson)
+                MenuItem("Capture PNG").onClick(state.requestCapture)
                 Menu("Notify") {
                     MenuItem("Information", shortcut: "Ctrl+I").onClick(state.notifyInfo)
                     MenuItem("Success").onClick(state.notifySuccess)
@@ -21,32 +25,43 @@ view Gallery {
                 }
                 Separator()
                 MenuItem("Clear the log", shortcut: "Ctrl+L").onClick(state.clearLog)
+                Separator()
+                MenuItem("Quit", shortcut: "Ctrl+Q").onClick(state.requestQuit).id("menuQuit")
             }
             .id("menuFile")
             Menu("View") {
-                MenuItem("Player on the minimap", checked: $state.showPlayer).id("menuPlayer")
-                MenuItem("Enabled", checked: $state.enabled)
+                MenuItem("Resume 3D (Esc)").onClick(state.requestCloseUi)
+                MenuItem("Animate scene", checked: $state.scene.animate)
+                MenuItem("Wireframe", checked: $state.scene.wireframe)
+                MenuItem("Debug draw", checked: $state.scene.debugDraw)
+                MenuItem("Show marker", checked: $state.showMarker)
+            }
+            Menu("Engine") {
+                MenuItem("Run 10k tasks").onClick(state.runTaskBenchmark)
+                MenuItem("Reset camera").onClick(state.requestResetCamera)
             }
             Menu("Help") {
-                MenuItem("About the gallery").onClick(state.openDialog)
+                MenuItem("About Orosmo").onClick(state.openDialog)
             }
         }
         .id("menuBar")
+
         HBox {
-            // ── Colonne de gauche : présentation, thème, journal des événements ──
+            // ── Left sidebar: controls, theme, event log, live frame-time plot ──
             Panel {
-                Label("UI gallery").variant("title")
-                Label("orosmo::ui + .cui language").variant("caption")
+                Label("Orosmo Demo").variant("title")
+                Label("3D scene + orosmo::ui showcase").variant("caption")
+                HBox {
+                    Button("Resume 3D (Esc)").onClick(state.requestCloseUi).width(.fill).id("resumeButton")
+                    Button("Quit").onClick(state.requestQuit).style(background: "#c0392b", foreground: "#ffffff").id("quitButton")
+                }
                 Separator()
                 Label("Theme").variant("caption")
                 Dropdown(options: state.themes(), selected: $state.theme).onChange(state.applyTheme).id("theme")
-                    .tooltip("dark, light, or framed (nine-slice images). Edit the themes next to the binary (bin/res/themes/*.json, or --res DIR): reloaded live")
-                Label("Tab / Shift+Tab: move the focus").variant("caption")
-                Label("Enter / Space: activate").variant("caption")
-                Label("Right click on a slider: default value").variant("caption")
-                Label("Hover a widget: tooltip").variant("caption")
-                Label("Menus: Tab to File, then arrows, Enter, Escape").variant("caption")
-                Label("Shortcuts: Ctrl+O, Ctrl+I, Ctrl+L (F5: Widgets)").variant("caption")
+                    .tooltip("dark, light, or framed (nine-slice images). Themes reload live when edited.")
+                Label("Esc: toggle 3D / UI | Tab: focus").variant("caption")
+                Label("Right click slider: default | Hover: tooltip").variant("caption")
+                Label("Shortcuts: Ctrl+O, Ctrl+I, Ctrl+L, Ctrl+Q").variant("caption")
                 Separator()
                 HBox {
                     Label("Events").variant("caption").width(.fill)
@@ -61,15 +76,37 @@ view Gallery {
                 Label("\(state.logLine(6))")
                 Label("\(state.logLine(7))")
                 Separator()
-                Label("Live plot (re-read every frame)").variant("caption")
-                Plot(values: state.wave()).height(60).tooltip("Plot: bars of a sequence of numbers").id("plot")
+                Label("Frame time history (ms)").variant("caption")
+                Plot(values: state.frameHistory()).height(60).tooltip("Plot: live frame time bars (ms)").id("plot")
             }
             .width(sideWidth)
             .height(.fill)
 
-            // ── Pages ──
+            // ── Main tabbed workspace ──
             Panel {
                 Tabs(selected: $state.tab) {
+                    Page("Scene") {
+                        VBox {
+                            Label("Engine: \(state.deviceInfo)").variant("caption").id("deviceInfo")
+                            Label("FPS: \(stats.shown.fps) | Render: \(stats.shown.renderMs) ms | Scene: \(stats.shown.renderSceneMs) ms | UI: \(stats.shown.uiUpscaleMs) ms")
+                                .variant("caption").id("sceneStats")
+                            HBox {
+                                Button("Reset camera").onClick(state.requestResetCamera).id("resetCamera")
+                                Button("Run 10k tasks").onClick(state.runTaskBenchmark).id("runTasks")
+                                Button("Save JSON").onClick(state.saveConfigJson).id("saveConfig")
+                                Button("Load JSON").onClick(state.loadConfigJson).id("loadConfig")
+                                Button("Capture PNG").onClick(state.requestCapture).id("capturePng")
+                            }
+                            Label("Tasks: \(state.taskBenchmarkResult)").variant("caption").id("taskStatus")
+                            Label("Config: \(state.configStatus)").variant("caption").id("configStatus")
+                            Separator()
+                            Label("Scene parameters (reflected C++ struct -> ParamPanel)").variant("caption")
+                            ScrollView {
+                                ParamPanel($state.scene).onChange(state.changed).id("params")
+                            }
+                            .height(.fill)
+                        }
+                    }
                     Page("Widgets") {
                         ScrollView {
                             Grid(2) {
@@ -79,7 +116,7 @@ view Gallery {
                                         .tooltip("onClick, onHover and onFocus name C++ functions; F5 clicks it (.shortcut)")
                                     Button("Submit").enabled(state.canSubmit()).onClick(state.clicked).id("submit")
                                         .tooltip(".enabled(expression): needs a name and 'Enabled'")
-                                    Button("Named action").onClick(galleryAction).id("action")
+                                    Button("Named action").onClick(demoAction).id("action")
                                         .tooltip("an event naming a function that is not a field: looked up in ui.actions()")
                                 }
                                 Label("Checkbox")
@@ -97,7 +134,7 @@ view Gallery {
                                 TextField($state.name).onChange(state.changed).width(.fill).id("name")
                                     .tooltip("Enter or losing the focus commits; Escape cancels")
                                 Label("Number field")
-                                NumberField($state.seed, integer: true, min: 0, max: 4294967295).onChange(state.changed).width(.fill).id("seed")
+                                NumberField($state.sampleId, integer: true, min: 0, max: 4294967295).onChange(state.changed).width(.fill).id("sampleId")
                                     .tooltip("an invalid or out-of-range entry is refused")
                                 Label("Color picker")
                                 ColorPicker($state.tint, alpha: true).onChange(state.changed).width(.fill).id("tint")
@@ -127,10 +164,10 @@ view Gallery {
                                     RadioButton("High", value: 2, selected: $state.detail).onChange(state.changed).id("detailHigh")
                                 }
                                 Label("Range slider")
-                                RangeSlider($state.heightLow, $state.heightHigh, min: 0, max: 100, step: 1).onChange(state.changed).width(.fill).id("heights")
-                                    .tooltip("two handles that cannot cross; they reshape the minimap of the Windows page")
+                                RangeSlider($state.rangeLow, $state.rangeHigh, min: 0, max: 100, step: 1).onChange(state.changed).width(.fill).id("rangeSlider")
+                                    .tooltip("two handles that cannot cross; they reshape the live preview on the Windows page")
                                 Label("Spin box")
-                                SpinBox($state.octaves, min: 1, max: 8).onChange(state.changed).width(160).id("octaves")
+                                SpinBox($state.steps, min: 1, max: 8).onChange(state.changed).width(160).id("steps")
                                     .tooltip("- / + buttons, the wheel, or type a number")
                                 Label("Text field")
                                 TextField($state.name).width(.fill).id("name2")
@@ -157,50 +194,55 @@ view Gallery {
                                     }
                                 }
                                 Label("Gradient editor: click the bar to add a stop, drag to move, right click to remove").variant("caption")
-                                GradientEditor($state.terrainColors).onChange(state.changed).width(.fill).id("gradient")
+                                GradientEditor($state.paletteGradient).onChange(state.changed).width(.fill).id("gradient")
                                 Label("Curve editor: click to add a point, drag to move, right click to remove").variant("caption")
-                                CurveEditor($state.heightCurve).onChange(state.changed).width(260).height(180).id("curve")
-                                Label("The gradient colours the minimap; the curve reshapes its heights (Windows page)").variant("caption")
+                                CurveEditor($state.responseCurve).onChange(state.changed).width(260).height(180).id("curve")
+                                Label("The gradient colours the live preview; the curve reshapes its intensity (Windows page)").variant("caption")
                             }
                             .width(.fill)
                         }
                         .height(.fill)
                     }
                     Page("Windows") {
-                        VBox {
-                            Label("Modal dialog: Escape, its close button or a click outside closes it").variant("caption")
-                            Button("Open the dialog").onClick(state.openDialog).id("openDialog")
-                            Label("Context menu: right click in the box below").variant("caption")
-                            Panel {
-                                Label("Right click here")
-                                ContextMenu {
-                                    MenuItem("Copy", shortcut: "Ctrl+C").onClick(state.clicked).id("ctxCopy")
-                                    MenuItem("Paste", shortcut: "Ctrl+V").onClick(state.clicked).id("ctxPaste")
-                                    Separator()
-                                    Menu("Notify") {
-                                        MenuItem("Information").onClick(state.notifyInfo)
-                                        MenuItem("Error").onClick(state.notifyError)
+                        ScrollView {
+                            VBox {
+                                Label("Modal dialog: Escape, its close button or a click outside closes it").variant("caption")
+                                Button("Open the dialog").onClick(state.openDialog).id("openDialog")
+                                Label("Context menu: right click in the box below").variant("caption")
+                                Panel {
+                                    Label("Right click here")
+                                    ContextMenu {
+                                        MenuItem("Copy", shortcut: "Ctrl+C").onClick(state.clicked).id("ctxCopy")
+                                        MenuItem("Paste", shortcut: "Ctrl+V").onClick(state.clicked).id("ctxPaste")
+                                        Separator()
+                                        Menu("Notify") {
+                                            MenuItem("Information").onClick(state.notifyInfo)
+                                            MenuItem("Error").onClick(state.notifyError)
+                                        }
                                     }
                                 }
+                                .height(60)
+                                .id("contextArea")
+                                Label("Notifications: at most 4 or 300 px; the oldest go; a click closes one").variant("caption")
+                                HBox {
+                                    Button("Information").onClick(state.notifyInfo).id("notifyInfo")
+                                    Button("Success").onClick(state.notifySuccess).id("notifySuccess")
+                                    Button("Warning").onClick(state.notifyWarning).id("notifyWarning")
+                                    Button("Error").onClick(state.notifyError).id("notifyError")
+                                }
+                                Label("Live images updated every frame (DynamicImage): geometric preview and camera compass").variant("caption")
+                                HBox {
+                                    ImageView(state.previewImage).width(192).height(192).id("minimap")
+                                        .tooltip("geometric pattern -> response curve -> palette gradient (Color page); range and steps (Controls page)")
+                                    ImageView(state.compass).width(96).height(96).id("compass")
+                                        .tooltip("live compass needle tracking the 3D camera yaw")
+                                    ImageView(state.previewImage).fit(.cover).width(192).height(64).id("minimapCover")
+                                        .tooltip(".fit(.cover): fills the widget, the edges are cut")
+                                }
                             }
-                            .height(60)
-                            .id("contextArea")
-                            Label("Notifications: at most 4 or 300 px; the oldest go; a click closes one").variant("caption")
-                            HBox {
-                                Button("Information").onClick(state.notifyInfo).id("notifyInfo")
-                                Button("Success").onClick(state.notifySuccess).id("notifySuccess")
-                                Button("Warning").onClick(state.notifyWarning).id("notifyWarning")
-                                Button("Error").onClick(state.notifyError).id("notifyError")
-                            }
-                            Label("Images made by the game every frame (DynamicImage): a minimap and a compass").variant("caption")
-                            HBox {
-                                ImageView(state.minimap).width(192).height(192).id("minimap")
-                                    .tooltip("heights -> curve -> gradient (Color page); range slider and spin box (Controls page)")
-                                ImageView(state.compass).width(96).height(96).id("compass")
-                                ImageView(state.minimap).fit(.cover).width(192).height(64).id("minimapCover")
-                                    .tooltip(".fit(.cover): fills the widget, the edges are cut")
-                            }
+                            .width(.fill)
                         }
+                        .height(.fill)
                     }
                     Page("Layout") {
                         VBox {
@@ -270,41 +312,36 @@ view Gallery {
                             .height(80)
                         }
                     }
-                    Page("Parameters") {
-                        VBox {
-                            Label("ParamPanel: a reflected C++ structure, no interface code (UI-12)").variant("caption")
-                            ScrollView {
-                                ParamPanel($state.params).onChange(state.changed).id("params")
-                            }
-                            .height(.fill)
-                        }
-                    }
                     Page("Themes") {
-                        VBox {
-                            Label("Every colour and size comes from the theme; .style(...) overrides one property locally").variant("caption")
-                            HBox {
-                                Button("Theme button")
-                                Button("accent").style(background: "color.primary", foreground: "color.onPrimary")
-                                Button("#c0392b, radius 12").style(background: "#c0392b", radius: 12)
-                                Button("bigger text").style(fontSize: 22)
-                            }
-                            Label("Nine-slice images: fixed corners; edges and centre stretched, repeated or removed").variant("caption")
-                            HBox {
-                                Button("frame.button").style(image: "frame.button", background: "#00000000").height(48)
-                                Button("tall and wide").style(image: "frame.button", background: "#00000000").width(220).height(70)
-                                Panel {
-                                    Label("frame.border: centre removed")
+                        ScrollView {
+                            VBox {
+                                Label("Every colour and size comes from the theme; .style(...) overrides one property locally").variant("caption")
+                                HBox {
+                                    Button("Theme button")
+                                    Button("accent").style(background: "color.primary", foreground: "color.onPrimary")
+                                    Button("#c0392b, radius 12").style(background: "#c0392b", radius: 12)
+                                    Button("bigger text").style(fontSize: 22)
                                 }
-                                .style(image: "frame.border", background: "#00000000")
-                                .width(240)
+                                Label("Nine-slice images: fixed corners; edges and centre stretched, repeated or removed").variant("caption")
+                                HBox {
+                                    Button("frame.button").style(image: "frame.button", background: "#00000000").height(48)
+                                    Button("tall and wide").style(image: "frame.button", background: "#00000000").width(220).height(70)
+                                    Panel {
+                                        Label("frame.border: centre removed")
+                                    }
+                                    .style(image: "frame.border", background: "#00000000")
+                                    .width(240)
+                                }
+                                Label("Text: UTF-8 with accents and typographic punctuation").variant("caption")
+                                Label("Été, déjà, garçon, œuvre, « guillemets » – tiret… 12 € ; Ñandú, Łódź, Ærøskøbing")
+                                Label("Variants: the same widget with another theme style").variant("caption")
+                                Label("variant(\"title\")").variant("title")
+                                Label("variant(\"caption\")").variant("caption")
+                                Label("Shadows, borders and rounded corners: the panels around").variant("caption")
                             }
-                            Label("Text: UTF-8 with accents and typographic punctuation").variant("caption")
-                            Label("Été, déjà, garçon, œuvre, « guillemets » – tiret… 12 € ; Ñandú, Łódź, Ærøskøbing")
-                            Label("Variants: the same widget with another theme style").variant("caption")
-                            Label("variant(\"title\")").variant("title")
-                            Label("variant(\"caption\")").variant("caption")
-                            Label("Shadows, borders and rounded corners: the panels around").variant("caption")
+                            .width(.fill)
                         }
+                        .height(.fill)
                     }
                 }
                 .height(.fill)
@@ -313,10 +350,11 @@ view Gallery {
             .height(.fill)
         }
         .height(.fill)
-        // ── Fenêtre modale : hors des pages (File > Open dialog l'ouvre depuis n'importe quel onglet) ; dans la colonne
-        // principale, où elle ne prend aucune place (dans l'Overlay, elle serait étirée et prendrait les clics) ──
-        Dialog("Settings", open: $state.dialogOpen) {
-            Label("A modal window: the rest of the interface receives nothing.")
+
+        // ── Modal dialog (outside Tabs so File > Open dialog / Help > About Orosmo work from any tab) ──
+        Dialog("About Orosmo", open: $state.dialogOpen) {
+            Label("Orosmo Engine unified demo (3D scene + orosmo::ui).")
+            Label("Device: \(state.deviceInfo)").variant("caption")
             TextField($state.name).width(.fill)
             Checkbox("Enabled", checked: $state.enabled)
             HBox {
@@ -330,8 +368,8 @@ view Gallery {
         .margin(12)
         .height(.fill)
 
-        // ── Notifications (Ui::notify) : au plus 4, et au plus 300 px de haut ; les plus anciennes partent ──
+        // ── Toast notifications (Ui::notify) ──
         Notifications(max: 4, maxHeight: 300, width: 280).align(.end).margin(20).id("toasts")
     }
-    .style(background: "color.background")
+    .style(background: "color.backdrop")
 }

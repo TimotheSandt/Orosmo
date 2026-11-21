@@ -8,7 +8,7 @@ PerformanceSample samplePerformance(double averageFps)
     PerformanceSample s;
     s.fps = averageFps;
     s.renderMs = Profiler::GetAverageTimeMs("Render");
-    s.renderWorldMs = Profiler::GetAverageTimeMs("RenderWorld");
+    s.renderSceneMs = Profiler::GetAverageTimeMs("RenderScene");
     s.upscaleMs = Profiler::GetAverageTimeMs("Upscale");
     s.uiUpscaleMs = Profiler::GetAverageTimeMs("UIUpscale");
     s.swapBuffersMs = Profiler::GetAverageTimeMs("SwapBuffers");

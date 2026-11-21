@@ -1,13 +1,13 @@
 #include "Game/Game.h"
 #include "launch_options.hpp"
+
 #include <orosmo/core/log.hpp>
 #include <orosmo/core/paths.hpp>
 #include <orosmo/platform/window.hpp>
 
-#include <random>
 #include <cstdlib>
-#include <filesystem>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -59,8 +59,7 @@ int main(int argc, char **argv)
             launchOptions.captureDirectory.empty() ? std::string() : (launchDirectory / launchOptions.captureDirectory).string();
 
         orosmo::rhi::Backend selectedApi = launchOptions.api;
-        const bool shouldPromptForApi = launchOptions.chooseApiInteractively;
-        if (shouldPromptForApi && !demo::promptForBackend(std::cin, std::cout, selectedApi))
+        if (launchOptions.chooseApiInteractively && !demo::promptForBackend(std::cin, std::cout, selectedApi))
         {
             LOG_ERROR(1, "Interactive graphics API selection failed");
             demo::printUsage(std::cout);
@@ -82,7 +81,8 @@ int main(int argc, char **argv)
             GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"),   GET_RESOURCE_PATH("shader/rhi/mesh.vert"),     GET_RESOURCE_PATH("shader/rhi/mesh.frag"),
             GET_RESOURCE_PATH("shader/rhi/blit.vert"),       GET_RESOURCE_PATH("shader/rhi/blit.frag"),     GET_RESOURCE_PATH("shader/rhi/ui_rect.vert"),
             GET_RESOURCE_PATH("shader/rhi/ui_rect.frag"),    GET_RESOURCE_PATH("shader/rhi/ui_glyph.vert"), GET_RESOURCE_PATH("shader/rhi/ui_glyph.frag"),
-            GET_RESOURCE_PATH("shader/rhi/ui_layer.vert"),   GET_RESOURCE_PATH("shader/rhi/ui_layer.frag")};
+            GET_RESOURCE_PATH("shader/rhi/ui_image.vert"),   GET_RESOURCE_PATH("shader/rhi/ui_image.frag"), GET_RESOURCE_PATH("shader/rhi/ui_layer.vert"),
+            GET_RESOURCE_PATH("shader/rhi/ui_layer.frag")};
 
         if (!orosmo::core::validateAssets(requiredAssets))
         {
@@ -92,7 +92,7 @@ int main(int argc, char **argv)
 
         int exitCode = EXIT_SUCCESS;
         {
-            auto created = Game::create(launchOptions.headless);
+            auto created = Game::create(launchOptions.headless, launchOptions.width, launchOptions.height, selectedApi);
             if (!created)
             {
                 LOG_ERROR(1, created.error().message);
@@ -102,30 +102,15 @@ int main(int argc, char **argv)
                 return EXIT_FAILURE;
             }
             Game &game = **created;
-            LOG_INFO("Starting game with graphics API: ", demo::backendDisplayName(selectedApi));
-            // The seed is chosen HERE, explicitly (rule 9: no clock inside the generation). Captures use seed 1 unless
-            // given; otherwise a random seed is drawn and logged so that the terrain can be replayed with --seed N.
-            std::uint32_t terrainSeed = 1u;
-            if (launchOptions.headless)
-            {
-                game.enableCapture(captureDirectory, launchOptions.captureFrames); // sans dossier : seulement le nombre d'images
-                terrainSeed = launchOptions.seed.value_or(1u);
-            }
-            else if (!launchOptions.captureDirectory.empty())
+            LOG_INFO("Starting demo with graphics API: ", demo::backendDisplayName(selectedApi));
+            if (launchOptions.headless || !launchOptions.captureDirectory.empty())
             {
                 game.enableCapture(captureDirectory, launchOptions.captureFrames);
-                terrainSeed = launchOptions.seed.value_or(1u);
             }
-            else if (launchOptions.seed.has_value())
-            {
-                terrainSeed = *launchOptions.seed;
-            }
-            else
-            {
-                terrainSeed = std::random_device{}() & 0x7fffffffu;
-                LOG_INFO("Random terrain seed: ", terrainSeed, " (replay it with --seed ", terrainSeed, ")");
-            }
-            game.setSeed(terrainSeed);
+            game.setUiMode(launchOptions.uiMode);
+            game.setInitialTheme(launchOptions.theme);
+            game.setInitialTab(launchOptions.tab);
+            game.setCaptureInteraction(launchOptions.hoverId, launchOptions.clickId);
             game.setVSync(launchOptions.vsync);
             LOG_TRACE("Game created");
             if (auto ready = game.init(); !ready)

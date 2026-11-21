@@ -9,10 +9,11 @@ view PerformanceView {
     Panel {
         Label("FPS: \(stats.shown.fps)").variant("hudTitle").id("fps")
         Label("Render: \(stats.shown.renderMs) ms").variant("hudMetric").id("render")
-        Label("Render World: \(stats.shown.renderWorldMs) ms").variant("hudMetric").id("renderWorld")
+        Label("Render Scene: \(stats.shown.renderSceneMs) ms").variant("hudMetric").id("renderScene")
         Label("Upscale: \(stats.shown.upscaleMs) ms").variant("hudMetric").id("upscale")
         Label("UI Upscale: \(stats.shown.uiUpscaleMs) ms").variant("hudMetric").id("uiUpscale")
         Label("Swap Buffers: \(stats.shown.swapBuffersMs) ms").variant("hudMetric").id("swapBuffers")
+        Label("Esc: Open UI").variant("hudMetric").id("hint")
     }
     .variant("hud")
     .width(260)

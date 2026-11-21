@@ -90,3 +90,20 @@ fenêtre, chaque image attend que toutes les tuiles visibles soient générées 
 
 `reference/ui-opengl-fixedtext-1280x720.png` n'est plus vérifiée : son test (`tests/renderer/parity_tests.cpp`, parité de
 l'interface héritée) est supprimé. Le fichier reste pour l'historique (`docs/releases/M2-B5.md`, `M3.md`).
+
+
+## Mise à jour du 2026-11-21 : démo unique (diorama 3D statique, A37)
+
+Le module procédural est archivé dans `archive/procedural-world` et remplacé par une unique démo générique (`apps/demo/`, diorama
+3D statique en C++ + vitrine complète d'`orosmo::ui`). `reference/scene-opengl-seed1-1280x720.png` est remplacée par
+`reference/scene-opengl-demo-1280x720.png`.
+
+| Élément | Valeur |
+| --- | --- |
+| Commande | `LIBGL_ALWAYS_SOFTWARE=1 apps/demo/bin/debug/main --api opengl --headless --ui off --capture <dossier> --capture-frames 5` |
+| Rendu | Mesa llvmpipe (OpenGL 4.6 core, Mesa 26.1.6 ; identique à la CI Xvfb) ; GPU local testé : Intel Arc Graphics (MTL), Mesa 26.1.6 |
+| sha256 | `c020d4a1b89b4d079e8946afeef5ae8c2028c628a15394ea2ad28f7fb05bcb7e` |
+
+Vérifié : deux captures consécutives sur llvmpipe produisent exactement le même sha256 (`c020d4a1b89b4d079e8946afeef5ae8c2028c628a15394ea2ad28f7fb05bcb7e`), deux captures consécutives sur
+GPU produisent exactement le même sha256 (`8791b770970b6d3144f92a8ea8ccb0893c329c681ce45dc397b04e2bbd3f3b74`), la capture fenêtrée est identique pixel pour pixel à la capture `--headless`
+(0 pixel d'écart), et la comparaison llvmpipe vs GPU reste dans la tolérance CI (`--tolerance 8 --max-diff-percent 2`).

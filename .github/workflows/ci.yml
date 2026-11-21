@@ -170,9 +170,6 @@ jobs:
       - name: Tests
         run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" demo-test
 
-      - name: terrain-gen determinism (TOOL-02, TEST-03)
-        run: make terrain-gen-check
-
       - name: Interface language compiler (UI-11; cargo test + invalid inputs + C++ errors mapped to the .cui)
         run: make cui-test
 
@@ -185,7 +182,7 @@ jobs:
       - name: "Compare with the reference image (tolerant, other GPU and driver)"
         continue-on-error: true
         run: |
-          python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720.png ci-capture/scene.png \
+          python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-demo-1280x720.png ci-capture/scene.png \
             --tolerance 8 --max-diff-percent 2 --diff-out ci-capture/diff.png
 
       - name: Headless capture (PLAT-04, no window) identical to the windowed one
@@ -197,11 +194,8 @@ jobs:
       - name: Tool tests (Python)
         run: python3 -m unittest discover -s tests/tools
 
-      - name: Terrain viewer (TOOL-01; headless capture with the dark and the light theme)
-        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make viewer-capture
-
-      - name: UI gallery (every widget, layout, theme; headless captures)
-        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make gallery-capture
+      - name: Demo captures (HUD, every UI tab, themes, popups; headless)
+        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-capture
 
       - name: End to end from the package (BLD-02; orosmo init, build, run, examples)
         run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" e2e-init
@@ -223,8 +217,7 @@ jobs:
           name: capture-linux-opengl
           path: |
             ci-capture/*.png
-            build/viewer-capture/*/viewer.png
-            build/gallery-capture/*/gallery.png
+            build/demo-capture/*/*.png
           retention-days: 7
 
   # ── Linux arm64 (ubuntu-24.04-arm) ────────────────────────────────────────────────────────
@@ -309,9 +302,6 @@ jobs:
 
       - name: Tests
         run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" demo-test
-
-      - name: terrain-gen determinism (TOOL-02, TEST-03)
-        run: make -j"$(nproc)" terrain-gen-check
 
       - name: ccache statistics
         if: always()
@@ -504,7 +494,6 @@ jobs:
         run: |
           make -j3 all-debug VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
           make -j3 demo-test VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          make -j3 terrain-gen-check VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       - name: End to end from the package (Unix)
         if: runner.os != 'Windows'
@@ -518,7 +507,6 @@ jobs:
           if [ -d /mingw64/lib/ccache/bin ]; then export PATH="/mingw64/lib/ccache/bin:$PATH"; fi
           mingw32-make -j3 all-debug VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
           mingw32-make -j3 demo-test VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          mingw32-make -j3 terrain-gen-check VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       - name: End to end from the package (Windows)
         if: runner.os == 'Windows'

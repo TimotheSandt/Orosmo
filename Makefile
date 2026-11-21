@@ -105,8 +105,8 @@ endif
 endif
 endif
 
-# In-repo layout: demo resources, shaders, tests and in-repo procedural modules live at the repository root.
-DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico ENGINE_EXTRA_MODULES="world terrain_renderer"
+# In-repo layout: demo resources, shaders and tests live at the repository root.
+DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico
 
 # ── vcpkg ─────────────────────────────────────────────────────────────────────
 .PHONY: install-deps install-deps-demo install-deps-all
@@ -181,7 +181,7 @@ demo-test:
 
 # Tests sans GPU ni fenêtre (unitaires) / seulement ceux qui en demandent un (intégration graphique : contexte OpenGL hors écran,
 # fenêtre). `make demo-test` exécute les deux. ENGINE_TEST_REQUIRE_GPU=1 fait échouer (au lieu d'ignorer) un test GPU sans pilote.
-GPU_TEST_SUITES := rhi/opengl*,rhi/vulkan*,rhi/backend*,renderer/*,platform/window,world/gpu,world/render,ui/render
+GPU_TEST_SUITES := rhi/opengl*,rhi/vulkan*,rhi/backend*,renderer/*,platform/window,ui/render
 .PHONY: demo-test-unit demo-test-gpu
 demo-test-unit:
 	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
@@ -192,51 +192,28 @@ demo-test-gpu:
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
 	$(MAKE) -C apps/demo $(DEMO_ARGS) TEST_ARGS='--test-suite=$(GPU_TEST_SUITES)' test
 
-# ── TOOL-01 : terrain-viewer ──
-#   make viewer           construit apps/terrain_viewer/bin/terrain-viewer (et copie ses ressources dans bin/res)
-#   make viewer-run       lance le visualiseur (ARGS="--seed 42 --preset mountains --theme light")
-#   make viewer-capture   images sans fenêtre, thèmes sombre, clair et à cadres : build/viewer-capture/{dark,light,framed}/viewer.png
-VIEWER := apps/terrain_viewer/bin/terrain-viewer$(if $(filter Windows_NT,$(OS)),.exe)
-.PHONY: viewer viewer-run viewer-capture
-viewer:
-	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
-	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
-	$(MAKE) -C apps/terrain_viewer BUILD_TYPE=release
-viewer-run: viewer
-	./$(VIEWER) $(ARGS)
-viewer-capture: viewer
-	./$(VIEWER) --headless --seed 42 --preset mountains --theme dark --capture build/viewer-capture/dark --capture-frames 5
-	./$(VIEWER) --headless --seed 42 --preset mountains --theme light --capture build/viewer-capture/light --capture-frames 5
-	./$(VIEWER) --headless --seed 42 --preset mountains --theme framed --capture build/viewer-capture/framed --capture-frames 5
-	python3 tools/compare_png.py build/viewer-capture/dark/viewer.png build/viewer-capture/light/viewer.png > /dev/null \
-	    && { echo "viewer-capture : les deux thèmes donnent la même image"; exit 1; } || echo "viewer-capture : OK (deux thèmes, deux images)"
-
-# ── Galerie de l'interface (exemple : tous les widgets, conteneurs, événements et thèmes d'orosmo::ui) ──
-#   make gallery-run ARGS="--theme framed"   lance la galerie
-#   make gallery-capture                     images sans fenêtre de chaque onglet : build/gallery-capture/<thème>-<onglet>/gallery.png
-GALLERY := apps/ui_gallery/bin/ui-gallery$(if $(filter Windows_NT,$(OS)),.exe)
-.PHONY: gallery gallery-run gallery-capture
-gallery:
-	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
-	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
-	$(MAKE) -C apps/ui_gallery BUILD_TYPE=release
-gallery-run: gallery
-	./$(GALLERY) $(ARGS)
-gallery-capture: gallery
-	for tab in widgets controls color windows layout parameters themes; do \
-	    ./$(GALLERY) --headless --theme dark --tab $$tab --capture build/gallery-capture/dark-$$tab || exit 1; done
-	./$(GALLERY) --headless --theme light --tab widgets --capture build/gallery-capture/light-widgets
-	./$(GALLERY) --headless --theme dark --tab widgets --click fruit --capture build/gallery-capture/dark-dropdown-open
-	./$(GALLERY) --headless --theme light --tab widgets --hover volume --capture-frames 60 --capture build/gallery-capture/light-tooltip
-	./$(GALLERY) --headless --theme framed --tab themes --capture build/gallery-capture/framed-themes
-	./$(GALLERY) --headless --theme dark --tab windows --click openDialog --capture build/gallery-capture/dark-dialog
-	./$(GALLERY) --headless --theme dark --tab windows --click menuFile --capture build/gallery-capture/dark-menu
-	./$(GALLERY) --headless --theme light --tab windows --click notifyWarning --capture build/gallery-capture/light-notification
+# ── Demo headless captures (HUD, UI tabs, themes, dropdown/tooltip/dialog/menu/notification) ──
+DEMO_BIN := apps/demo/bin/debug/main$(if $(filter Windows_NT,$(OS)),.exe)
+.PHONY: demo-capture
+demo-capture: all-debug
+	./$(DEMO_BIN) --api opengl --headless --ui hud --capture build/demo-capture/hud --capture-frames 5
+	for tab in scene widgets controls color windows layout themes; do \
+	    ./$(DEMO_BIN) --api opengl --headless --ui full --theme dark --tab $$tab --capture build/demo-capture/dark-$$tab --capture-frames 5 || exit 1; done
+	./$(DEMO_BIN) --api opengl --headless --ui full --theme light --tab widgets --capture build/demo-capture/light-widgets --capture-frames 5
+	./$(DEMO_BIN) --api opengl --headless --ui full --theme dark --tab widgets --click fruit --capture build/demo-capture/dark-dropdown-open --capture-frames 5
+	./$(DEMO_BIN) --api opengl --headless --ui full --theme light --tab widgets --hover volume --capture-frames 60 --capture build/demo-capture/light-tooltip
+	./$(DEMO_BIN) --api opengl --headless --ui full --theme framed --tab themes --capture build/demo-capture/framed-themes --capture-frames 5
+	./$(DEMO_BIN) --api opengl --headless --ui full --theme dark --tab windows --click openDialog --capture build/demo-capture/dark-dialog --capture-frames 5
+	./$(DEMO_BIN) --api opengl --headless --ui full --theme dark --tab windows --click menuFile --capture build/demo-capture/dark-menu --capture-frames 5
+	./$(DEMO_BIN) --api opengl --headless --ui full --theme light --tab windows --click notifyWarning --capture build/demo-capture/light-notification --capture-frames 5
+	test -s build/demo-capture/dark-widgets/ui.png
+	test -s build/demo-capture/light-widgets/ui.png
+	python3 tools/compare_png.py build/demo-capture/dark-widgets/ui.png build/demo-capture/light-widgets/ui.png > /dev/null && exit 1 || echo "demo-capture : OK (dark != light)"
 
 # ── BLD-02 : de bout en bout depuis le paquet (sans les sources du moteur) ──
 #   make e2e-init   paquet + outil `orosmo` construits ; `orosmo init --package` d'un projet neuf dans build/e2e/<date>/mygame ;
 #                   vérification que le paquet ne contient aucun module procédural (world, terrain_renderer, shaders terrain) ;
-#                   compilation et lancement sans fenêtre (capture) ; exemples minimal et ui_gallery compilés depuis le paquet.
+#                   compilation et lancement sans fenêtre (capture) ; exemple minimal compilé depuis le paquet.
 #   Chaque lancement a son dossier (rien n'est effacé). Les dépendances vcpkg du dépôt sont reliées au projet (équivalent de
 #   `make install` dans le projet, sans le réseau).
 E2E_RUN      := build/e2e/$(shell date +%Y%m%d-%H%M%S)
@@ -267,10 +244,7 @@ e2e-init:
 	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/minimal
 	$(E2E_RUN)/mygame/orosmo/examples/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
 	grep -q '"sum":524800' $(E2E_RUN)/minimal.txt
-	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/ui_gallery
-	$(E2E_RUN)/mygame/orosmo/examples/ui_gallery/bin/ui-gallery$(E2E_EXE) --headless --capture $(E2E_RUN)/gallery --capture-frames 3
-	test -s $(E2E_RUN)/gallery/gallery.png
-	@echo "e2e-init : OK ($(E2E_RUN) : orosmo init, paquet cœur générique vérifié, compilation, lancement, exemples depuis le paquet)"
+	@echo "e2e-init : OK ($(E2E_RUN) : orosmo init, paquet cœur générique vérifié, compilation, lancement, exemple minimal depuis le paquet)"
 
 # ── UI-11 : tests du compilateur du langage d'interface ──
 #   make cui-test   tests unitaires (cargo test) + entrées invalides de bout en bout (binaire cui : messages fichier:ligne:colonne ;
@@ -281,50 +255,6 @@ cui-test:
 	$(MAKE) -f $(ENGINE_MK) cui-tool
 	cargo test --manifest-path tools/Cargo.toml -p cui -p orosmo
 	python3 tools/check_cui_errors.py --cui $(CUI_BIN) --cases tests/ui/cui_errors --out build/cui-errors --cxx auto
-
-# ── TOOL-02 : terrain-gen (sans fenêtre ni GPU) ──
-#   make terrain-gen         construit apps/terrain_gen/bin/terrain-gen
-#   make terrain-gen-check   déterminisme : deux exports identiques (1 et 4 threads), somme de contrôle de référence, codes de retour
-TERRAIN_GEN := apps/terrain_gen/bin/terrain-gen$(if $(filter Windows_NT,$(OS)),.exe)
-TG_CHECK    := build/terrain-gen-check
-.PHONY: terrain-gen terrain-gen-check
-terrain-gen:
-	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
-	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
-	$(MAKE) -C apps/terrain_gen BUILD_TYPE=release all
-terrain-gen-check: terrain-gen
-	@mkdir -p $(TG_CHECK)
-	./$(TERRAIN_GEN) --seed 42 --size 256 --out $(TG_CHECK)/a.png --threads 1 > $(TG_CHECK)/a.txt
-	./$(TERRAIN_GEN) --seed 42 --size 256 --out $(TG_CHECK)/b.png --threads 4 > $(TG_CHECK)/b.txt
-	cmp $(TG_CHECK)/a.png $(TG_CHECK)/b.png
-	grep -F "$$(cat docs/BASELINE/terrain-gen-seed42-256.txt)" $(TG_CHECK)/a.txt
-	./$(TERRAIN_GEN) --seed 42 --size 64 --out $(TG_CHECK)/t.stl > /dev/null
-	@./$(TERRAIN_GEN) --seed 42 --size 1 --out $(TG_CHECK)/x.png > /dev/null 2>&1; test $$? -eq 1
-	@./$(TERRAIN_GEN) --seed 42 --size 8 --params $(TG_CHECK)/absent.json --out $(TG_CHECK)/y.png > /dev/null 2>&1; test $$? -eq 2
-	@rm -f $(TG_CHECK)/same.png
-	@./$(TERRAIN_GEN) --seed 42 --size 8 --out $(TG_CHECK)/same.png --biomes $(TG_CHECK)/./same.png > /dev/null 2>&1; test $$? -eq 1
-	@test ! -e $(TG_CHECK)/same.png
-	@./$(TERRAIN_GEN) --seed 42 --size 8 --out $(TG_CHECK)/a.png --biomes $(TG_CHECK)/../terrain-gen-check/a.png > /dev/null 2>&1; test $$? -eq 1
-	cmp $(TG_CHECK)/a.png $(TG_CHECK)/b.png
-	@echo "terrain-gen-check : OK (mêmes octets, somme de contrôle de référence, codes de retour, destinations distinctes)"
-
-# ── Core demo (M1): 10 000 tasks, hot-reloaded config, measurements; no window, no graphics ──
-#   make core-demo                     build and run          make core-demo CORE_DEMO_ARGS="--tasks 20000 --trace t.json"
-.PHONY: core-demo
-core-demo:
-	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
-	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
-	$(MAKE) -C apps/core_demo BUILD_TYPE=release all
-	./apps/core_demo/bin/core_demo $(CORE_DEMO_ARGS)
-
-# ── RHI demo (M2 lot A): compute image, MRT render pass, instancing, GPU timestamps, offscreen; writes a PNG ──
-#   make rhi-demo                      build and run          make rhi-demo RHI_DEMO_ARGS="--out /tmp/rhi.png"
-.PHONY: rhi-demo
-rhi-demo:
-	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
-	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
-	$(MAKE) -C apps/rhi_demo BUILD_TYPE=release all
-	./apps/rhi_demo/bin/rhi_demo $(RHI_DEMO_ARGS)
 
 demo-clean:
 	$(MAKE) -C apps/demo $(DEMO_ARGS) clean

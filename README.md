@@ -1,6 +1,6 @@
 # Orosmo
 
-**Orosmo** est un moteur de jeu 3D et 2D en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec une interface décrite dans un langage maison (`.cui`) précompilé en C++. Le premier produit visé est un générateur de terrain et de planètes procédural.
+**Orosmo** est un moteur 3D et 2D générique en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec une interface décrite dans un langage maison (`.cui`) précompilé en C++. *(Note A37 : le code procédural de génération de terrain est archivé dans la branche `archive/procedural-world` et poursuivra sa vie dans un projet séparé / addon M11.)*
 
 > Première release utilisable : M3 (guide : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)). L'architecture évolue encore ;
 > les changements incompatibles sont listés dans [docs/releases/](docs/releases/). Spécification, checklist et plan : [docs/](docs/README.md). Règles de travail : [CLAUDE.md](CLAUDE.md).
@@ -51,23 +51,21 @@ make all-debug
 
 | Commande | Effet |
 | --- | --- |
-| `make run` | Construit si besoin puis lance la démo (`apps/demo/bin/<type>/`) |
+| `make run` | Construit si besoin puis lance la démo unique (`apps/demo/bin/<type>/` ; `Escape` ouvre/ferme l'UI, bouton `Quit` ou `File > Quit` pour quitter) |
+| `make demo-capture` | Capture hors écran de la démo unifiée (scène 3D, thèmes `dark`/`light`/`framed`, onglets UI) |
 | `make demo-test` | Construit et lance les tests (`tests/`, doctest ; filtres : `-ts=<suite>`, `-tc=<cas>`) |
 | `make demo-test SANITIZE=address,undefined` | Idem sous ASan + UBSan (arbre propre : `make fclean` avant) |
 | `make demo-test-unit` / `make demo-test-gpu` | Seulement les tests sans GPU ni fenêtre / seulement l'intégration graphique (contexte OpenGL, fenêtre). `ENGINE_TEST_REQUIRE_GPU=1` : un test graphique sans pilote ni affichage échoue au lieu d'être ignoré |
 | `make check` | Dépôt, couches, isolation des API (y compris GLFW et `<windows.h>`), en-têtes autonomes : **bloquant** (échoue à la première violation, comme la CI) |
-| `main --api opengl --capture <dossier>` | Rend 10 images à 1280x720 (graine 1), écrit `scene.png` (reproductible) et `ui.png` ; OpenGL seulement |
+| `main --api opengl --headless --capture <dossier>` | Rend 10 images à 1280x720 (options : `--ui off|hud|full`, `--theme dark|light|framed`, `--tab scene|widgets|controls|color|windows|layout|themes`, `--size WxH`, `--capture-frames N`, `--hover <id>`, `--click <id>`) ; OpenGL seulement |
 | `python3 tools/compare_png.py A.png B.png` | Compare deux images (tolérance, budget de pixels, image de différence) |
 | `python3 -m unittest discover -s tests/tools` | Tests des outils Python |
 | `make debug` / `make release` | Archives du moteur dans `lib/<type>/` |
 | `make all-debug` / `make all-release` | Moteur → `apps/demo/orosmo/` → démo |
 | `make sync-demo` | Copie le moteur construit dans `apps/demo/orosmo/` |
 | `make dist` / `make engine-tool` | Paquet du moteur / outil `orosmo init` |
-| `make terrain-gen` / `make terrain-gen-check` | Générateur en ligne de commande (TOOL-02) / son déterminisme et ses codes de retour |
-| `make viewer-run ARGS="--seed 42 --preset mountains"` / `make viewer-capture` | Visualiseur de terrain (TOOL-01) / images sans fenêtre, thèmes sombre et clair |
-| `make gallery-run` / `make gallery-capture` | Galerie de l'interface : chaque widget, conteneur, événement et thème (exemple) |
 | `make cui-test` | Tests du compilateur du langage d'interface (cargo test + entrées invalides de bout en bout) |
-| `make e2e-init` | De bout en bout depuis le paquet : `orosmo init`, compilation, lancement, exemples (BLD-02) |
+| `make e2e-init` | De bout en bout depuis le paquet : `orosmo init`, compilation, lancement, exemple `minimal` (BLD-02) |
 | `make clean` / `make fclean` / `make demo-fclean` | Nettoyage |
 | `sh tools/check-repo.sh` | Contrôle d'hygiène du dépôt (binaires, casse, CRLF) |
 | `sh tools/format_sources.sh` | Formatage (`clang-format`) |
@@ -75,22 +73,18 @@ make all-debug
 ## Organisation
 
 ```
-include/orosmo/  en-têtes publics du moteur, un dossier par module : core, platform, rhi, renderer, world, ui
+include/orosmo/  en-têtes publics du moteur, un dossier par module : core, platform, rhi, renderer, ui
 src/          implémentations, même découpage (src/rhi/<backend>/ pour les API graphiques) ; README.md par module
-apps/         demo (terrain orosmo::world + panneau de performances), terrain_viewer, terrain_gen, ui_gallery, minimal, core_demo, rhi_demo
+apps/         demo (démo unique : scène 3D statique + vitrine complète d'orosmo::ui et des fonctionnalités moteur)
 tests/        tests (doctest) et tests des outils Python (tests/tools)
 shaders/      shaders GLSL (copiés vers <bin>/res/shader/)
-res/          polices, icône (copiés vers <bin>/res/)
+res/          polices, thèmes, icône (copiés vers <bin>/res/)
 mk/           Makefile du moteur (engine.mk) et configuration (config.mk)
-tools/        précompilateur .cui (cui-rs), outil engine-init-rs, SDK (engine-sdk), scripts, extension VS Code
+tools/        précompilateur .cui (cui-rs), outil engine-init-rs, SDK (engine-sdk, dont examples/minimal/ et template/), scripts, extension VS Code
 docs/         spécification, plan, rapports (voir docs/README.md)
 ```
 
-Le moteur compile en bibliothèques statiques, une par module :
-- **Cœur distribué en release** (`dist/orosmo-pkg-<plateforme>.zip`, `orosmo init`) : `libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libui.a`, `libthirdparty.a`.
-- **Modules procéduraux internes au dépôt** (utilisés par `apps/demo`, `apps/terrain_gen`, `apps/terrain_viewer` et les tests, exclus de la release — décision A34) : `libworld.a`, `libterrain_renderer.a`.
-
-Dans le dépôt, la démo les relie via `apps/demo/orosmo/` (avec `ENGINE_EXTRA_MODULES="world terrain_renderer"`).
+Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libui.a`, `libthirdparty.a`), distribuées dans `dist/orosmo-pkg-<plateforme>.zip` (`orosmo init`) et copiées dans `apps/demo/orosmo/` pour la démo du dépôt. *(Le code procédural `orosmo::world` / `TerrainRenderer` et les anciennes applications terrain ont été archivés dans la branche `archive/procedural-world`, décision A37.)*
 
 ## Documentation
 

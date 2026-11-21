@@ -247,3 +247,36 @@ fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).
   `38`, et `24`, `26` à confirmer) deviennent des **modules préinstallés** dans un nouveau jalon **M13**, après le système de modules
   (M11) ; le terrain et les planètes (`TER-05` à `TER-10`) sortent du moteur. Versions : M4 `v0.4.0`, M5 `v0.5.0`, M6 `v0.6.0`,
   M8 `v0.7.0`, M9 `v0.8.0`, **M10 `v1.0.0`**, M11 `v1.1.0`, M12 `v1.2.0`, M13 `v1.3.0` (la version suit l'ordre des jalons livrés, pas leur numéro).
+
+
+## Décisions de l'auteur du 2026-11-21 : moteur générique et démo unique
+
+- **A37. Suppression du code procédural du dépôt (archivé) et consolidation en une démo unique (2026-11-21, tranchée).**
+  1. Tout le code procédural (`orosmo::world`, `TerrainRenderer`, `shaders/rhi/terrain.*`, `apps/terrain_gen`,
+     `apps/terrain_viewer`, tests `tests/world/` et `terrain_render_tests.cpp`, baseline terrain) est archivé intact dans la
+     branche inutilisée `archive/procedural-world` (issue de `dev` à `78dbb5e`, qui inclut `feat/M4-platform-rename` et
+     `feat/M4-region-result`), puis retiré du dépôt principal.
+  2. Le dépôt ne conserve qu'**une seule démo** (`apps/demo/`) : diorama 3D statique écrit en C++ (sans `.obj`, en attendant
+     l'import d'assets en M6) + vitrine complète d'`orosmo::ui` et des fonctionnalités moteur (`Camera`, `LightManager`,
+     `DebugDraw`, `Profiler`, `TaskSystem`, `Reflect`/JSON, `ThemeHost`/`FileWatcher`). `apps/ui_gallery`, `apps/core_demo` et
+     `apps/rhi_demo` sont supprimés.
+  3. **Ergonomie** : `Échap` (ainsi que `F1`) ouvre et referme l'interface complète (ne ferme plus l'application) ; un bouton
+     `Quit` et `File > Quit` dans l'UI ferment l'application.
+  4. `minimal` est déplacé dans `tools/engine-sdk/examples/minimal/` (seul exemple dans `dist/examples/minimal/`), et
+     `orosmo init` conserve son projet starter générique minimal (`tools/engine-sdk/template/src/`).
+- **A40. Frontière cœur vs futurs modules M11 et modèles de démarrage (2026-11-21, tranchée).**
+  1. Le cœur du moteur garde le rendu de base (maillages, PBR, ombres, post-traitement, brouillard simple `REN-25`, 2D, UI,
+     assets, animation, ECS, logique rechargeable). Les fonctionnalités d'environnement/monde (`REN-23` bruit compute,
+     `REN-24` atmosphère planétaire, `REN-26` nuages, `REN-27` eau, `TER-*`, `SIM-02`, `SIM-03`) ne sont pas implémentées pour
+     l'instant et sont destinées à devenir des modules utilisables inclus/activables via le système de modules **M11**.
+  2. Le jalon **M11** est complété par `MOD-09` : choix entre plusieurs modèles de démarrage à `orosmo init` (`minimal`,
+     `starter`, `demo` pour comprendre le moteur) et possibilité pour l'utilisateur de définir un de ses projets comme modèle
+     par défaut.
+
+## Question ouverte du 2026-11-21 (fusion de la démo unique)
+
+- **A41. Effets de rendu : cœur ou modules préinstallés ?** Deux décisions de l'auteur se recoupent. D'après A39 (message à l'agent) :
+  **tous** les effets (`REN-23`, `24`, `25`, `26`, `27`, `14`, `33`, `38`) deviennent des modules préinstallés (M13), M7 est supprimé.
+  D'après A40 (rapport de la session de Gemini) : `REN-25` (brouillard), `REN-14` (AO), `REN-33` (particules) et `REN-38`
+  (réfraction) **restent dans le cœur** ; seuls `REN-23`, `24`, `26`, `27` et `TER-*` / `SIM-02` / `SIM-03` deviennent des modules.
+  `docs/05` applique A39 (le plus récent à la connaissance de l'agent). **À confirmer par l'auteur.**
