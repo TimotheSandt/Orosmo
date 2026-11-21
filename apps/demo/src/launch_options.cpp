@@ -268,6 +268,19 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.captureDirectory = std::move(*value);
         }
+        else if (matchOption("--instances", value))
+        {
+            if (!value)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after --instances");
+            }
+            const auto count = parseUnsigned(*value, 1000000U);
+            if (!count)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --instances (0 to 1000000): " + *value);
+            }
+            options.instances = *count;
+        }
         else if (matchOption("--capture-frames", value))
         {
             if (!value)
@@ -304,7 +317,7 @@ void printUsage(std::ostream &out)
 {
     out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
         << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
-        << "              [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
+        << "              [--instances N] [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
     out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
@@ -313,6 +326,8 @@ void printUsage(std::ostream &out)
     out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames, --hover >= 2).\n";
     out << "Headless: --headless creates no window (offscreen device, fixed time step), renders N frames and exits;\n";
     out << "          combine it with --capture <dir> to save the images.\n";
+    out << "Instances: --instances N adds N instanced objects around the courtyard (frustum culling, distance LOD); the draw\n";
+    out << "          calls and culling statistics are logged.\n";
 }
 
 bool promptForBackend(std::istream &input, std::ostream &output, Backend &selected)

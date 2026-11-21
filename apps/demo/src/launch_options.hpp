@@ -57,6 +57,9 @@ struct LaunchOptions
     // --size WxH (défaut : 1280x720, minimum : 640x400).
     int width = 1280;
     int height = 720;
+    // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (culling, LOD, un draw call par lot). 0 (défaut) : aucun,
+    // la scène et les captures de référence sont inchangées.
+    std::uint32_t instances = 0;
 };
 
 // Nom affiché : « OpenGL », « Vulkan », « Metal ».
