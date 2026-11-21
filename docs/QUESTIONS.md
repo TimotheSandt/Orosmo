@@ -217,3 +217,20 @@ fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).
 - **Q7** : les 17 stashes sont supprimés (analyse du 2026-11-17 : 2 idées archivées dans `docs/notes/archive/`) ; sauvegarde
   complète hors dépôt (G24). **Les branches ne sont pas supprimées.** Le worktree `release-core-only` est supprimé (sa branche reste).
 
+## Décisions de l'auteur du 2026-11-21 (début de M4)
+
+- **A7** : close (identifiants placés au premier usage, comme proposé).
+- **A8** : close (`world` sans `renderer` : fait en M3, `HeightField` sans GPU).
+- **A10** : on **garde** `platform::InputManager::getInstance(nativeWindow)` (un gestionnaire par fenêtre native, exigé par les
+  rappels C de GLFW) et le `Logger`. Avis de l'agent : d'accord ; le seul gain d'un contexte explicite serait de ne plus passer par
+  une table globale, et `Window` donne déjà son gestionnaire. Le code neuf passe par la fenêtre plutôt que par `getInstance`.
+  Les autres singletons de la liste (`GraphicsRuntime`, `ShaderLibrary`, `UI::Manager`, `GraphicsRenderState`) ont disparu en M2/M3.
+- **A13** : close, le compilateur `cui` **reste en Rust** (`cargo` reste une dépendance de build). Les points (b) à (d) ont été
+  tranchés en M2 (`docs/UI_LANGUAGE.md`).
+- **A14** (CMake) : **reportée à M9** (portage macOS/Metal), le Makefile reste le build de référence d'ici là.
+- **A15** : close (les ajustements de jalons ont été intégrés à `docs/05`).
+- **A21** : l'auteur demande une explication. En clair : l'interface ne dessine plus elle-même, elle remplit une **liste de
+  dessin** (`DrawList` : « rectangle ici, texte là ») que `CanvasRenderer` exécute commande par commande (B5, M2, fait). Le
+  **batch 2D** (R2D-01, M5) est une optimisation : regrouper ces commandes en quelques dessins instanciés. A21 demandait seulement
+  d'accepter que UI-02 reste `Partiel` jusqu'à M5, puisque la liste est déjà là mais pas encore le batch. Proposition : **close**,
+  telle que réalisée ; à confirmer par l'auteur.
