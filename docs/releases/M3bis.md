@@ -70,3 +70,25 @@ make all-debug                 # dans un terminal : barre de progression ; une 2
 make e2e-init                  # paquet générique (sans world), orosmo init, compilation, lancement, exemples
 unzip -l dist/orosmo-pkg-linux-x64.zip | grep -ciE "world|terrain"   # 0
 ```
+
+## Revue de la PR #9 (CodeRabbit, 1re passe, 2026-11-21)
+
+CI du push `b555c2d` : verte sur les cinq plateformes ; la CI de la PR a été **sautée** (même contenu que le push : correction de
+« Plan » vérifiée en vrai). 13 retours, tous retenus :
+
+- Build : lanceurs ccache remis en tête du PATH dans les étapes MSYS2 (le profil MINGW64 passait devant) ; `librenderer.a` refaite
+  quand sa composition change (`mk/engine.mk` en prérequis, objets seuls passés à `ar`) ; `make -C apps/demo` lie `world` et
+  `terrain_renderer` quand le SDK synchronisé les contient ; `make install` d'un projet sans `vcpkg.json` ; `build.rs` suit le
+  dossier du modèle (fichier ajouté).
+- Barre de progression : identité absolue des cibles (deux `obj/main.o` d'applications différentes), lignes toujours dans la
+  largeur du terminal (même étroit), `make check check` garde sa recette.
+- Modèle `orosmo init` : `HudState` détruit après l'interface, pointeur ramené à l'espace de l'interface pendant une capture avec
+  fenêtre, erreurs de capture avec chemin et cause, message sans affichage (`xvfb-run`).
+- Documentation : `orosmo update` écrit par-dessus `orosmo/` ; procédure de migration d'un projet M3 (vérifiée : SDK vidé puis
+  mis à jour, `world` retiré, projet recompilé) ; macOS « non vérifié » pour `minimal`.
+
+Aussi : `make clean` / `fclean` nettoient debug, dev et release (seulement release avant) ; barre de progression dans les projets
+d'`orosmo init`.
+
+Preuves (Linux x64) : `make demo-test` 421 / 421 ; `make check`, `cui-test`, `terrain-gen-check`, `e2e-init`, `viewer-capture`,
+`gallery-capture` verts ; tests Python 12 / 12 ; `make check check` exécute les contrôles ; `make -C apps/demo debug` lié.
