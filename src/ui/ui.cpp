@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <memory>
 #include <unordered_set>
 
 namespace orosmo::ui
@@ -231,7 +232,9 @@ Widget *Ui::find(std::string_view id) const noexcept
     return nullptr;
 }
 
-bool Ui::wantsKeyboard() const noexcept { return focused_ != nullptr && focused_->acceptsText(); }
+// Le widget focalisé a pu être détruit depuis la dernière mise à jour (`clearChildren` public, sans `forget`) : son jeton de durée
+// de vie est vérifié avant tout accès.
+bool Ui::wantsKeyboard() const noexcept { return focused_ != nullptr && !focusedAlive_.expired() && focused_->acceptsText(); }
 
 Widget *Ui::hitTestIn(Widget &w, glm::vec2 p)
 {
@@ -300,12 +303,13 @@ void Ui::setHovered(Widget *target)
 
 void Ui::focus(Widget *widget)
 {
-    if (widget == focused_)
+    if (widget == focused_ && (widget == nullptr || !focusedAlive_.expired())) // même adresse qu'un widget détruit : nouveau focus
     {
         return;
     }
-    Widget *old = focused_;
+    Widget *old = focusedAlive_.expired() ? nullptr : focused_; // détruit depuis : rien à prévenir
     focused_ = widget;
+    focusedAlive_ = widget != nullptr ? std::weak_ptr<char>(widget->lifetime_) : std::weak_ptr<char>();
     if (old != nullptr)
     {
         old->focused_ = false;
@@ -481,6 +485,8 @@ bool Ui::dispatchShortcut(std::string_view shortcut)
 
 void Ui::forgetSubtree(const Widget *root)
 {
+    if (focusedAlive_.expired())
+        focused_ = nullptr; // détruit : ni parcours de ses parents ni notification
     for (Widget **p : {&hovered_, &active_, &focused_})
     {
         if (*p != nullptr && inSubtree(root, *p))
@@ -504,7 +510,7 @@ void Ui::forgetSubtree(const Widget *root)
     }
 }
 
-void Ui::closePopupsFrom(std::size_t level)
+void Ui::closePopupsFrom(std::size_t level, bool flush)
 {
     while (popups_.size() > level)
     {
@@ -513,12 +519,12 @@ void Ui::closePopupsFrom(std::size_t level)
         forgetSubtree(entry.view);
         if (entry.owned)
         {
-            // Détruit après l'image : un événement en attente peut encore viser un widget de la fenêtre.
-            Widget *raw = entry.owned.release();
-            defer([raw] { delete raw; });
+            // Détruit après l'image : un événement en attente peut encore viser un widget de la fenêtre. Possédé par l'action
+            // elle-même : libéré aussi si elle n'est jamais exécutée (interface détruite avant l'image suivante).
+            defer([owned = std::shared_ptr<Widget>(std::move(entry.owned))]() mutable { owned.reset(); });
         }
     }
-    if (!updating_)
+    if (flush && !updating_)
     {
         flushDeferred();
     }
@@ -572,6 +578,31 @@ void Ui::showModal(Widget &owner, Widget &panel)
     if (std::none_of(modals_.begin(), modals_.end(), [&](const ModalEntry &m) { return m.panel == &panel; }))
     {
         modals_.push_back({&owner, &panel});
+    }
+}
+
+void Ui::closePopupsOutsideModal()
+{
+    if (modals_.empty() || popups_.empty())
+        return;
+    // Une fenêtre est gardée si son propriétaire est dans la fenêtre modale active, ou dans une fenêtre gardée au-dessous d'elle
+    // (sous-menu d'un menu de la modale). La pile se ferme à partir de la première qui ne l'est pas. Idempotent : appelé à chaque
+    // mise en page, il ne ferme jamais celles de la modale.
+    // Les propriétaires sont cherchés par adresse dans les sous-arbres vivants (modale, fenêtres gardées), sans les déréférencer :
+    // un gestionnaire de l'image a pu en détruire un (la fenêtre est alors fermée ici).
+    std::unordered_set<const Widget *> inside;
+    collect(*modals_.back().panel, inside);
+    for (std::size_t i = 0; i < popups_.size(); ++i)
+    {
+        if (inside.contains(popups_[i].owner))
+            collect(*popups_[i].view, inside);
+        else
+        {
+            // Pendant la mise en page : les actions différées (perte du focus, destruction) attendent l'image suivante, sans
+            // exécuter de gestionnaire au milieu de la mise en page.
+            closePopupsFrom(i, false);
+            return;
+        }
     }
 }
 
@@ -635,6 +666,9 @@ void Ui::layout(glm::vec2 viewport)
         const glm::vec2 m = glm::min(panel.measure(*this, viewport * 0.9f), viewport);
         panel.layout(*this, {glm::round((viewport - m) * 0.5f), m});
     }
+    // Toutes les modales sont inscrites (une modale imbriquée s'inscrit pendant la mesure de la précédente) : la souris et le
+    // clavier vont à la dernière, les fenêtres surgissantes ouvertes hors d'elle se ferment.
+    closePopupsOutsideModal();
     layoutPopups();
 }
 
@@ -645,6 +679,8 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
     (void)themes_.reloadIfChanged();
 
     // Pointeurs vers des widgets retirés de l'arbre depuis l'image précédente : oubliés (sans les déréférencer).
+    if (focusedAlive_.expired())
+        focused_ = nullptr; // détruit (même si un nouveau widget occupe la même adresse)
     {
         std::unordered_set<const Widget *> alive;
         if (root_)

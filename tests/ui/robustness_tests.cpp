@@ -366,6 +366,7 @@ TEST_SUITE("ui/robustness")
         walk(editor);
         REQUIRE(sliders.size() >= 3);
         h.ui.focus(sliders[0]);
+        h.keys({ui::kKeyHome}); // H = 0 : la teinte gardée (partagée avec la roue) est encore celle du vert saisi plus haut
         for (int i = 0; i < 120; ++i)
             h.keys({ui::kKeyRight});
         h.ui.focus(sliders[1]);

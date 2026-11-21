@@ -346,9 +346,15 @@ void ColorWheel::pick(Ui &ui, glm::vec2 mouse)
     if (!value_.writable() || next == current)
         return;
     pending_ = next;
-    ui.defer([this, next] {
-        value_.set(next);
-        pending_.reset();
+    // Un gestionnaire exécuté avant l'écriture (onHover de la même image) a pu détruire la roue : jeton vérifié avant et après
+    // le setter (qui peut lui aussi la retirer). L'écriture précède onChange.
+    ui.defer([this, alive = lifetimeToken(), next] {
+        if (alive.expired())
+            return;
+        const auto set = value_.set; // copie : le setter peut détruire la roue, et donc value_
+        set(next);
+        if (!alive.expired())
+            pending_.reset();
     });
     emit(ui, EventKind::kChange);
 }
@@ -387,7 +393,8 @@ ColorEditor::ColorEditor(Binding<Color> value, bool alpha) : VBox("box"), value_
 {
     original_ = value_.value();
     auto &top = emplace<HBox>();
-    top.emplace<ColorWheel>(value_).onChange([this](const Event &) { fire(EventKind::kChange); });
+    wheel_ = &top.emplace<ColorWheel>(value_);
+    wheel_->onChange([this](const Event &) { fire(EventKind::kChange); });
     auto &side = top.emplace<VBox>();
     side.setWidth(SizeSpec::fill());
     side.emplace<Label>("Format", "caption");
@@ -450,16 +457,16 @@ void ColorEditor::rebuildChannels()
     {
         const double max = specs[i].max;
         Binding<double> b;
-        // Teinte d'un gris (saturation nulle) : le RGB ne la contient pas ; celle choisie est gardée dans hue_ pour que la
-        // saturation, ajoutée ensuite, parte de cette teinte et non du rouge.
+        // Teinte d'un gris (saturation nulle) : le RGB ne la contient pas ; celle choisie (à la roue ou au curseur H) est gardée
+        // par la roue, pour que la saturation, ajoutée ensuite, parte de cette teinte et non du rouge ni d'une autre teinte.
         const bool hueSpace = format != ColorFormat::kRgb;
         b.get = [this, toSpace, i, max, hueSpace] {
             const glm::vec3 s = toSpace(value_.value());
             if (hueSpace && i == 0)
             {
                 if (s[1] <= 0.0f)
-                    return static_cast<double>(hue_) * max;
-                hue_ = s[0];
+                    return static_cast<double>(wheel_->hue()) * max;
+                wheel_->setHue(s[0]);
             }
             return static_cast<double>(s[i]) * max;
         };
@@ -468,10 +475,10 @@ void ColorEditor::rebuildChannels()
                 const Color c = value_.value();
                 glm::vec3 s = toSpace(c);
                 if (hueSpace && s[1] <= 0.0f)
-                    s[0] = hue_;
+                    s[0] = wheel_->hue();
                 s[i] = static_cast<float>(v / max);
                 if (hueSpace && i == 0)
-                    hue_ = s[0];
+                    wheel_->setHue(s[0]);
                 value_.set(Color(fromSpace(s), c.a));
             };
         channels_->emplace<Slider>(std::move(b), 0.0, max, 1.0).setPrefix(specs[i].prefix).setWidth(SizeSpec::fill());
@@ -602,9 +609,14 @@ class GradientBar final : public Widget
         if (!owner_->value_.writable()) // liaison en lecture seule : on peut choisir un arrêt, pas le déplacer
             return;
         pending_ = g;
-        ui.defer([this, g] {
-            owner_->value_.set(g);
-            pending_.reset();
+        // La barre appartient à l'éditeur : son jeton couvre aussi la destruction de l'éditeur (voir ColorWheel::pick).
+        ui.defer([this, alive = lifetimeToken(), g] {
+            if (alive.expired())
+                return;
+            const auto set = owner_->value_.set;
+            set(g);
+            if (!alive.expired())
+                pending_.reset();
         });
         owner_->emit(ui, EventKind::kChange);
     }
@@ -670,9 +682,14 @@ void CurveEditor::write(Ui &ui, Curve c)
     if (!value_.writable())
         return;
     pending_ = c;
-    ui.defer([this, c] {
-        value_.set(c);
-        pending_.reset();
+    // Voir ColorWheel::pick : jeton de durée de vie vérifié avant et après le setter ; l'écriture précède onChange.
+    ui.defer([this, alive = lifetimeToken(), c] {
+        if (alive.expired())
+            return;
+        const auto set = value_.set;
+        set(c);
+        if (!alive.expired())
+            pending_.reset();
     });
     emit(ui, EventKind::kChange);
 }
