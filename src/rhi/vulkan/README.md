@@ -31,7 +31,9 @@ Seul endroit (avec `src/rhi/opengl/`) où existent `Vk*`, `vk*`, volk et VMA. M�
 
 Un seul sémaphore à chronologie ; chaque soumission le fait croître de 1 (`Serial`). `destroy(handle)` retire le handle tout de
 suite (il devient périmé) et met la libération en file avec la série courante : elle s'exécute quand le GPU a atteint cette
-série (`collectReleases`). Les tampons de commandes sont recyclés de la même façon (`acquireCommandBuffer` /
+série (`collectReleases`) **et** que `kFramesInFlight` images ont été présentées depuis (même compteur que le backend OpenGL :
+`DeviceStats::pendingDestruction` évolue pareil) ; `waitIdle` libère sans attendre d'image, les tampons de transfert internes
+n'attendent que le GPU. Les tampons de commandes sont recyclés de la même façon (`acquireCommandBuffer` /
 `retireCommandBuffer`). `beginFrame` attend la série de l'image N - 2 (2 images d'avance au plus).
 
 ## Dispositions « de repos » et barrières déduites
@@ -69,6 +71,11 @@ Trois groupes (`kGroupCount`), liaisons < `kBindingsPerGroup` (docs/03 §4) ; gr
   des liaisons ; `setBindGroup` fournit les siens dans l'ordre des ENTRÉES du groupe (celles marquées `dynamicOffset`).
 - Texture échantillonnée : `COMBINED_IMAGE_SAMPLER`, disposition = `restLayout` de la texture. Image de stockage : `GENERAL`, vue
   du niveau `mipLevel` (tableaux, cubes et 3D liés en entier, vues `2D_ARRAY` / `3D`).
+- Une liaison tableau (`uniform sampler2D t[3]` en liaison `b`) prend ses éléments dans les entrées `b`, `b + 1`, `b + 2` du
+  groupe, comme les emplacements plats d'OpenGL. Tampon de taille 0 : `VK_WHOLE_SIZE` (la fin du tampon, décalage dynamique déduit).
+- Le pipeline exige un groupe à chaque emplacement que ses shaders utilisent : dessiner sans groupe lié à cet emplacement est
+  `kInvalidArgument` (OpenGL lirait la liaison laissée par un dessin précédent ; Vulkan n'a pas de liaison par défaut).
+- Réserves de descripteurs (`FREE_DESCRIPTOR_SET_BIT`, 256 jeux) créées à la demande quand la dernière est pleine.
 
 ## Shaders, pipelines et groupes de liaison (vk_pipelines.cpp)
 
@@ -76,8 +83,35 @@ Trois groupes (`kGroupCount`), liaisons < `kBindingsPerGroup` (docs/03 §4) ; gr
   par `Capabilities::spirvShaders`). Réflexion par SPIRV-Cross (déjà dans le moteur).
 - Pipelines graphiques en **rendu dynamique** (`VkPipelineRenderingCreateInfo` : formats des cibles du pipeline) ; viewport et
   ciseau dynamiques. La passe doit avoir les mêmes formats que le pipeline (sinon `kInvalidArgument` à `setPipeline`).
-- Dispositions de pipeline dédupliquées (`pipelineLayouts_`). Cache de pipelines : un `VkPipelineCache` créé avec les données du
-  disque (`ENGINE_VULKAN_PIPELINE_CACHE_DIR`, sinon le dossier de données utilisateur) et réécrit à l'arrêt (RHI-06).
+- Dispositions de groupe (étages réunis) et de pipeline dédupliquées (`setLayouts_`, `pipelineLayouts_`) ; un groupe inutilisé
+  avant un groupe utilisé reçoit la disposition vide. Une plage de push constants (taille max des étages, étages réunis) ; à chaque
+  dessin ou dispatch, toute la plage est poussée (zéros au-delà des valeurs reçues : `maintenance4` n'est pas activé).
+- « Édition de liens » faite par le backend : une entrée du shader de fragments sans sortie du shader de sommets de même
+  emplacement et de même type est `kParse` (comme `glLinkProgram`) ; une entrée du shader de sommets sans attribut est
+  `kInvalidArgument` (Vulkan n'a pas de valeur constante par défaut).
+- **Cache de pipelines (RHI-06)** : un `VkPipelineCache` partagé par toutes les créations, chargé à la création du périphérique depuis
+  `<dossier>/vulkan_<vendor>_<device>.bin`, `<dossier>` = `ENGINE_VULKAN_PIPELINE_CACHE_DIR`, sinon
+  `userDataDirectory()/Orosmo/pipeline_cache`. L'en-tête (`VkPipelineCacheHeaderVersionOne` : vendorID, deviceID, UUID du cache) est
+  vérifié : un fichier d'un autre GPU ou pilote est ignoré. Réécrit à l'arrêt (fichier temporaire puis renommage). Pas de cache
+  « même description -> même `VkPipeline` » : le backend OpenGL n'en a pas non plus (le renderer a son `PipelineCache`).
+
+## Encodeur (vk_encoder.cpp)
+
+- Un tampon de commandes primaire par encodeur, pris à la création ; un encodeur en erreur ou détruit sans `submit` le rend au
+  recyclage (remise à zéro, jamais soumis). Mêmes validations et codes d'erreur que `GlEncoder` ; `submit` renvoie la première
+  erreur, ou `kInvalidArgument` si une passe ou un groupe de debug reste ouvert.
+- Passes : `vkCmdBeginRendering`, attachements en `COLOR_ATTACHMENT` / `DEPTH_STENCIL_ATTACHMENT` (transition depuis le repos,
+  retour au repos à `endRenderPass`) ; viewport et ciseau couvrent la cible au début de la passe. Une tranche de texture 3D est
+  une vue 2D de l'image (`2D_ARRAY_COMPATIBLE`).
+- Push constants, sommets, indices et groupes sont mémorisés et liés au dessin ; le pipeline graphique est lié à `setPipeline`, le
+  pipeline de calcul au dispatch.
+- Dessins indirects : `vkCmdDraw*Indirect` en un appel si `multiDrawIndirect`, sinon un appel par commande.
+- `generateMips` : chaîne de `vkCmdBlitImage` linéaires (refusé, `kUnsupported`, si le format n'a pas le filtrage linéaire par
+  blit) ; même refus qu'OpenGL pour la profondeur et les entiers.
+- Requêtes de temps : une requête Vulkan doit être remise à zéro avant d'être réécrite. Hors passe, `vkCmdResetQueryPool` juste
+  avant l'écriture ; dans une passe (interdit), la remise à zéro va dans un **prologue** soumis juste avant l'encodeur, et la même
+  requête ne peut pas y être écrite deux fois par le même encodeur (`kUnsupported`).
+- Une ressource utilisée par un encodeur doit vivre jusqu'à son `submit` (la libération différée compte depuis la destruction).
 
 ## Repère (A26)
 
@@ -96,4 +130,6 @@ RGBA, UNORM) ne regarde pas le moteur. `beginFrame` renvoie `kBusy` pour un fram
 
 Barrières conservatrices ; une seule file ; états de dispositions par texture entière (pas par niveau) ; couleurs de bord des
 échantillonneurs : noir transparent, noir opaque ou blanc opaque ; D24S8 remplacé par D32S8 quand le pilote n'a pas D24S8 ;
-écritures de stockage dans une passe de rendu non prises en charge.
+écritures de stockage dans une passe de rendu non prises en charge ; une ressource détruite entre l'enregistrement et le `submit`
+d'un encodeur qui l'utilise n'est pas protégée ; pas de cache mémoire « même description -> même pipeline » ; `drawIndexedIndirect`
+refuse un décalage d'indices non nul (contrat d'OpenGL).

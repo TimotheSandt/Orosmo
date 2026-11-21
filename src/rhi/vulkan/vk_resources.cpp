@@ -351,7 +351,10 @@ Result<VkImageView> VulkanDevice::imageView(TextureHandle handle, const ImageVie
         if (existing == key)
             return view;
     }
-    if (key.baseMip + key.mipCount > texture->levels || key.baseLayer + key.layerCount > texture->layers)
+    // Une vue 2D d'une texture 3D (image 2D_ARRAY_COMPATIBLE) désigne une tranche du niveau : ses « couches » sont les tranches.
+    const bool slices = texture->desc.dimension == TextureDimension::k3D && key.type != VK_IMAGE_VIEW_TYPE_3D;
+    const std::uint32_t layerLimit = slices ? mipDim(texture->desc.size.depth, key.baseMip) : texture->layers;
+    if (key.baseMip + key.mipCount > texture->levels || key.baseLayer + key.layerCount > layerLimit || (slices && key.mipCount != 1))
         return makeError(ErrorCode::kOutOfRange, "imageView: range exceeds the texture (" + texture->desc.debugName + ")");
     auto info = makeStruct<VkImageViewCreateInfo>(VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO);
     info.image = texture->image;

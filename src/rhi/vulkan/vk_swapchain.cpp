@@ -144,7 +144,8 @@ Result<> VulkanDevice::resize(Extent2D size)
 {
     if (windowed_)
         return {}; // la taille vient de la fenêtre (relue par beginFrame)
-    size = {std::max(1u, size.width), std::max(1u, size.height)};
+    if (size.width == 0 || size.height == 0)
+        return makeError(ErrorCode::kInvalidArgument, "resize: empty size");
     if (size == backbufferSize_)
         return {};
     TextureRes *current = nullptr;
