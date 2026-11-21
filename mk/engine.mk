@@ -30,6 +30,15 @@
 
 SHELL := sh
 
+# ── Affichage de la compilation ───────────────────────────────────────────────
+# Sous `tools/build_progress.py` (ORS_PROGRESS=1, lancé par `make` dans un terminal) : chaque étape annonce son début et sa fin
+# (`@@ors begin <cible> <affiché> <étiquette>` / `@@ors end <cible>`) et la commande n'est plus affichée (V=1 la montre). Sans
+# ORS_PROGRESS (CI, redirection) : commande complète et étiquette `  CXX fichier`, comme avant.
+ORS_Q := $(if $(ORS_PROGRESS),$(if $(filter 1,$(V)),,@))
+ors_compile = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $@ $< $(1),  $(1) $<)'
+ors_link = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $@ $@ $(1),  $(1) $@)'
+ors_end = $(if $(ORS_PROGRESS),@printf '%s\n' '@@ors end $@')
+
 # ── Engine identity (single source of truth) ──────────────────────────────────
 # Path relative to wherever make is invoked (always from project root).
 _MK_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
@@ -273,58 +282,68 @@ engine: install-demo
 # Archive recréée (rm) : `ar rcs` garderait les objets des fichiers supprimés (ancienne interface src/ui/legacy/).
 $(LIB_UI): $(UI_OBJS)
 	@mkdir -p "$(dir $@)"
-	rm -f $@
-	$(AR) rcs $@ $^
-	@echo "Archived [UI]          $(BUILD_TYPE): $@"
+	$(ORS_Q)rm -f $@
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_CORE): $(Core_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Core]        $(BUILD_TYPE): $@"
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_PLATFORM): $(Platform_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Platform]    $(BUILD_TYPE): $@"
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_RHI): $(Rhi_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Rhi]         $(BUILD_TYPE): $@"
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_RENDERER): $(Renderer_OBJS)
 	@mkdir -p "$(dir $@)"
-	rm -f $@
-	$(AR) rcs $@ $^
-	@echo "Archived [Renderer]    $(BUILD_TYPE): $@"
+	$(ORS_Q)rm -f $@
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_WORLD): $(World_OBJS)
 	@mkdir -p "$(dir $@)"
-	rm -f $@
-	$(AR) rcs $@ $^
-	@echo "Archived [World]       $(BUILD_TYPE): $@"
+	$(ORS_Q)rm -f $@
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_TERRAIN_RENDERER): $(TerrainRenderer_OBJS)
 	@mkdir -p "$(dir $@)"
-	rm -f $@
-	$(AR) rcs $@ $^
-	@echo "Archived [TerrainRnd]  $(BUILD_TYPE): $@"
+	$(ORS_Q)rm -f $@
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_THIRDPARTY): $(ThirdParty_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [ThirdParty]  $(BUILD_TYPE): $@"
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 # ── Compilation rules ─────────────────────────────────────────────────────────
 $(OBJ_DIR_TYPE)/Libraries/%.o: $(LIBRARIES_SRC_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
-	@echo "  CXX [$(BUILD_TYPE)] $<"
+	$(call ors_compile,CXX [$(BUILD_TYPE)])
+	$(ORS_Q)$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
+	$(ors_end)
 
 $(OBJ_DIR_TYPE)/Libraries/%.o: $(LIBRARIES_SRC_DIR)/%.c
 	@mkdir -p "$(dir $@)"
-	$(CC) $(CFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
-	@echo "  CC  [$(BUILD_TYPE)] $<"
+	$(call ors_compile,CC [$(BUILD_TYPE)])
+	$(ORS_Q)$(CC) $(CFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
+	$(ors_end)
 
 # ── Rust workspace build rules ────────────────────────────────────────────────
 # cui is built as part of the normal engine build (engine-tool is separate to
@@ -468,6 +487,8 @@ engine-tool: $(ENGINE_PKG_ZIP) $(ENGINE_TOOL_EXE)
 
 # ── Sync demo ─────────────────────────────────────────────────────────────────
 # Copies the current BUILD_TYPE artifacts directly into apps/demo/orosmo/.
+# Copies keep their dates (cp -p; Copy-Item keeps LastWriteTime on Windows): an unchanged header or archive does not make the
+# demo recompile or relink at every sync.
 # Faster than install-demo: no dist packaging step required.
 # vcpkg_installed/ is linked (not copied) to avoid duplicating hundreds of MB.
 .PHONY: sync-demo
@@ -477,16 +498,16 @@ ifeq ($(DETECTED_OS),Windows)
 	@mkdir -p apps/demo/orosmo/includes
 	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination 'apps/demo/orosmo/includes' -Recurse -Force"
 else
-	@rm -rf apps/demo/orosmo/includes && cp -r $(INCLUDES_BASE) apps/demo/orosmo/includes
+	@rm -rf apps/demo/orosmo/includes && cp -rp $(INCLUDES_BASE) apps/demo/orosmo/includes
 endif
 ifeq ($(DETECTED_OS),Windows)
 	@for f in $(ENGINE_LIBS); do powershell -NoProfile -Command "Copy-Item -Path '$$f' -Destination 'apps/demo/orosmo/lib/$(BUILD_TYPE)' -Force"; done
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination 'apps/demo/orosmo/make' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination 'apps/demo/orosmo/tools' -Force"
 else
-	@cp $(ENGINE_LIBS) apps/demo/orosmo/lib/$(BUILD_TYPE)/
-	@cp tools/engine-sdk/engine.mk apps/demo/orosmo/make/
-	@cp "$(_CUI_INSTALLED)" apps/demo/orosmo/tools/
+	@cp -p $(ENGINE_LIBS) apps/demo/orosmo/lib/$(BUILD_TYPE)/
+	@cp -p tools/engine-sdk/engine.mk apps/demo/orosmo/make/
+	@cp -p "$(_CUI_INSTALLED)" apps/demo/orosmo/tools/
 endif
 	@if [ ! -e apps/demo/orosmo/vcpkg_installed ]; then \
 	    if [ "$(DETECTED_OS)" = "Windows" ]; then \

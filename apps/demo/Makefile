@@ -216,25 +216,30 @@ run:
 
 # ── Link ──────────────────────────────────────────────────────────────────────
 $(TARGET): $(ALL_OBJS) $(ENGINE_LIBS) | $(BIN_DIR) copy_res $(COPY_EXTRA)
-	$(CXX) $(ENGINE_CXXFLAGS) $(ALL_OBJS) \
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(ALL_OBJS) \
 	    $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) $(GAME_LDFLAGS) -o $@
+	$(ors_end)
 	@echo "Compiled: $@"
 
 # ── Compilation rules ─────────────────────────────────────────────────────────
 $(OBJ_DIR)/src/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
-	@echo "  CXX $<"
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ors_end)
 
 $(OBJ_DIR)/src/%.o: $(SRC_DIR)/%.c
 	@mkdir -p "$(dir $@)"
-	$(CC) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
-	@echo "  CC  $<"
+	$(call ors_compile,CC)
+	$(ORS_Q)$(CC) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ors_end)
 
 $(OBJ_DIR)/gen/%.o: $(ENGINE_GEN_DIR)/%.gen.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
-	@echo "  CXX [gen] $<"
+	$(call ors_compile,CXX [gen])
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ors_end)
 
 # Ensure CUI files are generated before any object is compiled
 $(ALL_OBJS): | $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
@@ -254,22 +259,28 @@ test: $(TEST_TARGET)
 	@./$(TEST_TARGET) $(TEST_ARGS)
 
 $(TEST_TARGET): $(TEST_OBJS) $(ENGINE_LIBS) | bin/tests
-	$(CXX) $(ENGINE_CXXFLAGS) $(TEST_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(TEST_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(ors_end)
 
 # Les tests incluent aussi les vues générées de la démo (UI/Views/*.gen.h) : elles doivent exister avant leur compilation.
 $(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp | $(TEST_GEN_CPP) $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ors_end)
 
 $(ENGINE_GEN_DIR)/tests/%.gen.cpp: $(TEST_DIR)/%.cui $(_ENG_CUI_TOOL)
 	@mkdir -p "$(dir $@)"
-	$(_ENG_CUI_TOOL) run --output "$(dir $@)" $<
+	$(ORS_Q)$(_ENG_CUI_TOOL) run --output "$(dir $@)" $<
 
 # Règle statique : prioritaire sur $(OBJ_DIR)/gen/%.o (sans -I$(TEST_DIR)) quel que soit make ; GNU make 3.81 (macOS) prend
 # la première règle implicite qui correspond, pas la plus précise.
 $(TEST_GEN_OBJS): $(OBJ_DIR)/gen/tests/%.o: $(ENGINE_GEN_DIR)/tests/%.gen.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ors_end)
 
 # ── Benchmark ─────────────────────────────────────────────────────────────────
 .PHONY: benchmark
@@ -277,11 +288,15 @@ benchmark: $(BENCH_TARGET)
 	@./$(BENCH_TARGET)
 
 $(BENCH_TARGET): $(BENCH_OBJS) $(ENGINE_LIBS) | bin/benchmark
-	$(CXX) $(ENGINE_CXXFLAGS) $(BENCH_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(BENCH_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(ors_end)
 
 $(OBJ_DIR)/benchmark/%.o: $(BENCH_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP -I$(BENCH_DIR) $(ENGINE_INCLUDES) -c $< -o $@
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP -I$(BENCH_DIR) $(ENGINE_INCLUDES) -c $< -o $@
+	$(ors_end)
 
 # ── Resources & libraries ─────────────────────────────────────────────────────
 .PHONY: copy_res copy_libs

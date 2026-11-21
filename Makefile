@@ -28,6 +28,23 @@
 #
 # ── Architecture checks (docs/03 §8) — all blocking since M2: layers, API isolation (graphics APIs, GLFW, <windows.h>),
 #    self-contained headers. Each script exits 1 on a violation (same commands as the CI). ──
+# ── Affichage : dans un terminal, `make <buts>` passe par tools/build_progress.py (barre de progression, fichiers compilés, en
+#    cours, à jour, restants). Commandes complètes : `make V=1 …` ; sans barre : `ORS_NO_PROGRESS=1 make …`. Hors terminal (CI,
+#    redirection) et dans un sous-make : make habituel. ──
+_ORS_FIRST := $(firstword $(MAKEFLAGS))
+_ORS_DRY   := $(if $(filter -%,$(_ORS_FIRST)),,$(findstring n,$(_ORS_FIRST))$(findstring q,$(_ORS_FIRST)))
+_ORS_WRAP  := $(if $(or $(ORS_PROGRESS),$(ORS_NO_PROGRESS),$(filter 1,$(V)),$(_ORS_DRY),$(filter-out 0,$(MAKELEVEL))),,$(shell test -t 2 && command -v python3 >/dev/null 2>&1 && echo 1))
+ifeq ($(_ORS_WRAP),1)
+_ORS_GOALS := $(or $(MAKECMDGOALS),ors-default-goal)
+.PHONY: $(_ORS_GOALS)
+$(firstword $(_ORS_GOALS)):
+	@python3 tools/build_progress.py $(MAKE) $(MAKECMDGOALS)
+ifneq ($(words $(_ORS_GOALS)),1)
+$(wordlist 2,999,$(_ORS_GOALS)):
+	@:
+endif
+else
+
 # Les cibles de ce fichier appellent des sous-make (parallèles chacun en interne) : elles-mêmes s'exécutent l'une après l'autre,
 # car plusieurs synchronisent le même SDK partagé (sync-demo remplace apps/demo/orosmo/includes) et `make -j2 viewer gallery`
 # ferait disparaître les en-têtes sous la compilation de l'autre.
@@ -416,3 +433,5 @@ info:
 	@$(MAKE) -C apps/demo $(DEMO_ARGS) info --no-print-directory
 	@printf "BUILD_TYPE  : $(BUILD_TYPE)\n"
 	@printf "VCPKG       : $(VCPKG)\n\n"
+
+endif # _ORS_WRAP

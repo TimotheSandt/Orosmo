@@ -86,4 +86,4 @@ python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720
 sh tools/format_sources.sh
 ```
 
-Options utiles : `WERROR=0` (avertissements non bloquants), `--seed N` (terrain de la démo), `--capture-frames N`. Windows/macOS : voir `README.md` ; non vérifiés (`docs/GAPS.md`).
+Options utiles : `WERROR=0` (avertissements non bloquants), `V=1` (commandes complètes au lieu de la barre de progression, affichée seulement dans un terminal), `--seed N` (terrain de la démo), `--capture-frames N`. Windows/macOS : voir `README.md` ; non vérifiés (`docs/GAPS.md`).
