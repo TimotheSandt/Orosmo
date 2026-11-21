@@ -15,7 +15,7 @@ namespace
 {
 PerformanceSample sample(double base)
 {
-    return {.fps = base, .renderMs = base + 1.0, .renderWorldMs = base + 2.0, .upscaleMs = base + 3.0, .uiUpscaleMs = base + 4.0,
+    return {.fps = base, .renderMs = base + 1.0, .renderSceneMs = base + 2.0, .upscaleMs = base + 3.0, .uiUpscaleMs = base + 4.0,
             .swapBuffersMs = base + 5.0};
 }
 
@@ -45,12 +45,14 @@ TEST_SUITE("apps/demo")
         CHECK(root->rect().size.y < 360.0f); // ajusté au contenu, pas toute la hauteur
         CHECK(labelText(*root, "fps") == "FPS: 60");
         CHECK(labelText(*root, "render") == "Render: 61 ms");
-        CHECK(labelText(*root, "renderWorld") == "Render World: 62 ms");
+        CHECK(labelText(*root, "renderScene") == "Render Scene: 62 ms");
         CHECK(labelText(*root, "upscale") == "Upscale: 63 ms");
         CHECK(labelText(*root, "uiUpscale") == "UI Upscale: 64 ms");
         CHECK(labelText(*root, "swapBuffers") == "Swap Buffers: 65 ms");
+        CHECK(labelText(*root, "hint") == "Esc: Open UI");
         CHECK(root->findAs<ui::Label>("fps")->styleName() == "hudTitle");
         CHECK(root->findAs<ui::Label>("render")->styleName() == "hudMetric");
+        CHECK(root->findAs<ui::Label>("hint")->styleName() == "hudMetric");
     }
 
     TEST_CASE("the performance values change about four times per second")
