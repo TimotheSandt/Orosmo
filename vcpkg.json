@@ -5,6 +5,8 @@
     "glad",
     "nlohmann-json",
     "spirv-cross",
+    "volk",
+    "vulkan-memory-allocator",
     {
       "name": "msdfgen",
       "default-features": false,
