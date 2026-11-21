@@ -258,6 +258,7 @@ e2e-init:
 	  fi
 	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/minimal
 	$(E2E_RUN)/mygame/orosmo/examples/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
+	@echo "e2e-init : sortie de l'exemple minimal :"; cat $(E2E_RUN)/minimal.txt
 	grep -q '"sum":524800' $(E2E_RUN)/minimal.txt
 	@echo "e2e-init : OK ($(E2E_RUN) : orosmo init, paquet cœur générique vérifié, compilation, lancement, exemple minimal depuis le paquet)"
 
