@@ -340,7 +340,14 @@ void Viewer::exportHeightmap()
     const float spacing = state_.params.sampleSpacing;
     const auto firstX = static_cast<std::int64_t>(std::floor(p.x / spacing)) - kSize / 2;
     const auto firstZ = static_cast<std::int64_t>(std::floor(p.z / spacing)) - kSize / 2;
-    const w::HeightField field = w::generateRegion(state_.params, state_.seed, firstX, firstZ, kSize, kSize, &tasks_);
+    auto region = w::generateRegion(state_.params, state_.seed, firstX, firstZ, kSize, kSize, &tasks_);
+    if (!region)
+    {
+        state_.status = "Export failed: " + region.error().message;
+        LOG_ERROR(1, state_.status);
+        return;
+    }
+    const w::HeightField &field = *region;
     std::error_code ec;
     std::filesystem::create_directories("exports", ec);
     const std::filesystem::path path = "exports/heightmap_seed" + std::to_string(state_.seed) + ".png";
