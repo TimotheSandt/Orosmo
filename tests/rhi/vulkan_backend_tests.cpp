@@ -8,6 +8,7 @@
 #include "../../src/rhi/vulkan/vk_device.hpp"
 
 #include <cstdlib>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -54,10 +55,17 @@ TEST_SUITE("rhi/vulkan/backend")
     {
         if (!tests::isBackendAvailable(Backend::kVulkan))
         {
+            if (tests::gpuRequired())
+            {
+                FAIL("Required by ENGINE_TEST_REQUIRE_GPU but unavailable: Vulkan 1.3 device");
+            }
             MESSAGE("Skipped: no Vulkan device on this machine");
             return;
         }
-        const std::filesystem::path dir = std::filesystem::temp_directory_path() / ("orosmo-pipeline-cache-" + std::to_string(std::rand()));
+        // Un dossier propre à cette exécution (plusieurs processus de test peuvent tourner en même temps).
+        const std::filesystem::path dir =
+            std::filesystem::temp_directory_path() /
+            ("orosmo-pipeline-cache-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::remove_all(dir);
         ScopedEnv env("ENGINE_VULKAN_PIPELINE_CACHE_DIR", dir.string());
 
@@ -74,12 +82,15 @@ TEST_SUITE("rhi/vulkan/backend")
         }
         REQUIRE(std::filesystem::exists(path));
         const auto written = std::filesystem::file_size(path);
-        CHECK(written > sizeof(VkPipelineCacheHeaderVersionOne));
+        // Certains pilotes (lavapipe, CI) ne rendent que l'en-tête : le fichier existe quand même, il n'a pas à contenir plus.
+        CHECK(written >= sizeof(VkPipelineCacheHeaderVersionOne));
         {
             Gpu gpu(Backend::kVulkan);
             REQUIRE(gpu.device);
             auto &device = static_cast<vk::VulkanDevice &>(*gpu);
-            CHECK(device.pipelineCacheLoadedBytes() == written); // relu tel quel : même GPU, même pilote
+            // relu tel quel (même GPU, même pilote) ; un pilote qui n'a rien à relire au-delà de l'en-tête peut n'en reprendre aucun octet
+            const auto loaded = device.pipelineCacheLoadedBytes();
+            CHECK((loaded == written || (written == sizeof(VkPipelineCacheHeaderVersionOne) && loaded == 0)));
             gpu.expectNoValidationErrors();
         }
         {
