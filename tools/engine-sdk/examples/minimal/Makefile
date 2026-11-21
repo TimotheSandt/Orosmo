@@ -1,6 +1,6 @@
 # Projet minimal : un exécutable lié au moteur. Hors du dépôt : ENGINE_DIR = le paquet décompressé (ou orosmo/ d'un projet
 # créé par `orosmo init`).
-ENGINE_DIR   ?= $(if $(wildcard ../../make/engine.mk),../..,../demo/orosmo)
+ENGINE_DIR   ?= $(if $(wildcard ../../make/engine.mk),../..,../../../../apps/demo/orosmo)
 GAME_SRC_DIR := .
 BUILD_TYPE   ?= release
 include $(ENGINE_DIR)/make/engine.mk

@@ -13,8 +13,6 @@
     ["src/rhi/*", "rhi"],
     ["include/orosmo/renderer/*", "renderer"],
     ["src/renderer/*", "renderer"],
-    ["include/orosmo/world/*", "world"],
-    ["src/world/*", "world"],
     ["include/orosmo/ui/*", "ui"],
     ["src/ui/*", "ui"],
     ["src/ThirdParty/*", "core"],

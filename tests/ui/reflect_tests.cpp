@@ -3,7 +3,6 @@
 #include "ui/ui_harness.hpp"
 
 #include <orosmo/ui/reflect.hpp>
-#include <orosmo/world/terrain.hpp>
 
 namespace ui = orosmo::ui;
 namespace core = orosmo::core;
@@ -44,16 +43,57 @@ struct Everything
     std::vector<int> list{1, 2, 3};
     Inner inner;
 };
+
+struct FilterSettings
+{
+    enum class Basis : std::uint8_t
+    {
+        kLinear,
+        kCubic,
+        kBicubic,
+    };
+
+    Basis basis = Basis::kLinear;
+    int iterations = 6;
+};
+
+struct SceneConfig
+{
+    FilterSettings primary;
+    FilterSettings secondary;
+    float scale = 100.0f;
+};
 } // namespace
 
 template <> struct orosmo::core::EnumNames<Mode>
 {
     static constexpr std::array<const char *, 2> names{"A", "B"};
 };
+template <> struct orosmo::core::EnumNames<FilterSettings::Basis>
+{
+    static constexpr std::array<const char *, 3> names{"Linear", "Cubic", "Bicubic"};
+};
 template <> struct orosmo::core::Reflect<Inner>
 {
     [[maybe_unused]] static constexpr int kVersion = 1;
     static constexpr auto fields() { return std::make_tuple(field("weight", &Inner::weight, range(0.0, 1.0), "poids")); }
+};
+template <> struct orosmo::core::Reflect<FilterSettings>
+{
+    [[maybe_unused]] static constexpr int kVersion = 1;
+    static constexpr auto fields()
+    {
+        return std::make_tuple(field("basis", &FilterSettings::basis), field("iterations", &FilterSettings::iterations, range(1, 16)));
+    }
+};
+template <> struct orosmo::core::Reflect<SceneConfig>
+{
+    [[maybe_unused]] static constexpr int kVersion = 1;
+    static constexpr auto fields()
+    {
+        return std::make_tuple(field("primary", &SceneConfig::primary), field("secondary", &SceneConfig::secondary),
+                               field("scale", &SceneConfig::scale, range(10.0, 500.0)));
+    }
 };
 template <> struct orosmo::core::Reflect<Everything>
 {
@@ -115,13 +155,13 @@ TEST_SUITE("ui/reflect")
         CHECK(p->findAs<ui::Slider>("inner.weight") != nullptr);
     }
 
-    TEST_CASE("TerrainParams: the noise basis is a dropdown with its names; a change writes the parameters and reaches the panel")
+    TEST_CASE("SceneConfig: the filter basis is a dropdown with its names; a change writes the parameters and reaches the panel")
     {
         UiHarness h;
         h.viewport = {400, 800};
-        orosmo::world::TerrainParams params;
+        SceneConfig config;
         int changes = 0;
-        auto panel = ui::reflectedPanel(params);
+        auto panel = ui::reflectedPanel(config);
         panel->onChange([&](const ui::Event &) { ++changes; });
         auto *p = panel.get();
         auto root = std::make_unique<ui::Overlay>();
@@ -131,36 +171,36 @@ TEST_SUITE("ui/reflect")
         h.ui.setRoot(std::move(root));
         h.frame();
 
-        auto *basis = p->findAs<ui::Dropdown>("relief.basis");
+        auto *basis = p->findAs<ui::Dropdown>("primary.basis");
         REQUIRE(basis != nullptr);
-        CHECK(basis->options() == std::vector<std::string>{"Perlin", "Simplex", "Worley"});
-        auto *octaves = p->findAs<ui::Slider>("relief.octaves");
-        REQUIRE(octaves != nullptr);
-        CHECK(p->findAs<ui::Slider>("warp.octaves") != nullptr);
-        auto *scale = p->findAs<ui::Slider>("heightScale");
+        CHECK(basis->options() == std::vector<std::string>{"Linear", "Cubic", "Bicubic"});
+        auto *iterations = p->findAs<ui::Slider>("primary.iterations");
+        REQUIRE(iterations != nullptr);
+        CHECK(p->findAs<ui::Slider>("secondary.iterations") != nullptr);
+        auto *scale = p->findAs<ui::Slider>("scale");
         REQUIRE(scale != nullptr);
 
-        // Clic au milieu du curseur d'octaves (1..16) : 8,5 → 9 (arrondi au pas).
-        h.click(UiHarness::center(*octaves));
-        CHECK(params.relief.octaves == 9);
+        // Clic au milieu du curseur d'itérations (1..16) : 8,5 → 9 (arrondi au pas).
+        h.click(UiHarness::center(*iterations));
+        CHECK(config.primary.iterations == 9);
         CHECK(changes == 1);
-        // Clic droit : valeur par défaut de TerrainParams{} (6 octaves), pas celle du moment.
-        h.secondaryClick(UiHarness::center(*octaves));
-        CHECK(params.relief.octaves == 6);
+        // Clic droit : valeur par défaut de SceneConfig{} (6 itérations), pas celle du moment.
+        h.secondaryClick(UiHarness::center(*iterations));
+        CHECK(config.primary.iterations == 6);
         CHECK(changes == 2);
         changes = 1;
-        // Choix de Worley dans la liste.
+        // Choix de Bicubic dans la liste.
         h.click(UiHarness::center(*basis));
         REQUIRE(h.ui.popup() != nullptr);
         const auto &items = h.ui.popup()->children()[0]->children();
         REQUIRE(items.size() == 3);
         h.click(UiHarness::center(*items[2]));
-        CHECK(params.relief.basis == orosmo::world::NoiseBasis::kWorley);
+        CHECK(config.primary.basis == FilterSettings::Basis::kBicubic);
         CHECK(changes == 2);
         // Repli d'une section : ses contrôles disparaissent.
-        auto *relief = p->findAs<ui::Section>("relief");
-        REQUIRE(relief != nullptr);
-        h.click({relief->rect().position.x + 3, relief->rect().position.y + 3});
-        CHECK_FALSE(relief->body().visible());
+        auto *primary = p->findAs<ui::Section>("primary");
+        REQUIRE(primary != nullptr);
+        h.click({primary->rect().position.x + 3, primary->rect().position.y + 3});
+        CHECK_FALSE(primary->body().visible());
     }
 }
