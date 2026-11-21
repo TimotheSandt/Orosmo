@@ -7,7 +7,8 @@ générique** : `world`, `TerrainRenderer`, les shaders `terrain.*` et les exemp
 internes (`ENGINE_EXTRA_MODULES`) mais sortent de `orosmo-pkg-<plateforme>.zip` (décision de l'auteur, A34). `orosmo init` crée un
 projet générique (fenêtre, RHI, cube éclairé, interface `.cui`), l'exemple `minimal` n'utilise plus que `orosmo::core`. Le plan
 gagne le jalon **M11 · Système de modules et d'addons**. Côté build : barre de progression de `make` dans un terminal,
-`sync-demo` qui ne fait plus recompiler la démo, et la CI d'une PR n'est plus relancée en double. Détail : `docs/releases/M3bis.md`.
+`sync-demo` qui ne fait plus recompiler la démo, la CI d'une PR n'est plus relancée en double, et la CI garde ses compilations
+(ccache) et compile les tests en parallèle. Détail : `docs/releases/M3bis.md`.
 
 M3 (PR #8) est fusionné dans `main` ; les derniers retours de CodeRabbit sur M3 sont reportés.
 
