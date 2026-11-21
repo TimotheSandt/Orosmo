@@ -292,6 +292,11 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
         return makeError(ErrorCode::kInvalidArgument, "--click requires --capture-frames 3 or more");
     }
 
+    if (!options.hoverId.empty() && options.captureFrames < 2)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "--hover requires --capture-frames 2 or more");
+    }
+
     return options;
 }
 
@@ -305,7 +310,7 @@ void printUsage(std::ostream &out)
     out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
     out << "Example: Orosmo --api opengl --ui full --theme dark --tab scene\n";
     out << "Capture : renders N frames (default 10) at WxH (default 1280x720, min 640x400), writes <dir>/scene.png and\n";
-    out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames).\n";
+    out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames, --hover >= 2).\n";
     out << "Headless: --headless creates no window (offscreen device, fixed time step), renders N frames and exits;\n";
     out << "          combine it with --capture <dir> to save the images.\n";
 }

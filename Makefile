@@ -208,7 +208,11 @@ demo-capture: all-debug
 	./$(DEMO_BIN) --api opengl --headless --ui full --theme light --tab windows --click notifyWarning --capture build/demo-capture/light-notification --capture-frames 5
 	test -s build/demo-capture/dark-widgets/ui.png
 	test -s build/demo-capture/light-widgets/ui.png
-	python3 tools/compare_png.py build/demo-capture/dark-widgets/ui.png build/demo-capture/light-widgets/ui.png > /dev/null && exit 1 || echo "demo-capture : OK (dark != light)"
+	@# compare_png.py : code 0 = identiques (erreur ici) ; 1 + ligne DIFFERENT = images différentes (attendu) ; autre = erreur d'exécution.
+	@out=$$(python3 tools/compare_png.py build/demo-capture/dark-widgets/ui.png build/demo-capture/light-widgets/ui.png); rc=$$?; \
+	if [ $$rc -eq 0 ]; then echo "demo-capture : les captures dark et light sont identiques"; exit 1; \
+	elif [ $$rc -eq 1 ] && printf '%s\n' "$$out" | grep -q '^DIFFERENT'; then echo "demo-capture : OK (dark != light)"; \
+	else echo "demo-capture : erreur du comparateur (code $$rc) : $$out"; exit 1; fi
 
 # M4 : la démo donne la même image dans la tolérance en Vulkan et en OpenGL, et les couches de validation Vulkan (synchronisation
 # comprise) restent silencieuses (0 message). `make demo-vulkan-check FULL=1` ajoute tous les onglets de demo-capture.

@@ -700,6 +700,11 @@ TEST_SUITE("renderer/gpu_timer")
         {
             Gpu gpu(backend);
             REQUIRE(gpu.device);
+            if (!gpu->capabilities().timestampQueries)
+            {
+                MESSAGE("Skipped: no timestamp queries on ", tests::backendName(backend));
+                continue;
+            }
             rd::GpuTimer timer(*gpu.device, "pass");
             REQUIRE(timer.valid());
             CHECK_FALSE(timer.isReady());
@@ -734,6 +739,11 @@ TEST_SUITE("renderer/gpu_timer/profiler")
         {
             Gpu gpu(backend);
             REQUIRE(gpu.device);
+            if (!gpu->capabilities().timestampQueries)
+            {
+                MESSAGE("Skipped: no timestamp queries on ", tests::backendName(backend));
+                continue;
+            }
             rd::ProfilerGpuTimerFactory factory(*gpu.device);
             auto idle = factory.CreateTimer("idle");
             REQUIRE(idle != nullptr);

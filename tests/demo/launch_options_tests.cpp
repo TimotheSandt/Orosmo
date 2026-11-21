@@ -244,6 +244,11 @@ TEST_SUITE("Demo launch options")
         const char *clickTooFewReversed[] = {"Orosmo", "--capture-frames", "2", "--click", "openDialog"};
         Assert(!demo::parseLaunchOptions(5, clickTooFewReversed).has_value(), "--click with --capture-frames 2 must be rejected in any order");
 
+        const char *hoverOneFrame[] = {"Orosmo", "--hover", "volume", "--capture-frames", "1"};
+        Assert(!demo::parseLaunchOptions(5, hoverOneFrame).has_value(), "--hover with --capture-frames 1 must be rejected");
+        const char *hoverTwoFrames[] = {"Orosmo", "--hover", "volume", "--capture-frames", "2"};
+        Assert(demo::parseLaunchOptions(5, hoverTwoFrames).has_value(), "--hover with --capture-frames 2 is accepted");
+
         const char *missingHover[] = {"Orosmo", "--hover"};
         const char *missingClick[] = {"Orosmo", "--click"};
         Assert(!demo::parseLaunchOptions(2, missingHover).has_value(), "Missing --hover value should be rejected");
