@@ -279,4 +279,4 @@ fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).
   **tous** les effets (`REN-23`, `24`, `25`, `26`, `27`, `14`, `33`, `38`) deviennent des modules préinstallés (M13), M7 est supprimé.
   D'après A40 (rapport de la session de Gemini) : `REN-25` (brouillard), `REN-14` (AO), `REN-33` (particules) et `REN-38`
   (réfraction) **restent dans le cœur** ; seuls `REN-23`, `24`, `26`, `27` et `TER-*` / `SIM-02` / `SIM-03` deviennent des modules.
-  `docs/05` applique A39 (le plus récent à la connaissance de l'agent). **À confirmer par l'auteur.**
+  `docs/05` applique A39. **Tranchée par l'auteur (2026-11-21) : modules préinstallés dans M13** (tous les effets, y compris `REN-25`, `14`, `33`, `38`) ; A40, point 1, est remplacé en conséquence.
