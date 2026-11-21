@@ -232,3 +232,24 @@ fn cache_hash_is_invalidated_when_cpp_write_fails() {
 
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn lex_number_restores_column_when_suffix_is_rejected() {
+    let tokens = Lexer::new("1.foo bar").tokenize().unwrap();
+    assert_eq!(tokens[0].ty, TokenType::IntLit);
+    assert_eq!((tokens[0].col, tokens[0].end_col), (1, 2));
+    assert_eq!(tokens[1].ty, TokenType::Dot);
+    assert_eq!((tokens[1].col, tokens[1].end_col), (2, 3));
+    assert_eq!(tokens[2].ty, TokenType::Ident);
+    assert_eq!((tokens[2].col, tokens[2].end_col), (3, 6));
+    assert_eq!(tokens[3].ty, TokenType::Ident);
+    assert_eq!((tokens[3].col, tokens[3].end_col), (7, 10));
+
+    // Les suffixes de durée reconnus (comme 1.ms) restent acceptés.
+    let dur = Lexer::new("1.ms x").tokenize().unwrap();
+    assert_eq!(dur[0].ty, TokenType::FloatLit);
+    assert_eq!(dur[0].text(), "0.001");
+    assert_eq!((dur[0].col, dur[0].end_col), (1, 5));
+    assert_eq!(dur[1].ty, TokenType::Ident);
+    assert_eq!((dur[1].col, dur[1].end_col), (6, 7));
+}

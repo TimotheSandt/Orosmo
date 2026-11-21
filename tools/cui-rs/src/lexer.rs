@@ -329,6 +329,7 @@ impl Lexer {
         }
         if self.peek(0) == '.' {
             let suffix_start = self.pos;
+            let suffix_col = self.col;
             self.advance();
             let mut suffix = String::new();
             while self.peek(0).is_ascii_alphabetic() {
@@ -347,6 +348,7 @@ impl Lexer {
                 ));
             }
             self.pos = suffix_start;
+            self.col = suffix_col;
         }
 
         let text: String = self.chars[start..self.pos].iter().collect();
