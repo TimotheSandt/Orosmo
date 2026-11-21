@@ -1,7 +1,7 @@
 # M3 bis : release cœur générique et confort de build (entre M3 et M4)
 
 Jalon intermédiaire décidé par l'auteur le 2026-11-21 (`docs/05-PLAN_PAR_JALONS.md`, « M3 bis »). Il part de `dev` après les
-revues de la PR #8 (M3) et se fusionne dans `dev` une fois la PR #8 fusionnée dans `main`. Version proposée : `v0.3.1` (A35, à
+revues de la PR #8 (M3), fusionnée dans `main` le 2026-11-21, et a été fusionné dans `dev` ensuite. Version proposée : `v0.3.1` (A35, à
 trancher ; les fichiers de version restent à `0.3.0`).
 
 ## Ce qui change
