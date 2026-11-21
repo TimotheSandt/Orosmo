@@ -195,7 +195,8 @@ Proposition : garder le champ vide en 0.3.x et passer à `Result` à M4 avec les
    `docs/05`) est ajouté afin de pouvoir intégrer facilement des modules d'aide au développement, soit **inclus directement dans
    la release** (`bundled`), soit **distribués en addons séparés** installables sur une release cœur.
 
-**A35. Version de la release M3 bis (2026-11-21, proposition).** M3 est proposée en `v0.3.0` avec `world` dans le paquet ; M3 bis
+**A35. Version de la release M3 bis (2026-11-21, tranchée).** M3 est proposée en `v0.3.0` avec `world` dans le paquet ; M3 bis
 retire `world`, `TerrainRenderer` et les exemples terrain du paquet (changement incompatible pour qui les utiliserait, personne à
 ce jour). Proposition : `v0.3.1` (aucun utilisateur extérieur ; `v0.4.0` reste pour M4). Les fichiers de version (`mk/config.mk`,
-`vcpkg.json`, `Cargo.toml`) restent à `0.3.0` tant que l'auteur n'a pas tranché. *À trancher par l'auteur.*
+`vcpkg.json`, `Cargo.toml`) restent à `0.3.0` tant que l'auteur n'a pas tranché. **Décision de l'auteur (2026-11-21)** : `v0.3.1` ;
+fichiers de version passés à 0.3.1 (`chore/version-0.3.1`).
