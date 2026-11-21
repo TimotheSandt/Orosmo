@@ -22,8 +22,9 @@ env:
 
 jobs:
   # ── Plan: do not repeat a run that already exists ────────────────────────────────────────────────
-  # A pull request run is skipped when (1) the PR comes from this repository, (2) the target branch is already contained
-  # in the PR head (so the merge commit that pull_request tests has the same content as the head) and (3) a push run of
+  # A pull request run is skipped when (1) the PR comes from this repository, (2) the merge commit that pull_request tests has
+  # the same content as the PR head (target already contained in the head, or same tree: `main` only adds the merge commit of
+  # the previous PR, whose content `dev` already has) and (3) a push run of
   # this workflow for the head commit FINISHED SUCCESSFULLY. A push run that is still queued or running is WAITED for (up to
   # 45 minutes), because opening the PR right after the push is the normal case: GitHub shows a job skipped by a condition as
   # green, so skipping before the result exists (or after a failure) would hide it behind a green PR check, and not waiting
@@ -52,8 +53,14 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           skip=false
-          if [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] \
-             && git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"; then
+          # Même contenu : la cible est déjà dans la tête, OU la fusion testée par pull_request a exactement l'arbre de la tête
+          # (cas habituel : `main` a seulement le commit de fusion de la PR précédente, dont le contenu est déjà dans `dev`).
+          same_tree=false
+          if git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA" \
+             || [ "$(git rev-parse "HEAD^{tree}")" = "$(git rev-parse "$HEAD_SHA^{tree}")" ]; then
+            same_tree=true
+          fi
+          if [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] && [ "$same_tree" = true ]; then
             deadline=$((SECONDS + 2700))
             while true; do
               json=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&event=push")
