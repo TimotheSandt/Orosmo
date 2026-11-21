@@ -1,0 +1,129 @@
+#pragma once
+
+#include "orosmo/core/error.hpp"
+#include "orosmo/core/math.hpp"
+#include "orosmo/core/reflection.hpp"
+#include "orosmo/renderer/camera.hpp"
+#include "orosmo/renderer/debug_draw.hpp"
+#include "orosmo/renderer/light.hpp"
+#include "orosmo/renderer/mesh.hpp"
+#include "orosmo/renderer/scene_renderer.hpp"
+#include "orosmo/renderer/shader_library.hpp"
+#include "orosmo/rhi/device.hpp"
+
+#include <glm/glm.hpp>
+
+#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <tuple>
+#include <vector>
+
+namespace demo
+{
+
+enum class ProjectionMode : std::uint8_t
+{
+    kPerspective,
+    kOrthographic,
+};
+
+struct DemoSceneParams
+{
+    bool animate = true;
+    float animationSpeed = 1.0f;
+    bool wireframe = false;
+    bool debugDraw = true;
+    bool cameraRelative = false;
+    float fovDegrees = 70.0f;
+    ProjectionMode projection = ProjectionMode::kPerspective;
+    float renderScale = 1.0f;
+    float sunElevation = 42.0f;
+    float sunAzimuth = 35.0f;
+    float sunIntensity = 0.95f;
+    orosmo::core::Vec3 sunColor{1.0f, 0.96f, 0.88f};
+    float ambientStrength = 0.28f;
+    orosmo::core::Vec3 ambientColor{0.68f, 0.78f, 0.95f};
+    orosmo::core::Vec3 accentColor{0.28f, 0.62f, 0.92f};
+};
+
+class DemoScene
+{
+  public:
+    DemoScene() = default;
+    ~DemoScene();
+    DemoScene(const DemoScene &) = delete;
+    DemoScene &operator=(const DemoScene &) = delete;
+
+    static glm::vec3 defaultCameraPosition();
+    static glm::vec3 defaultCameraOrientation();
+
+    orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
+                                const std::filesystem::path &shaderDirectory);
+    void destroy();
+    void update(float deltaSeconds, const DemoSceneParams &params);
+    orosmo::core::Result<> render(orosmo::renderer::SceneRenderer &renderer, orosmo::renderer::Camera &camera,
+                                  const DemoSceneParams &params);
+
+  private:
+    void applyTransforms();
+    orosmo::core::Result<> syncLights(const DemoSceneParams &params);
+    orosmo::core::Result<> syncAccentColor(const DemoSceneParams &params);
+
+    std::shared_ptr<orosmo::renderer::ShaderProgram> meshProgram_;
+    orosmo::renderer::Mesh groundMesh_;
+    orosmo::renderer::Mesh structureMesh_;
+    orosmo::renderer::Mesh heroMesh_;
+    std::array<orosmo::renderer::Mesh, 3> orbitMeshes_;
+    orosmo::renderer::LightManager lights_;
+    orosmo::renderer::DebugDraw debugDraw_;
+
+    std::vector<float> heroVertices_;
+    glm::vec3 heroPosition_{0.0f, 2.85f, 0.0f};
+    float elapsedSeconds_ = 0.0f;
+    bool initialized_ = false;
+
+    bool lightingInitialized_ = false;
+    float lastSunElevation_ = 0.0f;
+    float lastSunAzimuth_ = 0.0f;
+    float lastSunIntensity_ = 0.0f;
+    orosmo::core::Vec3 lastSunColor_{0.0f};
+    float lastAmbientStrength_ = 0.0f;
+    orosmo::core::Vec3 lastAmbientColor_{0.0f};
+
+    bool accentInitialized_ = false;
+    orosmo::core::Vec3 lastAccentColor_{0.0f};
+};
+
+} // namespace demo
+
+template <> struct orosmo::core::EnumNames<demo::ProjectionMode>
+{
+    static constexpr std::array<const char *, 2> names{"Perspective", "Orthographic"};
+};
+
+template <> struct orosmo::core::Reflect<demo::DemoSceneParams>
+{
+    static constexpr int kVersion = 1;
+    static constexpr auto fields()
+    {
+        using P = demo::DemoSceneParams;
+        return std::make_tuple(
+            field("animate", &P::animate, {}, "Animate rotating crystal and orbiting prisms"),
+            field("animationSpeed", &P::animationSpeed, range(0.0, 4.0), "Animation playback speed multiplier"),
+            field("wireframe", &P::wireframe, {}, "Overlay triangle wireframe on scene meshes"),
+            field("debugDraw", &P::debugDraw, {}, "Draw world axes, hero bounds, and sun direction ray"),
+            field("cameraRelative", &P::cameraRelative, {}, "Render geometry in camera-relative coordinates"),
+            field("fovDegrees", &P::fovDegrees, range(30.0, 110.0), "Vertical field of view in degrees"),
+            field("projection", &P::projection, {}, "Camera projection mode"),
+            field("renderScale", &P::renderScale, range(0.25, 1.0), "Internal 3D scene resolution scale"),
+            field("sunElevation", &P::sunElevation, range(5.0, 89.0), "Directional sun elevation in degrees"),
+            field("sunAzimuth", &P::sunAzimuth, range(0.0, 360.0), "Directional sun azimuth in degrees"),
+            field("sunIntensity", &P::sunIntensity, range(0.0, 2.5), "Directional sun intensity"),
+            field("sunColor", &P::sunColor, {}, "Directional sun RGB color"),
+            field("ambientStrength", &P::ambientStrength, range(0.0, 1.0), "Ambient light strength"),
+            field("ambientColor", &P::ambientColor, {}, "Ambient light RGB color"),
+            field("accentColor", &P::accentColor, {}, "Accent RGB color of the central crystal"));
+    }
+};
