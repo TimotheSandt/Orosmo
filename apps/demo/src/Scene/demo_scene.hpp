@@ -5,8 +5,11 @@
 #include "orosmo/core/reflection.hpp"
 #include "orosmo/renderer/camera.hpp"
 #include "orosmo/renderer/debug_draw.hpp"
+#include "orosmo/renderer/instance_renderer.hpp"
 #include "orosmo/renderer/light.hpp"
 #include "orosmo/renderer/mesh.hpp"
+#include "orosmo/renderer/object_set.hpp"
+#include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/scene_renderer.hpp"
 #include "orosmo/renderer/shader_library.hpp"
 #include "orosmo/rhi/device.hpp"
@@ -61,12 +64,21 @@ class DemoScene
 
     orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
                                 const std::filesystem::path &shaderDirectory);
+    // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (après init). 0 : rien n'est créé.
+    orosmo::core::Result<> initInstances(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
+                                         orosmo::renderer::PipelineCache &pipelines, const std::filesystem::path &shaderDirectory,
+                                         std::uint32_t count);
     void destroy();
     void update(float deltaSeconds, const DemoSceneParams &params);
     orosmo::core::Result<> render(orosmo::renderer::SceneRenderer &renderer, orosmo::renderer::Camera &camera,
                                   const DemoSceneParams &params);
 
+    // Statistiques du dernier dessin instancié (zéros sans --instances).
+    const orosmo::renderer::VisibilityStats &instanceVisibility() const noexcept { return instanceVisibility_; }
+    const orosmo::renderer::InstanceDrawStats &instanceDrawStats() const noexcept { return instanceDrawStats_; }
+
   private:
+    orosmo::core::Result<> renderInstances(orosmo::renderer::SceneRenderer &renderer, const orosmo::renderer::Camera &camera);
     void applyTransforms();
     orosmo::core::Result<> syncLights(const DemoSceneParams &params);
     orosmo::core::Result<> syncAccentColor(const DemoSceneParams &params);
@@ -78,6 +90,15 @@ class DemoScene
     std::array<orosmo::renderer::Mesh, 3> orbitMeshes_;
     orosmo::renderer::LightManager lights_;
     orosmo::renderer::DebugDraw debugDraw_;
+
+    // Objets instanciés (--instances) : deux niveaux de détail, deux matériaux.
+    std::array<orosmo::renderer::Mesh, 2> instanceLods_;
+    std::unique_ptr<orosmo::renderer::InstanceRenderer> instanceRenderer_;
+    orosmo::renderer::ObjectSet instanceObjects_;
+    orosmo::renderer::InstanceBatchBuilder instanceBatches_;
+    orosmo::renderer::VisibilityStats instanceVisibility_;
+    orosmo::renderer::InstanceDrawStats instanceDrawStats_;
+    std::uint64_t instanceFrames_ = 0;
 
     std::vector<float> heroVertices_;
     glm::vec3 heroPosition_{0.0f, 2.85f, 0.0f};

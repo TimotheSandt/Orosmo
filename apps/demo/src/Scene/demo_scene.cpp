@@ -1,5 +1,9 @@
 #include "Scene/demo_scene.hpp"
 
+#include <orosmo/core/log.hpp>
+
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -497,8 +501,121 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
     return {};
 }
 
+orosmo::core::Result<> DemoScene::initInstances(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
+                                                orosmo::renderer::PipelineCache &pipelines, const std::filesystem::path &shaderDirectory,
+                                                std::uint32_t count)
+{
+    namespace rd = orosmo::renderer;
+    if (count == 0)
+    {
+        return {};
+    }
+    auto renderer = rd::InstanceRenderer::create(device, shaders, pipelines, shaderDirectory);
+    if (!renderer)
+    {
+        return std::unexpected(renderer.error());
+    }
+    // Niveau 0 : bipyramide à facettes ; niveau 1 : cube (12 triangles). Sommets blancs, la couleur vient de l'instance.
+    MeshBuilder detailed;
+    detailed.addBipyramid(0.36f, 0.44f, 8, glm::vec3(1.0f), glm::vec3(0.78f));
+    MeshBuilder coarse;
+    coarse.addBox(glm::vec3(-0.3f), glm::vec3(0.3f), glm::vec3(0.9f));
+    std::array<rd::MeshData, 2> lodData{detailed.finish("instances.lod0"), coarse.finish("instances.lod1")};
+    std::array<std::uint32_t, 2> lodIds{};
+    for (std::size_t i = 0; i < lodData.size(); ++i)
+    {
+        auto mesh = rd::Mesh::create(device, lodData[i]);
+        if (!mesh)
+        {
+            return std::unexpected(mesh.error());
+        }
+        instanceLods_[i] = std::move(*mesh);
+        auto id = (*renderer)->addMesh(instanceLods_[i]);
+        if (!id)
+        {
+            return std::unexpected(id.error());
+        }
+        lodIds[i] = *id;
+    }
+    // Deux matériaux identiques (le regroupement se fait par identifiant) : quatre lots au plus, deux LOD × deux matériaux.
+    const std::array<std::uint32_t, 2> materials{(*renderer)->addMaterial({}), (*renderer)->addMaterial({})};
+
+    rd::LodSettings lod;
+    lod.switchDistances = {28.0f};
+    lod.transitionWidth = 6.0f;
+    const std::uint32_t lodSettings = instanceObjects_.addLodSettings(lod);
+
+    // Grille déterministe (aucun hasard) autour de la cour : pas de 1,6 m, les cellules de la cour (rayon 9 m) sont sautées.
+    constexpr float kSpacing = 1.6f;
+    constexpr float kClearRadius = 9.0f;
+    const float clearCells = kPi * (kClearRadius / kSpacing) * (kClearRadius / kSpacing);
+    const auto side = static_cast<std::uint32_t>(std::ceil(std::sqrt(static_cast<float>(count) + clearCells))) + 2;
+    const float centre = static_cast<float>(side - 1) * 0.5f;
+    const glm::vec3 palette[4] = {{0.95f, 0.55f, 0.30f}, {0.35f, 0.80f, 0.60f}, {0.55f, 0.60f, 0.95f}, {0.90f, 0.85f, 0.40f}};
+    std::uint32_t placed = 0;
+    for (std::uint32_t cell = 0; placed < count && cell < side * side; ++cell)
+    {
+        const std::uint32_t gx = cell % side;
+        const std::uint32_t gz = cell / side;
+        const float x = (static_cast<float>(gx) - centre) * kSpacing;
+        const float z = (static_cast<float>(gz) - centre) * kSpacing;
+        if (x * x + z * z < kClearRadius * kClearRadius)
+        {
+            continue;
+        }
+        rd::ObjectDesc desc;
+        desc.lodMeshes = {lodIds[0], lodIds[1]};
+        desc.material = materials[placed % 2];
+        desc.lodSettings = lodSettings;
+        desc.localBounds = {glm::vec3(-0.45f), glm::vec3(0.45f)};
+        glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0.45f, z));
+        transform = glm::rotate(transform, static_cast<float>(placed % 17) * 0.37f, glm::vec3(0.0f, 1.0f, 0.0f));
+        desc.transform = transform;
+        desc.color = glm::vec4(palette[(gx + gz * 3) % 4], 1.0f);
+        if (auto id = instanceObjects_.add(desc); !id)
+        {
+            return std::unexpected(id.error());
+        }
+        ++placed;
+    }
+    instanceRenderer_ = std::move(*renderer);
+    return {};
+}
+
+orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRenderer &renderer, const orosmo::renderer::Camera &camera)
+{
+    namespace rd = orosmo::renderer;
+    rd::CullView view = rd::CullView::fromMatrices(camera.viewMatrix(), camera.projectionMatrix(), static_cast<float>(renderer.frameHeight()),
+                                                   camera.projection() == rd::Camera::Projection::kOrthographic);
+    view.minScreenRadius = 1.0f; // moins d'un pixel de rayon : rejeté
+    instanceVisibility_ = instanceObjects_.prepare(view, instanceBatches_);
+    auto drawn = instanceRenderer_->draw(renderer, instanceBatches_, camera.wireframe());
+    if (!drawn)
+    {
+        return std::unexpected(drawn.error());
+    }
+    instanceDrawStats_ = *drawn;
+    if (instanceFrames_++ % 600 == 0)
+    {
+        LOG_INFO("Instances: ", instanceVisibility_.objects, " objects, ", instanceVisibility_.cull.visible, " visible (", instanceVisibility_.cull.frustumCulled,
+                 " outside the view, ", instanceVisibility_.cull.smallCulled, " too small), ", instanceVisibility_.crossFades, " LOD cross-fades, ",
+                 instanceDrawStats_.instances, " instances in ", instanceDrawStats_.drawCalls, " draw calls");
+    }
+    return {};
+}
+
 void DemoScene::destroy()
 {
+    instanceRenderer_.reset(); // référence les maillages des LOD
+    for (auto &mesh : instanceLods_)
+    {
+        mesh.reset();
+    }
+    instanceObjects_.clear();
+    instanceBatches_.clear();
+    instanceVisibility_ = {};
+    instanceDrawStats_ = {};
+    instanceFrames_ = 0;
     groundMesh_.reset();
     structureMesh_.reset();
     heroMesh_.reset();
@@ -658,6 +775,14 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
     for (auto &orbit : orbitMeshes_)
     {
         if (auto r = renderer.drawMesh(orbit, camera); !r)
+        {
+            return r;
+        }
+    }
+
+    if (instanceRenderer_)
+    {
+        if (auto r = renderInstances(renderer, camera); !r)
         {
             return r;
         }
