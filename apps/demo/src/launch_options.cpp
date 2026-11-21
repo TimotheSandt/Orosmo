@@ -165,15 +165,20 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
         {
             options.headless = true;
         }
+        else if (argument == "--strict-backend")
+        {
+            options.strictBackend = true;
+        }
         else if (argument == "--choose-api")
         {
             options.chooseApiInteractively = true;
         }
-        else if (matchOption("--api", value))
+        else if (matchOption("--api", value) || matchOption("--backend", value))
         {
+            const std::string flag = argument.starts_with("--backend") ? "--backend" : "--api";
             if (!value)
             {
-                return makeError(ErrorCode::kInvalidArgument, "Missing value after --api");
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after " + flag);
             }
             const auto api = parseBackend(*value);
             if (!api)
@@ -292,10 +297,12 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
 
 void printUsage(std::ostream &out)
 {
-    out << "Usage: Orosmo [--api <name>] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
+    out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
         << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
         << "              [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
+    out << "Backend : --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
+    out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
     out << "Example: Orosmo --api opengl --ui full --theme dark --tab scene\n";
     out << "Capture : renders N frames (default 10) at WxH (default 1280x720, min 640x400), writes <dir>/scene.png and\n";
     out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames).\n";
@@ -362,6 +369,35 @@ std::string backendAvailabilityMessage(Backend api)
         case BackendAvailability::kUnsupportedPlatform: return name + " backend is not supported on this platform.";
     }
     return "Unknown graphics backend state.";
+}
+
+BackendDecision resolveBackend(Backend requested, bool strict, BackendAvailability availability, std::string_view failureReason)
+{
+    BackendDecision decision;
+    decision.backend = requested;
+    const bool failed = availability != BackendAvailability::kAvailable || !failureReason.empty();
+    if (!failed)
+    {
+        return decision;
+    }
+    std::string reason = failureReason.empty() ? backendAvailabilityMessage(requested) : std::string(failureReason);
+    if (requested != Backend::kVulkan)
+    {
+        // Pas de repli pour OpenGL (le repli lui-même) ni pour Metal (macOS seulement, M9).
+        decision.refused = true;
+        decision.message = failureReason.empty() ? std::move(reason) : std::string(backendDisplayName(requested)) + " cannot start: " + reason;
+        return decision;
+    }
+    if (strict)
+    {
+        decision.refused = true;
+        decision.message = "Vulkan cannot start and --strict-backend forbids the OpenGL fallback: " + reason;
+        return decision;
+    }
+    decision.backend = Backend::kOpenGL;
+    decision.fellBack = true;
+    decision.message = "Vulkan cannot start (" + reason + "); falling back to OpenGL.";
+    return decision;
 }
 
 } // namespace demo
