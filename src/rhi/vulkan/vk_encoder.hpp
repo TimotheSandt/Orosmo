@@ -15,6 +15,8 @@ class VkEncoder final : public CommandEncoder
     explicit VkEncoder(VulkanDevice &device);
     ~VkEncoder() override;
 
+    const VulkanDevice &device() const noexcept { return device_; }
+
     VkEncoder(const VkEncoder &) = delete;
     VkEncoder &operator=(const VkEncoder &) = delete;
 
