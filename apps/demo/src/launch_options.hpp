@@ -51,7 +51,7 @@ struct LaunchOptions
     std::string theme = "dark";
     // --tab scene|widgets|controls|color|windows|layout|themes (défaut : scene).
     std::string tab = "scene";
-    // --hover <id> / --click <id> : pointeur simulé pendant --capture (--click exige --capture-frames >= 3).
+    // --hover <id> / --click <id> : pointeur simulé pendant --capture (--click exige --capture-frames >= 3, --hover >= 2).
     std::string hoverId;
     std::string clickId;
     // --size WxH (défaut : 1280x720, minimum : 640x400).

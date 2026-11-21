@@ -622,7 +622,7 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
     {
         camera.setPerspective();
     }
-    camera.setWireframe(params.wireframe);
+    // Le filaire (menu ET touche W du contrôleur) est déjà posé sur la caméra par Game::applySceneParams : ne pas l'écraser ici.
 
     renderer.setCameraRelative(params.cameraRelative);
     renderer.setRenderScale(params.renderScale);
