@@ -466,6 +466,8 @@ engine-tool: $(ENGINE_PKG_ZIP) $(ENGINE_TOOL_EXE)
 
 # ── Sync demo ─────────────────────────────────────────────────────────────────
 # Copies the current BUILD_TYPE artifacts directly into apps/demo/orosmo/.
+# Copies keep their dates (cp -p; Copy-Item keeps LastWriteTime on Windows): an unchanged header or archive does not make the
+# demo recompile or relink at every sync.
 # Faster than install-demo: no dist packaging step required.
 # vcpkg_installed/ is linked (not copied) to avoid duplicating hundreds of MB.
 .PHONY: sync-demo
@@ -475,16 +477,16 @@ ifeq ($(DETECTED_OS),Windows)
 	@mkdir -p apps/demo/orosmo/includes
 	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination 'apps/demo/orosmo/includes' -Recurse -Force"
 else
-	@rm -rf apps/demo/orosmo/includes && cp -r $(INCLUDES_BASE) apps/demo/orosmo/includes
+	@rm -rf apps/demo/orosmo/includes && cp -rp $(INCLUDES_BASE) apps/demo/orosmo/includes
 endif
 ifeq ($(DETECTED_OS),Windows)
 	@for f in $(ENGINE_LIBS); do powershell -NoProfile -Command "Copy-Item -Path '$$f' -Destination 'apps/demo/orosmo/lib/$(BUILD_TYPE)' -Force"; done
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination 'apps/demo/orosmo/make' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination 'apps/demo/orosmo/tools' -Force"
 else
-	@cp $(ENGINE_LIBS) apps/demo/orosmo/lib/$(BUILD_TYPE)/
-	@cp tools/engine-sdk/engine.mk apps/demo/orosmo/make/
-	@cp "$(_CUI_INSTALLED)" apps/demo/orosmo/tools/
+	@cp -p $(ENGINE_LIBS) apps/demo/orosmo/lib/$(BUILD_TYPE)/
+	@cp -p tools/engine-sdk/engine.mk apps/demo/orosmo/make/
+	@cp -p "$(_CUI_INSTALLED)" apps/demo/orosmo/tools/
 endif
 	@if [ ! -e apps/demo/orosmo/vcpkg_installed ]; then \
 	    if [ "$(DETECTED_OS)" = "Windows" ]; then \
