@@ -2,7 +2,7 @@
 
 ## Résumé
 
-Release intermédiaire entre M3 et M4 (version `v0.3.1`, A35). Le paquet de release ne contient plus que le **moteur
+Release intermédiaire entre M3 et M4 (version `v0.3.1`, A35), **première release publiée** : M3 n'en a pas eu. Le paquet de release ne contient plus que le **moteur
 générique** : `world`, `TerrainRenderer`, les shaders `terrain.*` et les exemples terrain restent dans le dépôt pour les démos
 internes (`ENGINE_EXTRA_MODULES`) mais sortent de `orosmo-pkg-<plateforme>.zip` (décision de l'auteur, A34). `orosmo init` crée un
 projet générique (fenêtre, RHI, cube éclairé, interface `.cui`), l'exemple `minimal` n'utilise plus que `orosmo::core`. Le plan

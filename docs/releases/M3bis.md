@@ -1,7 +1,7 @@
 # M3 bis : release cœur générique et confort de build (entre M3 et M4)
 
 Jalon intermédiaire décidé par l'auteur le 2026-11-21 (`docs/05-PLAN_PAR_JALONS.md`, « M3 bis »). Il part de `dev` après les
-revues de la PR #8 (M3), fusionnée dans `main` le 2026-11-21, et a été fusionné dans `dev` ensuite. Version : `v0.3.1` (A35, décidée
+revues de la PR #8 (M3), fusionnée dans `main` le 2026-11-21, et a été fusionné dans `dev` ensuite. Version : `v0.3.1`, **première release publiée** (M3 n'a pas de release ; A35, décidée
 par l'auteur le 2026-11-21 ; `mk/config.mk`, `vcpkg.json`, `Cargo.toml`, extension VS Code).
 
 ## Ce qui change
