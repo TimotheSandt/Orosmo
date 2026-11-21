@@ -108,6 +108,21 @@ l'interface héritée `UI::` reste pour la démo (A30) ; Windows n'est pas obser
 **Démo** : visualiseur avec graine et paramètres modifiables en direct dans une interface décrite dans le langage maison, thème changeable ; `terrain-gen --seed 42 --size 4096 --out relief.png` produit une carte de hauteur identique à chaque lancement.
 **Terminé** : somme de contrôle de référence ; pas de fissure entre niveaux de détail ; budget mémoire respecté ; exports vérifiés en les rouvrant ; tests de compilation du langage verts ; `docs/UI_LANGUAGE.md` écrit. La release de fin de M3 est utilisable : `docs/USING_THE_ENGINE.md` écrit, `engine init` + compilation vérifiés en CI sur les trois systèmes, API publique figée.
 
+## M3 bis · Release générique et confort de build (entre M3 et M4)
+
+Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusion de M3 dans `main` et avant M4.
+
+- **Release cœur générique** (A34) : `orosmo-pkg-<plateforme>.zip` ne contient que le moteur générique (`core`, `platform`, `rhi`,
+  `renderer` sans `TerrainRenderer`, `ui`, `cui`) ; `world`, `TerrainRenderer`, les shaders `terrain.*`, `terrain-gen` et
+  `terrain-viewer` restent dans le dépôt (`ENGINE_EXTRA_MODULES`). Modèle de projet `orosmo init` et exemple `minimal` génériques.
+- **Jalon M11** (modules et addons, `MOD-01` à `MOD-04`) ajouté au plan.
+- **Affichage de la compilation** : barre de progression dans un terminal (fichiers compilés, en cours, restants, à jour) ;
+  `sync-demo` garde les dates des copies (plus de recompilation de la démo à chaque `make all-debug`).
+
+**Démo** : `make all-debug` dans un terminal (barre), puis `make e2e-init` (paquet sans module procédural, projet créé et lancé).
+**Terminé** : `e2e-init` vérifie l'absence de `world` dans le paquet ; tests, ASan / UBSan et `make check` verts ; note de version
+`docs/releases/M3bis.md`.
+
 ## M4 · Backend Vulkan
 
 - Backend complet avec VMA, barrières déduites, pipelines en cache (mémoire et disque, RHI-06).
