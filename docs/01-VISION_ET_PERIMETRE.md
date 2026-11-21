@@ -1,5 +1,7 @@
 # 01 · Vision et périmètre
 
+> **Note (2026-11-21, décisions A34 / A37 dans `docs/QUESTIONS.md`)** : Orosmo est un **moteur 3D et 2D générique en C++23**. La génération procédurale de terrain et de planètes (`orosmo::world`, `TerrainRenderer`, `terrain_gen`, `terrain_viewer`) a été archivée dans la branche `archive/procedural-world` et vivra dans un projet séparé (ou comme module/addon optionnel via le jalon **M11**). Les sections ci-dessous conservent le contexte initial des cas d'usage visés.
+
 ## Objectif
 
 Un moteur 3D en C++23 qui sert de base à des projets de génération procédurale : terrains, planètes entières, puis simulation d'un monde vivant. Il doit être :

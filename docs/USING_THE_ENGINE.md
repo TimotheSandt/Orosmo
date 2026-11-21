@@ -80,7 +80,7 @@ dans un projet créé par `orosmo init`), ou faites-en un lien vers une installa
 
 ## 4. Projet minimal
 
-`examples/minimal/` du paquet (source : `apps/minimal/` du dépôt), compilé et lancé par `make e2e-init` :
+`examples/minimal/` du paquet (source : `tools/engine-sdk/examples/minimal/` du dépôt), compilé et lancé par `make e2e-init` :
 
 ```cpp
 #include <orosmo/core/reflection.hpp>
@@ -143,13 +143,14 @@ obj/main.o: main.cpp
 
 Résultat : `{"data":{"name":"minimal","sum":524800,"tasksCompleted":1024},"version":1}`.
 
-Pour l'interface, `examples/ui_gallery` montre chaque widget, conteneur, événement et thème d'`orosmo::ui` dans une seule fenêtre.
-Le projet créé par `orosmo init` fournit quant à lui un squelette complet avec fenêtre, rendu 3D RHI (`SceneRenderer`, `Mesh`,
-`LightManager`) et superposition `.cui`.
+Le projet créé par `orosmo init` fournit un squelette complet avec fenêtre, rendu 3D RHI (`SceneRenderer`, `Mesh`,
+`LightManager`) et superposition `.cui`. Dans le dépôt du moteur, la démo unique `apps/demo/` rassemble la vitrine complète
+d'`orosmo::ui` et des fonctionnalités du moteur (un sélecteur de modèles de démarrage `minimal`/`starter`/`demo` + modèle
+utilisateur par défaut est prévu en M11, `MOD-05`).
 
-> La génération procédurale (`orosmo::world`, `TerrainRenderer`, `terrain-gen`, `terrain-viewer`) reste dans le dépôt source
-> pour les démos internes ; elle n'est pas incluse dans la release générique (décision A34). Un système de modules/addons est
-> prévu au jalon M11 (`docs/05-PLAN_PAR_JALONS.md`).
+> La génération procédurale (`orosmo::world`, `TerrainRenderer`, `terrain-gen`, `terrain-viewer`) a été archivée dans la
+> branche `archive/procedural-world` (décision A37) et n'est pas incluse dans la release générique. Un système de
+> modules/addons est prévu au jalon M11 (`docs/05-PLAN_PAR_JALONS.md`).
 
 ## 5. Ressources à l'exécution
 
@@ -175,7 +176,7 @@ présentée comme utilisable : `v0.3.1` (M3 bis, moteur générique). M3 (`v0.3.
 | --- | --- | --- |
 | `core`, `rhi`, `renderer`, `ui`, `platform` | **figé pour 0.3.x** | livré dans la release ; noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
 | `core` : `Logger`, `Profiler`, `FPSCounter`, `RingBuffer` | **repris tels quels** | anciens modules `Utilities` et `Profiler` déplacés dans `orosmo::core` (2026-11-20) : noms de méthodes encore en `PascalCase` (G122) |
-| `world`, `TerrainRenderer` | **hors release (dépôt uniquement)** | conservés dans le dépôt pour la démo et les outils terrain (A34) ; futur module/addon en M11 |
+| `world`, `TerrainRenderer` | **archivé (`archive/procedural-world`)** | retirés du dépôt principal (A37) ; futur module/addon en M11 |
 
 ## 8. Limites connues
 

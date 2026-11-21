@@ -4,7 +4,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 
 **Priorités** : P0 = indispensable aux premiers jalons utiles · P1 = nécessaire au moteur complet · P2 = souhaitable · P3 = plus tard (le design ne doit pas l'empêcher).
 
-**États** : `Fait` (preuve fournie) · `Partiel` · `Absent` · `Incompatible` (existe mais viole l'architecture, à adapter) · `?` (pas encore audité).
+**États** : `Fait` (preuve fournie) · `Partiel` · `Absent` · `Incompatible` (existe mais viole l'architecture, à adapter) · `Archivé` (retiré du dépôt cœur et conservé sur une branche d'archive) · `?` (pas encore audité).
 
 **Existant déclaré par l'auteur** (à vérifier par l'audit, pas à croire) : logger, UIManager (avec un début d'interface écrit dans un **langage maison précompilé en C++**), InputManager, éclairage UBO/SSBO, TextRenderer FreeType, Makefile multiplateforme + vcpkg. Le rendu actuel est en OpenGL / GLFW / GLSL.
 
@@ -139,22 +139,24 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 
 ## G. Terrain et monde (`world`)
 
+> **Archivé (décision A37, 2026-11-21)** : le code procédural (`orosmo::world`, `TerrainRenderer`, `shaders/rhi/terrain.*`) est archivé intact dans la branche `archive/procedural-world` et retiré du dépôt principal. Ces fonctionnalités poursuivront leur vie dans un projet séparé ou comme module/addon optionnel (jalon **M11**).
+
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
-| TER-01 | Bruit | P0 | Perlin, Simplex, Worley, fBm, distorsion de domaine ; **CPU et GPU donnent le même résultat** (tolérance fixée) ; testé. | Fait — preuve : `docs/STATUS.md`, « M3 » |
-| TER-02 | Génération par tuiles | P0 | Hauteur par tuile à partir de (graine, coordonnées, paramètres) ; déterministe ; asynchrone. | Fait — preuve : `docs/STATUS.md`, « M3 » |
-| TER-03 | Maillage à niveaux de détail | P0 | Quadtree ou clipmap ; pas de fissures entre niveaux ; distance de vue réglable. | Fait — preuve : `docs/STATUS.md`, « M3 » |
-| TER-04 | Streaming | P0 | Chargement/déchargement par distance ; pas de saccade mesurable sur la démo ; budget mémoire réglable. | Partiel (budget et génération asynchrone ; absence de saccade non mesurée) |
-| TER-05 | Érosion | P1 | Hydraulique et thermique, en compute ; résultat reproductible. | Absent |
-| TER-06 | Biomes | P1 | Température, humidité, altitude, pente → biome ; table modifiable. | Absent |
-| TER-07 | Texturage du terrain | P0 | Mélange par pente et altitude, triplanaire ; atlas ou tableau de textures. | Fait (OpenGL) — preuve : `docs/STATUS.md`, « M3 » |
-| TER-08 | Végétation et dispersion | P1 | Placement déterministe, instancié (REN-28) ; densité par biome. | Absent |
-| TER-09 | Planètes sphériques | P1 | Cube-sphère à quadtree ; précision `double` côté CPU ; rendu relatif à la caméra ; transition sol/espace avec l'atmosphère. | Absent |
-| TER-10 | Eau, rivières, lacs | P2 | Niveau de la mer, bassins, tracé de rivières. | Absent |
-| TER-11 | Export | P0 | Carte de hauteur (PNG 16 bits, EXR), maillage (OBJ, glTF, STL imprimable), carte de biomes. | Fait — preuve : `docs/STATUS.md`, « M3 » |
-| TER-12 | Interface de réglage | P0 | Paramètres modifiables en direct, graine, préréglages sauvegardables ; affichage automatique à partir de la réflexion (UI-12). | Fait — preuve : `docs/STATUS.md`, « M3 » |
-| TER-13 | Lancer de rayon sur le terrain | P1 | Picking souris et hauteur en un point, CPU, cohérent avec le rendu. | Fait — preuve : `docs/STATUS.md`, « M3 » |
-| TER-14 | Grottes et voxels | P3 | Réservé ; l'architecture ne doit pas l'exclure. | Absent |
+| TER-01 | Bruit | P0 | Perlin, Simplex, Worley, fBm, distorsion de domaine ; **CPU et GPU donnent le même résultat** (tolérance fixée) ; testé. | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
+| TER-02 | Génération par tuiles | P0 | Hauteur par tuile à partir de (graine, coordonnées, paramètres) ; déterministe ; asynchrone. | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
+| TER-03 | Maillage à niveaux de détail | P0 | Quadtree ou clipmap ; pas de fissures entre niveaux ; distance de vue réglable. | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
+| TER-04 | Streaming | P0 | Chargement/déchargement par distance ; pas de saccade mesurable sur la démo ; budget mémoire réglable. | Archivé (`archive/procedural-world`, A37) — était Partiel (budget et génération asynchrone ; absence de saccade non mesurée) |
+| TER-05 | Érosion | P1 | Hydraulique et thermique, en compute ; résultat reproductible. | Archivé (`archive/procedural-world`, A37) — hors cœur (projet séparé / M11) |
+| TER-06 | Biomes | P1 | Température, humidité, altitude, pente → biome ; table modifiable. | Archivé (`archive/procedural-world`, A37) — hors cœur (projet séparé / M11) |
+| TER-07 | Texturage du terrain | P0 | Mélange par pente et altitude, triplanaire ; atlas ou tableau de textures. | Archivé (`archive/procedural-world`, A37) — était Fait (OpenGL, M3) |
+| TER-08 | Végétation et dispersion | P1 | Placement déterministe, instancié (REN-28) ; densité par biome. | Archivé (`archive/procedural-world`, A37) — hors cœur (projet séparé / M11) |
+| TER-09 | Planètes sphériques | P1 | Cube-sphère à quadtree ; précision `double` côté CPU ; rendu relatif à la caméra ; transition sol/espace avec l'atmosphère. | Archivé (`archive/procedural-world`, A37) — hors cœur (projet séparé / M11) |
+| TER-10 | Eau, rivières, lacs | P2 | Niveau de la mer, bassins, tracé de rivières. | Archivé (`archive/procedural-world`, A37) — hors cœur (projet séparé / M11) |
+| TER-11 | Export | P0 | Carte de hauteur (PNG 16 bits, EXR), maillage (OBJ, glTF, STL imprimable), carte de biomes. | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
+| TER-12 | Interface de réglage | P0 | Paramètres modifiables en direct, graine, préréglages sauvegardables ; affichage automatique à partir de la réflexion (UI-12). | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
+| TER-13 | Lancer de rayon sur le terrain | P1 | Picking souris et hauteur en un point, CPU, cohérent avec le rendu. | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
+| TER-14 | Grottes et voxels | P3 | Réservé ; l'architecture ne doit pas l'exclure. | Archivé (`archive/procedural-world`, A37) — hors cœur (projet séparé / M11) |
 
 ## H. Scène et simulation (`scene`, `sim`)
 
@@ -210,8 +212,8 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
-| TOOL-01 | Visualiseur de terrain | P0 | Application de démo : caméra libre, réglages, export. Démo principale. | Partiel (visualiseur livré ; caméra et export vérifiés à la main seulement) |
-| TOOL-02 | Générateur en ligne de commande | P0 | `terrain-gen --seed N --size S --out fichier` sans fenêtre ; sorties de TER-11 ; code de retour fiable. | Fait — preuve : `docs/STATUS.md`, « M3 » |
+| TOOL-01 | Visualiseur de terrain | P0 | Application de démo : caméra libre, réglages, export. Démo principale. | Archivé (`archive/procedural-world`, A37) — était Partiel (remplacé par la démo unifiée `apps/demo/`) |
+| TOOL-02 | Générateur en ligne de commande | P0 | `terrain-gen --seed N --size S --out fichier` sans fenêtre ; sorties de TER-11 ; code de retour fiable. | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
 | TOOL-03 | Capture d'écran | P0 | Image depuis le rendu ; utilisée par RHI-14. (Priorité passée de P2 à P0 par l'auteur le 2026-11-17 : comparer les images dès le début.) | Partiel |
 | BLD-01 | Construction multiplateforme | P0 | Un seul chemin de build documenté pour Windows, Linux, macOS ; vcpkg ; types debug/dev/release. L'IA peut **proposer** CMake (avec presets) en gardant le Makefile en enveloppe, sans migrer sans accord. | Partiel |
 | REPO-01 | Dépôt propre et structuré | P0 | M00 de `docs/06` : `.gitignore`, `.gitattributes`, `.editorconfig`, `.clang-format`, `README.md` racine, `third_party/` documenté, aucun fichier généré ou binaire inutile suivi, historique conservé, comportement identique à la référence. | Fait (confirmé par l'auteur le 2026-11-17) — preuve : `docs/STATUS.md`, « M0 » |
@@ -230,3 +232,4 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | MOD-02 | Distribution intégrée ou en addon | P1 | Un module peut être inclus directement dans une release (`bundled`) ou empaqueté séparément (`orosmo-addon-<nom>-<plateforme>.zip`) contre une release cœur. | Absent |
 | MOD-03 | Intégration CLI et build (`orosmo` + `engine.mk`) | P1 | Commandes `orosmo addon list/add/remove/update` ; découverte et liaison automatiques par `engine.mk` (includes, archives, shaders, ressources, vcpkg). | Absent |
 | MOD-04 | Module pilote vérifié de bout en bout | P1 | CI de bout en bout : projet `orosmo init` 100 % générique par défaut, puis ajout d'un module pilote via `orosmo addon add` et compilation sans toucher au cœur. | Absent |
+| MOD-05 | Modèles de démarrage multiples et projet par défaut utilisateur | P1 | `orosmo init --template <minimal\|starter\|demo\|<nom>>` permet de choisir le modèle de départ (dont la démo complète pour découvrir le moteur), et l'utilisateur peut enregistrer un de ses propres projets comme modèle par défaut (`orosmo template set-default`). | Absent |
