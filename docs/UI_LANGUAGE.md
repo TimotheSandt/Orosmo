@@ -83,7 +83,7 @@ Arguments positionnels dans l'ordre du tableau, ou nommés (`min: 0`). Un argume
 | `Dropdown` | `options` (expression → `std::vector<std::string>`), `selected` (entier lié) | — | onChange |
 | `TextField` | `text` (chaîne liée) | — | onChange |
 | `NumberField` | `value` (nombre lié), `integer` (= false), `min`, `max` | — | onChange |
-| `ColorPicker` | `color` (couleur liée : `glm::vec3` ou `glm::vec4`), `alpha` (= false) | — | onChange |
+| `ColorPicker` | `color` (couleur liée : `glm::vec3` ou `glm::vec4`), `alpha` (= false) | — | onChange (un clic sur le carré d'aperçu ouvre une fenêtre surgissante avec la roue `ColorEditor` liée à la même couleur ; Échap, clic extérieur ou second clic la ferme ; apparence : style `popup`) |
 | `Plot` | `values` (expression → suite de nombres, relue à chaque image) | — | onHover, onFocus |
 | `Separator` | — | — | onHover, onFocus |
 | `ParamPanel` | `target` : `$chemin` vers une structure réfléchie (`core::Reflect<T>`, UI-12) | — | onChange (tout champ) |

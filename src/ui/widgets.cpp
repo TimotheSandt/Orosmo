@@ -1,5 +1,6 @@
 #include "orosmo/ui/widgets.hpp"
 
+#include "orosmo/ui/color.hpp"
 #include "orosmo/ui/ui.hpp"
 
 #include <orosmo/core/parse.hpp>
@@ -695,7 +696,7 @@ bool NumberField::commit(Ui &ui, const std::string &text)
 
 // ── ColorPicker ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-ColorPicker::ColorPicker(Binding<Color> value, bool alpha) : Widget("colorPicker"), value_(std::move(value))
+ColorPicker::ColorPicker(Binding<Color> value, bool alpha) : Widget("colorPicker"), value_(std::move(value)), alpha_(alpha)
 {
     auto &sliders = emplace<VBox>();
     const char *names[] = {"R ", "G ", "B ", "A "};
@@ -729,8 +730,23 @@ glm::vec2 ColorPicker::measureContent(Ui &ui, glm::vec2 available, const Style &
 void ColorPicker::arrange(Ui &ui, const Rect &content, const Style &style)
 {
     const float swatch = style.width;
+    swatch_ = {content.position, {swatch, content.size.y}};
     children()[0]->layout(ui, {{content.position.x + swatch + style.spacing, content.position.y},
                                {std::max(0.0f, content.size.x - swatch - style.spacing), content.size.y}});
+}
+
+void ColorPicker::onRelease(Ui &ui, glm::vec2 mouse, bool inside)
+{
+    // Seul le carré d'aperçu ouvre l'éditeur ; un binding en lecture seule n'ouvre rien. Un clic extérieur ou sur le carré quand la
+    // fenêtre est ouverte la ferme déjà (Ui::update) : ici elle est donc toujours fermée.
+    if (!inside || !swatch_.contains(mouse) || !value_.writable() || ui.popupOpenFor(*this))
+    {
+        return;
+    }
+    auto content = std::make_unique<VBox>("popup");
+    auto &editor = content->emplace<ColorEditor>(value_, alpha_);
+    editor.onChange([this](const Event &) { fire(EventKind::kChange); }); // modifier la couleur dans la fenêtre = la modifier ici
+    ui.openPopup(*this, std::move(content), swatch_);
 }
 
 void ColorPicker::drawBackground(const Ui &, renderer::DrawList &, const Style &) const {}

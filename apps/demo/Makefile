@@ -489,7 +489,14 @@ lint:
 	    $(CLANG_TIDY) $(SRCS_CPP) -- $(LINT_FLAGS) $(ENGINE_INCLUDES); fi
 
 # ── Info ──────────────────────────────────────────────────────────────────────
-.PHONY: info
+.PHONY: info compile-commands
+
+compile-commands:
+	@if [ -f "$(ENGINE_DIR)/tools/gen_compile_commands.py" ]; then \
+	    python3 "$(ENGINE_DIR)/tools/gen_compile_commands.py" --mode project --engine-dir "$(ENGINE_DIR)" --build-type "$(BUILD_TYPE)" --cxx "$(CXX)" --cc "$(CC)"; \
+	else \
+	    echo "gen_compile_commands.py not found in $(ENGINE_DIR)/tools/ (update SDK)"; exit 1; \
+	fi
 
 info:
 	@echo "Project:      $(PROJECT_NAME)"

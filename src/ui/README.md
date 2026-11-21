@@ -15,7 +15,7 @@ utilise ce module).
 | `theme.hpp` | UI-07 : `Theme` (jetons, propriétés par widget et par état, `extends`, erreurs `fichier: chemin.json: message`), `Style`, `WidgetState`, `ThemeHost` (thème courant, rechargement à chaud par `core::FileWatcher`, dernier thème valide gardé) |
 | `widget.hpp` | `Widget` (arbre, identifiant, type de style et surcharges locales, tailles `fit` / `fixed` / `fill` avec min et max, marges, alignement, `columnSpan`, visibilité et activation liées, infobulle, événements `onClick` / `onChange` / `onHover` / `onFocus`), `Binding<T>` (liaison dans les deux sens, écriture différée), `numberBinding`, `handler` |
 | `layout.hpp` | UI-06 : `VBox`, `HBox`, `Panel`, `Grid` (colonnes, `fill`, `columnSpan`), `Overlay`, `ScrollView` (molette, barre, découpage) |
-| `widgets.hpp` | UI-03 : `Label`, `Button`, `Checkbox`, `Slider`, `Dropdown` (fenêtre surgissante), `TextField`, `NumberField`, `ColorPicker`, `Plot`, `Tabs`, `Section`, `Separator` ; infobulles par `Widget::setTooltip` |
+| `widgets.hpp` | UI-03 : `Label`, `Button`, `Checkbox`, `Slider`, `Dropdown` (fenêtre surgissante), `TextField`, `NumberField`, `ColorPicker` (le carré d'aperçu ouvre la roue `ColorEditor` en fenêtre surgissante), `Plot`, `Tabs`, `Section`, `Separator` ; infobulles par `Widget::setTooltip` |
 | `controls.hpp` | UI-03 : `RadioButton`, `RangeSlider` (deux poignées), `SpinBox` (champ numérique à − / +), `TextArea` (éditeur multiligne, numéros de ligne, lecture seule) ; `TextEditState` (sélection, presse-papiers) partagé avec `TextField` |
 | `color.hpp` | UI-03 : conversions RGB / HSV / HSL / hexadécimal ; `Gradient`, `Curve` (données évaluables par le jeu) ; `ColorWheel`, `ColorEditor` (formats, alpha, hexadécimal), `GradientEditor`, `CurveEditor` |
 | `window_input.hpp` | `readWindowInput(window, dt)` : entrées de l'image lues sur une fenêtre `platform` (souris, texte, touches répétées, raccourcis) ; `useSystemClipboard(ui, window)` |
@@ -76,3 +76,11 @@ huit vagues passent à l'image suivante ; le focus quitte un widget inactif, mas
 `clearChildren` garde la structure des widgets composés (Tabs, Section, éditeurs).
 
 Limites (docs/GAPS.md) : pas de navigation à la manette (UI-09) ; `Plot` en barres seulement ; composition IME non affichée (G107).
+
+## Rendu économe (UI-13)
+
+- Caché = rien : `Widget::draw` retourne dès que `visible()` est faux (onglet inactif, section repliée compris).
+- Hors découpage = rien : `Widget::layout` calcule l'englobant du sous-arbre (ombre comprise, descendants découpés exclus) ; `draw`
+  l'élimine s'il ne rencontre pas l'intersection de la fenêtre et des zones de découpage des ancêtres (`clipsChildren`/`childClip`,
+  `overflow(.hidden)`). Une liste de 1000 lignes dans un `ScrollView` ne produit que les lignes visibles.
+- Cache par couche : non livré (voir `docs/GAPS.md`).

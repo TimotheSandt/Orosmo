@@ -1,3 +1,5 @@
+mod doctor;
+
 use std::fs;
 use std::io::{self, Cursor, Read};
 use std::path::{Path, PathBuf};
@@ -107,6 +109,7 @@ fn run() -> Result<(), String> {
     match cmd {
         "init"          => cmd_init(&args[1..]),
         "update"        => cmd_update(&args[1..]),
+        "doctor"        => doctor::cmd_doctor(&args[1..], ENGINE_VERSION, platform()),
         "-h" | "--help" | "help" | "" => { print_usage(); Ok(()) }
         other => {
             print_usage();
@@ -710,9 +713,10 @@ fn print_usage() {
     if !ENGINE_HOMEPAGE.is_empty() { eprintln!("  {ENGINE_HOMEPAGE}"); }
     eprintln!();
     eprintln!("Usage:");
-    eprintln!("  orosmo init [project-name]   create a new project");
-    eprintln!("  orosmo update [path]         update engine package and template files");
-    eprintln!("  --package <orosmo-pkg.zip>   use this local package instead of downloading the latest release");
+    eprintln!("  orosmo init [project-name]       create a new project");
+    eprintln!("  orosmo update [path]             update engine package and template files");
+    eprintln!("  orosmo doctor [--json] [path]    check toolchain, dependencies and SDK layout");
+    eprintln!("  --package <orosmo-pkg.zip>       use this local package instead of downloading the latest release");
     eprintln!();
     eprintln!("'orosmo init' with no argument initialises the current directory,");
     eprintln!("using the directory name as the project name.");
