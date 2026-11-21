@@ -49,3 +49,7 @@ __pycache__/
 
 # Local artefacts that must never be committed
 *.bundle
+
+# Caches de la CI (ccache, archives vcpkg) si on les crée en local
+/.ccache/
+/.vcpkg-archives/

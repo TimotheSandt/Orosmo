@@ -181,3 +181,23 @@ PR #8 : une région dont le dernier indice global dépasse int64 est maintenant 
 (largeur et hauteur 0, documenté dans `export.hpp`), que tous les exports refusent ensuite (`kInvalidArgument`). Plus propre :
 `Result<HeightField>` (règle 10), au prix d'un changement incompatible (`terrain-gen`, `terrain-viewer`, une dizaine de tests).
 Proposition : garder le champ vide en 0.3.x et passer à `Result` à M4 avec les autres changements d'API. *À trancher par l'auteur.*
+
+**A34. Périmètre de la release : moteur générique seul, modules procéduraux hors release + jalon Modules/Addons (2026-11-20, tranchée).**
+**Décision de l'auteur (2026-11-20)** :
+1. La **release utilisable** (`orosmo-pkg-<plateforme>.zip`, outil `orosmo init`) ne doit contenir **que le moteur générique**
+   (`core`, `platform`, `rhi`, `renderer` sans `TerrainRenderer`, `ui`, `thirdparty`, compilateur `cui`, shaders/ressources
+   génériques, template de projet générique, exemples `minimal` et `ui_gallery`).
+2. La **génération procédurale** déjà développée (`orosmo::world`, `TerrainRenderer`, shaders `terrain.*`, `apps/demo`,
+   `apps/terrain_gen`, `apps/terrain_viewer`) reste dans le dépôt pour les démos internes et la CI (via `libworld.a` +
+   `libterrain_renderer.a` et `ENGINE_EXTRA_MODULES`), mais n'est **pas** packagée dans la release : le développement procédural
+   continuera dans un autre projet.
+3. **Pour plus tard** : un nouveau jalon (**M11 · Système de modules et d'addons**, IDs `MOD-01` à `MOD-04` dans `docs/02` et
+   `docs/05`) est ajouté afin de pouvoir intégrer facilement des modules d'aide au développement, soit **inclus directement dans
+   la release** (`bundled`), soit **distribués en addons séparés** installables sur une release cœur.
+
+**A35. Version de la release M3 bis (2026-11-21, tranchée).** M3 est proposée en `v0.3.0` avec `world` dans le paquet ; M3 bis
+retire `world`, `TerrainRenderer` et les exemples terrain du paquet (changement incompatible pour qui les utiliserait, personne à
+ce jour). Proposition : `v0.3.1` (aucun utilisateur extérieur ; `v0.4.0` reste pour M4). Les fichiers de version (`mk/config.mk`,
+`vcpkg.json`, `Cargo.toml`) restent à `0.3.0` tant que l'auteur n'a pas tranché. **Décision de l'auteur (2026-11-21)** : `v0.3.1`, et **pas de release pour M3** (`v0.3.0` n'est pas publiée : la première
+release publiée est celle de M3 bis) ;
+fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).

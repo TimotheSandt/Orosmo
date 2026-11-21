@@ -1,0 +1,130 @@
+"""Tests de tools/build_progress.py (exécution : python3 -m unittest discover -s tests/tools)."""
+import importlib.util, io, os, shutil, subprocess, sys, tempfile, textwrap, unittest
+from contextlib import redirect_stdout
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TOOL = os.path.join(ROOT, "tools", "build_progress.py")
+spec = importlib.util.spec_from_file_location("build_progress", TOOL)
+bp = importlib.util.module_from_spec(spec); spec.loader.exec_module(bp)
+
+# Les macros de marqueurs sont lues dans mk/engine.mk (la définition réelle, pas une copie) ; le SDK livré a les mêmes.
+def _macros(path):
+    keep = ("ORS_Q :=", "_ors_sq =", "ors_compile =", "ors_link =", "ors_end =")
+    with open(os.path.join(ROOT, path), encoding="utf-8") as f:
+        return "".join(line for line in f if line.startswith(keep))
+
+
+MACROS = _macros("mk/engine.mk")
+MAKEFILE = MACROS + textwrap.dedent("""\
+    all: a.o b.o
+    %.o: %.c
+    \t$(call ors_compile,CC)
+    \t$(ORS_Q)cp $< $@
+    \t$(ors_end)
+    """)
+
+
+class Markers(unittest.TestCase):
+    def test_begin_and_end_are_parsed_in_a_run_and_in_a_dry_run(self):
+        m = bp.MARK.search("@@ors begin obj/debug/a.o src/a.cpp CXX [debug]")
+        self.assertEqual(m.groups(), ("begin", "obj/debug/a.o", "src/a.cpp", "CXX [debug]"))
+        m = bp.MARK.search("printf '%s\\n' '@@ors begin obj/a.o src/a.cpp CXX'")  # ligne affichée par make -n
+        self.assertEqual(m.group(2, 3, 4), ("obj/a.o", "src/a.cpp", "CXX"))
+        self.assertEqual(bp.MARK.search("@@ors end obj/a.o").group(1, 2), ("end", "obj/a.o"))
+
+    def test_make_noise_and_failures(self):
+        self.assertTrue(bp.MAKE_NOISE.match("make[1] : on entre dans le répertoire « /x »"))
+        self.assertTrue(bp.MAKE_NOISE.match("make -f mk/engine.mk sync-demo BUILD_TYPE=debug"))
+        self.assertFalse(bp.MAKE_NOISE.match("make: *** [Makefile:7 : bad.o] Erreur 1"))  # les erreurs restent
+        self.assertEqual(bp.MAKE_FAILED.search("make: *** [Makefile:7 : bad.o] Erreur 1").group(1), "bad.o")
+        self.assertEqual(bp.MAKE_FAILED.search("make[1]: *** [mk/engine.mk:302: obj/x.o] Error 1").group(1), "obj/x.o")
+
+
+class Counting(unittest.TestCase):
+    def test_compiled_running_skipped_and_remaining(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            d = bp.Display(stale={"a.o", "b.o"}, total={"a.o", "b.o", "c.o", "d.o"})
+            self.assertEqual(d.skipped, 2)
+            d.begin("a.o", "a.cpp", "CXX")
+            self.assertEqual(list(d.running.values()), ["a.cpp"])
+            d.end("a.o")
+            d.begin("e.o", "e.cpp", "CXX")  # découvert en cours de route : ajouté au total
+            self.assertEqual(len(d.todo), 3)
+            d.fail("e.o")
+            self.assertEqual(d.failed, ["e.cpp"])
+            d.summary(2)
+        self.assertIn("en échec : e.cpp", out.getvalue())
+
+
+class Width(unittest.TestCase):
+    def test_every_line_fits_the_terminal_even_when_narrow(self):
+        import re
+        ansi = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+        for columns in (20, 30, 60, 80, 200):
+            os.environ["COLUMNS"] = str(columns)
+            try:
+                out = io.StringIO()
+                with redirect_stdout(out):
+                    d = bp.Display(stale={"/p/a.o", "/p/b.o"}, total={"/p/a.o", "/p/b.o", "/p/c.o"})
+                    d.begin("/p/a.o", "src/a_very_long_file_name_for_the_engine.cpp", "CXX [debug]")
+                    d.draw(force=True)
+                text = ansi.sub("", out.getvalue())
+                for line in re.split(r"[\r\n]", text):
+                    self.assertLess(len(line), columns, (columns, line))
+            finally:
+                os.environ.pop("COLUMNS", None)
+
+
+@unittest.skipUnless(shutil.which("make"), "GNU make absent")
+class Plan(unittest.TestCase):
+    def test_plan_separates_stale_and_up_to_date_steps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "Makefile"), "w") as f:
+                f.write(MAKEFILE)
+            for name in ("a.c", "b.c"):
+                with open(os.path.join(tmp, name), "w") as f:
+                    f.write(name)
+            subprocess.run(["make", "-s", "-C", tmp, "a.o"], check=True, capture_output=True)
+            stale, total = bp.plan(["make", "-C", tmp, "all"], dict(os.environ, ORS_PROGRESS="1"))
+            # Identité absolue : deux applications qui compilent chacune obj/main.o restent deux étapes distinctes.
+            self.assertEqual(stale, {os.path.join(os.path.realpath(tmp), "b.o")})
+            self.assertEqual(total, {os.path.join(os.path.realpath(tmp), n) for n in ("a.o", "b.o")})
+
+    def test_sdk_and_engine_macros_are_identical(self):
+        self.assertEqual(_macros("mk/engine.mk"), _macros("tools/engine-sdk/engine.mk"))
+
+    def test_a_directory_with_apostrophes_still_compiles_and_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "o'brien's")
+            os.makedirs(project)
+            with open(os.path.join(project, "Makefile"), "w") as f:
+                f.write(MAKEFILE)
+            for name in ("a.c", "b.c"):
+                with open(os.path.join(project, name), "w") as f:
+                    f.write(name)
+            subprocess.run(["make", "-s", "-C", project, "a.o"], check=True, capture_output=True)
+            stale, total = bp.plan(["make", "-C", project, "all"], dict(os.environ, ORS_PROGRESS="1"))
+            root = os.path.realpath(project)
+            self.assertEqual(stale, {os.path.join(root, "b.o")})
+            self.assertEqual(total, {os.path.join(root, "a.o"), os.path.join(root, "b.o")})
+            run = subprocess.run(["make", "-C", project, "b.o", "ORS_PROGRESS=1"], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertIn("@@ors begin " + os.path.join(root, "b.o"), run.stdout)
+            self.assertIn("@@ors end " + os.path.join(root, "b.o"), run.stdout)
+
+    def test_without_a_terminal_make_runs_as_usual(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "Makefile"), "w") as f:
+                f.write(MAKEFILE)
+            with open(os.path.join(tmp, "a.c"), "w") as f:
+                f.write("a")
+            r = subprocess.run([sys.executable, TOOL, "make", "-C", tmp, "a.o"], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0)
+            self.assertIn("  CC a.c", r.stdout)       # étiquette habituelle
+            self.assertIn("cp a.c a.o", r.stdout)     # commande complète, comme avant
+            self.assertNotIn("@@ors", r.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

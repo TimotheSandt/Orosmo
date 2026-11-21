@@ -2,6 +2,8 @@
 
 #include "orosmo/ui/ui.hpp"
 
+#include <orosmo/core/parse.hpp>
+
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -667,19 +669,18 @@ bool NumberField::commit(Ui &ui, const std::string &text)
         return false;
     }
     const std::string trimmed = text.substr(first, last - first + 1);
-    double v = 0.0;
-    const char *begin = trimmed.data();
-    const char *end = begin + trimmed.size();
-    if (*begin == '+')
+    std::string_view digits = trimmed;
+    if (digits.front() == '+')
     {
-        ++begin;
+        digits.remove_prefix(1);
     }
-    auto [ptr, ec] = std::from_chars(begin, end, v);
+    const std::optional<double> parsed = core::parseDouble(digits); // indépendant du système (macOS Intel)
+    double v = parsed.value_or(0.0);
     if (integer_)
     {
         v = std::round(v); // avant le contrôle des bornes : 2.5 dans [0, 2.5] deviendrait 3
     }
-    if (ec != std::errc() || ptr != end || !std::isfinite(v) || v < min_ || v > max_)
+    if (!parsed || !std::isfinite(v) || v < min_ || v > max_)
     {
         return false;
     }

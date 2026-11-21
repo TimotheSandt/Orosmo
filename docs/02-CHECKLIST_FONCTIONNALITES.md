@@ -221,3 +221,12 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | TEST-02 | Assainisseurs et analyse | P1 | ASan, UBSan, clang-tidy, formatage automatique en CI. | Partiel |
 | TEST-03 | Tests de déterminisme | P0 | Même graine → mêmes octets sur les trois systèmes (somme de contrôle de référence). | Partiel |
 | DOC-01 | Documentation | P0 | `README.md` par module ; `docs/STATUS.md` à jour ; schéma des modules ; guide « ajouter un backend ». | Partiel |
+
+## M. Modules optionnels et addons (M11, décision A34)
+
+| ID | Fonctionnalité | Prio | Critère d'acceptation | État |
+| --- | --- | --- | --- | --- |
+| MOD-01 | Contrat et manifeste de module | P1 | Format déclaratif (`module.json`) : nom, compatibilité ABI moteur, en-têtes, archives `.a`, shaders, ressources, dépendances modules/vcpkg, points d'accroche. | Absent |
+| MOD-02 | Distribution intégrée ou en addon | P1 | Un module peut être inclus directement dans une release (`bundled`) ou empaqueté séparément (`orosmo-addon-<nom>-<plateforme>.zip`) contre une release cœur. | Absent |
+| MOD-03 | Intégration CLI et build (`orosmo` + `engine.mk`) | P1 | Commandes `orosmo addon list/add/remove/update` ; découverte et liaison automatiques par `engine.mk` (includes, archives, shaders, ressources, vcpkg). | Absent |
+| MOD-04 | Module pilote vérifié de bout en bout | P1 | CI de bout en bout : projet `orosmo init` 100 % générique par défaut, puis ajout d'un module pilote via `orosmo addon add` et compilation sans toucher au cœur. | Absent |

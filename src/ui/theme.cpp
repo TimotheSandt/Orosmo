@@ -1,6 +1,7 @@
 #include "orosmo/ui/theme.hpp"
 
 #include "orosmo/core/file_watcher.hpp"
+#include "orosmo/core/parse.hpp"
 
 #include "orosmo/renderer/image.hpp"
 
@@ -52,14 +53,7 @@ std::string knownList(auto const &names)
 
 std::optional<float> parseNumber(std::string_view text)
 {
-    float value = 0.0f;
-    const auto *end = text.data() + text.size();
-    auto [ptr, ec] = std::from_chars(text.data(), end, value);
-    if (ec != std::errc() || ptr != end)
-    {
-        return std::nullopt;
-    }
-    return value;
+    return core::parseFloat(text); // indépendant du système (from_chars des flottants absent sur macOS Intel)
 }
 
 int hexDigit(char c)

@@ -72,7 +72,7 @@ make all-debug                          # moteur (debug, -Wpedantic -Werror) -> 
 make run                                # lance la démo (OpenGL par défaut ; --api vulkan non fiable avant M4)
 
 # 3. Tests et contrôles
-make demo-test                          # doctest : 419 cas (construit les archives release d'abord)
+make demo-test                          # doctest : 421 cas (construit les archives release d'abord)
 make demo-test SANITIZE=address,undefined   # ASan + UBSan (partir d'un arbre propre : make fclean)
 make check                              # dépôt, couches, isolation des API, en-têtes autonomes (bloquant depuis M2)
 make demo-test-unit                     # tests sans GPU ni fenêtre ; make demo-test-gpu : seulement l'intégration graphique
@@ -86,4 +86,4 @@ python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720
 sh tools/format_sources.sh
 ```
 
-Options utiles : `WERROR=0` (avertissements non bloquants), `--seed N` (terrain de la démo), `--capture-frames N`. Windows/macOS : voir `README.md` ; non vérifiés (`docs/GAPS.md`).
+Options utiles : `WERROR=0` (avertissements non bloquants), `V=1` (commandes complètes au lieu de la barre de progression, affichée seulement dans un terminal), `--seed N` (terrain de la démo), `--capture-frames N`. Windows/macOS : voir `README.md` ; non vérifiés (`docs/GAPS.md`).

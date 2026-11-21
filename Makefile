@@ -13,7 +13,7 @@
 #   make engine-tool           build the orosmo scaffolding tool (dist/orosmo-<platform>)
 #   make sync-demo             fast sync of current BUILD_TYPE into demo/orosmo/
 #   make install-demo          copy full dist package into demo/orosmo/
-#   make clean / fclean        remove engine build artifacts
+#   make clean / fclean        remove engine build artifacts (debug, dev and release; BUILD_TYPE=x: that one only)
 #
 # ── Demo (apps/demo/) ──────────────────────────────────────────────────────────────
 #   make demo-debug            build demo (debug)
@@ -28,6 +28,25 @@
 #
 # ── Architecture checks (docs/03 §8) — all blocking since M2: layers, API isolation (graphics APIs, GLFW, <windows.h>),
 #    self-contained headers. Each script exits 1 on a violation (same commands as the CI). ──
+# ── Affichage : dans un terminal, `make <buts>` passe par tools/build_progress.py (barre de progression, fichiers compilés, en
+#    cours, à jour, restants). Commandes complètes : `make V=1 …` ; sans barre : `ORS_NO_PROGRESS=1 make …`. Hors terminal (CI,
+#    redirection) et dans un sous-make : make habituel. ──
+_ORS_FIRST := $(firstword $(MAKEFLAGS))
+_ORS_DRY   := $(if $(filter -%,$(_ORS_FIRST)),,$(findstring n,$(_ORS_FIRST))$(findstring q,$(_ORS_FIRST)))
+_ORS_WRAP  := $(if $(or $(ORS_PROGRESS),$(ORS_NO_PROGRESS),$(filter 1,$(V)),$(_ORS_DRY),$(filter-out 0,$(MAKELEVEL))),,$(shell test -t 2 && command -v python3 >/dev/null 2>&1 && echo 1))
+ifeq ($(_ORS_WRAP),1)
+_ORS_GOALS := $(or $(MAKECMDGOALS),ors-default-goal)
+.PHONY: $(_ORS_GOALS)
+$(firstword $(_ORS_GOALS)):
+	@python3 tools/build_progress.py $(MAKE) $(MAKECMDGOALS)
+# Les autres buts ne font rien (le script les transmet tous) ; le premier, même répété (`make check check`), garde sa recette.
+_ORS_OTHERS := $(filter-out $(firstword $(_ORS_GOALS)),$(_ORS_GOALS))
+ifneq ($(_ORS_OTHERS),)
+$(sort $(_ORS_OTHERS)):
+	@:
+endif
+else
+
 # Les cibles de ce fichier appellent des sous-make (parallèles chacun en interne) : elles-mêmes s'exécutent l'une après l'autre,
 # car plusieurs synchronisent le même SDK partagé (sync-demo remplace apps/demo/orosmo/includes) et `make -j2 viewer gallery`
 # ferait disparaître les en-têtes sous la compilation de l'autre.
@@ -86,8 +105,8 @@ endif
 endif
 endif
 
-# In-repo layout: demo resources, shaders and tests live at the repository root.
-DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico
+# In-repo layout: demo resources, shaders, tests and in-repo procedural modules live at the repository root.
+DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico ENGINE_EXTRA_MODULES="world terrain_renderer"
 
 # ── vcpkg ─────────────────────────────────────────────────────────────────────
 .PHONY: install-deps install-deps-demo install-deps-all
@@ -121,11 +140,14 @@ sync-demo:
 install-demo:
 	$(MAKE) -f $(ENGINE_MK) install-demo
 
+# Sans BUILD_TYPE sur la ligne de commande : debug, dev et release (le BUILD_TYPE par défaut de ce fichier, debug, n'était pas
+# transmis et mk/engine.mk nettoyait seulement release). `make fclean BUILD_TYPE=debug` : ce type seulement.
+_CLEAN_TYPES := $(if $(filter command line,$(origin BUILD_TYPE)),$(BUILD_TYPE),debug dev release)
 clean:
-	$(MAKE) -f $(ENGINE_MK) clean
+	@for t in $(_CLEAN_TYPES); do $(MAKE) -f $(ENGINE_MK) clean BUILD_TYPE=$$t || exit 1; done
 
 fclean:
-	$(MAKE) -f $(ENGINE_MK) fclean
+	@for t in $(_CLEAN_TYPES); do $(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=$$t || exit 1; done
 
 # ── Demo ──────────────────────────────────────────────────────────────────────
 # demo-test builds (release) and runs apps/demo's test suite
@@ -213,36 +235,42 @@ gallery-capture: gallery
 
 # ── BLD-02 : de bout en bout depuis le paquet (sans les sources du moteur) ──
 #   make e2e-init   paquet + outil `orosmo` construits ; `orosmo init --package` d'un projet neuf dans build/e2e/<date>/mygame ;
-#                   compilation et lancement sans fenêtre (capture) ; exemples terrain-gen (somme de contrôle de référence) et
-#                   terrain-viewer compilés depuis le paquet extrait par `orosmo init` (mygame/orosmo/examples/).
+#                   vérification que le paquet ne contient aucun module procédural (world, terrain_renderer, shaders terrain) ;
+#                   compilation et lancement sans fenêtre (capture) ; exemples minimal et ui_gallery compilés depuis le paquet.
 #   Chaque lancement a son dossier (rien n'est effacé). Les dépendances vcpkg du dépôt sont reliées au projet (équivalent de
 #   `make install` dans le projet, sans le réseau).
 E2E_RUN      := build/e2e/$(shell date +%Y%m%d-%H%M%S)
 E2E_PLATFORM  = $(shell $(MAKE) -s -f $(ENGINE_MK) print-platform)
 E2E_EXE       = $(if $(filter Windows_NT,$(OS)),.exe)
 E2E_VCPKG    ?= $(abspath vcpkg_installed)
-E2E_CHECKSUM  = $(shell sed -n 's/^checksum: //p' docs/BASELINE/terrain-gen-seed42-256.txt)
 .PHONY: e2e-init
 e2e-init:
 	$(MAKE) -f $(ENGINE_MK) engine-tool
 	mkdir -p $(E2E_RUN)
 	cd $(E2E_RUN) && "$(abspath dist)/orosmo-$(E2E_PLATFORM)$(E2E_EXE)" init --package "$(abspath dist)/orosmo-pkg-$(E2E_PLATFORM).zip" mygame
+	test -f $(E2E_RUN)/mygame/orosmo/tools/build_progress.py   # barre de progression du projet (Makefile du modèle)
+	@test ! -e $(E2E_RUN)/mygame/orosmo/includes/orosmo/world
+	@test ! -e $(E2E_RUN)/mygame/orosmo/includes/orosmo/renderer/terrain_renderer.hpp
+	@test ! -e $(E2E_RUN)/mygame/orosmo/lib/debug/libworld.a
+	@test ! -e $(E2E_RUN)/mygame/orosmo/lib/release/libworld.a
+	@test ! -e $(E2E_RUN)/mygame/orosmo/lib/debug/libterrain_renderer.a
+	@test ! -e $(E2E_RUN)/mygame/orosmo/lib/release/libterrain_renderer.a
+	@test ! -e $(E2E_RUN)/mygame/orosmo/shaders/rhi/terrain.vert
+	@test ! -e $(E2E_RUN)/mygame/orosmo/shaders/rhi/terrain.frag
+	@test ! -e $(E2E_RUN)/mygame/orosmo/examples/terrain_gen
+	@test ! -e $(E2E_RUN)/mygame/orosmo/examples/terrain_viewer
 	ln -sfn "$(E2E_VCPKG)" $(E2E_RUN)/mygame/orosmo/vcpkg_installed
 	$(MAKE) -C $(E2E_RUN)/mygame debug
 	cd $(E2E_RUN)/mygame && ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3
 	test -s $(E2E_RUN)/capture/scene.png
+	test -s $(E2E_RUN)/capture/ui.png
 	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/minimal
-	$(E2E_RUN)/mygame/orosmo/examples/minimal/bin/minimal$(E2E_EXE)
-	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/terrain_gen
-	$(E2E_RUN)/mygame/orosmo/examples/terrain_gen/bin/terrain-gen$(E2E_EXE) --seed 42 --size 256 --out $(E2E_RUN)/tg.png > $(E2E_RUN)/tg.txt
-	grep -q "$(E2E_CHECKSUM)" $(E2E_RUN)/tg.txt
-	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/terrain_viewer
-	$(E2E_RUN)/mygame/orosmo/examples/terrain_viewer/bin/terrain-viewer$(E2E_EXE) --headless --seed 42 --capture $(E2E_RUN)/viewer --capture-frames 3
-	test -s $(E2E_RUN)/viewer/viewer.png
+	$(E2E_RUN)/mygame/orosmo/examples/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
+	grep -q '"sum":524800' $(E2E_RUN)/minimal.txt
 	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/ui_gallery
 	$(E2E_RUN)/mygame/orosmo/examples/ui_gallery/bin/ui-gallery$(E2E_EXE) --headless --capture $(E2E_RUN)/gallery --capture-frames 3
 	test -s $(E2E_RUN)/gallery/gallery.png
-	@echo "e2e-init : OK ($(E2E_RUN) : orosmo init, compilation, lancement, exemples depuis le paquet)"
+	@echo "e2e-init : OK ($(E2E_RUN) : orosmo init, paquet cœur générique vérifié, compilation, lancement, exemples depuis le paquet)"
 
 # ── UI-11 : tests du compilateur du langage d'interface ──
 #   make cui-test   tests unitaires (cargo test) + entrées invalides de bout en bout (binaire cui : messages fichier:ligne:colonne ;
@@ -411,3 +439,5 @@ info:
 	@$(MAKE) -C apps/demo $(DEMO_ARGS) info --no-print-directory
 	@printf "BUILD_TYPE  : $(BUILD_TYPE)\n"
 	@printf "VCPKG       : $(VCPKG)\n\n"
+
+endif # _ORS_WRAP

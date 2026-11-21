@@ -37,6 +37,26 @@ ENGINE_DIR  ?= orosmo
 _ENGINE_MK  ?= $(ENGINE_DIR)/make/engine.mk
 _VCPKG_ROOT ?= vcpkg_installed
 
+# ── Affichage : dans un terminal, `make <buts>` passe par $(ENGINE_DIR)/tools/build_progress.py (barre de progression : fichiers
+#    compilés, en cours, à jour, restants). Commandes complètes : `make V=1 …` ; sans barre : `ORS_NO_PROGRESS=1 make …`. Hors
+#    terminal, sous-make, paquet sans le script ou sans Python 3 : make habituel. ──
+_ORS_SCRIPT := $(wildcard $(ENGINE_DIR)/tools/build_progress.py)
+_ORS_FIRST  := $(firstword $(MAKEFLAGS))
+_ORS_DRY    := $(if $(filter -%,$(_ORS_FIRST)),,$(findstring n,$(_ORS_FIRST))$(findstring q,$(_ORS_FIRST)))
+_ORS_WRAP   := $(if $(or $(ORS_PROGRESS),$(ORS_NO_PROGRESS),$(filter 1,$(V)),$(_ORS_DRY),$(filter-out 0,$(MAKELEVEL)),$(if $(_ORS_SCRIPT),,none)),,$(shell test -t 2 && command -v python3 >/dev/null 2>&1 && echo 1))
+ifeq ($(_ORS_WRAP),1)
+_ORS_GOALS := $(or $(MAKECMDGOALS),ors-default-goal)
+.PHONY: $(_ORS_GOALS)
+$(firstword $(_ORS_GOALS)):
+	@python3 "$(_ORS_SCRIPT)" $(MAKE) $(MAKECMDGOALS)
+# Les autres buts ne font rien (le script les transmet tous) ; le premier, même répété (`make check check`), garde sa recette.
+_ORS_OTHERS := $(filter-out $(firstword $(_ORS_GOALS)),$(_ORS_GOALS))
+ifneq ($(_ORS_OTHERS),)
+$(sort $(_ORS_OTHERS)):
+	@:
+endif
+else
+
 GAME_SRC_DIR := src
 BUILD_TYPE   ?= release
 
@@ -99,6 +119,9 @@ ifeq ($(_ENGINE_MK_FOUND),)
     GEN_CPP_SOURCES      :=
     GEN_REDIRECT_SOURCES :=
 else
+    # Modules du dépôt (world, terrain_renderer) : liés seulement si le SDK les contient (SDK synchronisé du dépôt) ; un projet
+    # créé depuis une release (SDK générique) n'en a pas et ne lie rien de plus.
+    ENGINE_EXTRA_MODULES ?= $(if $(wildcard $(ENGINE_DIR)/includes/orosmo/world),world) $(if $(wildcard $(ENGINE_DIR)/includes/orosmo/renderer/terrain_renderer.hpp),terrain_renderer)
     include $(_ENGINE_MK)
 endif
 
@@ -216,25 +239,30 @@ run:
 
 # ── Link ──────────────────────────────────────────────────────────────────────
 $(TARGET): $(ALL_OBJS) $(ENGINE_LIBS) | $(BIN_DIR) copy_res $(COPY_EXTRA)
-	$(CXX) $(ENGINE_CXXFLAGS) $(ALL_OBJS) \
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(ALL_OBJS) \
 	    $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) $(GAME_LDFLAGS) -o $@
+	$(ors_end)
 	@echo "Compiled: $@"
 
 # ── Compilation rules ─────────────────────────────────────────────────────────
 $(OBJ_DIR)/src/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
-	@echo "  CXX $<"
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ors_end)
 
 $(OBJ_DIR)/src/%.o: $(SRC_DIR)/%.c
 	@mkdir -p "$(dir $@)"
-	$(CC) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
-	@echo "  CC  $<"
+	$(call ors_compile,CC)
+	$(ORS_Q)$(CC) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ors_end)
 
 $(OBJ_DIR)/gen/%.o: $(ENGINE_GEN_DIR)/%.gen.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
-	@echo "  CXX [gen] $<"
+	$(call ors_compile,CXX [gen])
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ors_end)
 
 # Ensure CUI files are generated before any object is compiled
 $(ALL_OBJS): | $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
@@ -254,22 +282,28 @@ test: $(TEST_TARGET)
 	@./$(TEST_TARGET) $(TEST_ARGS)
 
 $(TEST_TARGET): $(TEST_OBJS) $(ENGINE_LIBS) | bin/tests
-	$(CXX) $(ENGINE_CXXFLAGS) $(TEST_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(TEST_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(ors_end)
 
 # Les tests incluent aussi les vues générées de la démo (UI/Views/*.gen.h) : elles doivent exister avant leur compilation.
 $(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp | $(TEST_GEN_CPP) $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ors_end)
 
 $(ENGINE_GEN_DIR)/tests/%.gen.cpp: $(TEST_DIR)/%.cui $(_ENG_CUI_TOOL)
 	@mkdir -p "$(dir $@)"
-	$(_ENG_CUI_TOOL) run --output "$(dir $@)" $<
+	$(ORS_Q)$(_ENG_CUI_TOOL) run --output "$(dir $@)" $<
 
 # Règle statique : prioritaire sur $(OBJ_DIR)/gen/%.o (sans -I$(TEST_DIR)) quel que soit make ; GNU make 3.81 (macOS) prend
 # la première règle implicite qui correspond, pas la plus précise.
 $(TEST_GEN_OBJS): $(OBJ_DIR)/gen/tests/%.o: $(ENGINE_GEN_DIR)/tests/%.gen.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ors_end)
 
 # ── Benchmark ─────────────────────────────────────────────────────────────────
 .PHONY: benchmark
@@ -277,11 +311,15 @@ benchmark: $(BENCH_TARGET)
 	@./$(BENCH_TARGET)
 
 $(BENCH_TARGET): $(BENCH_OBJS) $(ENGINE_LIBS) | bin/benchmark
-	$(CXX) $(ENGINE_CXXFLAGS) $(BENCH_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(BENCH_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(ors_end)
 
 $(OBJ_DIR)/benchmark/%.o: $(BENCH_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP -I$(BENCH_DIR) $(ENGINE_INCLUDES) -c $< -o $@
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP -I$(BENCH_DIR) $(ENGINE_INCLUDES) -c $< -o $@
+	$(ors_end)
 
 # ── Resources & libraries ─────────────────────────────────────────────────────
 .PHONY: copy_res copy_libs
@@ -340,13 +378,15 @@ install install-deps:
 	            --triplet=$(ENGINE_VCPKG_TRIPLET) \
 	            --x-manifest-root=$(ENGINE_DIR) \
 	            --x-install-root=$(ENGINE_DIR)/vcpkg_installed \
+	            --no-print-usage || exit 1; \
+	    fi; \
+	    if [ -f vcpkg.json ]; then \
+	        $(VCPKG) install \
+	            --triplet=$(ENGINE_VCPKG_TRIPLET) \
+	            --x-manifest-root=. \
+	            --x-install-root=$(_ADD_DEP_VCPKG_ROOT) \
 	            --no-print-usage; \
 	    fi; \
-	    $(VCPKG) install \
-	        --triplet=$(ENGINE_VCPKG_TRIPLET) \
-	        --x-manifest-root=. \
-	        --x-install-root=$(_ADD_DEP_VCPKG_ROOT) \
-	        --no-print-usage; \
 	else \
 	    [ -f vcpkg.json ] || printf '{\n  "name": "game",\n  "version": "0.1.0",\n  "dependencies": []\n}\n' > vcpkg.json; \
 	    LIBDIR="$(_ADD_DEP_VCPKG_LIBDIR)"; \
@@ -521,3 +561,5 @@ create_linux_installer: | $(BUILD_ARTIFACTS_DIR)
 
 $(BUILD_ARTIFACTS_DIR):
 	@mkdir -p "$@"
+
+endif # _ORS_WRAP
