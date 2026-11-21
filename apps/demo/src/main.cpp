@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace platform = orosmo::platform;
+
 int main(int argc, char **argv)
 {
     try
@@ -95,7 +97,7 @@ int main(int argc, char **argv)
             {
                 LOG_ERROR(1, created.error().message);
                 std::cerr << created.error().message << '\n';
-                Window::Terminate();
+                platform::Window::terminate();
                 FLUSH_LOG_TO_FILE;
                 return EXIT_FAILURE;
             }
@@ -149,7 +151,7 @@ int main(int argc, char **argv)
                 }
             }
         } // `Game` libère le périphérique graphique puis la fenêtre
-        Window::Terminate();
+        platform::Window::terminate();
         FLUSH_LOG_TO_FILE;
         return exitCode;
     }

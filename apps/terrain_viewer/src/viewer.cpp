@@ -16,6 +16,7 @@ namespace rd = orosmo::renderer;
 namespace rhi = orosmo::rhi;
 namespace ui = orosmo::ui;
 namespace w = orosmo::world;
+namespace platform = orosmo::platform;
 using orosmo::core::ErrorCode;
 using orosmo::core::makeError;
 
@@ -44,7 +45,7 @@ Viewer::~Viewer()
     shaders_.reset();
     lights_ = {};
     device_.reset();
-    window_.Close();
+    window_.close();
 }
 
 orosmo::core::Result<std::unique_ptr<Viewer>> Viewer::create(const ViewerOptions &options)
@@ -71,11 +72,11 @@ orosmo::core::Result<> Viewer::init()
     }
     else
     {
-        if (window_.Init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
+        if (window_.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
         {
             return makeError(ErrorCode::kUnsupported, "cannot open a window (no display?); try --headless");
         }
-        desc.surface.nativeWindow = window_.GetWindow();
+        desc.surface.nativeWindow = window_.getWindow();
     }
     auto device = rhi::createDevice(desc);
     if (!device)
@@ -255,13 +256,13 @@ void Viewer::moveCamera(float deltaTime)
     {
         return;
     }
-    InputManager &input = InputManager::GetInstance(window_.GetWindow());
-    const glm::dvec2 cursor = window_.GetCursorPosition();
-    if (input.IsMouseButtonJustPressed(MouseButton::RIGHT) && !ui_->wantsMouse())
+    platform::InputManager &input = platform::InputManager::getInstance(window_.getWindow());
+    const glm::dvec2 cursor = window_.getCursorPosition();
+    if (input.isMouseButtonJustPressed(platform::MouseButton::kRight) && !ui_->wantsMouse())
     {
         rotating_ = true;
     }
-    if (!input.IsMouseButtonPressed(MouseButton::RIGHT) && !input.IsMouseButtonJustPressed(MouseButton::RIGHT))
+    if (!input.isMouseButtonPressed(platform::MouseButton::kRight) && !input.isMouseButtonJustPressed(platform::MouseButton::kRight))
     {
         rotating_ = false;
     }
@@ -277,31 +278,31 @@ void Viewer::moveCamera(float deltaTime)
         return;
     }
     // Touches selon la disposition détectée (une seule à la fois) : les mêmes positions physiques que ZQSD en AZERTY.
-    const bool azerty = InputManager::GetKeyLayout() == KeyLayout::AZERTY;
-    const KeyButton forward = azerty ? KeyButton::Z : KeyButton::W;
-    const KeyButton left = azerty ? KeyButton::Q : KeyButton::A;
-    const KeyButton faster = azerty ? KeyButton::A : KeyButton::Q; // à gauche de l'avance
-    const KeyButton slower = KeyButton::E;                         // à droite de l'avance
+    const bool azerty = platform::InputManager::getKeyLayout() == platform::KeyLayout::kAzerty;
+    const platform::KeyButton forward = azerty ? platform::KeyButton::kZ : platform::KeyButton::kW;
+    const platform::KeyButton left = azerty ? platform::KeyButton::kQ : platform::KeyButton::kA;
+    const platform::KeyButton faster = azerty ? platform::KeyButton::kA : platform::KeyButton::kQ; // à gauche de l'avance
+    const platform::KeyButton slower = platform::KeyButton::kE;                         // à droite de l'avance
     const glm::vec3 p = camera_.position();
     const float ground = w::heightAt(state_.params, state_.seed, p.x, p.z);
     float speed = std::clamp(std::abs(p.y - ground), 10.0f, 2000.0f) * 0.8f;
-    if (input.IsKeyPressed(faster))
+    if (input.isKeyPressed(faster))
         speed *= 4.0f;
-    else if (input.IsKeyPressed(slower))
+    else if (input.isKeyPressed(slower))
         speed *= 0.25f;
     const float step = speed * deltaTime;
-    auto held = [&](KeyButton a, KeyButton b) { return input.IsKeyPressed(a) || input.IsKeyPressed(b); };
-    if (held(forward, KeyButton::UP))
+    auto held = [&](platform::KeyButton a, platform::KeyButton b) { return input.isKeyPressed(a) || input.isKeyPressed(b); };
+    if (held(forward, platform::KeyButton::kUp))
         camera_.moveForward(step);
-    if (held(KeyButton::S, KeyButton::DOWN))
+    if (held(platform::KeyButton::kS, platform::KeyButton::kDown))
         camera_.moveForward(-step);
-    if (held(left, KeyButton::LEFT))
+    if (held(left, platform::KeyButton::kLeft))
         camera_.moveRight(-step);
-    if (held(KeyButton::D, KeyButton::RIGHT))
+    if (held(platform::KeyButton::kD, platform::KeyButton::kRight))
         camera_.moveRight(step);
-    if (input.IsKeyPressed(KeyButton::SPACE))
+    if (input.isKeyPressed(platform::KeyButton::kSpace))
         camera_.moveUp(step);
-    if (held(KeyButton::LEFT_SHIFT, KeyButton::RIGHT_SHIFT))
+    if (held(platform::KeyButton::kLeftShift, platform::KeyButton::kRightShift))
         camera_.moveUp(-step);
 }
 
@@ -340,7 +341,14 @@ void Viewer::exportHeightmap()
     const float spacing = state_.params.sampleSpacing;
     const auto firstX = static_cast<std::int64_t>(std::floor(p.x / spacing)) - kSize / 2;
     const auto firstZ = static_cast<std::int64_t>(std::floor(p.z / spacing)) - kSize / 2;
-    const w::HeightField field = w::generateRegion(state_.params, state_.seed, firstX, firstZ, kSize, kSize, &tasks_);
+    auto region = w::generateRegion(state_.params, state_.seed, firstX, firstZ, kSize, kSize, &tasks_);
+    if (!region)
+    {
+        state_.status = "Export failed: " + region.error().message;
+        LOG_ERROR(1, state_.status);
+        return;
+    }
+    const w::HeightField &field = *region;
     std::error_code ec;
     std::filesystem::create_directories("exports", ec);
     const std::filesystem::path path = "exports/heightmap_seed" + std::to_string(state_.seed) + ".png";
@@ -370,8 +378,8 @@ void Viewer::frame(float deltaTime)
     }
     else
     {
-        view_ = {window_.GetWidth(), window_.GetHeight()};
-        window_.GetFramebufferSize(pixels_.x, pixels_.y);
+        view_ = {window_.getWidth(), window_.getHeight()};
+        window_.getFramebufferSize(pixels_.x, pixels_.y);
     }
 
     ui_->update(readInput(deltaTime), glm::vec2(view_));
@@ -395,7 +403,7 @@ void Viewer::frame(float deltaTime)
     stats_.tiles = static_cast<int>(s.residentTiles);
     stats_.pending = static_cast<int>(s.pendingTiles);
     stats_.memoryMb = static_cast<double>(s.memoryBytes) / (1024.0 * 1024.0);
-    stats_.fps = options_.headless ? 0.0 : window_.GetAverageFPS();
+    stats_.fps = options_.headless ? 0.0 : window_.getAverageFPS();
     stats_.frameTimes.push_back(deltaTime * 1000.0f);
     if (stats_.frameTimes.size() > kFrameHistory)
     {
@@ -483,7 +491,7 @@ int Viewer::run()
         std::uint32_t attempts = 0;
         while ((capturing ? !captured_ : renderedFrames_ < frames) && attempts++ < frames * 4 + 16)
         {
-            if (!options_.headless && !window_.NewFrame())
+            if (!options_.headless && !window_.newFrame())
             {
                 continue;
             }
@@ -500,18 +508,18 @@ int Viewer::run()
         }
         return captureFailed_ || renderedFrames_ < frames || (capturing && !captured_) ? 2 : 0;
     }
-    while (!window_.ShouldClose())
+    while (!window_.shouldClose())
     {
-        if (!window_.NewFrame())
+        if (!window_.newFrame())
         {
             continue;
         }
-        InputManager &input = InputManager::GetInstance(window_.GetWindow());
-        if (input.IsKeyJustPressed(KeyButton::ESCAPE) && !ui_->wantsKeyboard() && ui_->popup() == nullptr)
+        platform::InputManager &input = platform::InputManager::getInstance(window_.getWindow());
+        if (input.isKeyJustPressed(platform::KeyButton::kEscape) && !ui_->wantsKeyboard() && ui_->popup() == nullptr)
         {
-            window_.RequestClose();
+            window_.requestClose();
         }
-        const double fps = window_.GetFPS();
+        const double fps = window_.getFPS();
         frame(fps > 1.0 ? static_cast<float>(1.0 / fps) : kFixedStep);
         (void)render();
     }

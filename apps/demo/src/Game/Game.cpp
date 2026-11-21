@@ -14,6 +14,7 @@
 namespace rd = orosmo::renderer;
 using orosmo::core::Profiler;
 namespace rhi = orosmo::rhi;
+namespace platform = orosmo::platform;
 
 namespace
 {
@@ -57,16 +58,16 @@ orosmo::core::Result<> Game::createGraphics()
     }
     else
     {
-        if (window.Init([&]() { (void)rhi::prepareWindowHints(desc); }) != 0)
+        if (window.init([&]() { (void)rhi::prepareWindowHints(desc); }) != 0)
         {
             return makeError(ErrorCode::kUnsupported, "Failed to initialize the window (no display?)");
         }
-        desc.surface.nativeWindow = window.GetWindow();
+        desc.surface.nativeWindow = window.getWindow();
     }
     auto created = rhi::createDevice(desc);
     if (!created)
     {
-        window.Close();
+        window.close();
         return makeError(created.error().code, "Failed to create the graphics device: " + created.error().message);
     }
     device = std::move(*created);
@@ -155,7 +156,7 @@ void Game::stop()
     shaders.reset();
     gpuTimers.reset();
     device.reset();
-    this->window.Close();
+    this->window.close();
 }
 
 // Logical size of the picture: the window's, except while capturing (fixed size, reproducible images).
@@ -164,15 +165,15 @@ void Game::refreshViewSize()
     constexpr int kCaptureWidth = 1280;
     constexpr int kCaptureHeight = 720;
     const bool fixedSize = !this->captureDirectory.empty() || this->headless;
-    this->viewWidth = fixedSize ? kCaptureWidth : *window.GetWidthptr();
-    this->viewHeight = fixedSize ? kCaptureHeight : *window.GetHeightptr();
+    this->viewWidth = fixedSize ? kCaptureWidth : *window.getWidthPtr();
+    this->viewHeight = fixedSize ? kCaptureHeight : *window.getHeightPtr();
     // Pixels réels : sur un écran à échelle (DPI), le tampon d'image est plus grand que la fenêtre. L'interface reste en
     // coordonnées logiques (la taille de la vue) ; le canevas la projette sur les pixels.
     this->pixelWidth = this->viewWidth;
     this->pixelHeight = this->viewHeight;
     if (!fixedSize)
     {
-        window.GetFramebufferSize(this->pixelWidth, this->pixelHeight);
+        window.getFramebufferSize(this->pixelWidth, this->pixelHeight);
     }
 }
 
@@ -205,9 +206,9 @@ void Game::run()
         }
         return;
     }
-    while (!window.ShouldClose())
+    while (!window.shouldClose())
     {
-        if (!this->window.NewFrame())
+        if (!this->window.newFrame())
         {
             continue;
         }
@@ -224,55 +225,55 @@ void Game::run()
 
 void Game::processInput()
 {
-    InputManager &inputManager = InputManager::GetInstance(this->window.GetWindow());
-    if (inputManager.IsKeyJustPressed(KeyButton::ESCAPE))
+    platform::InputManager &inputManager = platform::InputManager::getInstance(this->window.getWindow());
+    if (inputManager.isKeyJustPressed(platform::KeyButton::kEscape))
     {
-        this->window.RequestClose();
+        this->window.requestClose();
     }
-    if (inputManager.IsKeyJustPressed(KeyButton::F11))
+    if (inputManager.isKeyJustPressed(platform::KeyButton::kF11))
     {
-        this->window.ToggleBorderless();
+        this->window.toggleBorderless();
     }
 #ifdef DEBUG
-    if (inputManager.IsKeyJustPressed(KeyButton::F12))
+    if (inputManager.isKeyJustPressed(platform::KeyButton::kF12))
     {
-        this->window.ToggleFullscreen();
+        this->window.toggleFullscreen();
     }
-    if (inputManager.IsKeyJustPressed(KeyButton::NUM_1))
+    if (inputManager.isKeyJustPressed(platform::KeyButton::kNum1))
     {
         sceneRenderer->setRenderScale(0.25f);
         sceneRenderer->setUpscalingEnabled(true);
     }
-    if (inputManager.IsKeyJustPressed(KeyButton::NUM_2))
+    if (inputManager.isKeyJustPressed(platform::KeyButton::kNum2))
     {
         sceneRenderer->setRenderScale(0.5f);
         sceneRenderer->setUpscalingEnabled(true);
     }
-    if (inputManager.IsKeyJustPressed(KeyButton::NUM_3))
+    if (inputManager.isKeyJustPressed(platform::KeyButton::kNum3))
     {
         sceneRenderer->setRenderScale(0.75f);
         sceneRenderer->setUpscalingEnabled(true);
     }
-    if (inputManager.IsKeyJustPressed(KeyButton::NUM_4))
+    if (inputManager.isKeyJustPressed(platform::KeyButton::kNum4))
     {
         sceneRenderer->setUpscalingEnabled(!sceneRenderer->upscalingEnabled());
     }
-    if (inputManager.IsKeyJustPressed(KeyButton::NUM_5))
+    if (inputManager.isKeyJustPressed(platform::KeyButton::kNum5))
     {
         uiRenderScale = 0.25f;
         uiUpscaling = true;
     }
-    if (inputManager.IsKeyJustPressed(KeyButton::NUM_6))
+    if (inputManager.isKeyJustPressed(platform::KeyButton::kNum6))
     {
         uiRenderScale = 0.5f;
         uiUpscaling = true;
     }
-    if (inputManager.IsKeyJustPressed(KeyButton::NUM_7))
+    if (inputManager.isKeyJustPressed(platform::KeyButton::kNum7))
     {
         uiRenderScale = 0.75f;
         uiUpscaling = true;
     }
-    if (inputManager.IsKeyJustPressed(KeyButton::NUM_8))
+    if (inputManager.isKeyJustPressed(platform::KeyButton::kNum8))
     {
         uiUpscaling = !uiUpscaling;
     }
@@ -286,13 +287,13 @@ void Game::update()
     if (!headless)
     {
         this->processInput();
-        const double fps = this->window.GetFPS();
+        const double fps = this->window.getFPS();
         deltaTime = fps > 0.0 ? static_cast<float>(1.0 / fps) : kHeadlessStep;
         this->cameraController.update(this->window, this->camera, deltaTime, this->viewWidth, this->viewHeight);
     }
 
     this->world->Update();
-    this->performance.tick(deltaTime, [&]() { return samplePerformance(this->window.GetAverageFPS()); });
+    this->performance.tick(deltaTime, [&]() { return samplePerformance(this->window.getAverageFPS()); });
     orosmo::ui::InputFrame input; // le panneau n'est pas interactif : pas d'entrées, seulement le temps écoulé
     input.deltaTime = deltaTime;
     this->ui->update(input, {static_cast<float>(this->viewWidth), static_cast<float>(this->viewHeight)});
@@ -413,7 +414,7 @@ void Game::render()
 
     this->camera.setAspect(viewW, viewH);
     sceneRenderer->setOutputResolution(this->pixelWidth, this->pixelHeight);
-    const glm::vec4 clear = window.GetClearColor();
+    const glm::vec4 clear = window.getClearColor();
     // Un échec de la scène (pipeline qui ne se lie pas, cible refusée...) rend l'image fausse : elle n'est ni comptée ni capturée.
     auto keep = [&](orosmo::core::Result<> r, const char *step)
     {
@@ -459,7 +460,7 @@ void Game::endFrame()
         if (!this->captureDirectory.empty())
         {
             this->captureFailed = true;
-            this->window.RequestClose();
+            this->window.requestClose();
         }
         Profiler::Profile("SwapBuffers", [&]() { (void)device->present(); });
         return;
@@ -471,7 +472,7 @@ void Game::endFrame()
         const bool sceneSaved = sceneRenderer->saveColorPng(this->captureDirectory + "/scene.png").has_value();
         const bool uiSaved = rd::savePng(*device, composed.color(0), this->captureDirectory + "/ui.png").has_value();
         this->captureDone = sceneSaved && uiSaved;
-        this->window.RequestClose();
+        this->window.requestClose();
     }
 
     Profiler::Profile("SwapBuffers", [&]() { (void)device->present(); });

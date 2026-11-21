@@ -61,7 +61,7 @@ class Game
     bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composed);
 
   private:
-    Window window;
+    orosmo::platform::Window window;
     // Graphique (RHI) : le périphérique d'abord (détruit en dernier) ; tout le reste le référence.
     std::unique_ptr<orosmo::rhi::Device> device;
     std::unique_ptr<orosmo::renderer::ShaderLibrary> shaders;

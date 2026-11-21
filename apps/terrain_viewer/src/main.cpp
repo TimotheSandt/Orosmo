@@ -12,6 +12,8 @@
 #include <optional>
 #include <string_view>
 
+namespace platform = orosmo::platform;
+
 namespace
 {
 constexpr int kUsage = 1;
@@ -136,7 +138,7 @@ int main(int argc, char **argv)
     }
     const int code = (*viewer)->run();
     viewer->reset();
-    Window::Terminate();
+    platform::Window::terminate();
     FLUSH_LOG_TO_FILE;
     return code;
 }

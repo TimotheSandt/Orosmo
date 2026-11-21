@@ -38,6 +38,7 @@ namespace fs = std::filesystem;
 namespace rd = orosmo::renderer;
 namespace rhi = orosmo::rhi;
 namespace ui = orosmo::ui;
+namespace platform = orosmo::platform;
 
 namespace
 {
@@ -153,7 +154,7 @@ rd::MeshData makeColoredCube()
 
 int runApp(const LaunchOptions &opts)
 {
-    Window window("{{PROJECT_NAME}}", kDefaultWidth, kDefaultHeight);
+    platform::Window window("{{PROJECT_NAME}}", kDefaultWidth, kDefaultHeight);
     rhi::DeviceDesc desc;
     desc.backend = rhi::Backend::kOpenGL;
 #ifdef DEBUG
@@ -167,7 +168,7 @@ int runApp(const LaunchOptions &opts)
     }
     else
     {
-        if (window.Init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
+        if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
         {
             // --headless cache seulement la fenêtre : le contexte OpenGL demande quand même un affichage (sous Linux sans serveur X :
             // xvfb-run, comme la CI).
@@ -175,7 +176,7 @@ int runApp(const LaunchOptions &opts)
                          "on Linux without X, run under xvfb-run (xvfb-run -a ./main --headless --capture DIR)\n";
             return EXIT_FAILURE;
         }
-        desc.surface.nativeWindow = window.GetWindow();
+        desc.surface.nativeWindow = window.getWindow();
     }
 
     auto device = rhi::createDevice(desc);
@@ -241,27 +242,27 @@ int runApp(const LaunchOptions &opts)
     std::uint32_t rendered = 0;
     bool captureOk = !capturing;
 
-    while (opts.headless || !window.ShouldClose())
+    while (opts.headless || !window.shouldClose())
     {
-        if (!opts.headless && !window.NewFrame())
+        if (!opts.headless && !window.newFrame())
         {
             continue;
         }
 
         const bool fixedSize = opts.headless || capturing;
-        const int viewW = fixedSize ? kDefaultWidth : window.GetWidth();
-        const int viewH = fixedSize ? kDefaultHeight : window.GetHeight();
+        const int viewW = fixedSize ? kDefaultWidth : window.getWidth();
+        const int viewH = fixedSize ? kDefaultHeight : window.getHeight();
         int pixelW = viewW;
         int pixelH = viewH;
         if (!fixedSize)
         {
-            window.GetFramebufferSize(pixelW, pixelH);
+            window.getFramebufferSize(pixelW, pixelH);
         }
 
-        const float dt = fixedSize ? kFixedStep : static_cast<float>(1.0 / std::max(window.GetFPS(), 1.0));
-        if (!opts.headless && InputManager::GetInstance(window.GetWindow()).IsKeyJustPressed(KeyButton::ESCAPE))
+        const float dt = fixedSize ? kFixedStep : static_cast<float>(1.0 / std::max(window.getFPS(), 1.0));
+        if (!opts.headless && platform::InputManager::getInstance(window.getWindow()).isKeyJustPressed(platform::KeyButton::kEscape))
         {
-            window.RequestClose();
+            window.requestClose();
         }
 
         ++state.frame;
@@ -272,12 +273,12 @@ int runApp(const LaunchOptions &opts)
         cube->setRotation({18.0f, angleDegrees, 0.0f});
 
         ui::InputFrame input = opts.headless ? ui::InputFrame{} : ui::readWindowInput(window, dt);
-        if (!opts.headless && fixedSize && window.GetWidth() > 0 && window.GetHeight() > 0)
+        if (!opts.headless && fixedSize && window.getWidth() > 0 && window.getHeight() > 0)
         {
             // Capture avec fenêtre : l'interface est mise en page à 1280x720 puis étirée sur la fenêtre ; le pointeur est ramené
             // de l'espace de la fenêtre à celui de l'interface.
-            input.mouse *= glm::vec2(static_cast<float>(viewW) / static_cast<float>(window.GetWidth()),
-                                     static_cast<float>(viewH) / static_cast<float>(window.GetHeight()));
+            input.mouse *= glm::vec2(static_cast<float>(viewW) / static_cast<float>(window.getWidth()),
+                                     static_cast<float>(viewH) / static_cast<float>(window.getHeight()));
         }
         input.deltaTime = dt;
         interface.update(input, {static_cast<float>(viewW), static_cast<float>(viewH)});
@@ -410,7 +411,7 @@ int main(int argc, char **argv)
     }
 
     const int code = runApp(*opts);
-    Window::Terminate();
+    platform::Window::terminate();
     FLUSH_LOG_TO_FILE;
     return code;
 }

@@ -13,6 +13,8 @@
 #include <map>
 #include <string>
 
+namespace platform = orosmo::platform;
+
 namespace
 {
 // Caractère imprimé sur la touche physique placée à la position US `glfwKey`, pour chaque disposition.
@@ -65,21 +67,22 @@ NameTable dvorak()
     return t;
 }
 
-KeyLayout detect(const NameTable &table)
+platform::KeyLayout detect(const NameTable &table)
 {
-    return InputManager::DetectKeyLayoutFromKeyNames([&](int key) -> const char * {
+    return platform::InputManager::detectKeyLayoutFromKeyNames([&](int key) -> const char * {
         auto it = table.find(key);
         return it == table.end() ? nullptr : it->second.c_str();
     });
 }
 
 // La touche logique « lettre » doit pointer sur la touche physique qui porte cette lettre dans la disposition donnée.
-void checkEveryLetter(KeyLayout layout, const NameTable &table)
+void checkEveryLetter(platform::KeyLayout layout, const NameTable &table)
 {
-    InputManager::SetKeyLayout(layout);
+    platform::InputManager::setKeyLayout(layout);
     for (int i = 0; i < 26; ++i)
     {
-        const int code = InputManager::GetKeyCode(static_cast<KeyButton>(static_cast<int>(KeyButton::A) + i));
+        const int code =
+            platform::InputManager::getKeyCode(static_cast<platform::KeyButton>(static_cast<int>(platform::KeyButton::kA) + i));
         const auto it = table.find(code);
         INFO("letter ", static_cast<char>('a' + i), " -> GLFW key ", code);
         REQUIRE(it != table.end());
@@ -92,39 +95,39 @@ TEST_SUITE("InputLayout")
 {
     TEST_CASE("the layout is recognised from the names of the physical keys")
     {
-        CHECK((detect(qwerty()) == KeyLayout::QWERTY));
-        CHECK((detect(azerty()) == KeyLayout::AZERTY));
-        CHECK((detect(qwertz()) == KeyLayout::QWERTZ));
-        CHECK((detect(dvorak()) == KeyLayout::DVORAK));
+        CHECK((detect(qwerty()) == platform::KeyLayout::kQwerty));
+        CHECK((detect(azerty()) == platform::KeyLayout::kAzerty));
+        CHECK((detect(qwertz()) == platform::KeyLayout::kQwertz));
+        CHECK((detect(dvorak()) == platform::KeyLayout::kDvorak));
     }
 
     TEST_CASE("unknown or unavailable key names fall back to QWERTY")
     {
-        CHECK((detect(NameTable{}) == KeyLayout::QWERTY)); // glfwGetKeyName renvoie nullptr (pas d'écran, GLFW non initialisé)
+        CHECK((detect(NameTable{}) == platform::KeyLayout::kQwerty)); // glfwGetKeyName renvoie nullptr (pas d'écran, GLFW non initialisé)
         NameTable colemakLike = qwerty();
         colemakLike[GLFW_KEY_E] = "f"; // disposition non gérée : on reste sur QWERTY plutôt que d'en deviner une autre
-        CHECK((detect(colemakLike) == KeyLayout::QWERTY));
+        CHECK((detect(colemakLike) == platform::KeyLayout::kQwerty));
     }
 
     TEST_CASE("every logical letter reaches the physical key that prints it, in each layout")
     {
-        checkEveryLetter(KeyLayout::QWERTY, qwerty());
-        checkEveryLetter(KeyLayout::AZERTY, azerty());
-        checkEveryLetter(KeyLayout::QWERTZ, qwertz());
-        checkEveryLetter(KeyLayout::DVORAK, dvorak());
+        checkEveryLetter(platform::KeyLayout::kQwerty, qwerty());
+        checkEveryLetter(platform::KeyLayout::kAzerty, azerty());
+        checkEveryLetter(platform::KeyLayout::kQwertz, qwertz());
+        checkEveryLetter(platform::KeyLayout::kDvorak, dvorak());
     }
 
     TEST_CASE("Dvorak: symbols reach the physical key that prints them")
     {
         const NameTable table = dvorak();
-        InputManager::SetKeyLayout(KeyLayout::DVORAK);
-        const std::pair<KeyButton, const char *> symbols[] = {
-            {KeyButton::MINUS, "-"},     {KeyButton::EQUALS, "="},     {KeyButton::LEFT_BRACKET, "["},
-            {KeyButton::RIGHT_BRACKET, "]"}, {KeyButton::SEMICOLON, ";"}, {KeyButton::APOSTROPHE, "'"},
-            {KeyButton::COMMA, ","},     {KeyButton::PERIOD, "."},     {KeyButton::SLASH, "/"}};
+        platform::InputManager::setKeyLayout(platform::KeyLayout::kDvorak);
+        const std::pair<platform::KeyButton, const char *> symbols[] = {
+            {platform::KeyButton::kMinus, "-"},     {platform::KeyButton::kEquals, "="},     {platform::KeyButton::kLeftBracket, "["},
+            {platform::KeyButton::kRightBracket, "]"}, {platform::KeyButton::kSemicolon, ";"}, {platform::KeyButton::kApostrophe, "'"},
+            {platform::KeyButton::kComma, ","},     {platform::KeyButton::kPeriod, "."},     {platform::KeyButton::kSlash, "/"}};
         for (const auto &[key, expected] : symbols)
         {
-            const auto it = table.find(InputManager::GetKeyCode(key));
+            const auto it = table.find(platform::InputManager::getKeyCode(key));
             INFO("symbol ", expected);
             REQUIRE(it != table.end());
             CHECK(it->second == expected);
@@ -133,16 +136,17 @@ TEST_SUITE("InputLayout")
 
     TEST_CASE("AZERTY: the forward key of the camera (Z) is the key labelled Z, not the one labelled W")
     {
-        InputManager::SetKeyLayout(KeyLayout::AZERTY);
-        CHECK(InputManager::GetKeyCode(KeyButton::Z) == GLFW_KEY_W); // la touche physique en position US « W » porte « z »
-        CHECK(InputManager::GetKeyCode(KeyButton::Q) == GLFW_KEY_A);
-        InputManager::SetKeyLayout(KeyLayout::QWERTY);
-        CHECK(InputManager::GetKeyCode(KeyButton::Z) == GLFW_KEY_Z);
+        platform::InputManager::setKeyLayout(platform::KeyLayout::kAzerty);
+        // la touche physique en position US « W » porte « z »
+        CHECK(platform::InputManager::getKeyCode(platform::KeyButton::kZ) == GLFW_KEY_W);
+        CHECK(platform::InputManager::getKeyCode(platform::KeyButton::kQ) == GLFW_KEY_A);
+        platform::InputManager::setKeyLayout(platform::KeyLayout::kQwerty);
+        CHECK(platform::InputManager::getKeyCode(platform::KeyButton::kZ) == GLFW_KEY_Z);
     }
 
     TEST_CASE("a key that is not mapped has no code")
     {
-        InputManager::SetKeyLayout(KeyLayout::QWERTY);
-        CHECK(InputManager::GetKeyCode(static_cast<KeyButton>(250)) == GLFW_KEY_UNKNOWN);
+        platform::InputManager::setKeyLayout(platform::KeyLayout::kQwerty);
+        CHECK(platform::InputManager::getKeyCode(static_cast<platform::KeyButton>(250)) == GLFW_KEY_UNKNOWN);
     }
 }

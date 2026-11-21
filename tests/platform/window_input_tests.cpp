@@ -10,13 +10,15 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
+namespace platform = orosmo::platform;
+
 namespace
 {
 
 // Crée une fenêtre ; renvoie faux (et un message) si le système n'a pas d'affichage.
-bool open(Window &window)
+bool open(platform::Window &window)
 {
-    if (window.Init() != 0)
+    if (window.init() != 0)
     {
         if (tests::gpuRequired())
         {
@@ -34,61 +36,61 @@ TEST_SUITE("platform/window")
 {
     TEST_CASE("PLAT-01 a window exposes an opaque native handle, its framebuffer size and its DPI scale")
     {
-        Window window("platform-test", 96, 64, WindowState::WINDOWED);
+        platform::Window window("platform-test", 96, 64, platform::WindowState::kWindowed);
         if (!open(window))
         {
             return;
         }
-        CHECK(window.GetWindow() != nullptr);
-        CHECK_FALSE(window.ShouldClose());
+        CHECK(window.getWindow() != nullptr);
+        CHECK_FALSE(window.shouldClose());
 
         int width = 0;
         int height = 0;
-        window.GetFramebufferSize(width, height);
+        window.getFramebufferSize(width, height);
         CHECK(width > 0);
         CHECK(height > 0);
 
-        const glm::vec2 scale = window.GetContentScale();
+        const glm::vec2 scale = window.getContentScale();
         CHECK(scale.x >= 1.0f);
         CHECK(scale.y >= 1.0f);
     }
 
-    TEST_CASE("PLAT-01 RequestClose makes ShouldClose true")
+    TEST_CASE("PLAT-01 requestClose makes shouldClose true")
     {
-        Window window("platform-test", 96, 64, WindowState::WINDOWED);
+        platform::Window window("platform-test", 96, 64, platform::WindowState::kWindowed);
         if (!open(window))
         {
             return;
         }
-        window.RequestClose();
-        CHECK(window.ShouldClose());
+        window.requestClose();
+        CHECK(window.shouldClose());
     }
 
     TEST_CASE("PLAT-01 a window that was never created behaves safely")
     {
-        Window window("platform-test", 96, 64, WindowState::WINDOWED);
-        CHECK(window.GetWindow() == nullptr);
-        CHECK(window.ShouldClose());
-        window.RequestClose();
-        window.SetCursorMode(CursorMode::Hidden);
-        window.SetCursorPosition({1.0, 2.0});
-        CHECK(window.GetCursorPosition() == glm::dvec2(0.0, 0.0));
+        platform::Window window("platform-test", 96, 64, platform::WindowState::kWindowed);
+        CHECK(window.getWindow() == nullptr);
+        CHECK(window.shouldClose());
+        window.requestClose();
+        window.setCursorMode(platform::CursorMode::kHidden);
+        window.setCursorPosition({1.0, 2.0});
+        CHECK(window.getCursorPosition() == glm::dvec2(0.0, 0.0));
         int width = -1;
         int height = -1;
-        window.GetFramebufferSize(width, height);
+        window.getFramebufferSize(width, height);
         CHECK(width > 0);
-        CHECK(window.GetContentScale() == glm::vec2(1.0f, 1.0f));
+        CHECK(window.getContentScale() == glm::vec2(1.0f, 1.0f));
     }
 
     TEST_CASE("PLAT-02 the mouse wheel is accumulated until the next Update, then reset")
     {
-        Window window("platform-test", 96, 64, WindowState::WINDOWED);
+        platform::Window window("platform-test", 96, 64, platform::WindowState::kWindowed);
         if (!open(window))
         {
             return;
         }
-        auto *handle = static_cast<GLFWwindow *>(window.GetWindow());
-        InputManager &input = InputManager::GetInstance(window.GetWindow());
+        auto *handle = static_cast<GLFWwindow *>(window.getWindow());
+        platform::InputManager &input = platform::InputManager::getInstance(window.getWindow());
 
         // GLFW n'a pas d'API pour simuler la molette : on récupère le rappel installé par InputManager et on l'appelle.
         const GLFWscrollfun callback = glfwSetScrollCallback(handle, nullptr);
@@ -97,9 +99,9 @@ TEST_SUITE("platform/window")
         callback(handle, 0.5, 1.0);
         glfwSetScrollCallback(handle, callback);
 
-        input.Update();
-        CHECK(input.GetMouseScroll() == glm::vec2(1.5f, 3.0f));
-        input.Update();
-        CHECK(input.GetMouseScroll() == glm::vec2(0.0f, 0.0f));
+        input.update();
+        CHECK(input.getMouseScroll() == glm::vec2(1.5f, 3.0f));
+        input.update();
+        CHECK(input.getMouseScroll() == glm::vec2(0.0f, 0.0f));
     }
 }

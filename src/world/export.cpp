@@ -229,18 +229,20 @@ core::Result<> checkField(const HeightField &f, const char *what)
 float HeightField::minHeight() const noexcept { return heights.empty() ? 0.0f : *std::ranges::min_element(heights); }
 float HeightField::maxHeight() const noexcept { return heights.empty() ? 0.0f : *std::ranges::max_element(heights); }
 
-HeightField generateRegion(const TerrainParams &params, std::uint32_t seed, std::int64_t firstX, std::int64_t firstZ, std::uint32_t width,
+core::Result<HeightField> generateRegion(const TerrainParams &params, std::uint32_t seed, std::int64_t firstX, std::int64_t firstZ, std::uint32_t width,
                            std::uint32_t height, core::TaskSystem *tasks)
 {
     HeightField f;
     f.spacing = params.sampleSpacing;
-    // Le dernier indice global (first + n - 1) doit être représentable AVANT toute allocation ou tâche : sinon région vide, que
-    // chaque export refuse (kInvalidArgument).
+    // Le dernier indice global (first + n - 1) doit être représentable AVANT toute allocation ou tâche : sinon
+    // erreur kInvalidArgument.
     auto fits = [](std::int64_t first, std::uint32_t n)
     { return n == 0 || first <= std::numeric_limits<std::int64_t>::max() - static_cast<std::int64_t>(n - 1); };
     if (!fits(firstX, width) || !fits(firstZ, height))
     {
-        return f;
+        return makeError(ErrorCode::kInvalidArgument,
+                         "generateRegion: the region leaves the int64 index range (firstX=" + std::to_string(firstX) +
+                             ", firstZ=" + std::to_string(firstZ) + ", width=" + std::to_string(width) + ", height=" + std::to_string(height) + ")");
     }
     f.width = width;
     f.height = height;
