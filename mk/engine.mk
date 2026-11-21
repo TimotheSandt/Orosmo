@@ -27,6 +27,15 @@
 
 SHELL := sh
 
+# ── Affichage de la compilation ───────────────────────────────────────────────
+# Sous `tools/build_progress.py` (ORS_PROGRESS=1, lancé par `make` dans un terminal) : chaque étape annonce son début et sa fin
+# (`@@ors begin <cible> <affiché> <étiquette>` / `@@ors end <cible>`) et la commande n'est plus affichée (V=1 la montre). Sans
+# ORS_PROGRESS (CI, redirection) : commande complète et étiquette `  CXX fichier`, comme avant.
+ORS_Q := $(if $(ORS_PROGRESS),$(if $(filter 1,$(V)),,@))
+ors_compile = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $@ $< $(1),  $(1) $<)'
+ors_link = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $@ $@ $(1),  $(1) $@)'
+ors_end = $(if $(ORS_PROGRESS),@printf '%s\n' '@@ors end $@')
+
 # ── Engine identity (single source of truth) ──────────────────────────────────
 # Path relative to wherever make is invoked (always from project root).
 _MK_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
@@ -262,50 +271,59 @@ engine: install-demo
 # Archive recréée (rm) : `ar rcs` garderait les objets des fichiers supprimés (ancienne interface src/ui/legacy/).
 $(LIB_UI): $(UI_OBJS)
 	@mkdir -p "$(dir $@)"
-	rm -f $@
-	$(AR) rcs $@ $^
-	@echo "Archived [UI]          $(BUILD_TYPE): $@"
+	$(ORS_Q)rm -f $@
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_CORE): $(Core_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Core]        $(BUILD_TYPE): $@"
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_PLATFORM): $(Platform_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Platform]    $(BUILD_TYPE): $@"
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_RHI): $(Rhi_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Rhi]         $(BUILD_TYPE): $@"
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_RENDERER): $(Renderer_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Renderer]    $(BUILD_TYPE): $@"
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_WORLD): $(World_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [World]       $(BUILD_TYPE): $@"
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 $(LIB_THIRDPARTY): $(ThirdParty_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [ThirdParty]  $(BUILD_TYPE): $@"
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $^
+	$(ors_end)
 
 # ── Compilation rules ─────────────────────────────────────────────────────────
 $(OBJ_DIR_TYPE)/Libraries/%.o: $(LIBRARIES_SRC_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
-	$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
-	@echo "  CXX [$(BUILD_TYPE)] $<"
+	$(call ors_compile,CXX [$(BUILD_TYPE)])
+	$(ORS_Q)$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
+	$(ors_end)
 
 $(OBJ_DIR_TYPE)/Libraries/%.o: $(LIBRARIES_SRC_DIR)/%.c
 	@mkdir -p "$(dir $@)"
-	$(CC) $(CFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
-	@echo "  CC  [$(BUILD_TYPE)] $<"
+	$(call ors_compile,CC [$(BUILD_TYPE)])
+	$(ORS_Q)$(CC) $(CFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
+	$(ors_end)
 
 # ── Rust workspace build rules ────────────────────────────────────────────────
 # cui is built as part of the normal engine build (engine-tool is separate to
