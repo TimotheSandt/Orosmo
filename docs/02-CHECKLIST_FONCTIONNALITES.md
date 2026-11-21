@@ -222,7 +222,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | TEST-03 | Tests de déterminisme | P0 | Même graine → mêmes octets sur les trois systèmes (somme de contrôle de référence). | Partiel |
 | DOC-01 | Documentation | P0 | `README.md` par module ; `docs/STATUS.md` à jour ; schéma des modules ; guide « ajouter un backend ». | Partiel |
 
-## M. Modules optionnels et addons (M11, décision A34)
+## M. Modules optionnels, addons et registre (M11 et M12, décisions A34 et A38)
 
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
@@ -230,3 +230,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | MOD-02 | Distribution intégrée ou en addon | P1 | Un module peut être inclus directement dans une release (`bundled`) ou empaqueté séparément (`orosmo-addon-<nom>-<plateforme>.zip`) contre une release cœur. | Absent |
 | MOD-03 | Intégration CLI et build (`orosmo` + `engine.mk`) | P1 | Commandes `orosmo addon list/add/remove/update` ; découverte et liaison automatiques par `engine.mk` (includes, archives, shaders, ressources, vcpkg). | Absent |
 | MOD-04 | Module pilote vérifié de bout en bout | P1 | CI de bout en bout : projet `orosmo init` 100 % générique par défaut, puis ajout d'un module pilote via `orosmo addon add` et compilation sans toucher au cœur. | Absent |
+| MOD-05 | Registre d'addons | P2 | Hébergement des paquets et d'un index (versions, compatibilité moteur, SHA-256, signature) ; le moteur refuse une archive dont l'empreinte ou la signature ne correspond pas à l'index. | Absent |
+| MOD-06 | Publication d'un addon | P2 | `orosmo addon publish` ou workflow CI : valide le manifeste, construit par plateforme, dépose dans le registre ; SemVer ; retrait d'une version. | Absent |
+| MOD-07 | Installation depuis le registre | P2 | `orosmo addon search/info/add <nom>[@version]` : versions compatibles, dépendances entre addons, empreintes vérifiées, `orosmo.lock`. | Absent |
+| MOD-08 | Interface du gestionnaire d'addons | P2 | Application `orosmo::ui` : liste et détails du registre, état d'un projet, installer / mettre à jour / retirer, registres multiples ; mêmes fonctions que la CLI. | Absent |

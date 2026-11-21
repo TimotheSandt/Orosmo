@@ -217,3 +217,11 @@ fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).
 - **Q7** : les 17 stashes sont supprimés (analyse du 2026-11-17 : 2 idées archivées dans `docs/notes/archive/`) ; sauvegarde
   complète hors dépôt (G24). **Les branches ne sont pas supprimées.** Le worktree `release-core-only` est supprimé (sa branche reste).
 
+
+## Décision de l'auteur du 2026-11-21 : registre d'addons (A38)
+
+- **A38** : le système d'addons de M11 se limite au **mécanisme** (manifeste, empaquetage, installation locale ou par URL, liaison au
+  build). L'**hébergement** des addons et l'**interface** pour les parcourir et les installer forment un jalon à part, **M12**
+  (`MOD-05` à `MOD-08`, `docs/05`) : c'est un service et une application distincts du moteur. Le manifeste de M11 porte déjà les
+  champs d'affichage du registre. Le premier addon visé est le monde procédural archivé (`archive/procedural-world`). Forme du
+  registre (dépôt Git avec releases ou service web) : à proposer au début de M12. Version visée : M11 `v1.1.0`, M12 `v1.2.0`.
