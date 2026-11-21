@@ -31,6 +31,17 @@ struct SceneRendererConfig
     std::filesystem::path shaderDirectory;
 };
 
+// Passe de scène ouverte, pour les dessins faits hors de SceneRenderer (instancing REN-28 : instance_renderer.hpp) : valable entre
+// beginFrame et endFrame. Le groupe 0 (caméra, lumières) est à jour ; les pipelines doivent suivre ces formats de cible.
+struct ScenePassContext
+{
+    rhi::CommandEncoder *encoder = nullptr;
+    rhi::BindGroupHandle frameGroup;
+    std::vector<rhi::Format> colorFormats;
+    rhi::Format depthFormat = rhi::Format::kD32Float;
+    glm::vec3 cameraOrigin{0.0f}; // à retrancher des positions monde (rendu relatif à la caméra, REN-02 ; 0 sinon)
+};
+
 struct FrameOptions
 {
     std::array<float, 4> clearColor{0.0f, 0.0f, 0.0f, 1.0f};
@@ -112,6 +123,8 @@ class SceneRenderer
     // REN-34 : dessine les segments de `debug` dans la passe de scène (après setCamera). Sans segment ou désactivé : rien (aucun
     // coût). Les shaders `debug_line.vert/frag` sont chargés au premier appel.
     core::Result<> drawDebug(const DebugDraw &debug);
+    // Contexte de la passe ouverte (kInvalidArgument sans image ouverte) ; à redemander après setLights ou setCamera.
+    core::Result<ScenePassContext> passContext();
     // Referme la passe, exécute post-traitements, historique, mise à l'échelle vers `output`, génération d'images.
     core::Result<> endFrame(const UpscaleTarget &output);
 

@@ -419,6 +419,19 @@ core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
     return camera.wireframe() ? draw(mesh, camera, true) : core::Result<>{};
 }
 
+core::Result<ScenePassContext> SceneRenderer::passContext()
+{
+    if (!passOpen_)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::passContext: no frame is open");
+    }
+    if (auto r = rebuildFrameGroup(); !r) // les lumières ont pu changer depuis beginFrame
+    {
+        return std::unexpected(r.error());
+    }
+    return ScenePassContext{encoder_, frameGroup_, sceneTarget_.info().colorFormats, rhi::Format::kD32Float, cameraOrigin_};
+}
+
 core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
 {
     if (!debug.enabled() || debug.lineCount() == 0)
