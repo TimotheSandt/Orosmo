@@ -33,6 +33,20 @@ std::uint64_t transferBytes(const ResolvedRegion &region, std::uint32_t rowLengt
     return ((slices - 1) * slice + (region.extent.height - 1) * row + region.extent.width) * bytesPerTexel;
 }
 
+// Vrai si une pièce jointe précédente vise déjà le même niveau d'une image 3D (une seule transition par niveau 3D).
+template <typename Attachments>
+bool isRepeatedLevel(const Attachments &attachments, std::size_t index, const TextureRes &texture)
+{
+    if (texture.desc.dimension != TextureDimension::k3D)
+        return false;
+    for (std::size_t j = 0; j < index; ++j)
+    {
+        if (attachments[j].texture == attachments[index].texture && attachments[j].mip == attachments[index].mip)
+            return true;
+    }
+    return false;
+}
+
 VkClearValue clearColor(const ColorAttachment &c, Format format)
 {
     VkClearValue value{};
@@ -122,7 +136,7 @@ Result<> VulkanDevice::submit(std::unique_ptr<CommandEncoder> encoder)
     if (!encoder)
         return makeError(ErrorCode::kInvalidArgument, "submit: null encoder");
     auto *vkEncoder = dynamic_cast<VkEncoder *>(encoder.get());
-    if (vkEncoder == nullptr)
+    if (vkEncoder == nullptr || &vkEncoder->device() != this)
         return makeError(ErrorCode::kInvalidArgument, "submit: the encoder does not come from this Vulkan device");
     auto commandBuffers = vkEncoder->finish();
     if (!commandBuffers)
@@ -238,10 +252,13 @@ void VkEncoder::beginRenderPass(const RenderPassDesc &desc)
 
     // Tout ce qui précède est fini et visible ; chaque attachement quitte sa disposition de repos.
     memoryBarrierAll(commandBuffer_);
-    for (const PassAttachment &a : attachments)
+    // Une image 3D n'a qu'une couche Vulkan : plusieurs tranches du même niveau partagent une seule transition.
+    for (std::size_t i = 0; i < attachments.size(); ++i)
     {
+        const PassAttachment &a = attachments[i];
         const TextureRes &t = *device_.get(a.texture);
-        transition(t, t.restLayout, a.layout, a.mip, 1, a.layer, 1);
+        if (!isRepeatedLevel(attachments, i, t))
+            transition(t, t.restLayout, a.layout, a.mip, 1, a.layer, 1);
     }
 
     if (!desc.debugName.empty() && device_.hasDebugUtils() && vkCmdBeginDebugUtilsLabelEXT != nullptr)
@@ -261,7 +278,8 @@ void VkEncoder::beginRenderPass(const RenderPassDesc &desc)
         info.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         info.loadOp = toVk(c.load);
         info.storeOp = toVk(c.store);
-        info.clearValue = clearColor(c, formats[i]);
+        if (c.load == LoadOp::kClear) // la valeur n'est validée (entier) que pour un effacement
+            info.clearValue = clearColor(c, formats[i]);
         colors.push_back(info);
     }
     auto depthInfo = makeStruct<VkRenderingAttachmentInfo>(VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO);
@@ -302,10 +320,11 @@ void VkEncoder::endRenderPass()
         return;
     vkCmdEndRendering(commandBuffer_);
     // Chaque attachement revient à sa disposition de repos ; les écritures de la passe sont visibles pour la suite.
-    for (const PassAttachment &a : passAttachments_)
+    for (std::size_t i = 0; i < passAttachments_.size(); ++i)
     {
+        const PassAttachment &a = passAttachments_[i];
         const TextureRes *t = device_.get(a.texture);
-        if (t != nullptr)
+        if (t != nullptr && !isRepeatedLevel(passAttachments_, i, *t))
             transition(*t, a.layout, t->restLayout, a.mip, 1, a.layer, 1);
     }
     memoryBarrierAll(commandBuffer_);
@@ -364,7 +383,11 @@ void VkEncoder::setBindGroup(std::uint32_t slot, BindGroupHandle handle, std::sp
                 const std::uint64_t offset = e.offset + extra;
                 const std::uint64_t align = e.type == BindingType::kUniformBuffer ? caps.minUniformAlignment : caps.minStorageAlignment;
                 const std::uint64_t size = e.size != 0 ? e.size : b->desc.size - std::min(offset, b->desc.size);
-                if (!check(offset % align == 0, ErrorCode::kInvalidArgument, "setBindGroup: dynamic offset is not aligned") ||
+                // Taille 0 = jusqu'à la fin : le jeu de descripteurs Vulkan est écrit avec VK_WHOLE_SIZE depuis `e.offset` ; un décalage dynamique
+                // non nul ferait dépasser le tampon. (OpenGL accepte : le décalage dynamique y retranche la taille.) Voir le README.
+                if (!check(!(e.dynamicOffset && e.size == 0 && extra != 0), ErrorCode::kUnsupported,
+                           "setBindGroup: a non-zero dynamic offset needs an explicit entry size (size 0 means 'to the end of the buffer') (" + b->desc.debugName + ")") ||
+                    !check(offset % align == 0, ErrorCode::kInvalidArgument, "setBindGroup: dynamic offset is not aligned") ||
                     !check(offset <= b->desc.size && size <= b->desc.size - offset && size > 0, ErrorCode::kOutOfRange,
                            "setBindGroup: range exceeds the buffer (" + b->desc.debugName + ")") ||
                     !check(e.type != BindingType::kUniformBuffer || size <= caps.maxUniformBufferSize, ErrorCode::kOutOfRange,
@@ -399,7 +422,7 @@ void VkEncoder::setVertexBuffer(std::uint32_t slot, BufferHandle handle, std::ui
     if (check(slot < vertexBuffers_.size(), ErrorCode::kOutOfRange, "setVertexBuffer: slot >= 16") &&
         check(b != nullptr, ErrorCode::kNotFound, "setVertexBuffer: stale or null buffer") &&
         check(hasFlag(b->desc.usage, BufferUsage::kVertex), ErrorCode::kInvalidArgument, "setVertexBuffer: buffer lacks the Vertex usage") &&
-        check(offset <= b->desc.size, ErrorCode::kOutOfRange, "setVertexBuffer: offset exceeds the buffer"))
+        check(offset < b->desc.size, ErrorCode::kOutOfRange, "setVertexBuffer: offset must be inside the buffer"))
         vertexBuffers_[slot] = {handle, offset};
 }
 
@@ -408,7 +431,7 @@ void VkEncoder::setIndexBuffer(BufferHandle handle, IndexType type, std::uint64_
     const BufferRes *b = device_.get(handle);
     if (check(b != nullptr, ErrorCode::kNotFound, "setIndexBuffer: stale or null buffer") &&
         check(hasFlag(b->desc.usage, BufferUsage::kIndex), ErrorCode::kInvalidArgument, "setIndexBuffer: buffer lacks the Index usage") &&
-        check(offset <= b->desc.size, ErrorCode::kOutOfRange, "setIndexBuffer: offset exceeds the buffer") &&
+        check(offset < b->desc.size, ErrorCode::kOutOfRange, "setIndexBuffer: offset must be inside the buffer") &&
         check(offset % (type == IndexType::kUint32 ? 4u : 2u) == 0, ErrorCode::kInvalidArgument, "setIndexBuffer: offset is not a multiple of the index size"))
     {
         indexBuffer_ = handle;
@@ -547,6 +570,9 @@ void VkEncoder::drawIndirect(BufferHandle args, std::uint64_t offset, std::uint3
                "drawIndirect: offset and stride must be multiples of 4, stride 0 or at least one command") ||
         !check(drawCount > 0 && rangeFits(offset, step * (drawCount - 1) + sizeof(DrawIndirectCommand), b->desc.size), ErrorCode::kOutOfRange,
                "drawIndirect: commands exceed the buffer") ||
+        // Le contenu des commandes est inconnu à l'enregistrement : sans la fonctionnalité, firstInstance non nul serait invalide.
+        !check(device_.features_.drawIndirectFirstInstance != VK_FALSE, ErrorCode::kUnsupported,
+               "drawIndirect: the device lacks drawIndirectFirstInstance") ||
         !beforeDraw(false, "drawIndirect"))
         return;
     const VkBuffer buffer = b->buffer;
@@ -572,6 +598,9 @@ void VkEncoder::drawIndexedIndirect(BufferHandle args, std::uint64_t offset, std
                "drawIndexedIndirect: commands exceed the buffer") ||
         // Même contrat que le backend OpenGL (qui lit les indices depuis l'octet 0 plus firstIndex).
         !check(indexOffset_ == 0, ErrorCode::kUnsupported, "drawIndexedIndirect: a non-zero index buffer offset is not supported") ||
+        // Le contenu des commandes est inconnu à l'enregistrement : sans la fonctionnalité, firstInstance non nul serait invalide.
+        !check(device_.features_.drawIndirectFirstInstance != VK_FALSE, ErrorCode::kUnsupported,
+               "drawIndexedIndirect: the device lacks drawIndirectFirstInstance") ||
         !beforeDraw(true, "drawIndexedIndirect"))
         return;
     const VkBuffer buffer = b->buffer;
