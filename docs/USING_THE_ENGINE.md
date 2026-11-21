@@ -169,12 +169,11 @@ d'interface : `ParamPanel($state.params)` dans le langage, `orosmo::ui::reflecte
 ## 7. Stabilité de l'API et versions
 
 Numérotation sémantique **0.MINEUR.CORRECTIF** : tant que la version majeure est 0, un changement **mineur** peut casser l'API (la
-liste des changements incompatibles est dans `docs/releases/<jalon>.md`) ; un **correctif** ne la casse jamais. Première release
-présentée comme utilisable : `v0.3.1` (M3 bis, moteur générique). M3 (`v0.3.0`) n'a pas été publiée.
+liste des changements incompatibles est dans `docs/releases/<jalon>.md`) ; un **correctif** ne la casse jamais. Dernière release : `v0.4.0` (M4, backend Vulkan). M3 (`v0.3.0`) n'a pas été publiée ; `v0.3.1` (M3 bis) est la première release publiée.
 
 | Module (`include/orosmo/…`) | Statut | Remarque |
 | --- | --- | --- |
-| `core`, `rhi`, `renderer`, `ui`, `platform` | **figé pour 0.3.x** | livré dans la release ; noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
+| `core`, `rhi`, `renderer`, `ui`, `platform` | **figé pour 0.4.x** | livré dans la release ; noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
 | `core` : `Logger`, `Profiler`, `FPSCounter`, `RingBuffer` | **repris tels quels** | anciens modules `Utilities` et `Profiler` déplacés dans `orosmo::core` (2026-11-20) : noms de méthodes encore en `PascalCase` (G122) |
 | `world`, `TerrainRenderer` | **archivé (`archive/procedural-world`)** | retirés du dépôt principal (A37) ; futur module/addon en M11 |
 

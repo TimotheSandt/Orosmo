@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour à la fin de M3 (2026-11-19), puis après le nettoyage « Orosmo » (2026-11-20). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour à la fin de M4 (2026-11-21), après M3 (2026-11-19) et le nettoyage « Orosmo » (2026-11-20). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -21,6 +21,26 @@ Mis à jour à la fin de M3 (2026-11-19), puis après le nettoyage « Orosmo » 
 | **M3 Premier générateur de terrain et interface de base (lots A à F)** | **Fait : fusionné dans `main` (PR #8, 2026-11-21 ; pas de release, décision de l'auteur : la première release publiée est M3 bis, v0.3.1)** | `docs/releases/M3.md` : module `orosmo::world` (bruit déterministe CPU et GPU, tuiles, niveaux de détail cousus, streaming, export, lancer de rayon), repère Vulkan du RHI et reverse-Z, dessin de debug, rendu du terrain, module `orosmo::ui` (widgets, mise en page, thèmes JSON, paramètres réfléchis), compilateur du langage vers `orosmo::ui`, `terrain-gen`, visualiseur, paquet et `orosmo init` vérifiés de bout en bout ; 386 cas doctest verts depuis un clone propre, ASan + UBSan propres, `make check`, `cui-test`, `terrain-gen-check`, `viewer-capture`, `e2e-init` verts (Linux) |
 | **Nettoyage « Orosmo » (après la revue de M3)** | **Fait, dans `dev`** | `docs/releases/M3.md` § Nettoyage : modules hérités `Utilities`, `Profiler`, `Benchmark`, `Noise`, `Graphics`, `UI` retirés ou déplacés dans `orosmo::core` / la démo ; démo sur `orosmo::world` et `orosmo::ui` ; 404 cas doctest verts, ASan + UBSan propres, `make check`, `cui-test`, `terrain-gen-check`, `e2e-init` verts ; capture de la démo identique à la nouvelle référence (0 pixel d'écart, llvmpipe) |
 | **M3 bis : release cœur générique (A34), jalon M11, affichage de la compilation** | **Livré côté code, dans `dev` ; à proposer à `main`** | `docs/releases/M3bis.md` : `world`, `TerrainRenderer`, shaders `terrain.*` et exemples terrain exclus de `dist/orosmo-pkg-*.zip` (gardés dans le dépôt via `ENGINE_EXTRA_MODULES`), `make e2e-init` le vérifie ; modèle `orosmo init` et `apps/minimal` génériques ; jalon **M11** (`MOD-01..04`) ; barre de progression de `make` (`tools/build_progress.py`, 5 tests Python) ; `sync-demo` sans recopie des dates |
+| **M4 Backend Vulkan** | **Livré côté code, dans `dev` ; à proposer à `main` (`v0.4.0`)** | `docs/releases/M4.md` : backend `src/rhi/vulkan/` (volk, VMA, Vulkan 1.3, barrières déduites, cache de pipelines sur disque), `--backend` avec repli sur OpenGL, tests communs aux deux backends, `make demo-vulkan-check` (15 captures OpenGL/Vulkan dans la tolérance, `scene.png` identique bit à bit, validation à 0 message), `docs/PERF_OPENGL_VS_VULKAN.md`, `docs/ADD_A_BACKEND.md` ; démo unique sans procédural (A37), API de `platform` renommée (A31). Preuves chiffrées : PREUVES_STATUS. Windows, macOS, arm64 : à observer à la CI |
+
+## Identifiants de `docs/02` touchés par M4
+
+Preuves sous Linux (g++ 13.3, Mesa 26.1.6, Intel Arc, ANV, Vulkan 1.4 ; la CI exécute aussi sous llvmpipe + xvfb), depuis un clone propre de `dev`
+(`docs/releases/M4.md`). Windows et macOS : jamais observés pour Vulkan (G142).
+
+| ID | Avant | Après | Preuve |
+| --- | --- | --- | --- |
+| RHI-03 | Absent | **Fait** (Linux, un GPU) | `src/rhi/vulkan/` (`vk_device.cpp`, `vk_encoder.cpp`, `vk_pipelines.cpp`, `vk_resources.cpp`, `vk_swapchain.cpp`, VMA dans `vk_vma.cpp`) ; tests `tests/rhi/vulkan_device_tests.cpp`, `vulkan_backend_tests.cpp`, `rhi_device_tests.cpp` (mêmes cas sur les deux backends, `validationErrorCount() == 0`) ; suites GPU en Vulkan : 125 cas réussis ; `make demo-vulkan-check` : validation à 0 sur la démo |
+| RHI-04 | Partiel | Partiel | `--backend`/`--api`, `--strict-backend`, repli sur OpenGL (`demo::resolveBackend`, `tests/demo/launch_options_tests.cpp`), `Capabilities` lisible. **Manque** : Metal (reconnu et refusé ; M9) |
+| RHI-06 | Partiel | **Fait** | `PipelineCache` en mémoire (`tests/renderer/resources_tests.cpp`), cache de pipelines Vulkan sur disque (`vk_pipelines.cpp` ; `tests/rhi/vulkan_backend_tests.cpp`, « the pipeline cache is written at shutdown and read back… » : écrit puis relu, fichier d'un autre GPU ignoré) |
+| RHI-14 | Partiel | Partiel | `tools/demo_parity.py` (comparaison automatisée, image de différence `--diff-out`), `make demo-vulkan-check`. **Manque** : une seule scène, une seule référence (OpenGL) pour les deux backends, outil hors de `demo-test` et de la CI (G143) |
+| TER-01 à TER-04, TER-07, TER-11 à TER-13, TOOL-01, TOOL-02 | Fait / Partiel | **Archivé** | retirés du dépôt (A37), branche `archive/procedural-world` |
+| TER-05, TER-06, TER-08, TER-09, TER-10, SIM-02, SIM-03 | Absent | **Hors moteur** | A39 ; addons éventuels après M11 |
+| REN-14, REN-23 à REN-27, REN-33, REN-38 | Absent | Absent (module préinstallé, M13) | A39 |
+| MOD-05 à MOD-09 | — | Absent | registre d'addons (M12) et modèles `orosmo init` (M11) ; A38, A40 |
+
+Totaux de `docs/02` (161 identifiants) : **Fait 25, Partiel 40, Absent 77, Archivé 11, Hors moteur 7, Incompatible 1.** (Fait −6 :
+8 archivés, +2 nouveaux ; Partiel −3.)
 
 ## Identifiants de `docs/02` touchés par M3 bis
 
