@@ -173,8 +173,7 @@ présentée comme utilisable : `v0.3.1` (M3 bis, moteur générique). M3 (`v0.3.
 
 | Module (`include/orosmo/…`) | Statut | Remarque |
 | --- | --- | --- |
-| `core`, `rhi`, `renderer`, `ui` | **figé pour 0.3.x** | livré dans la release ; noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
-| `platform` (`Window`, `InputManager`) | **provisoire** | livré dans la release ; noms encore en `PascalCase`, hors de l'espace `orosmo::platform` : ils changeront (`docs/GAPS.md` G96) |
+| `core`, `rhi`, `renderer`, `ui`, `platform` | **figé pour 0.3.x** | livré dans la release ; noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
 | `core` : `Logger`, `Profiler`, `FPSCounter`, `RingBuffer` | **repris tels quels** | anciens modules `Utilities` et `Profiler` déplacés dans `orosmo::core` (2026-11-20) : noms de méthodes encore en `PascalCase` (G122) |
 | `world`, `TerrainRenderer` | **hors release (dépôt uniquement)** | conservés dans le dépôt pour la démo et les outils terrain (A34) ; futur module/addon en M11 |
 

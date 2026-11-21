@@ -4,15 +4,18 @@
 
 #include "orosmo/ui/ui.hpp"
 
+namespace orosmo::platform
+{
 class Window;
+}
 
 namespace orosmo::ui
 {
 
-// Entrées de l'image. À appeler après `Window::NewFrame` (qui met à jour l'InputManager de la fenêtre).
-InputFrame readWindowInput(Window &window, float deltaTime);
+// Entrées de l'image. À appeler après `Window::newFrame` (qui met à jour l'InputManager de la fenêtre).
+InputFrame readWindowInput(platform::Window &window, float deltaTime);
 
 // Les champs de texte utilisent le presse-papiers du système (Ctrl+C / X / V). `window` doit vivre plus longtemps que `ui`.
-void useSystemClipboard(Ui &ui, Window &window);
+void useSystemClipboard(Ui &ui, platform::Window &window);
 
 } // namespace orosmo::ui

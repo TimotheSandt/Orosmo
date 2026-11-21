@@ -10,24 +10,27 @@
 #include <glm/glm.hpp>
 #include <unordered_map>
 
+namespace orosmo::platform
+{
+
 enum class InputState : std::uint8_t
 {
-    Release,    // Key not pressed
-    Pressed,    // Key pressed
-    PressBegin, // Key was just pressed
-    PressEnd,   // Key was just released
+    kRelease,    // Key not pressed
+    kPressed,    // Key pressed
+    kPressBegin, // Key was just pressed
+    kPressEnd,   // Key was just released
 };
 
 enum class MouseButton : std::uint8_t
 {
-    LEFT,
-    RIGHT,
-    MIDDLE,
-    X1,
-    X2,
-    X3,
-    X4,
-    X5,
+    kLeft,
+    kRight,
+    kMiddle,
+    kX1,
+    kX2,
+    kX3,
+    kX4,
+    kX5,
 };
 
 struct MouseMoveData
@@ -39,133 +42,133 @@ struct MouseMoveData
 
 enum class KeyLayout : std::uint8_t
 {
-    UNDEFINED = 0,
-    QWERTY,
-    QWERTZ,
-    AZERTY,
-    DVORAK
+    kUndefined = 0,
+    kQwerty,
+    kQwertz,
+    kAzerty,
+    kDvorak
 };
 
 enum class KeyButton : std::uint8_t
 {
     // Alphabetic
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
-    I,
-    J,
-    K,
-    L,
-    M,
-    N,
-    O,
-    P,
-    Q,
-    R,
-    S,
-    T,
-    U,
-    V,
-    W,
-    X,
-    Y,
-    Z,
+    kA,
+    kB,
+    kC,
+    kD,
+    kE,
+    kF,
+    kG,
+    kH,
+    kI,
+    kJ,
+    kK,
+    kL,
+    kM,
+    kN,
+    kO,
+    kP,
+    kQ,
+    kR,
+    kS,
+    kT,
+    kU,
+    kV,
+    kW,
+    kX,
+    kY,
+    kZ,
     // Function
-    F1,
-    F2,
-    F3,
-    F4,
-    F5,
-    F6,
-    F7,
-    F8,
-    F9,
-    F10,
-    F11,
-    F12,
-    F13,
-    F14,
-    F15,
-    F16,
-    F17,
-    F18,
-    F19,
-    F20,
-    F21,
-    F22,
-    F23,
-    F24,
-    F25,
+    kF1,
+    kF2,
+    kF3,
+    kF4,
+    kF5,
+    kF6,
+    kF7,
+    kF8,
+    kF9,
+    kF10,
+    kF11,
+    kF12,
+    kF13,
+    kF14,
+    kF15,
+    kF16,
+    kF17,
+    kF18,
+    kF19,
+    kF20,
+    kF21,
+    kF22,
+    kF23,
+    kF24,
+    kF25,
     // Numeric
-    NUM_0,
-    NUM_1,
-    NUM_2,
-    NUM_3,
-    NUM_4,
-    NUM_5,
-    NUM_6,
-    NUM_7,
-    NUM_8,
-    NUM_9,
+    kNum0,
+    kNum1,
+    kNum2,
+    kNum3,
+    kNum4,
+    kNum5,
+    kNum6,
+    kNum7,
+    kNum8,
+    kNum9,
     // Special
-    SPACE,
-    ENTER,
-    TAB,
-    ESCAPE,
-    BACKSPACE,
-    INSERT,
-    DELETE,
-    HOME,
-    END,
-    PAGE_UP,
-    PAGE_DOWN,
-    LEFT,
-    RIGHT,
-    UP,
-    DOWN,
-    MINUS,
-    EQUALS,
-    LEFT_BRACKET,
-    RIGHT_BRACKET,
-    BACKSLASH,
-    SEMICOLON,
-    APOSTROPHE,
-    COMMA,
-    PERIOD,
-    SLASH,
-    NUMPAD_0,
-    NUMPAD_1,
-    NUMPAD_2,
-    NUMPAD_3,
-    NUMPAD_4,
-    NUMPAD_5,
-    NUMPAD_6,
-    NUMPAD_7,
-    NUMPAD_8,
-    NUMPAD_9,
-    NUMPAD_DECIMAL,
-    NUMPAD_DIVIDE,
-    NUMPAD_MULTIPLY,
-    NUMPAD_SUBTRACT,
-    NUMPAD_ADD,
-    NUMPAD_ENTER,
+    kSpace,
+    kEnter,
+    kTab,
+    kEscape,
+    kBackspace,
+    kInsert,
+    kDelete,
+    kHome,
+    kEnd,
+    kPageUp,
+    kPageDown,
+    kLeft,
+    kRight,
+    kUp,
+    kDown,
+    kMinus,
+    kEquals,
+    kLeftBracket,
+    kRightBracket,
+    kBackslash,
+    kSemicolon,
+    kApostrophe,
+    kComma,
+    kPeriod,
+    kSlash,
+    kNumpad0,
+    kNumpad1,
+    kNumpad2,
+    kNumpad3,
+    kNumpad4,
+    kNumpad5,
+    kNumpad6,
+    kNumpad7,
+    kNumpad8,
+    kNumpad9,
+    kNumpadDecimal,
+    kNumpadDivide,
+    kNumpadMultiply,
+    kNumpadSubtract,
+    kNumpadAdd,
+    kNumpadEnter,
     // Modifiers
-    CAPS_LOCK,
-    NUM_LOCK,
-    SCROLL_LOCK,
-    LEFT_SHIFT,
-    LEFT_CONTROL,
-    LEFT_ALT,
-    LEFT_SUPER,
-    RIGHT_SHIFT,
-    RIGHT_CONTROL,
-    RIGHT_ALT,
-    RIGHT_SUPER
+    kCapsLock,
+    kNumLock,
+    kScrollLock,
+    kLeftShift,
+    kLeftControl,
+    kLeftAlt,
+    kLeftSuper,
+    kRightShift,
+    kRightControl,
+    kRightAlt,
+    kRightSuper
 };
 
 struct KeyButtonEvent
@@ -183,7 +186,7 @@ struct KeyPress
     bool ctrl = false;
     bool alt = false;
     bool super = false;
-    std::size_t textOffset = 0; // octets de GetTextInput() saisis AVANT cet appui (« a » puis Retour arrière, ou l'inverse)
+    std::size_t textOffset = 0; // octets de getTextInput() saisis AVANT cet appui (« a » puis Retour arrière, ou l'inverse)
 };
 
 struct MouseButtonEvent
@@ -219,110 +222,110 @@ class InputManager
     friend struct std::default_delete<InputManager>;
 
   public:
-    static InputManager &GetInstance(void *nativeWindow);
-    static void RemoveInstance(void *nativeWindow);
+    static InputManager &getInstance(void *nativeWindow);
+    static void removeInstance(void *nativeWindow);
 
-    void Init();
-    void Update();
+    void init();
+    void update();
 
     // Détecte la disposition du clavier et la sélectionne. Windows : disposition active du système. Ailleurs (Linux,
     // macOS) : noms que le système donne aux touches physiques (glfwGetKeyName) ; GLFW doit être initialisé.
-    static void AutoDetectKeyLayout();
+    static void autoDetectKeyLayout();
     // Reconnaît la disposition depuis `keyName(code GLFW de la touche à la position US)` = caractère imprimé sur cette
     // touche (nullptr si inconnu). Disposition non reconnue ou noms indisponibles : QWERTY. Sans effet de bord (testable).
-    static KeyLayout DetectKeyLayoutFromKeyNames(const std::function<const char *(int)> &keyName);
-    static void SetKeyLayout(KeyLayout layout);
-    static KeyLayout GetKeyLayout() { return keyLayout; }
+    static KeyLayout detectKeyLayoutFromKeyNames(const std::function<const char *(int)> &keyName);
+    static void setKeyLayout(KeyLayout layout);
+    static KeyLayout getKeyLayout() { return keyLayout; }
     // Code GLFW de la touche physique qui porte la touche logique `key` dans la disposition active ; GLFW_KEY_UNKNOWN
     // si la touche n'a pas de correspondance.
-    static int GetKeyCode(KeyButton key);
+    static int getKeyCode(KeyButton key);
 
 #pragma region Getters
   public:
-    InputState GetKeyState(KeyButton key) const
+    InputState getKeyState(KeyButton key) const
     {
         if (keyStateMap.find(key) == keyStateMap.end())
         {
-            return InputState::Release;
+            return InputState::kRelease;
         }
         return keyStateMap.at(key);
     }
-    bool IsKeyRelease(KeyButton key) const { return GetKeyState(key) == InputState::Release; }
-    bool IsKeyPressed(KeyButton key) const { return GetKeyState(key) == InputState::Pressed; }
-    bool IsKeyJustPressed(KeyButton key) const { return GetKeyState(key) == InputState::PressBegin; }
-    bool IsKeyJustReleased(KeyButton key) const { return GetKeyState(key) == InputState::PressEnd; }
+    bool isKeyRelease(KeyButton key) const { return getKeyState(key) == InputState::kRelease; }
+    bool isKeyPressed(KeyButton key) const { return getKeyState(key) == InputState::kPressed; }
+    bool isKeyJustPressed(KeyButton key) const { return getKeyState(key) == InputState::kPressBegin; }
+    bool isKeyJustReleased(KeyButton key) const { return getKeyState(key) == InputState::kPressEnd; }
 
-    InputState GetMouseButtonState(MouseButton button) const
+    InputState getMouseButtonState(MouseButton button) const
     {
         if (mouseButtonStateMap.find(button) == mouseButtonStateMap.end())
         {
-            return InputState::Release;
+            return InputState::kRelease;
         }
         return mouseButtonStateMap.at(button);
     }
-    bool IsMouseButtonRelease(MouseButton button) const { return GetMouseButtonState(button) == InputState::Release; }
-    bool IsMouseButtonPressed(MouseButton button) const { return GetMouseButtonState(button) == InputState::Pressed; }
-    bool IsMouseButtonJustPressed(MouseButton button) const { return GetMouseButtonState(button) == InputState::PressBegin; }
-    bool IsMouseButtonJustReleased(MouseButton button) const { return GetMouseButtonState(button) == InputState::PressEnd; }
+    bool isMouseButtonRelease(MouseButton button) const { return getMouseButtonState(button) == InputState::kRelease; }
+    bool isMouseButtonPressed(MouseButton button) const { return getMouseButtonState(button) == InputState::kPressed; }
+    bool isMouseButtonJustPressed(MouseButton button) const { return getMouseButtonState(button) == InputState::kPressBegin; }
+    bool isMouseButtonJustReleased(MouseButton button) const { return getMouseButtonState(button) == InputState::kPressEnd; }
 
-    glm::vec2 GetMousePosition() const { return mouseMoveData.position; }
-    glm::vec2 GetMouseDelta() const { return mouseMoveData.delta; }
-    glm::vec2 GetMouseScroll() const { return mouseMoveData.scroll; }
-    // PLAT-05 : texte saisi depuis le `Update` précédent, en UTF-8 (caractères Unicode, répétition du clavier comprise ; pas
+    glm::vec2 getMousePosition() const { return mouseMoveData.position; }
+    glm::vec2 getMouseDelta() const { return mouseMoveData.delta; }
+    glm::vec2 getMouseScroll() const { return mouseMoveData.scroll; }
+    // PLAT-05 : texte saisi depuis le `update` précédent, en UTF-8 (caractères Unicode, répétition du clavier comprise ; pas
     // de composition IME ni de presse-papiers : docs/GAPS.md).
-    const std::string &GetTextInput() const { return textInput; }
-    // Appuis depuis le `Update` précédent, dans l'ordre, répétitions du clavier comprises (Retour arrière ou flèche tenus).
-    const std::vector<KeyPress> &GetKeyPresses() const { return keyPresses; }
-    // Raccourcis appuyés depuis le `Update` précédent ("Ctrl+S", "Ctrl+Shift+Z", "F5") : une touche avec Ctrl, Alt ou Super, ou
+    const std::string &getTextInput() const { return textInput; }
+    // Appuis depuis le `update` précédent, dans l'ordre, répétitions du clavier comprises (Retour arrière ou flèche tenus).
+    const std::vector<KeyPress> &getKeyPresses() const { return keyPresses; }
+    // Raccourcis appuyés depuis le `update` précédent ("Ctrl+S", "Ctrl+Shift+Z", "F5") : une touche avec Ctrl, Alt ou Super, ou
     // une touche de fonction. La lettre est celle de la disposition active (AZERTY : Ctrl + la touche marquée A donne "Ctrl+A").
-    std::vector<std::string> GetShortcuts() const;
+    std::vector<std::string> getShortcuts() const;
     // Nom d'une touche dans un raccourci ("A", "F5", "Delete", "PageUp"...) ; nullptr pour un modificateur ou une touche sans nom.
-    static const char *KeyName(KeyButton key);
+    static const char *keyName(KeyButton key);
     // Raccourci d'un appui (vide s'il n'en est pas un) ; sans effet de bord (testable).
-    static std::string ShortcutName(const KeyPress &press);
+    static std::string shortcutName(const KeyPress &press);
     // Ajoute le point de code `codepoint` à `out` en UTF-8 (ignoré s'il n'est pas un caractère Unicode valide).
-    static void AppendUtf8(std::string &out, unsigned int codepoint);
+    static void appendUtf8(std::string &out, unsigned int codepoint);
 
-    InputEvent GetCurrentInputEvent() const { return inputEvent; };
-    bool IsCurrentInputEventEmpty();
+    InputEvent getCurrentInputEvent() const { return inputEvent; };
+    bool isCurrentInputEventEmpty();
 
 #pragma endregion Getters
 
   private:
-    void UpdateInputEvent();
+    void updateInputEvent();
 
 #pragma region Actions
   private:
-    static InputAction GetInputAction(InputAction inputAction, KeyButton key)
+    static InputAction getInputAction(InputAction inputAction, KeyButton key)
     {
         inputAction.keys.push_back(key);
         return inputAction;
     }
-    static InputAction GetInputAction(InputAction inputAction, MouseButton mouseButton)
+    static InputAction getInputAction(InputAction inputAction, MouseButton mouseButton)
     {
         inputAction.mouseButtons.push_back(mouseButton);
         return inputAction;
     }
-    template <typename... Args, typename T> static InputAction GetInputAction(InputAction inputAction, T arg, Args... args)
+    template <typename... Args, typename T> static InputAction getInputAction(InputAction inputAction, T arg, Args... args)
     {
-        inputAction = GetInputAction(inputAction, arg);
-        return GetInputAction(inputAction, args...);
+        inputAction = getInputAction(inputAction, arg);
+        return getInputAction(inputAction, args...);
     }
 
   public:
-    InputAction GetInputActionOfAction(const std::string &action) { return mapActionToInputAction[action]; }
+    InputAction getInputActionOfAction(const std::string &action) { return mapActionToInputAction[action]; }
 
-    static void BindActionToInput(const std::string &action, InputAction inputAction);
-    template <typename... Args> static void BindActionToInput(const std::string &action, Args... args)
+    static void bindActionToInput(const std::string &action, InputAction inputAction);
+    template <typename... Args> static void bindActionToInput(const std::string &action, Args... args)
     {
-        InputAction inputAction = GetInputAction(InputAction(), args...);
-        BindActionToInput(action, std::move(inputAction));
+        InputAction inputAction = getInputAction(InputAction(), args...);
+        bindActionToInput(action, std::move(inputAction));
     }
 
-    static void UnbindAction(const std::string &action) { mapActionToInputAction.erase(action); }
+    static void unbindAction(const std::string &action) { mapActionToInputAction.erase(action); }
 
-    static bool IsActionBound(const std::string &action) { return mapActionToInputAction.find(action) != mapActionToInputAction.end(); }
-    bool IsActionActive(const std::string &action);
+    static bool isActionBound(const std::string &action) { return mapActionToInputAction.find(action) != mapActionToInputAction.end(); }
+    bool isActionActive(const std::string &action);
 
 #pragma endregion Actions
 
@@ -346,3 +349,5 @@ class InputManager
 
     static std::unordered_map<void *, std::unique_ptr<InputManager>> inputManagers;
 };
+
+} // namespace orosmo::platform

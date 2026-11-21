@@ -63,7 +63,7 @@ class Viewer
     void loadTheme();
 
     ViewerOptions options_;
-    Window window_;
+    orosmo::platform::Window window_;
     std::unique_ptr<orosmo::rhi::Device> device_;
     std::unique_ptr<orosmo::renderer::ShaderLibrary> shaders_;
     std::unique_ptr<orosmo::renderer::PipelineCache> pipelines_;

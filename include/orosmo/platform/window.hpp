@@ -10,22 +10,25 @@
 
 #include "orosmo/core/fps_counter.hpp"
 
+namespace orosmo::platform
+{
+
 class InputManager;
 
 // Mode du curseur (le GLFW sous-jacent reste caché dans src/platform/).
 enum class CursorMode : std::uint8_t
 {
-    Normal,
-    Hidden,
-    Disabled
+    kNormal,
+    kHidden,
+    kDisabled
 };
 
-enum WindowState : std::uint8_t
+enum class WindowState : std::uint8_t
 {
-    WINDOWED,
-    BORDERLESS,
-    FULLSCREEN,
-    FULLSCREEN_UNFOCUSED
+    kWindowed,
+    kBorderless,
+    kFullscreen,
+    kFullscreenUnfocused
 };
 
 struct WindowParameters
@@ -69,82 +72,82 @@ class Window
 
     // Crée la fenêtre. `beforeCreate` (facultatif) pose les attributs de contexte du graphique juste avant la création (RHI :
     // `rhi::prepareWindowHints`) : la fenêtre elle-même ne connaît aucune API graphique.
-    int Init(const std::function<void()> &beforeCreate = {});
-    bool NewFrame();
-    void Close();
+    int init(const std::function<void()> &beforeCreate = {});
+    bool newFrame();
+    void close();
     // Termine GLFW (à la fin du programme, après la destruction de toutes les fenêtres et du périphérique graphique).
-    static void Terminate();
+    static void terminate();
 
     // Window state
-    void ChangeWindowState(WindowState state);
-    void ToggleFullscreen();
-    void ToggleBorderless();
+    void changeWindowState(WindowState state);
+    void toggleFullscreen();
+    void toggleBorderless();
 
     // Setters
-    void SetClearColor(glm::vec4 color) { this->parameters.clearColor = color; }
-    void SetMaxFPS(int fps) { this->parameters.maxFPS = fps; }
-    void SetTrueEvery(double ms) { this->parameters.trueEveryms = ms; }
+    void setClearColor(glm::vec4 color) { this->parameters.clearColor = color; }
+    void setMaxFPS(int fps) { this->parameters.maxFPS = fps; }
+    void setTrueEvery(double ms) { this->parameters.trueEveryms = ms; }
 
     // Getters
-    int GetWidth() const { return this->parameters.width; }
-    int GetHeight() const { return this->parameters.height; }
-    glm::vec4 GetClearColor() const { return this->parameters.clearColor; }
-    int *GetWidthptr() { return &this->parameters.width; }
-    int *GetHeightptr() { return &this->parameters.height; }
-    bool ShouldClose() const;
-    // Demande la fermeture (la boucle principale sort au prochain `ShouldClose`).
-    void RequestClose();
-    double GetAspectRatio() const { return (double)this->parameters.width / (double)this->parameters.height; }
-    // Poignée native opaque, à passer telle quelle à `rhi::SurfaceDesc::nativeWindow` et à `InputManager::GetInstance`.
-    void *GetWindow() const { return this->window; }
+    int getWidth() const { return this->parameters.width; }
+    int getHeight() const { return this->parameters.height; }
+    glm::vec4 getClearColor() const { return this->parameters.clearColor; }
+    int *getWidthPtr() { return &this->parameters.width; }
+    int *getHeightPtr() { return &this->parameters.height; }
+    bool shouldClose() const;
+    // Demande la fermeture (la boucle principale sort au prochain `shouldClose`).
+    void requestClose();
+    double getAspectRatio() const { return (double)this->parameters.width / (double)this->parameters.height; }
+    // Poignée native opaque, à passer telle quelle à `rhi::SurfaceDesc::nativeWindow` et à `InputManager::getInstance`.
+    void *getWindow() const { return this->window; }
     // Taille réelle en pixels du tampon d'image (≠ taille de la fenêtre sur les écrans à échelle).
-    void GetFramebufferSize(int &width, int &height) const;
+    void getFramebufferSize(int &width, int &height) const;
     // Facteur d'échelle de contenu (DPI) : 1 = 96 dpi ; 2 sur un écran « Retina ». (1, 1) sans fenêtre.
-    glm::vec2 GetContentScale() const;
+    glm::vec2 getContentScale() const;
     // Curseur (coordonnées en pixels de la fenêtre, origine en haut à gauche).
-    void SetCursorMode(CursorMode mode);
-    glm::dvec2 GetCursorPosition() const;
-    void SetCursorPosition(glm::dvec2 position);
+    void setCursorMode(CursorMode mode);
+    glm::dvec2 getCursorPosition() const;
+    void setCursorPosition(glm::dvec2 position);
     // Presse-papiers du système (texte UTF-8) ; vide sans fenêtre.
-    std::string GetClipboardText() const;
-    void SetClipboardText(const std::string &text) const;
+    std::string getClipboardText() const;
+    void setClipboardText(const std::string &text) const;
 
     // Performance
-    int GetFrame() const { return this->fpsCounter.getFrame(); }
-    double GetFPS() const { return this->fpsCounter.getFPS(); }
-    double GetAverageFPS() const { return this->fpsCounter.getAverageFPS(); }
-    double GetMaxFPS() const { return this->fpsCounter.getMaxFPS(); }
-    double GetMinFPS() const { return this->fpsCounter.getMinFPS(); }
+    int getFrame() const { return this->fpsCounter.getFrame(); }
+    double getFPS() const { return this->fpsCounter.getFPS(); }
+    double getAverageFPS() const { return this->fpsCounter.getAverageFPS(); }
+    double getMaxFPS() const { return this->fpsCounter.getMaxFPS(); }
+    double getMinFPS() const { return this->fpsCounter.getMinFPS(); }
 
-    double GetElapseTimeSecond() const { return this->fpsCounter.getElapseTimeInSeconds(); }
-    double GetAverageElapseTimeSecond() const { return this->fpsCounter.getAverageElapseTimeInSeconds(); }
-    double GetMaxElapseTimeSecond() const { return this->fpsCounter.getMaxElapseTimeInSeconds(); }
-    double GetMinElapseTimeSecond() const { return this->fpsCounter.getMinElapseTimeInSeconds(); }
+    double getElapseTimeSecond() const { return this->fpsCounter.getElapseTimeInSeconds(); }
+    double getAverageElapseTimeSecond() const { return this->fpsCounter.getAverageElapseTimeInSeconds(); }
+    double getMaxElapseTimeSecond() const { return this->fpsCounter.getMaxElapseTimeInSeconds(); }
+    double getMinElapseTimeSecond() const { return this->fpsCounter.getMinElapseTimeInSeconds(); }
 
-    double GetElapseTimeMillisecond() const { return this->fpsCounter.getElapseTimeInMilliseconds(); }
-    double GetAverageElapseTimeMillisecond() const { return this->fpsCounter.getAverageElapseTimeInMilliseconds(); }
-    double GetMaxElapseTimeMillisecond() const { return this->fpsCounter.getMaxElapseTimeInMilliseconds(); }
-    double GetMinElapseTimeMillisecond() const { return this->fpsCounter.getMinElapseTimeInMilliseconds(); }
+    double getElapseTimeMillisecond() const { return this->fpsCounter.getElapseTimeInMilliseconds(); }
+    double getAverageElapseTimeMillisecond() const { return this->fpsCounter.getAverageElapseTimeInMilliseconds(); }
+    double getMaxElapseTimeMillisecond() const { return this->fpsCounter.getMaxElapseTimeInMilliseconds(); }
+    double getMinElapseTimeMillisecond() const { return this->fpsCounter.getMinElapseTimeInMilliseconds(); }
 
   private:
-    void Swap(Window &other) noexcept;
+    void swap(Window &other) noexcept;
 
     // Window state
-    void SaveWindowedParameters();
-    void PostWindowStateChange() const;
+    void saveWindowedParameters();
+    void postWindowStateChange() const;
 
-    void ActivateFullscreen();
-    void ActivateWindowed();
-    void ActivateBorderless();
+    void activateFullscreen();
+    void activateWindowed();
+    void activateBorderless();
 
     // Callbacks
-    void SetupCallbacks();
-    void CallbackFocus(int focused);
-    void CallbackResize(int width, int height);
-    void CallbackPosition(int x, int y);
+    void setupCallbacks();
+    void callbackFocus(int focused);
+    void callbackResize(int width, int height);
+    void callbackPosition(int x, int y);
 
-    void ClearCallbacks();
-    bool IsWindowHealthy() const;
+    void clearCallbacks();
+    bool isWindowHealthy() const;
 
   private:
     void *window = nullptr; // GLFWwindow*, opaque hors de src/platform/
@@ -153,9 +156,11 @@ class Window
 
     InputManager *inputManager;
 
-    // Binding utilisé à Init() : Close() libère le contexte avec le même, même si le binding global a changé entretemps.
+    // Binding utilisé à init() : close() libère le contexte avec le même, même si le binding global a changé entretemps.
 
     orosmo::core::FPSCounter fpsCounter;
 
     std::chrono::time_point<std::chrono::high_resolution_clock> lastTime;
 };
+
+} // namespace orosmo::platform

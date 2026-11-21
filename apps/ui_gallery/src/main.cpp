@@ -32,6 +32,7 @@ namespace fs = std::filesystem;
 namespace rd = orosmo::renderer;
 namespace rhi = orosmo::rhi;
 namespace ui = orosmo::ui;
+namespace platform = orosmo::platform;
 
 namespace
 {
@@ -60,7 +61,7 @@ void usage(std::ostream &out)
 
 int run(const Options &o)
 {
-    Window window("UI gallery", o.width, o.height);
+    platform::Window window("UI gallery", o.width, o.height);
     rhi::DeviceDesc desc;
     desc.backend = rhi::Backend::kOpenGL;
     desc.validation = true;
@@ -68,12 +69,12 @@ int run(const Options &o)
         desc.surface.size = {static_cast<std::uint32_t>(o.width), static_cast<std::uint32_t>(o.height)};
     else
     {
-        if (window.Init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
+        if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
         {
             std::cerr << "ui-gallery: cannot open a window (no display?); try --headless --capture DIR\n";
             return 2;
         }
-        desc.surface.nativeWindow = window.GetWindow();
+        desc.surface.nativeWindow = window.getWindow();
     }
     auto device = rhi::createDevice(desc);
     if (!device)
@@ -148,17 +149,17 @@ int run(const Options &o)
     double watchClock = 0.0;
     const bool capturing = !o.capture.empty();
     bool written = false;
-    while (o.headless || !window.ShouldClose())
+    while (o.headless || !window.shouldClose())
     {
-        if (!o.headless && !window.NewFrame())
+        if (!o.headless && !window.newFrame())
             continue;
-        const float dt = capturing || o.headless ? 1.0f / 60.0f : static_cast<float>(1.0 / std::max(window.GetFPS(), 1.0));
+        const float dt = capturing || o.headless ? 1.0f / 60.0f : static_cast<float>(1.0 / std::max(window.getFPS(), 1.0));
         int w = o.width, h = o.height, pw = o.width, ph = o.height;
         if (!o.headless && !capturing)
         {
-            w = window.GetWidth();
-            h = window.GetHeight();
-            window.GetFramebufferSize(pw, ph);
+            w = window.getWidth();
+            h = window.getHeight();
+            window.getFramebufferSize(pw, ph);
         }
         if ((watchClock += dt) > 0.5)
         {
@@ -195,8 +196,8 @@ int run(const Options &o)
             loadTheme();
         }
         if (!o.headless && !uiTakesEscape && !interface.wantsKeyboard() && interface.popup() == nullptr && !interface.modalOpen() &&
-            InputManager::GetInstance(window.GetWindow()).IsKeyJustPressed(KeyButton::ESCAPE))
-            window.RequestClose();
+            platform::InputManager::getInstance(window.getWindow()).isKeyJustPressed(platform::KeyButton::kEscape))
+            window.requestClose();
 
         auto backbuffer = (*device)->beginFrame();
         if (!backbuffer || pw <= 0 || ph <= 0)
@@ -333,7 +334,7 @@ int main(int argc, char **argv)
     }
     SET_LOG_FILE("logs/ui-gallery.log");
     const int code = run(o);
-    Window::Terminate();
+    platform::Window::terminate();
     FLUSH_LOG_TO_FILE;
     return code;
 }

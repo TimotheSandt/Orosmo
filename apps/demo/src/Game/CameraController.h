@@ -4,7 +4,10 @@
 
 #include "orosmo/renderer/camera.hpp"
 
+namespace orosmo::platform
+{
 class Window;
+}
 
 class CameraController
 {
@@ -13,7 +16,8 @@ class CameraController
 
     // Déplace et oriente `camera` selon les actions actives de l'InputManager (clavier, clic droit pour tourner). `viewWidth` et
     // `viewHeight` : taille de la vue en pixels (centre de rotation de la souris).
-    void update(Window &window, orosmo::renderer::Camera &camera, float elapsedSeconds, int viewWidth, int viewHeight);
+    void update(orosmo::platform::Window &window, orosmo::renderer::Camera &camera, float elapsedSeconds, int viewWidth,
+                int viewHeight);
     // Fil de fer (touche W, en debug seulement) : l'état voulu après `update`.
     bool wireframeRequested() const noexcept { return wireframe_; }
 

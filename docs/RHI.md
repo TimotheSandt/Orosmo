@@ -19,7 +19,7 @@ Guide d'ensemble (état de fin de M2). Détails : [`src/rhi/README.md`](../src/r
 
 ```cpp
 // Chaque appel renvoie un Result<T> (std::expected) : on le vérifie, puis on prend la valeur. Pas d'exception.
-auto created = rhi::createDevice({.surface = {.nativeWindow = window.GetWindow()}}); // fenêtre créée après rhi::prepareWindowHints
+auto created = rhi::createDevice({.surface = {.nativeWindow = window.getWindow()}}); // fenêtre créée après rhi::prepareWindowHints
 if (!created) { return fail(created.error()); }
 std::unique_ptr<rhi::Device> device = std::move(*created);
 rd::ShaderLibrary shaders(*device);
