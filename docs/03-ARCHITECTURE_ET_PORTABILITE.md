@@ -183,7 +183,7 @@ Trois groupes, fixes pour tout le projet :
 
 ## 9. Ajouter un backend (voir aussi §14)
 
-Le guide `docs/ADD_A_BACKEND.md` (à écrire par l'IA au jalon M4) doit permettre à un lecteur d'ajouter un backend en suivant : 1) implémenter `Device` et `CommandEncoder`, 2) fournir la table de traduction des formats, 3) traduire le modèle de liaison, 4) passer la suite de tests RHI, 5) passer les images de référence.
+Le guide [`docs/ADD_A_BACKEND.md`](ADD_A_BACKEND.md) (écrit en M4) détaille la marche à suivre ; il doit permettre à un lecteur d'ajouter un backend en suivant : 1) implémenter `Device` et `CommandEncoder`, 2) fournir la table de traduction des formats, 3) traduire le modèle de liaison, 4) passer la suite de tests RHI, 5) passer les images de référence.
 
 ## 10. Données fournies aux shaders (groupe 0, une fois par image)
 
