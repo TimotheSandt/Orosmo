@@ -104,3 +104,20 @@ Le build de release sur `main` après M3 (`build-engine.yml`, run 44859222407) a
 macOS, mêmes refus ; `tests/core/parse_tests.cpp` (3 cas) passe sur les deux chemins (le chemin macOS forcé sous Linux par
 `-DOROSMO_PARSE_STRTOD`). Utilisé par les thèmes et `NumberField`.
 
+## Revues suivantes de la PR #9 (CodeRabbit, 2026-11-21)
+
+CI verte sur les cinq plateformes (Linux x64, ASan, arm64, macOS, Windows) ; la CI de la PR est sautée (même contenu que le push).
+ccache : 2e run avec cache, taux de reprise 100 % (ASan, arm64), 96 % (macOS), 95 % (Windows), 77 % (Linux x64, deux builds) ;
+étape de compilation et de tests : Windows 321 -> 108 s, macOS 216 -> 49 s. La durée totale de ce run a été dominée par la
+reconstruction des dépendances vcpkg sous Windows et macOS (le passage à 0.3.1 change l'empreinte de `vcpkg.json`, clé du cache),
+une seule fois.
+
+Retours traités : `make install` d'un projet continue d'échouer quand l'installation des dépendances du SDK échoue ; marqueurs de la
+barre sûrs quand le chemin du dépôt contient une apostrophe (macros lues dans `mk/engine.mk` par les tests, identiques dans le
+SDK) ; `core::parseFloat` / `parseDouble` acceptent un subnormal représentable sur le chemin `strtod_l` de macOS (`1e-40`,
+`1e-310`) et refusent toujours un sous-flux vers zéro ou un débordement.
+
+Non retenu : `Result<float>` à la place de `std::optional<float>` pour `core::parse*` : un texte qui n'est pas un nombre est un
+cas normal pour l'appelant (saisie d'un champ), pas une erreur du moteur à journaliser ; l'interface reste celle de
+`std::from_chars`.
+
