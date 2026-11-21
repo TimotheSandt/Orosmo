@@ -593,9 +593,12 @@ Result<> VulkanDevice::waitSerial(Serial serial)
     return fromVk(vkWaitSemaphores(device_, &info, UINT64_MAX), "vkWaitSemaphores");
 }
 
-void VulkanDevice::queueRelease(std::function<void()> release) { pending_.push_back({lastSubmitted_, std::move(release)}); }
+void VulkanDevice::queueRelease(std::function<void()> release, bool waitFrames)
+{
+    pending_.push_back({lastSubmitted_, frame_, waitFrames, std::move(release)});
+}
 
-void VulkanDevice::collectReleases()
+void VulkanDevice::collectReleases(bool ignoreFrames)
 {
     const Serial done = completedSerial();
     // Les tampons de commandes soumis jusqu'à `done` sont réutilisables.
@@ -616,7 +619,7 @@ void VulkanDevice::collectReleases()
     std::vector<Pending> ready;
     for (auto it = pending_.begin(); it != pending_.end();)
     {
-        if (it->serial <= done)
+        if (it->serial <= done && (ignoreFrames || !it->waitFrames || frame_ >= it->frame + kFramesInFlight))
         {
             ready.push_back(std::move(*it));
             it = pending_.erase(it);
@@ -800,7 +803,7 @@ Result<> VulkanDevice::flushPending()
         return r;
     }
     if (!staging.empty())
-        queueRelease([this, staging = std::move(staging)]() { for (const Staging &s : staging) destroyStaging(s); });
+        queueRelease([this, staging = std::move(staging)]() { for (const Staging &s : staging) destroyStaging(s); }, false);
     return {};
 }
 
@@ -906,7 +909,7 @@ Result<TextureDesc> VulkanDevice::textureDesc(TextureHandle texture) const
 {
     const TextureRes *t = textures_.get(texture);
     if (t == nullptr)
-        return makeError(ErrorCode::kInvalidArgument, "textureDesc: stale or null texture handle");
+        return makeError(ErrorCode::kNotFound, "textureDesc: stale or null texture handle");
     return t->desc;
 }
 
@@ -914,13 +917,15 @@ DeviceStats VulkanDevice::stats() const noexcept
 {
     DeviceStats s;
     s.buffers = static_cast<std::uint32_t>(buffers_.size());
-    s.textures = static_cast<std::uint32_t>(textures_.size());
+    // Le backbuffer est une ressource interne : il ne compte pas parmi les textures de l'utilisateur (comme OpenGL).
+    s.textures = static_cast<std::uint32_t>(textures_.size()) - (backbuffer_ ? 1u : 0u);
     s.samplers = static_cast<std::uint32_t>(samplers_.size());
     s.shaders = static_cast<std::uint32_t>(shaders_.size());
     s.pipelines = static_cast<std::uint32_t>(pipelines_.size());
     s.bindGroups = static_cast<std::uint32_t>(bindGroups_.size());
     s.queryPools = static_cast<std::uint32_t>(queryPools_.size());
-    s.pendingDestruction = static_cast<std::uint32_t>(pending_.size());
+    // Ressources de l'utilisateur seulement (pas les tampons de transfert internes).
+    s.pendingDestruction = static_cast<std::uint32_t>(std::count_if(pending_.begin(), pending_.end(), [](const Pending &p) { return p.waitFrames; }));
     return s;
 }
 
@@ -930,7 +935,7 @@ void VulkanDevice::waitIdle()
         return;
     (void)flushPending();
     vkDeviceWaitIdle(device_);
-    collectReleases();
+    collectReleases(true);
 }
 
 // ── Arrêt ─────────────────────────────────────────────────────────────

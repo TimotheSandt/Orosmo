@@ -28,6 +28,8 @@ namespace orosmo::rhi::vk
 {
 
 inline constexpr std::uint32_t kMaxColorTargets = 8;
+// Liaisons de tampons de sommets (comme le backend OpenGL).
+inline constexpr std::uint32_t kMaxVertexBindings = 16;
 // Images de CPU d'avance au plus : `beginFrame` attend la série de l'image N - kFramesInFlight.
 inline constexpr std::uint32_t kFramesInFlight = 2;
 
@@ -92,6 +94,20 @@ struct ShaderInterface
     std::vector<ReflectedDescriptor> descriptors; // triés par (set, binding)
     std::uint32_t pushConstantSize = 0;
     std::array<std::uint32_t, 3> localSize{0, 0, 0}; // compute
+    std::vector<std::uint32_t> inputLocations;       // sommets : emplacements des entrées (chacun doit avoir un attribut)
+    // Interface entre étages : sorties du shader de sommets, entrées du shader de fragments. Un pipeline dont une entrée de
+    // fragment n'a pas de sortie de même type est refusé (kParse), comme l'édition de liens d'OpenGL.
+    struct StageVariable
+    {
+        std::uint32_t location = 0;
+        std::uint32_t baseType = 0; // spirv_cross::SPIRType::BaseType
+        std::uint32_t vecSize = 1;
+        std::uint32_t columns = 1;
+        std::uint32_t arraySize = 1;
+        std::string name;
+    };
+    std::vector<StageVariable> stageOutputs; // sommets
+    std::vector<StageVariable> stageInputs;  // fragments
 };
 
 struct ShaderRes
@@ -136,6 +152,8 @@ struct PipelineRes
     Format depthFormat = Format::kUndefined;
     PrimitiveTopology topology = PrimitiveTopology::kTriangleList;
     std::array<std::uint32_t, 3> localSize{0, 0, 0}; // compute
+    // Liaisons de tampons de sommets déclarées par le pipeline : chacune doit recevoir un tampon avant un dessin.
+    std::array<bool, kMaxVertexBindings> vertexBindingUsed{};
 };
 
 struct BindGroupRes
@@ -242,8 +260,11 @@ class VulkanDevice final : public Device
     Serial completedSerial() const;
     Result<> waitSerial(Serial serial);
     // Exécute `release` quand le GPU a fini tout ce qui a été soumis jusqu'ici (série `lastSubmitted()` à cet instant).
-    void queueRelease(std::function<void()> release);
-    void collectReleases();
+    // Comme le backend OpenGL, la libération attend aussi kFramesInFlight images présentées (`present`) après la destruction ;
+    // `waitIdle` (GPU arrêté) libère sans attendre d'image.
+    // `waitFrames` faux : ressource interne (tampons de transfert), libérée dès que le GPU a fini.
+    void queueRelease(std::function<void()> release, bool waitFrames = true);
+    void collectReleases(bool ignoreFrames = false);
 
     // Tampon de commandes primaire prêt à enregistrer (recyclé quand la série de sa dernière soumission est terminée).
     // `retireCommandBuffer` le rend au recyclage une fois soumis avec la série `serial`.
@@ -271,6 +292,8 @@ class VulkanDevice final : public Device
     // ── Usage interne : descripteurs et vues (vk_pipelines.cpp, vk_resources.cpp) ─────
     // Disposition de groupe dédupliquée pour ces liaisons (créée au besoin).
     Result<const SetLayout *> setLayoutFor(const std::vector<DescriptorBinding> &bindings);
+    // Disposition de pipeline dédupliquée : groupes (nul : inutilisé ; complété par la disposition vide) et push constants.
+    Result<VkPipelineLayout> pipelineLayoutFor(const std::array<const SetLayout *, kGroupCount> &sets, std::uint32_t pushSize, VkShaderStageFlags pushStages);
     // Jeu de descripteurs de ce groupe de liaison pour cette disposition : créé et rempli au premier usage puis gardé. Erreur
     // `kInvalidArgument` (avec le numéro de liaison) si le groupe ne fournit pas une liaison de la disposition, ou d'un autre type,
     // ou avec une ressource périmée. Un groupe peut avoir des entrées en trop : elles sont ignorées pour cette disposition.
@@ -299,6 +322,11 @@ class VulkanDevice final : public Device
     // Usage de l'encodeur et des aides synchrones.
     Result<> fromVk(VkResult result, const char *what) const;
 
+    // Cache de pipelines sur disque (RHI-06) : fichier lu à la création et réécrit à l'arrêt (vide : pas de dossier utilisable),
+    // et nombre d'octets repris du fichier (0 : absent, ou d'un autre GPU ou pilote). Diagnostic et tests.
+    const std::string &pipelineCachePath() const noexcept { return pipelineCachePath_; }
+    std::size_t pipelineCacheLoadedBytes() const noexcept { return pipelineCacheLoadedBytes_; }
+
   private:
     VulkanDevice() = default;
 
@@ -313,6 +341,8 @@ class VulkanDevice final : public Device
     // vk_pipelines.cpp : cache de pipelines (chargé du disque à la création, enregistré à l'arrêt) et dispositions.
     Result<> initPipelines();
     void shutdownPipelines() noexcept;
+    // Alloue un jeu de descripteurs dans une réserve qui a de la place (une réserve neuve est créée au besoin).
+    Result<std::pair<VkDescriptorSet, VkDescriptorPool>> allocateDescriptorSet(VkDescriptorSetLayout layout);
     // vk_swapchain.cpp : surface, chaîne d'échange, image de fond.
     Result<> createSurface(const DeviceDesc &desc); // avant le choix du GPU (il doit pouvoir présenter)
     Result<> initSwapchain(const DeviceDesc &desc); // après la création du périphérique : image de fond, chaîne d'échange
@@ -349,6 +379,8 @@ class VulkanDevice final : public Device
     struct Pending
     {
         Serial serial;
+        std::uint64_t frame; // image courante à la destruction
+        bool waitFrames;
         std::function<void()> release;
     };
     std::vector<Pending> pending_;
@@ -364,6 +396,7 @@ class VulkanDevice final : public Device
     std::vector<std::pair<std::vector<std::uint64_t>, VkPipelineLayout>> pipelineLayouts_;
     VkPipelineCache pipelineCache_ = VK_NULL_HANDLE;
     std::string pipelineCachePath_;
+    std::size_t pipelineCacheLoadedBytes_ = 0;
 
     std::unique_ptr<Swapchain> swapchain_;
     TextureHandle backbuffer_;
