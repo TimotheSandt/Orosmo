@@ -499,7 +499,7 @@ jobs:
         shell: msys2 {0}
         run: |
           # Lanceurs gcc/g++ de ccache (MSYS2) en tête du PATH, s'ils existent ; sinon compilation directe (journalisé).
-          if [ -d /mingw64/lib/ccache/bin ]; then echo "$(cygpath -w /mingw64/lib/ccache/bin)" >> "$GITHUB_PATH"; else echo "ccache: /mingw64/lib/ccache/bin absent"; fi
+          if [ -d /mingw64/lib/ccache/bin ]; then echo "ccache: /mingw64/lib/ccache/bin (mis en tête du PATH par chaque étape de compilation)"; else echo "ccache: /mingw64/lib/ccache/bin absent, compilation directe"; fi
           ccache --zero-stats
 
       # WERROR=0 until the first green run on these systems (warnings are errors on Linux).
@@ -520,6 +520,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
+          # Le profil MINGW64 met /mingw64/bin avant le PATH hérité : les lanceurs ccache sont remis devant ici.
+          if [ -d /mingw64/lib/ccache/bin ]; then export PATH="/mingw64/lib/ccache/bin:$PATH"; fi
           mingw32-make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
           mingw32-make -j3 demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
           mingw32-make -j3 terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
@@ -528,7 +530,9 @@ jobs:
         if: runner.os == 'Windows'
         continue-on-error: true
         shell: msys2 {0}
-        run: mingw32-make -j3 e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+        run: |
+          if [ -d /mingw64/lib/ccache/bin ]; then export PATH="/mingw64/lib/ccache/bin:$PATH"; fi
+          mingw32-make -j3 e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       - name: ccache statistics (Unix)
         if: always() && runner.os != 'Windows'

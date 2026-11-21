@@ -39,8 +39,10 @@ _ORS_GOALS := $(or $(MAKECMDGOALS),ors-default-goal)
 .PHONY: $(_ORS_GOALS)
 $(firstword $(_ORS_GOALS)):
 	@python3 tools/build_progress.py $(MAKE) $(MAKECMDGOALS)
-ifneq ($(words $(_ORS_GOALS)),1)
-$(wordlist 2,999,$(_ORS_GOALS)):
+# Les autres buts ne font rien (le script les transmet tous) ; le premier, même répété (`make check check`), garde sa recette.
+_ORS_OTHERS := $(filter-out $(firstword $(_ORS_GOALS)),$(_ORS_GOALS))
+ifneq ($(_ORS_OTHERS),)
+$(sort $(_ORS_OTHERS)):
 	@:
 endif
 else

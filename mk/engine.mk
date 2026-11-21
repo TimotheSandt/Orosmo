@@ -32,12 +32,12 @@ SHELL := sh
 
 # ── Affichage de la compilation ───────────────────────────────────────────────
 # Sous `tools/build_progress.py` (ORS_PROGRESS=1, lancé par `make` dans un terminal) : chaque étape annonce son début et sa fin
-# (`@@ors begin <cible> <affiché> <étiquette>` / `@@ors end <cible>`) et la commande n'est plus affichée (V=1 la montre). Sans
+# (`@@ors begin <cible absolue> <affiché> <étiquette>` / `@@ors end <cible>`) et la commande n'est plus affichée (V=1 la montre). Sans
 # ORS_PROGRESS (CI, redirection) : commande complète et étiquette `  CXX fichier`, comme avant.
 ORS_Q := $(if $(ORS_PROGRESS),$(if $(filter 1,$(V)),,@))
-ors_compile = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $@ $< $(1),  $(1) $<)'
-ors_link = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $@ $@ $(1),  $(1) $@)'
-ors_end = $(if $(ORS_PROGRESS),@printf '%s\n' '@@ors end $@')
+ors_compile = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $(abspath $@) $< $(1),  $(1) $<)'
+ors_link = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $(abspath $@) $@ $(1),  $(1) $@)'
+ors_end = $(if $(ORS_PROGRESS),@printf '%s\n' '@@ors end $(abspath $@)')
 
 # ── Engine identity (single source of truth) ──────────────────────────────────
 # Path relative to wherever make is invoked (always from project root).
@@ -305,11 +305,13 @@ $(LIB_RHI): $(Rhi_OBJS)
 	$(ORS_Q)$(AR) rcs $@ $^
 	$(ors_end)
 
-$(LIB_RENDERER): $(Renderer_OBJS)
+# mk/engine.mk en prérequis : une archive plus récente que ses objets mais construite avec une autre composition (avant M3 bis,
+# terrain_renderer.o était dans librenderer.a) est refaite ; seuls les objets passent à ar.
+$(LIB_RENDERER): $(Renderer_OBJS) mk/engine.mk
 	@mkdir -p "$(dir $@)"
 	$(ORS_Q)rm -f $@
 	$(call ors_link,AR [$(BUILD_TYPE)])
-	$(ORS_Q)$(AR) rcs $@ $^
+	$(ORS_Q)$(AR) rcs $@ $(Renderer_OBJS)
 	$(ors_end)
 
 $(LIB_WORLD): $(World_OBJS)

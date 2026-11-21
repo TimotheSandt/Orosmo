@@ -24,7 +24,7 @@ son `README.md` (copie de `tools/engine-sdk/dist-README.md`).
 | --- | --- | --- | --- |
 | Linux (vérifié : Ubuntu 24.04, g++ 13.3) | g++ 13+ ou clang++ 17+ | GNU Make, vcpkg (`make install`) ou les paquets apt du README | OpenGL 4.5 (ou 4.3 + `GL_ARB_clip_control`), X11 |
 | Windows (non vérifié depuis M00) | MinGW-w64 g++ 13+ (MSYS2 MINGW64) | `mingw32-make`, vcpkg (triplet `x64-mingw-static`) | OpenGL 4.5 |
-| macOS (non vérifié) | clang++ 17+ (Homebrew LLVM ; le clang d'Apple doit fournir `std::expected`) | GNU Make, vcpkg | **aucun rendu avant M4** : macOS s'arrête à OpenGL 4.1, le RHI demande 4.3 ; ce qui se passe de GPU (`orosmo::core`, `examples/minimal`) fonctionne |
+| macOS (non vérifié) | clang++ 17+ (Homebrew LLVM ; le clang d'Apple doit fournir `std::expected`) | GNU Make, vcpkg | **aucun rendu avant M4** : macOS s'arrête à OpenGL 4.1, le RHI demande 4.3 ; ce qui se passe de GPU (`orosmo::core`, `examples/minimal`) devrait fonctionner, **non vérifié** (la CI macOS compile et teste le dépôt, pas le paquet ; G126) |
 
 Ni Rust ni Python ne sont nécessaires pour utiliser une release (`cui` est livré compilé).
 
@@ -46,8 +46,21 @@ habituel) ; le script est livré dans `orosmo/tools/build_progress.py`.
 
 `orosmo init` crée `orosmo/` (le paquet du moteur générique), `src/` (un projet de démarrage générique : scène 3D RHI + panneau `.cui`),
 `Makefile`, `.gitignore`, `config.mk` (nom, version : à vous) et `config.local.mk` (chemins de la machine, ignoré par git).
-`orosmo update` remplace `orosmo/` par la dernière release, met à jour `Makefile` et `.gitignore` s'ils n'ont pas été modifiés,
+`orosmo update` écrit la dernière release dans `orosmo/` (par-dessus le contenu existant), met à jour `Makefile` et `.gitignore` s'ils n'ont pas été modifiés,
 et ajoute à `config.mk` les champs nouveaux sans toucher aux vôtres ; `--package` marche aussi.
+
+**Projet créé avant M3 bis** (paquet avec `world`) : `orosmo update` écrit le nouveau paquet **par-dessus** `orosmo/` ; les
+fichiers retirés de la release (`orosmo/includes/orosmo/world/`, `libworld.a`, `libterrain_renderer.a`, `terrain_renderer.hpp`,
+`shaders/rhi/terrain.*`, `examples/terrain_*`) restent alors en place et masquent une dépendance au terrain. Pour repartir d'un SDK
+identique à une installation neuve, sans toucher aux sources du projet ni aux dépendances vcpkg déjà installées :
+
+```bash
+mv orosmo/vcpkg_installed vcpkg_installed.keep 2>/dev/null   # dépendances du SDK, gardées
+rm -rf orosmo && mkdir orosmo                                # SDK vidé (src/, Makefile, config*.mk ne sont pas dedans) ;
+                                                             # le dossier vide reste : orosmo update le demande
+./orosmo-linux-x64 update                                    # ou : orosmo update --package orosmo-pkg-<plateforme>.zip
+mv vcpkg_installed.keep orosmo/vcpkg_installed 2>/dev/null
+```
 
 ### Avec le paquet seul (`ENGINE_DIR`)
 

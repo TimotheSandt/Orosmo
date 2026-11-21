@@ -56,12 +56,12 @@ CXX          ?= g++
 
 # ── Affichage de la compilation ───────────────────────────────────────────────
 # Sous `tools/build_progress.py` (ORS_PROGRESS=1, lancé par `make` dans un terminal) : chaque étape annonce son début et sa fin
-# (`@@ors begin <cible> <affiché> <étiquette>` / `@@ors end <cible>`) et la commande n'est plus affichée (V=1 la montre). Sans
+# (`@@ors begin <cible absolue> <affiché> <étiquette>` / `@@ors end <cible>`) et la commande n'est plus affichée (V=1 la montre). Sans
 # ORS_PROGRESS (CI, redirection) : commande complète et étiquette `  CXX fichier`, comme avant.
 ORS_Q := $(if $(ORS_PROGRESS),$(if $(filter 1,$(V)),,@))
-ors_compile = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $@ $< $(1),  $(1) $<)'
-ors_link = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $@ $@ $(1),  $(1) $@)'
-ors_end = $(if $(ORS_PROGRESS),@printf '%s\n' '@@ors end $@')
+ors_compile = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $(abspath $@) $< $(1),  $(1) $<)'
+ors_link = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $(abspath $@) $@ $(1),  $(1) $@)'
+ors_end = $(if $(ORS_PROGRESS),@printf '%s\n' '@@ors end $(abspath $@)')
 
 # ── Platform detection ────────────────────────────────────────────────────────
 

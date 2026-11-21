@@ -73,7 +73,7 @@ class Display:
         self.lock = threading.Lock()
 
     def width(self) -> int:
-        return max(40, shutil.get_terminal_size((100, 20)).columns)
+        return max(20, shutil.get_terminal_size((100, 20)).columns)
 
     def clear(self) -> None:
         if self.lines_drawn:
@@ -91,18 +91,31 @@ class Display:
             return  # rien en cours : pas de barre (sortie des tests, programme lancé…)
         total = len(self.todo)
         done = len(self.done)
-        width = self.width()
-        bar_w = max(10, min(40, width - 60))
-        filled = int(bar_w * done / total) if total else bar_w
+        width = self.width() - 1  # jamais la dernière colonne : une ligne pleine passerait à la ligne et clear() la raterait
         pct = int(100 * done / total) if total else 100
         remaining = max(0, total - done - len(self.running) - len(self.failed))
+        counts = f"{done}/{total} {pct:3d} %"
+        details = (f"  compilés {done} · en cours {len(self.running)} · restants {remaining} · à jour {self.skipped}  "
+                   f"{now - self.start:5.1f} s")
+        # Chaque ligne tient dans le terminal (longueur VISIBLE, sans les séquences de couleur) : sinon le terminal la replie et
+        # l'effacement suivant laisse des fragments. Les détails sont raccourcis, puis la barre.
+        bar_w = max(0, min(40, width - len(counts) - 3 - len(details)))
+        if bar_w < 10:
+            details = details[: max(0, width - len(counts) - 3 - 10)]
+            bar_w = max(0, min(10, width - len(counts) - 3 - len(details)))
+        filled = int(bar_w * done / total) if total else bar_w
         bar = f"{GREEN}{'█' * filled}{DIM}{'░' * (bar_w - filled)}{RESET}"
-        head = (f"[{bar}] {BOLD}{done}/{total}{RESET} {pct:3d} %  compilés {done} · en cours {len(self.running)} · "
-                f"restants {remaining} · à jour {self.skipped}  {DIM}{now - self.start:5.1f} s{RESET}")
+        if bar_w:
+            head = f"[{bar}] {BOLD}{counts}{RESET}{DIM}{details}{RESET}"
+        else:  # terminal très étroit : texte seul, coupé à la largeur
+            head = f"{BOLD}{(counts + details)[:width]}{RESET}"
         current = ", ".join(self.running.values())
-        current_line = f"{DIM}en cours :{RESET} {current}" if current else ""
-        if len(current_line) > width + len(DIM) + len(RESET):
-            current_line = current_line[: width + len(DIM) + len(RESET) - 1] + "…"
+        current_line = ""
+        if current:
+            text = "en cours : " + current
+            if len(text) > width:
+                text = text[: width - 1] + "…"
+            current_line = f"{DIM}{text[:11]}{RESET}{text[11:]}"
         sys.stdout.write(head + ("\n" + current_line if current_line else ""))
         self.lines_drawn = 2 if current_line else 1
         sys.stdout.flush()
