@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace orosmo::renderer
 {
@@ -14,12 +15,12 @@ namespace
 {
 struct RectPush
 {
-    float offsetScale[4];
-    float container[4];
-    float color[4];
-    float shape[4]; // rayon, épaisseur de bordure, adoucissement, 0
-    float borderColor[4];
+    float container[4]; // taille de la surface en pixels ; les données du rectangle sont des attributs par instance
 };
+// Instance d'un rectangle dans le tampon de lot : 16 flottants (position + taille, couleur, forme, couleur de bordure).
+constexpr std::uint32_t kRectInstanceFloats = 16;
+// Sommet de glyphe ou d'image dans le tampon de lot : x, y, u, v puis la couleur (ou la teinte) de la commande.
+constexpr std::uint32_t kColoredVertexFloats = 8;
 struct GlyphPush
 {
     float params[4];
@@ -32,9 +33,228 @@ struct LayerPush
     float content[4];
     float color[4];
 };
-static_assert(sizeof(RectPush) == 80 && sizeof(GlyphPush) == 32 && sizeof(LayerPush) == 64, "blocs push_constant des shaders ui_*");
+static_assert(sizeof(RectPush) == 16 && sizeof(GlyphPush) == 32 && sizeof(LayerPush) == 64, "blocs push_constant des shaders ui_*");
 
 template <typename T> std::span<const std::byte> bytesOf(const T &v) { return std::as_bytes(std::span(&v, 1)); }
+
+// --- Plan de lots (R2D-01) -----------------------------------------------------------------------------------------------------
+// Entre deux changements d'état (découpage, couche), les dessins forment un « segment ». Un dessin peut rejoindre un lot compatible
+// plus ancien du segment s'il ne recouvre (boîte englobante, intérieurs stricts) aucun dessin des lots qu'il dépasse : l'ordre de
+// recouvrement, donc le résultat, est inchangé. Compatibles : même type, et même atlas / mêmes réglages MSDF pour le texte.
+enum class Kind : std::uint8_t
+{
+    kRect,
+    kClearRect,
+    kGlyphs,
+    kImage,
+};
+struct Box
+{
+    float x0, y0, x1, y1;
+};
+bool overlaps(const Box &a, const Box &b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
+Box everything() { return {-std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()}; }
+Box boxOfRect(const glm::vec2 &position, const glm::vec2 &size)
+{
+    const Box b{std::min(position.x, position.x + size.x), std::min(position.y, position.y + size.y), std::max(position.x, position.x + size.x),
+                std::max(position.y, position.y + size.y)};
+    return std::isfinite(b.x0) && std::isfinite(b.y0) && std::isfinite(b.x1) && std::isfinite(b.y1) ? b : everything(); // non fini : gêne tout
+}
+Box boxOfVertices(const std::vector<float> &v)
+{
+    Box b{std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(),
+          -std::numeric_limits<float>::infinity()};
+    for (std::size_t i = 0; i + 3 < v.size(); i += 4)
+    {
+        b = {std::min(b.x0, v[i]), std::min(b.y0, v[i + 1]), std::max(b.x1, v[i]), std::max(b.y1, v[i + 1])};
+    }
+    return std::isfinite(b.x0) && std::isfinite(b.y0) && std::isfinite(b.x1) && std::isfinite(b.y1) ? b : everything();
+}
+struct Item
+{
+    Kind kind;
+    const DrawCommand *command;
+    const AtlasImage *atlas; // glyphes et images
+    float range;             // msdfPixelRange
+    float weight;            // msdfWeight
+    Box box;
+};
+struct Batch
+{
+    Kind kind;
+    const AtlasImage *atlas;
+    float range, weight;
+    Box box;
+    std::vector<std::uint32_t> items;
+};
+// Étape de l'exécution : un lot (dessiné d'un coup) ou une commande qui change l'état (couche, découpage) ou dessine une couche.
+struct Op
+{
+    bool batch = false;
+    const DrawCommand *command = nullptr;
+    Kind kind = Kind::kRect;
+    const AtlasImage *atlas = nullptr;
+    float range = 0.0f;
+    float weight = 0.0f;
+    std::uint64_t byteOffset = 0;
+    std::uint32_t count = 0; // instances (rectangles) ou sommets
+    std::uint32_t items = 0; // commandes de la liste regroupées dans ce lot
+};
+struct Plan
+{
+    std::vector<Op> ops;
+    std::vector<float> data; // instances et sommets de tous les lots
+    std::uint32_t drawCommands = 0;
+};
+
+bool compatible(const Batch &b, const Item &i)
+{
+    return b.kind == i.kind && b.atlas == i.atlas && b.range == i.range && b.weight == i.weight;
+}
+
+void appendItem(Plan &plan, const Item &item, bool inLayer)
+{
+    std::vector<float> &d = plan.data;
+    if (const auto *r = std::get_if<DrawRect>(&*item.command))
+    {
+        d.insert(d.end(), {r->position.x, r->position.y, r->size.x, r->size.y, r->color.r, r->color.g, r->color.b, r->color.a, r->radius, r->borderWidth,
+                           r->softness, 0.0f, r->borderColor.r, r->borderColor.g, r->borderColor.b, r->borderColor.a});
+    }
+    else if (const auto *c = std::get_if<DrawClearRect>(&*item.command))
+    {
+        // Une couche contient une couleur prémultipliée : la couleur de remplacement l'est aussi (le transparent ne change pas).
+        const glm::vec4 color = inLayer ? glm::vec4(glm::vec3(c->color) * c->color.a, c->color.a) : c->color;
+        d.insert(d.end(), {c->position.x, c->position.y, c->size.x, c->size.y, color.r, color.g, color.b, color.a, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+    }
+    else
+    {
+        const std::vector<float> *vertices = nullptr;
+        glm::vec4 color{0.0f};
+        if (const auto *g = std::get_if<DrawGlyphs>(&*item.command))
+        {
+            vertices = &g->vertices;
+            color = {g->color.r, g->color.g, g->color.b, g->alpha};
+        }
+        else if (const auto *img = std::get_if<DrawImage>(&*item.command))
+        {
+            vertices = &img->vertices;
+            color = img->tint;
+        }
+        for (std::size_t i = 0; i + 3 < vertices->size(); i += 4)
+        {
+            d.insert(d.end(), {(*vertices)[i], (*vertices)[i + 1], (*vertices)[i + 2], (*vertices)[i + 3], color.r, color.g, color.b, color.a});
+        }
+    }
+}
+
+void flushSegment(Plan &plan, std::vector<Item> &segment, bool inLayer)
+{
+    std::vector<Batch> batches;
+    for (std::uint32_t index = 0; index < segment.size(); ++index)
+    {
+        const Item &item = segment[index];
+        std::size_t target = batches.size();
+        for (std::size_t k = batches.size(); k-- > 0;)
+        {
+            Batch &b = batches[k];
+            if (compatible(b, item))
+            {
+                target = k; // le plus ancien lot compatible atteignable
+            }
+            if (overlaps(b.box, item.box) && std::ranges::any_of(b.items, [&](std::uint32_t other) { return overlaps(segment[other].box, item.box); }))
+            {
+                break; // un dessin de ce lot est recouvert par celui-ci : on ne peut pas passer devant
+            }
+        }
+        if (target == batches.size())
+        {
+            batches.push_back({item.kind, item.atlas, item.range, item.weight, item.box, {}});
+        }
+        Batch &b = batches[target];
+        b.items.push_back(index);
+        b.box = {std::min(b.box.x0, item.box.x0), std::min(b.box.y0, item.box.y0), std::max(b.box.x1, item.box.x1), std::max(b.box.y1, item.box.y1)};
+    }
+    for (const Batch &b : batches)
+    {
+        Op op;
+        op.batch = true;
+        op.kind = b.kind;
+        op.atlas = b.atlas;
+        op.range = b.range;
+        op.weight = b.weight;
+        op.byteOffset = plan.data.size() * sizeof(float);
+        op.items = static_cast<std::uint32_t>(b.items.size());
+        for (std::uint32_t index : b.items)
+        {
+            appendItem(plan, segment[index], inLayer);
+        }
+        const std::size_t floats = plan.data.size() - op.byteOffset / sizeof(float);
+        op.count = static_cast<std::uint32_t>(floats / (b.kind == Kind::kRect || b.kind == Kind::kClearRect ? kRectInstanceFloats : kColoredVertexFloats));
+        plan.ops.push_back(op);
+    }
+    segment.clear();
+}
+
+Plan buildPlan(const DrawList &list)
+{
+    Plan plan;
+    std::vector<Item> segment;
+    std::vector<std::uint64_t> layers; // couches ouvertes (couleur de remplacement prémultipliée dans une couche)
+    auto barrier = [&](const DrawCommand &command)
+    {
+        flushSegment(plan, segment, !layers.empty());
+        Op op;
+        op.command = &command;
+        plan.ops.push_back(op);
+    };
+    for (const DrawCommand &command : list.commands)
+    {
+        if (const auto *r = std::get_if<DrawRect>(&command))
+        {
+            segment.push_back({Kind::kRect, &command, nullptr, 0.0f, 0.0f, boxOfRect(r->position, r->size)});
+            ++plan.drawCommands;
+        }
+        else if (const auto *c = std::get_if<DrawClearRect>(&command))
+        {
+            segment.push_back({Kind::kClearRect, &command, nullptr, 0.0f, 0.0f, boxOfRect(c->position, c->size)});
+            ++plan.drawCommands;
+        }
+        else if (const auto *g = std::get_if<DrawGlyphs>(&command))
+        {
+            if (!g->vertices.empty() && g->atlas)
+            {
+                segment.push_back({Kind::kGlyphs, &command, g->atlas.get(), g->msdfPixelRange, g->msdfWeight, boxOfVertices(g->vertices)});
+                ++plan.drawCommands;
+            }
+        }
+        else if (const auto *i = std::get_if<DrawImage>(&command))
+        {
+            if (!i->vertices.empty() && i->image)
+            {
+                segment.push_back({Kind::kImage, &command, i->image.get(), 0.0f, 0.0f, boxOfVertices(i->vertices)});
+                ++plan.drawCommands;
+            }
+        }
+        else
+        {
+            if (std::holds_alternative<DrawLayerImage>(command))
+            {
+                ++plan.drawCommands;
+            }
+            barrier(command);
+            if (const auto *begin = std::get_if<BeginLayer>(&command))
+            {
+                layers.push_back(begin->id);
+            }
+            else if (std::holds_alternative<EndLayer>(command) && !layers.empty())
+            {
+                layers.pop_back();
+            }
+        }
+    }
+    flushSegment(plan, segment, !layers.empty());
+    return plan;
+}
 } // namespace
 
 core::Result<std::unique_ptr<CanvasRenderer>> CanvasRenderer::create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
@@ -95,7 +315,7 @@ void CanvasRenderer::clear()
     atlases_.clear();
 }
 
-core::Result<rhi::PipelineHandle> CanvasRenderer::pipeline(const ShaderProgram &program, rhi::Format format, Blend blend, bool glyph)
+core::Result<rhi::PipelineHandle> CanvasRenderer::pipeline(const ShaderProgram &program, rhi::Format format, Blend blend, Layout layout)
 {
     GraphicsState state;
     state.raster.cull = rhi::CullMode::kNone;
@@ -114,10 +334,19 @@ core::Result<rhi::PipelineHandle> CanvasRenderer::pipeline(const ShaderProgram &
                         rhi::BlendFactor::kOne, rhi::BlendFactor::kOneMinusSrcAlpha, rhi::BlendOp::kAdd};
     }
     state.colorTargets.assign(1, target);
-    if (glyph)
+    if (layout == Layout::kRectInstances)
     {
-        state.vertexBuffers.push_back({.binding = 0, .stride = 16, .stepRate = rhi::VertexStepRate::kVertex});
+        state.vertexBuffers.push_back({.binding = 0, .stride = kRectInstanceFloats * sizeof(float), .stepRate = rhi::VertexStepRate::kInstance});
+        for (std::uint32_t i = 0; i < 4; ++i)
+        {
+            state.vertexAttributes.push_back({.location = i, .binding = 0, .format = rhi::VertexFormat::kFloat4, .offset = i * 16});
+        }
+    }
+    else if (layout == Layout::kColoredVertices)
+    {
+        state.vertexBuffers.push_back({.binding = 0, .stride = kColoredVertexFloats * sizeof(float), .stepRate = rhi::VertexStepRate::kVertex});
         state.vertexAttributes.push_back({.location = 0, .binding = 0, .format = rhi::VertexFormat::kFloat4, .offset = 0});
+        state.vertexAttributes.push_back({.location = 1, .binding = 0, .format = rhi::VertexFormat::kFloat4, .offset = 16});
     }
     state.debugName = program.name() + (blend == Blend::kReplace ? ".replace" : blend == Blend::kPremultiplied ? ".premultiplied" : "");
     return pipelines_.graphics(program, state);
@@ -240,56 +469,36 @@ void CanvasRenderer::beginPass(rhi::CommandEncoder &encoder, const Surface &surf
 core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawList &list, const CanvasTarget &target, bool loadExisting)
 {
     ++renderCount_;
+    stats_ = {};
     if (target.size.width == 0 || target.size.height == 0 || list.logicalSize.x <= 0.0f || list.logicalSize.y <= 0.0f)
     {
         return makeError(ErrorCode::kInvalidArgument, "CanvasRenderer::render: the target and the list's logical size must be non-empty");
     }
-    // Un seul envoi pour tous les glyphes de la liste : chaque série a son décalage dans le tampon.
-    std::size_t glyphFloats = 0;
-    for (const DrawCommand &c : list.commands)
+    // Plan de lots (R2D-01) : les dessins compatibles d'un segment (entre deux changements d'état) sont regroupés dans l'ordre qui
+    // garde le résultat. Un seul envoi pour tout le tampon : chaque lot a son décalage.
+    const Plan plan = buildPlan(list);
+    stats_.drawCommands = plan.drawCommands;
+    if (!plan.data.empty())
     {
-        if (const auto *g = std::get_if<DrawGlyphs>(&c))
-        {
-            glyphFloats += g->vertices.size();
-        }
-        else if (const auto *i = std::get_if<DrawImage>(&c))
-        {
-            glyphFloats += i->vertices.size();
-        }
-    }
-    if (glyphFloats > 0)
-    {
-        const std::uint64_t needed = glyphFloats * sizeof(float);
-        if (!glyphBuffer_.valid() || glyphBuffer_.size() < needed)
+        const std::uint64_t needed = plan.data.size() * sizeof(float);
+        if (!batchBuffer_.valid() || batchBuffer_.size() < needed)
         {
             rhi::BufferDesc bd;
             bd.size = std::max<std::uint64_t>(needed, 64 * 1024);
             bd.usage = rhi::BufferUsage::kVertex | rhi::BufferUsage::kCopyDst;
-            bd.debugName = "ui.glyphs";
+            bd.debugName = "ui.batch";
             auto buffer = GpuBuffer::create(device_, bd);
             if (!buffer)
             {
                 return std::unexpected(buffer.error());
             }
-            glyphBuffer_ = std::move(*buffer);
+            batchBuffer_ = std::move(*buffer);
         }
-        std::vector<float> all;
-        all.reserve(glyphFloats);
-        for (const DrawCommand &c : list.commands)
-        {
-            if (const auto *g = std::get_if<DrawGlyphs>(&c))
-            {
-                all.insert(all.end(), g->vertices.begin(), g->vertices.end());
-            }
-            else if (const auto *i = std::get_if<DrawImage>(&c))
-            {
-                all.insert(all.end(), i->vertices.begin(), i->vertices.end()); // même tampon, dans l'ordre des commandes
-            }
-        }
-        if (auto r = glyphBuffer_.update(0, std::as_bytes(std::span(all))); !r)
+        if (auto r = batchBuffer_.update(0, std::as_bytes(std::span(plan.data))); !r)
         {
             return r;
         }
+        stats_.bufferBytes = needed;
     }
 
     for (auto &[id, layer] : layers_)
@@ -305,96 +514,62 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
     stack.push_back(main);
     const bool encoderFailedBefore = encoder.error().has_value();
     beginPass(encoder, stack.back(), loadExisting ? rhi::LoadOp::kLoad : rhi::LoadOp::kClear, "ui.canvas");
-    std::uint64_t glyphOffset = 0;
     core::Result<> status;
     bool missingLayer = false;
 
     auto scaleOf = [](const Surface &s) { return glm::vec2(static_cast<float>(s.px.width) / s.logical.x, static_cast<float>(s.px.height) / s.logical.y); };
-    auto drawRect = [&](const DrawRect &r, bool blend) -> core::Result<>
-    {
-        const Surface &s = stack.back();
-        if (!s.clips.empty() && s.clips.back().empty())
-        {
-            return {};
-        }
-        auto pipe = pipeline(*rect_, s.format, blend ? Blend::kStraight : Blend::kReplace, false);
-        if (!pipe)
-        {
-            return std::unexpected(pipe.error());
-        }
-        RectPush push{{r.position.x, r.position.y, r.size.x, r.size.y},
-                      {s.logical.x, s.logical.y, 0, 0},
-                      {r.color.r, r.color.g, r.color.b, r.color.a},
-                      {r.radius, r.borderWidth, r.softness, 0},
-                      {r.borderColor.r, r.borderColor.g, r.borderColor.b, r.borderColor.a}};
-        encoder.setPipeline(*pipe);
-        encoder.setPushConstants(bytesOf(push));
-        encoder.draw(6);
-        return {};
-    };
 
-    for (const DrawCommand &command : list.commands)
+    for (const Op &op : plan.ops)
     {
         if (!status)
         {
             break;
         }
         Surface &surface = stack.back();
-        if (const auto *r = std::get_if<DrawRect>(&command))
+        const bool clipped = !surface.clips.empty() && surface.clips.back().empty();
+        if (op.batch)
         {
-            status = drawRect(*r, true);
-        }
-        else if (const auto *c = std::get_if<DrawClearRect>(&command))
-        {
-            // Une couche contient une couleur prémultipliée : la couleur de remplacement l'est aussi (le transparent ne change pas).
-            const glm::vec4 color = surface.layerId != 0 ? glm::vec4(glm::vec3(c->color) * c->color.a, c->color.a) : c->color;
-            status = drawRect(DrawRect{.position = c->position, .size = c->size, .color = color}, false);
-        }
-        else if (const auto *g = std::get_if<DrawGlyphs>(&command))
-        {
-            const std::uint64_t offset = glyphOffset;
-            glyphOffset += g->vertices.size() * sizeof(float);
-            if (g->vertices.empty() || !g->atlas || (!surface.clips.empty() && surface.clips.back().empty()))
+            if (clipped)
             {
                 continue;
             }
-            auto atlas = atlasFor(*g->atlas);
-            auto pipe = pipeline(*glyph_, surface.format, Blend::kStraight, true);
-            if (!atlas || !pipe)
+            if (op.kind == Kind::kRect || op.kind == Kind::kClearRect)
             {
-                status = std::unexpected(!atlas ? atlas.error() : pipe.error());
-                continue;
+                auto pipe = pipeline(*rect_, surface.format, op.kind == Kind::kRect ? Blend::kStraight : Blend::kReplace, Layout::kRectInstances);
+                if (!pipe)
+                {
+                    status = std::unexpected(pipe.error());
+                    continue;
+                }
+                const RectPush push{{surface.logical.x, surface.logical.y, 0, 0}};
+                encoder.setPipeline(*pipe);
+                encoder.setPushConstants(bytesOf(push));
+                encoder.setVertexBuffer(0, batchBuffer_.handle(), op.byteOffset);
+                encoder.draw(6, op.count);
             }
-            GlyphPush push{{surface.logical.x, surface.logical.y, g->msdfPixelRange, g->msdfWeight}, {g->color.r, g->color.g, g->color.b, g->alpha}};
-            encoder.setPipeline(*pipe);
-            encoder.setBindGroup(1, (*atlas)->group);
-            encoder.setPushConstants(bytesOf(push));
-            encoder.setVertexBuffer(0, glyphBuffer_.handle(), offset);
-            encoder.draw(static_cast<std::uint32_t>(g->vertices.size() / 4));
+            else
+            {
+                const bool isGlyphs = op.kind == Kind::kGlyphs;
+                auto atlas = atlasFor(*op.atlas);
+                auto pipe = pipeline(isGlyphs ? *glyph_ : *image_, surface.format, Blend::kStraight, Layout::kColoredVertices);
+                if (!atlas || !pipe)
+                {
+                    status = std::unexpected(!atlas ? atlas.error() : pipe.error());
+                    continue;
+                }
+                const GlyphPush push{{surface.logical.x, surface.logical.y, op.range, op.weight}, {0, 0, 0, 0}};
+                encoder.setPipeline(*pipe);
+                encoder.setBindGroup(1, (*atlas)->group);
+                encoder.setPushConstants(bytesOf(push));
+                encoder.setVertexBuffer(0, batchBuffer_.handle(), op.byteOffset);
+                encoder.draw(op.count);
+            }
+            ++stats_.drawCalls;
+            stats_.batchedCommands += op.items;
+            continue;
         }
-        else if (const auto *img = std::get_if<DrawImage>(&command))
-        {
-            const std::uint64_t offset = glyphOffset;
-            glyphOffset += img->vertices.size() * sizeof(float);
-            if (img->vertices.empty() || !img->image || (!surface.clips.empty() && surface.clips.back().empty()))
-            {
-                continue;
-            }
-            auto texture = atlasFor(*img->image);
-            auto pipe = pipeline(*image_, surface.format, Blend::kStraight, true);
-            if (!texture || !pipe)
-            {
-                status = std::unexpected(!texture ? texture.error() : pipe.error());
-                continue;
-            }
-            GlyphPush push{{surface.logical.x, surface.logical.y, 0, 0}, {img->tint.r, img->tint.g, img->tint.b, img->tint.a}};
-            encoder.setPipeline(*pipe);
-            encoder.setBindGroup(1, (*texture)->group);
-            encoder.setPushConstants(bytesOf(push));
-            encoder.setVertexBuffer(0, glyphBuffer_.handle(), offset);
-            encoder.draw(static_cast<std::uint32_t>(img->vertices.size() / 4));
-        }
-        else if (const auto *image = std::get_if<DrawLayerImage>(&command))
+        const DrawCommand &command = *op.command;
+        if (const auto *image = std::get_if<DrawLayerImage>(&command))
         {
             auto it = layers_.find(image->layerId);
             if (it == layers_.end())
@@ -411,11 +586,11 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
                     parent->second.children.push_back(image->layerId);
                 }
             }
-            if (!surface.clips.empty() && surface.clips.back().empty())
+            if (clipped)
             {
                 continue;
             }
-            auto pipe = pipeline(*layerImage_, surface.format, Blend::kPremultiplied, false);
+            auto pipe = pipeline(*layerImage_, surface.format, Blend::kPremultiplied, Layout::kNone);
             if (!pipe)
             {
                 status = std::unexpected(pipe.error());
@@ -429,6 +604,8 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
             encoder.setBindGroup(1, it->second.group);
             encoder.setPushConstants(bytesOf(push));
             encoder.draw(6);
+            ++stats_.drawCalls;
+            ++stats_.batchedCommands;
         }
         else if (const auto *begin = std::get_if<BeginLayer>(&command))
         {
