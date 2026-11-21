@@ -1,6 +1,6 @@
 # Orosmo : règles permanentes
 
-Orosmo est un moteur de jeu 3D et 2D en **C++23**, rendu par une couche d'abstraction (**RHI**) avec backends **Vulkan** (principal), **OpenGL 4.3+** et **Metal** (via MoltenVK d'abord, natif ensuite). Le premier produit visé est un générateur de terrain et de planètes procédural. L'interface s'écrit dans un langage maison précompilé en C++, avec thèmes JSON.
+Orosmo est un moteur 3D et 2D générique en **C++23**, rendu par une couche d'abstraction (**RHI**) avec backends **Vulkan** (principal), **OpenGL 4.3+** et **Metal** (via MoltenVK d'abord, natif ensuite). L'interface s'écrit dans un langage maison précompilé en C++, avec thèmes JSON. *(Note A37 : le code procédural `orosmo::world` / `TerrainRenderer` a été archivé dans la branche `archive/procedural-world` et retiré du dépôt principal ; `apps/` ne contient que la démo unique `apps/demo/`.)*
 
 Lis `docs/` avant tout travail : `01` vision, `02` checklist, `03` architecture, `04` audit, `05` plan.
 
@@ -68,22 +68,25 @@ git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.
 ~/vcpkg/vcpkg install                   # à la racine du dépôt ; make relie ensuite les paquets apt tout seul
 
 # 2. Build et démo
-make all-debug                          # moteur (debug, -Wpedantic -Werror) -> apps/demo/orosmo -> démo
-make run                                # lance la démo (OpenGL par défaut ; --api vulkan non fiable avant M4)
+make all-debug                          # moteur (debug, -Wpedantic -Werror) -> apps/demo/orosmo -> démo unique
+make run                                # lance la démo unique (OpenGL par défaut ; Escape ouvre/ferme l'UI, Quit pour quitter ; --api vulkan disponible depuis M4, repli sur OpenGL)
 
 # 3. Tests et contrôles
-make demo-test                          # doctest : 421 cas (construit les archives release d'abord)
+make demo-test                          # doctest : 413 cas (construit les archives release d'abord)
 make demo-test SANITIZE=address,undefined   # ASan + UBSan (partir d'un arbre propre : make fclean)
 make check                              # dépôt, couches, isolation des API, en-têtes autonomes (bloquant depuis M2)
 make demo-test-unit                     # tests sans GPU ni fenêtre ; make demo-test-gpu : seulement l'intégration graphique
+make cui-test                           # tests du compilateur .cui
+make e2e-init                           # paquet + orosmo init + compilation + exemple minimal
 python3 -m unittest discover -s tests/tools # outils Python (compare_png)
 
-# 4. Images de référence
-apps/demo/bin/debug/main --api opengl --capture /chemin/sortie        # scene.png (reproductible) + ui.png (FPS affichés)
-python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720.png /chemin/sortie/scene.png
+# 4. Captures et comparaison d'images
+make demo-capture                       # captures hors écran de la démo unifiée (scène, thèmes, onglets)
+apps/demo/bin/debug/main --api opengl --headless --capture /chemin/sortie   # scene.png + ui.png
+python3 tools/compare_png.py A.png B.png
 
 # 5. Formatage (clang-format requis)
 sh tools/format_sources.sh
 ```
 
-Options utiles : `WERROR=0` (avertissements non bloquants), `V=1` (commandes complètes au lieu de la barre de progression, affichée seulement dans un terminal), `--seed N` (terrain de la démo), `--capture-frames N`. Windows/macOS : voir `README.md` ; non vérifiés (`docs/GAPS.md`).
+Options utiles : `WERROR=0` (avertissements non bloquants), `V=1` (commandes complètes au lieu de la barre de progression, affichée seulement dans un terminal), options CLI de `apps/demo` (`--ui off|hud|full`, `--theme dark|light|framed`, `--tab scene|widgets|controls|color|windows|layout|themes`, `--size WxH`, `--headless`, `--vsync`, `--capture <dir>`, `--capture-frames N`, `--hover <id>`, `--click <id>`). Windows/macOS : voir `README.md` ; non vérifiés (`docs/GAPS.md`).

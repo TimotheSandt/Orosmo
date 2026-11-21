@@ -53,7 +53,7 @@ TEST_SUITE("rhi/opengl/state")
         gd.entries = {{.binding = 0, .type = BindingType::kSampledTexture, .texture = red, .sampler = *sampler}};
         auto group = gpu->createBindGroup(gd);
         REQUIRE(group.has_value());
-        const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVs), gpu.shader(ShaderStage::kFragment, kSampleFs));
+        const PipelineHandle pipe = gpu.pipeline(gpu.shaderRaw(ShaderStage::kVertex, kFullscreenVs), gpu.shaderRaw(ShaderStage::kFragment, kSampleFs));
         const TextureHandle out = gpu.target(Format::kRGBA8Unorm, {2, 2});
         const std::vector<std::uint8_t> blue{0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255};
         gpu.run(
@@ -164,7 +164,7 @@ TEST_SUITE("rhi/opengl/state")
     {
         Gpu gpu;
         SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
-        const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVs), gpu.shader(ShaderStage::kFragment, kRedFs));
+        const PipelineHandle pipe = gpu.pipeline(gpu.shaderRaw(ShaderStage::kVertex, kFullscreenVs), gpu.shaderRaw(ShaderStage::kFragment, kRedFs));
         const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {2, 2});
         const std::vector<DrawIndirectCommand> commands{{3, 1, 0, 0}, {3, 1, 0, 0}};
         const BufferHandle args = gpu.buffer(BufferUsage::kIndirect, bytesOf(commands));
@@ -307,7 +307,7 @@ TEST_SUITE("rhi/opengl/state")
             states.push_back(ColorTargetState{});
             pass.colors.push_back({.texture = targets.back()});
         }
-        const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVs), gpu.shader(ShaderStage::kFragment, fs.c_str()), states);
+        const PipelineHandle pipe = gpu.pipeline(gpu.shaderRaw(ShaderStage::kVertex, kFullscreenVs), gpu.shaderRaw(ShaderStage::kFragment, fs.c_str()), states);
         gpu.run(
             [&](CommandEncoder &e)
             {
@@ -383,8 +383,8 @@ void main() { gl_Position = vec4(position, 0.0, 1.0); })";
         {
             const BufferHandle vb = gpu.buffer(BufferUsage::kVertex, bytesOf(positions));
             GraphicsPipelineDesc d;
-            d.vertex = gpu.shader(ShaderStage::kVertex, vs);
-            d.fragment = gpu.shader(ShaderStage::kFragment, kRedFs);
+            d.vertex = gpu.shaderRaw(ShaderStage::kVertex, vs);
+            d.fragment = gpu.shaderRaw(ShaderStage::kFragment, kRedFs);
             d.vertexBuffers = {{0, 8, VertexStepRate::kVertex}};
             d.vertexAttributes = {{0, 0, VertexFormat::kFloat2, 0}};
             d.colorTargets = {ColorTargetState{}};

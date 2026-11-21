@@ -170,9 +170,6 @@ jobs:
       - name: Tests
         run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" demo-test
 
-      - name: terrain-gen determinism (TOOL-02, TEST-03)
-        run: make terrain-gen-check
-
       - name: Interface language compiler (UI-11; cargo test + invalid inputs + C++ errors mapped to the .cui)
         run: make cui-test
 
@@ -185,7 +182,7 @@ jobs:
       - name: "Compare with the reference image (tolerant, other GPU and driver)"
         continue-on-error: true
         run: |
-          python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-seed1-1280x720.png ci-capture/scene.png \
+          python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-demo-1280x720.png ci-capture/scene.png \
             --tolerance 8 --max-diff-percent 2 --diff-out ci-capture/diff.png
 
       - name: Headless capture (PLAT-04, no window) identical to the windowed one
@@ -197,11 +194,8 @@ jobs:
       - name: Tool tests (Python)
         run: python3 -m unittest discover -s tests/tools
 
-      - name: Terrain viewer (TOOL-01; headless capture with the dark and the light theme)
-        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make viewer-capture
-
-      - name: UI gallery (every widget, layout, theme; headless captures)
-        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make gallery-capture
+      - name: Demo captures (HUD, every UI tab, themes, popups; headless)
+        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-capture
 
       - name: End to end from the package (BLD-02; orosmo init, build, run, examples)
         run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" e2e-init
@@ -223,19 +217,17 @@ jobs:
           name: capture-linux-opengl
           path: |
             ci-capture/*.png
-            build/viewer-capture/*/viewer.png
-            build/gallery-capture/*/gallery.png
+            build/demo-capture/*/*.png
           retention-days: 7
 
   # ── Linux arm64 (ubuntu-24.04-arm) ────────────────────────────────────────────────────────
-  # `continue-on-error` and WERROR=0 until the first green run, like Windows and macOS: nothing here had ever run on arm64.
+  # Bloquant (comme Linux x64) depuis le 2026-11-21 : plusieurs runs verts, avertissements en erreur (-Werror).
   # vcpkg has no prebuilt tools for arm64 Linux: VCPKG_FORCE_SYSTEM_BINARIES=1 makes it use the system cmake and ninja.
   linux-arm64:
     name: Linux arm64 (build, tests)
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04-arm
-    continue-on-error: true
     env:
       VCPKG_FORCE_SYSTEM_BINARIES: "1"
     steps:
@@ -262,9 +254,9 @@ jobs:
             build-essential cmake ninja-build python3 pkg-config curl zip unzip tar git \
             autoconf autoconf-archive automake libtool \
             libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
-            libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
+            libfreetype-dev libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
             libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            xvfb libgl1-mesa-dri ccache
+            xvfb libgl1-mesa-dri mesa-vulkan-drivers ccache
 
       - name: Bootstrap vcpkg
         run: |
@@ -306,13 +298,10 @@ jobs:
           ccache --zero-stats
 
       - name: Build (debug)
-        run: make -j"$(nproc)" all-debug WERROR=0
+        run: make -j"$(nproc)" all-debug
 
       - name: Tests
-        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" demo-test WERROR=0
-
-      - name: terrain-gen determinism (TOOL-02, TEST-03)
-        run: make -j"$(nproc)" terrain-gen-check WERROR=0
+        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" demo-test
 
       - name: ccache statistics
         if: always()
@@ -343,9 +332,9 @@ jobs:
             build-essential cmake python3 pkg-config curl zip unzip tar git \
             autoconf autoconf-archive automake libtool \
             libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
-            libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
+            libfreetype-dev libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
             libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            xvfb libgl1-mesa-dri ccache
+            xvfb libgl1-mesa-dri mesa-vulkan-drivers ccache
       - name: Bootstrap vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
@@ -399,14 +388,12 @@ jobs:
           key: ccache-linux-asan-${{ github.run_id }}
 
   # ── Windows and macOS: same entry points through vcpkg manifest mode. ─────────────────────
-  # `continue-on-error`: these two jobs have never been observed green (no Windows/macOS machine was
-  # available while writing them). Remove the flag after the first green run; see docs/GAPS.md.
+  # Bloquants depuis le 2026-11-21 (plusieurs runs verts sur les deux systèmes, e2e du paquet compris), avertissements en erreur.
   other-platforms:
     name: ${{ matrix.name }} (build, tests)
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -502,19 +489,15 @@ jobs:
           if [ -d /mingw64/lib/ccache/bin ]; then echo "ccache: /mingw64/lib/ccache/bin (mis en tête du PATH par chaque étape de compilation)"; else echo "ccache: /mingw64/lib/ccache/bin absent, compilation directe"; fi
           ccache --zero-stats
 
-      # WERROR=0 until the first green run on these systems (warnings are errors on Linux).
       - name: Build and test (Unix)
         if: runner.os != 'Windows'
         run: |
-          make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          make -j3 demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          make -j3 terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make -j3 all-debug VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make -j3 demo-test VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
-      # BLD-02 : never observed on these systems (docs/GAPS.md) ; reported, not blocking.
       - name: End to end from the package (Unix)
         if: runner.os != 'Windows'
-        continue-on-error: true
-        run: make -j3 e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+        run: make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0
 
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
@@ -522,17 +505,15 @@ jobs:
         run: |
           # Le profil MINGW64 met /mingw64/bin avant le PATH hérité : les lanceurs ccache sont remis devant ici.
           if [ -d /mingw64/lib/ccache/bin ]; then export PATH="/mingw64/lib/ccache/bin:$PATH"; fi
-          mingw32-make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          mingw32-make -j3 demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          mingw32-make -j3 terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make -j3 all-debug VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make -j3 demo-test VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       - name: End to end from the package (Windows)
         if: runner.os == 'Windows'
-        continue-on-error: true
         shell: msys2 {0}
         run: |
           if [ -d /mingw64/lib/ccache/bin ]; then export PATH="/mingw64/lib/ccache/bin:$PATH"; fi
-          mingw32-make -j3 e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0
 
       - name: ccache statistics (Unix)
         if: always() && runner.os != 'Windows'

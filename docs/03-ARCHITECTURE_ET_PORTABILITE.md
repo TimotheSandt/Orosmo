@@ -183,7 +183,7 @@ Trois groupes, fixes pour tout le projet :
 
 ## 9. Ajouter un backend (voir aussi §14)
 
-Le guide `docs/ADD_A_BACKEND.md` (à écrire par l'IA au jalon M4) doit permettre à un lecteur d'ajouter un backend en suivant : 1) implémenter `Device` et `CommandEncoder`, 2) fournir la table de traduction des formats, 3) traduire le modèle de liaison, 4) passer la suite de tests RHI, 5) passer les images de référence.
+Le guide [`docs/ADD_A_BACKEND.md`](ADD_A_BACKEND.md) (écrit en M4) détaille la marche à suivre ; il doit permettre à un lecteur d'ajouter un backend en suivant : 1) implémenter `Device` et `CommandEncoder`, 2) fournir la table de traduction des formats, 3) traduire le modèle de liaison, 4) passer la suite de tests RHI, 5) passer les images de référence.
 
 ## 10. Données fournies aux shaders (groupe 0, une fois par image)
 
@@ -301,6 +301,7 @@ Ces fonctions ne sont pas écrites maintenant ; l'architecture doit seulement le
 
 La release distribuable du moteur (`orosmo-pkg-<plateforme>.zip` et le projet généré par `orosmo init`) vise un **moteur générique** : seuls les modules cœur (`core`, `platform`, `rhi`, `renderer` générique, `ui`, `thirdparty`, `cui`) y sont inclus par défaut.
 
-Les modules spécialisés (comme `world` et `TerrainRenderer`, conservés dans le dépôt pour les démos internes) n'appartiennent pas au cœur distribué :
-- **Aujourd'hui (M3+)** : ils sont compilés en archives distinctes (`libworld.a`, `libterrain_renderer.a`), exclus de `dist/`, et reliés explicitement par les applications internes du dépôt via `ENGINE_EXTRA_MODULES`.
+Les modules spécialisés n'appartiennent pas au cœur distribué. Le procédural (`world`, `TerrainRenderer`, shaders et exemples de terrain) a été **archivé** : il n'est plus dans le dépôt (`src/`, `include/`) et se retrouve sur la branche `archive/procedural-world`. Conséquences pour la distribution :
+- **Aujourd'hui (M4)** : `dist/` et `orosmo-pkg-<plateforme>.zip` ne contiennent aucun module procédural (`libworld.a`, `libterrain_renderer.a`, `terrain_renderer.hpp`, `shaders/rhi/terrain.*` absents ; `make e2e-init` le vérifie). Les applications internes n'ont plus besoin de `ENGINE_EXTRA_MODULES` pour le terrain. Pour réutiliser le procédural, reprendre le code de la branche `archive/procedural-world` dans le projet du jeu (ou, plus tard, en addon).
 - **À terme (M11, `MOD-01` à `MOD-04`)** : un système de manifestes et de packaging permettra d'ajouter facilement tout module utilitaire, soit **intégré dans la release** (`bundled`), soit **distribué en addon séparé** (`orosmo addon add`), branché automatiquement par `engine.mk` sans modifier le cœur du moteur.
+- **Ensuite (M12, `MOD-05` à `MOD-08`)** : un **registre** d'addons (index et archives vérifiés par empreinte et signature) et un **gestionnaire** graphique pour les parcourir et les installer. C'est un produit à part, construit avec le moteur : il n'entre pas dans le cœur et ne dépend d'aucun backend.

@@ -1,17 +1,33 @@
 #include "Game/Game.h"
 #include "launch_options.hpp"
+
 #include <orosmo/core/log.hpp>
 #include <orosmo/core/paths.hpp>
+#include <orosmo/core/profiler.hpp>
 #include <orosmo/platform/window.hpp>
 
-#include <random>
+#include <chrono>
 #include <cstdlib>
-#include <filesystem>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
+
+namespace platform = orosmo::platform;
+
+// Bilan lu par `tools/perf_compare.py` : durée totale de la boucle et moyennes du Profiler (le temps de "Render"
+// est mesuré par les requêtes de temps du GPU quand le backend les fournit, sinon par l'horloge du processeur).
+static void reportPerformance(std::chrono::steady_clock::duration elapsed)
+{
+    using orosmo::core::Profiler;
+    LOG_INFO("Perf: loopMs=", std::chrono::duration<double, std::milli>(elapsed).count());
+    for (const char *name : {"Render", "RenderScene", "Upscale", "UIUpscale", "SwapBuffers"})
+    {
+        LOG_INFO("Perf: ", name, " avgMs=", Profiler::GetAverageTimeMs(name));
+    }
+}
 
 int main(int argc, char **argv)
 {
@@ -57,8 +73,7 @@ int main(int argc, char **argv)
             launchOptions.captureDirectory.empty() ? std::string() : (launchDirectory / launchOptions.captureDirectory).string();
 
         orosmo::rhi::Backend selectedApi = launchOptions.api;
-        const bool shouldPromptForApi = launchOptions.chooseApiInteractively;
-        if (shouldPromptForApi && !demo::promptForBackend(std::cin, std::cout, selectedApi))
+        if (launchOptions.chooseApiInteractively && !demo::promptForBackend(std::cin, std::cout, selectedApi))
         {
             LOG_ERROR(1, "Interactive graphics API selection failed");
             demo::printUsage(std::cout);
@@ -66,21 +81,33 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
-        // Seul le backend OpenGL du RHI existe avant M4 (Vulkan) et M9 (Metal) : refus clair avec la raison (RHI-04).
-        if (!demo::isBackendAvailable(selectedApi))
+        // Disponibilité dans cette construction ; la création du périphérique peut encore échouer (repli plus bas).
+        const auto refuse = [](const std::string &message)
         {
-            LOG_ERROR(1, demo::backendAvailabilityMessage(selectedApi));
-            std::cerr << demo::backendAvailabilityMessage(selectedApi) << '\n';
+            LOG_ERROR(1, message);
+            std::cerr << message << '\n';
             demo::printUsage(std::cout);
             FLUSH_LOG_TO_FILE;
             return EXIT_FAILURE;
+        };
+        demo::BackendDecision decision = demo::resolveBackend(selectedApi, launchOptions.strictBackend, demo::backendAvailability(selectedApi));
+        if (decision.refused)
+        {
+            return refuse(decision.message);
         }
+        if (decision.fellBack)
+        {
+            LOG_WARNING(decision.message);
+            std::cerr << decision.message << '\n';
+        }
+        selectedApi = decision.backend;
 
         const std::vector<std::string> requiredAssets = {
             GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"),   GET_RESOURCE_PATH("shader/rhi/mesh.vert"),     GET_RESOURCE_PATH("shader/rhi/mesh.frag"),
             GET_RESOURCE_PATH("shader/rhi/blit.vert"),       GET_RESOURCE_PATH("shader/rhi/blit.frag"),     GET_RESOURCE_PATH("shader/rhi/ui_rect.vert"),
             GET_RESOURCE_PATH("shader/rhi/ui_rect.frag"),    GET_RESOURCE_PATH("shader/rhi/ui_glyph.vert"), GET_RESOURCE_PATH("shader/rhi/ui_glyph.frag"),
-            GET_RESOURCE_PATH("shader/rhi/ui_layer.vert"),   GET_RESOURCE_PATH("shader/rhi/ui_layer.frag")};
+            GET_RESOURCE_PATH("shader/rhi/ui_image.vert"),   GET_RESOURCE_PATH("shader/rhi/ui_image.frag"), GET_RESOURCE_PATH("shader/rhi/ui_layer.vert"),
+            GET_RESOURCE_PATH("shader/rhi/ui_layer.frag")};
 
         if (!orosmo::core::validateAssets(requiredAssets))
         {
@@ -90,40 +117,40 @@ int main(int argc, char **argv)
 
         int exitCode = EXIT_SUCCESS;
         {
-            auto created = Game::create(launchOptions.headless);
+            auto created = Game::create(launchOptions.headless, launchOptions.width, launchOptions.height, selectedApi);
+            if (!created && created.error().code == orosmo::core::ErrorCode::kUnsupported && selectedApi == orosmo::rhi::Backend::kVulkan)
+            {
+                // Vulkan ne démarre pas (pas de chargeur, pas de GPU 1.3...) : le Game raté a déjà détruit sa fenêtre ; le suivant
+                // en recrée une avec les indices d'OpenGL (prepareWindowHints).
+                decision = demo::resolveBackend(selectedApi, launchOptions.strictBackend, demo::BackendAvailability::kAvailable, created.error().message);
+                if (decision.refused)
+                {
+                    platform::Window::terminate();
+                    return refuse(decision.message);
+                }
+                LOG_WARNING(decision.message);
+                std::cerr << decision.message << '\n';
+                selectedApi = decision.backend;
+                created = Game::create(launchOptions.headless, launchOptions.width, launchOptions.height, selectedApi);
+            }
             if (!created)
             {
                 LOG_ERROR(1, created.error().message);
                 std::cerr << created.error().message << '\n';
-                Window::Terminate();
+                platform::Window::terminate();
                 FLUSH_LOG_TO_FILE;
                 return EXIT_FAILURE;
             }
             Game &game = **created;
-            LOG_INFO("Starting game with graphics API: ", demo::backendDisplayName(selectedApi));
-            // The seed is chosen HERE, explicitly (rule 9: no clock inside the generation). Captures use seed 1 unless
-            // given; otherwise a random seed is drawn and logged so that the terrain can be replayed with --seed N.
-            std::uint32_t terrainSeed = 1u;
-            if (launchOptions.headless)
-            {
-                game.enableCapture(captureDirectory, launchOptions.captureFrames); // sans dossier : seulement le nombre d'images
-                terrainSeed = launchOptions.seed.value_or(1u);
-            }
-            else if (!launchOptions.captureDirectory.empty())
+            LOG_INFO("Starting demo with graphics API: ", demo::backendDisplayName(selectedApi));
+            if (launchOptions.headless || !launchOptions.captureDirectory.empty())
             {
                 game.enableCapture(captureDirectory, launchOptions.captureFrames);
-                terrainSeed = launchOptions.seed.value_or(1u);
             }
-            else if (launchOptions.seed.has_value())
-            {
-                terrainSeed = *launchOptions.seed;
-            }
-            else
-            {
-                terrainSeed = std::random_device{}() & 0x7fffffffu;
-                LOG_INFO("Random terrain seed: ", terrainSeed, " (replay it with --seed ", terrainSeed, ")");
-            }
-            game.setSeed(terrainSeed);
+            game.setUiMode(launchOptions.uiMode);
+            game.setInitialTheme(launchOptions.theme);
+            game.setInitialTab(launchOptions.tab);
+            game.setCaptureInteraction(launchOptions.hoverId, launchOptions.clickId);
             game.setVSync(launchOptions.vsync);
             LOG_TRACE("Game created");
             if (auto ready = game.init(); !ready)
@@ -135,7 +162,9 @@ int main(int argc, char **argv)
             else
             {
                 LOG_TRACE("Game initialized");
+                const auto runStart = std::chrono::steady_clock::now();
                 game.run();
+                reportPerformance(std::chrono::steady_clock::now() - runStart);
                 LOG_INFO("Game stopped");
                 if (!game.headlessSucceeded())
                 {
@@ -149,7 +178,7 @@ int main(int argc, char **argv)
                 }
             }
         } // `Game` libère le périphérique graphique puis la fenêtre
-        Window::Terminate();
+        platform::Window::terminate();
         FLUSH_LOG_TO_FILE;
         return exitCode;
     }

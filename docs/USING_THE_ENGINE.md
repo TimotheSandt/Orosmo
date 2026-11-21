@@ -60,7 +60,12 @@ rm -rf orosmo && mkdir orosmo                                # SDK vidé (src/, 
                                                              # le dossier vide reste : orosmo update le demande
 ./orosmo-linux-x64 update                                    # ou : orosmo update --package orosmo-pkg-<plateforme>.zip
 mv vcpkg_installed.keep orosmo/vcpkg_installed 2>/dev/null
+make install                                                 # applique le vcpkg.json de la nouvelle release (sans retirer l'existant)
 ```
+
+**Mise à niveau vers 0.4.0** : `engine.mk` relie désormais `-lvolk`, même pour un projet qui n'utilise qu'OpenGL. Des dépendances
+installées avec la version 0.3.1 ne contiennent pas `volk` : sans `make install` entre la restauration et la compilation,
+l'édition de liens échoue (`cannot find -lvolk`).
 
 ### Avec le paquet seul (`ENGINE_DIR`)
 
@@ -80,7 +85,7 @@ dans un projet créé par `orosmo init`), ou faites-en un lien vers une installa
 
 ## 4. Projet minimal
 
-`examples/minimal/` du paquet (source : `apps/minimal/` du dépôt), compilé et lancé par `make e2e-init` :
+`examples/minimal/` du paquet (source : `tools/engine-sdk/examples/minimal/` du dépôt), compilé et lancé par `make e2e-init` :
 
 ```cpp
 #include <orosmo/core/reflection.hpp>
@@ -143,13 +148,14 @@ obj/main.o: main.cpp
 
 Résultat : `{"data":{"name":"minimal","sum":524800,"tasksCompleted":1024},"version":1}`.
 
-Pour l'interface, `examples/ui_gallery` montre chaque widget, conteneur, événement et thème d'`orosmo::ui` dans une seule fenêtre.
-Le projet créé par `orosmo init` fournit quant à lui un squelette complet avec fenêtre, rendu 3D RHI (`SceneRenderer`, `Mesh`,
-`LightManager`) et superposition `.cui`.
+Le projet créé par `orosmo init` fournit un squelette complet avec fenêtre, rendu 3D RHI (`SceneRenderer`, `Mesh`,
+`LightManager`) et superposition `.cui`. Dans le dépôt du moteur, la démo unique `apps/demo/` rassemble la vitrine complète
+d'`orosmo::ui` et des fonctionnalités du moteur (un sélecteur de modèles de démarrage `minimal`/`starter`/`demo` + modèle
+utilisateur par défaut est prévu en M11, `MOD-09`).
 
-> La génération procédurale (`orosmo::world`, `TerrainRenderer`, `terrain-gen`, `terrain-viewer`) reste dans le dépôt source
-> pour les démos internes ; elle n'est pas incluse dans la release générique (décision A34). Un système de modules/addons est
-> prévu au jalon M11 (`docs/05-PLAN_PAR_JALONS.md`).
+> La génération procédurale (`orosmo::world`, `TerrainRenderer`, `terrain-gen`, `terrain-viewer`) a été archivée dans la
+> branche `archive/procedural-world` (décision A37) et n'est pas incluse dans la release générique. Un système de
+> modules/addons est prévu au jalon M11 (`docs/05-PLAN_PAR_JALONS.md`).
 
 ## 5. Ressources à l'exécution
 
@@ -168,20 +174,20 @@ d'interface : `ParamPanel($state.params)` dans le langage, `orosmo::ui::reflecte
 ## 7. Stabilité de l'API et versions
 
 Numérotation sémantique **0.MINEUR.CORRECTIF** : tant que la version majeure est 0, un changement **mineur** peut casser l'API (la
-liste des changements incompatibles est dans `docs/releases/<jalon>.md`) ; un **correctif** ne la casse jamais. Première release
-présentée comme utilisable : `v0.3.1` (M3 bis, moteur générique). M3 (`v0.3.0`) n'a pas été publiée.
+liste des changements incompatibles est dans `docs/releases/<jalon>.md`) ; un **correctif** ne la casse jamais. Dernière release : `v0.4.0` (M4, backend Vulkan). M3 (`v0.3.0`) n'a pas été publiée ; `v0.3.1` (M3 bis) est la première release publiée.
 
 | Module (`include/orosmo/…`) | Statut | Remarque |
 | --- | --- | --- |
-| `core`, `rhi`, `renderer`, `ui` | **figé pour 0.3.x** | livré dans la release ; noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
-| `platform` (`Window`, `InputManager`) | **provisoire** | livré dans la release ; noms encore en `PascalCase`, hors de l'espace `orosmo::platform` : ils changeront (`docs/GAPS.md` G96) |
+| `core`, `rhi`, `renderer`, `ui`, `platform` | **figé pour 0.4.x** | livré dans la release ; noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
 | `core` : `Logger`, `Profiler`, `FPSCounter`, `RingBuffer` | **repris tels quels** | anciens modules `Utilities` et `Profiler` déplacés dans `orosmo::core` (2026-11-20) : noms de méthodes encore en `PascalCase` (G122) |
-| `world`, `TerrainRenderer` | **hors release (dépôt uniquement)** | conservés dans le dépôt pour la démo et les outils terrain (A34) ; futur module/addon en M11 |
+| `world`, `TerrainRenderer` | **archivé (`archive/procedural-world`)** | retirés du dépôt principal (A37) ; futur module/addon en M11 |
 
 ## 8. Limites connues
 
-- **Backend graphique** : OpenGL seulement ; `--api vulkan` / `--backend vulkan` sont refusés avec un message jusqu'à M4 ; pas de
-  rendu sous macOS avant M4 (voir §2).
+- **Backend graphique** : OpenGL (défaut) et Vulkan ; Metal n'existe pas avant M9 et est refusé avec un message. Choix par
+  `--backend <opengl|vulkan|metal>` (alias de `--api`, casse indifférente, `--backend=vulkan` accepté). Si Vulkan ne démarre pas (pas
+  de chargeur, pas de GPU Vulkan 1.3), la raison s'affiche sur stderr et la démo retombe sur OpenGL ; `--strict-backend` supprime ce
+  repli (code de sortie non nul). Rendu sous macOS : voir §2.
 - **Texte** : `TextRendererFont` affiche l'ASCII (REN-36) ; pas de composition IME, de presse-papiers ni de sélection dans les
   champs de texte (PLAT-05, partiel).
 - **Interface** : pas de rechargement à chaud de la vue elle-même (le thème se recharge) ; pas de navigation à la manette.

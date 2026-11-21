@@ -11,11 +11,8 @@
 #   VCPKG_INSTALLED_ROOT, VCPKG_TRIPLET
 #
 # ── Output ────────────────────────────────────────────────────────────────────
-#   Release archives (generic engine):
-#     lib/<build>/libui.a  lib/<build>/libcore.a  lib/<build>/libplatform.a
-#     lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libthirdparty.a
-#   In-repo procedural/demo archives (not shipped in dist/):
-#     lib/<build>/libworld.a  lib/<build>/libterrain_renderer.a
+#   lib/<build>/libui.a  lib/<build>/libcore.a  lib/<build>/libplatform.a
+#   lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libthirdparty.a
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
 #   dist/pkg-<platform>/          — staging, zipped into dist/orosmo-pkg-<platform>.zip
@@ -151,46 +148,37 @@ INCLUDES ?= \
     -isystem $(VCPKG_INSTALLED_DIR)/include
 
 # ── Subsystem archives ────────────────────────────────────────────────────────
-LIB_UI               := $(LIB_DIR)/$(BUILD_TYPE)/libui.a
-LIB_CORE             := $(LIB_DIR)/$(BUILD_TYPE)/libcore.a
-LIB_PLATFORM         := $(LIB_DIR)/$(BUILD_TYPE)/libplatform.a
-LIB_RHI              := $(LIB_DIR)/$(BUILD_TYPE)/librhi.a
-LIB_RENDERER         := $(LIB_DIR)/$(BUILD_TYPE)/librenderer.a
-LIB_WORLD            := $(LIB_DIR)/$(BUILD_TYPE)/libworld.a
-LIB_TERRAIN_RENDERER := $(LIB_DIR)/$(BUILD_TYPE)/libterrain_renderer.a
-LIB_THIRDPARTY       := $(LIB_DIR)/$(BUILD_TYPE)/libthirdparty.a
+LIB_UI         := $(LIB_DIR)/$(BUILD_TYPE)/libui.a
+LIB_CORE       := $(LIB_DIR)/$(BUILD_TYPE)/libcore.a
+LIB_PLATFORM   := $(LIB_DIR)/$(BUILD_TYPE)/libplatform.a
+LIB_RHI        := $(LIB_DIR)/$(BUILD_TYPE)/librhi.a
+LIB_RENDERER   := $(LIB_DIR)/$(BUILD_TYPE)/librenderer.a
+LIB_THIRDPARTY := $(LIB_DIR)/$(BUILD_TYPE)/libthirdparty.a
 
-ENGINE_RELEASE_LIB_NAMES := libui.a libcore.a libplatform.a librhi.a librenderer.a libthirdparty.a
-ENGINE_INREPO_LIB_NAMES  := libworld.a libterrain_renderer.a
+ENGINE_LIB_NAMES := libui.a libcore.a libplatform.a librhi.a librenderer.a libthirdparty.a
 
-ENGINE_RELEASE_LIBS := $(LIB_UI) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_THIRDPARTY)
-ENGINE_INREPO_LIBS  := $(LIB_WORLD) $(LIB_TERRAIN_RENDERER)
-ENGINE_LIBS         := $(ENGINE_RELEASE_LIBS) $(ENGINE_INREPO_LIBS)
+ENGINE_LIBS := $(LIB_UI) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_THIRDPARTY)
 
 # ── Per-subsystem sources ─────────────────────────────────────────────────────
-UI_SRCS              := $(shell find $(LIBRARIES_SRC_DIR)/ui         -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-Core_SRCS            := $(shell find $(LIBRARIES_SRC_DIR)/core       -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-Platform_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/platform   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-Rhi_SRCS             := $(shell find $(LIBRARIES_SRC_DIR)/rhi        -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-TerrainRenderer_SRCS := $(LIBRARIES_SRC_DIR)/renderer/terrain_renderer.cpp
-Renderer_SRCS        := $(filter-out $(TerrainRenderer_SRCS),$(shell find $(LIBRARIES_SRC_DIR)/renderer -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null))
-World_SRCS           := $(shell find $(LIBRARIES_SRC_DIR)/world      -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-ThirdParty_SRCS      := $(shell find $(LIBRARIES_SRC_DIR)/ThirdParty -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+UI_SRCS         := $(shell find $(LIBRARIES_SRC_DIR)/ui         -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+Core_SRCS       := $(shell find $(LIBRARIES_SRC_DIR)/core       -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+Platform_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/platform   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+Rhi_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/rhi        -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+Renderer_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/renderer   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+ThirdParty_SRCS := $(shell find $(LIBRARIES_SRC_DIR)/ThirdParty -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 
 obj_from_src = \
     $(patsubst $(LIBRARIES_SRC_DIR)/%.cpp,$(OBJ_DIR_TYPE)/Libraries/%.o,$(filter %.cpp,$(1))) \
     $(patsubst $(LIBRARIES_SRC_DIR)/%.c,$(OBJ_DIR_TYPE)/Libraries/%.o,$(filter %.c,$(1)))
 
-UI_OBJS              := $(call obj_from_src,$(UI_SRCS))
-Core_OBJS            := $(call obj_from_src,$(Core_SRCS))
-Platform_OBJS        := $(call obj_from_src,$(Platform_SRCS))
-Rhi_OBJS             := $(call obj_from_src,$(Rhi_SRCS))
-Renderer_OBJS        := $(call obj_from_src,$(Renderer_SRCS))
-World_OBJS           := $(call obj_from_src,$(World_SRCS))
-TerrainRenderer_OBJS := $(call obj_from_src,$(TerrainRenderer_SRCS))
-ThirdParty_OBJS      := $(call obj_from_src,$(ThirdParty_SRCS))
+UI_OBJS         := $(call obj_from_src,$(UI_SRCS))
+Core_OBJS       := $(call obj_from_src,$(Core_SRCS))
+Platform_OBJS   := $(call obj_from_src,$(Platform_SRCS))
+Rhi_OBJS        := $(call obj_from_src,$(Rhi_SRCS))
+Renderer_OBJS   := $(call obj_from_src,$(Renderer_SRCS))
+ThirdParty_OBJS := $(call obj_from_src,$(ThirdParty_SRCS))
 
-ALL_ENGINE_OBJS := $(UI_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(World_OBJS) $(TerrainRenderer_OBJS) $(ThirdParty_OBJS)
+ALL_ENGINE_OBJS := $(UI_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(ThirdParty_OBJS)
 
 # ── Git remote detection ──────────────────────────────────────────────────────
 # Reads the 'origin' remote and extracts the host and owner/repo slug.
@@ -307,27 +295,12 @@ $(LIB_RHI): $(Rhi_OBJS)
 	$(ORS_Q)$(AR) rcs $@ $^
 	$(ors_end)
 
-# mk/engine.mk en prérequis : une archive plus récente que ses objets mais construite avec une autre composition (avant M3 bis,
-# terrain_renderer.o était dans librenderer.a) est refaite ; seuls les objets passent à ar.
+# Archive recréée (rm) : `ar rcs` garderait les objets de fichiers supprimés.
 $(LIB_RENDERER): $(Renderer_OBJS) mk/engine.mk
 	@mkdir -p "$(dir $@)"
 	$(ORS_Q)rm -f $@
 	$(call ors_link,AR [$(BUILD_TYPE)])
 	$(ORS_Q)$(AR) rcs $@ $(Renderer_OBJS)
-	$(ors_end)
-
-$(LIB_WORLD): $(World_OBJS)
-	@mkdir -p "$(dir $@)"
-	$(ORS_Q)rm -f $@
-	$(call ors_link,AR [$(BUILD_TYPE)])
-	$(ORS_Q)$(AR) rcs $@ $^
-	$(ors_end)
-
-$(LIB_TERRAIN_RENDERER): $(TerrainRenderer_OBJS)
-	@mkdir -p "$(dir $@)"
-	$(ORS_Q)rm -f $@
-	$(call ors_link,AR [$(BUILD_TYPE)])
-	$(ORS_Q)$(AR) rcs $@ $^
 	$(ors_end)
 
 $(LIB_THIRDPARTY): $(ThirdParty_OBJS)
@@ -377,11 +350,10 @@ dist: $(_CUI_INSTALLED)
 	@$(MAKE) -f mk/engine.mk BUILD_TYPE=release release
 ifeq ($(DETECTED_OS),Windows)
 	@powershell -NoProfile -Command "if (Test-Path '$(_DIST_STAGING)') { Remove-Item -Path '$(_DIST_STAGING)' -Recurse -Force }"  # comme Unix : pas de fichier d'un paquet précédent
-	@mkdir -p "$(DIST_PKG_DIR)/includes/orosmo" "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
+	@mkdir -p "$(DIST_PKG_DIR)/includes" "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
 	          "$(DIST_PKG_DIR)/make" "$(DIST_PKG_DIR)/tools"
-	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/orosmo/core','$(INCLUDES_BASE)/orosmo/platform','$(INCLUDES_BASE)/orosmo/rhi','$(INCLUDES_BASE)/orosmo/renderer','$(INCLUDES_BASE)/orosmo/ui' -Destination '$(DIST_PKG_DIR)/includes/orosmo' -Recurse -Force"
-	@powershell -NoProfile -Command "Remove-Item -Path '$(DIST_PKG_DIR)/includes/orosmo/renderer/terrain_renderer.hpp' -Force -ErrorAction SilentlyContinue"
-	@for f in $(ENGINE_RELEASE_LIB_NAMES); do \
+	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/orosmo' -Destination '$(DIST_PKG_DIR)/includes' -Recurse -Force"
+	@for f in $(ENGINE_LIB_NAMES); do \
 	    powershell -NoProfile -Command "Copy-Item -Path 'lib/debug/$$f' -Destination '$(DIST_PKG_DIR)/lib/debug' -Force"; \
 	    powershell -NoProfile -Command "Copy-Item -Path 'lib/release/$$f' -Destination '$(DIST_PKG_DIR)/lib/release' -Force"; \
 	done
@@ -391,20 +363,16 @@ ifeq ($(DETECTED_OS),Windows)
 	@powershell -NoProfile -Command "Copy-Item -Path 'vcpkg.json' -Destination '$(DIST_PKG_DIR)' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist.gitignore' -Destination '$(DIST_PKG_DIR)/.gitignore' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist-README.md' -Destination '$(DIST_PKG_DIR)/README.md' -Force"
-	@mkdir -p "$(DIST_PKG_DIR)/res" "$(DIST_PKG_DIR)/examples/minimal" "$(DIST_PKG_DIR)/examples/ui_gallery"
+	@mkdir -p "$(DIST_PKG_DIR)/res" "$(DIST_PKG_DIR)/examples/minimal"
 	@powershell -NoProfile -Command "Copy-Item -Path 'shaders' -Destination '$(DIST_PKG_DIR)/shaders' -Recurse -Force"
-	@powershell -NoProfile -Command "Remove-Item -Path '$(DIST_PKG_DIR)/shaders/rhi/terrain.vert','$(DIST_PKG_DIR)/shaders/rhi/terrain.frag' -Force -ErrorAction SilentlyContinue"
 	@powershell -NoProfile -Command "Copy-Item -Path 'res/fonts','res/themes' -Destination '$(DIST_PKG_DIR)/res' -Recurse -Force"
-	@powershell -NoProfile -Command "Copy-Item -Path 'apps/minimal/main.cpp','apps/minimal/Makefile' -Destination '$(DIST_PKG_DIR)/examples/minimal' -Force"
-	@powershell -NoProfile -Command "Copy-Item -Path 'apps/ui_gallery/src','apps/ui_gallery/Makefile','apps/ui_gallery/README.md' -Destination '$(DIST_PKG_DIR)/examples/ui_gallery' -Recurse -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/examples/minimal/main.cpp','tools/engine-sdk/examples/minimal/Makefile' -Destination '$(DIST_PKG_DIR)/examples/minimal' -Force"
 else
 	@rm -rf "$(_DIST_STAGING)"
-	@mkdir -p "$(DIST_PKG_DIR)/includes/orosmo" "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
+	@mkdir -p "$(DIST_PKG_DIR)/includes" "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
 	          "$(DIST_PKG_DIR)/make" "$(DIST_PKG_DIR)/tools"
-	@cp -r $(INCLUDES_BASE)/orosmo/core $(INCLUDES_BASE)/orosmo/platform $(INCLUDES_BASE)/orosmo/rhi \
-	       $(INCLUDES_BASE)/orosmo/renderer $(INCLUDES_BASE)/orosmo/ui "$(DIST_PKG_DIR)/includes/orosmo/"
-	@rm -f "$(DIST_PKG_DIR)/includes/orosmo/renderer/terrain_renderer.hpp"
-	@for f in $(ENGINE_RELEASE_LIB_NAMES); do \
+	@cp -r $(INCLUDES_BASE)/orosmo "$(DIST_PKG_DIR)/includes/"
+	@for f in $(ENGINE_LIB_NAMES); do \
 	    cp "lib/debug/$$f"   "$(DIST_PKG_DIR)/lib/debug/"; \
 	    cp "lib/release/$$f" "$(DIST_PKG_DIR)/lib/release/"; \
 	done
@@ -414,13 +382,11 @@ else
 	@cp vcpkg.json      "$(DIST_PKG_DIR)/vcpkg.json"
 	@cp tools/engine-sdk/dist.gitignore "$(DIST_PKG_DIR)/.gitignore"
 	@cp tools/engine-sdk/dist-README.md "$(DIST_PKG_DIR)/README.md"
-	@# Shaders du RHI (génériques uniquement), police et thèmes ; exemples génériques compilables depuis le paquet (BLD-02).
+	@# Shaders du RHI, police et thèmes ; exemple minimal compilable depuis le paquet (BLD-02).
 	@cp -r shaders "$(DIST_PKG_DIR)/shaders"
-	@rm -f "$(DIST_PKG_DIR)/shaders/rhi/terrain.vert" "$(DIST_PKG_DIR)/shaders/rhi/terrain.frag"
-	@mkdir -p "$(DIST_PKG_DIR)/res" "$(DIST_PKG_DIR)/examples/minimal" "$(DIST_PKG_DIR)/examples/ui_gallery"
+	@mkdir -p "$(DIST_PKG_DIR)/res" "$(DIST_PKG_DIR)/examples/minimal"
 	@cp -r res/fonts res/themes "$(DIST_PKG_DIR)/res/"
-	@cp apps/minimal/main.cpp apps/minimal/Makefile "$(DIST_PKG_DIR)/examples/minimal/"
-	@cp -r apps/ui_gallery/src apps/ui_gallery/Makefile apps/ui_gallery/README.md "$(DIST_PKG_DIR)/examples/ui_gallery/"
+	@cp tools/engine-sdk/examples/minimal/main.cpp tools/engine-sdk/examples/minimal/Makefile "$(DIST_PKG_DIR)/examples/minimal/"
 endif
 	@echo "Engine package ready: $(DIST_PKG_DIR)/"
 
@@ -529,28 +495,14 @@ endif
 	@echo "Synced [$(BUILD_TYPE)] → apps/demo/orosmo/"
 
 # ── Install demo ──────────────────────────────────────────────────────────────
-# Full dist-based install: packages headers, both build types, and tools, then overlays in-repo modules (world, TerrainRenderer).
+# Full dist-based install: packages headers, both build types, and tools.
 install-demo: engine-tool
 ifeq ($(DETECTED_OS),Windows)
 	@mkdir -p apps/demo/orosmo
 	@powershell -NoProfile -Command "Copy-Item -Path '$(DIST_PKG_DIR)/*' -Destination 'apps/demo/orosmo' -Recurse -Force"
-	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/orosmo/world' -Destination 'apps/demo/orosmo/includes/orosmo' -Recurse -Force"
-	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/orosmo/renderer/terrain_renderer.hpp' -Destination 'apps/demo/orosmo/includes/orosmo/renderer' -Force"
-	@for f in $(ENGINE_INREPO_LIB_NAMES); do \
-	    powershell -NoProfile -Command "Copy-Item -Path 'lib/debug/$$f' -Destination 'apps/demo/orosmo/lib/debug' -Force"; \
-	    powershell -NoProfile -Command "Copy-Item -Path 'lib/release/$$f' -Destination 'apps/demo/orosmo/lib/release' -Force"; \
-	done
-	@powershell -NoProfile -Command "Copy-Item -Path 'shaders/rhi/terrain.vert','shaders/rhi/terrain.frag' -Destination 'apps/demo/orosmo/shaders/rhi' -Force"
 else
 	@rm -rf apps/demo/orosmo
 	@cp -r "$(DIST_PKG_DIR)" apps/demo/orosmo
-	@cp -r $(INCLUDES_BASE)/orosmo/world apps/demo/orosmo/includes/orosmo/
-	@cp $(INCLUDES_BASE)/orosmo/renderer/terrain_renderer.hpp apps/demo/orosmo/includes/orosmo/renderer/
-	@for f in $(ENGINE_INREPO_LIB_NAMES); do \
-	    cp "lib/debug/$$f"   apps/demo/orosmo/lib/debug/; \
-	    cp "lib/release/$$f" apps/demo/orosmo/lib/release/; \
-	done
-	@cp shaders/rhi/terrain.vert shaders/rhi/terrain.frag apps/demo/orosmo/shaders/rhi/
 endif
 	@if [ "$(DETECTED_OS)" = "Windows" ]; then \
 	    TARGET=$$(cd "$(VCPKG_INSTALLED_ROOT)" && pwd -W 2>/dev/null || echo "$(VCPKG_INSTALLED_ROOT)"); \

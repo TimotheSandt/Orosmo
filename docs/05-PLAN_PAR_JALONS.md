@@ -128,8 +128,11 @@ Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusi
 - Backend complet avec VMA, barrières déduites, pipelines en cache (mémoire et disque, RHI-06).
 - Sélection du backend à l'exécution (RHI-04).
 - Guide `docs/ADD_A_BACKEND.md`.
+- **Début de M4 (décision de l'auteur, 2026-11-21, A31)** : renommer l'API de `platform` (`Window`, `InputManager`) selon `docs/03` §7 (`orosmo::platform`, `camelCase` ; G96, G105), avant d'écrire le backend.
+- **`generateRegion` renvoie `Result<HeightField>`** (A33, décision du 2026-11-21) : livré dans `dev`, puis archivé avec le module `world` (`archive/procedural-world`, A37) ; sans objet dans la release M4.
+- **Retrait du procédural et démo unique (A37)** : `apps/demo` devient l'unique application ; `world`, `TerrainRenderer`, `terrain_gen`, `terrain_viewer`, `ui_gallery`, `core_demo` et `rhi_demo` sont retirés (archivés).
 
-**Démo** : le visualiseur de M3, lancé avec `--backend=vulkan` et `--backend=opengl`, donne la même image.
+**Démo** : la démo unique `apps/demo` (scène 3D statique déterministe, A37), lancée avec `--backend=vulkan` et `--backend=opengl` (`--ui off`), donne la même image dans la tolérance (référence `docs/BASELINE/reference/scene-opengl-demo-1280x720.png`).
 **Terminé** : couches de validation Vulkan silencieuses ; images de référence dans la tolérance sur les deux backends ; mesure de performance comparée dans `docs/`.
 
 ## M5 · Cœur du rendu
@@ -137,7 +140,7 @@ Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusi
 - REN-01 (graphe de passes, plugins), REN-03 (données par image), REN-04 (forward+ clusterisé), REN-05, REN-06 à REN-08 (ombres, mobilité, cache), REN-17 à REN-19 (HDR, post-traitement, anticrénélage), REN-21 (AOV et MRT à la demande), REN-22 (boîte à outils), REN-28 à REN-31 (instancing, rendu piloté par GPU, culling, LOD), REN-32, REN-35, REN-37 (modes de fusion), REN-39 (ombres des transparents), REN-41 (transparents et sorties auxiliaires).
 - **2D** : R2D-01, R2D-02, R2D-03, R2D-05, R2D-06 ; l'interface passe par le batch 2D.
 
-**Démo** : terrain avec ombres en cascade et cache, des milliers d'objets instanciés en quelques draw calls, normales et vecteurs de mouvement activés à la demande par un effet, scène mélangeant 3D, sprites dans le monde et interface.
+**Démo** : la scène générique de la démo unique avec ombres en cascade et cache, des milliers d'objets instanciés en quelques draw calls, normales et vecteurs de mouvement activés à la demande par un effet, scène mélangeant 3D, sprites dans le monde et interface.
 **Terminé** : tests d'images par backend, profilage GPU par passe visible, nombre de draw calls mesuré et documenté, aucune régression sur les démos précédentes.
 
 ## M6 · Contenu importé et animation
@@ -148,21 +151,20 @@ Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusi
 **Démo** : un modèle glTF animé, puis mille instances animées avec un seul draw call par lot ; un asset modifié sur disque se met à jour en direct.
 **Terminé** : formats vérifiés par import/export de fichiers d'exemple ; mesure du coût GPU du skinning ; README des formats pris en charge.
 
-## M7 · Atmosphère, effets et monde riche
+## M7 · Supprimé (décision de l'auteur, 2026-11-21, A39)
 
-- REN-23 (bruit en compute), REN-24 (atmosphère), REN-25 (brouillard), REN-26 (nuages si le temps le permet), REN-33 (particules), REN-14 (AO écran), REN-27 (eau), REN-38 (réfraction et transmission).
-- TER-05 (érosion en compute), TER-06 (biomes), TER-08 (végétation), TER-09 (planète sphérique, double précision, transition sol/espace), TER-10 si le temps le permet.
+Le moteur reste générique : l'atmosphère, les effets et le « monde riche » ne sont pas du cœur. Le numéro M7 n'est **pas réattribué** (les références de `docs/` restent valables). Où vont ses éléments :
 
-**Démo** : une planète vue de l'espace, puis atterrissage continu jusqu'au sol, avec atmosphère, brouillard et nuages, sans saut ni tremblement.
-**Terminé** : déterminisme conservé ; pas de dégradation visible de précision ; érosion reproductible ; coût GPU de chaque effet noté.
+- **Effets de rendu** (`REN-23` bruit en compute, `REN-24` atmosphère, `REN-25` brouillard, `REN-26` nuages, `REN-33` particules, `REN-14` occlusion ambiante, `REN-27` eau, `REN-38` réfraction et transmission) : modules **préinstallés** livrés avec le moteur, après le système de modules (voir **M13**).
+- **Terrain et planètes** (`TER-05` érosion, `TER-06` biomes, `TER-08` végétation, `TER-09` planètes sphériques, `TER-10` eau et rivières) : hors du moteur. Ils reviendront, si l'auteur le veut, comme addons construits depuis `archive/procedural-world`, après M11.
 
 ## M8 · Interface avancée, scène, simulation et logique rechargeable
 
 - UI-04, UI-08 (rechargement à chaud de l'interface), UI-09, UI-10.
-- ECS-01 à ECS-03, SIM-01, SIM-02.
+- ECS-01 à ECS-03, SIM-01 (SIM-02 et SIM-03, accès aux données du monde et agents, sont hors moteur : A39).
 - GAME-01 à GAME-07 : module de jeu en bibliothèque dynamique, registre de gestionnaires, migration d'état, paramètres JSON, version finale statique.
 
-**Démo** : on modifie un fichier de logique pendant que le programme tourne, on compile, et le comportement change sans redémarrage ni perte d'état ; on modifie un fichier d'interface et l'écran se met à jour ; un petit programme de simulation (quelques centaines d'agents) lit le relief et tourne sans fenêtre, rejouable avec la même graine.
+**Démo** : on modifie un fichier de logique pendant que le programme tourne, on compile, et le comportement change sans redémarrage ni perte d'état ; on modifie un fichier d'interface et l'écran se met à jour ; un petit programme de simulation (quelques centaines d'agents évoluant dans une scène de test) tourne sans fenêtre, rejouable avec la même graine.
 **Terminé** : cas de rechargement testés (changement de corps de fonction, ajout de champ, changement de hiérarchie avec repli sur sauvegarde/restauration) ; boucle à pas fixe testée ; rejouabilité vérifiée.
 
 ## M9 · macOS et Metal
@@ -184,19 +186,43 @@ Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusi
 
 **Terminé** : passe de confirmation de `docs/04` (§« Confirmation de la couverture ») sans écart non justifié.
 
-## M11 · Système de modules et d'addons (décidé par l'auteur le 2026-11-20, A34)
+## M11 · Système de modules et d'addons (décidé par l'auteur le 2026-11-20, A34 ; registre déplacé en M12 le 2026-11-21, A38)
 
-Objectif : garder une release cœur 100 % générique par défaut, tout en rendant trivial l'ajout de modules optionnels d'aide au développement (génération procédurale `world`, physique légère, audio, utilitaires métier, etc.), selon **deux modes** : inclus directement dans la release (`bundled`) ou distribués en **addon séparé**. *(Ce jalon peut être avancé avant M7 si l'auteur souhaite réutiliser `world` ou un autre module en addon plus tôt.)*
+Objectif : garder une release cœur 100 % générique par défaut, tout en rendant trivial l'ajout de modules optionnels (génération procédurale, physique légère, audio, utilitaires métier, etc.), selon **deux modes** : inclus directement dans la release (`bundled`) ou distribués en **addon séparé**. M11 livre le **mécanisme** (manifeste, empaquetage, installation locale ou par URL, liaison au build). L'hébergement des addons et l'interface pour les parcourir sont un **produit à part**, en M12. *(Ce jalon peut être avancé si l'auteur souhaite réutiliser un module en addon plus tôt.)*
 
-- **MOD-01 — Contrat et manifeste de module** : format déclaratif (`module.json`) décrivant un module optionnel : nom, version et plage ABI moteur compatible, en-têtes publics, archives statiques, shaders et ressources à copier, dépendances sur d'autres modules Orosmo et dépendances vcpkg éventuelles, points d'accroche (ex. plugin `RenderFeature`, types réfléchis).
+- **MOD-01 — Contrat et manifeste de module** : format déclaratif (`module.json`) décrivant un module optionnel : nom, version et plage ABI moteur compatible, en-têtes publics, archives statiques, shaders et ressources à copier, dépendances sur d'autres modules Orosmo et dépendances vcpkg éventuelles, points d'accroche (ex. plugin `RenderFeature`, types réfléchis). Le manifeste porte aussi les champs que le registre de M12 affichera (description, auteur, licence, vignette), pour ne pas le changer ensuite.
 - **MOD-02 — Deux modes de distribution (`bundled` ou `addon`)** :
-  - *Intégré (`bundled`)* : un module présent dans le dépôt (comme `world` aujourd'hui) peut être inclus dans la release via une simple déclaration de packaging, sans duplication manuelle dans `mk/engine.mk` ni `tools/engine-sdk/engine.mk`.
+  - *Intégré (`bundled`)* : un module présent dans le dépôt peut être inclus dans la release via une simple déclaration de packaging, sans duplication manuelle dans `mk/engine.mk` ni `tools/engine-sdk/engine.mk`.
   - *Addon externe (`addon`)* : un module peut être empaqueté séparément (`orosmo-addon-<nom>-<plateforme>.zip`), depuis ce dépôt ou un dépôt externe, contre une release du moteur.
-- **MOD-03 — Intégration CLI et build (`orosmo` + `engine.mk`)** : commandes `orosmo addon list|add|remove|update` (ou `orosmo module ...`), installation dans `orosmo/addons/<nom>/` (ou `modules/`), découverte et liaison automatiques par `engine.mk` (chemins `-I`, archives `.a`, copie des shaders/ressources, installation des dépendances vcpkg propres au module).
-- **MOD-04 — Preuve de bout en bout (module pilote)** : empaqueter un module pilote (ex. `world` + `terrain_renderer`, ou un module utilitaire dédié) via `MOD-01..03` et prouver en CI qu'un projet créé avec `orosmo init` reste 100 % générique par défaut, puis compile et s'exécute avec le module après `orosmo addon add <module>`, sans modifier le cœur du moteur.
+- **MOD-03 — Intégration CLI et build (`orosmo` + `engine.mk`)** : commandes `orosmo addon list|add|remove|update`, où `add` accepte un **fichier local, un dossier ou une URL** (le nom d'un registre vient en M12) ; installation dans `orosmo/addons/<nom>/` ; découverte et liaison automatiques par `engine.mk` (chemins `-I`, archives `.a`, copie des shaders/ressources, dépendances vcpkg propres au module) ; verrou des versions installées (`orosmo.lock`).
+- **MOD-04 — Preuve de bout en bout (module pilote)** : empaqueter un module pilote via `MOD-01..03` et prouver en CI qu'un projet créé avec `orosmo init` reste 100 % générique par défaut, puis compile et s'exécute avec le module après `orosmo addon add`, sans modifier le cœur du moteur. Candidat naturel : le monde procédural retiré du cœur (branche `archive/procedural-world`), qui devient ainsi le premier addon.
 
-**Démo** : `orosmo init mygame` produit un projet générique sans module procédural ; `orosmo addon add <module>` installe le module (en local ou depuis une release), `make debug` lie automatiquement ses archives, shaders et ressources sans édition manuelle du `Makefile`.
+- **MOD-09 — Modèles de démarrage multiples** (A40) : `orosmo init --template minimal|starter|demo|<nom>` ; l'utilisateur peut enregistrer un de ses projets comme modèle par défaut.
+
+**Démo** : `orosmo init mygame` produit un projet générique ; `orosmo addon add ./mon-addon.zip` installe le module, `make debug` lie automatiquement ses archives, shaders et ressources sans édition manuelle du `Makefile`.
 **Terminé** : manifeste spécifié et validé par tests, les deux modes (`bundled` et `addon`) vérifiés en CI de bout en bout, guide `docs/MODULES_AND_ADDONS.md` écrit, zéro régression sur la release cœur générique.
+
+## M12 · Registre d'addons et gestionnaire (décidé par l'auteur le 2026-11-21, A38)
+
+Objectif : un **service et une interface à part**, pas du moteur : héberger des addons, les publier, les trouver et les installer depuis le moteur en un geste. Dépend de M11 (manifeste et installation locale) ; ne modifie ni le cœur ni les backends.
+
+- **MOD-05 — Registre d'addons** : hébergement des paquets et d'un **index** (liste des addons, versions, compatibilité moteur, empreinte SHA-256 de chaque archive, signature). Forme à choisir en M12 et à proposer dans `docs/QUESTIONS.md` avant de coder : un dépôt Git avec ses releases (le plus simple, aucune infrastructure à tenir) ou un petit service web. Le moteur ne fait confiance qu'à une archive dont l'empreinte et la signature correspondent à l'index.
+- **MOD-06 — Publication** : `orosmo addon publish` (ou un workflow CI fourni) valide le manifeste, construit les archives par plateforme, calcule les empreintes et dépose le paquet dans le registre. Règles de nommage, de versions (SemVer) et de retrait d'une version.
+- **MOD-07 — Installation depuis le registre** : `orosmo addon search|info|add <nom>[@version]` résout les versions compatibles avec le moteur du projet, installe les dépendances entre addons, vérifie les empreintes, et refuse proprement en cas d'incompatibilité (`orosmo.lock` mis à jour).
+- **MOD-08 — Interface du gestionnaire** : une application (construite avec le moteur et `orosmo::ui`, donc aussi une vitrine) qui liste les addons du registre, les détails (description, versions, compatibilité, vignette, licence), l'état d'installation d'un projet, et permet d'installer, mettre à jour ou retirer. Elle appelle les mêmes fonctions que la CLI, sans logique propre. Registres multiples (un registre officiel et des registres ajoutés par l'utilisateur).
+
+**Démo** : l'application du gestionnaire affiche le registre ; on installe l'addon pilote dans un projet `orosmo init`, le projet compile avec lui, puis on le retire.
+**Terminé** : index et archives vérifiés (empreinte altérée → refus, testé), installation et retrait de bout en bout en CI contre un registre de test, publication d'au moins un addon réel (le pilote de M11), `docs/ADDON_REGISTRY.md` (format de l'index, publication, sécurité) écrit, zéro régression sur la release cœur.
+
+## M13 · Modules d'effets préinstallés (décidé par l'auteur le 2026-11-21, A39)
+
+Les effets de rendu retirés de M7 deviennent des **modules** au format de M11, **livrés avec le moteur et préinstallés** (mode `bundled`), activables ou non par le projet. Chacun s'ajoute comme plugin du renderer (`REN-01`), **sans modifier le cœur ni les backends** ; c'est aussi la preuve que le système de modules tient avec des modules « de la maison ». Dépend de M5 (graphe de passes, post-traitement, HDR) et de M11. Indépendant du registre de M12 : l'ordre des deux est libre.
+
+- Bruit en compute (`REN-23`), brouillard (`REN-25`), particules (`REN-33`), occlusion ambiante (`REN-14`), eau (`REN-27`), réfraction et transmission (`REN-38`) ; atmosphère (`REN-24`) et nuages (`REN-26`) si l'auteur les veut aussi (à confirmer au début du jalon).
+- Un module = un manifeste, un plugin du renderer, ses shaders, ses paramètres réfléchis (réglables par l'interface), ses tests d'image par backend et sa mesure de coût GPU.
+
+**Démo** : la scène de la démo unique avec chaque effet activé puis désactivé depuis l'interface, sans recompiler le cœur.
+**Terminé** : chaque module testé sur les deux backends (images dans la tolérance), coût GPU noté, un projet `orosmo init` peut retirer un module préinstallé sans erreur de compilation, README par module.
 
 ## Fonctions non rattachées à un jalon
 

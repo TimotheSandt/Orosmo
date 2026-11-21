@@ -87,7 +87,7 @@ ifeq ($(ENGINE_OS),Windows)
     ENGINE_EXE_EXT       := .exe
     ENGINE_ARCH_FLAG     := -m64
     ENGINE_PLATFORM_DEFS := -DNOMINMAX -DWIN32_LEAN_AND_MEAN
-    _ENG_VCPKG_LIBS      := -lglfw3 -lglad -lmsdfgen-core -lfreetype \
+    _ENG_VCPKG_LIBS      := -lvolk -lglfw3 -lglad -lmsdfgen-core -lfreetype \
                             -lpng16 -lzs -lbz2 -lbrotlidec -lbrotlienc -lbrotlicommon \
                             -lshaderc -lshaderc_util -lglslang \
                             -lMachineIndependent -lGenericCodeGen -lOSDependent \
@@ -111,7 +111,7 @@ else ifeq ($(ENGINE_OS),Linux)
     # <stacktrace> : GCC 13 -> -lstdc++_libbacktrace, GCC 14+ -> -lstdc++exp
     _ENG_GCC_MAJOR       := $(shell $(CXX) -dumpversion 2>/dev/null | cut -d. -f1)
     _ENG_STACKTRACE_LIB  := $(if $(filter 13,$(_ENG_GCC_MAJOR)),-lstdc++_libbacktrace,-lstdc++exp)
-    _ENG_VCPKG_LIBS      := -lglfw -lglad -lGL -lmsdfgen-core $(_ENG_STACKTRACE_LIB) \
+    _ENG_VCPKG_LIBS      := -lvolk -lglfw -lglad -lGL -lmsdfgen-core $(_ENG_STACKTRACE_LIB) \
                             -lfreetype -lpng16 -lz -lbz2 -lbrotlidec -lbrotlicommon \
                             -lshaderc -lshaderc_util -lglslang \
                             -lspirv-cross-reflect -lspirv-cross-glsl -lspirv-cross-core \
@@ -131,7 +131,7 @@ else # Darwin
     endif
     ENGINE_EXE_EXT       :=
     ENGINE_PLATFORM_DEFS :=
-    _ENG_VCPKG_LIBS      := -lglfw3 -lglad -lmsdfgen-core -lfreetype -lpng16 -lz -lbz2 \
+    _ENG_VCPKG_LIBS      := -lvolk -lglfw3 -lglad -lmsdfgen-core -lfreetype -lpng16 -lz -lbz2 \
                             -lbrotlidec -lbrotlicommon \
                             -lshaderc -lshaderc_util -lglslang \
                             -lspirv-cross-reflect -lspirv-cross-glsl -lspirv-cross-core \

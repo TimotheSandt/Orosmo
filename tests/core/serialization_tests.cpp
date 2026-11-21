@@ -41,12 +41,12 @@ template <> struct orosmo::core::Reflect<Layer>
     {
         return std::make_tuple(field("name", &Layer::name), field("weight", &Layer::weight, range(0.0, 1.0)));
     }
-    static constexpr int kVersion = 1;
+    [[maybe_unused]] static constexpr int kVersion = 1;
 };
 
 template <> struct orosmo::core::Reflect<TerrainParams>
 {
-    static constexpr int kVersion = 2;
+    [[maybe_unused]] static constexpr int kVersion = 2;
     static constexpr auto fields()
     {
         return std::make_tuple(field("frequency", &TerrainParams::frequency, range(0.0, 16.0), "base noise frequency"),

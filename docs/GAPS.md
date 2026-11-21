@@ -26,19 +26,19 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | REN-28 | Instancing | Partiel | Données par instance possibles dans un maillage ; un draw call par `Mesh`, pas de regroupement par (maillage, matériau). | M5 |
 | REN-36 | Rendu du texte | Partiel | FreeType + atlas MSDF (msdfgen), ancrage, retour à la ligne, alignements, dépassement : oui. Passe par `Texture`/`Mesh` de l'abstraction actuelle, pas le RHI cible. Un octet à la fois (`unsigned char c`, `FT_Load_Char`, … | M2 |
 | RHI-02 | Backend OpenGL 4.3+ | Partiel | Le rendu actuel **est** OpenGL 4.3 core, mais n'est pas derrière le RHI cible et **aucune image de référence** n'existe (RHI-14). Fuites GL hors backend : `src/Graphics/Core/RenderState.cpp` (11 occurrences `GL_*`), … | M2 |
-| RHI-03 | Backend Vulkan | Partiel | Fonctionne sur ce GPU. Écarts : **pas de VMA** (sous-allocateur maison, `VulkanGraphicsResources.cpp:32`) ; GLSL « patché » par chaînes puis compilé à l'exécution par shaderc (`VulkanPipelineCache.cpp:104-191`) ; parité avec … | M4 |
-| RHI-04 | Choix du backend à l'exécution | Partiel | `--api opengl\|vulkan\|metal` et `--choose-api` existent ; `GraphicsCapabilities` est interrogeable. Pas de repli documenté (`Game.cpp:16` lance une exception si l'API n'est pas OpenGL/Vulkan) ; Metal annoncé « reconnu mais non … | M4 |
+| RHI-03 | Backend Vulkan | Fait (Linux, un GPU) | Traité en M4 : `src/rhi/vulkan/` (volk, VMA, Vulkan 1.3), validation à 0 (`validationErrorCount() == 0`, `tests/rhi/vulkan_device_tests.cpp`, `vulkan_backend_tests.cpp`, `rhi_device_tests.cpp` sur chaque backend), `make demo-vulkan-check` OK. Limites : G129 à G134. Windows et macOS non vérifiés (G142). | M4 |
+| RHI-04 | Choix du backend à l'exécution | Partiel | `--backend` / `--api`, `--strict-backend`, repli sur OpenGL (`resolveBackend`, `tests/demo/launch_options_tests.cpp`), `Capabilities` : faits en M4. **Manque** : Metal (reconnu, refusé, M9). | M9 |
 | RHI-05 | Buffers, textures (2D, tableau, cube, 3D, mips), échantillonneurs | Partiel | Buffers (vertex/index/uniform/storage/staging) et textures **2D** avec mips (OpenGL `glGenerateMipmap`) ; formats RGBA8, BGRA8, D24S8, D32F, R8, R32UI, RG16F, RGB8. Pas de tableau, cube, 3D ; l'échantillonneur n'est pas un … | M2 |
-| RHI-06 | Pipelines graphiques et de calcul | Partiel | Cache **mémoire** des pipelines Vulkan (clé : programme, attributs, passe, état) et cache **disque** de programmes OpenGL. Pas de cache disque Vulkan, pas de pipelines de calcul, `GraphicsPipelineDesc` défini mais jamais … | M2 (OpenGL) ; M4 (disque Vulkan) |
+| RHI-06 | Pipelines graphiques et de calcul | Fait | Cache mémoire (`PipelineCache`, `tests/renderer/resources_tests.cpp`), cache disque Vulkan (`tests/rhi/vulkan_backend_tests.cpp`, écrit puis relu, fichier étranger ignoré), calcul (`rhi_device_tests.cpp`, « compute writes a storage buffer »). | M4 |
 | RHI-08 | Passes de rendu et swapchain | Partiel | Swapchain Vulkan et cibles de rendu avec `Resize` existent. Pas de passes décrites par attachements load/store ; `vsync` faux par défaut. | M2 |
 | RHI-10 | Dessin instancié et indirect | Partiel | Dessin instancié (attributs par instance) oui ; `drawIndirect` / multi-draw : grep `DrawIndirect\|MultiDraw` : 0. | M2 (instancié) ; M5 (indirect) |
 | RHI-12 | Pipeline de shaders | Partiel | Source GLSL 430 compilée directement par OpenGL ; pour Vulkan : réécriture par chaînes (`#version 450`, `set = 0`) puis shaderc **à l'exécution**. Absents : compilation hors ligne, SPIRV-Cross (grep : 0), réflexion des … | M2 |
 | RHI-15 | Rendu vers plusieurs cibles (MRT) | Partiel | Plusieurs cibles couleur (jusqu'à `maxColorAttachments`) et profondeur lisible : oui (vecteurs de mouvement RG16F ajoutés à la demande). Pas d'opérations load/store par cible ; limite 8 codée en dur côté Vulkan … | M2 |
-| TER-01 | Bruit | Fait (M3) | `orosmo::world` : Perlin, Simplex, Worley, fBm, distorsion ; GPU égal au CPU dans la tolérance : voir STATUS « M3 ». | — |
-| TER-02 | Génération par tuiles | Fait (M3) | Tuiles déterministes, génération asynchrone : voir STATUS « M3 ». | — |
+| TER-01 | Bruit | Archivé (A37) | `orosmo::world` : Perlin, Simplex, Worley, fBm, distorsion ; GPU égal au CPU dans la tolérance : voir STATUS « M3 ». | — |
+| TER-02 | Génération par tuiles | Archivé (A37) | Tuiles déterministes, génération asynchrone : voir STATUS « M3 ». | — |
 | TEST-01 | Tests unitaires | Partiel | doctest en place (117 cas verts, clone propre) ; CI écrite mais jamais observée sur GitHub ; couverture de `core` partielle (Logger, InputManager, Light, TextRenderer, compilateur `.cui` : 0 test). | M0 (observer la CI) puis continu |
 | TEST-03 | Tests de déterminisme | Partiel | Sommes de contrôle de référence (bruit, tuile, région, terrain-gen) vérifiées en CI Linux ; Windows et macOS jamais observés (G110). | M4 |
-| TOOL-01 | Visualiseur de terrain | Partiel | `apps/terrain_viewer` livré (M3) ; caméra et export vérifiés à la main seulement (G109). | M4 |
+| TOOL-01 | Visualiseur de terrain | Archivé (A37) | `apps/terrain_viewer` livré (M3) ; caméra et export vérifiés à la main seulement (G109). | M4 |
 | UI-01 | UIManager | Partiel | Composant, conteneur, VBox/HBox, `DeferredValue<T>` à double tampon, mixin CRTP : présents et testés. « Migré sur le RHI » : non (dépend de `Graphics` actuel, cycle `UI`↔`Graphics`). `Manager` est un singleton … | M2 |
 | UI-05 | Langage d'interface : compilateur vers C++ | Fait (M3) | Cible `orosmo/ui` du compilateur `cui` : voir STATUS « M3 » et `docs/UI_LANGUAGE.md`. | — |
 | UI-06 | Mise en page complète | Fait (M3) | `orosmo::ui` : VBox, HBox, Grid, Overlay, ScrollView, tailles fit/fixed/fill, marges, alignement. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
@@ -58,14 +58,14 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | REN-37 | Modes de fusion des matériaux | Absent | Pas de `BlendMode` par matériau ; seulement deux interrupteurs d'état global. | M5 |
 | RHI-07 | Groupes de liaison | Absent | Pas de groupes 0/1/2 ; le Vulkan « patche » `layout(binding)` en `set = 0` (une seule table). | M2 |
 | RHI-09 | Compute | Absent | Aucun appel de calcul, aucun tampon de stockage utilisé hors SSBO des lumières. | M2 |
-| RHI-14 | Tests de rendu | Absent | Outil de comparaison (`tools/compare_png.py`) et image de référence OpenGL existent (M0) ; pas encore de test automatisé « image de référence par backend » ni de rapport de différence dans la CI. | M2 |
+| RHI-14 | Tests de rendu | Partiel | `tools/demo_parity.py` (`make demo-vulkan-check`, 15 captures, rapport et image de différence `--diff-out`) compare OpenGL et Vulkan. **Manque** : une référence par backend (une seule, OpenGL, sert aux deux), une seule scène, hors `demo-test` et CI (G143), un GPU (G138). | M5 |
 | RHI-16 | Textures 3D et images de stockage | Absent | Pas de textures 3D, d'images de stockage ; RGBA16F/R32F absents des formats (seuls R32UI et RG16F). | M2 |
-| TER-03 | Maillage à niveaux de détail | Fait (M3) | Quadtree équilibré, bords cousus. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
-| TER-04 | Streaming | Partiel | Streaming asynchrone sous budget (M3) ; absence de saccade non mesurée (G108). | M4 |
-| TER-07 | Texturage du terrain | Fait (M3) | `TerrainRenderer` : pente/altitude, triplanaire, tableau de textures. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
-| TER-11 | Export | Fait (M3) | PNG 16 bits, EXR, OBJ, glTF, STL fermé, biomes, relus par les tests. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
-| TER-12 | Interface de réglage | Fait (M3) | Panneau du visualiseur en langage d'interface, préréglages enregistrables, réflexion. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
-| TOOL-02 | Générateur en ligne de commande | Fait (M3) | `apps/terrain_gen`, `make terrain-gen-check`. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
+| TER-03 | Maillage à niveaux de détail | Archivé (A37) | Quadtree équilibré, bords cousus. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
+| TER-04 | Streaming | Archivé (A37) | Streaming asynchrone sous budget (M3) ; absence de saccade non mesurée (G108). | M4 |
+| TER-07 | Texturage du terrain | Archivé (A37) | `TerrainRenderer` : pente/altitude, triplanaire, tableau de textures. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
+| TER-11 | Export | Archivé (A37) | PNG 16 bits, EXR, OBJ, glTF, STL fermé, biomes, relus par les tests. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
+| TER-12 | Interface de réglage | Archivé (A37) | Panneau du visualiseur en langage d'interface, préréglages enregistrables, réflexion. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
+| TOOL-02 | Générateur en ligne de commande | Archivé (A37) | `apps/terrain_gen`, `make terrain-gen-check`. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | UI-02 | Rendu indépendant du backend | Absent | Les composants dessinent directement via sprites ; aucune liste de dessin intermédiaire, pas d'adaptateur vers un batch 2D. | M2 |
 | UI-03 | Widgets de base | Fait (M3) | `orosmo::ui` : tous les widgets de la liste, infobulles. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | TOOL-03 | Capture d'écran | Partiel | Fait en M0 pour OpenGL (`--capture`, `Screenshot::SavePng`, `tools/compare_png.py`) ; Vulkan refusé jusqu'en M4 ; `ui.png` non reproductible (FPS affichés) ; pas de capture sans fenêtre (PLAT-04). | M0 (fait) ; M2 (usage RHI-14) |
@@ -114,25 +114,25 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | REN-08 | Atlas d'ombres et cache | Absent | Absent. | M5 |
 | REN-11 | Variantes et instances de matériaux | Absent | Absent. | M6 |
 | REN-13 | IBL et sondes de lumière | Absent | Absent. | M6 |
-| REN-14 | Occlusion ambiante | Absent | Absent. | M7 |
+| REN-14 | Occlusion ambiante | Absent | Absent. | M13 |
 | REN-18 | Post-traitement courant | Absent | Interface de passe de post-traitement, aucun effet fourni. | M5 |
 | REN-22 | Boîte à outils de shaders | Absent | Pas de boîte à outils GLSL partagée. | M5 |
-| REN-23 | Textures de bruit en compute | Absent | Absent (pas de compute). | M7 |
-| REN-24 | Ciel et atmosphère | Absent | Absent. | M7 |
-| REN-25 | Brouillard | Absent | Absent. | M7 |
+| REN-23 | Textures de bruit en compute | Absent | Absent (pas de compute). | M13 |
+| REN-24 | Ciel et atmosphère | Absent | Absent. | M13 |
+| REN-25 | Brouillard | Absent | Absent. | M13 |
 | REN-29 | Rendu piloté par GPU | Absent | Absent. | M5 |
 | REN-31 | LOD et imposteurs | Absent | Absent de `dev`. | M5 |
 | REN-32 | Tri et ordre des transparents | Absent | Absent. | M5 |
-| REN-33 | Particules et décalques | Absent | Absent. | M7 |
+| REN-33 | Particules et décalques | Absent | Absent. | M13 |
 | REN-39 | Ombres des transparents | Absent | Absent. | M5 |
 | REN-41 | Transparents et sorties auxiliaires | Absent | Absent. | M5 |
 | RHI-17 | Dispatch indirect et groupes dynamiques | Absent | Absent. | M5 (proposé : rendu piloté par GPU) |
 | SIM-01 | Boucle de simulation à pas fixe | Absent | Absent. | M8 |
-| TER-05 | Érosion | Absent | Absent (seul `GenerateCrater`). | M7 |
-| TER-06 | Biomes | Absent | Absent. | M7 |
-| TER-08 | Végétation et dispersion | Absent | Absent. | M7 |
-| TER-09 | Planètes sphériques | Absent | Absent. | M7 |
-| TER-13 | Lancer de rayon sur le terrain | Fait (M3) | `raycastTerrain`, cohérent avec la profondeur rendue. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
+| TER-05 | Érosion | Absent | Absent (seul `GenerateCrater`). | Hors moteur (A39) |
+| TER-06 | Biomes | Absent | Absent. | Hors moteur (A39) |
+| TER-08 | Végétation et dispersion | Absent | Absent. | Hors moteur (A39) |
+| TER-09 | Planètes sphériques | Absent | Absent. | Hors moteur (A39) |
+| TER-13 | Lancer de rayon sur le terrain | Archivé (A37) | `raycastTerrain`, cohérent avec la profondeur rendue. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | UI-04 | Outils de debug | Absent | Absent. | M8 |
 | UI-08 | Rechargement à chaud de l'interface | Absent | Absent. | M8 |
 | UI-09 | Navigation et accessibilité de base | Absent | Absent. | M8 |
@@ -154,14 +154,14 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | REN-15 | Réflexions et GI | Absent | Absent. | Après M10 (P2) |
 | REN-16 | Éclairage précalculé | Absent | Absent (le mode `Baked` n'existe pas). | Après M10 (P2) |
 | REN-20 | Effets coûteux optionnels | Absent | Absent. | Après M10 (P2) |
-| REN-26 | Nuages volumétriques | Absent | Absent. | M7 |
-| REN-27 | Eau | Absent | Absent. | M7 |
-| REN-38 | Réfraction et transmission | Absent | Absent. | M7 |
+| REN-26 | Nuages volumétriques | Absent | Absent. | M13 |
+| REN-27 | Eau | Absent | Absent. | M13 |
+| REN-38 | Réfraction et transmission | Absent | Absent. | M13 |
 | REN-40 | Transparence indépendante de l'ordre (OIT) | Absent | Absent. | Après M10 (P2) |
 | RHI-13 | Backend Metal | Absent | Stub honnête : `IsAvailable()` renvoie faux, message clair. | M9 |
 | RHI-19 | Transferts asynchrones | Absent | Absent. | Après M10 (P2) |
-| SIM-02 | Accès aux données du monde | Absent | Absent. | M8 |
-| TER-10 | Eau, rivières, lacs | Absent | Absent. | M7 |
+| SIM-02 | Accès aux données du monde | Absent | Hors moteur (A39). | — |
+| TER-10 | Eau, rivières, lacs | Absent | Absent. | Hors moteur (A39) |
 
 ## P3
 
@@ -203,7 +203,7 @@ Issues de M00 (G1 à G15, conservées) et de l'audit.
 | G21 | Compilateur `.cui` : en-tête généré mal nommé si vue ≠ fichier | `docs/UI_LANGUAGE_AUDIT.md`. | M3 |
 | G22 | Avertissements `-Wmissing-field-initializers` | **Traité (nettoyage Orosmo, 2026-11-20)** : code hérité supprimé (`include/UI/`, `src/ui/legacy/`, démo sur `orosmo::ui`). Avant : `BindFunc.h:137`, `BindMethods.h:319`. | — |
 | G23 | Dossier `Libraries/` dans le nom des objets | `obj/<type>/Libraries/` dans `mk/engine.mk` (cosmétique). | M0 |
-| G24 | 17 stashes et anciennes branches | Stashes analysés le 2026-11-17 : 2 utiles archivés dans `docs/notes/archive/` (LOD du terrain → TER-03, `ClearAttachments` Vulkan → G41) ; patchs complets hors dépôt. Branches anciennes (`UI`, `feat/*`, `feature/*`, `fix/makefile-lint-check-format`) non analysées. | Auteur (suppression des stashes) |
+| G24 | 17 stashes et anciennes branches | Stashes analysés le 2026-11-17 : 2 utiles archivés dans `docs/notes/archive/` (LOD du terrain → TER-03, `ClearAttachments` Vulkan → G41). **Supprimés le 2026-11-21 sur accord de l'auteur**, après sauvegarde complète hors dépôt dans `../ProceduralGeneration-backups/stashes/` (17 patchs `stash-<n>.patch`, `index.txt`, et `stashes.bundle`, un paquet git vérifié ; restauration : `git fetch stashes.bundle 'refs/stashbak/*:refs/stashbak/*'`, puis `git stash apply refs/stashbak/<n>`). Branches anciennes (`UI`, `feat/*`, `feature/*`, `fix/makefile-lint-check-format`) : **gardées**, l'auteur ne veut pas de suppression de branches. | Fait (stashes) ; branches gardées
 | G25 | Branche ambiguë `main` locale en avance de 44 commits sur `origin/main` | Rien n'est poussé. | Auteur |
 | G26 | `TODO` dans le code | **Molette traitée (lot C)** ; reste `taskbarVisible` (`window.hpp`), non utilisé. | M2 (platform) |
 | G27 | `TextRenderer` sans UTF-8 | Voir REN-36. | M2 / M3 |
@@ -269,10 +269,13 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | M1 | CORE-01, CORE-02, CORE-04, CORE-05, CORE-06, CORE-07, CORE-09, CORE-10, CORE-11, CORE-12, CORE-13 |
 | M2 | EXT-03, PLAT-01, PLAT-02, PLAT-04, REN-05, REN-36, RHI-01, RHI-02, RHI-05, RHI-06, RHI-07, RHI-08, RHI-09, RHI-10, RHI-11, RHI-12, RHI-14, RHI-15, RHI-16, RHI-18, UI-01, UI-02 |
 | M3 | BLD-01, BLD-02, DOC-01 (première release utilisable : guide, test `orosmo init` en CI, API figée), CORE-08, PLAT-05, REN-02, REN-34, TER-01, TER-02, TER-03, TER-04, TER-07, TER-11, TER-12, TER-13, TEST-03, TOOL-01, TOOL-02, UI-03, UI-05, UI-06, UI-07, UI-11, UI-12 |
-| M4 | RHI-03, RHI-04 |
+| M4 | RHI-03, RHI-04 (Metal : M9) |
 | M5 | CORE-03, R2D-01, R2D-02, R2D-03, R2D-04, R2D-05, R2D-06, REN-01, REN-03, REN-04, REN-06, REN-07, REN-08, REN-17, REN-18, REN-19, REN-21, REN-22, REN-28, REN-29, REN-30, REN-31, REN-32, REN-35, REN-37, REN-39, REN-41, RHI-17 |
 | M6 | ANIM-01, ANIM-02, ANIM-03, ANIM-04, ASSET-01, ASSET-02, ASSET-03, ASSET-04, ASSET-05, REN-10, REN-11, REN-13 |
-| M7 | REN-14, REN-23, REN-24, REN-25, REN-26, REN-27, REN-33, REN-38, TER-05, TER-06, TER-08, TER-09, TER-10 |
+| M7 | *supprimé (A39)* : REN-14, REN-23 à REN-27, REN-33, REN-38 vont en M13 ; TER-05, TER-06, TER-08, TER-09, TER-10, SIM-02, SIM-03 hors moteur |
+| M11 | MOD-01 à MOD-04, MOD-09 |
+| M12 | MOD-05 à MOD-08 |
+| M13 | REN-23, REN-24, REN-25, REN-26, REN-27, REN-14, REN-33, REN-38 |
 | M8 | ECS-01, ECS-02, ECS-03, GAME-01, GAME-02, GAME-03, GAME-04, GAME-05, GAME-06, GAME-07, SIM-01, SIM-02, UI-04, UI-08, UI-09, UI-10 |
 | M9 | RHI-13 |
 | M10 | EXT-01 |
@@ -348,7 +351,7 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | G93 | Mode sans fenêtre : un serveur d'affichage reste nécessaire | `--headless` ne crée aucune fenêtre côté démo, mais le périphérique OpenGL obtient son contexte par une fenêtre GLFW 1×1 invisible : sans X11/Wayland (serveur sans écran), il faut `xvfb-run` ou un contexte EGL/OSMesa, non fait. Vérifié sous Linux (Intel Arc, Mesa) ; Windows et macOS non observés. | M3 (outil en ligne de commande) |
 | G94 | DPI ×2 non observé | La démo dessine à la taille réelle du tampon (`Window::GetFramebufferSize`) et l'interface en coordonnées logiques ; seul le facteur 1 est vérifié (capture identique). L'interface grossit en netteté (atlas MSDF) mais le panneau n'est pas mis à l'échelle de `GetContentScale`. Aucune machine à échelle 2 ici. | M3 |
 | G95 | Position du curseur non testée | `Window::SetCursorPosition` / `GetCursorPosition` : sous X11 sans focus la position écrite n'est pas relue, donc aucun test automatisé ; vérifié à la main par la caméra de la démo. Idem pour le plein écran et le mode sans bordure. | M3 |
-| G96 | Noms globaux `Window` / `InputManager` | Déplacés dans `include/orosmo/platform/` mais pas dans `orosmo::platform` : `UI` et le compilateur `cui` (`generator.rs`) les nomment tels quels ; le renommage suit la migration de `UI`. Les constructeurs de `Window` déclarés mais jamais définis (liés à rien) le sont maintenant. | migration `UI` |
+| G96 | Noms globaux `Window` / `InputManager` | Déplacés dans `include/orosmo/platform/` mais pas dans `orosmo::platform` : `UI` et le compilateur `cui` (`generator.rs`) les nomment tels quels ; **Traité au début de M4** : renommage dans `orosmo::platform`. Les constructeurs de `Window` déclarés mais jamais définis (liés à rien) le sont maintenant. | Traité (début de M4) |
 | G97 | Revue CodeRabbit PR #7 : corrigé | Corrigé (branche `fix/M2-coderabbit-rhi`, tests ajoutés) : échec d'allocation de tampon et de texture (erreur au lieu d'un handle sans stockage), limites par type (couches, cube), `resize` qui garde l'ancien backbuffer, rappel de validation retiré à la libération d'un contexte adopté, `glDrawBuffer(GL_BACK)` pour la fenêtre, plage de profondeur remise à [0,1] à chaque passe, `readTexture` en passe qui rend la liaison de framebuffer, `dispatch` qui réactive son programme, `drawIndexedIndirect` qui refuse un décalage d'indices non nul, entrée de cache disque invalide recompilée, `ShaderHotReloader` ni copiable ni déplaçable, `check_layers.py` qui contrôlait à tort rien sous `include/orosmo/` et ignorait `<...>` (136 fichiers contrôlés maintenant, 0 violation), capture non validée si la soumission échoue. | fait |
 | G98 | Revue CodeRabbit PR #7 : RHI | **Traité** (branche `fix/G98-rhi-opengl`, `tests/rhi/opengl_state_tests.cpp`, `opengl_backend_tests.cpp`, `shader_compiler_tests.cpp`) : unité de texture réservée, VAO détachés, clôture GPU par image, limite des SSBO exposée, `submit` refuse une portée ouverte, plages sans débordement, octets réellement transférés, tranches 3D, valeur d'effacement entière, barrière de stockage entre dessins, requêtes nommées, réflexion des tableaux, rechargement à chaud (includes absents, surveillances conservées, rappel sur des copies), cache disque par processus, include illisible = kIo. **Reste** : accès aux fichiers du compilateur de shaders et des PNG par la couche `platform` (G101). | fait |
 | G99 | Revue CodeRabbit PR #7 : rendu et interface | **Traité** (branche `fix/G99-renderer`, tests dans `tests/renderer/`) : identifiant de programme unique, ancien pipeline gardé si une révision ne se lie pas, étages validés ensemble, surveillances retirées, erreur de lot conservée ; modes de mise à l'échelle initialisés/arrêtés et non exécutés sans mise à l'échelle, génération d'images refusée sans perdre l'actif, historique lu avant d'être remplacé, `generatedFrame()`, sans RTTI, jitter selon `needsJitter`, lumières avant le premier dessin, fil de fer `kLessEqual` ; couches prémultipliées (parité UI toujours dans la tolérance), couches gardées (découpage, dépendances), couche manquante signalée et `UI::Manager::InvalidateLayers`, redessin partiel dans l'ordre, découpages et tailles validés, erreur d'encodeur ; normale dans l'espace monde (matrice des normales par objet ; scène de référence inchangée : modèle identité) ; index et décalages des maillages, format de profondeur refusé comme couleur, `setLight` en `Result`, stb sans réglage global ; démo : interface seule réduite (touches 5-8), capture en échec si une image est refusée, erreurs d'initialisation en `Result` ; `rhi_demo` réutilise `savePng`. | fait |
@@ -379,26 +382,55 @@ code). Chemins de M2 ; depuis M3, `src/UI/` est `src/ui/legacy/`. À traiter sur
 
 | ID | Sujet | Détail | Jalon |
 | --- | --- | --- | --- |
-| G105 | API de `platform` en `PascalCase` | `Window`, `InputManager` : noms hors de `docs/03` §7 et hors de `orosmo::platform` (suite de G96). Non renommés en M3 lot F : le langage hérité (`generator.rs`, convention `Get` + nom) et la démo les nomment ; le guide les déclare **provisoires**. Proposition : renommer avec la bascule de la démo vers `orosmo::ui` (A30, A31) | M5 |
+| G105 | API de `platform` en `PascalCase` | `Window`, `InputManager` : noms hors de `docs/03` §7 et hors de `orosmo::platform` (suite de G96). Non renommés en M3 lot F : le langage hérité (`generator.rs`, convention `Get` + nom) et la démo les nomment ; le guide les déclare **provisoires**. Proposition : renommer avec la bascule de la démo vers `orosmo::ui` (A30, A31) **Décision de l'auteur (2026-11-21) : renommage au début de M4** (A31). | Traité (début de M4) |
 | G106 | Texte hors de l'alphabet latin | **Accents traités** (branche `feat/REN-36-text-unicode-fonts`) : UTF-8 décodé, Latin-1, Latin étendu A et ponctuation typographique chargés à la demande (`tests/ui/text_tests.cpp`). **Reste** : autres écritures (grec, cyrillique, CJK, emoji), mise en forme complexe (arabe, ligatures : HarfBuzz) | M5 (REN-36) |
 | G107 | Saisie de texte partielle | **Traités** : sélection et presse-papiers (`feat/UI-03-widgets-more`) ; annuler / rétablir, retour à la ligne automatique de `TextArea`, répétition des touches tenues, raccourcis (`InputFrame::shortcuts`, Ctrl+A / C / X / V / Z / Y dans la galerie ET le visualiseur par `ui::readWindowInput`), menus au clavier, raccourcis installés des `MenuItem` et des boutons (`feat/UI-03-widget-limits`, `tests/ui/editing_tests.cpp`). **Reste** : composition IME : le texte validé par un IME arrive (rappel de caractères de GLFW), mais la chaîne en cours de composition n'est ni affichée dans le champ ni placée sous le curseur : GLFW 3.3 (celui du dépôt) et 3.4 n'ont pas d'API de pré-édition ; il faudrait une couche native par système (IMM32 / TSF sous Windows, XIM / IBus sous X11, `text-input` sous Wayland, `NSTextInputClient` sous macOS) dans `src/platform/` | M5 |
-| G108 | Streaming non mesuré | Pas de mesure de saccade (TER-04) ; un changement de paramètre recrée le `TileStreamer` (toutes les tuiles régénérées) ; le jeu de tuiles affiché change d'un coup quand la sélection est prête | M4 |
-| G109 | Visualiseur vérifié à la main | `make viewer-capture` (CI) prouve le rendu, le panneau et le changement de thème ; caméra libre, export PNG et préréglage « Save » ne sont pas exercés automatiquement (lancement fenêtré de 6 s sans erreur sous Linux, X11) | M4 |
-| G110 | Windows et macOS | `make e2e-init` et `terrain-gen-check` en CI Windows et macOS jamais observés verts ; `make cui-test` n'est lancé que par le job Linux x64 (non configuré sous Windows et macOS, pas un résultat attendu) ; **macOS : aucun rendu avant M4** (OpenGL 4.1, le RHI demande 4.3) | M4 |
+| G108 | Streaming non mesuré | Pas de mesure de saccade (TER-04) ; un changement de paramètre recrée le `TileStreamer` (toutes les tuiles régénérées) ; le jeu de tuiles affiché change d'un coup quand la sélection est prête | Archivé (`archive/procedural-world`, A37 ; à reprendre si `world` revient en addon) |
+| G109 | Visualiseur vérifié à la main | `make viewer-capture` (CI) prouve le rendu, le panneau et le changement de thème ; caméra libre, export PNG et préréglage « Save » ne sont pas exercés automatiquement (lancement fenêtré de 6 s sans erreur sous Linux, X11) | Archivé (`archive/procedural-world`, A37 ; à reprendre si `world` revient en addon) |
+| G110 | Windows et macOS | `make e2e-init` en CI Windows et macOS jamais observés verts ; `make cui-test` n'est lancé que par le job Linux x64 (non configuré sous Windows et macOS, pas un résultat attendu) ; **macOS : aucun rendu avant M4** (OpenGL 4.1, le RHI demande 4.3) **Mis à jour le 2026-11-21 :** `e2e-init` est vert en CI Windows et macOS depuis plusieurs runs ; ces jobs sont devenus **bloquants** (plus de `continue-on-error`, avertissements en erreur). | M4 |
 | G111 | Thème : constantes | **Police traitée** (section `fonts`, propriété `font`). Reste : quelques constantes de comportement dans le code (décalage de l'infobulle, pas de défilement = 3 lignes du thème, largeur minimale d'un champ = 10 caractères) | M5 |
 | G112 | Deux modules d'interface | **En partie traité (2026-11-20)** : l'interface héritée `UI::` et la cible `UI::View` du langage sont supprimées, la démo utilise `orosmo::ui` (`apps/demo/src/Game/Game.cpp`, `tests/apps/demo_performance_tests.cpp`). Reste : `once` n'est pas figé par la cible `orosmo/ui` ; les erreurs d'argument sont placées sur l'élément ou le modificateur | M5 |
 | G113 | Cache du code généré | Le hachage en tête des `.gen.h` couvre le source et `OUTPUT_FORMAT_VERSION`, pas la version du compilateur `cui` : changer le générateur sans incrémenter cette constante garde d'anciens fichiers | M4 |
-| G114 | Projet d'`orosmo init` | Le modèle de projet est la démo complète (terrain, interface héritée) ; un modèle minimal (`apps/minimal`) existe dans le paquet mais `orosmo init` ne le propose pas | M4 |
+| G114 | Projet d'`orosmo init` | **Traité en partie (M4)** : modèle générique en place ; `examples/minimal` déplacé dans `tools/engine-sdk/examples/minimal/`. Reste : choix entre plusieurs modèles, suivi par `MOD-09` | M11 |
 | G115 | Correction de `InputManager` | `glfwGetCursorPos` écrivait des `double` dans les `float` de `MouseMoveData` (position fausse, `delta.x` écrasé) : corrigé en M3 (lot E) ; aucun test automatisé (pas de souris simulée, comme G95) | — |
-| G116 | Revue CodeRabbit de M3 (PR #8) : performances | Reportées, sans effet sur le résultat : `coarserNeighbors` reconstruit l'index des feuilles pour chaque feuille (N² par image, `src/world/lod.cpp`) ; `Font::caretIndex` remesure chaque préfixe, et la coupure d'une très longue ligne sans espace dans `TextArea` devient quadratique ou pire (`src/ui/font.cpp`) ; l'éditeur de courbe et de dégradé recalcule l'interpolation pour chaque colonne (`src/ui/color.cpp`) | M5 |
-| G117 | Revue de M3 : corrections sans test automatisé | Vérifiées à la main ou par lecture : visualiseur (capture seulement quand toute la sélection est sur le GPU, ancienne sélection gardée si un envoi échoue : `make viewer-capture` passe, l'échec d'envoi n'est pas simulable) ; `TerrainRenderer::setLayers` transactionnel (échec du RHI non simulable) ; `Mesh::swap` échange l'origine envoyée ; préréglage écrit par remplacement atomique ; galerie (Échap, identifiant introuvable, fenêtre fermée) ; `.NOTPARALLEL` du Makefile | M4 |
+| G116 | Revue CodeRabbit de M3 (PR #8) : performances | **`src/world/lod.cpp` archivé (A37).** Restent, sans effet sur le résultat : `Font::caretIndex` remesure chaque préfixe, et la coupure d'une très longue ligne sans espace dans `TextArea` devient quadratique ou pire (`src/ui/font.cpp`) ; l'éditeur de courbe et de dégradé recalcule l'interpolation pour chaque colonne (`src/ui/color.cpp`) | M5 |
+| G117 | Revue de M3 : corrections sans test automatisé | Parties visualiseur et `TerrainRenderer::setLayers` archivées (A37), galerie `ui_gallery` retirée. Restent, vérifiées à la main ou par lecture : `Mesh::swap` échange l'origine envoyée ; préréglage écrit par remplacement atomique ; `.NOTPARALLEL` du Makefile | M4 |
 | G118 | Revue de M3 : Windows non vérifié | Paquet Windows vidé avant copie (`mk/engine.mk`, PowerShell), chemins `\\` normalisés par `tools/check_cui_errors.py` : écrits, jamais exécutés sous Windows (G110). Non traité : `renderer::loadPng` passe `path.string()` (page de codes ANSI) à `stbi_load`, un chemin hors de cette page échoue (`kIo`) ; il faudrait lire le fichier en `std::ifstream` puis `stbi_load_from_memory` | M4 |
-| G119 | Envoi des tuiles dupliqué | La démo (`apps/demo/src/Game/World.cpp`) et le visualiseur (`apps/terrain_viewer/src/viewer.cpp`) ont chacun ~60 lignes qui envoient les tuiles du `TileStreamer` au `TerrainRenderer` : `world` ne dépend pas de `renderer`, et aucun module ne fait le pont | M4 |
-| G120 | Visualiseur : tuile recousue non renvoyée | `Viewer::syncTiles` ne compare que le pointeur de la tuile : un maillage recousu en place par le streamer (voisine qui change de niveau) n'est pas renvoyé au GPU, des fissures peuvent rester (la démo compare aussi la couture). Repéré pendant le nettoyage, non corrigé, sans test | M4 |
+| G119 | Envoi des tuiles dupliqué | La démo (`apps/demo/src/Game/World.cpp`) et le visualiseur (`apps/terrain_viewer/src/viewer.cpp`) ont chacun ~60 lignes qui envoient les tuiles du `TileStreamer` au `TerrainRenderer` : `world` ne dépend pas de `renderer`, et aucun module ne fait le pont | Archivé (`archive/procedural-world`, A37 ; à reprendre si `world` revient en addon) |
+| G120 | Visualiseur : tuile recousue non renvoyée | `Viewer::syncTiles` ne compare que le pointeur de la tuile : un maillage recousu en place par le streamer (voisine qui change de niveau) n'est pas renvoyé au GPU, des fissures peuvent rester (la démo compare aussi la couture). Repéré pendant le nettoyage, non corrigé, sans test | Archivé (`archive/procedural-world`, A37 ; à reprendre si `world` revient en addon) |
 | G121 | Panneau de la démo sans fenêtre | En `--headless`, le panneau affiche « FPS: 0 » (aucun compteur de fenêtre) et, pour une capture de moins de 0,25 s, des moyennes nulles | — |
 | G122 | Noms repris tels quels | `Logger`, `Profiler`, `FPSCounter`, `RingBuffer` (déplacés dans `orosmo::core` le 2026-11-20) gardent des méthodes en `PascalCase` et des niveaux `L_INFO`… ; `Window` / `InputManager` aussi (G96) | M5 |
-| G123 | `make rhi-demo` échoue : identifiant d'objet | La démo du RHI lit l'identifiant d'objet au centre de l'image et obtient 0 au lieu de 7 (Intel Arc Mesa 26.1.6 et llvmpipe). Déjà présent sur `origin/dev` avant le nettoyage Orosmo (vérifié le 2026-11-20 dans un worktree de `c2a0a90`) ; non couvert par `make demo-test`, absent de la CI | M4 |
+| G123 | `make rhi-demo` échoue : identifiant d'objet | **Clos** (A37) : `apps/rhi_demo` supprimée avec le retrait du procédural ; le RHI est couvert par `tests/rhi/`. | — |
 | G124 | Windows : rechargement d'un thème invalide | **Traité** (`fix/M3-review3-misc`, signalé par CodeRabbit) : `tests/ui/theme_tests.cpp` réécrivait `light.json` avec un contenu de même taille (`light2` → `light3`) ; sous Windows l'horodatage ne change pas assez vite, `FileWatcher` (date + taille) ne voyait rien. Le nom a maintenant une autre longueur. À confirmer par le job Windows | M3 |
-| G125 | Terrain loin de l'origine : coordonnées de texture en float | `shaders/rhi/terrain.vert` reconstruit la position monde absolue (`pc.origin.xyz + aPos`) pour les textures et les bandes d'altitude : loin de l'origine (au-delà de ~10⁵ m) le float perd des centimètres et les textures tremblent. Proposition (CodeRabbit, PR #8) : coordonnées locales et phase de texture calculée sur le CPU en double. Sans effet sur la démo (tuiles près de l'origine) ; à traiter avec la double précision de TER-09 | M7 |
-| G126 | M3 bis : paquet générique hors Linux | La branche Windows de `make dist` et `install-demo` (`mk/engine.mk`, PowerShell : copie sélective des en-têtes et archives, exclusion de `world` et des shaders `terrain.*`) n'a jamais été exécutée ; `e2e-init` ne tourne qu'en CI Linux. Vérification : `build-engine.yml` (poussée sur `main` ou `workflow_dispatch`) | M4 |
+| G125 | Terrain loin de l'origine : coordonnées de texture en float | `shaders/rhi/terrain.vert` reconstruit la position monde absolue (`pc.origin.xyz + aPos`) pour les textures et les bandes d'altitude : loin de l'origine (au-delà de ~10⁵ m) le float perd des centimètres et les textures tremblent. Proposition (CodeRabbit, PR #8) : coordonnées locales et phase de texture calculée sur le CPU en double. Sans effet sur la démo (tuiles près de l'origine) ; à traiter avec la double précision de TER-09 | Archivé (`archive/procedural-world`, A37 ; à reprendre si `world` revient en addon) |
+| G126 | M3 bis : paquet générique hors Linux | **Traité** (2026-11-21) : le run manuel du workflow de release sur `dev` (44869256636) a construit les cinq paquets, dont la branche Windows de `make dist` (PowerShell) et macOS Intel (`core::parseFloat`), sans exclusion ni erreur ; `e2e-init` vert sous Windows et macOS. Reste à voir au premier tag (`v0.3.1`) : la réutilisation du build de `main`. | Fait
 | G127 | Barre de progression hors Linux | `tools/build_progress.py` (relance de `make` dans un terminal) est vérifié sous Linux seulement. Sous Windows (MSYS2) et macOS, la détection du terminal (`test -t 2`), les séquences ANSI et le serveur de tâches de `make -j` à travers Python ne sont pas vérifiés ; repli : `ORS_NO_PROGRESS=1` ou `V=1` | M4 |
+| G128 | Idées de l'ancienne branche `UI` à reprendre | Branche analysée le 2026-11-21 (`docs/notes/archive/README.md`) ; tout l'essentiel est déjà dans `dev`. Restent : un **registre des composants du langage lu dans les en-têtes C++** (annotations `@cui-*`, au lieu de la table écrite dans `tools/cui-rs/src/engine.rs`), utile aux modules et addons (M11) ; et des **fonctions liées avec cache** (recalculées seulement quand leurs arguments changent, `@cui-volatile` sinon), utile si une vue appelle une fonction coûteuse (M8). Branche gardée. | M8 / M11 |
+
+
+## Ajouts de M4 (G129 à G150)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G129 | Vulkan : barrières conservatrices | `memoryBarrierAll` avant et après les passes qui lient du stockage (`src/rhi/vulkan/README.md`) : correct, pas optimal (comme G70 côté OpenGL) | M5 |
+| G130 | Vulkan : une seule file | Graphique, calcul et transfert sur la même file ; pas de file de calcul asynchrone | M5 |
+| G131 | Vulkan : ressource détruite avant `submit` | Une ressource détruite entre l'enregistrement d'un encodeur et son `submit` n'est pas protégée | M5 |
+| G132 | Vulkan : limites d'API | Requête de temps écrite deux fois dans une passe : `kUnsupported` ; `drawIndexedIndirect` refuse un décalage d'indices non nul (comme OpenGL) ; limites de descripteurs dynamiques non vérifiées au-delà de celles du pilote | M5 |
+| G133 | Différences de comportement Vulkan / OpenGL | Édition de liens stricte en Vulkan (`kParse` / `kInvalidArgument`) ; dessiner sans groupe lié à un emplacement utilisé = `kInvalidArgument` | M5 |
+| G134 | Repli de backend | Message de repli affiché en double sur stderr ; le repli se déclenche sur tout `kUnsupported` de `Game::create` en Vulkan, pas seulement l'absence de Vulkan 1.3 | M5 |
+| G135 | `clang-format` absent | Non installé ici : formatage non appliqué à `src/rhi/vulkan/` (`sh tools/format_sources.sh` à lancer) | M5 |
+| G136 | Présentation Vulkan avec fenêtre | Swapchain vérifiée seulement par deux captures ; redimensionnement et vsync non vérifiés | M5 |
+| G137 | Temps GPU par passe | Non comparables entre backends (`docs/PERF_OPENGL_VS_VULKAN.md`) ; journal `Perf:` affiché à chaque sortie de la démo | M5 |
+| G138 | Un seul GPU mesuré | Intel Arc (Mesa 26.1.6 ANV) ; rien sur NVIDIA ni AMD | M5 |
+| G139 | Référence `scene-opengl-demo-1280x720.png` | Produite sous llvmpipe : 12 pixels hors tolérance 8 sur GPU Intel, dans la tolérance de 2 % | M5 |
+| G140 | Calcul GPU « en conditions réelles » | Couverture Vulkan perdue avec les tests du bruit GPU du terrain (archivés, A37) ; reste `tests/rhi/rhi_device_tests.cpp` (dispatch, dispatch indirect, images et tampons de stockage) | M13 |
+| G141 | Outils de parité sans test | Pas de test unitaire de `tools/demo_parity.py` ni de `tools/perf_compare.py` | M5 |
+| G142 | Windows et macOS pour Vulkan | Non vérifiés (MoltenVK sous macOS : M9) | M9 |
+| G143 | `make demo-vulkan-check` hors `demo-test` et CI | Lancé à la main (OK en fin de M4) ; une régression de parité ne serait pas vue par la CI | M5 |
+| G144 | Vulkan : fonctions globales au processus | Les pointeurs de fonctions Vulkan (volk) sont globaux : deux périphériques avec des pilotes différents ne sont pas isolés (« un seul pilote par processus », `src/rhi/vulkan/README.md`). À faire : une table de fonctions par périphérique (`VolkDeviceTable`). Revue CodeRabbit de la PR #10 | M5 ou plus tard |
+| G145 | Vulkan : dessin indirect sans `drawIndirectFirstInstance` | Refusé (`kUnsupported`) même quand `firstInstance` vaut 0, car le contenu du tampon est inconnu à l'enregistrement ; OpenGL l'accepte | M5 |
+| G146 | Vulkan : décalage dynamique sur une entrée de taille 0 | Un décalage non nul sur une entrée `VK_WHOLE_SIZE` est refusé (`kUnsupported`, taille explicite demandée) ; OpenGL l'accepte | M5 |
+| G147 | Décalage de tampon de sommets ou d'index égal à la taille | Refusé par Vulkan (`kOutOfRange`), encore accepté par `GlEncoder` (`<=`) : aligner OpenGL | M5 |
+| G148 | Vulkan : copies D24S8 sur un GPU sans D24S8 | La texture devient D32S8 (repli) ; `updateTexture` / `readTexture` refusent alors la copie (`kUnsupported`) au lieu de convertir | M5 |
+| G149 | Vulkan : sémaphores de l'ancienne chaîne d'échange | Détruits après N présentations (retrait différé par comptage), faute de fence de présentation ; à remplacer par `VK_KHR_swapchain_maintenance1` quand l'extension est activée ; la reconstruction appelle encore `waitIdle` sans lire son résultat (`waitIdleChecked` existe) | M5 |
+| G150 | Correctifs de la revue sans test d'échec | Plusieurs correctifs de la PR #10 (soumission refusée, lot abandonné, énumération incomplète, surface sans `TRANSFER_DST`, deux périphériques, limites de descripteurs dynamiques) ne sont pas testés : il faudrait injecter des échecs de pilote ; deux tests ajoutés passaient déjà avant leur correctif | M5 |

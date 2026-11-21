@@ -19,7 +19,7 @@ Guide d'ensemble (état de fin de M2). Détails : [`src/rhi/README.md`](../src/r
 
 ```cpp
 // Chaque appel renvoie un Result<T> (std::expected) : on le vérifie, puis on prend la valeur. Pas d'exception.
-auto created = rhi::createDevice({.surface = {.nativeWindow = window.GetWindow()}}); // fenêtre créée après rhi::prepareWindowHints
+auto created = rhi::createDevice({.surface = {.nativeWindow = window.getWindow()}}); // fenêtre créée après rhi::prepareWindowHints
 if (!created) { return fail(created.error()); }
 std::unique_ptr<rhi::Device> device = std::move(*created);
 rd::ShaderLibrary shaders(*device);
@@ -79,4 +79,4 @@ Exemple complet et compilé : `apps/demo/src/Game/Game.cpp` (`Game::createGraphi
 
 ## Ajouter un backend
 
-Voir `docs/03` §9 et §14 (guide `ADD_A_BACKEND.md` prévu en M4) : implémenter `Device` et `CommandEncoder`, la table de formats, le modèle de liaison, passer les tests `tests/rhi/` et les images de référence.
+Voir `docs/03` §9 et §14 et le guide [`ADD_A_BACKEND.md`](ADD_A_BACKEND.md) : implémenter `Device` et `CommandEncoder`, la table de formats, le modèle de liaison, passer les tests `tests/rhi/` et les images de référence.

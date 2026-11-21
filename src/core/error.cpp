@@ -23,6 +23,7 @@ const char *toString(ErrorCode code) noexcept
     case ErrorCode::kCancelled: return "kCancelled";
     case ErrorCode::kBusy: return "kBusy";
     case ErrorCode::kVersionMismatch: return "kVersionMismatch";
+    case ErrorCode::kDeviceLost: return "kDeviceLost";
     }
     return "kUnknown";
 }

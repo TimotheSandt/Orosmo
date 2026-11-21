@@ -6,30 +6,35 @@
 #include <string>
 
 #include "CameraController.h"
-#include <orosmo/platform/input_manager.hpp>
-#include <orosmo/core/profiler.hpp>
-#include <orosmo/platform/window.hpp>
-#include "World.h"
-
-#include "orosmo/renderer/camera.hpp"
-#include "orosmo/renderer/canvas_renderer.hpp"
-#include "orosmo/renderer/gpu_timer.hpp"
-#include "orosmo/renderer/pipeline_cache.hpp"
-#include "orosmo/renderer/render_target.hpp"
-#include "orosmo/renderer/scene_renderer.hpp"
-#include "orosmo/renderer/shader_library.hpp"
-#include "orosmo/rhi/device.hpp"
-#include "orosmo/ui/font.hpp"
-#include "orosmo/ui/text_renderer.hpp"
-#include "orosmo/ui/ui.hpp"
+#include "Scene/demo_scene.hpp"
+#include "UI/demo_ui_state.hpp"
 #include "UI/performance_stats.hpp"
+#include "launch_options.hpp"
+
+#include <orosmo/core/error.hpp>
+#include <orosmo/core/file_watcher.hpp>
+#include <orosmo/core/profiler.hpp>
+#include <orosmo/platform/input_manager.hpp>
+#include <orosmo/platform/window.hpp>
+#include <orosmo/renderer/camera.hpp>
+#include <orosmo/renderer/canvas_renderer.hpp>
+#include <orosmo/renderer/gpu_timer.hpp>
+#include <orosmo/renderer/pipeline_cache.hpp>
+#include <orosmo/renderer/render_target.hpp>
+#include <orosmo/renderer/scene_renderer.hpp>
+#include <orosmo/renderer/shader_library.hpp>
+#include <orosmo/rhi/device.hpp>
+#include <orosmo/ui/font.hpp>
+#include <orosmo/ui/text_renderer.hpp>
+#include <orosmo/ui/ui.hpp>
 
 class Game
 {
   public:
-    // `headless` (PLAT-04) : aucune fenêtre ; périphérique hors écran 1280x720, pas de temps fixe, pas d'entrées. Les échecs
-    // normaux (pas d'affichage, pas d'OpenGL 4.3, shaders absents) reviennent en `Result`, pas en exception (CLAUDE.md règle 10).
-    static orosmo::core::Result<std::unique_ptr<Game>> create(bool headless = false);
+    // `headless` (PLAT-04) : aucune fenêtre ; périphérique hors écran, pas de temps fixe, pas d'entrées. Les échecs normaux
+    // (pas d'affichage, pas d'OpenGL 4.3, shaders absents) reviennent en `Result`, pas en exception.
+    static orosmo::core::Result<std::unique_ptr<Game>> create(bool headless = false, int width = 1280, int height = 720,
+                                                              orosmo::rhi::Backend backend = orosmo::rhi::Backend::kOpenGL);
     ~Game();
     Game(const Game &) = delete;
     Game &operator=(const Game &) = delete;
@@ -41,27 +46,43 @@ class Game
 
     // TOOL-03: after `frames` rendered frames, save <directory>/scene.png (3D) and ui.png, then close.
     void enableCapture(std::string directory, std::uint32_t frames);
-    void setSeed(std::uint32_t seed) { terrainSeed = seed; }
-    void setVSync(bool enabled) { if (device) { device->setVSync(enabled); } }
+    void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
+    void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
+    void setInitialTab(std::string tab) { initialTab = std::move(tab); }
+    void setCaptureInteraction(std::string hover, std::string click)
+    {
+        hoverId = std::move(hover);
+        clickId = std::move(click);
+    }
+    void setVSync(bool enabled)
+    {
+        if (device)
+        {
+            device->setVSync(enabled);
+        }
+    }
     // Faux si une capture était demandée et n'a pas été faite, ou si une image de la capture a été refusée par le périphérique.
     bool captureSucceeded() const noexcept { return !captureFailed && (captureDirectory.empty() || captureDone); }
     // Sans fenêtre : faux si une image n'a pas pu être commencée ou a été refusée (submit ou scène), avec ou sans capture.
     bool headlessSucceeded() const noexcept { return !headlessFrameFailed; }
 
   private:
-    explicit Game(bool headless);
+    Game(bool headless, int width, int height, orosmo::rhi::Backend backend);
     orosmo::core::Result<> createGraphics();
-    void processInput();
+    void processInput(bool toggleUiJustPressed);
     void update();
     bool beginFrame();
     void render();
     void endFrame();
     void refreshViewSize();
+    void applySceneParams();
+    void resetCamera();
     orosmo::core::Result<> createUi();
-    bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composed);
+    bool loadFullUiTheme(bool reportAsError);
+    bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
 
   private:
-    Window window;
+    orosmo::platform::Window window;
     // Graphique (RHI) : le périphérique d'abord (détruit en dernier) ; tout le reste le référence.
     std::unique_ptr<orosmo::rhi::Device> device;
     std::unique_ptr<orosmo::renderer::ShaderLibrary> shaders;
@@ -69,37 +90,49 @@ class Game
     std::unique_ptr<orosmo::renderer::SceneRenderer> sceneRenderer;
     std::unique_ptr<orosmo::renderer::CanvasRenderer> canvas;
     std::unique_ptr<orosmo::renderer::ProfilerGpuTimerFactory> gpuTimers;
-    orosmo::renderer::RenderTarget composed;   // l'image finale (scène puis interface), à la taille de la vue
-    orosmo::renderer::RenderTarget uiTarget;   // interface à échelle réduite (touches de debug 5 à 8)
+    orosmo::renderer::RenderTarget composed; // image finale (scène puis interface), à la taille de la vue
+    orosmo::renderer::RenderTarget uiTarget; // interface à échelle réduite (touches de debug 5 à 8)
     std::unique_ptr<orosmo::rhi::CommandEncoder> frameEncoder;
     orosmo::rhi::TextureHandle backbuffer;
     float uiRenderScale = 1.0f;
     bool uiUpscaling = false;
 
-    // Interface (orosmo::ui) : rendu du texte, police, contexte de l'interface (détruit avant les deux premiers), panneau de
-    // performances (UI/Views/PerformanceView.cui, thème res/themes/hud.json).
+    // Interface (orosmo::ui) : ordre de déclaration critique !
+    // `performance`, `uiState`, `watcher`, `text` et `font` DOIVENT survivre à `hudUi` et `fullUi` (destruction inverse).
+    PerformanceStats performance;
+    DemoUiState uiState;
+    std::unique_ptr<orosmo::core::FileWatcher> watcher;
     std::unique_ptr<orosmo::ui::TextRenderer> text;
     std::unique_ptr<orosmo::ui::TextRendererFont> font;
-    std::unique_ptr<orosmo::ui::Ui> ui;
-    PerformanceStats performance;
+    std::unique_ptr<orosmo::ui::Ui> hudUi;
+    std::unique_ptr<orosmo::ui::Ui> fullUi;
 
     orosmo::renderer::Camera camera;
     CameraController cameraController;
-    std::unique_ptr<World> world = nullptr;
+    std::unique_ptr<demo::DemoScene> scene;
     bool stopped = false;
 
-    std::uint32_t terrainSeed = 1u; // set by main(): never derived from the clock
+    int requestedWidth = 1280;
+    int requestedHeight = 720;
     int viewWidth = 0;
     int viewHeight = 0;
-    int pixelWidth = 0;  // = viewWidth sauf écran à échelle (DPI) : taille réelle du tampon d'image
+    int pixelWidth = 0; // = viewWidth sauf écran à échelle (DPI) : taille réelle du tampon d'image
     int pixelHeight = 0;
+    orosmo::rhi::Backend selectedBackend = orosmo::rhi::Backend::kOpenGL;
+    demo::UiMode uiMode = demo::UiMode::kHud;
+    std::string initialTheme = "dark";
+    std::string initialTab = "scene";
+    std::string hoverId;
+    std::string clickId;
     std::string captureDirectory;
     std::uint32_t captureFrames = 0;
     std::uint32_t renderedFrames = 0;
+    double watchClock = 0.0;
     bool captureDone = false;
-    bool headlessFrameFailed = false; // mode sans fenêtre : une image a échoué (code de sortie de la démo)
-    bool captureFailed = false; // une image de la capture a été refusée (submit ou scène) : la capture ne serait pas fiable
-    std::optional<orosmo::core::Error> sceneError; // premier échec de la scène pendant l'image en cours
-    bool uiFailed = false; // l'interface de l'image en cours n'a pas été dessinée entièrement
+    bool manualCapturePending = false;
+    bool headlessFrameFailed = false;
+    bool captureFailed = false;
+    std::optional<orosmo::core::Error> sceneError;
+    bool uiFailed = false;
     bool headless = false;
 };

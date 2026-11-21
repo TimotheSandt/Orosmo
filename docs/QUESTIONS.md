@@ -180,7 +180,7 @@ PR #8 : une région dont le dernier indice global dépasse int64 est maintenant 
 (`fix/M3-review3-world`). Pour ne pas changer l'API figée de 0.3.x, `generateRegion` renvoie alors un `HeightField` vide
 (largeur et hauteur 0, documenté dans `export.hpp`), que tous les exports refusent ensuite (`kInvalidArgument`). Plus propre :
 `Result<HeightField>` (règle 10), au prix d'un changement incompatible (`terrain-gen`, `terrain-viewer`, une dizaine de tests).
-Proposition : garder le champ vide en 0.3.x et passer à `Result` à M4 avec les autres changements d'API. *À trancher par l'auteur.*
+Proposition : garder le champ vide en 0.3.x et passer à `Result` à M4 avec les autres changements d'API. **Décision de l'auteur (2026-11-21) : oui** (`docs/05`, M4).
 
 **A34. Périmètre de la release : moteur générique seul, modules procéduraux hors release + jalon Modules/Addons (2026-11-20, tranchée).**
 **Décision de l'auteur (2026-11-20)** :
@@ -201,3 +201,82 @@ ce jour). Proposition : `v0.3.1` (aucun utilisateur extérieur ; `v0.4.0` reste 
 `vcpkg.json`, `Cargo.toml`) restent à `0.3.0` tant que l'auteur n'a pas tranché. **Décision de l'auteur (2026-11-21)** : `v0.3.1`, et **pas de release pour M3** (`v0.3.0` n'est pas publiée : la première
 release publiée est celle de M3 bis) ;
 fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).
+
+## Décisions de l'auteur du 2026-11-21 (après M3 bis)
+
+- **A33** : champ vide en 0.3.x, `Result<HeightField>` à M4 (voir plus haut ; `docs/05`, M4).
+- **A18, suite** : Windows, macOS et Linux arm64 passent en CI, y compris `e2e-init` : ces jobs deviennent **bloquants** (plus de
+  `continue-on-error`) et les avertissements y sont des erreurs (`-Werror`) ; il a fallu corriger neuf avertissements de clang
+  (destructeur de `FPSCounter` sans `noexcept` dans l'en-tête, `kVersion` inutilisé dans des tests, capture de lambda inutile). Le
+  build de release (`build-engine.yml`) garde `WERROR=0` hors Linux x64.
+- **A36. Plage d'un champ entier réfléchi (décidée le 2026-11-21).** Pour un champ entier, `range(min, max)` est faite
+  **d'entiers**, dans le type : `range(1, 3)`, pas `range(0.5, 3.5)`. Sinon le champ est **refusé** : erreur journalisée et pastille
+  « plage invalide » à la place du contrôle, rien ne peut être écrit (`reflectedPanel`, `tests/ui/review3_widgets_tests.cpp`).
+  Avant : la plage était corrigée en silence (`ceil` / `floor`).
+- **A31, suite** : le renommage de `platform` (`Window`, `InputManager`) se fait **au début de M4** (`docs/05`, G96, G105).
+- **Q7** : les 17 stashes sont supprimés (analyse du 2026-11-17 : 2 idées archivées dans `docs/notes/archive/`) ; sauvegarde
+  complète hors dépôt (G24). **Les branches ne sont pas supprimées.** Le worktree `release-core-only` est supprimé (sa branche reste).
+
+## Décisions de l'auteur du 2026-11-21 (début de M4)
+
+- **A7** : close (identifiants placés au premier usage, comme proposé).
+- **A8** : close (`world` sans `renderer` : fait en M3, `HeightField` sans GPU).
+- **A10** : on **garde** `platform::InputManager::getInstance(nativeWindow)` (un gestionnaire par fenêtre native, exigé par les
+  rappels C de GLFW) et le `Logger`. Avis de l'agent : d'accord ; le seul gain d'un contexte explicite serait de ne plus passer par
+  une table globale, et `Window` donne déjà son gestionnaire. Le code neuf passe par la fenêtre plutôt que par `getInstance`.
+  Les autres singletons de la liste (`GraphicsRuntime`, `ShaderLibrary`, `UI::Manager`, `GraphicsRenderState`) ont disparu en M2/M3.
+- **A13** : close, le compilateur `cui` **reste en Rust** (`cargo` reste une dépendance de build). Les points (b) à (d) ont été
+  tranchés en M2 (`docs/UI_LANGUAGE.md`).
+- **A14** (CMake) : **reportée à M9** (portage macOS/Metal), le Makefile reste le build de référence d'ici là.
+- **A15** : close (les ajustements de jalons ont été intégrés à `docs/05`).
+- **A21** : l'auteur demande une explication. En clair : l'interface ne dessine plus elle-même, elle remplit une **liste de
+  dessin** (`DrawList` : « rectangle ici, texte là ») que `CanvasRenderer` exécute commande par commande (B5, M2, fait). Le
+  **batch 2D** (R2D-01, M5) est une optimisation : regrouper ces commandes en quelques dessins instanciés. A21 demandait seulement
+  d'accepter que UI-02 reste `Partiel` jusqu'à M5, puisque la liste est déjà là mais pas encore le batch. Proposition : **close**,
+  telle que réalisée ; à confirmer par l'auteur.
+
+
+## Décision de l'auteur du 2026-11-21 : registre d'addons (A38)
+
+- **A38** : le système d'addons de M11 se limite au **mécanisme** (manifeste, empaquetage, installation locale ou par URL, liaison au
+  build). L'**hébergement** des addons et l'**interface** pour les parcourir et les installer forment un jalon à part, **M12**
+  (`MOD-05` à `MOD-08`, `docs/05`) : c'est un service et une application distincts du moteur. Le manifeste de M11 porte déjà les
+  champs d'affichage du registre. Le premier addon visé est le monde procédural archivé (`archive/procedural-world`). Forme du
+  registre (dépôt Git avec releases ou service web) : à proposer au début de M12. Version visée : M11 `v1.1.0`, M12 `v1.2.0`.
+- **A39** (2026-11-21) : **M7 est supprimé** (numéro non réattribué). Les effets de rendu génériques (`REN-23`, `25`, `33`, `14`, `27`,
+  `38`, et `24`, `26` à confirmer) deviennent des **modules préinstallés** dans un nouveau jalon **M13**, après le système de modules
+  (M11) ; le terrain et les planètes (`TER-05` à `TER-10`) sortent du moteur. Versions : M4 `v0.4.0`, M5 `v0.5.0`, M6 `v0.6.0`,
+  M8 `v0.7.0`, M9 `v0.8.0`, **M10 `v1.0.0`**, M11 `v1.1.0`, M12 `v1.2.0`, M13 `v1.3.0` (la version suit l'ordre des jalons livrés, pas leur numéro).
+
+
+## Décisions de l'auteur du 2026-11-21 : moteur générique et démo unique
+
+- **A37. Suppression du code procédural du dépôt (archivé) et consolidation en une démo unique (2026-11-21, tranchée).**
+  1. Tout le code procédural (`orosmo::world`, `TerrainRenderer`, `shaders/rhi/terrain.*`, `apps/terrain_gen`,
+     `apps/terrain_viewer`, tests `tests/world/` et `terrain_render_tests.cpp`, baseline terrain) est archivé intact dans la
+     branche inutilisée `archive/procedural-world` (issue de `dev` à `78dbb5e`, qui inclut `feat/M4-platform-rename` et
+     `feat/M4-region-result`), puis retiré du dépôt principal.
+  2. Le dépôt ne conserve qu'**une seule démo** (`apps/demo/`) : diorama 3D statique écrit en C++ (sans `.obj`, en attendant
+     l'import d'assets en M6) + vitrine complète d'`orosmo::ui` et des fonctionnalités moteur (`Camera`, `LightManager`,
+     `DebugDraw`, `Profiler`, `TaskSystem`, `Reflect`/JSON, `ThemeHost`/`FileWatcher`). `apps/ui_gallery`, `apps/core_demo` et
+     `apps/rhi_demo` sont supprimés.
+  3. **Ergonomie** : `Échap` (ainsi que `F1`) ouvre et referme l'interface complète (ne ferme plus l'application) ; un bouton
+     `Quit` et `File > Quit` dans l'UI ferment l'application.
+  4. `minimal` est déplacé dans `tools/engine-sdk/examples/minimal/` (seul exemple dans `dist/examples/minimal/`), et
+     `orosmo init` conserve son projet starter générique minimal (`tools/engine-sdk/template/src/`).
+- **A40. Frontière cœur vs futurs modules M11 et modèles de démarrage (2026-11-21, tranchée).**
+  1. Le cœur du moteur garde le rendu de base (maillages, PBR, ombres, post-traitement, brouillard simple `REN-25`, 2D, UI,
+     assets, animation, ECS, logique rechargeable). Les fonctionnalités d'environnement/monde (`REN-23` bruit compute,
+     `REN-24` atmosphère planétaire, `REN-26` nuages, `REN-27` eau, `TER-*`, `SIM-02`, `SIM-03`) ne sont pas implémentées pour
+     l'instant et sont destinées à devenir des modules utilisables inclus/activables via le système de modules **M11**.
+  2. Le jalon **M11** est complété par `MOD-09` : choix entre plusieurs modèles de démarrage à `orosmo init` (`minimal`,
+     `starter`, `demo` pour comprendre le moteur) et possibilité pour l'utilisateur de définir un de ses projets comme modèle
+     par défaut.
+
+## Question ouverte du 2026-11-21 (fusion de la démo unique)
+
+- **A41. Effets de rendu : cœur ou modules préinstallés ?** Deux décisions de l'auteur se recoupent. D'après A39 (message à l'agent) :
+  **tous** les effets (`REN-23`, `24`, `25`, `26`, `27`, `14`, `33`, `38`) deviennent des modules préinstallés (M13), M7 est supprimé.
+  D'après A40 (rapport de la session de Gemini) : `REN-25` (brouillard), `REN-14` (AO), `REN-33` (particules) et `REN-38`
+  (réfraction) **restent dans le cœur** ; seuls `REN-23`, `24`, `26`, `27` et `TER-*` / `SIM-02` / `SIM-03` deviennent des modules.
+  `docs/05` applique A39. **Tranchée par l'auteur (2026-11-21) : modules préinstallés dans M13** (tous les effets, y compris `REN-25`, `14`, `33`, `38`) ; A40, point 1, est remplacé en conséquence.

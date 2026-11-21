@@ -8,18 +8,18 @@
 namespace orosmo::ui
 {
 
-InputFrame readWindowInput(Window &window, float deltaTime)
+InputFrame readWindowInput(platform::Window &window, float deltaTime)
 {
     InputFrame in;
     in.deltaTime = deltaTime;
-    InputManager &input = InputManager::GetInstance(window.GetWindow());
-    in.mouse = glm::vec2(window.GetCursorPosition());
-    in.mouseDown = input.IsMouseButtonPressed(MouseButton::LEFT) || input.IsMouseButtonJustPressed(MouseButton::LEFT);
-    in.secondaryDown = input.IsMouseButtonPressed(MouseButton::RIGHT) || input.IsMouseButtonJustPressed(MouseButton::RIGHT);
-    in.wheel = input.GetMouseScroll();
-    in.text = input.GetTextInput();
-    in.shift = input.IsKeyPressed(KeyButton::LEFT_SHIFT) || input.IsKeyPressed(KeyButton::RIGHT_SHIFT) ||
-               input.IsKeyJustPressed(KeyButton::LEFT_SHIFT) || input.IsKeyJustPressed(KeyButton::RIGHT_SHIFT);
+    platform::InputManager &input = platform::InputManager::getInstance(window.getWindow());
+    in.mouse = glm::vec2(window.getCursorPosition());
+    in.mouseDown = input.isMouseButtonPressed(platform::MouseButton::kLeft) || input.isMouseButtonJustPressed(platform::MouseButton::kLeft);
+    in.secondaryDown = input.isMouseButtonPressed(platform::MouseButton::kRight) || input.isMouseButtonJustPressed(platform::MouseButton::kRight);
+    in.wheel = input.getMouseScroll();
+    in.text = input.getTextInput();
+    in.shift = input.isKeyPressed(platform::KeyButton::kLeftShift) || input.isKeyPressed(platform::KeyButton::kRightShift) ||
+               input.isKeyJustPressed(platform::KeyButton::kLeftShift) || input.isKeyJustPressed(platform::KeyButton::kRightShift);
     const std::string &typed = in.text;
     std::size_t textDone = 0;
     auto flushText = [&](std::size_t upTo)
@@ -29,7 +29,7 @@ InputFrame readWindowInput(Window &window, float deltaTime)
             in.events.push_back({kKeyNone, in.shift, typed.substr(textDone, upTo - textDone)});
         textDone = std::max(textDone, upTo);
     };
-    for (const KeyPress &press : input.GetKeyPresses())
+    for (const platform::KeyPress &press : input.getKeyPresses())
     {
         // Touches d'édition et de navigation (répétées tant qu'elles sont tenues) ; avec Ctrl, Alt ou Super ce sont des raccourcis.
         if (press.ctrl || press.alt || press.super)
@@ -37,21 +37,21 @@ InputFrame readWindowInput(Window &window, float deltaTime)
         int key = kKeyNone;
         switch (press.key)
         {
-        case KeyButton::BACKSPACE: key = kKeyBackspace; break;
-        case KeyButton::DELETE: key = kKeyDelete; break;
-        case KeyButton::ENTER:
-        case KeyButton::NUMPAD_ENTER: key = kKeyEnter; break;
-        case KeyButton::ESCAPE: key = kKeyEscape; break;
-        case KeyButton::TAB: key = kKeyTab; break;
-        case KeyButton::LEFT: key = kKeyLeft; break;
-        case KeyButton::RIGHT: key = kKeyRight; break;
-        case KeyButton::UP: key = kKeyUp; break;
-        case KeyButton::DOWN: key = kKeyDown; break;
-        case KeyButton::HOME: key = kKeyHome; break;
-        case KeyButton::END: key = kKeyEnd; break;
-        case KeyButton::SPACE: key = kKeySpace; break;
-        case KeyButton::PAGE_UP: key = kKeyPageUp; break;
-        case KeyButton::PAGE_DOWN: key = kKeyPageDown; break;
+        case platform::KeyButton::kBackspace: key = kKeyBackspace; break;
+        case platform::KeyButton::kDelete: key = kKeyDelete; break;
+        case platform::KeyButton::kEnter:
+        case platform::KeyButton::kNumpadEnter: key = kKeyEnter; break;
+        case platform::KeyButton::kEscape: key = kKeyEscape; break;
+        case platform::KeyButton::kTab: key = kKeyTab; break;
+        case platform::KeyButton::kLeft: key = kKeyLeft; break;
+        case platform::KeyButton::kRight: key = kKeyRight; break;
+        case platform::KeyButton::kUp: key = kKeyUp; break;
+        case platform::KeyButton::kDown: key = kKeyDown; break;
+        case platform::KeyButton::kHome: key = kKeyHome; break;
+        case platform::KeyButton::kEnd: key = kKeyEnd; break;
+        case platform::KeyButton::kSpace: key = kKeySpace; break;
+        case platform::KeyButton::kPageUp: key = kKeyPageUp; break;
+        case platform::KeyButton::kPageDown: key = kKeyPageDown; break;
         default: break;
         }
         if (key != kKeyNone)
@@ -62,13 +62,13 @@ InputFrame readWindowInput(Window &window, float deltaTime)
         }
     }
     flushText(typed.size());
-    in.shortcuts = input.GetShortcuts();
+    in.shortcuts = input.getShortcuts();
     return in;
 }
 
-void useSystemClipboard(Ui &ui, Window &window)
+void useSystemClipboard(Ui &ui, platform::Window &window)
 {
-    ui.setClipboard([&window] { return window.GetClipboardText(); }, [&window](const std::string &text) { window.SetClipboardText(text); });
+    ui.setClipboard([&window] { return window.getClipboardText(); }, [&window](const std::string &text) { window.setClipboardText(text); });
 }
 
 } // namespace orosmo::ui

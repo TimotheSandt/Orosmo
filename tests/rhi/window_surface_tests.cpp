@@ -86,8 +86,10 @@ TEST_SUITE("rhi/opengl/window")
     TEST_CASE("prepareWindowHints: OpenGL accepted, backends that are not compiled refused")
     {
         DeviceDesc desc;
-        desc.backend = Backend::kVulkan;
+        desc.backend = Backend::kMetal; // M9
         CHECK((tests::errorOf(prepareWindowHints(desc)) == ErrorCode::kUnsupported));
+        desc.backend = Backend::kVulkan; // GLFW_NO_API (la fenêtre n'a pas de contexte OpenGL)
+        CHECK(prepareWindowHints(desc).has_value());
     }
 
     TEST_CASE("a window is adopted: the backbuffer has the framebuffer size and the window outlives the device")
