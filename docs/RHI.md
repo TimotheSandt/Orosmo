@@ -79,4 +79,4 @@ Exemple complet et compilé : `apps/demo/src/Game/Game.cpp` (`Game::createGraphi
 
 ## Ajouter un backend
 
-Voir `docs/03` §9 et §14 (guide `ADD_A_BACKEND.md` prévu en M4) : implémenter `Device` et `CommandEncoder`, la table de formats, le modèle de liaison, passer les tests `tests/rhi/` et les images de référence.
+Voir `docs/03` §9 et §14 et le guide [`ADD_A_BACKEND.md`](ADD_A_BACKEND.md) : implémenter `Device` et `CommandEncoder`, la table de formats, le modèle de liaison, passer les tests `tests/rhi/` et les images de référence.
