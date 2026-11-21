@@ -4,7 +4,9 @@
 #include <doctest/doctest.h>
 
 #include <orosmo/rhi/device.hpp>
+#include <orosmo/rhi/shader_compiler.hpp>
 
+#include "rhi/backends.hpp"
 #include "support/result_support.hpp"
 
 #include <array>
@@ -27,7 +29,16 @@ inline std::span<const std::byte> bytes(std::string_view s) { return std::as_byt
 template <typename T> inline std::span<const std::byte> bytesOf(const std::vector<T> &v) { return std::as_bytes(std::span(v.data(), v.size())); }
 template <typename T> inline std::span<const std::byte> bytesOf(const T &v) { return std::as_bytes(std::span(&v, 1)); }
 
-// Triangle plein écran sans tampon de sommets.
+// Triangle plein écran sans tampon de sommets, en GLSL 450 « style Vulkan » (à compiler par Gpu::shader : OpenGL en reçoit le
+// GLSL 430 traduit, Vulkan le SPIR-V).
+constexpr const char *kFullscreenVsGlsl450 = R"(#version 450
+void main() { vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); })";
+
+constexpr const char *kRedFsGlsl450 = R"(#version 450
+layout(location = 0) out vec4 color;
+void main() { color = vec4(1.0, 0.0, 0.0, 1.0); })";
+
+// Les mêmes en GLSL 430 brut, pour les tests propres à OpenGL (Gpu::shaderRaw).
 constexpr const char *kFullscreenVs = R"(#version 430 core
 void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); })";
 
@@ -38,10 +49,13 @@ void main() { color = vec4(1.0, 0.0, 0.0, 1.0); })";
 struct Gpu
 {
     std::unique_ptr<Device> device;
+    Backend backend = Backend::kOpenGL;
 
-    explicit Gpu(Extent2D size = {8, 8})
+    // Périphérique hors écran du backend demandé (voir FOR_EACH_BACKEND dans rhi/backends.hpp).
+    explicit Gpu(Backend wanted = Backend::kOpenGL, Extent2D size = {8, 8}) : backend(wanted)
     {
         DeviceDesc desc;
+        desc.backend = wanted;
         desc.surface.size = size;
         auto created = createDevice(desc);
         if (created)
@@ -50,9 +64,11 @@ struct Gpu
         }
         else
         {
-            MESSAGE("no OpenGL 4.3 context: ", created.error().message);
+            MESSAGE("no ", tests::backendName(wanted), " device: ", created.error().message);
         }
     }
+
+    explicit Gpu(Extent2D size) : Gpu(Backend::kOpenGL, size) {}
 
     // Adopte un périphérique déjà créé (fenêtré) : aucun second contexte n'est créé, le contexte courant reste le sien.
     explicit Gpu(std::unique_ptr<Device> adopted) : device(std::move(adopted)) {}
@@ -60,7 +76,17 @@ struct Gpu
     Device &operator*() { return *device; }
     Device *operator->() { return device.get(); }
 
+    // Compile du GLSL 450 « style Vulkan » (set/binding, push_constant, gl_VertexIndex) pour le backend de ce périphérique.
     ShaderHandle shader(ShaderStage stage, std::string_view source, const char *name = "test")
+    {
+        auto r = createShaderFromGlsl(*device, stage, source, {.name = name});
+        INFO("shader ", name, " (", tests::backendName(backend), "): ", r ? "" : r.error().message);
+        REQUIRE(r.has_value());
+        return *r;
+    }
+
+    // GLSL 430 brut passé tel quel au pilote : réservé aux tests propres à OpenGL.
+    ShaderHandle shaderRaw(ShaderStage stage, std::string_view source, const char *name = "test")
     {
         ShaderDesc d;
         d.stage = stage;

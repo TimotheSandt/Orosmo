@@ -186,14 +186,13 @@ TEST_SUITE("Demo launch options")
         Assert(demo::isBackendAvailable(Backend::kOpenGL), "OpenGL should be runnable");
     }
 
-    TEST_CASE("vulkan backend is recognized but not available before M4 (A1: the old backend was removed)")
+    TEST_CASE("vulkan is selectable since M4 (the RHI backend is compiled); Metal waits for M9")
     {
-        Assert(demo::backendAvailability(Backend::kVulkan) == BackendAvailability::kNotBuilt,
-                    "Vulkan should be recognized but not built until it is rewritten on the RHI");
-        Assert(!demo::isBackendAvailable(Backend::kVulkan), "Vulkan must not be selectable");
-        Assert(demo::backendAvailabilityMessage(Backend::kVulkan).find("M4") != std::string::npos,
-               "the message should say when Vulkan comes back");
+        Assert(demo::backendAvailability(Backend::kVulkan) == BackendAvailability::kAvailable, "Vulkan is compiled into the RHI since M4");
+        Assert(demo::isBackendAvailable(Backend::kVulkan), "Vulkan must be selectable");
         Assert(demo::isBackendAvailable(Backend::kOpenGL), "OpenGL is the RHI backend");
+        Assert(!demo::isBackendAvailable(Backend::kMetal), "Metal is not built (M9)");
+        Assert(!demo::backendAvailabilityMessage(Backend::kMetal).empty(), "refusing Metal should say why");
     }
 
     TEST_CASE("other backend messages are non-empty")
@@ -205,7 +204,7 @@ TEST_SUITE("Demo launch options")
     TEST_CASE("the selectable APIs match the backends compiled into the RHI (RHI-04)")
     {
         Assert(orosmo::rhi::isBackendCompiled(orosmo::rhi::Backend::kOpenGL), "the OpenGL backend is compiled");
-        Assert(!orosmo::rhi::isBackendCompiled(orosmo::rhi::Backend::kVulkan), "the Vulkan backend comes back in M4");
+        Assert(orosmo::rhi::isBackendCompiled(orosmo::rhi::Backend::kVulkan), "the Vulkan backend is compiled since M4");
         Assert(demo::isBackendAvailable(Backend::kOpenGL) == orosmo::rhi::isBackendCompiled(orosmo::rhi::Backend::kOpenGL),
                     "OpenGL availability should follow the RHI");
         Assert(demo::isBackendAvailable(Backend::kVulkan) == orosmo::rhi::isBackendCompiled(orosmo::rhi::Backend::kVulkan),

@@ -102,9 +102,10 @@ TEST_SUITE("rhi/device")
     TEST_CASE("a backend that is not compiled is refused with kUnsupported")
     {
         CHECK(isBackendCompiled(Backend::kOpenGL));
-        CHECK_FALSE(isBackendCompiled(Backend::kVulkan));
+        CHECK(isBackendCompiled(Backend::kVulkan));
+        CHECK_FALSE(isBackendCompiled(Backend::kMetal)); // M9
         DeviceDesc desc;
-        desc.backend = Backend::kVulkan;
+        desc.backend = Backend::kMetal;
         auto device = createDevice(desc);
         REQUIRE_FALSE(device.has_value());
         CHECK((tests::errorOf(device) == orosmo::core::ErrorCode::kUnsupported));

@@ -23,6 +23,7 @@ enum class ErrorCode : std::uint16_t
     kCancelled,
     kBusy,
     kVersionMismatch,
+    kDeviceLost, // périphérique graphique perdu (pilote réinitialisé, GPU retiré) : le périphérique n'est plus utilisable
 };
 
 const char *toString(ErrorCode code) noexcept;

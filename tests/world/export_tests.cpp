@@ -578,50 +578,53 @@ TEST_SUITE("world/render")
 
     TEST_CASE("TER-13: consistent with rendering: the rendered depth at the image centre gives the same point as the ray")
     {
-        Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
-        const w::TerrainParams p = params();
-        const w::TileKey key{0, 0, 0};
-        const w::TileMesh mesh = w::buildTileMesh(p, 11, w::generateTile(p, 11, key), {});
-        std::vector<float> local = mesh.vertices;
-        rd::ShaderLibrary library(*gpu.device);
-        rd::PipelineCache pipelines(*gpu.device);
-        const fs::path shaders = tests::repoRoot(__FILE__) / "shaders" / "rhi";
-        auto scene = tests::valueOf(rd::SceneRenderer::create(*gpu.device, library, pipelines, {.shaderDirectory = shaders}));
-        auto terrain = tests::valueOf(rd::TerrainRenderer::create(*gpu.device, library, shaders));
-        REQUIRE(terrain->updateTile({.id = 1, .origin = {0, 0, 0}, .vertices = local, .indices = mesh.indices}).has_value());
-        auto lights = tests::valueOf(rd::LightManager::create(*gpu.device));
-        REQUIRE(lights.upload().has_value());
-        scene->setLights(&lights);
-        scene->setDepthAsTextureEnabled(true);
-        scene->setOutputResolution(33, 33);
-        rd::Camera camera;
-        camera.setAspect(33, 33);
-        camera.setNearPlane(0.5f);
-        camera.setPosition({16.0f, 90.0f, 40.0f});
-        camera.setOrientation(glm::normalize(glm::vec3(0.0f, -90.0f, -24.0f)));
-        const TextureHandle out = gpu.target(Format::kRGBA8Unorm, {33, 33}, "out");
-        gpu.run(
-            [&](CommandEncoder &e)
-            {
-                REQUIRE(scene->beginFrame(e).has_value());
-                REQUIRE(scene->setCamera(camera).has_value());
-                REQUIRE(terrain->draw(*scene, camera).has_value());
-                REQUIRE(scene->endFrame({out, Format::kRGBA8Unorm, {33, 33}}).has_value());
-            });
-        // Profondeur rendue au pixel central (16, 16), reprojetée dans le monde.
-        auto depthBytes = gpu->readTexture(scene->sceneTarget().depth(), {.offset = {16, 16, 0}, .size = {1, 1, 1}});
-        REQUIRE(depthBytes.has_value());
-        float depth = 0.0f;
-        std::memcpy(&depth, depthBytes->data(), 4);
-        REQUIRE(depth > 0.0f); // le terrain est touché (reverse-Z : 0 = rien)
-        const glm::mat4 inverse = glm::inverse(camera.matrix());
-        const glm::vec4 world = inverse * glm::vec4(0.0f, 0.0f, depth, 1.0f); // centre de l'image : NDC (0, 0)
-        const glm::vec3 rendered = glm::vec3(world) / world.w;
-        auto hit = w::raycastTerrain(p, 11, camera.position(), camera.orientation(), 500.0f);
-        REQUIRE(hit.has_value());
-        INFO("rendu ", rendered.x, ",", rendered.y, ",", rendered.z, " rayon ", hit->position.x, ",", hit->position.y, ",", hit->position.z);
-        CHECK(glm::length(rendered - hit->position) < 0.05f);
-        gpu.expectNoValidationErrors();
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            const w::TerrainParams p = params();
+            const w::TileKey key{0, 0, 0};
+            const w::TileMesh mesh = w::buildTileMesh(p, 11, w::generateTile(p, 11, key), {});
+            std::vector<float> local = mesh.vertices;
+            rd::ShaderLibrary library(*gpu.device);
+            rd::PipelineCache pipelines(*gpu.device);
+            const fs::path shaders = tests::repoRoot(__FILE__) / "shaders" / "rhi";
+            auto scene = tests::valueOf(rd::SceneRenderer::create(*gpu.device, library, pipelines, {.shaderDirectory = shaders}));
+            auto terrain = tests::valueOf(rd::TerrainRenderer::create(*gpu.device, library, shaders));
+            REQUIRE(terrain->updateTile({.id = 1, .origin = {0, 0, 0}, .vertices = local, .indices = mesh.indices}).has_value());
+            auto lights = tests::valueOf(rd::LightManager::create(*gpu.device));
+            REQUIRE(lights.upload().has_value());
+            scene->setLights(&lights);
+            scene->setDepthAsTextureEnabled(true);
+            scene->setOutputResolution(33, 33);
+            rd::Camera camera;
+            camera.setAspect(33, 33);
+            camera.setNearPlane(0.5f);
+            camera.setPosition({16.0f, 90.0f, 40.0f});
+            camera.setOrientation(glm::normalize(glm::vec3(0.0f, -90.0f, -24.0f)));
+            const TextureHandle out = gpu.target(Format::kRGBA8Unorm, {33, 33}, "out");
+            gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene->beginFrame(e).has_value());
+                    REQUIRE(scene->setCamera(camera).has_value());
+                    REQUIRE(terrain->draw(*scene, camera).has_value());
+                    REQUIRE(scene->endFrame({out, Format::kRGBA8Unorm, {33, 33}}).has_value());
+                });
+            // Profondeur rendue au pixel central (16, 16), reprojetée dans le monde.
+            auto depthBytes = gpu->readTexture(scene->sceneTarget().depth(), {.offset = {16, 16, 0}, .size = {1, 1, 1}});
+            REQUIRE(depthBytes.has_value());
+            float depth = 0.0f;
+            std::memcpy(&depth, depthBytes->data(), 4);
+            REQUIRE(depth > 0.0f); // le terrain est touché (reverse-Z : 0 = rien)
+            const glm::mat4 inverse = glm::inverse(camera.matrix());
+            const glm::vec4 world = inverse * glm::vec4(0.0f, 0.0f, depth, 1.0f); // centre de l'image : NDC (0, 0)
+            const glm::vec3 rendered = glm::vec3(world) / world.w;
+            auto hit = w::raycastTerrain(p, 11, camera.position(), camera.orientation(), 500.0f);
+            REQUIRE(hit.has_value());
+            INFO("rendu ", rendered.x, ",", rendered.y, ",", rendered.z, " rayon ", hit->position.x, ",", hit->position.y, ",", hit->position.z);
+            CHECK(glm::length(rendered - hit->position) < 0.05f);
+            gpu.expectNoValidationErrors();
+        }
     }
 }
