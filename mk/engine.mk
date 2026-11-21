@@ -351,13 +351,15 @@ dist: $(_CUI_INSTALLED)
 ifeq ($(DETECTED_OS),Windows)
 	@powershell -NoProfile -Command "if (Test-Path '$(_DIST_STAGING)') { Remove-Item -Path '$(_DIST_STAGING)' -Recurse -Force }"  # comme Unix : pas de fichier d'un paquet précédent
 	@mkdir -p "$(DIST_PKG_DIR)/includes" "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
-	          "$(DIST_PKG_DIR)/make" "$(DIST_PKG_DIR)/tools"
+	          "$(DIST_PKG_DIR)/make" "$(DIST_PKG_DIR)/cmake" "$(DIST_PKG_DIR)/tools"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/orosmo' -Destination '$(DIST_PKG_DIR)/includes' -Recurse -Force"
 	@for f in $(ENGINE_LIB_NAMES); do \
 	    powershell -NoProfile -Command "Copy-Item -Path 'lib/debug/$$f' -Destination '$(DIST_PKG_DIR)/lib/debug' -Force"; \
 	    powershell -NoProfile -Command "Copy-Item -Path 'lib/release/$$f' -Destination '$(DIST_PKG_DIR)/lib/release' -Force"; \
 	done
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination '$(DIST_PKG_DIR)/make' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/cmake/OrosmoConfig.cmake' -Destination '$(DIST_PKG_DIR)/cmake' -Force"
+	@powershell -NoProfile -Command "(Get-Content 'tools/engine-sdk/cmake/OrosmoConfigVersion.cmake.in') -replace '@ENGINE_VERSION@','$(ENGINE_VERSION)' | Set-Content '$(DIST_PKG_DIR)/cmake/OrosmoConfigVersion.cmake'"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination '$(DIST_PKG_DIR)/tools' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/build_progress.py' -Destination '$(DIST_PKG_DIR)/tools' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/gen_compile_commands.py' -Destination '$(DIST_PKG_DIR)/tools' -Force"
@@ -371,13 +373,15 @@ ifeq ($(DETECTED_OS),Windows)
 else
 	@rm -rf "$(_DIST_STAGING)"
 	@mkdir -p "$(DIST_PKG_DIR)/includes" "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
-	          "$(DIST_PKG_DIR)/make" "$(DIST_PKG_DIR)/tools"
+	          "$(DIST_PKG_DIR)/make" "$(DIST_PKG_DIR)/cmake" "$(DIST_PKG_DIR)/tools"
 	@cp -r $(INCLUDES_BASE)/orosmo "$(DIST_PKG_DIR)/includes/"
 	@for f in $(ENGINE_LIB_NAMES); do \
 	    cp "lib/debug/$$f"   "$(DIST_PKG_DIR)/lib/debug/"; \
 	    cp "lib/release/$$f" "$(DIST_PKG_DIR)/lib/release/"; \
 	done
 	@cp tools/engine-sdk/engine.mk      "$(DIST_PKG_DIR)/make/"
+	@cp tools/engine-sdk/cmake/OrosmoConfig.cmake "$(DIST_PKG_DIR)/cmake/"
+	@sed 's/@ENGINE_VERSION@/$(ENGINE_VERSION)/g' tools/engine-sdk/cmake/OrosmoConfigVersion.cmake.in > "$(DIST_PKG_DIR)/cmake/OrosmoConfigVersion.cmake"
 	@cp "$(_CUI_INSTALLED)"       "$(DIST_PKG_DIR)/tools/"
 	@cp tools/build_progress.py   "$(DIST_PKG_DIR)/tools/"   # barre de progression des projets (Makefile du modèle)
 	@cp tools/gen_compile_commands.py "$(DIST_PKG_DIR)/tools/"

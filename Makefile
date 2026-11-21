@@ -262,7 +262,19 @@ e2e-init:
 	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/minimal
 	$(E2E_RUN)/mygame/orosmo/examples/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
 	grep -q '"sum":524800' $(E2E_RUN)/minimal.txt
-	@echo "e2e-init : OK ($(E2E_RUN) : orosmo init, paquet cœur générique vérifié, compilation, lancement, exemple minimal depuis le paquet)"
+	"$(abspath dist)/orosmo-$(E2E_PLATFORM)$(E2E_EXE)" doctor "$(E2E_RUN)/mygame"
+	$(MAKE) -C $(E2E_RUN)/mygame compile-commands
+	test -s $(E2E_RUN)/mygame/compile_commands.json
+	@if command -v cmake >/dev/null 2>&1; then \
+	    mkdir -p $(E2E_RUN)/cmake-test && \
+	    printf 'cmake_minimum_required(VERSION 3.20)\nproject(orosmo_cmake_e2e LANGUAGES CXX)\nfind_package(Orosmo REQUIRED)\nadd_executable(minimal "%s")\ntarget_link_libraries(minimal PRIVATE Orosmo::Orosmo)\n' \
+	        "$(abspath $(E2E_RUN)/mygame/orosmo/examples/minimal/main.cpp)" > $(E2E_RUN)/cmake-test/CMakeLists.txt && \
+	    cmake -S $(E2E_RUN)/cmake-test -B $(E2E_RUN)/cmake-test/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(abspath $(E2E_RUN)/mygame/orosmo)" && \
+	    cmake --build $(E2E_RUN)/cmake-test/build && \
+	    $(E2E_RUN)/cmake-test/build/minimal$(E2E_EXE) > $(E2E_RUN)/cmake-minimal.txt && \
+	    grep -q '"sum":524800' $(E2E_RUN)/cmake-minimal.txt; \
+	fi
+	@echo "e2e-init : OK ($(E2E_RUN) : orosmo init/doctor, paquet cœur générique vérifié, Make + CMake, compile_commands.json, lancement, exemple minimal)"
 
 # ── UI-11 : tests du compilateur du langage d'interface ──
 #   make cui-test   tests unitaires (cargo test) + entrées invalides de bout en bout (binaire cui : messages fichier:ligne:colonne ;
