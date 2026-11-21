@@ -2,7 +2,7 @@
   "name": "cui-language",
   "displayName": "CUI Language Support",
   "description": "Interface language (.cui) of the Orosmo engine: highlighting, compiler diagnostics (file:line:column), completion and hover from `cui spec`",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "publisher": "orosmo",
   "engines": {
     "vscode": "^1.80.0"
