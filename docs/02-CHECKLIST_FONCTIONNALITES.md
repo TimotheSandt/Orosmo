@@ -44,10 +44,10 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | --- | --- | --- | --- | --- |
 | RHI-01 | Interface RHI | P0 | Interface décrite en `03` ; aucun type d'API (`GLuint`, `VkBuffer`…) dans les en-têtes publics. | Partiel |
 | RHI-02 | Backend OpenGL 4.3+ | P0 | Reprend le rendu existant derrière le RHI ; images de référence identiques à l'ancien rendu (tolérance définie). | Fait (OpenGL) — preuve : `docs/STATUS.md`, « M2 B6 » |
-| RHI-03 | Backend Vulkan | P0 | Parité de fonctionnalités avec OpenGL ; couches de validation silencieuses ; mémoire via VMA. | Absent (ancien backend retiré du build et archivé, A1 ; réécriture en M4) |
-| RHI-04 | Choix du backend à l'exécution | P0 | `--backend=vulkan|opengl|metal`, repli documenté, `Capabilities` interrogeable. | Partiel |
+| RHI-03 | Backend Vulkan | P0 | Parité de fonctionnalités avec OpenGL ; couches de validation silencieuses ; mémoire via VMA. | Fait (Linux, un GPU ; Windows et macOS non vérifiés, G142) — preuve : `src/rhi/vulkan/` (volk, VMA, Vulkan 1.3), `tests/rhi/vulkan_device_tests.cpp`, `tests/rhi/vulkan_backend_tests.cpp`, `tests/rhi/rhi_device_tests.cpp` (`FOR_EACH_BACKEND`, `validationErrorCount() == 0`) : 125 cas GPU réussis en Vulkan ; `make demo-vulkan-check` OK. Limites : G129 à G134 |
+| RHI-04 | Choix du backend à l'exécution | P0 | `--backend=vulkan|opengl|metal`, repli documenté, `Capabilities` interrogeable. | Partiel — fait : `--backend` / `--api`, `--strict-backend`, repli sur OpenGL (`resolveBackend`, `tests/demo/launch_options_tests.cpp`), `Capabilities`. **Manque** : Metal (reconnu mais refusé, M9) |
 | RHI-05 | Buffers, textures (2D, tableau, cube, 3D, mips), échantillonneurs | P0 | Création, mise à jour, copie, génération de mips ; formats portables listés. | Partiel |
-| RHI-06 | Pipelines graphiques et de calcul | P0 | État explicite ; cache de pipelines en mémoire **et sur disque**. | Partiel |
+| RHI-06 | Pipelines graphiques et de calcul | P0 | État explicite ; cache de pipelines en mémoire **et sur disque**. | Fait — preuve : `PipelineCache` en mémoire (`tests/renderer/resources_tests.cpp`), cache Vulkan sur disque (`tests/rhi/vulkan_backend_tests.cpp`, « the pipeline cache is written at shutdown and read back… » : écrit puis relu, fichier étranger ignoré), calcul (`tests/rhi/rhi_device_tests.cpp`, « compute writes a storage buffer… ») |
 | RHI-07 | Groupes de liaison | P0 | Modèle de liaison à trois groupes (voir `03`) traduit par chaque backend. | Partiel |
 | RHI-08 | Passes de rendu et swapchain | P0 | Passes décrites par attachements ; redimensionnement sans fuite ; vsync réglable. | Partiel |
 | RHI-09 | Compute | P0 | Dispatch direct, tampons de stockage, barrières gérées par le RHI ; taille de groupe lue dans `Capabilities`. | Fait (OpenGL) — preuve : `docs/STATUS.md`, « M2 lot A » |
@@ -55,7 +55,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | RHI-11 | Minuteries GPU et noms de debug | P1 | Requêtes de temps par passe ; noms visibles dans RenderDoc. | Partiel |
 | RHI-12 | Pipeline de shaders | P0 | GLSL → SPIR-V hors ligne → SPIRV-Cross (MSL, GLSL) ; réflexion des liaisons ; inclusions ; rechargement à chaud. | Partiel |
 | RHI-13 | Backend Metal | P2 | Via MoltenVK validé d'abord ; backend natif seulement si les mesures le justifient. | Absent |
-| RHI-14 | Tests de rendu | P0 | Images de référence par backend, comparaison automatisée, rapport de différence. | Partiel |
+| RHI-14 | Tests de rendu | P0 | Images de référence par backend, comparaison automatisée, rapport de différence. | Partiel — fait : comparaison automatisée avec rapport et image de différence (`tools/demo_parity.py --diff-out`, `make demo-vulkan-check`, 15 captures OpenGL/Vulkan). **Manque** : une référence par backend (une seule référence OpenGL sert aux deux), une seule scène, hors `demo-test` et CI (G143) |
 | RHI-15 | Rendu vers plusieurs cibles (MRT) | P0 | Jusqu'à 8 attachements couleur (lus dans `Capabilities`) + profondeur, format et opérations par cible ; sorties distinctes dans un même shader. | Fait (OpenGL) — preuve : `docs/STATUS.md`, « M2 B4 » |
 | RHI-16 | Textures 3D et images de stockage | P0 | Lecture/écriture en compute ; formats flottants 16 et 32 bits, `RG16F`, `RGBA16F`, `R32F`, `R32UI` garantis. | Partiel |
 | RHI-17 | Dispatch indirect et groupes dynamiques | P1 | `dispatchIndirect` ; offsets dynamiques des tampons. | Fait (OpenGL) — preuve : `docs/STATUS.md`, « M2 lot A » |
@@ -79,7 +79,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | REN-11 | Variantes et instances de matériaux | P1 | Permutations par spécialisation de constantes, cache ; instances qui surchargent des paramètres. | Absent |
 | REN-12 | Extensions de matériaux | P2 | Vernis, tissu, transmission, parallaxe. | Absent |
 | REN-13 | IBL et sondes de lumière | P1 | Environnement HDR, irradiance en harmoniques sphériques, spéculaire préfiltré, sondes pour objets mobiles. | Absent |
-| REN-14 | Occlusion ambiante | P1 | AO écran (GTAO) ; réglable. | Absent |
+| REN-14 | Occlusion ambiante | P1 | AO écran (GTAO) ; réglable. | Absent (module préinstallé, M13) |
 | REN-15 | Réflexions et GI | P2 | Réflexions écran (SSR) ; éclairage global par sondes. P3 : GI par voxels ou par rayons. | Absent |
 | REN-16 | Éclairage précalculé | P2 | Lightmaps ou sondes cuites par un outil hors ligne ; la lumière `Baked` les consomme. | Absent |
 | REN-17 | HDR et tonemapping | P0 | Cible HDR, exposition réglable, tonemapping au choix. | Absent |
@@ -88,22 +88,22 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | REN-20 | Effets coûteux optionnels | P2 | Profondeur de champ, flou de mouvement, upscaling type FSR. | Absent |
 | REN-21 | Sorties auxiliaires (AOV) | P1 | Normales (octaédrique), vecteurs de mouvement, rugosité/métal, identifiant d'objet, profondeur linéaire, émission ; **activées seulement si une passe les demande** ; règle de résolution MSAA documentée (identifiants non moyennés). | Partiel |
 | REN-22 | Boîte à outils de shaders | P1 | Fichiers GLSL d'inclusion partagés : maths, bruit, coordonnées, reconstruction de position depuis la profondeur, PBR, atmosphère, échantillonnage d'ombres. | Absent |
-| REN-23 | Textures de bruit en compute | P1 | Bruit 3D (Worley, Perlin) généré au démarrage ; réutilisable par terrain, nuages et brouillard. | Absent |
-| REN-24 | Ciel et atmosphère | P1 | Tables de transmittance, diffusion multiple et vue aérienne, mises à jour par compute ; valable du sol à l'espace ; cycle jour/nuit. | Absent |
-| REN-25 | Brouillard | P1 | Exponentiel et de hauteur. Brouillard volumétrique par froxels en P2, avec ombres. | Absent |
-| REN-26 | Nuages volumétriques | P2 | Carte de couverture, rendu à résolution réduite avec accumulation temporelle. | Absent |
-| REN-27 | Eau | P2 | Plan d'eau avec profondeur, réflexion, écume. | Absent |
+| REN-23 | Textures de bruit en compute | P1 | Bruit 3D (Worley, Perlin) généré au démarrage ; réutilisable par terrain, nuages et brouillard. | Absent (module préinstallé, M13) |
+| REN-24 | Ciel et atmosphère | P1 | Tables de transmittance, diffusion multiple et vue aérienne, mises à jour par compute ; valable du sol à l'espace ; cycle jour/nuit. | Absent (module préinstallé, M13) |
+| REN-25 | Brouillard | P1 | Exponentiel et de hauteur. Brouillard volumétrique par froxels en P2, avec ombres. | Absent (module préinstallé, M13) |
+| REN-26 | Nuages volumétriques | P2 | Carte de couverture, rendu à résolution réduite avec accumulation temporelle. | Absent (module préinstallé, M13) |
+| REN-27 | Eau | P2 | Plan d'eau avec profondeur, réflexion, écume. | Absent (module préinstallé, M13) |
 | REN-28 | Instancing | P0 | Données par instance dans un tampon ; un seul draw call par groupe (maillage, matériau). | Partiel |
 | REN-29 | Rendu piloté par GPU | P1 | Scène GPU persistante (liste d'objets modifiés), multi-draw indirect, culling frustum puis occlusion Hi-Z en compute. | Absent |
 | REN-30 | Culling CPU | P0 | Frustum sur BVH ou grille ; petits objets. | Absent |
 | REN-31 | LOD et imposteurs | P1 | LOD par distance, imposteurs pour la végétation lointaine, transitions sans trou. | Absent |
 | REN-32 | Tri et ordre des transparents | P1 | Objets mélangés triés de l'arrière vers l'avant sans écriture de profondeur ; additifs après les mélangés ; priorité de tri réglable par matériau ; ordre global fixe défini en `03` §11 bis. | Absent |
 | REN-37 | Modes de fusion des matériaux | P0 | `BlendMode` par matériau : `Opaque`, `Mask` (seuil), `MaskA2C` (alpha-to-coverage), `Dithered`, `Blend`, `Additive`, `Premultiplied`, `Transmission` ; chaque mode a un test d'image de référence. | Absent |
-| REN-38 | Réfraction et transmission | P2 | Copie de la scène opaque (avec mips) avant la passe transparente ; échantillonnage décalé par normale et indice de réfraction ; limites connues documentées (pas de réfraction entre couches de verre). | Absent |
+| REN-38 | Réfraction et transmission | P2 | Copie de la scène opaque (avec mips) avant la passe transparente ; échantillonnage décalé par normale et indice de réfraction ; limites connues documentées (pas de réfraction entre couches de verre). | Absent (module préinstallé, M13) |
 | REN-39 | Ombres des transparents | P1 | Option par matériau : aucune, pleine, découpée (masque) ou tramée ; choix documenté et testé. | Absent |
 | REN-40 | Transparence indépendante de l'ordre (OIT) | P2 | OIT pondéré (weighted blended) en option, avec passe de composition ; OIT à listes chaînées ou à moments en P3. | Absent |
 | REN-41 | Transparents et sorties auxiliaires | P1 | Par défaut un transparent n'écrit ni normales, ni identifiant, ni vecteurs de mouvement ; chaque matériau peut les demander explicitement (par exemple pour la sélection à la souris ou le TAA). | Absent |
-| REN-33 | Particules et décalques | P1 | Particules GPU (compute) ; décalques en P2 ; particules douces. | Absent |
+| REN-33 | Particules et décalques | P1 | Particules GPU (compute) ; décalques en P2 ; particules douces. | Absent (module préinstallé, M13) |
 | REN-34 | Dessin de debug | P0 | Lignes, boîtes, sphères, repères ; aucun coût hors debug. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | REN-35 | Modes d'affichage de debug | P1 | Normales, albédo, surdessin, couleurs de LOD, cascades, lumières par cluster, filaire, gel du frustum de culling. | Partiel |
 | REN-36 | Rendu du texte | P0 | Existe (FreeType, ancrage, retour à la ligne, alignement) ; migré sur le RHI. | Partiel |
@@ -147,12 +147,12 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | TER-02 | Génération par tuiles | P0 | Hauteur par tuile à partir de (graine, coordonnées, paramètres) ; déterministe ; asynchrone. | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
 | TER-03 | Maillage à niveaux de détail | P0 | Quadtree ou clipmap ; pas de fissures entre niveaux ; distance de vue réglable. | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
 | TER-04 | Streaming | P0 | Chargement/déchargement par distance ; pas de saccade mesurable sur la démo ; budget mémoire réglable. | Archivé (`archive/procedural-world`, A37) — était Partiel (budget et génération asynchrone ; absence de saccade non mesurée) |
-| TER-05 | Érosion | P1 | Hydraulique et thermique, en compute ; résultat reproductible. | Archivé (`archive/procedural-world`, A37) — hors cœur (projet séparé / M11) |
-| TER-06 | Biomes | P1 | Température, humidité, altitude, pente → biome ; table modifiable. | Archivé (`archive/procedural-world`, A37) — hors cœur (projet séparé / M11) |
+| TER-05 | Érosion | P1 | Hydraulique et thermique, en compute ; résultat reproductible. | Hors moteur (A39) |
+| TER-06 | Biomes | P1 | Température, humidité, altitude, pente → biome ; table modifiable. | Hors moteur (A39) |
 | TER-07 | Texturage du terrain | P0 | Mélange par pente et altitude, triplanaire ; atlas ou tableau de textures. | Archivé (`archive/procedural-world`, A37) — était Fait (OpenGL, M3) |
-| TER-08 | Végétation et dispersion | P1 | Placement déterministe, instancié (REN-28) ; densité par biome. | Archivé (`archive/procedural-world`, A37) — hors cœur (projet séparé / M11) |
-| TER-09 | Planètes sphériques | P1 | Cube-sphère à quadtree ; précision `double` côté CPU ; rendu relatif à la caméra ; transition sol/espace avec l'atmosphère. | Archivé (`archive/procedural-world`, A37) — hors cœur (projet séparé / M11) |
-| TER-10 | Eau, rivières, lacs | P2 | Niveau de la mer, bassins, tracé de rivières. | Archivé (`archive/procedural-world`, A37) — hors cœur (projet séparé / M11) |
+| TER-08 | Végétation et dispersion | P1 | Placement déterministe, instancié (REN-28) ; densité par biome. | Hors moteur (A39) |
+| TER-09 | Planètes sphériques | P1 | Cube-sphère à quadtree ; précision `double` côté CPU ; rendu relatif à la caméra ; transition sol/espace avec l'atmosphère. | Hors moteur (A39) |
+| TER-10 | Eau, rivières, lacs | P2 | Niveau de la mer, bassins, tracé de rivières. | Hors moteur (A39) |
 | TER-11 | Export | P0 | Carte de hauteur (PNG 16 bits, EXR), maillage (OBJ, glTF, STL imprimable), carte de biomes. | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
 | TER-12 | Interface de réglage | P0 | Paramètres modifiables en direct, graine, préréglages sauvegardables ; affichage automatique à partir de la réflexion (UI-12). | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
 | TER-13 | Lancer de rayon sur le terrain | P1 | Picking souris et hauteur en un point, CPU, cohérent avec le rendu. | Archivé (`archive/procedural-world`, A37) — était Fait (M3) |
@@ -166,8 +166,8 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | ECS-02 | Transformations hiérarchiques | P1 | Parents/enfants, grandes coordonnées en `double`. | Absent |
 | ECS-03 | Chargement et sauvegarde de scène | P1 | Via CORE-12, versionné. | Absent |
 | SIM-01 | Boucle de simulation à pas fixe | P1 | Découplée du rendu ; rejouable avec la même graine ; capture et restauration d'état ; points d'accroche pour systèmes. | Absent |
-| SIM-02 | Accès aux données du monde | P2 | API de lecture (hauteur, biome, eau) utilisable sans rendu par la simulation. | Absent |
-| SIM-03 | Agents et écosystème | P3 | Hors moteur. Seuls les points d'accroche de SIM-01 et SIM-02 sont attendus. | Absent |
+| SIM-02 | Accès aux données du monde | P2 | API de lecture (hauteur, biome, eau) utilisable sans rendu par la simulation. | Hors moteur (A39) |
+| SIM-03 | Agents et écosystème | P3 | Hors moteur. Seuls les points d'accroche de SIM-01 et SIM-02 sont attendus. | Hors moteur (A39) |
 
 ## I. Interface (`ui`) et langage d'interface
 
