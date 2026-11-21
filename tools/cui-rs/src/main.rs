@@ -20,6 +20,8 @@ use std::path::{Path, PathBuf};
 const HASH_TAG: &str = "// @cui-hash:";
 // Bump this whenever generator output changes without a corresponding .cui syntax change.
 const OUTPUT_FORMAT_VERSION: &str = "10"; // 10 : en-têtes `orosmo/ui/...`, namespace `orosmo::ui` ; 9 : cible héritée UI::View supprimée
+const COMPILER_VERSION: &str = env!("CARGO_PKG_VERSION");
+const COMPILER_FINGERPRINT: &str = env!("CUI_BUILD_FINGERPRINT");
 
 fn main() {
     if let Err(err) = run_cli() {
@@ -41,6 +43,10 @@ fn run_cli() -> Result<(), String> {
         "check" => cmd_check(&args),
         "spec" => {
             println!("{}", engine::spec_json());
+            Ok(())
+        }
+        "-V" | "--version" | "version" => {
+            println!("cui {COMPILER_VERSION} (format {OUTPUT_FORMAT_VERSION}, build {COMPILER_FINGERPRINT})");
             Ok(())
         }
         "-h" | "--help" | "help" => {
@@ -257,11 +263,15 @@ fn write_redirect(out_dir: &Path, cui_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn source_hash(source: &str) -> String {
+fn source_hash_with_meta(format_version: &str, compiler_version: &str, fingerprint: &str, source: &str) -> String {
     let mut hash = 0xcbf29ce484222325u64;
-    for byte in OUTPUT_FORMAT_VERSION
+    for byte in format_version
         .as_bytes()
         .iter()
+        .chain(std::iter::once(&b'\n'))
+        .chain(compiler_version.as_bytes().iter())
+        .chain(std::iter::once(&b'\n'))
+        .chain(fingerprint.as_bytes().iter())
         .chain(std::iter::once(&b'\n'))
         .chain(source.as_bytes().iter())
     {
@@ -269,6 +279,10 @@ fn source_hash(source: &str) -> String {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     format!("{hash:016x}")
+}
+
+fn source_hash(source: &str) -> String {
+    source_hash_with_meta(OUTPUT_FORMAT_VERSION, COMPILER_VERSION, COMPILER_FINGERPRINT, source)
 }
 
 fn read_stored_hash(header_path: &Path) -> Option<String> {
@@ -362,6 +376,6 @@ fn file_name(path: &Path) -> String {
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  cui run --output <dir> <file.cui>...\n  cui redirect --output <dir> <file.cui>...\n  cui check [--stdin] <file.cui>\n  cui spec        components, modifiers and theme properties (JSON, for editors)\nEvery .cui file starts with `import \"orosmo/ui\"`."
+        "Usage:\n  cui run --output <dir> <file.cui>...\n  cui redirect --output <dir> <file.cui>...\n  cui check [--stdin] <file.cui>\n  cui spec        components, modifiers and theme properties (JSON, for editors)\n  cui --version   compiler version, output format and build fingerprint\nEvery .cui file starts with `import \"orosmo/ui\"`."
     );
 }
