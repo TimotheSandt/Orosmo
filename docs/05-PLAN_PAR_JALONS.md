@@ -150,13 +150,12 @@ Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusi
 **Démo** : un modèle glTF animé, puis mille instances animées avec un seul draw call par lot ; un asset modifié sur disque se met à jour en direct.
 **Terminé** : formats vérifiés par import/export de fichiers d'exemple ; mesure du coût GPU du skinning ; README des formats pris en charge.
 
-## M7 · Atmosphère, effets et monde riche
+## M7 · Supprimé (décision de l'auteur, 2026-11-21, A39)
 
-- REN-23 (bruit en compute), REN-24 (atmosphère), REN-25 (brouillard), REN-26 (nuages si le temps le permet), REN-33 (particules), REN-14 (AO écran), REN-27 (eau), REN-38 (réfraction et transmission).
-- TER-05 (érosion en compute), TER-06 (biomes), TER-08 (végétation), TER-09 (planète sphérique, double précision, transition sol/espace), TER-10 si le temps le permet.
+Le moteur reste générique : l'atmosphère, les effets et le « monde riche » ne sont pas du cœur. Le numéro M7 n'est **pas réattribué** (les références de `docs/` restent valables). Où vont ses éléments :
 
-**Démo** : une planète vue de l'espace, puis atterrissage continu jusqu'au sol, avec atmosphère, brouillard et nuages, sans saut ni tremblement.
-**Terminé** : déterminisme conservé ; pas de dégradation visible de précision ; érosion reproductible ; coût GPU de chaque effet noté.
+- **Effets de rendu** (`REN-23` bruit en compute, `REN-24` atmosphère, `REN-25` brouillard, `REN-26` nuages, `REN-33` particules, `REN-14` occlusion ambiante, `REN-27` eau, `REN-38` réfraction et transmission) : modules **préinstallés** livrés avec le moteur, après le système de modules (voir **M13**).
+- **Terrain et planètes** (`TER-05` érosion, `TER-06` biomes, `TER-08` végétation, `TER-09` planètes sphériques, `TER-10` eau et rivières) : hors du moteur. Ils reviendront, si l'auteur le veut, comme addons construits depuis `archive/procedural-world`, après M11.
 
 ## M8 · Interface avancée, scène, simulation et logique rechargeable
 
@@ -188,7 +187,7 @@ Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusi
 
 ## M11 · Système de modules et d'addons (décidé par l'auteur le 2026-11-20, A34 ; registre déplacé en M12 le 2026-11-21, A38)
 
-Objectif : garder une release cœur 100 % générique par défaut, tout en rendant trivial l'ajout de modules optionnels (génération procédurale, physique légère, audio, utilitaires métier, etc.), selon **deux modes** : inclus directement dans la release (`bundled`) ou distribués en **addon séparé**. M11 livre le **mécanisme** (manifeste, empaquetage, installation locale ou par URL, liaison au build). L'hébergement des addons et l'interface pour les parcourir sont un **produit à part**, en M12. *(Ce jalon peut être avancé avant M7 si l'auteur souhaite réutiliser un module en addon plus tôt.)*
+Objectif : garder une release cœur 100 % générique par défaut, tout en rendant trivial l'ajout de modules optionnels (génération procédurale, physique légère, audio, utilitaires métier, etc.), selon **deux modes** : inclus directement dans la release (`bundled`) ou distribués en **addon séparé**. M11 livre le **mécanisme** (manifeste, empaquetage, installation locale ou par URL, liaison au build). L'hébergement des addons et l'interface pour les parcourir sont un **produit à part**, en M12. *(Ce jalon peut être avancé si l'auteur souhaite réutiliser un module en addon plus tôt.)*
 
 - **MOD-01 — Contrat et manifeste de module** : format déclaratif (`module.json`) décrivant un module optionnel : nom, version et plage ABI moteur compatible, en-têtes publics, archives statiques, shaders et ressources à copier, dépendances sur d'autres modules Orosmo et dépendances vcpkg éventuelles, points d'accroche (ex. plugin `RenderFeature`, types réfléchis). Le manifeste porte aussi les champs que le registre de M12 affichera (description, auteur, licence, vignette), pour ne pas le changer ensuite.
 - **MOD-02 — Deux modes de distribution (`bundled` ou `addon`)** :
@@ -211,6 +210,16 @@ Objectif : un **service et une interface à part**, pas du moteur : héberger de
 
 **Démo** : l'application du gestionnaire affiche le registre ; on installe l'addon pilote dans un projet `orosmo init`, le projet compile avec lui, puis on le retire.
 **Terminé** : index et archives vérifiés (empreinte altérée → refus, testé), installation et retrait de bout en bout en CI contre un registre de test, publication d'au moins un addon réel (le pilote de M11), `docs/ADDON_REGISTRY.md` (format de l'index, publication, sécurité) écrit, zéro régression sur la release cœur.
+
+## M13 · Modules d'effets préinstallés (décidé par l'auteur le 2026-11-21, A39)
+
+Les effets de rendu retirés de M7 deviennent des **modules** au format de M11, **livrés avec le moteur et préinstallés** (mode `bundled`), activables ou non par le projet. Chacun s'ajoute comme plugin du renderer (`REN-01`), **sans modifier le cœur ni les backends** ; c'est aussi la preuve que le système de modules tient avec des modules « de la maison ». Dépend de M5 (graphe de passes, post-traitement, HDR) et de M11. Indépendant du registre de M12 : l'ordre des deux est libre.
+
+- Bruit en compute (`REN-23`), brouillard (`REN-25`), particules (`REN-33`), occlusion ambiante (`REN-14`), eau (`REN-27`), réfraction et transmission (`REN-38`) ; atmosphère (`REN-24`) et nuages (`REN-26`) si l'auteur les veut aussi (à confirmer au début du jalon).
+- Un module = un manifeste, un plugin du renderer, ses shaders, ses paramètres réfléchis (réglables par l'interface), ses tests d'image par backend et sa mesure de coût GPU.
+
+**Démo** : la scène de la démo unique avec chaque effet activé puis désactivé depuis l'interface, sans recompiler le cœur.
+**Terminé** : chaque module testé sur les deux backends (images dans la tolérance), coût GPU noté, un projet `orosmo init` peut retirer un module préinstallé sans erreur de compilation, README par module.
 
 ## Fonctions non rattachées à un jalon
 

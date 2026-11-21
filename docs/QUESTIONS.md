@@ -225,3 +225,7 @@ fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).
   (`MOD-05` à `MOD-08`, `docs/05`) : c'est un service et une application distincts du moteur. Le manifeste de M11 porte déjà les
   champs d'affichage du registre. Le premier addon visé est le monde procédural archivé (`archive/procedural-world`). Forme du
   registre (dépôt Git avec releases ou service web) : à proposer au début de M12. Version visée : M11 `v1.1.0`, M12 `v1.2.0`.
+- **A39** (2026-11-21) : **M7 est supprimé** (numéro non réattribué). Les effets de rendu génériques (`REN-23`, `25`, `33`, `14`, `27`,
+  `38`, et `24`, `26` à confirmer) deviennent des **modules préinstallés** dans un nouveau jalon **M13**, après le système de modules
+  (M11) ; le terrain et les planètes (`TER-05` à `TER-10`) sortent du moteur. Versions : M4 `v0.4.0`, M5 `v0.5.0`, M6 `v0.6.0`,
+  M8 `v0.7.0`, M9 `v0.8.0`, **M10 `v1.0.0`**, M11 `v1.1.0`, M12 `v1.2.0`, M13 `v1.3.0` (la version suit l'ordre des jalons livrés, pas leur numéro).
