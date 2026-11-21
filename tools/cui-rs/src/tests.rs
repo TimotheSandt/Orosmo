@@ -181,3 +181,90 @@ fn review_m3_names_numbers_arguments_and_descendants() {
     assert!(err.iter().any(|e| e.contains("unknown component 'Unknown'")), "{err:?}");
     assert!(err.iter().any(|e| e.contains("'Label' has no modifier 'widht'")), "{err:?}");
 }
+
+#[test]
+fn cache_hash_is_invalidated_when_cpp_write_fails() {
+    use std::fs;
+    let unique = format!(
+        "cui_cache_test_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let root = std::env::temp_dir().join(unique);
+    let out_dir = root.join("out");
+    fs::create_dir_all(&out_dir).unwrap();
+    let cui_path = root.join("panel.cui");
+    let header_path = out_dir.join("panel.gen.h");
+    let cpp_path = out_dir.join("panel.gen.cpp");
+
+    let src_a = "import \"orosmo/ui\"\nview Panel {\n    Label(\"version A\")\n}\n";
+    let src_b = "import \"orosmo/ui\"\nview Panel {\n    Label(\"version B\")\n}\n";
+
+    fs::write(&cui_path, src_a).unwrap();
+    crate::compile_file(&cui_path, &out_dir).unwrap();
+    let old_cpp = fs::read_to_string(&cpp_path).unwrap();
+    assert!(old_cpp.contains("version A"));
+
+    // Simule un échec d'écriture sur .gen.cpp (répertoire à sa place : échoue même sous root).
+    fs::remove_file(&cpp_path).unwrap();
+    fs::create_dir(&cpp_path).unwrap();
+    fs::write(&cui_path, src_b).unwrap();
+    assert!(crate::compile_file(&cui_path, &out_dir).is_err());
+    assert_ne!(
+        crate::read_stored_hash(&header_path).as_deref(),
+        Some(crate::source_hash(src_b).as_str()),
+        "le hash de B ne doit pas être validé après un échec d'écriture de .gen.cpp"
+    );
+
+    // Remet l'ancien .gen.cpp (version A) : la relance doit régénérer B au lieu d'ignorer le fichier.
+    fs::remove_dir(&cpp_path).unwrap();
+    fs::write(&cpp_path, &old_cpp).unwrap();
+    crate::compile_file(&cui_path, &out_dir).unwrap();
+    let new_cpp = fs::read_to_string(&cpp_path).unwrap();
+    assert!(new_cpp.contains("version B"), "le .gen.cpp périmé a été conservé : {new_cpp}");
+    assert_eq!(
+        crate::read_stored_hash(&header_path).as_deref(),
+        Some(crate::source_hash(src_b).as_str())
+    );
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn lex_number_restores_column_when_suffix_is_rejected() {
+    let tokens = Lexer::new("1.foo bar").tokenize().unwrap();
+    assert_eq!(tokens[0].ty, TokenType::IntLit);
+    assert_eq!((tokens[0].col, tokens[0].end_col), (1, 2));
+    assert_eq!(tokens[1].ty, TokenType::Dot);
+    assert_eq!((tokens[1].col, tokens[1].end_col), (2, 3));
+    assert_eq!(tokens[2].ty, TokenType::Ident);
+    assert_eq!((tokens[2].col, tokens[2].end_col), (3, 6));
+    assert_eq!(tokens[3].ty, TokenType::Ident);
+    assert_eq!((tokens[3].col, tokens[3].end_col), (7, 10));
+
+    // Les suffixes de durée reconnus (comme 1.ms) restent acceptés.
+    let dur = Lexer::new("1.ms x").tokenize().unwrap();
+    assert_eq!(dur[0].ty, TokenType::FloatLit);
+    assert_eq!(dur[0].text(), "0.001");
+    assert_eq!((dur[0].col, dur[0].end_col), (1, 5));
+    assert_eq!(dur[1].ty, TokenType::Ident);
+    assert_eq!((dur[1].col, dur[1].end_col), (6, 7));
+}
+
+#[test]
+fn a_named_argument_given_twice_is_refused_at_its_label() {
+    let err = errors("view V {\n    @Mutable var s: S\n    Slider($s.v, min: 0, max: 10, min: 1)\n}\n");
+    assert_eq!(err, vec!["v.cui:4:35: error: argument 'min' is given twice".to_string()]);
+}
+
+#[test]
+fn a_cui_cpp_block_is_copied_exactly() {
+    let (header, _) = engine(
+        "view V {\n    @cui-cpp {\n        std::string greeting = \"a  b\";\n        int twice(int v) { return v * 2; }\n    }\n    Label(\"x\")\n}\n",
+    )
+    .unwrap();
+    assert!(header.contains("std::string greeting = \"a  b\";\n        int twice(int v) { return v * 2; }"), "{header}");
+}

@@ -129,7 +129,7 @@ fn cmd_check(args: &[String]) -> Result<(), String> {
             return Ok(());
         }
     };
-    let ast = match parser::parse(tokens) {
+    let ast = match parser::parse(tokens, &source) {
         Ok(ast) => ast,
         Err(err) => {
             let end_col = err.col + token_len(&err.token).max(1);
@@ -164,7 +164,7 @@ pub fn compile_source(source: &str, display: &str, stem: &str) -> Result<(String
     let tokens = Lexer::new(source)
         .tokenize()
         .map_err(|err| vec![diagnostic_line(display, err.line, err.col, "error", &err.message)])?;
-    let ast = parser::parse(tokens).map_err(|err| vec![diagnostic_line(display, err.line, err.col, "error", &err.message)])?;
+    let ast = parser::parse(tokens, source).map_err(|err| vec![diagnostic_line(display, err.line, err.col, "error", &err.message)])?;
     if !engine::is_engine_target(&ast) {
         return Err(vec![diagnostic_line(display, 1, 1, "error", &missing_import_message())]);
     }
@@ -189,7 +189,7 @@ fn compile_file(cui_path: &Path, out_dir: &Path) -> Result<(), String> {
     let cpp_path = out_dir.join(format!("{stem}.gen.cpp"));
 
     let current_hash = source_hash(&source);
-    if read_stored_hash(&header_path).as_deref() == Some(current_hash.as_str()) && cpp_path.exists() {
+    if read_stored_hash(&header_path).as_deref() == Some(current_hash.as_str()) && cpp_path.is_file() {
         println!("[cui] {} unchanged, skipping", file_name(cui_path));
         return Ok(());
     }
@@ -208,11 +208,27 @@ fn compile_file(cui_path: &Path, out_dir: &Path) -> Result<(), String> {
             return Err(format!("[cui] {} error(s) in {}", diagnostics.iter().filter(|d| d.contains(": error: ")).count(), display));
         }
     };
-    write_redirect(out_dir, cui_path)?;
-    fs::write(&header_path, format!("{HASH_TAG} {current_hash}\n{header}"))
-        .map_err(|err| format!("failed to write {}: {err}", header_path.display()))?;
-    fs::write(&cpp_path, implementation)
-        .map_err(|err| format!("failed to write {}: {err}", cpp_path.display()))?;
+    let invalidate_cache = || {
+        let _ = fs::remove_file(&header_path);
+        let _ = fs::remove_file(&cpp_path);
+    };
+    if let Err(err) = write_redirect(out_dir, cui_path) {
+        invalidate_cache();
+        return Err(err);
+    }
+    // Publie l'en-tête (sans hash) puis le .gen.cpp avant d'enregistrer le hash du cache : un échec partiel invalide le cache.
+    if let Err(err) = fs::write(&header_path, &header) {
+        invalidate_cache();
+        return Err(format!("failed to write {}: {err}", header_path.display()));
+    }
+    if let Err(err) = fs::write(&cpp_path, &implementation) {
+        invalidate_cache();
+        return Err(format!("failed to write {}: {err}", cpp_path.display()));
+    }
+    if let Err(err) = fs::write(&header_path, format!("{HASH_TAG} {current_hash}\n{header}")) {
+        invalidate_cache();
+        return Err(format!("failed to write {}: {err}", header_path.display()));
+    }
     println!(
         "[cui] {} -> {}, {}",
         file_name(cui_path),
