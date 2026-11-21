@@ -97,29 +97,31 @@ TEST_SUITE("world/export")
     TEST_CASE("generateRegion samples the same positions as the tiles; threads do not change the result")
     {
         const w::TerrainParams p = params();
-        const w::HeightField field = w::generateRegion(p, 9, 16, 32, 17, 17);
+        const w::HeightField field = w::generateRegion(p, 9, 16, 32, 17, 17).value();
         const w::Heightmap tile = w::generateTile(p, 9, {1, 2, 0});
         CHECK(field.heights == tile.heights);
         CHECK(field.originX == 32.0f);
         CHECK(field.originZ == 64.0f);
         orosmo::core::TaskSystem tasks(3);
-        CHECK(w::generateRegion(p, 9, -40, 7, 64, 48, &tasks).heights == w::generateRegion(p, 9, -40, 7, 64, 48).heights);
+        CHECK(w::generateRegion(p, 9, -40, 7, 64, 48, &tasks).value().heights == w::generateRegion(p, 9, -40, 7, 64, 48).value().heights);
 
-        // Dernier indice global hors de std::int64_t : région vide (rien d'alloué ni calculé), refusée par les exports.
+        // Dernier indice global hors de std::int64_t : erreur kInvalidArgument (rien d'alloué ni calculé).
         constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
-        const w::HeightField overflow = w::generateRegion(p, 9, kMax - 1, 0, 3, 2, &tasks);
-        CHECK(overflow.width == 0);
-        CHECK(overflow.heights.empty());
-        CHECK(w::generateRegion(p, 9, 0, kMax, 2, 2).heights.empty());
-        CHECK(w::generateRegion(p, 9, kMax - 2, kMax - 1, 3, 2).heights.size() == 6); // dernier indice = kMax : accepté
+        const auto overflowX = w::generateRegion(p, 9, kMax - 1, 0, 3, 2, &tasks);
+        REQUIRE_FALSE(overflowX.has_value());
+        CHECK((overflowX.error().code == orosmo::core::ErrorCode::kInvalidArgument));
+        CHECK(overflowX.error().message.find("int64") != std::string::npos);
+        CHECK((tests::errorOf(w::generateRegion(p, 9, 0, kMax, 2, 2)) == orosmo::core::ErrorCode::kInvalidArgument));
+        CHECK(w::generateRegion(p, 9, kMax - 2, kMax - 1, 3, 2).value().heights.size() == 6); // dernier indice = kMax : accepté
+        // Un champ vide construit à la main reste refusé par les exports.
         tests::TempDir dir("engine_export");
-        CHECK((tests::errorOf(w::writeHeightExr(dir.path / "o.exr", overflow)) == orosmo::core::ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(w::writeHeightExr(dir.path / "o.exr", w::HeightField{})) == orosmo::core::ErrorCode::kInvalidArgument));
     }
 
     TEST_CASE("PNG 16 bits: reopened by an independent decoder (stb), same quantized heights, same bytes at each export")
     {
         tests::TempDir dir("engine_export");
-        const w::HeightField field = w::generateRegion(params(), 42, 0, 0, 33, 21);
+        const w::HeightField field = w::generateRegion(params(), 42, 0, 0, 33, 21).value();
         const float lo = field.minHeight(), hi = field.maxHeight();
         REQUIRE(w::writeHeightPng16(dir.path / "h.png", field, lo, hi).has_value());
         int width = 0, height = 0, channels = 0;
@@ -152,7 +154,7 @@ TEST_SUITE("world/export")
     TEST_CASE("EXR float: reopened, the heights are exactly the generated ones")
     {
         tests::TempDir dir("engine_export");
-        const w::HeightField field = w::generateRegion(params(), 3, -10, 4, 40, 25);
+        const w::HeightField field = w::generateRegion(params(), 3, -10, 4, 40, 25).value();
         REQUIRE(w::writeHeightExr(dir.path / "h.exr", field).has_value());
         auto back = w::readHeightExr(dir.path / "h.exr");
         REQUIRE(back.has_value());
@@ -171,7 +173,7 @@ TEST_SUITE("world/export")
     TEST_CASE("EXR from an untrusted file: truncated attributes, oversized windows, bad offsets and duplicate rows are errors")
     {
         tests::TempDir dir("engine_export");
-        const w::HeightField field = w::generateRegion(params(), 3, 0, 0, 3, 2);
+        const w::HeightField field = w::generateRegion(params(), 3, 0, 0, 3, 2).value();
         REQUIRE(w::writeHeightExr(dir.path / "h.exr", field).has_value());
         const auto valid = readBytes(dir.path / "h.exr");
         auto payloadOf = [&](std::string_view name) // position de la taille de l'attribut (après « nom\0type\0 »)
@@ -224,7 +226,7 @@ TEST_SUITE("world/export")
     TEST_CASE("OBJ and glTF: reopened, vertices, normals and triangles match the height field")
     {
         tests::TempDir dir("engine_export");
-        const w::HeightField field = w::generateRegion(params(), 5, 0, 0, 9, 7);
+        const w::HeightField field = w::generateRegion(params(), 5, 0, 0, 9, 7).value();
         REQUIRE(w::writeObj(dir.path / "t.obj", field).has_value());
         std::ifstream obj(dir.path / "t.obj");
         std::string line;
@@ -361,7 +363,7 @@ TEST_SUITE("world/export")
     TEST_CASE("STL: a closed, consistently oriented solid (every edge shared by two triangles in opposite directions), positive volume")
     {
         tests::TempDir dir("engine_export");
-        const w::HeightField field = w::generateRegion(params(), 8, 0, 0, 12, 9);
+        const w::HeightField field = w::generateRegion(params(), 8, 0, 0, 12, 9).value();
         REQUIRE(w::writeStl(dir.path / "t.stl", field, 5.0f).has_value());
         const auto bytes = readBytes(dir.path / "t.stl");
         REQUIRE(bytes.size() >= 84);
@@ -399,12 +401,12 @@ TEST_SUITE("world/export")
     {
         w::TerrainParams p = params();
         p.sampleSpacing = 0.125f;
-        const w::HeightField field = w::generateRegion(p, 1, 33554433, 0, 3, 2);
+        const w::HeightField field = w::generateRegion(p, 1, 33554433, 0, 3, 2).value();
         // originX (float) + 2 * 0.125 = 4194304 ; l'échantillon global 33554435 est en 4194304.5 (float), là où sa hauteur est prise.
         CHECK(field.xAt(2) == static_cast<float>(33554435.0 * 0.125));
         CHECK(field.xAt(2) == 4194304.5f);
         tests::TempDir dir("engine_export");
-        const w::HeightField small = w::generateRegion(params(), 5, 0, 0, 3, 3);
+        const w::HeightField small = w::generateRegion(params(), 5, 0, 0, 3, 3).value();
         REQUIRE(w::writeObj(dir.path / "c.obj", small).has_value());
         const char *previous = std::setlocale(LC_NUMERIC, nullptr);
         const std::string saved = previous != nullptr ? previous : "C";
@@ -442,7 +444,7 @@ TEST_SUITE("world/export")
         CHECK((w::classify(10.0f, 0.6f, b) == w::Biome::kRock));
         CHECK((w::classify(80.0f, 0.1f, b) == w::Biome::kSnow));
         tests::TempDir dir("engine_export");
-        const w::HeightField field = w::generateRegion(params(), 4, 0, 0, 20, 20);
+        const w::HeightField field = w::generateRegion(params(), 4, 0, 0, 20, 20).value();
         REQUIRE(w::writeBiomePng(dir.path / "b.png", field, b).has_value());
         int width = 0, height = 0, channels = 0;
         unsigned char *rgb = stbi_load((dir.path / "b.png").string().c_str(), &width, &height, &channels, 3);
@@ -464,7 +466,7 @@ TEST_SUITE("world/export")
         // Valeur d'or fixée à l'écriture de TER-11 (M3, lot B) par cette même fonction sur Linux x64, puis retrouvée à l'identique
         // par la CI Linux arm64 et Windows (MinGW). Elle couvre generateRegion (graine 42, 64 x 64, params() ci-dessus) : la
         // changer n'est permis que pour une modification VOLONTAIRE de l'algorithme de bruit ou de génération (voir noise_tests).
-        const w::HeightField field = w::generateRegion(params(), 42, 0, 0, 64, 64);
+        const w::HeightField field = w::generateRegion(params(), 42, 0, 0, 64, 64).value();
         const std::uint64_t sum = w::checksum64(field.heights);
         if (sum != 0x535edcc509c49bd1ULL)
         {

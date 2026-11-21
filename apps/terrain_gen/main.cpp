@@ -215,7 +215,12 @@ int main(int argc, char **argv)
     }
 
     orosmo::core::TaskSystem tasks(threads);
-    const w::HeightField field = w::generateRegion(params, *seed, originX.value_or(0), originZ.value_or(0), *size, *size, &tasks);
+    auto region = w::generateRegion(params, *seed, originX.value_or(0), originZ.value_or(0), *size, *size, &tasks);
+    if (!region)
+    {
+        return fail(kUsage, region.error().message);
+    }
+    const w::HeightField field = std::move(*region);
     const float lo = field.minHeight();
     const float hi = field.maxHeight();
     orosmo::core::Result<> written;
