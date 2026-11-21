@@ -198,5 +198,6 @@ Proposition : garder le champ vide en 0.3.x et passer à `Result` à M4 avec les
 **A35. Version de la release M3 bis (2026-11-21, tranchée).** M3 est proposée en `v0.3.0` avec `world` dans le paquet ; M3 bis
 retire `world`, `TerrainRenderer` et les exemples terrain du paquet (changement incompatible pour qui les utiliserait, personne à
 ce jour). Proposition : `v0.3.1` (aucun utilisateur extérieur ; `v0.4.0` reste pour M4). Les fichiers de version (`mk/config.mk`,
-`vcpkg.json`, `Cargo.toml`) restent à `0.3.0` tant que l'auteur n'a pas tranché. **Décision de l'auteur (2026-11-21)** : `v0.3.1` ;
+`vcpkg.json`, `Cargo.toml`) restent à `0.3.0` tant que l'auteur n'a pas tranché. **Décision de l'auteur (2026-11-21)** : `v0.3.1`, et **pas de release pour M3** (`v0.3.0` n'est pas publiée : la première
+release publiée est celle de M3 bis) ;
 fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).

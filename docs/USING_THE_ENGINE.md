@@ -169,7 +169,7 @@ d'interface : `ParamPanel($state.params)` dans le langage, `orosmo::ui::reflecte
 
 Numérotation sémantique **0.MINEUR.CORRECTIF** : tant que la version majeure est 0, un changement **mineur** peut casser l'API (la
 liste des changements incompatibles est dans `docs/releases/<jalon>.md`) ; un **correctif** ne la casse jamais. Première release
-présentée comme utilisable : celle de M3 (proposée : `v0.3.0`).
+présentée comme utilisable : `v0.3.1` (M3 bis, moteur générique). M3 (`v0.3.0`) n'a pas été publiée.
 
 | Module (`include/orosmo/…`) | Statut | Remarque |
 | --- | --- | --- |
