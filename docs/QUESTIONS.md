@@ -174,3 +174,16 @@ l'auteur (2026-11-20)** : tout renommer tout de suite, aucun projet extérieur n
 dossier du paquet dans un projet `orosmo/` (`apps/demo/orosmo/` dans le dépôt), import `.cui` `import "orosmo/ui"` (branche
 `chore/rename-namespace-orosmo`). Restent nommés « engine » : les variables de build `ENGINE_*` (`ENGINE_DIR`…), le fichier
 `make/engine.mk` du SDK et les dossiers d'outils `tools/engine-sdk/`, `tools/engine-init-rs/` (internes).
+
+**A33. Périmètre de la release : moteur générique seul, modules procéduraux hors release + jalon Modules/Addons (2026-11-20, tranchée).**
+**Décision de l'auteur (2026-11-20)** :
+1. La **release utilisable** (`orosmo-pkg-<plateforme>.zip`, outil `orosmo init`) ne doit contenir **que le moteur générique**
+   (`core`, `platform`, `rhi`, `renderer` sans `TerrainRenderer`, `ui`, `thirdparty`, compilateur `cui`, shaders/ressources
+   génériques, template de projet générique, exemples `minimal` et `ui_gallery`).
+2. La **génération procédurale** déjà développée (`orosmo::world`, `TerrainRenderer`, shaders `terrain.*`, `apps/demo`,
+   `apps/terrain_gen`, `apps/terrain_viewer`) reste dans le dépôt pour les démos internes et la CI (via `libworld.a` +
+   `libterrain_renderer.a` et `ENGINE_EXTRA_MODULES`), mais n'est **pas** packagée dans la release : le développement procédural
+   continuera dans un autre projet.
+3. **Pour plus tard** : un nouveau jalon (**M11 · Système de modules et d'addons**, IDs `MOD-01` à `MOD-04` dans `docs/02` et
+   `docs/05`) est ajouté afin de pouvoir intégrer facilement des modules d'aide au développement, soit **inclus directement dans
+   la release** (`bundled`), soit **distribués en addons séparés** installables sur une release cœur.

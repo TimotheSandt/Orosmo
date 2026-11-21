@@ -4,8 +4,9 @@ DOC-01 / BLD-01. Guide pour écrire un programme avec une **release** du moteur,
 travailler sur le moteur (le dépôt), voir le [README](../README.md).
 
 Ce qui est décrit ici est vérifié par `make e2e-init` (CI Linux x64, à chaque poussée) : paquet construit, `orosmo init
---package` d'un projet neuf, compilation, lancement sans fenêtre, et les trois exemples compilés depuis le paquet. Sous Windows
-et macOS, la même étape tourne en CI mais n'a pas encore été observée verte (`docs/GAPS.md`).
+--package` d'un projet neuf, vérification que le paquet ne livre que le moteur générique (sans module procédural), compilation,
+lancement sans fenêtre, et les exemples compilés depuis le paquet. Sous Windows et macOS, la même étape tourne en CI mais n'a pas
+encore été observée verte (`docs/GAPS.md`).
 
 ## 1. Ce que contient une release
 
@@ -23,7 +24,7 @@ son `README.md` (copie de `tools/engine-sdk/dist-README.md`).
 | --- | --- | --- | --- |
 | Linux (vérifié : Ubuntu 24.04, g++ 13.3) | g++ 13+ ou clang++ 17+ | GNU Make, vcpkg (`make install`) ou les paquets apt du README | OpenGL 4.5 (ou 4.3 + `GL_ARB_clip_control`), X11 |
 | Windows (non vérifié depuis M00) | MinGW-w64 g++ 13+ (MSYS2 MINGW64) | `mingw32-make`, vcpkg (triplet `x64-mingw-static`) | OpenGL 4.5 |
-| macOS (non vérifié) | clang++ 17+ (Homebrew LLVM ; le clang d'Apple doit fournir `std::expected`) | GNU Make, vcpkg | **aucun rendu avant M4** : macOS s'arrête à OpenGL 4.1, le RHI demande 4.3 ; ce qui se passe de GPU (`orosmo::world`, `terrain-gen`, l'export) fonctionne |
+| macOS (non vérifié) | clang++ 17+ (Homebrew LLVM ; le clang d'Apple doit fournir `std::expected`) | GNU Make, vcpkg | **aucun rendu avant M4** : macOS s'arrête à OpenGL 4.1, le RHI demande 4.3 ; ce qui se passe de GPU (`orosmo::core`, `examples/minimal`) fonctionne |
 
 Ni Rust ni Python ne sont nécessaires pour utiliser une release (`cui` est livré compilé).
 
@@ -39,10 +40,10 @@ make install                            # dépendances vcpkg du moteur (une fois
 make debug && make run                  # bin/debug/main
 ```
 
-`orosmo init` crée `orosmo/` (le paquet), `src/` (le projet de référence : la démo du moteur), `Makefile`, `.gitignore`,
-`config.mk` (nom, version : à vous) et `config.local.mk` (chemins de la machine, ignoré par git). `orosmo update` remplace `orosmo/`
-par la dernière release, met à jour `Makefile` et `.gitignore` s'ils n'ont pas été modifiés, et ajoute à `config.mk` les champs
-nouveaux sans toucher aux vôtres ; `--package` marche aussi.
+`orosmo init` crée `orosmo/` (le paquet du moteur générique), `src/` (un projet de démarrage générique : scène 3D RHI + panneau `.cui`),
+`Makefile`, `.gitignore`, `config.mk` (nom, version : à vous) et `config.local.mk` (chemins de la machine, ignoré par git).
+`orosmo update` remplace `orosmo/` par la dernière release, met à jour `Makefile` et `.gitignore` s'ils n'ont pas été modifiés,
+et ajoute à `config.mk` les champs nouveaux sans toucher aux vôtres ; `--package` marche aussi.
 
 ### Avec le paquet seul (`ENGINE_DIR`)
 
@@ -65,17 +66,45 @@ dans un projet créé par `orosmo init`), ou faites-en un lien vers une installa
 `examples/minimal/` du paquet (source : `apps/minimal/` du dépôt), compilé et lancé par `make e2e-init` :
 
 ```cpp
-#include <orosmo/world/checksum.hpp>
-#include <orosmo/world/terrain.hpp>
+#include <orosmo/core/reflection.hpp>
+#include <orosmo/core/serialization.hpp>
+#include <orosmo/core/tasks.hpp>
+
+#include <atomic>
+#include <cstdint>
 #include <cstdio>
+#include <string>
+
+struct AppSummary
+{
+    std::string name = "minimal";
+    std::uint32_t tasksCompleted = 0;
+    std::uint64_t sum = 0;
+};
+
+template <> struct orosmo::core::Reflect<AppSummary>
+{
+    static constexpr int kVersion = 1;
+    static constexpr auto fields()
+    {
+        return std::make_tuple(field("name", &AppSummary::name), field("tasksCompleted", &AppSummary::tasksCompleted),
+                               field("sum", &AppSummary::sum));
+    }
+};
 
 int main()
 {
-    orosmo::world::TerrainParams params;
-    params.heightScale = 80.0f;
-    const orosmo::world::Heightmap tile = orosmo::world::generateTile(params, /*seed=*/42, {.x = 0, .z = 0, .lod = 0});
-    std::printf("%zu samples, checksum %016llx\n", tile.heights.size(),
-                static_cast<unsigned long long>(orosmo::world::checksum64(tile.heights)));
+    constexpr std::size_t kCount = 1024;
+    orosmo::core::TaskSystem tasks;
+    std::atomic<std::uint64_t> total{0};
+    tasks.parallelFor(kCount, 64, [&](std::size_t i) { total.fetch_add(static_cast<std::uint64_t>(i + 1), std::memory_order_relaxed); });
+
+    AppSummary summary;
+    summary.tasksCompleted = static_cast<std::uint32_t>(kCount);
+    summary.sum = total.load(std::memory_order_relaxed);
+
+    const std::string json = orosmo::core::dumpJson(orosmo::core::saveDocument(summary), -1);
+    std::printf("%s\n", json.c_str());
 }
 ```
 
@@ -95,12 +124,15 @@ obj/main.o: main.cpp
 	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
 ```
 
-Résultat (Linux x64) : `4225 samples, height at the centre = -6.899 m, checksum a7317b0c30548c23` — la même somme sur toutes les
-plateformes (TEST-03).
+Résultat : `{"data":{"name":"minimal","sum":524800,"tasksCompleted":1024},"version":1}`.
 
-Deux exemples plus complets sont dans le paquet : `examples/terrain_gen` (ligne de commande, exports) et
-`examples/terrain_viewer` (fenêtre, rendu, panneau en langage d'interface ; voir son `README.md`). Pour l'interface,
-`examples/ui_gallery` montre chaque widget, conteneur, événement et thème dans une seule fenêtre.
+Pour l'interface, `examples/ui_gallery` montre chaque widget, conteneur, événement et thème d'`orosmo::ui` dans une seule fenêtre.
+Le projet créé par `orosmo init` fournit quant à lui un squelette complet avec fenêtre, rendu 3D RHI (`SceneRenderer`, `Mesh`,
+`LightManager`) et superposition `.cui`.
+
+> La génération procédurale (`orosmo::world`, `TerrainRenderer`, `terrain-gen`, `terrain-viewer`) reste dans le dépôt source
+> pour les démos internes ; elle n'est pas incluse dans la release générique (décision A33). Un système de modules/addons est
+> prévu au jalon M11 (`docs/05-PLAN_PAR_JALONS.md`).
 
 ## 5. Ressources à l'exécution
 
@@ -124,9 +156,10 @@ présentée comme utilisable : celle de M3 (proposée : `v0.3.0`).
 
 | Module (`include/orosmo/…`) | Statut | Remarque |
 | --- | --- | --- |
-| `core`, `rhi`, `renderer`, `world`, `ui` | **figé pour 0.3.x** | noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
-| `platform` (`Window`, `InputManager`) | **provisoire** | noms encore en `PascalCase`, hors de l'espace `orosmo::platform` : ils changeront (`docs/GAPS.md` G96) |
+| `core`, `rhi`, `renderer`, `ui` | **figé pour 0.3.x** | livré dans la release ; noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
+| `platform` (`Window`, `InputManager`) | **provisoire** | livré dans la release ; noms encore en `PascalCase`, hors de l'espace `orosmo::platform` : ils changeront (`docs/GAPS.md` G96) |
 | `core` : `Logger`, `Profiler`, `FPSCounter`, `RingBuffer` | **repris tels quels** | anciens modules `Utilities` et `Profiler` déplacés dans `orosmo::core` (2026-11-20) : noms de méthodes encore en `PascalCase` (G122) |
+| `world`, `TerrainRenderer` | **hors release (dépôt uniquement)** | conservés dans le dépôt pour la démo et les outils terrain (A33) ; futur module/addon en M11 |
 
 ## 8. Limites connues
 

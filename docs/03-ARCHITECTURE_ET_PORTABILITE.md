@@ -296,3 +296,11 @@ Ces fonctions ne sont pas écrites maintenant ; l'architecture doit seulement le
 - **Voxels** : un plugin de rendu (maillage par chunks, ou tracé de rayons en compute sur voxels creux). Besoins du RHI déjà couverts : textures 3D, images de stockage, compute, dessin indirect, grands buffers.
 - **Ray tracing** : `AccelerationStructure` (BLAS/TLAS) et requêtes de rayon dans le RHI, activés par `Capabilities::rayQuery`. Vulkan et Metal les exposent ; OpenGL non. Sans matériel, le plugin choisit un tracé logiciel en compute ou se désactive.
 - **Critère** : ajouter l'un de ces plugins ne doit modifier ni le renderer, ni les backends existants, hors l'ajout des fonctions d'accélération au RHI.
+
+## 15. Cœur générique, modules optionnels et addons (décision A33)
+
+La release distribuable du moteur (`orosmo-pkg-<plateforme>.zip` et le projet généré par `orosmo init`) vise un **moteur générique** : seuls les modules cœur (`core`, `platform`, `rhi`, `renderer` générique, `ui`, `thirdparty`, `cui`) y sont inclus par défaut.
+
+Les modules spécialisés (comme `world` et `TerrainRenderer`, conservés dans le dépôt pour les démos internes) n'appartiennent pas au cœur distribué :
+- **Aujourd'hui (M3+)** : ils sont compilés en archives distinctes (`libworld.a`, `libterrain_renderer.a`), exclus de `dist/`, et reliés explicitement par les applications internes du dépôt via `ENGINE_EXTRA_MODULES`.
+- **À terme (M11, `MOD-01` à `MOD-04`)** : un système de manifestes et de packaging permettra d'ajouter facilement tout module utilitaire, soit **intégré dans la release** (`bundled`), soit **distribué en addon séparé** (`orosmo addon add`), branché automatiquement par `engine.mk` sans modifier le cœur du moteur.

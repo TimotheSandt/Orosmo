@@ -12,20 +12,17 @@ orosmo-pkg-<platform>/
       core/            errors (std::expected), logger, tasks, file watcher, reflection + JSON/MessagePack serialization
       platform/        Window, InputManager (names still PascalCase: will change, see "API stability")
       rhi/             graphics abstraction (Device, CommandEncoder, handles) — OpenGL 4.3+ backend before M4
-      renderer/        SceneRenderer, Camera (reverse-Z), CanvasRenderer, DrawList, TerrainRenderer, DebugDraw
-      world/           deterministic noise, terrain tiles, LOD streaming, GPU noise, export (PNG16/EXR/OBJ/glTF/STL)
+      renderer/        SceneRenderer, Camera (reverse-Z), CanvasRenderer, DrawList, Mesh, LightManager, DebugDraw
       ui/              orosmo::ui — widgets, layout, JSON themes, reflected parameter panels
   lib/
-    debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libworld, libui, … (link them all:
+    debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libui, libthirdparty (link them all:
                        ENGINE_LINK_LIBS)
   make/engine.mk     — include this in your project Makefile
   tools/cui[.exe]    — interface language compiler (.cui → C++), run by engine.mk
   shaders/rhi/       — GLSL 450 shaders of the RHI renderers: copy them next to your executable (res/shader/rhi/)
   res/fonts, res/themes — default font and the dark/light themes of orosmo::ui
   examples/
-    minimal/         — the smallest program linked to the engine (one terrain tile, no window): make -C examples/minimal
-    terrain_gen/     — command-line generator (no window, no GPU):  make -C examples/terrain_gen
-    terrain_viewer/  — viewer with a .cui control panel:            make -C examples/terrain_viewer
+    minimal/         — the smallest program linked to the engine (orosmo::core tasks + reflection, no window): make -C examples/minimal
     ui_gallery/      — every widget, layout, event and theme of orosmo::ui: make -C examples/ui_gallery
   vcpkg.json         — third-party dependencies (make install in a project created by `orosmo init`)
   .gitignore, README.md

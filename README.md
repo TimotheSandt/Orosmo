@@ -81,7 +81,11 @@ tools/        précompilateur .cui (cui-rs), outil engine-init-rs, SDK (engine-s
 docs/         spécification, plan, rapports (voir docs/README.md)
 ```
 
-Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libworld.a`, `libui.a`, `libthirdparty.a`) ; la démo les relie via `apps/demo/orosmo/`.
+Le moteur compile en bibliothèques statiques, une par module :
+- **Cœur distribué en release** (`dist/orosmo-pkg-<plateforme>.zip`, `orosmo init`) : `libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libui.a`, `libthirdparty.a`.
+- **Modules procéduraux internes au dépôt** (utilisés par `apps/demo`, `apps/terrain_gen`, `apps/terrain_viewer` et les tests, exclus de la release — décision A33) : `libworld.a`, `libterrain_renderer.a`.
+
+Dans le dépôt, la démo les relie via `apps/demo/orosmo/` (avec `ENGINE_EXTRA_MODULES="world terrain_renderer"`).
 
 ## Documentation
 
