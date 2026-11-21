@@ -194,7 +194,7 @@ demo-test-gpu:
 
 # ── Demo headless captures (HUD, UI tabs, themes, dropdown/tooltip/dialog/menu/notification) ──
 DEMO_BIN := apps/demo/bin/debug/main$(if $(filter Windows_NT,$(OS)),.exe)
-.PHONY: demo-capture
+.PHONY: demo-capture demo-vulkan-check
 demo-capture: all-debug
 	./$(DEMO_BIN) --api opengl --headless --ui hud --capture build/demo-capture/hud --capture-frames 5
 	for tab in scene widgets controls color windows layout themes; do \
@@ -209,6 +209,11 @@ demo-capture: all-debug
 	test -s build/demo-capture/dark-widgets/ui.png
 	test -s build/demo-capture/light-widgets/ui.png
 	python3 tools/compare_png.py build/demo-capture/dark-widgets/ui.png build/demo-capture/light-widgets/ui.png > /dev/null && exit 1 || echo "demo-capture : OK (dark != light)"
+
+# M4 : la démo donne la même image dans la tolérance en Vulkan et en OpenGL, et les couches de validation Vulkan (synchronisation
+# comprise) restent silencieuses (0 message). `make demo-vulkan-check FULL=1` ajoute tous les onglets de demo-capture.
+demo-vulkan-check: all-debug
+	python3 tools/demo_parity.py --bin $(DEMO_BIN) --out build/demo-parity $(if $(FULL),--full)
 
 # ── BLD-02 : de bout en bout depuis le paquet (sans les sources du moteur) ──
 #   make e2e-init   paquet + outil `orosmo` construits ; `orosmo init --package` d'un projet neuf dans build/e2e/<date>/mygame ;
