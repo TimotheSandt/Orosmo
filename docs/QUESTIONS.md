@@ -234,3 +234,16 @@ fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).
   **batch 2D** (R2D-01, M5) est une optimisation : regrouper ces commandes en quelques dessins instanciés. A21 demandait seulement
   d'accepter que UI-02 reste `Partiel` jusqu'à M5, puisque la liste est déjà là mais pas encore le batch. Proposition : **close**,
   telle que réalisée ; à confirmer par l'auteur.
+
+
+## Décision de l'auteur du 2026-11-21 : registre d'addons (A38)
+
+- **A38** : le système d'addons de M11 se limite au **mécanisme** (manifeste, empaquetage, installation locale ou par URL, liaison au
+  build). L'**hébergement** des addons et l'**interface** pour les parcourir et les installer forment un jalon à part, **M12**
+  (`MOD-05` à `MOD-08`, `docs/05`) : c'est un service et une application distincts du moteur. Le manifeste de M11 porte déjà les
+  champs d'affichage du registre. Le premier addon visé est le monde procédural archivé (`archive/procedural-world`). Forme du
+  registre (dépôt Git avec releases ou service web) : à proposer au début de M12. Version visée : M11 `v1.1.0`, M12 `v1.2.0`.
+- **A39** (2026-11-21) : **M7 est supprimé** (numéro non réattribué). Les effets de rendu génériques (`REN-23`, `25`, `33`, `14`, `27`,
+  `38`, et `24`, `26` à confirmer) deviennent des **modules préinstallés** dans un nouveau jalon **M13**, après le système de modules
+  (M11) ; le terrain et les planètes (`TER-05` à `TER-10`) sortent du moteur. Versions : M4 `v0.4.0`, M5 `v0.5.0`, M6 `v0.6.0`,
+  M8 `v0.7.0`, M9 `v0.8.0`, **M10 `v1.0.0`**, M11 `v1.1.0`, M12 `v1.2.0`, M13 `v1.3.0` (la version suit l'ordre des jalons livrés, pas leur numéro).
