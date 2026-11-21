@@ -195,7 +195,9 @@ jobs:
         with:
           path: .vcpkg-archives
           key: vcpkg-archives-${{ matrix.cache_id }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
-          restore-keys: vcpkg-archives-${{ matrix.cache_id }}-${{ hashFiles('vcpkg.json') }}-
+          restore-keys: |
+            vcpkg-archives-${{ matrix.cache_id }}-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-archives-${{ matrix.cache_id }}-
 
       # ── Install vcpkg dependencies ─────────────────────────────────────────────
       - name: Install vcpkg dependencies (Unix)

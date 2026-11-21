@@ -13,3 +13,4 @@ vcpkg_installed/
 config.local.mk
 /orosmo
 /orosmo.exe
+compile_commands.json

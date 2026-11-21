@@ -18,7 +18,9 @@ orosmo-pkg-<platform>/
     debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libui, libthirdparty (link them all:
                        ENGINE_LINK_LIBS)
   make/engine.mk     — include this in your project Makefile
-  tools/cui[.exe]    — interface language compiler (.cui → C++), run by engine.mk
+  cmake/             — optional CMake package (`OrosmoConfig.cmake`, `find_package(Orosmo REQUIRED)`)
+  tools/cui[.exe]    — interface language compiler (.cui → C++), run by engine.mk or CMake
+  tools/gen_compile_commands.py — generates `compile_commands.json` (`make compile-commands`)
   shaders/rhi/       — GLSL 450 shaders of the RHI renderers: copy them next to your executable (res/shader/rhi/)
   res/fonts, res/themes — default font and the dark/light themes of orosmo::ui
   examples/
@@ -51,9 +53,24 @@ include $(ENGINE_DIR)/make/engine.mk
 ### 2 — Build
 
 ```sh
-make release    # optimised build  →  bin/release/<name>
-make debug      # debug build      →  bin/debug/main
-make run        # build + run
+make release           # optimised build  →  bin/release/<name>
+make debug             # debug build      →  bin/debug/main
+make run               # build + run
+make compile-commands  # generate compile_commands.json for clangd / IDEs
+```
+
+### Alternative: CMake (`find_package(Orosmo)`)
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(mygame LANGUAGES CXX)
+
+list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/orosmo")
+find_package(Orosmo REQUIRED)
+
+add_executable(mygame src/main.cpp)
+orosmo_add_cui_views(mygame src/HudView.cui)
+target_link_libraries(mygame PRIVATE Orosmo::Orosmo)
 ```
 
 ## Complete Makefile example

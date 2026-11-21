@@ -227,13 +227,13 @@ fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).
   Les autres singletons de la liste (`GraphicsRuntime`, `ShaderLibrary`, `UI::Manager`, `GraphicsRenderState`) ont disparu en M2/M3.
 - **A13** : close, le compilateur `cui` **reste en Rust** (`cargo` reste une dépendance de build). Les points (b) à (d) ont été
   tranchés en M2 (`docs/UI_LANGUAGE.md`).
-- **A14** (CMake) : **reportée à M9** (portage macOS/Metal), le Makefile reste le build de référence d'ici là.
+- **A14** (CMake) : **reportée à M9** (portage macOS/Metal), le Makefile reste le build de référence d'ici là. **Précision (v0.4.1)** : un support CMake **optionnel** est livré avec le SDK (`OrosmoConfig.cmake`, `find_package(Orosmo)`), sans migrer le build : le Makefile reste la référence, ce qui est cohérent avec cette décision ; le prototype complet (presets, moteur et tests) reste à M9.
 - **A15** : close (les ajustements de jalons ont été intégrés à `docs/05`).
 - **A21** : l'auteur demande une explication. En clair : l'interface ne dessine plus elle-même, elle remplit une **liste de
   dessin** (`DrawList` : « rectangle ici, texte là ») que `CanvasRenderer` exécute commande par commande (B5, M2, fait). Le
   **batch 2D** (R2D-01, M5) est une optimisation : regrouper ces commandes en quelques dessins instanciés. A21 demandait seulement
-  d'accepter que UI-02 reste `Partiel` jusqu'à M5, puisque la liste est déjà là mais pas encore le batch. Proposition : **close**,
-  telle que réalisée ; à confirmer par l'auteur.
+  d'accepter que UI-02 reste `Partiel` jusqu'à M5, puisque la liste est déjà là mais pas encore le batch. **Close** par l'auteur
+  (2026-11-21) : UI-02 reste `Partiel` jusqu'au batch 2D de M5.
 
 
 ## Décision de l'auteur du 2026-11-21 : registre d'addons (A38)

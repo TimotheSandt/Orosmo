@@ -12,8 +12,8 @@ encore été observée verte (`docs/GAPS.md`).
 
 | Fichier | Rôle |
 | --- | --- |
-| `orosmo-<plateforme>[.exe]` | outil en ligne de commande : `orosmo init` (nouveau projet), `orosmo update` (mise à jour) |
-| `orosmo-pkg-<plateforme>.zip` | le paquet : en-têtes, bibliothèques statiques debug et release, `make/engine.mk`, compilateur `cui`, shaders du RHI, police et thèmes, exemples, `vcpkg.json` |
+| `orosmo-<plateforme>[.exe]` | outil en ligne de commande : `orosmo init` (nouveau projet), `orosmo update` (mise à jour), `orosmo doctor` (vérification de la toolchain et du SDK) |
+| `orosmo-pkg-<plateforme>.zip` | le paquet : en-têtes, bibliothèques statiques debug et release, `make/engine.mk`, `cmake/OrosmoConfig.cmake`, compilateur `cui`, `gen_compile_commands.py`, shaders du RHI, police et thèmes, exemples, `vcpkg.json` |
 
 Plateformes : `linux-x64`, `linux-arm64`, `windows-x64` (MinGW), `macos-arm64`, `macos-x64`. Le contenu détaillé du paquet est dans
 son `README.md` (copie de `tools/engine-sdk/dist-README.md`).
@@ -33,11 +33,13 @@ Ni Rust ni Python ne sont nécessaires pour utiliser une release (`cui` est livr
 ### Avec l'outil `orosmo` (recommandé)
 
 ```bash
+./orosmo-linux-x64 doctor               # vérifie g++/clang++ C++23, make, vcpkg, GPU (option --json)
 ./orosmo-linux-x64 init mygame          # télécharge le paquet de la dernière release (repli : paquet intégré à l'outil)
 ./orosmo-linux-x64 init --package orosmo-pkg-linux-x64.zip mygame   # hors ligne, avec un paquet déjà téléchargé
 cd mygame
 make install                            # dépendances vcpkg du moteur (une fois)
 make debug && make run                  # bin/debug/main
+make compile-commands                   # génère compile_commands.json pour clangd / VS Code
 ```
 
 Dans un terminal, `make` affiche une barre de progression (fichiers compilés, en cours, restants et à jour) au lieu des commandes ;
@@ -82,6 +84,24 @@ include $(ENGINE_DIR)/make/engine.mk
 les règles du langage d'interface (`GEN_CPP_SOURCES`). Les dépendances tierces sont cherchées dans
 `$(ENGINE_DIR)/vcpkg_installed/<triplet>` : installez-y les dépendances du `vcpkg.json` du paquet (c'est ce que fait `make install`
 dans un projet créé par `orosmo init`), ou faites-en un lien vers une installation existante (ce que fait `make e2e-init`).
+
+### Avec CMake (`find_package(Orosmo)`)
+
+Le paquet inclut `cmake/OrosmoConfig.cmake` et `cmake/OrosmoConfigVersion.cmake` (consommation optionnelle sans remplacer le build Make interne du moteur) :
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(mygame LANGUAGES CXX)
+
+list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/orosmo")
+find_package(Orosmo REQUIRED)
+
+add_executable(mygame src/main.cpp)
+orosmo_add_cui_views(mygame src/HudView.cui)
+target_link_libraries(mygame PRIVATE Orosmo::Orosmo)
+```
+
+Variables utiles : `OROSMO_VCPKG_ROOT` (si les dépendances vcpkg sont partagées ailleurs), `OROSMO_VCPKG_TRIPLET`, `OROSMO_SHADERS_DIR`, `OROSMO_RES_DIR`.
 
 ## 4. Projet minimal
 
