@@ -378,7 +378,7 @@ install install-deps:
 	            --triplet=$(ENGINE_VCPKG_TRIPLET) \
 	            --x-manifest-root=$(ENGINE_DIR) \
 	            --x-install-root=$(ENGINE_DIR)/vcpkg_installed \
-	            --no-print-usage; \
+	            --no-print-usage || exit 1; \
 	    fi; \
 	    if [ -f vcpkg.json ]; then \
 	        $(VCPKG) install \
