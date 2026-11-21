@@ -18,6 +18,7 @@ par l'auteur le 2026-11-21 ; `mk/config.mk`, `vcpkg.json`, `Cargo.toml`, extensi
 | `make clean` / `fclean` | Nettoient debug, dev et release (seulement release avant : le `BUILD_TYPE` du `Makefile` racine n'était pas transmis) ; `BUILD_TYPE=x` pour un seul type | `fix/fclean-all-build-types` |
 | `sync-demo` | Les copies gardent leurs dates (`cp -p`) : un `make all-debug` sans changement ne recompile ni ne relie plus la démo | `feat/build-progress` |
 | CI | L'étape « Plan » saute aussi la CI d'une PR dont la fusion testée a le même contenu que la tête (le commit de fusion de la PR précédente sur `main` faisait relancer toute la CI en double) | `docs/M3bis-release` |
+| Release | Un tag `v*` posé sur un commit que `main` a déjà construit avec succès **réutilise** ses paquets (5 plateformes, gardés 7 jours) au lieu de tout recompiler : la release publie les fichiers prouvés sur `main` ; sinon (autre commit, build de `main` en échec ou paquets expirés), le tag recompile comme avant. Un build de `main` encore en cours est attendu (45 min au plus) | `ci/release-reuse-main-build` |
 | CI : ccache | Chaque job garde ses résultats de compilation d'un run à l'autre (`ccache`, cache GitHub par job et par plateforme, 500 Mo) : un fichier inchangé n'est plus recompilé. Les étapes de tests compilent aussi en parallèle (`-j`), elles compilaient en série (release du moteur et tests) | `chore/ci-ccache` |
 
 Fusion : `chore/M3-M4-bridge` (conflits résolus : la décision du périmètre de la release devient A34, A33 étant déjà la question
@@ -59,6 +60,8 @@ Clone propre de `docs/M3bis-release` (contenu de `chore/M3-M4-bridge` + cette do
 - Windows et macOS : la branche PowerShell de `make dist` / `install-demo` n'a jamais été exécutée (G126) ; la barre de progression
   n'est vérifiée que sous Linux (G127).
 - `orosmo update` sur un projet créé par M3 (avec la démo terrain) : non essayé.
+- Réutilisation du build de `main` par le tag : vérifiable seulement au premier tag (`v0.3.1`) ; en cas d'échec de la recherche,
+  le tag recompile (pas de release perdue).
 - ccache en CI : jamais exécuté avant la poussée (pas de ccache sur la machine de développement) ; le premier run remplit le cache, le
   gain se mesure au deuxième (`ccache --show-stats` en fin de job). Sous Windows, les lanceurs `lib/ccache/bin` de MSYS2 ne sont
   utilisés que s'ils existent (sinon compilation directe, journalisée).
