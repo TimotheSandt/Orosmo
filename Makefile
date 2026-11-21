@@ -246,6 +246,7 @@ e2e-init:
 	$(MAKE) -f $(ENGINE_MK) engine-tool
 	mkdir -p $(E2E_RUN)
 	cd $(E2E_RUN) && "$(abspath dist)/orosmo-$(E2E_PLATFORM)$(E2E_EXE)" init --package "$(abspath dist)/orosmo-pkg-$(E2E_PLATFORM).zip" mygame
+	test -f $(E2E_RUN)/mygame/orosmo/tools/build_progress.py   # barre de progression du projet (Makefile du modèle)
 	@test ! -e $(E2E_RUN)/mygame/orosmo/includes/orosmo/world
 	@test ! -e $(E2E_RUN)/mygame/orosmo/includes/orosmo/renderer/terrain_renderer.hpp
 	@test ! -e $(E2E_RUN)/mygame/orosmo/lib/debug/libworld.a

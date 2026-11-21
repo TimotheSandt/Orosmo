@@ -37,6 +37,24 @@ ENGINE_DIR  ?= orosmo
 _ENGINE_MK  ?= $(ENGINE_DIR)/make/engine.mk
 _VCPKG_ROOT ?= vcpkg_installed
 
+# ── Affichage : dans un terminal, `make <buts>` passe par $(ENGINE_DIR)/tools/build_progress.py (barre de progression : fichiers
+#    compilés, en cours, à jour, restants). Commandes complètes : `make V=1 …` ; sans barre : `ORS_NO_PROGRESS=1 make …`. Hors
+#    terminal, sous-make, paquet sans le script ou sans Python 3 : make habituel. ──
+_ORS_SCRIPT := $(wildcard $(ENGINE_DIR)/tools/build_progress.py)
+_ORS_FIRST  := $(firstword $(MAKEFLAGS))
+_ORS_DRY    := $(if $(filter -%,$(_ORS_FIRST)),,$(findstring n,$(_ORS_FIRST))$(findstring q,$(_ORS_FIRST)))
+_ORS_WRAP   := $(if $(or $(ORS_PROGRESS),$(ORS_NO_PROGRESS),$(filter 1,$(V)),$(_ORS_DRY),$(filter-out 0,$(MAKELEVEL)),$(if $(_ORS_SCRIPT),,none)),,$(shell test -t 2 && command -v python3 >/dev/null 2>&1 && echo 1))
+ifeq ($(_ORS_WRAP),1)
+_ORS_GOALS := $(or $(MAKECMDGOALS),ors-default-goal)
+.PHONY: $(_ORS_GOALS)
+$(firstword $(_ORS_GOALS)):
+	@python3 "$(_ORS_SCRIPT)" $(MAKE) $(MAKECMDGOALS)
+ifneq ($(words $(_ORS_GOALS)),1)
+$(wordlist 2,999,$(_ORS_GOALS)):
+	@:
+endif
+else
+
 GAME_SRC_DIR := src
 BUILD_TYPE   ?= release
 
@@ -536,3 +554,5 @@ create_linux_installer: | $(BUILD_ARTIFACTS_DIR)
 
 $(BUILD_ARTIFACTS_DIR):
 	@mkdir -p "$@"
+
+endif # _ORS_WRAP
