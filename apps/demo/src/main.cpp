@@ -67,15 +67,26 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
-        // Seul le backend OpenGL du RHI existe avant M4 (Vulkan) et M9 (Metal) : refus clair avec la raison (RHI-04).
-        if (!demo::isBackendAvailable(selectedApi))
+        // Disponibilité dans cette construction ; la création du périphérique peut encore échouer (repli plus bas).
+        const auto refuse = [](const std::string &message)
         {
-            LOG_ERROR(1, demo::backendAvailabilityMessage(selectedApi));
-            std::cerr << demo::backendAvailabilityMessage(selectedApi) << '\n';
+            LOG_ERROR(1, message);
+            std::cerr << message << '\n';
             demo::printUsage(std::cout);
             FLUSH_LOG_TO_FILE;
             return EXIT_FAILURE;
+        };
+        demo::BackendDecision decision = demo::resolveBackend(selectedApi, launchOptions.strictBackend, demo::backendAvailability(selectedApi));
+        if (decision.refused)
+        {
+            return refuse(decision.message);
         }
+        if (decision.fellBack)
+        {
+            LOG_WARNING(decision.message);
+            std::cerr << decision.message << '\n';
+        }
+        selectedApi = decision.backend;
 
         const std::vector<std::string> requiredAssets = {
             GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"),   GET_RESOURCE_PATH("shader/rhi/mesh.vert"),     GET_RESOURCE_PATH("shader/rhi/mesh.frag"),
@@ -93,6 +104,21 @@ int main(int argc, char **argv)
         int exitCode = EXIT_SUCCESS;
         {
             auto created = Game::create(launchOptions.headless, launchOptions.width, launchOptions.height, selectedApi);
+            if (!created && created.error().code == orosmo::core::ErrorCode::kUnsupported && selectedApi == orosmo::rhi::Backend::kVulkan)
+            {
+                // Vulkan ne démarre pas (pas de chargeur, pas de GPU 1.3...) : le Game raté a déjà détruit sa fenêtre ; le suivant
+                // en recrée une avec les indices d'OpenGL (prepareWindowHints).
+                decision = demo::resolveBackend(selectedApi, launchOptions.strictBackend, demo::BackendAvailability::kAvailable, created.error().message);
+                if (decision.refused)
+                {
+                    platform::Window::terminate();
+                    return refuse(decision.message);
+                }
+                LOG_WARNING(decision.message);
+                std::cerr << decision.message << '\n';
+                selectedApi = decision.backend;
+                created = Game::create(launchOptions.headless, launchOptions.width, launchOptions.height, selectedApi);
+            }
             if (!created)
             {
                 LOG_ERROR(1, created.error().message);
