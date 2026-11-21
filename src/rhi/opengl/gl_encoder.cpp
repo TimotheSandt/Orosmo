@@ -597,17 +597,25 @@ void GlEncoder::setScissor(const Rect &r)
 {
     if (check(inPass_, ErrorCode::kInvalidArgument, "setScissor: outside a render pass"))
     {
-        // Retournement en 64 bits : r.y + r.height peut dépasser GLint (rectangle très grand ou très décalé).
-        const std::int64_t y64 =
-            passToWindow_ ? static_cast<std::int64_t>(passExtent_.height) - (static_cast<std::int64_t>(r.y) + static_cast<std::int64_t>(r.height))
-                          : static_cast<std::int64_t>(r.y);
-        const auto clampGl = [](std::int64_t v) {
-            return static_cast<GLint>(std::clamp<std::int64_t>(v, std::numeric_limits<GLint>::min(), std::numeric_limits<GLint>::max()));
-        };
-        const auto clampSize = [](std::uint32_t v) {
-            return static_cast<GLsizei>(std::min<std::uint64_t>(v, static_cast<std::uint64_t>(std::numeric_limits<GLsizei>::max())));
-        };
-        glScissor(r.x, clampGl(y64), clampSize(r.width), clampSize(r.height));
+        // En 64 bits, puis intersection avec la cible avant toute conversion : y + hauteur ne déborde pas, et un rectangle
+        // immense (hauteur UINT32_MAX) reste un rectangle qui couvre la cible, pas un rectangle décalé hors d'elle.
+        const auto clampTo = [](std::int64_t v, std::int64_t hi) { return std::clamp<std::int64_t>(v, 0, hi); };
+        const std::int64_t targetW = passExtent_.width;
+        const std::int64_t targetH = passExtent_.height;
+        const std::int64_t x0 = clampTo(r.x, targetW);
+        const std::int64_t x1 = clampTo(static_cast<std::int64_t>(r.x) + static_cast<std::int64_t>(r.width), targetW);
+        std::int64_t y0 = static_cast<std::int64_t>(r.y);                                   // depuis le haut (A26)
+        std::int64_t y1 = static_cast<std::int64_t>(r.y) + static_cast<std::int64_t>(r.height);
+        if (passToWindow_) // fenêtre : y depuis la ligne 0 du bas
+        {
+            const std::int64_t top = y0;
+            y0 = targetH - y1;
+            y1 = targetH - top;
+        }
+        y0 = clampTo(y0, targetH);
+        y1 = clampTo(y1, targetH);
+        glScissor(static_cast<GLint>(x0), static_cast<GLint>(y0), static_cast<GLsizei>(std::max<std::int64_t>(0, x1 - x0)),
+                  static_cast<GLsizei>(std::max<std::int64_t>(0, y1 - y0)));
     }
 }
 

@@ -101,8 +101,11 @@ template <typename M> std::unique_ptr<Widget> reflectedControl(M &member, const 
         {
             // Entiers de la plage seulement : [0.5, 3.5] donne 1..3 (le curseur ne propose ni 0.5 ni 3.5, qui seraient arrondis
             // hors de la plage).
+            // Borne haute : le plus grand double ENTIER strictement sous 2^n (borne exclue du type), pas max() converti, qui
+            // vaut 2^n pour int64 : range(2^63, 2^63) n'a alors aucun entier représentable et le champ est refusé.
+            const double below = std::floor(std::nextafter(std::ldexp(1.0, std::numeric_limits<M>::digits), 0.0));
             const double lo = std::max(std::ceil(range.min), lowest);
-            const double hi = std::min(std::floor(range.max), highest);
+            const double hi = std::min(std::floor(range.max), below);
             if (lo <= hi)
                 return std::make_unique<Slider>(numberBinding(member), lo, hi, 1.0);
             // Aucun entier dans la plage ([0.2, 0.8]) : champ dont toute saisie est refusée (bornes vides), sans curseur qui

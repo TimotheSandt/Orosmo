@@ -155,7 +155,7 @@ class Ui
     // Un widget qui reçoit le texte a le focus (l'application ne doit pas interpréter les touches).
     bool wantsKeyboard() const noexcept;
 
-    Widget *hovered() const noexcept { return hovered_; }
+    Widget *hovered() const noexcept { return hoveredAlive_.expired() ? nullptr : hovered_; }
     // Nul si le widget focalisé a été détruit depuis (retiré par `clearChildren` sans `forget`).
     Widget *focused() const noexcept { return focusedAlive_.expired() ? nullptr : focused_; }
     void focus(Widget *widget);
@@ -242,6 +242,8 @@ class Ui
     // Ferme les fenêtres surgissantes dont le propriétaire n'est pas dans la fenêtre modale active (ni dans une fenêtre gardée).
     void closePopupsOutsideModal();
     void forgetSubtree(const Widget *root);
+    // Oublie (sans les déréférencer) les widgets survolé, appuyé, focalisé détruits depuis : `clearChildren` ne prévient pas Ui.
+    void dropDestroyed() noexcept;
 
     const Font *font_;
     ThemeHost themes_;
@@ -256,6 +258,8 @@ class Ui
     Widget *active_ = nullptr;
     Widget *focused_ = nullptr;
     std::weak_ptr<char> focusedAlive_; // jeton de durée de vie de `focused_` (Widget::lifetime_)
+    std::weak_ptr<char> hoveredAlive_; // idem pour `hovered_`
+    std::weak_ptr<char> activeAlive_;  // idem pour `active_`
     std::vector<PopupEntry> popups_;
     std::vector<ModalEntry> modals_;
     std::deque<Notification> notifications_;

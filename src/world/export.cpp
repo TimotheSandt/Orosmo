@@ -159,7 +159,19 @@ std::array<float, 3> normalAt(const HeightField &f, std::uint32_t i, std::uint32
     float ny = 1.0f;
     float nz = -(hu - hd) / std::max(dz, 1e-6f);
     const float len = std::sqrt(nx * nx + ny * ny + nz * nz);
-    return {nx / len, ny / len, nz / len};
+    if (std::isfinite(len))
+        return {nx / len, ny / len, nz / len}; // cas courant : mêmes octets qu'avant
+    // Pente immense (hauteurs de l'ordre de 1e30) : les carrés débordent en float. Gradients en double, divisés par la plus
+    // grande composante avant la racine : la normale reste finie et unitaire (glTF l'exige).
+    const double gx = -(static_cast<double>(hr) - hl) / std::max(static_cast<double>(dx), 1e-6);
+    const double gz = -(static_cast<double>(hu) - hd) / std::max(static_cast<double>(dz), 1e-6);
+    const double scale = std::max({std::abs(gx), 1.0, std::abs(gz)});
+    const double sx = gx / scale, sy = 1.0 / scale, sz = gz / scale;
+    const double l = std::sqrt(sx * sx + sy * sy + sz * sz);
+    nx = static_cast<float>(sx / l);
+    ny = static_cast<float>(sy / l);
+    nz = static_cast<float>(sz / l);
+    return {nx, ny, nz};
 }
 
 GridMesh gridMesh(const HeightField &f)
@@ -360,6 +372,11 @@ core::Result<> writeHeightExr(const std::filesystem::path &path, const HeightFie
 
 core::Result<HeightField> readHeightExr(const std::filesystem::path &path)
 {
+    // Un dossier (ou un fichier spécial) n'est pas un fichier EXR : refusé avant l'ouverture, qui réussit ou échoue selon le
+    // système (Linux l'ouvre et la lecture échoue en EISDIR ; libc++ sous macOS lit 0 octet sans erreur).
+    std::error_code kind;
+    if (std::filesystem::exists(path, kind) && !std::filesystem::is_regular_file(path, kind))
+        return makeError(ErrorCode::kIo, "readHeightExr: not a regular file: " + path.generic_string());
     std::ifstream in(path, std::ios::binary);
     if (!in)
         return makeError(ErrorCode::kIo, "readHeightExr: cannot open " + path.generic_string());
