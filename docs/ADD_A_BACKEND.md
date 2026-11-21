@@ -188,11 +188,17 @@ Les tests de `tests/rhi/` sont la spécification exécutable :
 - `opengl_device_tests.cpp`, `opengl_state_tests.cpp`, `opengl_backend_tests.cpp` : **propres à OpenGL** ;
 - `vulkan_device_tests.cpp` : propre à Vulkan (suite `rhi/vulkan/device`), construit son périphérique par `isBackendCompiled(...)` puis
   `createDevice` avec `desc.backend = Backend::kVulkan`, et se **saute** (`SKIP_TEST_IF_NULL`) si le pilote manque.
-- `gpu_fixture.hpp` : aides partagées (struct `Gpu`, ressources de test, lecture de pixels). Elle crée aujourd'hui son périphérique
-  avec le backend par défaut (OpenGL).
+- `gpu_fixture.hpp` : aides partagées (struct `Gpu(backend)`, ressources de test, lecture de pixels).
 
-Les README de Vulkan et de `docs/03` citent une suite `tests/rhi/rhi_device_tests.cpp` « commune aux backends » : **ce fichier est
-absent de ce worktree, à vérifier**. Marche à suivre :
+- `rhi_device_tests.cpp` : la suite **commune aux backends**. Chaque `TEST_CASE` boucle sur `FOR_EACH_BACKEND(backend)` (défini dans
+  `tests/rhi/backends.hpp`) et crée son périphérique par `Gpu gpu(backend)` ; elle vérifie le contrat du RHI (tailles, pixels lus,
+  `ErrorCode`, couches de validation) avec les mêmes assertions pour tous. Un backend non compilé ou sans pilote est sauté
+  (`MESSAGE("Skipped: ...")`) ; les capacités optionnelles sont lues dans `Capabilities` (`timestampQueries`, calcul...) et le test se saute si elles manquent.
+- `backends_tests.cpp` : teste la liste des backends elle-même. `ENGINE_TEST_BACKENDS=opengl,vulkan` restreint (et désigne) les
+  backends testés, sans variable ce sont tous ceux compilés ; avec `ENGINE_TEST_REQUIRE_GPU=1`, un backend désigné mais indisponible fait échouer.
+
+Ajouter un backend : l'ajouter aux candidats de `tests/rhi/backends.hpp` (si `Backend` ne le nomme pas encore, l'enum du RHI d'abord) ; **`rhi_device_tests.cpp` et les suites `renderer/*` le
+testent alors sans autre écriture**. Les tests propres au backend (état natif, extensions) vont dans un fichier à part :
 
 1. Écris `tests/<...>/<backend>_device_tests.cpp` sur le modèle de `vulkan_device_tests.cpp` : une fonction `make<Backend>()` qui
    renvoie `nullptr` (avec `MESSAGE`) si le backend n'est pas compilé ou si `createDevice` échoue, et `SKIP_TEST_IF_NULL`.

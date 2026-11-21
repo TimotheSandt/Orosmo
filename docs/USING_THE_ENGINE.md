@@ -60,7 +60,12 @@ rm -rf orosmo && mkdir orosmo                                # SDK vidé (src/, 
                                                              # le dossier vide reste : orosmo update le demande
 ./orosmo-linux-x64 update                                    # ou : orosmo update --package orosmo-pkg-<plateforme>.zip
 mv vcpkg_installed.keep orosmo/vcpkg_installed 2>/dev/null
+make install                                                 # applique le vcpkg.json de la nouvelle release (sans retirer l'existant)
 ```
+
+**Mise à niveau vers 0.4.0** : `engine.mk` relie désormais `-lvolk`, même pour un projet qui n'utilise qu'OpenGL. Des dépendances
+installées avec la version 0.3.1 ne contiennent pas `volk` : sans `make install` entre la restauration et la compilation,
+l'édition de liens échoue (`cannot find -lvolk`).
 
 ### Avec le paquet seul (`ENGINE_DIR`)
 
