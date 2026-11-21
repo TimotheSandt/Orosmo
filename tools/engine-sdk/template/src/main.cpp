@@ -169,7 +169,10 @@ int runApp(const LaunchOptions &opts)
     {
         if (window.Init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
         {
-            std::cerr << "Failed to initialize window (no display?); try --headless --capture DIR\n";
+            // --headless cache seulement la fenêtre : le contexte OpenGL demande quand même un affichage (sous Linux sans serveur X :
+            // xvfb-run, comme la CI).
+            std::cerr << "Failed to initialize window (no display?). --headless hides the window but still needs a display: "
+                         "on Linux without X, run under xvfb-run (xvfb-run -a ./main --headless --capture DIR)\n";
             return EXIT_FAILURE;
         }
         desc.surface.nativeWindow = window.GetWindow();
@@ -215,6 +218,7 @@ int runApp(const LaunchOptions &opts)
     }
     text.setActiveFont("default");
     ui::TextRendererFont font(text);
+    HudState state; // avant `interface` : détruit APRÈS l'arbre de l'interface, qui garde des liaisons vers lui
     ui::Ui interface(font);
     if (auto theme = interface.themes().load(GET_RESOURCE_PATH("themes/dark.json")); !theme)
     {
@@ -222,7 +226,6 @@ int runApp(const LaunchOptions &opts)
         return EXIT_FAILURE;
     }
 
-    HudState state;
     interface.setRoot(cui::buildHudView(interface, state));
 
     rd::Camera camera;
@@ -269,6 +272,13 @@ int runApp(const LaunchOptions &opts)
         cube->setRotation({18.0f, angleDegrees, 0.0f});
 
         ui::InputFrame input = opts.headless ? ui::InputFrame{} : ui::readWindowInput(window, dt);
+        if (!opts.headless && fixedSize && window.GetWidth() > 0 && window.GetHeight() > 0)
+        {
+            // Capture avec fenêtre : l'interface est mise en page à 1280x720 puis étirée sur la fenêtre ; le pointeur est ramené
+            // de l'espace de la fenêtre à celui de l'interface.
+            input.mouse *= glm::vec2(static_cast<float>(viewW) / static_cast<float>(window.GetWidth()),
+                                     static_cast<float>(viewH) / static_cast<float>(window.GetHeight()));
+        }
         input.deltaTime = dt;
         interface.update(input, {static_cast<float>(viewW), static_cast<float>(viewH)});
 
@@ -334,9 +344,25 @@ int runApp(const LaunchOptions &opts)
         {
             std::error_code ec;
             fs::create_directories(opts.captureDir, ec);
-            const bool sceneSaved = (*scene)->saveColorPng(opts.captureDir / "scene.png").has_value();
-            const bool uiSaved = rd::savePng(**device, composed.color(0), opts.captureDir / "ui.png").has_value();
-            captureOk = sceneSaved && uiSaved;
+            if (ec || !fs::is_directory(opts.captureDir))
+            {
+                std::cerr << "Capture: cannot create directory " << opts.captureDir.string() << (ec ? ": " + ec.message() : std::string()) << '\n';
+                (void)(*device)->present();
+                break; // captureOk reste faux
+            }
+            captureOk = true;
+            const fs::path scenePath = opts.captureDir / "scene.png";
+            const fs::path uiPath = opts.captureDir / "ui.png";
+            if (auto saved = (*scene)->saveColorPng(scenePath); !saved)
+            {
+                std::cerr << "Capture: " << scenePath.string() << ": " << saved.error().message << '\n';
+                captureOk = false;
+            }
+            if (auto saved = rd::savePng(**device, composed.color(0), uiPath); !saved)
+            {
+                std::cerr << "Capture: " << uiPath.string() << ": " << saved.error().message << '\n';
+                captureOk = false;
+            }
             (void)(*device)->present();
             break;
         }

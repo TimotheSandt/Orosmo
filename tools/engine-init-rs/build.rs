@@ -32,6 +32,10 @@ fn main() {
     zip_dir(&src_dir, &src_dir, &mut writer, opts);
     writer.finish().expect("failed to finalize src.zip");
 
+    // Le dossier lui-même : un fichier AJOUTÉ au modèle refait aussi src.zip (les fichiers listés ci-dessous ne le voient pas).
+
+    println!("cargo:rerun-if-changed={}", src_dir.display());
+
     // Emit rerun-if-changed for every file under tools/engine-sdk/template/src/
     visit_files(&src_dir, &mut |p| println!("cargo:rerun-if-changed={}", p.display()));
 
