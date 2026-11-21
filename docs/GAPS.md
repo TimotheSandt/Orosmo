@@ -408,7 +408,7 @@ code). Chemins de M2 ; depuis M3, `src/UI/` est `src/ui/legacy/`. À traiter sur
 | G128 | Idées de l'ancienne branche `UI` à reprendre | Branche analysée le 2026-11-21 (`docs/notes/archive/README.md`) ; tout l'essentiel est déjà dans `dev`. Restent : un **registre des composants du langage lu dans les en-têtes C++** (annotations `@cui-*`, au lieu de la table écrite dans `tools/cui-rs/src/engine.rs`), utile aux modules et addons (M11) ; et des **fonctions liées avec cache** (recalculées seulement quand leurs arguments changent, `@cui-volatile` sinon), utile si une vue appelle une fonction coûteuse (M8). Branche gardée. | M8 / M11 |
 
 
-## Ajouts de M4 (G129 à G143)
+## Ajouts de M4 (G129 à G150)
 
 | ID | Sujet | Détail | Jalon |
 | --- | --- | --- | --- |
@@ -427,3 +427,10 @@ code). Chemins de M2 ; depuis M3, `src/UI/` est `src/ui/legacy/`. À traiter sur
 | G141 | Outils de parité sans test | Pas de test unitaire de `tools/demo_parity.py` ni de `tools/perf_compare.py` | M5 |
 | G142 | Windows et macOS pour Vulkan | Non vérifiés (MoltenVK sous macOS : M9) | M9 |
 | G143 | `make demo-vulkan-check` hors `demo-test` et CI | Lancé à la main (OK en fin de M4) ; une régression de parité ne serait pas vue par la CI | M5 |
+| G144 | Vulkan : fonctions globales au processus | Les pointeurs de fonctions Vulkan (volk) sont globaux : deux périphériques avec des pilotes différents ne sont pas isolés (« un seul pilote par processus », `src/rhi/vulkan/README.md`). À faire : une table de fonctions par périphérique (`VolkDeviceTable`). Revue CodeRabbit de la PR #10 | M5 ou plus tard |
+| G145 | Vulkan : dessin indirect sans `drawIndirectFirstInstance` | Refusé (`kUnsupported`) même quand `firstInstance` vaut 0, car le contenu du tampon est inconnu à l'enregistrement ; OpenGL l'accepte | M5 |
+| G146 | Vulkan : décalage dynamique sur une entrée de taille 0 | Un décalage non nul sur une entrée `VK_WHOLE_SIZE` est refusé (`kUnsupported`, taille explicite demandée) ; OpenGL l'accepte | M5 |
+| G147 | Décalage de tampon de sommets ou d'index égal à la taille | Refusé par Vulkan (`kOutOfRange`), encore accepté par `GlEncoder` (`<=`) : aligner OpenGL | M5 |
+| G148 | Vulkan : copies D24S8 sur un GPU sans D24S8 | La texture devient D32S8 (repli) ; `updateTexture` / `readTexture` refusent alors la copie (`kUnsupported`) au lieu de convertir | M5 |
+| G149 | Vulkan : sémaphores de l'ancienne chaîne d'échange | Détruits après N présentations (retrait différé par comptage), faute de fence de présentation ; à remplacer par `VK_KHR_swapchain_maintenance1` quand l'extension est activée ; la reconstruction appelle encore `waitIdle` sans lire son résultat (`waitIdleChecked` existe) | M5 |
+| G150 | Correctifs de la revue sans test d'échec | Plusieurs correctifs de la PR #10 (soumission refusée, lot abandonné, énumération incomplète, surface sans `TRANSFER_DST`, deux périphériques, limites de descripteurs dynamiques) ne sont pas testés : il faudrait injecter des échecs de pilote ; deux tests ajoutés passaient déjà avant leur correctif | M5 |
