@@ -1,4 +1,4 @@
-// Options de lancement de la démo : choix de l'API graphique (backend du RHI), mode d'interface, thème, onglet, mode sans
+// Options de lancement de la démo : choix de l'API graphique (--api ou --backend, repli ou --strict-backend), mode d'interface, thème, onglet, mode sans
 // fenêtre, capture et dimensions de vue.
 #pragma once
 
@@ -35,6 +35,8 @@ struct LaunchOptions
     bool listApis = false;
     bool chooseApiInteractively = false;
     bool apiExplicitlyRequested = false;
+    // --strict-backend (RHI-04) : pas de repli sur OpenGL si le backend demandé (Vulkan) est indisponible ; sortie en erreur.
+    bool strictBackend = false;
     // --capture <dir> [--capture-frames N] : N images rendues, puis <dir>/scene.png et ui.png écrites, puis sortie (TOOL-03).
     std::string captureDirectory;
     std::uint32_t captureFrames = 10;
@@ -74,5 +76,19 @@ bool promptForBackend(std::istream &input, std::ostream &output, orosmo::rhi::Ba
 BackendAvailability backendAvailability(orosmo::rhi::Backend api) noexcept;
 bool isBackendAvailable(orosmo::rhi::Backend api) noexcept;
 std::string backendAvailabilityMessage(orosmo::rhi::Backend api);
+
+// Décision de sélection du backend (RHI-04), pure : aucune création de périphérique, testable sans GPU.
+struct BackendDecision
+{
+    orosmo::rhi::Backend backend = orosmo::rhi::Backend::kOpenGL; // backend à utiliser (sans objet si `refused`)
+    bool fellBack = false;                                       // faux : le backend demandé est utilisé
+    bool refused = false;                                        // vrai : aucun backend utilisable, la démo s'arrête
+    std::string message;                                         // raison à afficher (vide si le backend demandé est utilisé)
+};
+
+// `availability` : état du backend demandé dans cette construction. `failureReason` : raison renvoyée par `createDevice`
+// si la création a déjà échoué (vide avant la tentative). Seul Vulkan retombe sur OpenGL, sauf `strict` ; Metal et OpenGL
+// indisponibles sont refusés.
+BackendDecision resolveBackend(orosmo::rhi::Backend requested, bool strict, BackendAvailability availability, std::string_view failureReason = {});
 
 } // namespace demo

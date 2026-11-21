@@ -84,6 +84,73 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(3, removedSeed).has_value(), "--seed was removed and must be refused");
     }
 
+    TEST_CASE("--backend is an alias of --api, separate or with =, in any case (RHI-04)")
+    {
+        const char *separate[] = {"Orosmo", "--backend", "Vulkan"};
+        const demo::LaunchOptions a = *demo::parseLaunchOptions(3, separate);
+        Assert(a.api == Backend::kVulkan && a.apiExplicitlyRequested, "--backend Vulkan selects Vulkan");
+        const char *joined[] = {"Orosmo", "--backend=VK"};
+        Assert(demo::parseLaunchOptions(2, joined)->api == Backend::kVulkan, "--backend=VK selects Vulkan");
+        const char *gl[] = {"Orosmo", "--backend=OpenGL"};
+        Assert(demo::parseLaunchOptions(2, gl)->api == Backend::kOpenGL, "--backend=OpenGL selects OpenGL");
+        const char *metal[] = {"Orosmo", "--backend", "METAL"};
+        Assert(demo::parseLaunchOptions(3, metal)->api == Backend::kMetal, "Metal parses (it is refused later, at selection)");
+        const char *api[] = {"Orosmo", "--api", "VULKAN"};
+        Assert(demo::parseLaunchOptions(3, api)->api == Backend::kVulkan, "--api stays and ignores the case");
+    }
+
+    TEST_CASE("--backend errors name the flag (RHI-04)")
+    {
+        const char *missing[] = {"Orosmo", "--backend"};
+        AssertEqual(demo::parseLaunchOptions(2, missing).error().message, std::string("Missing value after --backend"), "missing value");
+        const char *unknown[] = {"Orosmo", "--backend=directx"};
+        const auto parsed = demo::parseLaunchOptions(2, unknown);
+        Assert(!parsed.has_value(), "unknown backend is refused");
+        AssertEqual(parsed.error().message, std::string("Unknown graphics API: directx"), "unknown backend named");
+    }
+
+    TEST_CASE("--strict-backend is off by default (RHI-04)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(!demo::parseLaunchOptions(1, none)->strictBackend, "fallback allowed by default");
+        const char *strict[] = {"Orosmo", "--backend", "vulkan", "--strict-backend"};
+        Assert(demo::parseLaunchOptions(4, strict)->strictBackend, "--strict-backend is parsed");
+    }
+
+    TEST_CASE("resolveBackend: an available backend is used as requested (RHI-04)")
+    {
+        const auto vulkan = demo::resolveBackend(Backend::kVulkan, false, BackendAvailability::kAvailable);
+        Assert(vulkan.backend == Backend::kVulkan && !vulkan.fellBack && !vulkan.refused && vulkan.message.empty(), "Vulkan kept");
+        const auto gl = demo::resolveBackend(Backend::kOpenGL, true, BackendAvailability::kAvailable);
+        Assert(gl.backend == Backend::kOpenGL && !gl.fellBack && !gl.refused, "OpenGL kept");
+    }
+
+    TEST_CASE("resolveBackend: Vulkan falls back to OpenGL with the reason, unless strict (RHI-04)")
+    {
+        const auto notBuilt = demo::resolveBackend(Backend::kVulkan, false, BackendAvailability::kNotBuilt);
+        Assert(notBuilt.fellBack && !notBuilt.refused && notBuilt.backend == Backend::kOpenGL, "not compiled: fallback");
+        const auto failed = demo::resolveBackend(Backend::kVulkan, false, BackendAvailability::kAvailable, "no Vulkan 1.3 device");
+        Assert(failed.fellBack && !failed.refused && failed.backend == Backend::kOpenGL, "creation failed: fallback");
+        Assert(failed.message.find("no Vulkan 1.3 device") != std::string::npos, "the reason is shown");
+        Assert(failed.message.find("OpenGL") != std::string::npos, "the fallback is named");
+
+        const auto strict = demo::resolveBackend(Backend::kVulkan, true, BackendAvailability::kAvailable, "no Vulkan 1.3 device");
+        Assert(strict.refused && !strict.fellBack, "strict: no fallback");
+        Assert(strict.message.find("no Vulkan 1.3 device") != std::string::npos, "strict: the reason is shown");
+        Assert(demo::resolveBackend(Backend::kVulkan, true, BackendAvailability::kNotBuilt).refused, "strict and not compiled: refused");
+    }
+
+    TEST_CASE("resolveBackend: Metal is refused, never replaced (RHI-04)")
+    {
+        for (const bool strict : {false, true})
+        {
+            const auto metal = demo::resolveBackend(Backend::kMetal, strict, BackendAvailability::kUnsupportedPlatform);
+            Assert(metal.refused && !metal.fellBack, "Metal outside macOS is refused");
+            Assert(!metal.message.empty(), "the refusal says why");
+        }
+        Assert(demo::resolveBackend(Backend::kOpenGL, false, BackendAvailability::kAvailable, "no 4.3 context").refused, "OpenGL has no fallback");
+    }
+
     TEST_CASE("backend display names follow the menu order")
     {
         AssertEqual(std::string(demo::backendDisplayName(Backend::kOpenGL)), std::string("OpenGL"), "OpenGL name");
