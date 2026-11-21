@@ -49,8 +49,10 @@ _ORS_GOALS := $(or $(MAKECMDGOALS),ors-default-goal)
 .PHONY: $(_ORS_GOALS)
 $(firstword $(_ORS_GOALS)):
 	@python3 "$(_ORS_SCRIPT)" $(MAKE) $(MAKECMDGOALS)
-ifneq ($(words $(_ORS_GOALS)),1)
-$(wordlist 2,999,$(_ORS_GOALS)):
+# Les autres buts ne font rien (le script les transmet tous) ; le premier, même répété (`make check check`), garde sa recette.
+_ORS_OTHERS := $(filter-out $(firstword $(_ORS_GOALS)),$(_ORS_GOALS))
+ifneq ($(_ORS_OTHERS),)
+$(sort $(_ORS_OTHERS)):
 	@:
 endif
 else
@@ -117,6 +119,9 @@ ifeq ($(_ENGINE_MK_FOUND),)
     GEN_CPP_SOURCES      :=
     GEN_REDIRECT_SOURCES :=
 else
+    # Modules du dépôt (world, terrain_renderer) : liés seulement si le SDK les contient (SDK synchronisé du dépôt) ; un projet
+    # créé depuis une release (SDK générique) n'en a pas et ne lie rien de plus.
+    ENGINE_EXTRA_MODULES ?= $(if $(wildcard $(ENGINE_DIR)/includes/orosmo/world),world) $(if $(wildcard $(ENGINE_DIR)/includes/orosmo/renderer/terrain_renderer.hpp),terrain_renderer)
     include $(_ENGINE_MK)
 endif
 
@@ -375,11 +380,13 @@ install install-deps:
 	            --x-install-root=$(ENGINE_DIR)/vcpkg_installed \
 	            --no-print-usage; \
 	    fi; \
-	    $(VCPKG) install \
-	        --triplet=$(ENGINE_VCPKG_TRIPLET) \
-	        --x-manifest-root=. \
-	        --x-install-root=$(_ADD_DEP_VCPKG_ROOT) \
-	        --no-print-usage; \
+	    if [ -f vcpkg.json ]; then \
+	        $(VCPKG) install \
+	            --triplet=$(ENGINE_VCPKG_TRIPLET) \
+	            --x-manifest-root=. \
+	            --x-install-root=$(_ADD_DEP_VCPKG_ROOT) \
+	            --no-print-usage; \
+	    fi; \
 	else \
 	    [ -f vcpkg.json ] || printf '{\n  "name": "game",\n  "version": "0.1.0",\n  "dependencies": []\n}\n' > vcpkg.json; \
 	    LIBDIR="$(_ADD_DEP_VCPKG_LIBDIR)"; \

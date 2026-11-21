@@ -10,8 +10,8 @@ bp = importlib.util.module_from_spec(spec); spec.loader.exec_module(bp)
 # Même définition que mk/engine.mk et tools/engine-sdk/engine.mk.
 MAKEFILE = textwrap.dedent("""\
     ORS_Q := $(if $(ORS_PROGRESS),$(if $(filter 1,$(V)),,@))
-    ors_compile = @printf '%s\\n' '$(if $(ORS_PROGRESS),@@ors begin $@ $< $(1),  $(1) $<)'
-    ors_end = $(if $(ORS_PROGRESS),@printf '%s\\n' '@@ors end $@')
+    ors_compile = @printf '%s\\n' '$(if $(ORS_PROGRESS),@@ors begin $(abspath $@) $< $(1),  $(1) $<)'
+    ors_end = $(if $(ORS_PROGRESS),@printf '%s\\n' '@@ors end $(abspath $@)')
     all: a.o b.o
     %.o: %.c
     \t$(call ors_compile,CC)
@@ -53,6 +53,25 @@ class Counting(unittest.TestCase):
         self.assertIn("en échec : e.cpp", out.getvalue())
 
 
+class Width(unittest.TestCase):
+    def test_every_line_fits_the_terminal_even_when_narrow(self):
+        import re
+        ansi = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+        for columns in (20, 30, 60, 80, 200):
+            os.environ["COLUMNS"] = str(columns)
+            try:
+                out = io.StringIO()
+                with redirect_stdout(out):
+                    d = bp.Display(stale={"/p/a.o", "/p/b.o"}, total={"/p/a.o", "/p/b.o", "/p/c.o"})
+                    d.begin("/p/a.o", "src/a_very_long_file_name_for_the_engine.cpp", "CXX [debug]")
+                    d.draw(force=True)
+                text = ansi.sub("", out.getvalue())
+                for line in re.split(r"[\r\n]", text):
+                    self.assertLess(len(line), columns, (columns, line))
+            finally:
+                os.environ.pop("COLUMNS", None)
+
+
 @unittest.skipUnless(shutil.which("make"), "GNU make absent")
 class Plan(unittest.TestCase):
     def test_plan_separates_stale_and_up_to_date_steps(self):
@@ -64,8 +83,9 @@ class Plan(unittest.TestCase):
                     f.write(name)
             subprocess.run(["make", "-s", "-C", tmp, "a.o"], check=True, capture_output=True)
             stale, total = bp.plan(["make", "-C", tmp, "all"], dict(os.environ, ORS_PROGRESS="1"))
-            self.assertEqual(stale, {"b.o"})
-            self.assertEqual(total, {"a.o", "b.o"})
+            # Identité absolue : deux applications qui compilent chacune obj/main.o restent deux étapes distinctes.
+            self.assertEqual(stale, {os.path.join(os.path.realpath(tmp), "b.o")})
+            self.assertEqual(total, {os.path.join(os.path.realpath(tmp), n) for n in ("a.o", "b.o")})
 
     def test_without_a_terminal_make_runs_as_usual(self):
         with tempfile.TemporaryDirectory() as tmp:
