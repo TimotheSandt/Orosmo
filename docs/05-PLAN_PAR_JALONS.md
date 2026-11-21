@@ -129,9 +129,10 @@ Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusi
 - Sélection du backend à l'exécution (RHI-04).
 - Guide `docs/ADD_A_BACKEND.md`.
 - **Début de M4 (décision de l'auteur, 2026-11-21, A31)** : renommer l'API de `platform` (`Window`, `InputManager`) selon `docs/03` §7 (`orosmo::platform`, `camelCase` ; G96, G105), avant d'écrire le backend.
-- **`generateRegion` renvoie `Result<HeightField>`** (A33, décision du 2026-11-21) au lieu d'un champ vide pour une région hors d'int64 ; changement incompatible noté dans `docs/releases/M4.md`.
+- **`generateRegion` renvoie `Result<HeightField>`** (A33, décision du 2026-11-21) : livré dans `dev`, puis archivé avec le module `world` (`archive/procedural-world`, A37) ; sans objet dans la release M4.
+- **Retrait du procédural et démo unique (A37)** : `apps/demo` devient l'unique application ; `world`, `TerrainRenderer`, `terrain_gen`, `terrain_viewer`, `ui_gallery`, `core_demo` et `rhi_demo` sont retirés (archivés).
 
-**Démo** : le visualiseur de M3, lancé avec `--backend=vulkan` et `--backend=opengl`, donne la même image.
+**Démo** : la démo unique `apps/demo` (scène 3D statique déterministe, A37), lancée avec `--backend=vulkan` et `--backend=opengl` (`--ui off`), donne la même image dans la tolérance (référence `docs/BASELINE/reference/scene-opengl-demo-1280x720.png`).
 **Terminé** : couches de validation Vulkan silencieuses ; images de référence dans la tolérance sur les deux backends ; mesure de performance comparée dans `docs/`.
 
 ## M5 · Cœur du rendu
@@ -139,7 +140,7 @@ Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusi
 - REN-01 (graphe de passes, plugins), REN-03 (données par image), REN-04 (forward+ clusterisé), REN-05, REN-06 à REN-08 (ombres, mobilité, cache), REN-17 à REN-19 (HDR, post-traitement, anticrénélage), REN-21 (AOV et MRT à la demande), REN-22 (boîte à outils), REN-28 à REN-31 (instancing, rendu piloté par GPU, culling, LOD), REN-32, REN-35, REN-37 (modes de fusion), REN-39 (ombres des transparents), REN-41 (transparents et sorties auxiliaires).
 - **2D** : R2D-01, R2D-02, R2D-03, R2D-05, R2D-06 ; l'interface passe par le batch 2D.
 
-**Démo** : terrain avec ombres en cascade et cache, des milliers d'objets instanciés en quelques draw calls, normales et vecteurs de mouvement activés à la demande par un effet, scène mélangeant 3D, sprites dans le monde et interface.
+**Démo** : la scène générique de la démo unique avec ombres en cascade et cache, des milliers d'objets instanciés en quelques draw calls, normales et vecteurs de mouvement activés à la demande par un effet, scène mélangeant 3D, sprites dans le monde et interface.
 **Terminé** : tests d'images par backend, profilage GPU par passe visible, nombre de draw calls mesuré et documenté, aucune régression sur les démos précédentes.
 
 ## M6 · Contenu importé et animation
@@ -160,10 +161,10 @@ Le moteur reste générique : l'atmosphère, les effets et le « monde riche » 
 ## M8 · Interface avancée, scène, simulation et logique rechargeable
 
 - UI-04, UI-08 (rechargement à chaud de l'interface), UI-09, UI-10.
-- ECS-01 à ECS-03, SIM-01, SIM-02.
+- ECS-01 à ECS-03, SIM-01 (SIM-02 et SIM-03, accès aux données du monde et agents, sont hors moteur : A39).
 - GAME-01 à GAME-07 : module de jeu en bibliothèque dynamique, registre de gestionnaires, migration d'état, paramètres JSON, version finale statique.
 
-**Démo** : on modifie un fichier de logique pendant que le programme tourne, on compile, et le comportement change sans redémarrage ni perte d'état ; on modifie un fichier d'interface et l'écran se met à jour ; un petit programme de simulation (quelques centaines d'agents) lit le relief et tourne sans fenêtre, rejouable avec la même graine.
+**Démo** : on modifie un fichier de logique pendant que le programme tourne, on compile, et le comportement change sans redémarrage ni perte d'état ; on modifie un fichier d'interface et l'écran se met à jour ; un petit programme de simulation (quelques centaines d'agents évoluant dans une scène de test) tourne sans fenêtre, rejouable avec la même graine.
 **Terminé** : cas de rechargement testés (changement de corps de fonction, ajout de champ, changement de hiérarchie avec repli sur sauvegarde/restauration) ; boucle à pas fixe testée ; rejouabilité vérifiée.
 
 ## M9 · macOS et Metal
