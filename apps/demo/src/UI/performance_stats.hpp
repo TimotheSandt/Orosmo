@@ -9,13 +9,13 @@ struct PerformanceSample
 {
     double fps = 0.0;           // images par seconde (moyenne de la fenêtre)
     double renderMs = 0.0;      // moyennes du Profiler, en millisecondes
-    double renderWorldMs = 0.0;
+    double renderSceneMs = 0.0;
     double upscaleMs = 0.0;
     double uiUpscaleMs = 0.0;
     double swapBuffersMs = 0.0;
 };
 
-// Moyennes actuelles du Profiler (Render, RenderWorld, Upscale, UIUpscale, SwapBuffers) ; `averageFps` vient de la fenêtre.
+// Moyennes actuelles du Profiler (Render, RenderScene, Upscale, UIUpscale, SwapBuffers) ; `averageFps` vient de la fenêtre.
 PerformanceSample samplePerformance(double averageFps);
 
 struct PerformanceStats

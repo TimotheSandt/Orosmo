@@ -1,0 +1,375 @@
+// Unified Orosmo demo UI: live 3D scene controls, engine actions, and complete orosmo::ui showcase.
+import "orosmo/ui"
+import "UI/demo_ui_state.hpp"
+import "UI/performance_stats.hpp"
+
+view DemoView {
+    @Mutable var state: DemoUiState
+    @Observed var stats: PerformanceStats
+    let sideWidth = 300
+
+    Overlay {
+        VBox {
+        // ── Menu bar ──
+        MenuBar {
+            Menu("File") {
+                MenuItem("Open dialog...", shortcut: "Ctrl+O").onClick(state.openDialog).id("menuDialog")
+                MenuItem("Save config JSON").onClick(state.saveConfigJson)
+                MenuItem("Load config JSON").onClick(state.loadConfigJson)
+                MenuItem("Capture PNG").onClick(state.requestCapture)
+                Menu("Notify") {
+                    MenuItem("Information", shortcut: "Ctrl+I").onClick(state.notifyInfo)
+                    MenuItem("Success").onClick(state.notifySuccess)
+                    MenuItem("Warning").onClick(state.notifyWarning)
+                    MenuItem("Error").onClick(state.notifyError)
+                }
+                Separator()
+                MenuItem("Clear the log", shortcut: "Ctrl+L").onClick(state.clearLog)
+                Separator()
+                MenuItem("Quit", shortcut: "Ctrl+Q").onClick(state.requestQuit).id("menuQuit")
+            }
+            .id("menuFile")
+            Menu("View") {
+                MenuItem("Resume 3D (Esc)").onClick(state.requestCloseUi)
+                MenuItem("Animate scene", checked: $state.scene.animate)
+                MenuItem("Wireframe", checked: $state.scene.wireframe)
+                MenuItem("Debug draw", checked: $state.scene.debugDraw)
+                MenuItem("Show marker", checked: $state.showMarker)
+            }
+            Menu("Engine") {
+                MenuItem("Run 10k tasks").onClick(state.runTaskBenchmark)
+                MenuItem("Reset camera").onClick(state.requestResetCamera)
+            }
+            Menu("Help") {
+                MenuItem("About Orosmo").onClick(state.openDialog)
+            }
+        }
+        .id("menuBar")
+
+        HBox {
+            // ── Left sidebar: controls, theme, event log, live frame-time plot ──
+            Panel {
+                Label("Orosmo Demo").variant("title")
+                Label("3D scene + orosmo::ui showcase").variant("caption")
+                HBox {
+                    Button("Resume 3D (Esc)").onClick(state.requestCloseUi).width(.fill).id("resumeButton")
+                    Button("Quit").onClick(state.requestQuit).style(background: "#c0392b", foreground: "#ffffff").id("quitButton")
+                }
+                Separator()
+                Label("Theme").variant("caption")
+                Dropdown(options: state.themes(), selected: $state.theme).onChange(state.applyTheme).id("theme")
+                    .tooltip("dark, light, or framed (nine-slice images). Themes reload live when edited.")
+                Label("Esc: toggle 3D / UI | Tab: focus").variant("caption")
+                Label("Right click slider: default | Hover: tooltip").variant("caption")
+                Label("Shortcuts: Ctrl+O, Ctrl+I, Ctrl+L, Ctrl+Q").variant("caption")
+                Separator()
+                HBox {
+                    Label("Events").variant("caption").width(.fill)
+                    Button("Clear").onClick(state.clearLog).id("clear")
+                }
+                Label("\(state.logLine(0))").id("log0")
+                Label("\(state.logLine(1))")
+                Label("\(state.logLine(2))")
+                Label("\(state.logLine(3))")
+                Label("\(state.logLine(4))")
+                Label("\(state.logLine(5))")
+                Label("\(state.logLine(6))")
+                Label("\(state.logLine(7))")
+                Separator()
+                Label("Frame time history (ms)").variant("caption")
+                Plot(values: state.frameHistory()).height(60).tooltip("Plot: live frame time bars (ms)").id("plot")
+            }
+            .width(sideWidth)
+            .height(.fill)
+
+            // ── Main tabbed workspace ──
+            Panel {
+                Tabs(selected: $state.tab) {
+                    Page("Scene") {
+                        VBox {
+                            Label("Engine: \(state.deviceInfo)").variant("caption").id("deviceInfo")
+                            Label("FPS: \(stats.shown.fps) | Render: \(stats.shown.renderMs) ms | Scene: \(stats.shown.renderSceneMs) ms | UI: \(stats.shown.uiUpscaleMs) ms")
+                                .variant("caption").id("sceneStats")
+                            HBox {
+                                Button("Reset camera").onClick(state.requestResetCamera).id("resetCamera")
+                                Button("Run 10k tasks").onClick(state.runTaskBenchmark).id("runTasks")
+                                Button("Save JSON").onClick(state.saveConfigJson).id("saveConfig")
+                                Button("Load JSON").onClick(state.loadConfigJson).id("loadConfig")
+                                Button("Capture PNG").onClick(state.requestCapture).id("capturePng")
+                            }
+                            Label("Tasks: \(state.taskBenchmarkResult)").variant("caption").id("taskStatus")
+                            Label("Config: \(state.configStatus)").variant("caption").id("configStatus")
+                            Separator()
+                            Label("Scene parameters (reflected C++ struct -> ParamPanel)").variant("caption")
+                            ScrollView {
+                                ParamPanel($state.scene).onChange(state.changed).id("params")
+                            }
+                            .height(.fill)
+                        }
+                    }
+                    Page("Widgets") {
+                        ScrollView {
+                            Grid(2) {
+                                Label("Button")
+                                HBox {
+                                    Button("Click me").shortcut("F5").onClick(state.clicked).onHover(state.hovered).onFocus(state.focused).id("button")
+                                        .tooltip("onClick, onHover and onFocus name C++ functions; F5 clicks it (.shortcut)")
+                                    Button("Submit").enabled(state.canSubmit()).onClick(state.clicked).id("submit")
+                                        .tooltip(".enabled(expression): needs a name and 'Enabled'")
+                                    Button("Named action").onClick(demoAction).id("action")
+                                        .tooltip("an event naming a function that is not a field: looked up in ui.actions()")
+                                }
+                                Label("Checkbox")
+                                Checkbox("Enabled", checked: $state.enabled).onChange(state.changed).id("enabled")
+                                Label("Checkbox")
+                                Checkbox("Notifications", checked: $state.notifications).onChange(state.changed).id("notifications")
+                                Label("Slider")
+                                Slider($state.volume, min: 0, max: 1, default: 0.5).onChange(state.changed).width(.fill).id("volume")
+                                    .tooltip("click: value under the pointer; drag: from the current value (Shift: finer); right click: 0.5")
+                                Label("Slider (step 1)")
+                                Slider($state.count, min: 0, max: 10, step: 1).onChange(state.changed).width(.fill).id("count")
+                                Label("Dropdown")
+                                Dropdown(options: state.fruits(), selected: $state.fruit).onChange(state.changed).width(.fill).id("fruit")
+                                Label("Text field")
+                                TextField($state.name).onChange(state.changed).width(.fill).id("name")
+                                    .tooltip("Enter or losing the focus commits; Escape cancels")
+                                Label("Number field")
+                                NumberField($state.sampleId, integer: true, min: 0, max: 4294967295).onChange(state.changed).width(.fill).id("sampleId")
+                                    .tooltip("an invalid or out-of-range entry is refused")
+                                Label("Color picker")
+                                ColorPicker($state.tint, alpha: true).onChange(state.changed).width(.fill).id("tint")
+                                Label("Read-only")
+                                Slider(state.volume * 100, min: 0, max: 100).width(.fill).id("readonly")
+                                    .tooltip("a value that is not a $binding is shown but cannot be changed")
+                                Label("Section")
+                                Section("More options", expanded: false) {
+                                    Label("A foldable block: click its header.")
+                                    Checkbox("Inside a section", checked: $state.notifications)
+                                }
+                                .width(.fill)
+                                Label("Values").variant("caption")
+                                Label("\(state.summary())").variant("caption").id("summary")
+                            }
+                            .width(.fill)
+                        }
+                        .height(.fill)
+                    }
+                    Page("Controls") {
+                        ScrollView {
+                            Grid(2) {
+                                Label("Radio buttons")
+                                HBox {
+                                    RadioButton("Low", value: 0, selected: $state.detail).onChange(state.changed).id("detailLow")
+                                    RadioButton("Medium", value: 1, selected: $state.detail).onChange(state.changed).id("detailMedium")
+                                    RadioButton("High", value: 2, selected: $state.detail).onChange(state.changed).id("detailHigh")
+                                }
+                                Label("Range slider")
+                                RangeSlider($state.rangeLow, $state.rangeHigh, min: 0, max: 100, step: 1).onChange(state.changed).width(.fill).id("rangeSlider")
+                                    .tooltip("two handles that cannot cross; they reshape the live preview on the Windows page")
+                                Label("Spin box")
+                                SpinBox($state.steps, min: 1, max: 8).onChange(state.changed).width(160).id("steps")
+                                    .tooltip("- / + buttons, the wheel, or type a number")
+                                Label("Text field")
+                                TextField($state.name).width(.fill).id("name2")
+                                    .tooltip("focus selects all; Shift + arrows or drag select; Ctrl+A, C, X, V; Ctrl+Z / Ctrl+Y")
+                                Label("Text editor")
+                                TextArea($state.notes, lineNumbers: true).width(.fill).height(120).id("notes")
+                                    .tooltip("word wrap at the width; undo / redo: Ctrl+Z / Ctrl+Y; keys repeat when held")
+                                Label("Values").variant("caption")
+                                Label("\(state.controlsSummary())").variant("caption").id("controlsSummary")
+                            }
+                            .width(.fill)
+                        }
+                        .height(.fill)
+                    }
+                    Page("Color") {
+                        ScrollView {
+                            VBox {
+                                Label("Colour editor: wheel, RGB / HSV / HSL sliders, alpha, hexadecimal; before / after").variant("caption")
+                                HBox {
+                                    ColorEditor($state.accent, alpha: true).onChange(state.changed).width(420).id("accent")
+                                    VBox {
+                                        Label("A bare wheel on the same colour").variant("caption")
+                                        ColorWheel($state.accent).width(140).height(140).id("wheel")
+                                    }
+                                }
+                                Label("Gradient editor: click the bar to add a stop, drag to move, right click to remove").variant("caption")
+                                GradientEditor($state.paletteGradient).onChange(state.changed).width(.fill).id("gradient")
+                                Label("Curve editor: click to add a point, drag to move, right click to remove").variant("caption")
+                                CurveEditor($state.responseCurve).onChange(state.changed).width(260).height(180).id("curve")
+                                Label("The gradient colours the live preview; the curve reshapes its intensity (Windows page)").variant("caption")
+                            }
+                            .width(.fill)
+                        }
+                        .height(.fill)
+                    }
+                    Page("Windows") {
+                        ScrollView {
+                            VBox {
+                                Label("Modal dialog: Escape, its close button or a click outside closes it").variant("caption")
+                                Button("Open the dialog").onClick(state.openDialog).id("openDialog")
+                                Label("Context menu: right click in the box below").variant("caption")
+                                Panel {
+                                    Label("Right click here")
+                                    ContextMenu {
+                                        MenuItem("Copy", shortcut: "Ctrl+C").onClick(state.clicked).id("ctxCopy")
+                                        MenuItem("Paste", shortcut: "Ctrl+V").onClick(state.clicked).id("ctxPaste")
+                                        Separator()
+                                        Menu("Notify") {
+                                            MenuItem("Information").onClick(state.notifyInfo)
+                                            MenuItem("Error").onClick(state.notifyError)
+                                        }
+                                    }
+                                }
+                                .height(60)
+                                .id("contextArea")
+                                Label("Notifications: at most 4 or 300 px; the oldest go; a click closes one").variant("caption")
+                                HBox {
+                                    Button("Information").onClick(state.notifyInfo).id("notifyInfo")
+                                    Button("Success").onClick(state.notifySuccess).id("notifySuccess")
+                                    Button("Warning").onClick(state.notifyWarning).id("notifyWarning")
+                                    Button("Error").onClick(state.notifyError).id("notifyError")
+                                }
+                                Label("Live images updated every frame (DynamicImage): geometric preview and camera compass").variant("caption")
+                                HBox {
+                                    ImageView(state.previewImage).width(192).height(192).id("minimap")
+                                        .tooltip("geometric pattern -> response curve -> palette gradient (Color page); range and steps (Controls page)")
+                                    ImageView(state.compass).width(96).height(96).id("compass")
+                                        .tooltip("live compass needle tracking the 3D camera yaw")
+                                    ImageView(state.previewImage).fit(.cover).width(192).height(64).id("minimapCover")
+                                        .tooltip(".fit(.cover): fills the widget, the edges are cut")
+                                }
+                            }
+                            .width(.fill)
+                        }
+                        .height(.fill)
+                    }
+                    Page("Layout") {
+                        VBox {
+                            Label("HBox with fill weights 1, 2, 1 and a fixed width").variant("caption")
+                            HBox {
+                                Button("fill 1").width(.fill)
+                                Button("fill 2").width(.fill, weight: 2)
+                                Button("fill 1").width(.fill)
+                                Button("120 px").width(120)
+                            }
+                            Label("Grid of 3 columns, one cell spans 2 columns").variant("caption")
+                            Grid(3) {
+                                Button("1")
+                                Button("2")
+                                Button("3")
+                                Button("spans 2").span(2)
+                                Button("6")
+                            }
+                            Label("Overlay: children aligned on both axes").variant("caption")
+                            Overlay {
+                                Label("top left").align(x: .start, y: .start)
+                                Label("top right").align(x: .end, y: .start)
+                                Label("centre").align(.center)
+                                Label("bottom left").align(x: .start, y: .end)
+                                Label("bottom right").align(x: .end, y: .end)
+                            }
+                            .height(90)
+                            .style(background: "color.field", radius: 6)
+                            Label("Margins, min and max sizes").variant("caption")
+                            HBox {
+                                Button("margin 12").margin(12)
+                                Button("min 200").width(.fit, min: 200)
+                                Button("max 80, fill").width(.fill, max: 80)
+                            }
+                            Label("Overflow: a 300 px button in a 120 px box, visible then hidden").variant("caption")
+                            HBox {
+                                Overlay {
+                                    Button("overflow visible: still clickable").width(300).align(.start).onClick(state.clicked).id("overflowVisible")
+                                }
+                                .width(120)
+                                .height(30)
+                                .style(background: "color.field")
+                                Overlay {
+                                    Button("overflow hidden: clipped").width(300).align(.start).onClick(state.clicked).id("overflowHidden")
+                                }
+                                .width(120)
+                                .height(30)
+                                .style(background: "color.field")
+                                .overflow(.hidden)
+                                .margin(left: 200)
+                            }
+                            Label("ScrollView: wheel or scrollbar").variant("caption")
+                            ScrollView {
+                                VBox {
+                                    Label("Line 1")
+                                    Label("Line 2")
+                                    Label("Line 3")
+                                    Label("Line 4")
+                                    Label("Line 5")
+                                    Label("Line 6")
+                                    Label("Line 7")
+                                    Label("Line 8")
+                                    Label("Line 9")
+                                    Label("Line 10")
+                                }
+                            }
+                            .height(80)
+                        }
+                    }
+                    Page("Themes") {
+                        ScrollView {
+                            VBox {
+                                Label("Every colour and size comes from the theme; .style(...) overrides one property locally").variant("caption")
+                                HBox {
+                                    Button("Theme button")
+                                    Button("accent").style(background: "color.primary", foreground: "color.onPrimary")
+                                    Button("#c0392b, radius 12").style(background: "#c0392b", radius: 12)
+                                    Button("bigger text").style(fontSize: 22)
+                                }
+                                Label("Nine-slice images: fixed corners; edges and centre stretched, repeated or removed").variant("caption")
+                                HBox {
+                                    Button("frame.button").style(image: "frame.button", background: "#00000000").height(48)
+                                    Button("tall and wide").style(image: "frame.button", background: "#00000000").width(220).height(70)
+                                    Panel {
+                                        Label("frame.border: centre removed")
+                                    }
+                                    .style(image: "frame.border", background: "#00000000")
+                                    .width(240)
+                                }
+                                Label("Text: UTF-8 with accents and typographic punctuation").variant("caption")
+                                Label("Été, déjà, garçon, œuvre, « guillemets » – tiret… 12 € ; Ñandú, Łódź, Ærøskøbing")
+                                Label("Variants: the same widget with another theme style").variant("caption")
+                                Label("variant(\"title\")").variant("title")
+                                Label("variant(\"caption\")").variant("caption")
+                                Label("Shadows, borders and rounded corners: the panels around").variant("caption")
+                            }
+                            .width(.fill)
+                        }
+                        .height(.fill)
+                    }
+                }
+                .height(.fill)
+            }
+            .width(.fill)
+            .height(.fill)
+        }
+        .height(.fill)
+
+        // ── Modal dialog (outside Tabs so File > Open dialog / Help > About Orosmo work from any tab) ──
+        Dialog("About Orosmo", open: $state.dialogOpen) {
+            Label("Orosmo Engine unified demo (3D scene + orosmo::ui).")
+            Label("Device: \(state.deviceInfo)").variant("caption")
+            TextField($state.name).width(.fill)
+            Checkbox("Enabled", checked: $state.enabled)
+            HBox {
+                Button("OK").onClick(state.closeDialog).id("dialogOk")
+            }
+            .align(x: .end)
+        }
+        .width(380)
+        .id("dialog")
+        }
+        .margin(12)
+        .height(.fill)
+
+        // ── Toast notifications (Ui::notify) ──
+        Notifications(max: 4, maxHeight: 300, width: 280).align(.end).margin(20).id("toasts")
+    }
+    .style(background: "color.backdrop")
+}
