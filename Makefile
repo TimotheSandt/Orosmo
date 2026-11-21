@@ -13,7 +13,7 @@
 #   make engine-tool           build the orosmo scaffolding tool (dist/orosmo-<platform>)
 #   make sync-demo             fast sync of current BUILD_TYPE into demo/orosmo/
 #   make install-demo          copy full dist package into demo/orosmo/
-#   make clean / fclean        remove engine build artifacts
+#   make clean / fclean        remove engine build artifacts (debug, dev and release; BUILD_TYPE=x: that one only)
 #
 # ── Demo (apps/demo/) ──────────────────────────────────────────────────────────────
 #   make demo-debug            build demo (debug)
@@ -138,11 +138,14 @@ sync-demo:
 install-demo:
 	$(MAKE) -f $(ENGINE_MK) install-demo
 
+# Sans BUILD_TYPE sur la ligne de commande : debug, dev et release (le BUILD_TYPE par défaut de ce fichier, debug, n'était pas
+# transmis et mk/engine.mk nettoyait seulement release). `make fclean BUILD_TYPE=debug` : ce type seulement.
+_CLEAN_TYPES := $(if $(filter command line,$(origin BUILD_TYPE)),$(BUILD_TYPE),debug dev release)
 clean:
-	$(MAKE) -f $(ENGINE_MK) clean
+	@for t in $(_CLEAN_TYPES); do $(MAKE) -f $(ENGINE_MK) clean BUILD_TYPE=$$t || exit 1; done
 
 fclean:
-	$(MAKE) -f $(ENGINE_MK) fclean
+	@for t in $(_CLEAN_TYPES); do $(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=$$t || exit 1; done
 
 # ── Demo ──────────────────────────────────────────────────────────────────────
 # demo-test builds (release) and runs apps/demo's test suite
