@@ -127,7 +127,9 @@ jobs:
         with:
           path: .vcpkg-archives
           key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
-          restore-keys: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-
+          restore-keys: |
+            vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-archives-linux-
 
       # Manifest mode: vcpkg.json lists glad and msdfgen (core only, no skia); the other packages come from apt on Linux.
       - name: Install glad and msdfgen (vcpkg, vcpkg.json)
@@ -268,7 +270,9 @@ jobs:
         with:
           path: .vcpkg-archives
           key: vcpkg-archives-linux-arm64-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
-          restore-keys: vcpkg-archives-linux-arm64-${{ hashFiles('vcpkg.json') }}-
+          restore-keys: |
+            vcpkg-archives-linux-arm64-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-archives-linux-arm64-
 
       - name: Install glad, msdfgen and nlohmann-json (vcpkg, vcpkg.json)
         run: |
@@ -345,7 +349,9 @@ jobs:
         with:
           path: .vcpkg-archives
           key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
-          restore-keys: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-
+          restore-keys: |
+            vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-archives-linux-
       - name: Install glad and msdfgen (vcpkg, vcpkg.json)
         run: |
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
@@ -444,7 +450,9 @@ jobs:
         with:
           path: .vcpkg-archives
           key: vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
-          restore-keys: vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-
+          restore-keys: |
+            vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-archives-${{ matrix.triplet }}-
 
       - name: Install vcpkg dependencies (Unix)
         if: runner.os != 'Windows'

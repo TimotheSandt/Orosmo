@@ -32,6 +32,7 @@ config.local.mk
 /tools/orosmo.exe
 
 # ── Editors, IDEs, assistants, OS ─────────────────────────────────────────────
+compile_commands.json
 .vscode/
 .vs/
 .idea/
