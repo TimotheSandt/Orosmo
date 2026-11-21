@@ -40,6 +40,10 @@ make install                            # dépendances vcpkg du moteur (une fois
 make debug && make run                  # bin/debug/main
 ```
 
+Dans un terminal, `make` affiche une barre de progression (fichiers compilés, en cours, restants et à jour) au lieu des commandes ;
+`make V=1 …` montre les commandes, `ORS_NO_PROGRESS=1 make …` garde l'affichage habituel. Il faut Python 3 (sinon, affichage
+habituel) ; le script est livré dans `orosmo/tools/build_progress.py`.
+
 `orosmo init` crée `orosmo/` (le paquet du moteur générique), `src/` (un projet de démarrage générique : scène 3D RHI + panneau `.cui`),
 `Makefile`, `.gitignore`, `config.mk` (nom, version : à vous) et `config.local.mk` (chemins de la machine, ignoré par git).
 `orosmo update` remplace `orosmo/` par la dernière release, met à jour `Makefile` et `.gitignore` s'ils n'ont pas été modifiés,

@@ -383,6 +383,7 @@ ifeq ($(DETECTED_OS),Windows)
 	done
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination '$(DIST_PKG_DIR)/make' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination '$(DIST_PKG_DIR)/tools' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/build_progress.py' -Destination '$(DIST_PKG_DIR)/tools' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'vcpkg.json' -Destination '$(DIST_PKG_DIR)' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist.gitignore' -Destination '$(DIST_PKG_DIR)/.gitignore' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist-README.md' -Destination '$(DIST_PKG_DIR)/README.md' -Force"
@@ -405,6 +406,7 @@ else
 	done
 	@cp tools/engine-sdk/engine.mk      "$(DIST_PKG_DIR)/make/"
 	@cp "$(_CUI_INSTALLED)"       "$(DIST_PKG_DIR)/tools/"
+	@cp tools/build_progress.py   "$(DIST_PKG_DIR)/tools/"   # barre de progression des projets (Makefile du modèle)
 	@cp vcpkg.json      "$(DIST_PKG_DIR)/vcpkg.json"
 	@cp tools/engine-sdk/dist.gitignore "$(DIST_PKG_DIR)/.gitignore"
 	@cp tools/engine-sdk/dist-README.md "$(DIST_PKG_DIR)/README.md"
@@ -504,10 +506,12 @@ ifeq ($(DETECTED_OS),Windows)
 	@for f in $(ENGINE_LIBS); do powershell -NoProfile -Command "Copy-Item -Path '$$f' -Destination 'apps/demo/orosmo/lib/$(BUILD_TYPE)' -Force"; done
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination 'apps/demo/orosmo/make' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination 'apps/demo/orosmo/tools' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/build_progress.py' -Destination 'apps/demo/orosmo/tools' -Force"
 else
 	@cp -p $(ENGINE_LIBS) apps/demo/orosmo/lib/$(BUILD_TYPE)/
 	@cp -p tools/engine-sdk/engine.mk apps/demo/orosmo/make/
 	@cp -p "$(_CUI_INSTALLED)" apps/demo/orosmo/tools/
+	@cp -p tools/build_progress.py apps/demo/orosmo/tools/
 endif
 	@if [ ! -e apps/demo/orosmo/vcpkg_installed ]; then \
 	    if [ "$(DETECTED_OS)" = "Windows" ]; then \
