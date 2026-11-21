@@ -403,101 +403,107 @@ void main() { c = texture(sampler2D(t, s), vec2(0.5)); })";
     }
 }
 
-TEST_SUITE("rhi/shader/opengl")
+TEST_SUITE("rhi/backend/shader")
 {
-    TEST_CASE("a GLSL 450 shader pair renders on OpenGL: set/binding remapped, push constants and MRT working")
+    TEST_CASE("a GLSL 450 shader pair renders on every backend: set/binding remapped, push constants and MRT working")
     {
-        Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
-        ShaderCache cache;
-        auto vs = createShaderFromGlsl(*gpu.device, ShaderStage::kVertex, kVertex, {.name = "vert"}, &cache);
-        auto fs = createShaderFromGlsl(*gpu.device, ShaderStage::kFragment, kFragment, {.name = "frag"}, &cache);
-        REQUIRE(vs.has_value());
-        INFO((fs ? std::string() : fs.error().message));
-        REQUIRE(fs.has_value());
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            ShaderCache cache;
+            auto vs = createShaderFromGlsl(*gpu.device, ShaderStage::kVertex, kVertex, {.name = "vert"}, &cache);
+            auto fs = createShaderFromGlsl(*gpu.device, ShaderStage::kFragment, kFragment, {.name = "frag"}, &cache);
+            REQUIRE(vs.has_value());
+            INFO((fs ? std::string() : fs.error().message));
+            REQUIRE(fs.has_value());
 
-        const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {4, 4}, "color");
-        const TextureHandle ids = gpu.target(Format::kR32Uint, {4, 4}, "ids");
-        const PipelineHandle pipe = gpu.pipeline(*vs, *fs, {ColorTargetState{.format = Format::kRGBA8Unorm}, ColorTargetState{.format = Format::kR32Uint}});
+            const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {4, 4}, "color");
+            const TextureHandle ids = gpu.target(Format::kR32Uint, {4, 4}, "ids");
+            const PipelineHandle pipe = gpu.pipeline(*vs, *fs, {ColorTargetState{.format = Format::kRGBA8Unorm}, ColorTargetState{.format = Format::kR32Uint}});
 
-        const float tint[4] = {1.0f, 0.5f, 0.25f, 1.0f};
-        const BufferHandle frame = gpu.buffer(BufferUsage::kUniform, std::as_bytes(std::span(tint)), 0, "frame");
-        BindGroupDesc g0;
-        g0.entries = {{.binding = 0, .type = BindingType::kUniformBuffer, .buffer = frame}};
-        auto group0 = gpu->createBindGroup(g0);
-        REQUIRE(group0.has_value());
+            const float tint[4] = {1.0f, 0.5f, 0.25f, 1.0f};
+            const BufferHandle frame = gpu.buffer(BufferUsage::kUniform, std::as_bytes(std::span(tint)), 0, "frame");
+            BindGroupDesc g0;
+            g0.entries = {{.binding = 0, .type = BindingType::kUniformBuffer, .buffer = frame}};
+            auto group0 = gpu->createBindGroup(g0);
+            REQUIRE(group0.has_value());
 
-        TextureDesc td;
-        td.size = {1, 1, 1};
-        td.usage = TextureUsage::kSampled | TextureUsage::kCopyDst;
-        auto albedo = gpu->createTexture(td);
-        REQUIRE(albedo.has_value());
-        const std::uint8_t white[4] = {255, 255, 255, 255};
-        REQUIRE(gpu->updateTexture(*albedo, {}, std::as_bytes(std::span(white))).has_value());
-        auto sampler = gpu->createSampler({});
-        REQUIRE(sampler.has_value());
-        BindGroupDesc g1;
-        g1.entries = {{.binding = 2, .type = BindingType::kSampledTexture, .texture = *albedo, .sampler = *sampler}};
-        auto group1 = gpu->createBindGroup(g1);
-        REQUIRE(group1.has_value());
+            TextureDesc td;
+            td.size = {1, 1, 1};
+            td.usage = TextureUsage::kSampled | TextureUsage::kCopyDst;
+            auto albedo = gpu->createTexture(td);
+            REQUIRE(albedo.has_value());
+            const std::uint8_t white[4] = {255, 255, 255, 255};
+            REQUIRE(gpu->updateTexture(*albedo, {}, std::as_bytes(std::span(white))).has_value());
+            auto sampler = gpu->createSampler({});
+            REQUIRE(sampler.has_value());
+            BindGroupDesc g1;
+            g1.entries = {{.binding = 2, .type = BindingType::kSampledTexture, .texture = *albedo, .sampler = *sampler}};
+            auto group1 = gpu->createBindGroup(g1);
+            REQUIRE(group1.has_value());
 
-        const float scale[4] = {0.5f, 1.0f, 1.0f, 1.0f};
-        gpu.run(
-            [&](CommandEncoder &e)
-            {
-                RenderPassDesc pass;
-                pass.colors = {{.texture = color}, {.texture = ids}};
-                e.beginRenderPass(pass);
-                e.setPipeline(pipe);
-                e.setBindGroup(0, *group0);
-                e.setBindGroup(1, *group1);
-                e.setPushConstants(std::as_bytes(std::span(scale)));
-                e.draw(3);
-                e.endRenderPass();
-            });
-        const auto px = gpu.pixel(color, 1, 1);
-        CHECK(static_cast<std::uint8_t>(px[0]) == 128); // 1.0 * 1.0 * 0.5
-        CHECK(static_cast<std::uint8_t>(px[1]) == 128); // 1.0 * 0.5 * 1.0
-        CHECK(static_cast<std::uint8_t>(px[2]) == 64);  // 1.0 * 0.25 * 1.0
-        std::uint32_t id = 0;
-        const auto idPx = gpu.pixel(ids, 1, 1);
-        std::memcpy(&id, idPx.data(), 4);
-        CHECK(id == 3);
-        gpu.expectNoValidationErrors();
+            const float scale[4] = {0.5f, 1.0f, 1.0f, 1.0f};
+            gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    RenderPassDesc pass;
+                    pass.colors = {{.texture = color}, {.texture = ids}};
+                    e.beginRenderPass(pass);
+                    e.setPipeline(pipe);
+                    e.setBindGroup(0, *group0);
+                    e.setBindGroup(1, *group1);
+                    e.setPushConstants(std::as_bytes(std::span(scale)));
+                    e.draw(3);
+                    e.endRenderPass();
+                });
+            const auto px = gpu.pixel(color, 1, 1);
+            CHECK(static_cast<std::uint8_t>(px[0]) == 128); // 1.0 * 1.0 * 0.5
+            CHECK(static_cast<std::uint8_t>(px[1]) == 128); // 1.0 * 0.5 * 1.0
+            CHECK(static_cast<std::uint8_t>(px[2]) == 64);  // 1.0 * 0.25 * 1.0
+            std::uint32_t id = 0;
+            const auto idPx = gpu.pixel(ids, 1, 1);
+            std::memcpy(&id, idPx.data(), 4);
+            CHECK(id == 3);
+            gpu.expectNoValidationErrors();
+        }
     }
 
-    TEST_CASE("a GLSL 450 compute shader runs on OpenGL with its storage buffer at (set 0, binding 1)")
+    TEST_CASE("a GLSL 450 compute shader runs on every backend with its storage buffer at (set 0, binding 1)")
     {
-        Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
-        const char *cs = R"(#version 450
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            const char *cs = R"(#version 450
 layout(local_size_x = 16) in;
 layout(set = 0, binding = 1, std430) buffer Out { uint data[]; };
 void main() { data[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x + 100u; })";
-        auto shader = createShaderFromGlsl(*gpu.device, ShaderStage::kCompute, cs, {.name = "comp"});
-        REQUIRE(shader.has_value());
-        auto pipe = gpu->createComputePipeline({.compute = *shader});
-        REQUIRE(pipe.has_value());
-        const BufferHandle ssbo = gpu.buffer(BufferUsage::kStorage | BufferUsage::kCopySrc, {}, 16 * 4);
-        BindGroupDesc g;
-        g.entries = {{.binding = 1, .type = BindingType::kStorageBuffer, .buffer = ssbo}};
-        auto group = gpu->createBindGroup(g);
-        REQUIRE(group.has_value());
-        gpu.run(
-            [&](CommandEncoder &e)
+            auto shader = createShaderFromGlsl(*gpu.device, ShaderStage::kCompute, cs, {.name = "comp"});
+            REQUIRE(shader.has_value());
+            auto pipe = gpu->createComputePipeline({.compute = *shader});
+            REQUIRE(pipe.has_value());
+            const BufferHandle ssbo = gpu.buffer(BufferUsage::kStorage | BufferUsage::kCopySrc, {}, 16 * 4);
+            BindGroupDesc g;
+            g.entries = {{.binding = 1, .type = BindingType::kStorageBuffer, .buffer = ssbo}};
+            auto group = gpu->createBindGroup(g);
+            REQUIRE(group.has_value());
+            gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    e.bindComputePipeline(*pipe);
+                    e.setBindGroup(0, *group);
+                    e.dispatch(1, 1, 1);
+                });
+            auto data = gpu->readBuffer(ssbo, 0, 64);
+            REQUIRE(data.has_value());
+            std::uint32_t words[16];
+            std::memcpy(words, data->data(), 64);
+            for (std::uint32_t i = 0; i < 16; ++i)
             {
-                e.bindComputePipeline(*pipe);
-                e.setBindGroup(0, *group);
-                e.dispatch(1, 1, 1);
-            });
-        auto data = gpu->readBuffer(ssbo, 0, 64);
-        REQUIRE(data.has_value());
-        std::uint32_t words[16];
-        std::memcpy(words, data->data(), 64);
-        for (std::uint32_t i = 0; i < 16; ++i)
-        {
-            CHECK(words[i] == 100 + i);
+                CHECK(words[i] == 100 + i);
+            }
+            gpu.expectNoValidationErrors();
         }
-        gpu.expectNoValidationErrors();
     }
 }
