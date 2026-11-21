@@ -180,8 +180,10 @@ présentée comme utilisable : `v0.3.1` (M3 bis, moteur générique). M3 (`v0.3.
 
 ## 8. Limites connues
 
-- **Backend graphique** : OpenGL seulement ; `--api vulkan` / `--backend vulkan` sont refusés avec un message jusqu'à M4 ; pas de
-  rendu sous macOS avant M4 (voir §2).
+- **Backend graphique** : OpenGL (défaut) et Vulkan ; Metal n'existe pas avant M9 et est refusé avec un message. Choix par
+  `--backend <opengl|vulkan|metal>` (alias de `--api`, casse indifférente, `--backend=vulkan` accepté). Si Vulkan ne démarre pas (pas
+  de chargeur, pas de GPU Vulkan 1.3), la raison s'affiche sur stderr et la démo retombe sur OpenGL ; `--strict-backend` supprime ce
+  repli (code de sortie non nul). Rendu sous macOS : voir §2.
 - **Texte** : `TextRendererFont` affiche l'ASCII (REN-36) ; pas de composition IME, de presse-papiers ni de sélection dans les
   champs de texte (PLAT-05, partiel).
 - **Interface** : pas de rechargement à chaud de la vue elle-même (le thème se recharge) ; pas de navigation à la manette.
