@@ -27,6 +27,50 @@ constexpr float kFixedStep = 1.0f / 60.0f;
 constexpr float kDefaultOrthoHeight = 18.0f;
 } // namespace
 
+// Plugin de rendu de la démo (REN-01) : l'interface (CanvasRenderer, inchangé) puis la présentation sont deux passes du graphe de
+// l'image, après la mise à l'échelle de la scène. Le contenu des passes reste celui d'avant M5 (`Game::renderUi`, copie étirée).
+class Game::OverlayFeature final : public rd::RenderFeature
+{
+  public:
+    explicit OverlayFeature(Game &game) : game_(game) {}
+    std::string name() const override { return "demo.overlay"; }
+    orosmo::core::Result<> declarePasses(rd::RenderGraphBuilder &builder) override
+    {
+        rd::RenderGraph &graph = builder.graph();
+        const rd::RgTexture output = builder.resources().output;
+        // Une interface refusée (liste ou cible invalide) ne casse pas l'image : elle n'est ni comptée ni capturée (uiFailed).
+        graph
+            .addPass("ui", rd::PassType::kGeneric,
+                     [this](rd::RenderPassContext &ctx) -> orosmo::core::Result<>
+                     {
+                         game_.uiFailed = !game_.renderUi(ctx.encoder(), game_.composed.color(0));
+                         uiDone = true;
+                         return {};
+                     })
+            .read(output)
+            .write(output);
+        // Taille sans importance ici (ce n'est pas un attachement déclaré) : la copie étire l'image sur tout le backbuffer.
+        const rd::RgTexture backbuffer = graph.importTexture("backbuffer", game_.backbuffer, {.format = rhi::Format::kRGBA8Unorm, .size = {1, 1}});
+        graph
+            .addPass("present", rd::PassType::kGeneric,
+                     [this, output](rd::RenderPassContext &ctx) -> orosmo::core::Result<>
+                     {
+                         game_.present(ctx.encoder(), ctx.texture(output));
+                         presented = true;
+                         return {};
+                     })
+            .read(output)
+            .write(backbuffer);
+        return {};
+    }
+
+    bool uiDone = false;
+    bool presented = false;
+
+  private:
+    Game &game_;
+};
+
 Game::Game(bool headlessMode, int width, int height, rhi::Backend backend)
     : window("Orosmo", width, height, platform::WindowState::kWindowed), requestedWidth(width), requestedHeight(height), selectedBackend(backend),
       headless(headlessMode)
@@ -104,6 +148,13 @@ orosmo::core::Result<> Game::createGraphics()
     }
     this->canvas = std::move(*canvasCreated);
 
+    auto overlay = this->sceneRenderer->addFeature(std::make_unique<OverlayFeature>(*this));
+    if (!overlay)
+    {
+        return makeError(overlay.error().code, "Failed to register the overlay pass: " + overlay.error().message);
+    }
+    this->overlay = static_cast<OverlayFeature *>(*overlay);
+
     this->gpuTimers = std::make_unique<rd::ProfilerGpuTimerFactory>(*this->device);
     Profiler::SetGpuTimerFactory(this->gpuTimers.get());
     return {};
@@ -167,6 +218,7 @@ void Game::stop()
     this->composed.reset();
     this->uiTarget.reset();
     this->canvas.reset();
+    this->overlay = nullptr; // possédé par le renderer
     this->sceneRenderer.reset();
     this->pipelines.reset();
     this->shaders.reset();
@@ -655,16 +707,30 @@ void Game::render()
             this->sceneError = r.error();
         }
     };
-    Profiler::ProfileGPU("Clear", [&]() { keep(this->sceneRenderer->beginFrame(encoder, {.clearColor = {clear.r, clear.g, clear.b, clear.a}}), "beginFrame"); });
+    // Le graphe de l'image (scène, mise à l'échelle, puis l'interface et la présentation du plugin de la démo) est exécuté par
+    // endFrame ; chaque passe est mesurée par le Profiler sous « RenderGraph/<passe> ».
+    this->overlay->uiDone = false;
+    this->overlay->presented = false;
+    keep(this->sceneRenderer->beginFrame(encoder, {.clearColor = {clear.r, clear.g, clear.b, clear.a}}), "beginFrame");
     keep(this->sceneRenderer->setCamera(this->camera), "setCamera");
-    Profiler::ProfileGPU("RenderScene", [&]() { keep(this->scene->render(*this->sceneRenderer, this->camera, this->uiState.scene), "scene"); });
-    Profiler::ProfileGPU("Upscale", [&]() { keep(this->sceneRenderer->endFrame({this->composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame"); });
+    Profiler::Profile("RecordScene", [&]() { keep(this->scene->render(*this->sceneRenderer, this->camera, this->uiState.scene), "scene"); });
+    keep(this->sceneRenderer->endFrame({this->composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame");
 
-    // Interface refusée (liste ou cible invalide) : une partie a pu être encodée, l'image n'est ni comptée ni capturée (ui.png).
-    Profiler::ProfileGPU("UIUpscale", [&]() { this->uiFailed = !this->renderUi(encoder, this->composed.color(0)); });
+    // Graphe interrompu (scène refusée) : l'interface et la présentation sont encodées quand même, comme avant le graphe.
+    if (!this->overlay->uiDone)
+    {
+        this->uiFailed = !this->renderUi(encoder, this->composed.color(0));
+    }
+    if (!this->overlay->presented)
+    {
+        this->present(encoder, this->composed.color(0));
+    }
+}
 
-    // Présentation : l'image composée est copiée (étirée si la vue n'a pas la taille de la fenêtre) sur le backbuffer.
-    (void)this->sceneRenderer->blit().copy(encoder, this->composed.color(0), this->sceneRenderer->blit().linearSampler(), this->backbuffer,
+// Présentation : l'image composée est copiée (étirée si la vue n'a pas la taille de la fenêtre) sur le backbuffer.
+void Game::present(rhi::CommandEncoder &encoder, const rhi::TextureHandle &composedTexture)
+{
+    (void)this->sceneRenderer->blit().copy(encoder, composedTexture, this->sceneRenderer->blit().linearSampler(), this->backbuffer,
                                            rhi::Format::kRGBA8Unorm, "present");
 }
 
