@@ -208,6 +208,22 @@ TEST_SUITE("rhi/opengl/window")
         auto a = device->readTexture(*frame, px);
         REQUIRE(a.has_value());
         CHECK(rgba(*a)[2] == 0); // ciseau hors de la cible : rien n'est dessiné
+        REQUIRE(device->present().has_value());
+
+        // Hauteur immense : le rectangle couvre toute la hauteur de la cible (intersection avant conversion), le dessin passe.
+        auto next = device->beginFrame();
+        REQUIRE(next.has_value());
+        auto tall = device->createCommandEncoder();
+        pass.colors = {{.texture = *next, .clearColor = {0.0f, 1.0f, 0.0f, 1.0f}}};
+        tall->beginRenderPass(pass);
+        tall->setPipeline(*pipe);
+        tall->setScissor({0, 0, 8, std::numeric_limits<std::uint32_t>::max()});
+        tall->draw(3);
+        tall->endRenderPass();
+        REQUIRE(device->submit(std::move(tall)).has_value());
+        auto b = device->readTexture(*next, px);
+        REQUIRE(b.has_value());
+        CHECK(rgba(*b)[2] == 255);
         CHECK(device->validationErrorCount() == 0);
     }
 

@@ -42,7 +42,8 @@ ui.update(input, {float(w), float(h)});                        // orosmo::ui::Ui
 ui.draw(list);                                                 // liste de dessin de l'image
 if (auto drawn = canvas->render(*encoder, list, {composed, rhi::Format::kRGBA8Unorm, {w, h}}); !drawn)
 {
-    log(drawn.error());       // liste ou cible invalide : l'image est dessinée sans l'interface
+    log(drawn.error());       // liste ou cible invalide : une partie de l'interface a pu être encodée avant l'erreur ;
+    frameValid = false;       // l'image n'est pas fiable (ne pas la capturer ; la présenter seulement si une image partielle est acceptable)
 }
 if (auto shown = scene->blit().copy(*encoder, composed, scene->blit().linearSampler(), *frame, rhi::Format::kRGBA8Unorm); !shown)
 {
