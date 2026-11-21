@@ -14,7 +14,7 @@ class FPSCounter
 {
   public:
     FPSCounter();
-    ~FPSCounter();
+    ~FPSCounter() noexcept;
 
     FPSCounter(const FPSCounter &) = delete;
     FPSCounter &operator=(const FPSCounter &) = delete;

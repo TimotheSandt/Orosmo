@@ -52,12 +52,12 @@ template <> struct orosmo::core::EnumNames<Mode>
 };
 template <> struct orosmo::core::Reflect<Inner>
 {
-    static constexpr int kVersion = 1;
+    [[maybe_unused]] static constexpr int kVersion = 1;
     static constexpr auto fields() { return std::make_tuple(field("weight", &Inner::weight, range(0.0, 1.0), "poids")); }
 };
 template <> struct orosmo::core::Reflect<Everything>
 {
-    static constexpr int kVersion = 1;
+    [[maybe_unused]] static constexpr int kVersion = 1;
     static constexpr auto fields()
     {
         using E = Everything;

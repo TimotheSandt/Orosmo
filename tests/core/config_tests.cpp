@@ -37,7 +37,7 @@ struct Terrain
 
 template <> struct orosmo::core::Reflect<Terrain>
 {
-    static constexpr int kVersion = 1;
+    [[maybe_unused]] static constexpr int kVersion = 1;
     static constexpr auto fields()
     {
         return std::make_tuple(field("octaves", &Terrain::octaves), field("name", &Terrain::name),

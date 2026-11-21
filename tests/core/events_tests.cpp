@@ -125,10 +125,9 @@ TEST_SUITE("core/events")
             int seen = 0;
         } ctx;
         Ctx *c = &ctx;
-        const int probe = 42;
         // 16 octets, trivialement copiable : la capture est stockée dans le std::function lui-même, donc dans le
         // tableau des abonnés. Si ce tableau se réalloue pendant l'appel, elle serait déplacée sous les pieds du handler.
-        auto first = ctx.bus.subscribe<Damage>([c, probe](const Damage &) {
+        auto first = ctx.bus.subscribe<Damage>([c, probe = 42](const Damage &) {
             for (int i = 0; i < 200; ++i)
                 c->subs.push_back(c->bus.subscribe<Damage>([](const Damage &) {}));
             c->seen = probe; // lu après les abonnements : doit toujours valoir 42
