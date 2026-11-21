@@ -27,6 +27,7 @@ struct Numbers
     int between = 2;   // plage [0.5, 3.5] : entiers 1..3
     int closed = 0;    // plage [0, 3]
     int noInteger = 0; // plage [0.2, 0.8] : aucun entier
+    std::int64_t atLimit = 0; // plage [2^63, 2^63] : 2^63 n'est pas un int64
 };
 
 // Compte ses constructions par défaut (pour vérifier qu'aucun T{} n'est construit quand des valeurs par défaut sont données).
@@ -73,7 +74,8 @@ template <> struct orosmo::core::Reflect<Numbers>
         using N = Numbers;
         return std::make_tuple(field("big", &N::big), field("small", &N::small), field("offset", &N::offset),
                                field("between", &N::between, range(0.5, 3.5)), field("closed", &N::closed, range(0.0, 3.0)),
-                               field("noInteger", &N::noInteger, range(0.2, 0.8)));
+                               field("noInteger", &N::noInteger, range(0.2, 0.8)),
+                               field("atLimit", &N::atLimit, range(9223372036854775808.0, 9223372036854775808.0)));
     }
 };
 template <> struct orosmo::core::Reflect<Counted>
@@ -163,6 +165,12 @@ TEST_SUITE("ui/review3")
         CHECK(v.noInteger == 0);
         enter(h, *none, "0.5");
         CHECK(v.noInteger == 0);
+
+        // 2^63 : borne exclue d'int64 (max() converti en double l'atteint) : aucun entier, champ refusé, pas de curseur qui
+        // saturerait à INT64_MAX, hors de la plage.
+        CHECK(p->findAs<ui::Slider>("atLimit") == nullptr);
+        REQUIRE(p->findAs<ui::NumberField>("atLimit") != nullptr);
+        CHECK(v.atLimit == 0);
     }
 
     TEST_CASE("reflectedPanel builds no T{} when defaults are given; types without a default constructor are accepted")

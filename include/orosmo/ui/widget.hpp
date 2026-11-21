@@ -160,9 +160,11 @@ template <typename T> Binding<double> numberBinding(T &value)
                     return;
                 if constexpr (std::is_integral_v<T>)
                 {
-                    // std::round : demi vers l'extérieur, sans erreur d'arrondi (floor(v + 0.5) donnait 1 pour 0.49999999999999994 et
-                    // décalait les impairs au-delà de 2^52).
-                    const double r = std::round(v);
+                    // Demi vers l'extérieur, exact : partie entière (trunc) puis comparaison de la partie fractionnaire, calculée sans
+                    // erreur (v - trunc(v) est exact en double). Ni floor(v + 0.5) (1 pour 0.49999999999999994, impairs décalés
+                    // au-delà de 2^52) ni std::round, faux pour -0.49999999999999994 avec MinGW (-1).
+                    const double whole = std::trunc(v);
+                    const double r = std::abs(v - whole) >= 0.5 ? whole + std::copysign(1.0, v) : whole;
                     // Bornes EXACTES en double : lowest() (0 ou -2^n) et 2^n, borne supérieure exclue ; max() converti en double
                     // pourrait être arrondi à 2^n, qui ne tient plus dans T.
                     const double lo = static_cast<double>(std::numeric_limits<T>::lowest());

@@ -216,8 +216,8 @@ TEST_SUITE("world/export")
         std::copy_n(valid.begin() + static_cast<std::ptrdiff_t>(table), 8, duplicate.begin() + static_cast<std::ptrdiff_t>(table + 8));
         CHECK((tests::errorOf(readBack(duplicate)) == orosmo::core::ErrorCode::kParse));
 
-        // Erreur de lecture APRÈS l'ouverture (un dossier s'ouvre sous Linux, sa lecture échoue en EISDIR ; ailleurs l'ouverture
-        // échoue) : kIo, pas d'exception.
+        // Un dossier : kIo sur tous les systèmes, pas d'exception (Linux l'ouvrirait et sa lecture échouerait en EISDIR ; libc++
+        // sous macOS lirait 0 octet sans erreur).
         CHECK((tests::errorOf(w::readHeightExr(dir.path)) == orosmo::core::ErrorCode::kIo));
     }
 
@@ -340,6 +340,22 @@ TEST_SUITE("world/export")
         CHECK(highDoc["accessors"][0]["max"][1].get<float>() == 5e30f);
         CHECK(highDoc["accessors"][0]["min"][0].get<float>() == 0.0f);
         CHECK(highDoc["accessors"][0]["max"][0].get<float>() == 1.0f);
+        // Pentes immenses : les normales restent finies et unitaires (les carrés débordaient en float : normales nulles).
+        const std::string highUri = highDoc["buffers"][0]["uri"];
+        const auto highBuffer = decodeBase64(highUri.substr(prefix.size()));
+        const auto highNormals = highDoc["bufferViews"][1]["byteOffset"].get<std::size_t>();
+        REQUIRE(highNormals + 4 * 12 <= highBuffer.size());
+        for (std::size_t k = 0; k < 4; ++k)
+        {
+            std::array<float, 3> n{};
+            std::memcpy(n.data(), highBuffer.data() + highNormals + k * 12, 12);
+            CAPTURE(k);
+            CHECK(std::isfinite(n[0]));
+            CHECK(std::isfinite(n[1]));
+            CHECK(std::isfinite(n[2]));
+            const double length = std::sqrt(double(n[0]) * n[0] + double(n[1]) * n[1] + double(n[2]) * n[2]);
+            CHECK(length == doctest::Approx(1.0).epsilon(1e-6));
+        }
     }
 
     TEST_CASE("STL: a closed, consistently oriented solid (every edge shared by two triangles in opposite directions), positive volume")

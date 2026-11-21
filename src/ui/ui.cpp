@@ -280,9 +280,20 @@ Widget *Ui::hitTest(glm::vec2 p) const
     return root_ ? hitTestIn(*root_, p) : nullptr;
 }
 
+void Ui::dropDestroyed() noexcept
+{
+    if (hovered_ != nullptr && hoveredAlive_.expired())
+        hovered_ = nullptr;
+    if (active_ != nullptr && activeAlive_.expired())
+        active_ = nullptr;
+    if (focused_ != nullptr && focusedAlive_.expired())
+        focused_ = nullptr;
+}
+
 void Ui::setHovered(Widget *target)
 {
-    if (target == hovered_)
+    dropDestroyed();
+    if (target == hovered_ && (target == nullptr || !hoveredAlive_.expired()))
     {
         return;
     }
@@ -293,6 +304,7 @@ void Ui::setHovered(Widget *target)
         hovered_->emit(*this, EventKind::kHover, false);
     }
     hovered_ = target;
+    hoveredAlive_ = target != nullptr ? std::weak_ptr<char>(target->lifetime_) : std::weak_ptr<char>();
     if (hovered_ != nullptr)
     {
         hovered_->hovered_ = true;
@@ -485,8 +497,7 @@ bool Ui::dispatchShortcut(std::string_view shortcut)
 
 void Ui::forgetSubtree(const Widget *root)
 {
-    if (focusedAlive_.expired())
-        focused_ = nullptr; // détruit : ni parcours de ses parents ni notification
+    dropDestroyed(); // détruits (survol, appui, focus) : ni parcours de leurs parents ni notification
     for (Widget **p : {&hovered_, &active_, &focused_})
     {
         if (*p != nullptr && inSubtree(root, *p))
@@ -679,8 +690,7 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
     (void)themes_.reloadIfChanged();
 
     // Pointeurs vers des widgets retirés de l'arbre depuis l'image précédente : oubliés (sans les déréférencer).
-    if (focusedAlive_.expired())
-        focused_ = nullptr; // détruit (même si un nouveau widget occupe la même adresse)
+    dropDestroyed(); // détruits (même si un nouveau widget occupe la même adresse)
     {
         std::unordered_set<const Widget *> alive;
         if (root_)
@@ -773,6 +783,7 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
     const auto inAnyPopup = [&](const Widget *w)
     { return std::any_of(popups_.begin(), popups_.end(), [&](const PopupEntry &p) { return inSubtree(p.view, w); }); };
 
+    dropDestroyed(); // un gestionnaire (survol, rappel différé) a pu détruire le widget appuyé ou survolé
     if (pressed)
     {
         if (!popups_.empty() && !inAnyPopup(hit))
@@ -792,6 +803,7 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
             if (target == nullptr || target->focusOnClick())
                 focus(target != nullptr && target->focusable() ? target : nullptr);
             active_ = target;
+            activeAlive_ = target != nullptr ? std::weak_ptr<char>(target->lifetime_) : std::weak_ptr<char>();
             if (active_ != nullptr)
             {
                 active_->pressed_ = true;
@@ -803,6 +815,7 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
     {
         active_->onDrag(*this, mouse_);
     }
+    dropDestroyed();
     if (released && active_ != nullptr)
     {
         Widget *a = active_;
