@@ -10,7 +10,7 @@ param(
     [switch]$List
 )
 
-$extDirName  = "orosmo.cui-language-0.3.0"
+$extDirName  = "orosmo.cui-language-0.3.1"
 $profilesDir = "$env:APPDATA\Code\User\profiles"
 $storageJson = "$env:APPDATA\Code\User\globalStorage\storage.json"
 
@@ -71,7 +71,7 @@ if ($Profile -ne "") {
 
     $entry = @{
         identifier = @{ id = "orosmo.cui-language" }
-        version    = "0.3.0"
+        version    = "0.3.1"
         location   = @{ "`$mid" = 1; fsPath = $dest; _sep = 1; external = $external; path = $posixPath; scheme = "file" }
         metadata   = @{
             isApplicationScoped = $false

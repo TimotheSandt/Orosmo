@@ -1,8 +1,8 @@
 # M3 bis : release cœur générique et confort de build (entre M3 et M4)
 
 Jalon intermédiaire décidé par l'auteur le 2026-11-21 (`docs/05-PLAN_PAR_JALONS.md`, « M3 bis »). Il part de `dev` après les
-revues de la PR #8 (M3), fusionnée dans `main` le 2026-11-21, et a été fusionné dans `dev` ensuite. Version proposée : `v0.3.1` (A35, à
-trancher ; les fichiers de version restent à `0.3.0`).
+revues de la PR #8 (M3), fusionnée dans `main` le 2026-11-21, et a été fusionné dans `dev` ensuite. Version : `v0.3.1` (A35, décidée
+par l'auteur le 2026-11-21 ; `mk/config.mk`, `vcpkg.json`, `Cargo.toml`, extension VS Code).
 
 ## Ce qui change
 
@@ -92,3 +92,12 @@ d'`orosmo init`.
 
 Preuves (Linux x64) : `make demo-test` 421 / 421 ; `make check`, `cui-test`, `terrain-gen-check`, `e2e-init`, `viewer-capture`,
 `gallery-capture` verts ; tests Python 12 / 12 ; `make check check` exécute les contrôles ; `make -C apps/demo debug` lié.
+
+## Release macOS Intel
+
+Le build de release sur `main` après M3 (`build-engine.yml`, run 44859222407) a échoué sur **macOS x64** seulement : le
+`from_chars` des flottants de la libc++ d'Apple est supprimé pour une cible macOS ancienne (`src/ui/theme.cpp`). Nouveau
+`core::parseFloat` / `parseDouble` (`include/orosmo/core/parse.hpp`) : `std::from_chars` ailleurs, `strtod_l` en locale « C » sur
+macOS, mêmes refus ; `tests/core/parse_tests.cpp` (3 cas) passe sur les deux chemins (le chemin macOS forcé sous Linux par
+`-DOROSMO_PARSE_STRTOD`). Utilisé par les thèmes et `NumberField`.
+

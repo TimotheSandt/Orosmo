@@ -18,6 +18,7 @@ a changé. Le module n'appelle pas le système directement (voir `system.hpp`). 
 | `resources.hpp` | CORE-10 | `Handle<T>` avec génération, `ResourceCache<T>` (comptage, chargement asynchrone, rechargement à chaud) |
 | `vfs.hpp` | CORE-11 | `Vfs` : `res://`, `user://`, montages superposés, `..` refusé |
 | `reflection.hpp`, `serialization.hpp` | CORE-12 | `Reflect<T>` + `field(...)`, JSON et MessagePack, documents versionnés + migrations |
+| `parse.hpp` | — | `parseFloat`, `parseDouble` : syntaxe de `std::from_chars`, indépendants de la locale et du système (`strtod_l` en locale « C » sur macOS, où `from_chars` des flottants manque pour les cibles anciennes) |
 | `file_watcher.hpp` | CORE-13 | `FileWatcher` par interrogation (fichier ou dossier récursif) |
 | `log.hpp` | CORE-01 | `Logger` et macros `LOG_INFO`, `LOG_WARNING`, `LOG_ERROR(code, ...)`, `SET_LOG_FILE`, `FLUSH_LOG_TO_FILE` : console colorée, répétitions regroupées, fichier de journal, pile d'appels en DEBUG (`<stacktrace>` : sous GCC 13, lier `-lstdc++_libbacktrace`, GCC 14+ `-lstdc++exp`, fait dans `tools/engine-sdk/engine.mk`) |
 | `paths.hpp` | — | `GET_RESOURCE_PATH` (préfixe `res/` hors release), `setWorkingDirectoryToExecutable`, `validateAssets` |
