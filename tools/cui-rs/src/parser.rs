@@ -19,20 +19,24 @@ impl std::fmt::Display for ParseError {
     }
 }
 
-pub fn parse(tokens: Vec<Token>) -> Result<FileAst, ParseError> {
-    Parser::new(tokens).parse_file()
+// `source` : le texte lexé (les blocs `@cui-cpp` en sont recopiés tels quels).
+pub fn parse(tokens: Vec<Token>, source: &str) -> Result<FileAst, ParseError> {
+    let mut parser = Parser::new(tokens);
+    parser.source = source.chars().collect();
+    parser.parse_file()
 }
 
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    source: Vec<char>, // vide pour les sous-analyses (interpolations de chaînes)
 }
 
 impl Parser {
     fn new(mut tokens: Vec<Token>) -> Self {
         tokens.retain(|token| token.ty != TokenType::Eof);
         tokens.push(Token::new(TokenType::Eof, TokenValue::None, 0, 0));
-        Self { tokens, pos: 0 }
+        Self { tokens, pos: 0, source: Vec::new() }
     }
 
     fn parse_file(&mut self) -> Result<FileAst, ParseError> {
@@ -219,9 +223,10 @@ impl Parser {
 
     fn parse_cpp_block(&mut self) -> Result<CppBlock, ParseError> {
         let cpp_token = self.expect(TokenType::AtCuiCpp)?;
-        self.expect(TokenType::LBrace)?;
+        let open = self.expect(TokenType::LBrace)?;
         let mut depth = 1usize;
         let mut parts = Vec::new();
+        let mut close_start = None;
         while !self.at(TokenType::Eof) {
             let token = self.advance().clone();
             match token.ty {
@@ -232,6 +237,7 @@ impl Parser {
                 TokenType::RBrace => {
                     depth -= 1;
                     if depth == 0 {
+                        close_start = Some(token.start);
                         break;
                     }
                     parts.push("}".to_string());
@@ -239,8 +245,16 @@ impl Parser {
                 _ => parts.push(token.text()),
             }
         }
+        // Texte exact entre les accolades (littéraux, espaces, retours à la ligne) quand la source est connue ; sinon, les jetons
+        // recollés (le texte d'un littéral de chaîne serait perdu).
+        let content = match close_start {
+            Some(end) if open.end <= end && end <= self.source.len() => {
+                self.source[open.end..end].iter().collect::<String>().trim().to_string()
+            }
+            _ => parts.join(" "),
+        };
         Ok(CppBlock {
-            content: parts.join(" "),
+            content,
             line: cpp_token.line,
             col: cpp_token.col,
         })
@@ -314,7 +328,16 @@ impl Parser {
         named_args: &mut BTreeMap<String, Expr>,
     ) -> Result<(), ParseError> {
         if self.at(TokenType::Ident) && self.peek_n(1).ty == TokenType::Colon {
-            let label = self.advance().text();
+            let label_token = self.advance().clone();
+            let label = label_token.text();
+            if named_args.contains_key(&label) {
+                return Err(ParseError {
+                    message: format!("argument '{label}' is given twice"),
+                    token: label_token.clone(),
+                    line: label_token.line,
+                    col: label_token.col,
+                });
+            }
             self.advance();
             named_args.insert(label, self.parse_expr()?);
         } else {

@@ -114,6 +114,9 @@ pub struct Token {
     // Position juste après le jeton (pour une erreur « X attendu » placée après le jeton précédent).
     pub end_line: usize,
     pub end_col: usize,
+    // Indices (en caractères) du jeton dans la source : [start, end). Permet de relire le texte exact (blocs `@cui-cpp`).
+    pub start: usize,
+    pub end: usize,
 }
 
 impl Token {
@@ -125,6 +128,8 @@ impl Token {
             col,
             end_line: line,
             end_col: col,
+            start: 0,
+            end: 0,
         }
     }
 
@@ -183,10 +188,14 @@ impl Lexer {
     }
 
     fn next_token(&mut self) -> Result<Token, LexError> {
+        self.skip_whitespace_and_comments();
+        let start = self.pos;
         let mut token = self.next_token_inner()?;
         if token.ty != TokenType::Eof {
             token.end_line = self.line;
             token.end_col = self.col;
+            token.start = start;
+            token.end = self.pos;
         }
         Ok(token)
     }

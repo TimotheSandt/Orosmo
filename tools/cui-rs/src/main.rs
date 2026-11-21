@@ -129,7 +129,7 @@ fn cmd_check(args: &[String]) -> Result<(), String> {
             return Ok(());
         }
     };
-    let ast = match parser::parse(tokens) {
+    let ast = match parser::parse(tokens, &source) {
         Ok(ast) => ast,
         Err(err) => {
             let end_col = err.col + token_len(&err.token).max(1);
@@ -164,7 +164,7 @@ pub fn compile_source(source: &str, display: &str, stem: &str) -> Result<(String
     let tokens = Lexer::new(source)
         .tokenize()
         .map_err(|err| vec![diagnostic_line(display, err.line, err.col, "error", &err.message)])?;
-    let ast = parser::parse(tokens).map_err(|err| vec![diagnostic_line(display, err.line, err.col, "error", &err.message)])?;
+    let ast = parser::parse(tokens, source).map_err(|err| vec![diagnostic_line(display, err.line, err.col, "error", &err.message)])?;
     if !engine::is_engine_target(&ast) {
         return Err(vec![diagnostic_line(display, 1, 1, "error", &missing_import_message())]);
     }

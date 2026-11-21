@@ -253,3 +253,18 @@ fn lex_number_restores_column_when_suffix_is_rejected() {
     assert_eq!(dur[1].ty, TokenType::Ident);
     assert_eq!((dur[1].col, dur[1].end_col), (6, 7));
 }
+
+#[test]
+fn a_named_argument_given_twice_is_refused_at_its_label() {
+    let err = errors("view V {\n    @Mutable var s: S\n    Slider($s.v, min: 0, max: 10, min: 1)\n}\n");
+    assert_eq!(err, vec!["v.cui:4:35: error: argument 'min' is given twice".to_string()]);
+}
+
+#[test]
+fn a_cui_cpp_block_is_copied_exactly() {
+    let (header, _) = engine(
+        "view V {\n    @cui-cpp {\n        std::string greeting = \"a  b\";\n        int twice(int v) { return v * 2; }\n    }\n    Label(\"x\")\n}\n",
+    )
+    .unwrap();
+    assert!(header.contains("std::string greeting = \"a  b\";\n        int twice(int v) { return v * 2; }"), "{header}");
+}
