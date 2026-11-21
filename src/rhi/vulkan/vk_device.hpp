@@ -12,7 +12,11 @@
 
 #include <volk.h>
 
+#if __has_include(<vma/vk_mem_alloc.h>)
+#include <vma/vk_mem_alloc.h> // vcpkg sous Windows : include/vma/ (disposition du SDK Vulkan)
+#else
 #include <vk_mem_alloc.h>
+#endif
 
 #include <array>
 #include <atomic>

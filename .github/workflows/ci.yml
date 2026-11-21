@@ -254,9 +254,9 @@ jobs:
             build-essential cmake ninja-build python3 pkg-config curl zip unzip tar git \
             autoconf autoconf-archive automake libtool \
             libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
-            libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
+            libfreetype-dev libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
             libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            xvfb libgl1-mesa-dri ccache
+            xvfb libgl1-mesa-dri mesa-vulkan-drivers ccache
 
       - name: Bootstrap vcpkg
         run: |
@@ -332,9 +332,9 @@ jobs:
             build-essential cmake python3 pkg-config curl zip unzip tar git \
             autoconf autoconf-archive automake libtool \
             libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
-            libfreetype-dev libvulkan-dev libgl-dev libx11-dev \
+            libfreetype-dev libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
             libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            xvfb libgl1-mesa-dri ccache
+            xvfb libgl1-mesa-dri mesa-vulkan-drivers ccache
       - name: Bootstrap vcpkg
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
@@ -497,7 +497,7 @@ jobs:
 
       - name: End to end from the package (Unix)
         if: runner.os != 'Windows'
-        run: make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+        run: make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0
 
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
@@ -513,7 +513,7 @@ jobs:
         shell: msys2 {0}
         run: |
           if [ -d /mingw64/lib/ccache/bin ]; then export PATH="/mingw64/lib/ccache/bin:$PATH"; fi
-          mingw32-make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0
 
       - name: ccache statistics (Unix)
         if: always() && runner.os != 'Windows'

@@ -224,6 +224,8 @@ demo-vulkan-check: all-debug
 E2E_RUN      := build/e2e/$(shell date +%Y%m%d-%H%M%S)
 E2E_PLATFORM  = $(shell $(MAKE) -s -f $(ENGINE_MK) print-platform)
 E2E_EXE       = $(if $(filter Windows_NT,$(OS)),.exe)
+# 1 : e2e-init lance aussi le projet créé (OpenGL 4.3 requis : Linux, ou Mesa sous xvfb). 0 : seulement compiler et lier (macOS ≤ 4.1, Windows sans GPU).
+E2E_RUN_GRAPHICS ?= 1
 E2E_VCPKG    ?= $(abspath vcpkg_installed)
 .PHONY: e2e-init
 e2e-init:
@@ -243,9 +245,13 @@ e2e-init:
 	@test ! -e $(E2E_RUN)/mygame/orosmo/examples/terrain_viewer
 	ln -sfn "$(E2E_VCPKG)" $(E2E_RUN)/mygame/orosmo/vcpkg_installed
 	$(MAKE) -C $(E2E_RUN)/mygame debug
-	cd $(E2E_RUN)/mygame && ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3
-	test -s $(E2E_RUN)/capture/scene.png
-	test -s $(E2E_RUN)/capture/ui.png
+	@if [ "$(E2E_RUN_GRAPHICS)" = 1 ]; then \
+	    echo "e2e-init : lancement du projet (OpenGL, sans fenêtre)"; \
+	    cd $(E2E_RUN)/mygame && ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3 \
+	      && test -s "$(abspath $(E2E_RUN))/capture/scene.png" && test -s "$(abspath $(E2E_RUN))/capture/ui.png"; \
+	  else \
+	    echo "e2e-init : lancement graphique sauté (E2E_RUN_GRAPHICS=0 : exécuteur sans OpenGL 4.3, projet seulement compilé et lié)"; \
+	  fi
 	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/minimal
 	$(E2E_RUN)/mygame/orosmo/examples/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
 	grep -q '"sum":524800' $(E2E_RUN)/minimal.txt
