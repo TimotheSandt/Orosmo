@@ -180,7 +180,7 @@ PR #8 : une région dont le dernier indice global dépasse int64 est maintenant 
 (`fix/M3-review3-world`). Pour ne pas changer l'API figée de 0.3.x, `generateRegion` renvoie alors un `HeightField` vide
 (largeur et hauteur 0, documenté dans `export.hpp`), que tous les exports refusent ensuite (`kInvalidArgument`). Plus propre :
 `Result<HeightField>` (règle 10), au prix d'un changement incompatible (`terrain-gen`, `terrain-viewer`, une dizaine de tests).
-Proposition : garder le champ vide en 0.3.x et passer à `Result` à M4 avec les autres changements d'API. *À trancher par l'auteur.*
+Proposition : garder le champ vide en 0.3.x et passer à `Result` à M4 avec les autres changements d'API. **Décision de l'auteur (2026-11-21) : oui** (`docs/05`, M4).
 
 **A34. Périmètre de la release : moteur générique seul, modules procéduraux hors release + jalon Modules/Addons (2026-11-20, tranchée).**
 **Décision de l'auteur (2026-11-20)** :
@@ -201,3 +201,19 @@ ce jour). Proposition : `v0.3.1` (aucun utilisateur extérieur ; `v0.4.0` reste 
 `vcpkg.json`, `Cargo.toml`) restent à `0.3.0` tant que l'auteur n'a pas tranché. **Décision de l'auteur (2026-11-21)** : `v0.3.1`, et **pas de release pour M3** (`v0.3.0` n'est pas publiée : la première
 release publiée est celle de M3 bis) ;
 fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).
+
+## Décisions de l'auteur du 2026-11-21 (après M3 bis)
+
+- **A33** : champ vide en 0.3.x, `Result<HeightField>` à M4 (voir plus haut ; `docs/05`, M4).
+- **A18, suite** : Windows, macOS et Linux arm64 passent en CI, y compris `e2e-init` : ces jobs deviennent **bloquants** (plus de
+  `continue-on-error`) et les avertissements y sont des erreurs (`-Werror`) ; il a fallu corriger neuf avertissements de clang
+  (destructeur de `FPSCounter` sans `noexcept` dans l'en-tête, `kVersion` inutilisé dans des tests, capture de lambda inutile). Le
+  build de release (`build-engine.yml`) garde `WERROR=0` hors Linux x64.
+- **A36. Plage d'un champ entier réfléchi (décidée le 2026-11-21).** Pour un champ entier, `range(min, max)` est faite
+  **d'entiers**, dans le type : `range(1, 3)`, pas `range(0.5, 3.5)`. Sinon le champ est **refusé** : erreur journalisée et pastille
+  « plage invalide » à la place du contrôle, rien ne peut être écrit (`reflectedPanel`, `tests/ui/review3_widgets_tests.cpp`).
+  Avant : la plage était corrigée en silence (`ceil` / `floor`).
+- **A31, suite** : le renommage de `platform` (`Window`, `InputManager`) se fait **au début de M4** (`docs/05`, G96, G105).
+- **Q7** : les 17 stashes sont supprimés (analyse du 2026-11-17 : 2 idées archivées dans `docs/notes/archive/`) ; sauvegarde
+  complète hors dépôt (G24). **Les branches ne sont pas supprimées.** Le worktree `release-core-only` est supprimé (sa branche reste).
+

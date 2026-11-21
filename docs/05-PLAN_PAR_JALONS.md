@@ -128,6 +128,8 @@ Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusi
 - Backend complet avec VMA, barrières déduites, pipelines en cache (mémoire et disque, RHI-06).
 - Sélection du backend à l'exécution (RHI-04).
 - Guide `docs/ADD_A_BACKEND.md`.
+- **Début de M4 (décision de l'auteur, 2026-11-21, A31)** : renommer l'API de `platform` (`Window`, `InputManager`) selon `docs/03` §7 (`orosmo::platform`, `camelCase` ; G96, G105), avant d'écrire le backend.
+- **`generateRegion` renvoie `Result<HeightField>`** (A33, décision du 2026-11-21) au lieu d'un champ vide pour une région hors d'int64 ; changement incompatible noté dans `docs/releases/M4.md`.
 
 **Démo** : le visualiseur de M3, lancé avec `--backend=vulkan` et `--backend=opengl`, donne la même image.
 **Terminé** : couches de validation Vulkan silencieuses ; images de référence dans la tolérance sur les deux backends ; mesure de performance comparée dans `docs/`.

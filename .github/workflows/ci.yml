@@ -228,14 +228,13 @@ jobs:
           retention-days: 7
 
   # ── Linux arm64 (ubuntu-24.04-arm) ────────────────────────────────────────────────────────
-  # `continue-on-error` and WERROR=0 until the first green run, like Windows and macOS: nothing here had ever run on arm64.
+  # Bloquant (comme Linux x64) depuis le 2026-11-21 : plusieurs runs verts, avertissements en erreur (-Werror).
   # vcpkg has no prebuilt tools for arm64 Linux: VCPKG_FORCE_SYSTEM_BINARIES=1 makes it use the system cmake and ninja.
   linux-arm64:
     name: Linux arm64 (build, tests)
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04-arm
-    continue-on-error: true
     env:
       VCPKG_FORCE_SYSTEM_BINARIES: "1"
     steps:
@@ -306,13 +305,13 @@ jobs:
           ccache --zero-stats
 
       - name: Build (debug)
-        run: make -j"$(nproc)" all-debug WERROR=0
+        run: make -j"$(nproc)" all-debug
 
       - name: Tests
-        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" demo-test WERROR=0
+        run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" demo-test
 
       - name: terrain-gen determinism (TOOL-02, TEST-03)
-        run: make -j"$(nproc)" terrain-gen-check WERROR=0
+        run: make -j"$(nproc)" terrain-gen-check
 
       - name: ccache statistics
         if: always()
@@ -399,14 +398,12 @@ jobs:
           key: ccache-linux-asan-${{ github.run_id }}
 
   # ── Windows and macOS: same entry points through vcpkg manifest mode. ─────────────────────
-  # `continue-on-error`: these two jobs have never been observed green (no Windows/macOS machine was
-  # available while writing them). Remove the flag after the first green run; see docs/GAPS.md.
+  # Bloquants depuis le 2026-11-21 (plusieurs runs verts sur les deux systèmes, e2e du paquet compris), avertissements en erreur.
   other-platforms:
     name: ${{ matrix.name }} (build, tests)
     needs: plan
     if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -502,19 +499,16 @@ jobs:
           if [ -d /mingw64/lib/ccache/bin ]; then echo "ccache: /mingw64/lib/ccache/bin (mis en tête du PATH par chaque étape de compilation)"; else echo "ccache: /mingw64/lib/ccache/bin absent, compilation directe"; fi
           ccache --zero-stats
 
-      # WERROR=0 until the first green run on these systems (warnings are errors on Linux).
       - name: Build and test (Unix)
         if: runner.os != 'Windows'
         run: |
-          make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          make -j3 demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          make -j3 terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make -j3 all-debug VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make -j3 demo-test VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make -j3 terrain-gen-check VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
-      # BLD-02 : never observed on these systems (docs/GAPS.md) ; reported, not blocking.
       - name: End to end from the package (Unix)
         if: runner.os != 'Windows'
-        continue-on-error: true
-        run: make -j3 e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+        run: make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
@@ -522,17 +516,16 @@ jobs:
         run: |
           # Le profil MINGW64 met /mingw64/bin avant le PATH hérité : les lanceurs ccache sont remis devant ici.
           if [ -d /mingw64/lib/ccache/bin ]; then export PATH="/mingw64/lib/ccache/bin:$PATH"; fi
-          mingw32-make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          mingw32-make -j3 demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          mingw32-make -j3 terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make -j3 all-debug VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make -j3 demo-test VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make -j3 terrain-gen-check VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       - name: End to end from the package (Windows)
         if: runner.os == 'Windows'
-        continue-on-error: true
         shell: msys2 {0}
         run: |
           if [ -d /mingw64/lib/ccache/bin ]; then export PATH="/mingw64/lib/ccache/bin:$PATH"; fi
-          mingw32-make -j3 e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       - name: ccache statistics (Unix)
         if: always() && runner.os != 'Windows'
