@@ -5,6 +5,7 @@
 #include "ui/ui_harness.hpp"
 
 #include <orosmo/ui/color.hpp>
+#include <orosmo/ui/controls.hpp>
 #include <orosmo/ui/menus.hpp>
 
 #include <functional>
@@ -210,6 +211,56 @@ TEST_SUITE("ui/review3")
             h.click(UiHarness::center(editor));
             CHECK(seen == 3);
             CHECK(editor.curve().points.size() == 3);
+        }
+    }
+
+    TEST_CASE("Slider and RangeSlider: a deferred write never touches the slider destroyed by its own setter")
+    {
+        SUBCASE("Slider")
+        {
+            UiHarness h;
+            double value = 0.0;
+            int writes = 0;
+            auto root = std::make_unique<ui::VBox>();
+            auto &box = root->emplace<ui::VBox>();
+            ui::Binding<double> binding{[&] { return value; },
+                                        [&](const double &v) {
+                                            value = v;
+                                            ++writes;
+                                            box.clearChildren();
+                                        }};
+            auto &slider = box.emplace<ui::Slider>(std::move(binding), 0.0, 10.0);
+            slider.setWidth(ui::SizeSpec::fixed(200));
+            h.ui.setRoot(std::move(root));
+            h.frame();
+            h.click(UiHarness::center(slider)); // écriture différée : le setter détruit le curseur
+            CHECK(writes == 1);
+            CHECK(value > 0.0);
+            CHECK(box.children().empty());
+        }
+        SUBCASE("RangeSlider")
+        {
+            UiHarness h;
+            double low = 0.0;
+            double high = 10.0;
+            int writes = 0;
+            auto root = std::make_unique<ui::VBox>();
+            auto &box = root->emplace<ui::VBox>();
+            auto clearing = [&](double &target) {
+                return ui::Binding<double>{[&target] { return target; },
+                                           [&target, &writes, &box](const double &v) {
+                                               target = v;
+                                               ++writes;
+                                               box.clearChildren();
+                                           }};
+            };
+            auto &range = box.emplace<ui::RangeSlider>(clearing(low), clearing(high), 0.0, 10.0);
+            range.setWidth(ui::SizeSpec::fixed(200));
+            h.ui.setRoot(std::move(root));
+            h.frame();
+            h.click(UiHarness::center(range)); // la poignée la plus proche bouge, son setter détruit le curseur
+            CHECK(writes == 1);
+            CHECK(box.children().empty());
         }
     }
 

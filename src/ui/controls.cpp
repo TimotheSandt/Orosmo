@@ -218,9 +218,14 @@ void RangeSlider::write(Ui &ui, int handle, double v)
         return;
     pending_[static_cast<std::size_t>(handle)] = v;
     hasPending_[static_cast<std::size_t>(handle)] = true;
-    ui.defer([this, handle, v] {
-        (handle == 0 ? low_ : high_).set(v);
-        hasPending_[static_cast<std::size_t>(handle)] = false;
+    // Jeton de vie vérifié avant et après le setter (un gestionnaire ou le setter lui-même peut détruire le curseur).
+    ui.defer([this, alive = lifetimeToken(), handle, v] {
+        if (alive.expired())
+            return;
+        const auto set = (handle == 0 ? low_ : high_).set; // copie : le setter peut détruire le curseur
+        set(v);
+        if (!alive.expired())
+            hasPending_[static_cast<std::size_t>(handle)] = false;
     });
     emit(ui, EventKind::kChange);
 }

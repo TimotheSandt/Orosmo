@@ -207,9 +207,14 @@ void Slider::write(Ui &ui, double v)
     }
     pending_ = q;
     hasPending_ = true;
-    ui.defer([this, q] {
-        value_.set(q);
-        hasPending_ = false;
+    // Jeton de vie vérifié avant et après le setter (un gestionnaire ou le setter lui-même peut détruire le curseur).
+    ui.defer([this, alive = lifetimeToken(), q] {
+        if (alive.expired())
+            return;
+        const auto set = value_.set; // copie : le setter peut détruire le curseur, et donc value_
+        set(q);
+        if (!alive.expired())
+            hasPending_ = false;
     });
     emit(ui, EventKind::kChange);
 }
