@@ -107,3 +107,19 @@ Le module procédural est archivé dans `archive/procedural-world` et remplacé 
 Vérifié : deux captures consécutives sur llvmpipe produisent exactement le même sha256 (`c020d4a1b89b4d079e8946afeef5ae8c2028c628a15394ea2ad28f7fb05bcb7e`), deux captures consécutives sur
 GPU produisent exactement le même sha256 (`8791b770970b6d3144f92a8ea8ccb0893c329c681ce45dc397b04e2bbd3f3b74`), la capture fenêtrée est identique pixel pour pixel à la capture `--headless`
 (0 pixel d'écart), et la comparaison llvmpipe vs GPU reste dans la tolérance CI (`--tolerance 8 --max-diff-percent 2`).
+
+## Mise à jour du 2026-11-21 (M4) : parité d'image OpenGL / Vulkan de la démo
+
+Pas de seconde image de référence : la **référence reste OpenGL**, et Vulkan est comparé à OpenGL à chaque exécution.
+
+```bash
+make demo-vulkan-check            # 5 cas (off, hud, dark/light widgets, dark scene) ; FULL=1 : tous les onglets et fenêtres de demo-capture
+# équivalent à : python3 tools/demo_parity.py --bin apps/demo/bin/debug/main --out build/demo-parity
+```
+
+- Tolérance : `--tolerance 8 --max-diff-percent 2` (celle de llvmpipe contre un GPU matériel), appliquée à `scene.png` et `ui.png`.
+- Résultat sur Intel Arc (Mesa 26.1.6, ANV contre Iris) : `scene.png` **identique bit à bit** (0 pixel, écart max 0) dans toutes les captures ; `ui.png` identique sauf les captures qui affichent le nom du pilote (onglet scène, dialogue) : ~5 300 pixels (0,58 %) qui sont le texte « Vulkan 1.4... » contre « 4.6 (Core Profile)... », pas du rendu.
+- Résultat sur lavapipe (`ENGINE_VULKAN_DEVICE=llvmpipe`, contre OpenGL Iris) : 38 pixels (0,004 %, arêtes de lignes de debug, écart max 237) hors tolérance 8 sur la scène ; ui : 0,003 % hors le texte du pilote.
+- La cible exige aussi que le journal Vulkan de chaque exécution contienne `Vulkan validation: 0 error/warning message(s)` (validation de synchronisation active, binaire debug).
+- `docs/BASELINE/reference/scene-opengl-demo-1280x720.png` : la capture OpenGL actuelle en diffère de 332 pixels (0,036 %, écart max 237 : arêtes) ; la référence est peut-être à régénérer (à vérifier, non modifiée ici).
+- Performances comparées : `docs/PERF_OPENGL_VS_VULKAN.md`.
