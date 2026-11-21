@@ -2,6 +2,9 @@
 // Éclairage : ambiante + directionnelles (ponctuelles et projecteurs : types réservés, non rendus, comme avant).
 // Convention des programmes de maillage : le premier entier du bloc push_constant est le drapeau « fil de fer ».
 
+// Boîte à outils partagée (REN-22) : chemin relatif à ce fichier, sans racine d'inclusion à configurer.
+#include "../include/orosmo/math.glsl"
+
 layout(location = 0) in vec3 normal;
 layout(location = 1) in vec3 crntPos;
 layout(location = 2) in vec3 color;
@@ -51,12 +54,12 @@ vec4 directLight(vec3 lightDirection, vec3 lightColor, float lightIntensity)
     // lumière diffuse
     vec3 norm = normalize(normal);
     lightDirection = normalize(lightDirection);
-    float diffuse = max(dot(norm, lightDirection), 0.0f);
+    float diffuse = saturate(dot(norm, lightDirection));
 
     // lumière spéculaire
     vec3 viexDirection = normalize(camera.position - crntPos);
     vec3 reflectionDirection = reflect(-lightDirection, norm);
-    float specAmount = pow(max(dot(viexDirection, reflectionDirection), 0.0f), 16);
+    float specAmount = pow(saturate(dot(viexDirection, reflectionDirection)), 16);
     float specularLight = 0.5f;
     float specular = specAmount * specularLight;
 
