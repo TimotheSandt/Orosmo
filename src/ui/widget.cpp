@@ -160,10 +160,48 @@ void Widget::layout(Ui &ui, const Rect &rect)
     rect_ = rect;
     if (!visible())
     {
+        bounds_ = Rect{{-1e30f, -1e30f}, {2e30f, 2e30f}}; // devenu visible avant la prochaine mise en page : jamais éliminé à tort
         return;
     }
     const Style s = style(ui.theme());
     arrange(ui, inset(rect, s.padding), s);
+
+    // Englobant du sous-arbre : le rectangle (agrandi de l'ombre) et les descendants qui peuvent le dépasser (non découpés).
+    const float shadow = s.shadowColor.a > 0.0f ? std::max(0.0f, s.shadowSize) : 0.0f;
+    glm::vec2 lo = rect.position - glm::vec2(shadow, shadow - s.shadowOffset);
+    glm::vec2 hi = rect.end() + glm::vec2(shadow, shadow + s.shadowOffset);
+    lo.y = std::min(lo.y, rect.position.y);
+    hi.y = std::max(hi.y, rect.end().y);
+    if (overflow != Overflow::kHidden && !clipsChildren())
+    {
+        for (const auto &child : children_)
+        {
+            if (child->visible())
+            {
+                lo = glm::min(lo, child->bounds_.position);
+                hi = glm::max(hi, child->bounds_.end());
+            }
+        }
+    }
+    bounds_ = {lo, hi - lo};
+}
+
+Rect Widget::clipOf() const noexcept
+{
+    glm::vec2 lo{-1e30f}, hi{1e30f};
+    for (const Widget *a = parent_; a != nullptr; a = a->parent_)
+    {
+        Rect r;
+        if (a->clipsChildren())
+            r = a->childClip();
+        else if (a->overflow == Overflow::kHidden)
+            r = a->rect_;
+        else
+            continue;
+        lo = glm::max(lo, r.position);
+        hi = glm::min(hi, r.end());
+    }
+    return {lo, glm::max(hi - lo, glm::vec2(0.0f))};
 }
 
 void Widget::draw(const Ui &ui, renderer::DrawList &list) const
@@ -171,6 +209,16 @@ void Widget::draw(const Ui &ui, renderer::DrawList &list) const
     if (!visible())
     {
         return;
+    }
+    // Hors de la zone de découpage (fenêtre et ancêtres qui découpent) : aucune commande (UI-13).
+    {
+        const Rect clip = clipOf();
+        const glm::vec2 lo = glm::max(clip.position, glm::vec2(0.0f));
+        const glm::vec2 hi = glm::min(clip.end(), ui.viewport());
+        if (bounds_.position.x >= hi.x || bounds_.position.y >= hi.y || bounds_.end().x <= lo.x || bounds_.end().y <= lo.y)
+        {
+            return;
+        }
     }
     const Style s = style(ui.theme());
     drawBackground(ui, list, s);
