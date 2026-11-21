@@ -280,3 +280,6 @@ fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).
   D'après A40 (rapport de la session de Gemini) : `REN-25` (brouillard), `REN-14` (AO), `REN-33` (particules) et `REN-38`
   (réfraction) **restent dans le cœur** ; seuls `REN-23`, `24`, `26`, `27` et `TER-*` / `SIM-02` / `SIM-03` deviennent des modules.
   `docs/05` applique A39. **Tranchée par l'auteur (2026-11-21) : modules préinstallés dans M13** (tous les effets, y compris `REN-25`, `14`, `33`, `38`) ; A40, point 1, est remplacé en conséquence.
+- **A42** (2026-11-21) : pour l'interface, en M5 : aucun dessin pour un élément caché ou hors de sa zone visible, et cache du rendu
+  par couche pour qu'une interface inchangée ne soit pas redessinée (`UI-13`, `docs/05` M5). Le sélecteur de couleur avec roue au clic
+  (UI-03) est aussi reporté à M5 (branche `feat/UI-03-color-popup`, commencée).

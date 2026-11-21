@@ -185,6 +185,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | UI-10 | Inspecteur d'interface | P1 | Arbre des composants et tailles calculées affichés dans les outils de debug. | Absent |
 | UI-11 | Spécification et tests du langage | P0 | `docs/UI_LANGUAGE.md` : grammaire, exemples, limites ; tests de compilation avec entrées valides et invalides et messages d'erreur attendus. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | UI-12 | Paramètres réfléchis → curseurs | P1 | Une structure de paramètres réfléchie (CORE-12) est affichée automatiquement en widgets adaptés au type et à la plage. | Fait — preuve : `docs/STATUS.md`, « M3 » |
+| UI-13 | Rendu de l'interface économe | P1 | Élément caché : aucune commande ni aucun dessin ; élément hors de sa zone de découpage : éliminé à la production de la liste ; conteneur inchangé : ni remis en page ni redessiné, son image en cache est recomposée ; gain mesuré (frame CPU, nombre de dessins). | Partiel (les éléments cachés ne sont déjà pas dessinés : `Widget::draw`, `src/ui/widget.cpp`) |
 
 ## J. Logique de jeu rechargeable (`game`)
 
