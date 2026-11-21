@@ -86,8 +86,8 @@ endif
 endif
 endif
 
-# In-repo layout: demo resources, shaders and tests live at the repository root.
-DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico
+# In-repo layout: demo resources, shaders, tests and in-repo procedural modules live at the repository root.
+DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico ENGINE_EXTRA_MODULES="world terrain_renderer"
 
 # ── vcpkg ─────────────────────────────────────────────────────────────────────
 .PHONY: install-deps install-deps-demo install-deps-all

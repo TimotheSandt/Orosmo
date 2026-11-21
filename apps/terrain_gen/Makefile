@@ -1,7 +1,8 @@
 # TOOL-02 : terrain-gen (sans fenêtre ni GPU). Utilise le SDK moteur synchronisé dans apps/demo/orosmo (`make terrain-gen` à la racine).
 # Dans le dépôt : le SDK synchronisé (apps/demo/orosmo) ; dans le paquet du moteur (examples/<nom>/) : la racine du paquet.
-ENGINE_DIR   ?= $(if $(wildcard ../../make/engine.mk),../..,../demo/orosmo)
-GAME_SRC_DIR := .
+ENGINE_DIR           ?= $(if $(wildcard ../../make/engine.mk),../..,../demo/orosmo)
+ENGINE_EXTRA_MODULES := world
+GAME_SRC_DIR         := .
 BUILD_TYPE   ?= release
 SHELL        := sh
 include $(ENGINE_DIR)/make/engine.mk

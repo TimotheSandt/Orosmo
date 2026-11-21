@@ -137,7 +137,7 @@ endif
 WERROR     ?= 1
 WARNFLAGS  ?= -Wall -Wextra -Wpedantic $(if $(filter 1,$(WERROR)),-Werror)
 SANFLAGS   := $(if $(SANITIZE),-fsanitize=$(SANITIZE) -fno-omit-frame-pointer)
-FPFLAGS    := -ffp-contract=off # déterminisme de la génération procédurale (même réglage que le moteur)
+FPFLAGS    := -ffp-contract=off # déterminisme flottant (même réglage que le moteur)
 
 ifeq ($(BUILD_TYPE),debug)
     ENGINE_CXXFLAGS := -std=c++23 $(WARNFLAGS) $(SANFLAGS) $(FPFLAGS) $(ENGINE_ARCH_FLAG) -O1 -g -DDEBUG \
@@ -182,14 +182,17 @@ ENGINE_INCLUDES := \
 
 _ENG_LIB_DIR := $(ENGINE_DIR)/lib/$(BUILD_TYPE)
 
+# Optional extra static archives under $(ENGINE_DIR)/lib/$(BUILD_TYPE)/ (e.g. in-repo modules such as world terrain_renderer).
+ENGINE_EXTRA_MODULES ?=
+
 ENGINE_LIBS := \
     $(_ENG_LIB_DIR)/libui.a \
     $(_ENG_LIB_DIR)/libcore.a \
     $(_ENG_LIB_DIR)/libplatform.a \
     $(_ENG_LIB_DIR)/librhi.a \
     $(_ENG_LIB_DIR)/librenderer.a \
-    $(_ENG_LIB_DIR)/libworld.a \
-    $(_ENG_LIB_DIR)/libthirdparty.a
+    $(_ENG_LIB_DIR)/libthirdparty.a \
+    $(foreach m,$(ENGINE_EXTRA_MODULES),$(_ENG_LIB_DIR)/lib$(m).a)
 
 # Wrap archives for cross-archive symbol resolution (--start-group / --end-group).
 # Use ENGINE_LINK_LIBS in your link command instead of ENGINE_LIBS directly.
