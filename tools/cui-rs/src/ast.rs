@@ -27,6 +27,8 @@ pub enum Expr {
         expr: Box<Expr>,
     },
     StringLit(Vec<StringPart>),
+    // `$chemin` : liaison dans les deux sens (cible orosmo/ui seulement).
+    Binding(String),
 }
 
 #[derive(Clone, Debug)]

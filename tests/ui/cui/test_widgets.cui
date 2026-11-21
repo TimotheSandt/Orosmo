@@ -1,0 +1,46 @@
+// UI-03 : vue de test des composants ajoutés (contrôles, couleur, fenêtres et menus), compilée par cui puis par le compilateur C++,
+// exécutée par tests/ui/cui_widgets_tests.cpp.
+import "orosmo/ui"
+import "ui/cui_widgets_state.hpp"
+
+view WidgetsPanel {
+    @Mutable var state: CuiWidgetsState
+
+    Overlay {
+        VBox {
+            MenuBar {
+                Menu("File") {
+                    MenuItem("Save", shortcut: "Ctrl+S").onClick(state.save).id("save")
+                    Menu("Recent") {
+                        MenuItem("a.json").id("recent")
+                    }
+                    Separator()
+                    MenuItem("Grid", checked: $state.grid).id("grid")
+                }
+            }
+            RadioButton("Low", value: 0, selected: $state.quality).id("low")
+            RadioButton("High", value: 1, selected: $state.quality).id("high")
+            RangeSlider($state.low, $state.high, min: 0, max: 100, step: 1).id("range")
+            SpinBox($state.count, min: 0, max: 10).id("count")
+            TextArea($state.notes, lineNumbers: true).height(60).id("notes")
+            ColorEditor($state.color, alpha: true).id("color")
+            ColorWheel($state.color).width(80).height(80).id("wheel")
+            GradientEditor($state.gradient).id("gradient")
+            CurveEditor($state.curve).height(80).id("curve")
+            ImageView(state.minimap).fit(.cover).width(32).height(32).id("minimap")
+            Dialog("Settings", open: $state.dialog, dismiss: false) {
+                Label("Inside").id("inside")
+            }
+            .width(220)
+            .id("dialog")
+            Panel {
+                ContextMenu {
+                    MenuItem("Copy").onClick(state.copy).id("copy")
+                }
+            }
+            .height(30)
+            .id("contextHost")
+        }
+        Notifications(max: 3, maxHeight: 200, width: 160).align(.end).id("toasts")
+    }
+}

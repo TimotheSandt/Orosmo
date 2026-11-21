@@ -1,0 +1,157 @@
+{
+    "name": "base",
+    "description": "Structure commune des thèmes : chaque propriété renvoie à un jeton. dark.json et light.json ne changent que les jetons.",
+    "images": {
+        "frame.panel": {"file": "images/panel.png", "slice": 8, "edges": "repeat", "center": "repeat", "scale": 2},
+        "frame.button": {"file": "images/button.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1},
+        "frame.buttonHover": {"file": "images/button_hover.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1},
+        "frame.buttonPressed": {"file": "images/button_pressed.png", "slice": 8, "edges": "repeat", "center": "stretch", "scale": 1},
+        "frame.border": {"file": "images/panel.png", "slice": 8, "edges": "repeat", "center": "none", "scale": 2}
+    },
+    "tokens": {
+        "radius.small": 3,
+        "radius.medium": 6,
+        "space.small": 4,
+        "space.medium": 8,
+        "space.large": 12,
+        "font.size.small": 13,
+        "font.size.body": 15,
+        "font.size.title": 19,
+        "border.width": 1,
+        "border.focus": 2,
+        "shadow.size": 10,
+        "shadow.offset": 3,
+        "control.size": 18,
+        "scrollbar.size": 6
+    },
+    "widgets": {
+        "default": {
+            "foreground": "color.text",
+            "accent": "color.primary",
+            "muted": "color.muted",
+            "fontSize": "font.size.body",
+            "padding": "space.small",
+            "spacing": "space.small",
+            "width": "control.size",
+            "states": {
+                "disabled": {"foreground": "color.textDisabled"},
+                "focus": {"border": "color.focus", "borderWidth": "border.focus"}
+            }
+        },
+        "panel": {
+            "background": "color.surface",
+            "border": "color.outline",
+            "borderWidth": "border.width",
+            "radius": "radius.medium",
+            "padding": "space.large",
+            "spacing": "space.medium",
+            "shadowColor": "color.shadow",
+            "shadowSize": "shadow.size",
+            "shadowOffset": "shadow.offset"
+        },
+        "box": {"padding": 0},
+        "label": {"padding": 0},
+        "title": {"fontSize": "font.size.title", "padding": 0},
+        "caption": {"fontSize": "font.size.small", "foreground": "color.textMuted", "padding": 0},
+        "button": {
+            "background": "color.control",
+            "border": "color.outline",
+            "borderWidth": "border.width",
+            "radius": "radius.small",
+            "padding": "space.medium",
+            "states": {
+                "hover": {"background": "color.controlHover"},
+                "pressed": {"background": "color.primary", "foreground": "color.onPrimary"},
+                "disabled": {"background": "color.controlDisabled"}
+            }
+        },
+        "checkbox": {
+            "background": "color.control",
+            "border": "color.outline",
+            "borderWidth": "border.width",
+            "radius": "radius.small",
+            "states": {"hover": {"background": "color.controlHover"}}
+        },
+        "slider": {
+            "background": "color.control",
+            "radius": "radius.small",
+            "width": "control.size",
+            "states": {"hover": {"accent": "color.primaryHover"}, "pressed": {"accent": "color.primaryHover"}}
+        },
+        "textField": {
+            "background": "color.field",
+            "border": "color.outline",
+            "borderWidth": "border.width",
+            "radius": "radius.small",
+            "padding": "space.small",
+            "states": {"hover": {"border": "color.outlineHover"}}
+        },
+        "textArea": {
+            "background": "color.field",
+            "border": "color.outline",
+            "borderWidth": "border.width",
+            "radius": "radius.small",
+            "padding": "space.small",
+            "spacing": "space.large",
+            "states": {"hover": {"border": "color.outlineHover"}}
+        },
+        "dropdown": {
+            "background": "color.control",
+            "border": "color.outline",
+            "borderWidth": "border.width",
+            "radius": "radius.small",
+            "padding": "space.small",
+            "states": {"hover": {"background": "color.controlHover"}}
+        },
+        "popup": {
+            "background": "color.surfaceRaised",
+            "border": "color.outline",
+            "borderWidth": "border.width",
+            "radius": "radius.small",
+            "padding": "space.small",
+            "shadowColor": "color.shadow",
+            "shadowSize": "shadow.size",
+            "shadowOffset": "shadow.offset"
+        },
+        "item": {"padding": "space.small", "states": {"hover": {"background": "color.controlHover"}}},
+        "tabs": {"spacing": 0, "padding": 0},
+        "tab": {
+            "padding": "space.medium",
+            "accent": "color.primary",
+            "states": {"hover": {"background": "color.controlHover"}}
+        },
+        "scroll": {"accent": "color.scrollbar", "width": "scrollbar.size", "padding": 0},
+        "tooltip": {
+            "background": "color.tooltip",
+            "foreground": "color.onTooltip",
+            "radius": "radius.small",
+            "padding": "space.small",
+            "fontSize": "font.size.small"
+        },
+        "plot": {"background": "color.field", "accent": "color.primary", "radius": "radius.small", "padding": "space.small"},
+        "section": {"padding": 0, "spacing": "space.small", "width": "space.medium"},
+        "sectionHeader": {"padding": "space.small", "radius": "radius.small", "foreground": "color.textMuted", "states": {"hover": {"background": "color.controlHover"}}},
+        "colorPicker": {"radius": "radius.small", "border": "color.outline", "borderWidth": "border.width", "width": 28},
+        "separator": {"background": "color.outline", "width": 1, "padding": 0},
+        "radio": {"background": "color.control", "border": "color.outline", "borderWidth": "border.width", "states": {"hover": {"background": "color.controlHover"}}},
+        "colorWheel": {"foreground": "#ffffff", "padding": 0},
+        "gradient": {"border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": 0},
+        "curve": {"background": "color.field", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": 0},
+        "image": {"padding": 0},
+        "modalBackdrop": {"background": "color.backdrop"},
+        "dialog": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.medium",
+                   "padding": "space.large", "spacing": "space.medium", "shadowColor": "color.shadow", "shadowSize": "shadow.size", "shadowOffset": "shadow.offset"},
+        "dialogTitle": {"fontSize": "font.size.title", "padding": 0},
+        "dialogClose": {"padding": "space.small", "radius": "radius.small", "states": {"hover": {"background": "color.controlHover"}}},
+        "menuBar": {"background": "color.surface", "padding": 0, "spacing": 0},
+        "menu": {"padding": "space.medium", "radius": "radius.small", "states": {"hover": {"background": "color.controlHover"}, "pressed": {"background": "color.controlHover"}, "focus": {"background": "color.controlHover"}}},
+        "menuItem": {"padding": "space.small", "radius": "radius.small", "spacing": "space.small", "width": "control.size",
+                     "states": {"hover": {"background": "color.primary", "foreground": "color.onPrimary"}, "focus": {"background": "color.primary", "foreground": "color.onPrimary"}}},
+        "toast": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small",
+                  "padding": "space.medium", "accent": "color.primary", "width": "control.size",
+                  "shadowColor": "color.shadow", "shadowSize": "shadow.size", "shadowOffset": "shadow.offset"},
+        "toastSuccess": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": "space.medium", "accent": "color.success", "width": "control.size", "shadowColor": "color.shadow", "shadowSize": "shadow.size"},
+        "toastWarning": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": "space.medium", "accent": "color.warning", "width": "control.size", "shadowColor": "color.shadow", "shadowSize": "shadow.size"},
+        "toastError": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": "space.medium", "accent": "color.error", "width": "control.size", "shadowColor": "color.shadow", "shadowSize": "shadow.size"}
+    }
+}

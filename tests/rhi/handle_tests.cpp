@@ -1,12 +1,12 @@
 // RHI-01 : handles opaques et table générationnelle (aucun GPU requis).
 #include <doctest/doctest.h>
 
-#include <engine/rhi/device.hpp>
-#include <engine/rhi/handle.hpp>
+#include <orosmo/rhi/device.hpp>
+#include <orosmo/rhi/handle.hpp>
 
 #include "support/result_support.hpp"
 
-using namespace engine::rhi;
+using namespace orosmo::rhi;
 
 TEST_SUITE("rhi/handle")
 {
@@ -107,6 +107,6 @@ TEST_SUITE("rhi/device")
         desc.backend = Backend::kVulkan;
         auto device = createDevice(desc);
         REQUIRE_FALSE(device.has_value());
-        CHECK((tests::errorOf(device) == engine::core::ErrorCode::kUnsupported));
+        CHECK((tests::errorOf(device) == orosmo::core::ErrorCode::kUnsupported));
     }
 }

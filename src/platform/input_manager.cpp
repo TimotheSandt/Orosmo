@@ -1,4 +1,4 @@
-#include <engine/platform/input_manager.hpp>
+#include <orosmo/platform/input_manager.hpp>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -8,7 +8,7 @@
 #include <functional>
 #include <iostream>
 #include <utility>
-#include "Logger.h"
+#include <orosmo/core/log.hpp>
 
 #undef DELETE
 
@@ -28,8 +28,59 @@ std::unordered_map<void *, glm::vec2> &pendingScroll()
     return pending;
 }
 
+// PLAT-05 : texte saisi (rappel de caractères de GLFW, répétition du clavier comprise), cumulé jusqu'au prochain `Update`.
+std::unordered_map<void *, std::string> &pendingText()
+{
+    static std::unordered_map<void *, std::string> pending;
+    return pending;
+}
+
+// Appuis et répétitions du clavier (rappel de touches de GLFW : code GLFW, répétition, modificateurs), jusqu'au prochain `Update`.
+struct RawKeyPress
+{
+    int key;
+    bool repeat;
+    int mods;
+    std::size_t textBefore; // octets de texte saisis avant cet appui depuis le dernier Update (ordre texte / touches)
+};
+std::unordered_map<void *, std::vector<RawKeyPress>> &pendingKeys()
+{
+    static std::unordered_map<void *, std::vector<RawKeyPress>> pending;
+    return pending;
+}
+
 GLFWwindow *native(void *handle) { return static_cast<GLFWwindow *>(handle); }
 } // namespace
+
+void InputManager::AppendUtf8(std::string &out, unsigned int codepoint)
+{
+    if (codepoint > 0x10FFFFU || (codepoint >= 0xD800U && codepoint <= 0xDFFFU))
+    {
+        return; // hors d'Unicode ou demi-code de substitution : ignoré
+    }
+    if (codepoint < 0x80U)
+    {
+        out.push_back(static_cast<char>(codepoint));
+    }
+    else if (codepoint < 0x800U)
+    {
+        out.push_back(static_cast<char>(0xC0U | (codepoint >> 6U)));
+        out.push_back(static_cast<char>(0x80U | (codepoint & 0x3FU)));
+    }
+    else if (codepoint < 0x10000U)
+    {
+        out.push_back(static_cast<char>(0xE0U | (codepoint >> 12U)));
+        out.push_back(static_cast<char>(0x80U | ((codepoint >> 6U) & 0x3FU)));
+        out.push_back(static_cast<char>(0x80U | (codepoint & 0x3FU)));
+    }
+    else
+    {
+        out.push_back(static_cast<char>(0xF0U | (codepoint >> 18U)));
+        out.push_back(static_cast<char>(0x80U | ((codepoint >> 12U) & 0x3FU)));
+        out.push_back(static_cast<char>(0x80U | ((codepoint >> 6U) & 0x3FU)));
+        out.push_back(static_cast<char>(0x80U | (codepoint & 0x3FU)));
+    }
+}
 
 InputManager::InputManager(void *nativeWindow) : window(nativeWindow)
 {
@@ -40,6 +91,13 @@ InputManager::InputManager(void *nativeWindow) : window(nativeWindow)
                               {
                                   pendingScroll()[w] += glm::vec2(static_cast<float>(dx), static_cast<float>(dy));
                               });
+        glfwSetCharCallback(native(nativeWindow), [](GLFWwindow *w, unsigned int codepoint) { AppendUtf8(pendingText()[w], codepoint); });
+        glfwSetKeyCallback(native(nativeWindow),
+                           [](GLFWwindow *w, int key, int, int action, int mods)
+                           {
+                               if (action == GLFW_PRESS || action == GLFW_REPEAT)
+                                   pendingKeys()[w].push_back({key, action == GLFW_REPEAT, mods, pendingText()[w].size()});
+                           });
     }
     Init();
 }
@@ -68,8 +126,12 @@ void InputManager::RemoveInstance(void *window)
     if (inputManagers.find(window) != inputManagers.end())
     {
         glfwSetScrollCallback(native(window), nullptr);
+        glfwSetCharCallback(native(window), nullptr);
+        glfwSetKeyCallback(native(window), nullptr);
     }
     pendingScroll().erase(window);
+    pendingText().erase(window);
+    pendingKeys().erase(window);
     inputManagers.erase(window);
 }
 
@@ -87,8 +149,11 @@ void InputManager::Init()
     }
 
     // Mouse position
-    glfwGetCursorPos(native(window), reinterpret_cast<double *>(&this->mouseMoveData.position.x),
-                     reinterpret_cast<double *>(&this->mouseMoveData.position.y));
+    // GLFW écrit des double : lus dans des double puis convertis (écrire un double dans un float débordait sur le champ suivant).
+    double cursorX = 0.0;
+    double cursorY = 0.0;
+    glfwGetCursorPos(native(window), &cursorX, &cursorY);
+    this->mouseMoveData.position = glm::vec2(static_cast<float>(cursorX), static_cast<float>(cursorY));
 
     // Mouse delta
     this->mouseMoveData.delta = glm::vec2(0.0f, 0.0f);
@@ -119,8 +184,11 @@ void InputManager::Update()
 
     // Mouse Position
     glm::vec2 lastMousePos = this->mouseMoveData.position;
-    glfwGetCursorPos(native(window), reinterpret_cast<double *>(&this->mouseMoveData.position.x),
-                     reinterpret_cast<double *>(&this->mouseMoveData.position.y));
+    // GLFW écrit des double : lus dans des double puis convertis (écrire un double dans un float débordait sur le champ suivant).
+    double cursorX = 0.0;
+    double cursorY = 0.0;
+    glfwGetCursorPos(native(window), &cursorX, &cursorY);
+    this->mouseMoveData.position = glm::vec2(static_cast<float>(cursorX), static_cast<float>(cursorY));
 
     // Mouse delta
     this->mouseMoveData.delta = this->mouseMoveData.position - lastMousePos;
@@ -135,7 +203,109 @@ void InputManager::Update()
             found->second = glm::vec2(0.0f, 0.0f);
         }
     }
+    {
+        auto &pending = pendingText();
+        const auto found = pending.find(window);
+        this->textInput.clear();
+        if (found != pending.end())
+        {
+            this->textInput.swap(found->second);
+        }
+    }
+    {
+        // Code GLFW -> touche logique de la disposition active.
+        this->keyPresses.clear();
+        auto &pending = pendingKeys();
+        if (const auto found = pending.find(window); found != pending.end())
+        {
+            for (const RawKeyPress &raw : found->second)
+            {
+                for (const auto &[button, code] : keyMap)
+                {
+                    if (code == raw.key)
+                    {
+                        this->keyPresses.push_back({button, raw.repeat, (raw.mods & GLFW_MOD_SHIFT) != 0, (raw.mods & GLFW_MOD_CONTROL) != 0,
+                                                    (raw.mods & GLFW_MOD_ALT) != 0, (raw.mods & GLFW_MOD_SUPER) != 0, raw.textBefore});
+                        break;
+                    }
+                }
+            }
+            found->second.clear();
+        }
+    }
     UpdateInputEvent();
+}
+
+const char *InputManager::KeyName(KeyButton key)
+{
+    static const char *const kLetters[] = {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+                                           "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"};
+    static const char *const kFunctions[] = {"F1",  "F2",  "F3",  "F4",  "F5",  "F6",  "F7",  "F8",  "F9",  "F10", "F11", "F12", "F13",
+                                             "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", "F24", "F25"};
+    static const char *const kDigits[] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+    const auto k = static_cast<int>(key);
+    if (k >= static_cast<int>(KeyButton::A) && k <= static_cast<int>(KeyButton::Z))
+        return kLetters[k - static_cast<int>(KeyButton::A)];
+    if (k >= static_cast<int>(KeyButton::F1) && k <= static_cast<int>(KeyButton::F25))
+        return kFunctions[k - static_cast<int>(KeyButton::F1)];
+    if (k >= static_cast<int>(KeyButton::NUM_0) && k <= static_cast<int>(KeyButton::NUM_9))
+        return kDigits[k - static_cast<int>(KeyButton::NUM_0)];
+    if (k >= static_cast<int>(KeyButton::NUMPAD_0) && k <= static_cast<int>(KeyButton::NUMPAD_9))
+        return kDigits[k - static_cast<int>(KeyButton::NUMPAD_0)];
+    switch (key)
+    {
+    case KeyButton::SPACE: return "Space";
+    case KeyButton::ENTER:
+    case KeyButton::NUMPAD_ENTER: return "Enter";
+    case KeyButton::TAB: return "Tab";
+    case KeyButton::ESCAPE: return "Escape";
+    case KeyButton::BACKSPACE: return "Backspace";
+    case KeyButton::INSERT: return "Insert";
+    case KeyButton::DELETE: return "Delete";
+    case KeyButton::HOME: return "Home";
+    case KeyButton::END: return "End";
+    case KeyButton::PAGE_UP: return "PageUp";
+    case KeyButton::PAGE_DOWN: return "PageDown";
+    case KeyButton::LEFT: return "Left";
+    case KeyButton::RIGHT: return "Right";
+    case KeyButton::UP: return "Up";
+    case KeyButton::DOWN: return "Down";
+    case KeyButton::MINUS:
+    case KeyButton::NUMPAD_SUBTRACT: return "-";
+    case KeyButton::EQUALS: return "=";
+    case KeyButton::NUMPAD_ADD: return "+";
+    default: return nullptr;
+    }
+}
+
+std::string InputManager::ShortcutName(const KeyPress &press)
+{
+    const char *name = KeyName(press.key);
+    if (name == nullptr)
+        return {};
+    const bool function = press.key >= KeyButton::F1 && press.key <= KeyButton::F25;
+    if (!press.ctrl && !press.alt && !press.super && !function)
+        return {}; // une lettre seule est du texte, une flèche seule une touche d'édition
+    std::string out;
+    if (press.ctrl)
+        out += "Ctrl+";
+    if (press.alt)
+        out += "Alt+";
+    if (press.shift)
+        out += "Shift+";
+    if (press.super)
+        out += "Super+";
+    return out + name;
+}
+
+std::vector<std::string> InputManager::GetShortcuts() const
+{
+    std::vector<std::string> out;
+    for (const KeyPress &press : keyPresses)
+        if (!press.repeat)
+            if (std::string name = ShortcutName(press); !name.empty())
+                out.push_back(std::move(name));
+    return out;
 }
 
 void InputManager::AutoDetectKeyLayout()

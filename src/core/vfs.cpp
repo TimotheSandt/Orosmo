@@ -1,6 +1,6 @@
-#include <engine/core/vfs.hpp>
+#include <orosmo/core/vfs.hpp>
 
-#include <engine/core/system.hpp>
+#include <orosmo/core/system.hpp>
 
 #include <algorithm>
 #include <cstdlib>
@@ -8,7 +8,7 @@
 #include <set>
 #include <sstream>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 namespace fs = std::filesystem;
@@ -198,10 +198,10 @@ Result<std::vector<std::string>> Vfs::list(std::string_view logicalDirectory) co
 fs::path Vfs::defaultUserDirectory(const std::string &appName)
 {
     // Le dossier de données de la plateforme (variables d'environnement, API du système) vient de platform via
-    // engine/core/system.hpp ; core ne lit plus l'environnement lui-même.
+    // orosmo/core/system.hpp ; core ne lit plus l'environnement lui-même.
     if (const fs::path base = system::userDataDirectory(); !base.empty())
         return base / appName;
     return fs::temp_directory_path() / appName;
 }
 
-} // namespace engine::core
+} // namespace orosmo::core

@@ -10,9 +10,15 @@ Generated/
 logs/
 *.log
 imgui.ini
+# Sorties de terrain-gen ou des démos lancées à la racine (relief.png, rhi-demo.png...) : jamais suivies
+/*.png
+/*.exr
+/*.obj
+/*.gltf
+/*.stl
 
 # Engine copied/linked into the demo, per-machine overrides
-/apps/*/engine/
+/apps/*/orosmo/
 /apps/*/vcpkg_installed/
 config.local.mk
 
@@ -22,8 +28,8 @@ config.local.mk
 /tools/*/target/
 /tools/cui
 /tools/cui.exe
-/tools/engine
-/tools/engine.exe
+/tools/orosmo
+/tools/orosmo.exe
 
 # ── Editors, IDEs, assistants, OS ─────────────────────────────────────────────
 .vscode/

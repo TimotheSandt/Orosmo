@@ -1,0 +1,19 @@
+{
+    "version": 1,
+    "data": {
+        "relief": {
+            "basis": 2,
+            "octaves": 4,
+            "frequency": 0.0033,
+            "lacunarity": 2.0,
+            "gain": 0.4
+        },
+        "warp": {
+            "amplitude": 30.0,
+            "frequency": 0.0015,
+            "octaves": 2
+        },
+        "heightScale": 40.0,
+        "heightOffset": 5.0
+    }
+}

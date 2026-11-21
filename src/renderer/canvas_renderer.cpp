@@ -1,10 +1,10 @@
-#include "engine/renderer/canvas_renderer.hpp"
+#include "orosmo/renderer/canvas_renderer.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 using core::ErrorCode;
@@ -17,6 +17,8 @@ struct RectPush
     float offsetScale[4];
     float container[4];
     float color[4];
+    float shape[4]; // rayon, épaisseur de bordure, adoucissement, 0
+    float borderColor[4];
 };
 struct GlyphPush
 {
@@ -30,7 +32,7 @@ struct LayerPush
     float content[4];
     float color[4];
 };
-static_assert(sizeof(RectPush) == 48 && sizeof(GlyphPush) == 32 && sizeof(LayerPush) == 64, "blocs push_constant des shaders ui_*");
+static_assert(sizeof(RectPush) == 80 && sizeof(GlyphPush) == 32 && sizeof(LayerPush) == 64, "blocs push_constant des shaders ui_*");
 
 template <typename T> std::span<const std::byte> bytesOf(const T &v) { return std::as_bytes(std::span(&v, 1)); }
 } // namespace
@@ -42,10 +44,12 @@ core::Result<std::unique_ptr<CanvasRenderer>> CanvasRenderer::create(rhi::Device
     auto rect = library.loadGraphics(shaderDirectory / "ui_rect.vert", shaderDirectory / "ui_rect.frag");
     auto glyph = library.loadGraphics(shaderDirectory / "ui_glyph.vert", shaderDirectory / "ui_glyph.frag");
     auto layer = library.loadGraphics(shaderDirectory / "ui_layer.vert", shaderDirectory / "ui_layer.frag");
-    if (!rect || !glyph || !layer)
+    auto image = library.loadGraphics(shaderDirectory / "ui_image.vert", shaderDirectory / "ui_image.frag");
+    if (!rect || !glyph || !layer || !image)
     {
-        return std::unexpected(!rect ? rect.error() : (!glyph ? glyph.error() : layer.error()));
+        return std::unexpected(!rect ? rect.error() : (!glyph ? glyph.error() : (!layer ? layer.error() : image.error())));
     }
+    canvas->image_ = *image;
     canvas->rect_ = *rect;
     canvas->glyph_ = *glyph;
     canvas->layerImage_ = *layer;
@@ -121,13 +125,30 @@ core::Result<rhi::PipelineHandle> CanvasRenderer::pipeline(const ShaderProgram &
 
 core::Result<CanvasRenderer::Atlas *> CanvasRenderer::atlasFor(const AtlasImage &image)
 {
-    if (auto it = atlases_.find(image.id); it != atlases_.end())
-    {
-        return &it->second;
-    }
     if (image.width == 0 || image.height == 0 || image.rgba.size() != static_cast<std::size_t>(image.width) * image.height * 4)
     {
-        return makeError(ErrorCode::kInvalidArgument, "CanvasRenderer: invalid glyph atlas");
+        return makeError(ErrorCode::kInvalidArgument, "CanvasRenderer: invalid glyph atlas or image");
+    }
+    if (auto it = atlases_.find(image.id); it != atlases_.end())
+    {
+        Atlas &cached = it->second;
+        cached.lastUsed = renderCount_;
+        if (cached.version == image.version)
+        {
+            return &cached;
+        }
+        if (cached.width == image.width && cached.height == image.height)
+        {
+            // Nouvelle version des pixels : envoyée dans la même texture.
+            if (auto r = device_.updateTexture(cached.texture.handle(), rhi::TextureCopy{}, std::as_bytes(std::span(image.rgba))); !r)
+            {
+                return std::unexpected(r.error());
+            }
+            cached.version = image.version;
+            return &cached;
+        }
+        device_.destroy(cached.group);
+        atlases_.erase(it); // nouvelle taille : texture recréée
     }
     TextureInfo info;
     info.width = image.width;
@@ -152,6 +173,10 @@ core::Result<CanvasRenderer::Atlas *> CanvasRenderer::atlasFor(const AtlasImage 
     Atlas atlas;
     atlas.texture = std::move(*texture);
     atlas.group = *group;
+    atlas.version = image.version;
+    atlas.width = image.width;
+    atlas.height = image.height;
+    atlas.lastUsed = renderCount_;
     return &atlases_.emplace(image.id, std::move(atlas)).first->second;
 }
 
@@ -199,6 +224,7 @@ CanvasRenderer::Clip CanvasRenderer::fullClip(const Surface &s) const { return {
 void CanvasRenderer::applyClip(rhi::CommandEncoder &encoder, const Surface &surface)
 {
     const Clip c = surface.clips.empty() ? fullClip(surface) : surface.clips.back();
+    // Repère du RHI (A26) : le rectangle de ciseau part du haut de la cible, comme l'interface. `bottom` < `top` en pixels depuis le haut.
     encoder.setScissor({c.left, c.bottom, static_cast<std::uint32_t>(std::max(c.right - c.left, 0)), static_cast<std::uint32_t>(std::max(c.top - c.bottom, 0))});
 }
 
@@ -213,6 +239,7 @@ void CanvasRenderer::beginPass(rhi::CommandEncoder &encoder, const Surface &surf
 
 core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawList &list, const CanvasTarget &target, bool loadExisting)
 {
+    ++renderCount_;
     if (target.size.width == 0 || target.size.height == 0 || list.logicalSize.x <= 0.0f || list.logicalSize.y <= 0.0f)
     {
         return makeError(ErrorCode::kInvalidArgument, "CanvasRenderer::render: the target and the list's logical size must be non-empty");
@@ -224,6 +251,10 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         if (const auto *g = std::get_if<DrawGlyphs>(&c))
         {
             glyphFloats += g->vertices.size();
+        }
+        else if (const auto *i = std::get_if<DrawImage>(&c))
+        {
+            glyphFloats += i->vertices.size();
         }
     }
     if (glyphFloats > 0)
@@ -249,6 +280,10 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
             if (const auto *g = std::get_if<DrawGlyphs>(&c))
             {
                 all.insert(all.end(), g->vertices.begin(), g->vertices.end());
+            }
+            else if (const auto *i = std::get_if<DrawImage>(&c))
+            {
+                all.insert(all.end(), i->vertices.begin(), i->vertices.end()); // même tampon, dans l'ordre des commandes
             }
         }
         if (auto r = glyphBuffer_.update(0, std::as_bytes(std::span(all))); !r)
@@ -287,7 +322,11 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         {
             return std::unexpected(pipe.error());
         }
-        RectPush push{{r.position.x, r.position.y, r.size.x, r.size.y}, {s.logical.x, s.logical.y, 0, 0}, {r.color.r, r.color.g, r.color.b, r.color.a}};
+        RectPush push{{r.position.x, r.position.y, r.size.x, r.size.y},
+                      {s.logical.x, s.logical.y, 0, 0},
+                      {r.color.r, r.color.g, r.color.b, r.color.a},
+                      {r.radius, r.borderWidth, r.softness, 0},
+                      {r.borderColor.r, r.borderColor.g, r.borderColor.b, r.borderColor.a}};
         encoder.setPipeline(*pipe);
         encoder.setPushConstants(bytesOf(push));
         encoder.draw(6);
@@ -309,7 +348,7 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
         {
             // Une couche contient une couleur prémultipliée : la couleur de remplacement l'est aussi (le transparent ne change pas).
             const glm::vec4 color = surface.layerId != 0 ? glm::vec4(glm::vec3(c->color) * c->color.a, c->color.a) : c->color;
-            status = drawRect(DrawRect{c->position, c->size, color}, false);
+            status = drawRect(DrawRect{.position = c->position, .size = c->size, .color = color}, false);
         }
         else if (const auto *g = std::get_if<DrawGlyphs>(&command))
         {
@@ -326,12 +365,34 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
                 status = std::unexpected(!atlas ? atlas.error() : pipe.error());
                 continue;
             }
-            GlyphPush push{{surface.logical.x, surface.logical.y, g->msdfPixelRange, g->msdfWeight}, {g->color.r, g->color.g, g->color.b, 1.0f}};
+            GlyphPush push{{surface.logical.x, surface.logical.y, g->msdfPixelRange, g->msdfWeight}, {g->color.r, g->color.g, g->color.b, g->alpha}};
             encoder.setPipeline(*pipe);
             encoder.setBindGroup(1, (*atlas)->group);
             encoder.setPushConstants(bytesOf(push));
             encoder.setVertexBuffer(0, glyphBuffer_.handle(), offset);
             encoder.draw(static_cast<std::uint32_t>(g->vertices.size() / 4));
+        }
+        else if (const auto *img = std::get_if<DrawImage>(&command))
+        {
+            const std::uint64_t offset = glyphOffset;
+            glyphOffset += img->vertices.size() * sizeof(float);
+            if (img->vertices.empty() || !img->image || (!surface.clips.empty() && surface.clips.back().empty()))
+            {
+                continue;
+            }
+            auto texture = atlasFor(*img->image);
+            auto pipe = pipeline(*image_, surface.format, Blend::kStraight, true);
+            if (!texture || !pipe)
+            {
+                status = std::unexpected(!texture ? texture.error() : pipe.error());
+                continue;
+            }
+            GlyphPush push{{surface.logical.x, surface.logical.y, 0, 0}, {img->tint.r, img->tint.g, img->tint.b, img->tint.a}};
+            encoder.setPipeline(*pipe);
+            encoder.setBindGroup(1, (*texture)->group);
+            encoder.setPushConstants(bytesOf(push));
+            encoder.setVertexBuffer(0, glyphBuffer_.handle(), offset);
+            encoder.draw(static_cast<std::uint32_t>(img->vertices.size() / 4));
         }
         else if (const auto *image = std::get_if<DrawLayerImage>(&command))
         {
@@ -420,9 +481,10 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
             const glm::vec2 k = scaleOf(surface);
             const Clip parent = surface.clips.empty() ? fullClip(surface) : surface.clips.back();
             const float left = std::floor(clip->position.x * k.x);
-            const float bottom = std::floor((surface.logical.y - (clip->position.y + clip->size.y)) * k.y);
+            // Bornes verticales depuis le HAUT (repère du RHI) : `bottom` = première ligne, `top` = ligne après la dernière.
+            const float bottom = std::floor(clip->position.y * k.y);
             const float right = std::ceil((clip->position.x + clip->size.x) * k.x);
-            const float top = std::ceil((surface.logical.y - clip->position.y) * k.y);
+            const float top = std::ceil((clip->position.y + clip->size.y) * k.y);
             Clip c{};
             // Parent vide : le découpage reste vide (et std::clamp n'est jamais appelé avec des bornes inversées).
             if (!parent.empty() && std::isfinite(left) && std::isfinite(bottom) && std::isfinite(right) && std::isfinite(top))
@@ -466,8 +528,7 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
     }
 
     // Liste interrompue par une erreur : rien n'est évincé (une couche que la suite aurait référencée resterait sinon détruite).
-    // Le contenu des couches redessinées avant l'erreur n'est pas fiable : l'appelant redemande une liste complète
-    // (`UI::Manager::InvalidateLayers`).
+    // Le contenu des couches redessinées avant l'erreur n'est pas fiable : l'appelant redemande une liste complète.
     if (!status)
     {
         return status;
@@ -507,7 +568,20 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
             ++it;
         }
     }
+    // Images qui ne servent plus (image du jeu remplacée, thème changé) : libérées après un délai.
+    for (auto it = atlases_.begin(); it != atlases_.end();)
+    {
+        if (renderCount_ - it->second.lastUsed > kAtlasIdleRenders)
+        {
+            device_.destroy(it->second.group);
+            it = atlases_.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
     return status;
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

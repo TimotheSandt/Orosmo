@@ -1,0 +1,6 @@
+// expect: 5:5: error: 'Button' has no argument 'color' (arguments: text)
+import "orosmo/ui"
+
+view V {
+    Button("Go", color: 1)
+}

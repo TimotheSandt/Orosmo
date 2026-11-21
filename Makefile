@@ -1,4 +1,4 @@
-# Makefile — ProceduralGeneration engine root
+# Makefile — Orosmo engine root
 #
 # ── vcpkg ─────────────────────────────────────────────────────────────────────
 #   make install-deps          install engine vcpkg deps
@@ -8,11 +8,11 @@
 # ── Engine (mk/, src/, include/) ───────────────────────────────────────────────────────
 #   make debug                 build engine archives (debug)
 #   make release               build engine archives (release)
-#   make engine                build debug+release, dist, tools, and apps/demo/engine/
-#   make dist                  package engine → dist/engine-<platform>/
-#   make engine-tool           build the engine scaffolding binary
-#   make sync-demo             fast sync of current BUILD_TYPE into demo/engine/
-#   make install-demo          copy full dist package into demo/engine/
+#   make engine                build debug+release, dist, tools, and apps/demo/orosmo/
+#   make dist                  package engine → dist/orosmo-pkg-<platform>.zip
+#   make engine-tool           build the orosmo scaffolding tool (dist/orosmo-<platform>)
+#   make sync-demo             fast sync of current BUILD_TYPE into demo/orosmo/
+#   make install-demo          copy full dist package into demo/orosmo/
 #   make clean / fclean        remove engine build artifacts
 #
 # ── Demo (apps/demo/) ──────────────────────────────────────────────────────────────
@@ -28,6 +28,11 @@
 #
 # ── Architecture checks (docs/03 §8) — all blocking since M2: layers, API isolation (graphics APIs, GLFW, <windows.h>),
 #    self-contained headers. Each script exits 1 on a violation (same commands as the CI). ──
+# Les cibles de ce fichier appellent des sous-make (parallèles chacun en interne) : elles-mêmes s'exécutent l'une après l'autre,
+# car plusieurs synchronisent le même SDK partagé (sync-demo remplace apps/demo/orosmo/includes) et `make -j2 viewer gallery`
+# ferait disparaître les en-têtes sous la compilation de l'autre.
+.NOTPARALLEL:
+
 .PHONY: check check-repo check-layers check-api check-headers
 check: check-repo check-layers check-api check-headers
 
@@ -154,7 +159,7 @@ demo-test:
 
 # Tests sans GPU ni fenêtre (unitaires) / seulement ceux qui en demandent un (intégration graphique : contexte OpenGL hors écran,
 # fenêtre). `make demo-test` exécute les deux. ENGINE_TEST_REQUIRE_GPU=1 fait échouer (au lieu d'ignorer) un test GPU sans pilote.
-GPU_TEST_SUITES := rhi/opengl*,rhi/shader/opengl,renderer/*,platform/window
+GPU_TEST_SUITES := rhi/opengl*,rhi/shader/opengl,renderer/*,platform/window,world/gpu,world/render,ui/render
 .PHONY: demo-test-unit demo-test-gpu
 demo-test-unit:
 	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
@@ -164,6 +169,116 @@ demo-test-gpu:
 	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
 	$(MAKE) -C apps/demo $(DEMO_ARGS) TEST_ARGS='--test-suite=$(GPU_TEST_SUITES)' test
+
+# ── TOOL-01 : terrain-viewer ──
+#   make viewer           construit apps/terrain_viewer/bin/terrain-viewer (et copie ses ressources dans bin/res)
+#   make viewer-run       lance le visualiseur (ARGS="--seed 42 --preset mountains --theme light")
+#   make viewer-capture   images sans fenêtre, thèmes sombre, clair et à cadres : build/viewer-capture/{dark,light,framed}/viewer.png
+VIEWER := apps/terrain_viewer/bin/terrain-viewer$(if $(filter Windows_NT,$(OS)),.exe)
+.PHONY: viewer viewer-run viewer-capture
+viewer:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/terrain_viewer BUILD_TYPE=release
+viewer-run: viewer
+	./$(VIEWER) $(ARGS)
+viewer-capture: viewer
+	./$(VIEWER) --headless --seed 42 --preset mountains --theme dark --capture build/viewer-capture/dark --capture-frames 5
+	./$(VIEWER) --headless --seed 42 --preset mountains --theme light --capture build/viewer-capture/light --capture-frames 5
+	./$(VIEWER) --headless --seed 42 --preset mountains --theme framed --capture build/viewer-capture/framed --capture-frames 5
+	python3 tools/compare_png.py build/viewer-capture/dark/viewer.png build/viewer-capture/light/viewer.png > /dev/null \
+	    && { echo "viewer-capture : les deux thèmes donnent la même image"; exit 1; } || echo "viewer-capture : OK (deux thèmes, deux images)"
+
+# ── Galerie de l'interface (exemple : tous les widgets, conteneurs, événements et thèmes d'orosmo::ui) ──
+#   make gallery-run ARGS="--theme framed"   lance la galerie
+#   make gallery-capture                     images sans fenêtre de chaque onglet : build/gallery-capture/<thème>-<onglet>/gallery.png
+GALLERY := apps/ui_gallery/bin/ui-gallery$(if $(filter Windows_NT,$(OS)),.exe)
+.PHONY: gallery gallery-run gallery-capture
+gallery:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/ui_gallery BUILD_TYPE=release
+gallery-run: gallery
+	./$(GALLERY) $(ARGS)
+gallery-capture: gallery
+	for tab in widgets controls color windows layout parameters themes; do \
+	    ./$(GALLERY) --headless --theme dark --tab $$tab --capture build/gallery-capture/dark-$$tab || exit 1; done
+	./$(GALLERY) --headless --theme light --tab widgets --capture build/gallery-capture/light-widgets
+	./$(GALLERY) --headless --theme dark --tab widgets --click fruit --capture build/gallery-capture/dark-dropdown-open
+	./$(GALLERY) --headless --theme light --tab widgets --hover volume --capture-frames 60 --capture build/gallery-capture/light-tooltip
+	./$(GALLERY) --headless --theme framed --tab themes --capture build/gallery-capture/framed-themes
+	./$(GALLERY) --headless --theme dark --tab windows --click openDialog --capture build/gallery-capture/dark-dialog
+	./$(GALLERY) --headless --theme dark --tab windows --click menuFile --capture build/gallery-capture/dark-menu
+	./$(GALLERY) --headless --theme light --tab windows --click notifyWarning --capture build/gallery-capture/light-notification
+
+# ── BLD-02 : de bout en bout depuis le paquet (sans les sources du moteur) ──
+#   make e2e-init   paquet + outil `orosmo` construits ; `orosmo init --package` d'un projet neuf dans build/e2e/<date>/mygame ;
+#                   compilation et lancement sans fenêtre (capture) ; exemples terrain-gen (somme de contrôle de référence) et
+#                   terrain-viewer compilés depuis le paquet extrait par `orosmo init` (mygame/orosmo/examples/).
+#   Chaque lancement a son dossier (rien n'est effacé). Les dépendances vcpkg du dépôt sont reliées au projet (équivalent de
+#   `make install` dans le projet, sans le réseau).
+E2E_RUN      := build/e2e/$(shell date +%Y%m%d-%H%M%S)
+E2E_PLATFORM  = $(shell $(MAKE) -s -f $(ENGINE_MK) print-platform)
+E2E_EXE       = $(if $(filter Windows_NT,$(OS)),.exe)
+E2E_VCPKG    ?= $(abspath vcpkg_installed)
+E2E_CHECKSUM  = $(shell sed -n 's/^checksum: //p' docs/BASELINE/terrain-gen-seed42-256.txt)
+.PHONY: e2e-init
+e2e-init:
+	$(MAKE) -f $(ENGINE_MK) engine-tool
+	mkdir -p $(E2E_RUN)
+	cd $(E2E_RUN) && "$(abspath dist)/orosmo-$(E2E_PLATFORM)$(E2E_EXE)" init --package "$(abspath dist)/orosmo-pkg-$(E2E_PLATFORM).zip" mygame
+	ln -sfn "$(E2E_VCPKG)" $(E2E_RUN)/mygame/orosmo/vcpkg_installed
+	$(MAKE) -C $(E2E_RUN)/mygame debug
+	cd $(E2E_RUN)/mygame && ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3
+	test -s $(E2E_RUN)/capture/scene.png
+	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/minimal
+	$(E2E_RUN)/mygame/orosmo/examples/minimal/bin/minimal$(E2E_EXE)
+	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/terrain_gen
+	$(E2E_RUN)/mygame/orosmo/examples/terrain_gen/bin/terrain-gen$(E2E_EXE) --seed 42 --size 256 --out $(E2E_RUN)/tg.png > $(E2E_RUN)/tg.txt
+	grep -q "$(E2E_CHECKSUM)" $(E2E_RUN)/tg.txt
+	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/terrain_viewer
+	$(E2E_RUN)/mygame/orosmo/examples/terrain_viewer/bin/terrain-viewer$(E2E_EXE) --headless --seed 42 --capture $(E2E_RUN)/viewer --capture-frames 3
+	test -s $(E2E_RUN)/viewer/viewer.png
+	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/ui_gallery
+	$(E2E_RUN)/mygame/orosmo/examples/ui_gallery/bin/ui-gallery$(E2E_EXE) --headless --capture $(E2E_RUN)/gallery --capture-frames 3
+	test -s $(E2E_RUN)/gallery/gallery.png
+	@echo "e2e-init : OK ($(E2E_RUN) : orosmo init, compilation, lancement, exemples depuis le paquet)"
+
+# ── UI-11 : tests du compilateur du langage d'interface ──
+#   make cui-test   tests unitaires (cargo test) + entrées invalides de bout en bout (binaire cui : messages fichier:ligne:colonne ;
+#                   une erreur du C++ généré ramenée à la ligne du .cui par #line). Les vues valides sont compilées avec `make demo-test`.
+CUI_BIN := tools/cui$(if $(filter Windows_NT,$(OS)),.exe)
+.PHONY: cui-test
+cui-test:
+	$(MAKE) -f $(ENGINE_MK) cui-tool
+	cargo test --manifest-path tools/Cargo.toml -p cui -p orosmo
+	python3 tools/check_cui_errors.py --cui $(CUI_BIN) --cases tests/ui/cui_errors --out build/cui-errors --cxx auto
+
+# ── TOOL-02 : terrain-gen (sans fenêtre ni GPU) ──
+#   make terrain-gen         construit apps/terrain_gen/bin/terrain-gen
+#   make terrain-gen-check   déterminisme : deux exports identiques (1 et 4 threads), somme de contrôle de référence, codes de retour
+TERRAIN_GEN := apps/terrain_gen/bin/terrain-gen$(if $(filter Windows_NT,$(OS)),.exe)
+TG_CHECK    := build/terrain-gen-check
+.PHONY: terrain-gen terrain-gen-check
+terrain-gen:
+	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
+	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
+	$(MAKE) -C apps/terrain_gen BUILD_TYPE=release all
+terrain-gen-check: terrain-gen
+	@mkdir -p $(TG_CHECK)
+	./$(TERRAIN_GEN) --seed 42 --size 256 --out $(TG_CHECK)/a.png --threads 1 > $(TG_CHECK)/a.txt
+	./$(TERRAIN_GEN) --seed 42 --size 256 --out $(TG_CHECK)/b.png --threads 4 > $(TG_CHECK)/b.txt
+	cmp $(TG_CHECK)/a.png $(TG_CHECK)/b.png
+	grep -F "$$(cat docs/BASELINE/terrain-gen-seed42-256.txt)" $(TG_CHECK)/a.txt
+	./$(TERRAIN_GEN) --seed 42 --size 64 --out $(TG_CHECK)/t.stl > /dev/null
+	@./$(TERRAIN_GEN) --seed 42 --size 1 --out $(TG_CHECK)/x.png > /dev/null 2>&1; test $$? -eq 1
+	@./$(TERRAIN_GEN) --seed 42 --size 8 --params $(TG_CHECK)/absent.json --out $(TG_CHECK)/y.png > /dev/null 2>&1; test $$? -eq 2
+	@rm -f $(TG_CHECK)/same.png
+	@./$(TERRAIN_GEN) --seed 42 --size 8 --out $(TG_CHECK)/same.png --biomes $(TG_CHECK)/./same.png > /dev/null 2>&1; test $$? -eq 1
+	@test ! -e $(TG_CHECK)/same.png
+	@./$(TERRAIN_GEN) --seed 42 --size 8 --out $(TG_CHECK)/a.png --biomes $(TG_CHECK)/../terrain-gen-check/a.png > /dev/null 2>&1; test $$? -eq 1
+	cmp $(TG_CHECK)/a.png $(TG_CHECK)/b.png
+	@echo "terrain-gen-check : OK (mêmes octets, somme de contrôle de référence, codes de retour, destinations distinctes)"
 
 # ── Core demo (M1): 10 000 tasks, hot-reloaded config, measurements; no window, no graphics ──
 #   make core-demo                     build and run          make core-demo CORE_DEMO_ARGS="--tasks 20000 --trace t.json"
@@ -211,7 +326,7 @@ clean-all:
 	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=dev
 	$(MAKE) -f $(ENGINE_MK) fclean BUILD_TYPE=release
 	$(MAKE) -C apps/demo $(DEMO_ARGS) fclean
-	@rm -rf vcpkg_installed apps/demo/vcpkg_installed apps/demo/engine/vcpkg_installed
+	@rm -rf vcpkg_installed apps/demo/vcpkg_installed apps/demo/orosmo/vcpkg_installed
 	@echo "Removed all engine/demo build artifacts and vcpkg installs"
 
 # install engine deps → prepare full engine → install demo deps → build demo

@@ -1,0 +1,6 @@
+// expect: 5:5: error: '$flag': a two-way binding must start with a @Mutable field of the view ('flag' is not a field)
+import "orosmo/ui"
+
+view V {
+    Checkbox("Snow", checked: $flag)
+}

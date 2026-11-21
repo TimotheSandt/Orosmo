@@ -1,0 +1,10 @@
+// expect: 6:9: error: 'Page' is only allowed directly inside 'Tabs'
+import "orosmo/ui"
+
+view V {
+    VBox {
+        Page("A") {
+            Label("x")
+        }
+    }
+}

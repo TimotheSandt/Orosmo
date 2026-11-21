@@ -6,10 +6,10 @@ Guide d'ensemble (état de fin de M2). Détails : [`src/rhi/README.md`](../src/r
 
 ```
  apps/demo       Game, World, CameraController                    (application)
- ui              UI::Manager::Collect -> DrawList                  (l'interface ne dessine pas)
+ ui              orosmo::ui::Ui::draw -> DrawList                  (l'interface ne dessine pas)
  renderer        SceneRenderer, CanvasRenderer, Mesh, Camera, LightManager, ShaderLibrary, PipelineCache,
-                 RenderTarget, Texture, GpuBuffer, GpuTimer, Image    -> include/engine/renderer/
- rhi             Device, CommandEncoder, handles, shader_compiler     -> include/engine/rhi/
+                 RenderTarget, Texture, GpuBuffer, GpuTimer, Image    -> include/orosmo/renderer/
+ rhi             Device, CommandEncoder, handles, shader_compiler     -> include/orosmo/rhi/
    rhi/opengl    le seul endroit où gl*, GL_*, glad existent          -> src/rhi/opengl/
  platform        Window, InputManager (GLFW caché : src/platform/)
  core            Logger, Result<T>, tâches, VFS, configuration
@@ -38,19 +38,21 @@ if (auto r = scene->beginFrame(*encoder, {.clearColor = {0.07f, 0.13f, 0.17f, 1}
 bool sceneOk = scene->setCamera(camera).has_value();
 sceneOk = sceneOk && scene->drawMesh(mesh, camera).has_value();            // un pipeline qui ne se lie pas échoue ici
 sceneOk = scene->endFrame({composed, rhi::Format::kRGBA8Unorm, {w, h}}).has_value() && sceneOk; // ferme la passe dans tous les cas
-ui.Collect(list, w, h);
+bool frameValid = sceneOk;                                     // remis à vrai à chaque image
+ui.update(input, {float(w), float(h)});                        // orosmo::ui::Ui : entrées, événements, mise en page
+ui.draw(list);                                                 // liste de dessin de l'image
 if (auto drawn = canvas->render(*encoder, list, {composed, rhi::Format::kRGBA8Unorm, {w, h}}); !drawn)
 {
-    log(drawn.error());       // kNotFound : une couche en cache a disparu ; toute autre erreur : liste ou cible invalide
-    ui.InvalidateLayers();    // la prochaine liste redessine toutes les couches en entier
+    log(drawn.error());       // liste ou cible invalide : une partie de l'interface a pu être encodée avant l'erreur ;
+    frameValid = false;       // l'image n'est pas fiable : ni comptée ni capturée (elle peut quand même être présentée)
 }
 if (auto shown = scene->blit().copy(*encoder, composed, scene->blit().linearSampler(), *frame, rhi::Format::kRGBA8Unorm); !shown)
 {
     log(shown.error());
 }
-if (auto submitted = device->submit(std::move(encoder)); !submitted || !sceneOk)
+if (auto submitted = device->submit(std::move(encoder)); !submitted || !frameValid)
 {
-    // Image fausse (scène incomplète, commande refusée) : ne pas la compter ni la capturer (Game::endFrame).
+    // Image fausse (scène ou interface incomplète, commande refusée) : ne pas la compter ni la capturer (Game::endFrame).
 }
 device->present();
 ```
@@ -63,14 +65,13 @@ Exemple complet et compilé : `apps/demo/src/Game/Game.cpp` (`Game::createGraphi
 - **Pas d'état implicite** : chaque passe déclare ses attachements, chaque pipeline porte tout son état fixe (`PipelineCache` les construit).
 - **Liaison** : trois groupes (0 image, 1 matériau, 2 objet) × 8 liaisons ; OpenGL les aplatit en `groupe × 8 + binding`. Push constants : jusqu'à 128 octets.
 - **Shaders** : GLSL 450 « style Vulkan » dans `shaders/rhi/`, compilés (shaderc) puis traduits (SPIRV-Cross) en GLSL 430 pour OpenGL ; rechargement à chaud : `ShaderLibrary::pollHotReload`.
-- **Repère** : celui d'OpenGL en M2 ; l'auteur a choisi le repère Vulkan (QUESTIONS A26), appliqué en M3. Les octets envoyés ou lus commencent par le bas de l'image ; `Image` et `readPixel*` retournent explicitement.
+- **Repère** (QUESTIONS A26, appliqué en M3) : origine en haut à gauche (ligne 0 = haut, viewport et ciseau depuis le haut), NDC y = +1 en haut, profondeur [0, 1], caméra en reverse-Z. OpenGL l'obtient par `glClipControl` (4.5 ou `GL_ARB_clip_control`).
 - **Capacités optionnelles** : toujours lues dans `Capabilities`, jamais supposées (`rayQuery`, `bindless`, `meshShader`... toutes `false`).
 
 ## Preuves et images de référence
 
 | Test | Ce qu'il fixe |
 | --- | --- |
-| `tests/renderer/parity_tests.cpp` | scène de terrain (graine 1) et interface (`ui.png`, texte figé) identiques aux captures de l'ancien rendu : `docs/BASELINE/reference/` |
 | capture de la démo (`--capture`) | `scene.png` comparé à la référence par `tools/compare_png.py` (CI, tolérance pour llvmpipe) |
 | `tests/rhi/*`, `tests/renderer/*` | périphérique, ressources, shaders, fenêtre, dessinateur 2D, minuteries GPU |
 

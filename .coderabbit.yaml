@@ -42,17 +42,16 @@ reviews:
     - "!**/*.ico"
     - "!tools/Cargo.lock"
     - "!**/Generated/**"
-    - "!apps/demo/engine/**"
+    - "!apps/demo/orosmo/**"
 
   path_instructions:
     - path: "include/**"
       instructions: >-
         API publique. Aucun type d'API graphique (GLuint, VkBuffer, GLFWwindow*) ni <windows.h> (docs/03 §2).
         Chaque en-tête doit se compiler seul (#pragma once, inclusions complètes). Pas de logique d'état global.
-    - path: "src/Graphics/Backends/**"
+    - path: "src/rhi/**"
       instructions: >-
-        Seul endroit où gl*, Vk*, vk*, MTL* sont permis (règle 4 de CLAUDE.md : src/rhi/<backend>/, aujourd'hui
-        src/Graphics/Backends/<API>/). Capacités optionnelles lues du matériel, jamais supposées (règle 11). Pas de stub
+        Seul endroit où gl*, Vk*, vk*, MTL* sont permis (règle 4 de CLAUDE.md : src/rhi/<backend>/). Capacités optionnelles lues du matériel, jamais supposées (règle 11). Pas de stub
         qui prétend marcher (règle 3).
     - path: "src/**"
       instructions: >-
@@ -61,7 +60,7 @@ reviews:
         génération procédurale déterministe, sans rand() ni horloge (règle 9) ; un module ne dépend que de ceux d'en dessous
         (règle 5, tools/layers.json). Signaler tout comportement indéfini, toute fuite, tout état non initialisé.
         ATTENTION au style : le diff contre main contient tout l'historique de dev. La convention de docs/03 (camelCase,
-        include/engine/, snake_case) ne vaut que pour le code écrit à partir de M00 (tag pre-cleanup) ; le code plus ancien
+        include/orosmo/, snake_case) ne vaut que pour le code écrit à partir de M00 (tag pre-cleanup) ; le code plus ancien
         garde ses noms PascalCase jusqu'au jalon qui réécrit son module (M1 core, M2 rhi/platform/renderer, M3 ui). Ne pas
         signaler le nommage ni l'arborescence du code ancien.
     - path: "tests/**"
@@ -119,7 +118,7 @@ reviews:
           Ne signaler que les violations NOUVELLES (lignes ajoutées après le tag pre-cleanup / M00). Les violations
           historiques sont connues et suivies : fichiers listés dans
           tools/baseline/layers.txt, docs/GAPS.md (G5, G19, G47) ; elles migrent aux jalons M1-M4 et ne doivent pas faire
-          échouer ce contrôle. Échouer si la PR ajoute un appel gl*/Vk*/MTL* hors de src/Graphics/Backends/ (ou src/rhi/),
+          échouer ce contrôle. Échouer si la PR ajoute un appel gl*/Vk*/MTL* hors de src/rhi/,
           un include GLFW ou <windows.h> hors des backends et de src/platform/, une exception dans le flux normal, rand() ou l'horloge dans de la génération procédurale,
           ou coche « Fait » dans docs/STATUS.md sans fichier, test et résultat.
 

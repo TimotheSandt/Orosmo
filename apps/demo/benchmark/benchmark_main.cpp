@@ -1,51 +1,49 @@
-#include "Benchmark/Runner.h"
-#include "Benchmark/Report.h"
-#include "Benchmark/Scenario.h"
+#include <orosmo/core/benchmark.hpp>
 
 #include <cstdlib>
 #include <exception>
 #include <iostream>
 
-// ── Register your scenarios here ─────────────────────────────────────────────
+// ── Enregistrement des scénarios ─────────────────────────────────────────────
 //
-// Example:
+// Exemple :
 //
-//   #include "MyScenario.h"
+//   #include "MyScenario.hpp"
 //
-//   static void RegisterScenarios(bench::ScenarioRegistry &registry)
+//   static void registerScenarios(orosmo::core::bench::ScenarioRegistry &registry)
 //   {
-//       registry.Register("my-scenario", [] { return std::make_unique<MyScenario>(); });
+//       registry.registerScenario("my-scenario", [] { return std::make_unique<MyScenario>(); });
 //   }
 //
-// A scenario only needs to implement bench::Scenario:
+// Un scénario implémente orosmo::core::bench::Scenario :
 //
-//   class MyScenario final : public bench::Scenario
+//   class MyScenario final : public orosmo::core::bench::Scenario
 //   {
 //     public:
-//       std::string Name() const override { return "my-scenario"; }
-//       void        Setup()        override { /* allocate */ }
-//       void        RunIteration() override { /* work to measure */ }
-//       void        Teardown()     override { /* release */ }
+//       std::string name() const override { return "my-scenario"; }
+//       void        setup()        override { /* allocations */ }
+//       void        runIteration() override { /* travail mesuré */ }
+//       void        teardown()     override { /* libération */ }
 //   };
 //
-// Then add it to the config below and run: make benchmark
+// Ajouter ensuite sa configuration ci-dessous et lancer : make benchmark
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-static void RegisterScenarios(bench::ScenarioRegistry & /*registry*/)
+static void registerScenarios(orosmo::core::bench::ScenarioRegistry & /*registry*/)
 {
-    // Add your scenarios here.
+    // Ajouter les scénarios ici.
 }
 
-static bench::BenchmarkConfig BuildConfig()
+static orosmo::core::bench::BenchmarkConfig buildConfig()
 {
-    bench::BenchmarkConfig config;
+    orosmo::core::bench::BenchmarkConfig config;
     config.outputPath = "benchmark_report.json";
-    config.build      = "release";
+    config.build = "release";
 
-    // Add scenario configs here, one per registered scenario:
+    // Ajouter une configuration par scénario enregistré :
     //
-    //   bench::ScenarioConfig cfg;
+    //   orosmo::core::bench::ScenarioConfig cfg;
     //   cfg.name           = "my-scenario";
     //   cfg.warmupSeconds  = 0.5;
     //   cfg.measureSeconds = 5.0;
@@ -60,10 +58,10 @@ int main()
 {
     try
     {
-        bench::ScenarioRegistry registry;
-        RegisterScenarios(registry);
+        orosmo::core::bench::ScenarioRegistry registry;
+        registerScenarios(registry);
 
-        const bench::BenchmarkConfig config = BuildConfig();
+        const orosmo::core::bench::BenchmarkConfig config = buildConfig();
 
         if (config.scenarios.empty())
         {
@@ -71,10 +69,10 @@ int main()
             return EXIT_SUCCESS;
         }
 
-        bench::Runner runner(config);
-        const bench::BenchmarkReport report = runner.Run(registry);
+        orosmo::core::bench::Runner runner(config);
+        const orosmo::core::bench::BenchmarkReport report = runner.run(registry);
 
-        WriteReport(report, config.outputPath);
+        orosmo::core::bench::writeReport(report, config.outputPath);
         std::cout << "[bench] Report written: " << config.outputPath << "\n";
 
         return EXIT_SUCCESS;

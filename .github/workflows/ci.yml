@@ -144,6 +144,12 @@ jobs:
       - name: Tests
         run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test
 
+      - name: terrain-gen determinism (TOOL-02, TEST-03)
+        run: make terrain-gen-check
+
+      - name: Interface language compiler (UI-11; cargo test + invalid inputs + C++ errors mapped to the .cui)
+        run: make cui-test
+
       - name: Capture reference images (OpenGL, Mesa llvmpipe under Xvfb)
         run: |
           xvfb-run -a -s "-screen 0 1280x720x24" \
@@ -165,11 +171,23 @@ jobs:
       - name: Tool tests (Python)
         run: python3 -m unittest discover -s tests/tools
 
+      - name: Terrain viewer (TOOL-01; headless capture with the dark and the light theme)
+        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make viewer-capture
+
+      - name: UI gallery (every widget, layout, theme; headless captures)
+        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make gallery-capture
+
+      - name: End to end from the package (BLD-02; orosmo init, build, run, examples)
+        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make e2e-init
+
       - name: Upload capture
         uses: actions/upload-artifact@v4
         with:
           name: capture-linux-opengl
-          path: ci-capture/*.png
+          path: |
+            ci-capture/*.png
+            build/viewer-capture/*/viewer.png
+            build/gallery-capture/*/gallery.png
           retention-days: 7
 
   # ── Linux arm64 (ubuntu-24.04-arm) ────────────────────────────────────────────────────────
@@ -243,6 +261,9 @@ jobs:
 
       - name: Tests
         run: LIBGL_ALWAYS_SOFTWARE=1 ENGINE_TEST_REQUIRE_GPU=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-test WERROR=0
+
+      - name: terrain-gen determinism (TOOL-02, TEST-03)
+        run: make terrain-gen-check WERROR=0
 
   # ── Sanitizers : ASan + UBSan on a clean tree (the flags are not part of the object dependencies) ──
   sanitizers:
@@ -383,6 +404,13 @@ jobs:
         run: |
           make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
           make demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+
+      # BLD-02 : never observed on these systems (docs/GAPS.md) ; reported, not blocking.
+      - name: End to end from the package (Unix)
+        if: runner.os != 'Windows'
+        continue-on-error: true
+        run: make e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
 
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
@@ -390,3 +418,10 @@ jobs:
         run: |
           mingw32-make -j3 all-debug WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
           mingw32-make demo-test WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          mingw32-make terrain-gen-check WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+
+      - name: End to end from the package (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: msys2 {0}
+        run: mingw32-make e2e-init WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed

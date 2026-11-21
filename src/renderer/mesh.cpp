@@ -1,4 +1,4 @@
-#include "engine/renderer/mesh.hpp"
+#include "orosmo/renderer/mesh.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -9,7 +9,7 @@
 #include <numeric>
 #include <string>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 namespace
@@ -169,19 +169,20 @@ glm::mat4 Mesh::modelMatrix() const
     return glm::scale(model, scale_);
 }
 
-core::Result<> Mesh::uploadTransform()
+core::Result<> Mesh::uploadTransform(const glm::vec3 &origin)
 {
     if (!valid())
     {
         return makeError(ErrorCode::kInvalidArgument, "Mesh::uploadTransform: empty mesh");
     }
-    if (!transformDirty_)
+    if (!transformDirty_ && origin == uploadedOrigin_)
     {
         return {};
     }
     // Les normales se transforment par l'inverse transposée de la partie 3x3 (juste aussi avec une échelle non uniforme) ; calculée
     // une fois par objet ici plutôt qu'à chaque sommet. Matrice non inversible (échelle nulle) : identité, la normale est inutile.
     ModelBlock block{modelMatrix(), glm::mat4(1.0f)};
+    block.model[3] -= glm::vec4(origin, 0.0f); // translation relative à `origin` (0 : repère monde)
     const glm::mat3 linear(block.model);
     if (glm::determinant(linear) != 0.0f)
     {
@@ -192,6 +193,7 @@ core::Result<> Mesh::uploadTransform()
         return r;
     }
     transformDirty_ = false;
+    uploadedOrigin_ = origin;
     return {};
 }
 
@@ -293,6 +295,7 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(rotation_, other.rotation_);
     std::swap(scale_, other.scale_);
     std::swap(transformDirty_, other.transformDirty_);
+    std::swap(uploadedOrigin_, other.uploadedOrigin_); // va avec modelBuffer_ : l'origine des matrices déjà envoyées
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

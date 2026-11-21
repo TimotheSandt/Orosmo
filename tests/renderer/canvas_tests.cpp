@@ -1,16 +1,17 @@
 // UI-02 (lot B5) : exécution d'une liste de dessin 2D sur le RHI : rectangles, mélange alpha, découpages, glyphes, couches hors écran.
-// Repère de lecture du RHI : première ligne = bas ; les listes de dessin ont l'origine en haut (une position y logique petite = haut).
+// Repère du RHI (A26) : première ligne = haut, comme les listes de dessin (une position y logique petite = haut).
 #include <doctest/doctest.h>
 
 #include "support/test_support.hpp"
 #include "renderer/repo_paths.hpp"
 #include "rhi/gpu_fixture.hpp"
 
-#include <engine/renderer/canvas_renderer.hpp>
+#include <orosmo/renderer/canvas_renderer.hpp>
 
+#include <cstdlib>
 #include <limits>
 
-namespace rd = engine::renderer;
+namespace rd = orosmo::renderer;
 namespace fs = std::filesystem;
 
 namespace
@@ -46,15 +47,19 @@ struct Canvas
 
     rd::CanvasTarget canvasTarget(std::uint32_t size = 16) const { return {target, Format::kRGBA8Unorm, {size, size}}; }
 
-    engine::core::Result<> render(const rd::DrawList &list, bool load = true)
+    orosmo::core::Result<> render(const rd::DrawList &list, bool load = true)
     {
         auto encoder = gpu->createCommandEncoder();
         auto r = canvas->render(*encoder, list, canvasTarget(), load);
         auto submitted = gpu->submit(std::move(encoder));
         return r ? submitted : r;
     }
-    // Texel en coordonnées de l'interface (origine en haut).
-    std::array<std::uint8_t, 4> px(int x, int yTop, std::uint32_t size = 16) { return rgba(gpu.pixel(target, x, static_cast<int>(size) - 1 - yTop)); }
+    // Texel en coordonnées de l'interface (origine en haut) : depuis A26, c'est aussi le repère du RHI (ligne 0 = haut).
+    std::array<std::uint8_t, 4> px(int x, int yTop, std::uint32_t size = 16)
+    {
+        (void)size;
+        return rgba(gpu.pixel(target, x, yTop));
+    }
 };
 
 rd::DrawList listOf(float size = 16.0f)
@@ -106,6 +111,81 @@ TEST_SUITE("renderer/canvas")
         REQUIRE(c.render(l, false).has_value());
         CHECK(c.px(1, 14) == Px{0, 0, 0, 0}); // effacé en transparent
         CHECK(c.px(1, 1) == Px{255, 0, 0, 255});
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("UI-07: rounded corners, inner border and soft edge (shadow); a plain rectangle stays exact")
+    {
+        Canvas c(32);
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList l = listOf(32.0f);
+        // Rectangle 16x16 en (0,0), coins de rayon 5, bordure bleue de 2 px, intérieur rouge.
+        l.rect(rd::DrawRect{.position = {0, 0}, .size = {16, 16}, .color = {1, 0, 0, 1}, .radius = 5.0f, .borderWidth = 2.0f, .borderColor = {0, 0, 1, 1}});
+        // Bord adouci sur 8 px (ombre) en (16,16) : plein au centre, transparent au bord.
+        l.rect(rd::DrawRect{.position = {16, 16}, .size = {16, 16}, .color = {0, 0, 0, 1}, .softness = 8.0f});
+        auto encoder = c.gpu->createCommandEncoder();
+        REQUIRE(c.canvas->render(*encoder, l, c.canvasTarget(32), false).has_value());
+        REQUIRE(c.gpu->submit(std::move(encoder)).has_value());
+        CHECK(c.px(0, 0, 32) == Px{0, 0, 0, 0});       // coin arrondi : hors de la forme
+        CHECK(c.px(8, 8, 32) == Px{255, 0, 0, 255});   // centre : intérieur
+        CHECK(c.px(8, 0, 32) == Px{0, 0, 255, 255});   // haut, au milieu : bordure
+        CHECK(c.px(0, 8, 32) == Px{0, 0, 255, 255});   // gauche, au milieu : bordure
+        CHECK(c.px(24, 24, 32)[3] > 245);              // centre de l'ombre : opaque (à l'arrondi de smoothstep près)
+        CHECK(c.px(16, 24, 32)[3] < 40);               // bord de l'ombre : presque transparent
+        const auto mid = c.px(20, 24, 32)[3];          // à mi-chemin : partiel
+        CHECK(mid > 40);
+        CHECK(mid < 255);
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("UI-07: a border over a transparent interior blends in premultiplied space (white stays white at the transition)")
+    {
+        Canvas c(32);
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        rd::DrawList l = listOf(32.0f);
+        // Intérieur transparent, bordure blanche opaque de 1,5 px : le pixel x = 1 est à moitié dans la bordure.
+        l.rect(rd::DrawRect{.position = {0, 0}, .size = {16, 16}, .color = {0, 0, 0, 0}, .borderWidth = 1.5f, .borderColor = {1, 1, 1, 1}});
+        auto encoder = c.gpu->createCommandEncoder();
+        REQUIRE(c.canvas->render(*encoder, l, c.canvasTarget(32), false).has_value());
+        REQUIRE(c.gpu->submit(std::move(encoder)).has_value());
+        const Px edge = c.px(1, 8, 32);
+        INFO("pixel de transition : ", int(edge[0]), ",", int(edge[1]), ",", int(edge[2]), ",", int(edge[3]));
+        CHECK(edge[3] > 100); // à moitié couvert
+        CHECK(edge[3] < 160);
+        // Blanc à moitié couvert, posé sur du transparent : rouge = alpha (avant : la moitié, la couleur mélangée au noir
+        // transparent était multipliée une seconde fois par l'alpha).
+        CHECK(std::abs(int(edge[0]) - int(edge[3])) <= 8);
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("UI-07: images are sampled and multiplied by the tint; one command holds several quads")
+    {
+        Canvas c(16);
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        auto image = std::make_shared<rd::AtlasImage>();
+        image->id = rd::newAtlasId();
+        image->width = 2;
+        image->height = 1;
+        image->rgba = {255, 0, 0, 255, 0, 0, 255, 255}; // rouge | bleu
+        rd::DrawImage cmd;
+        cmd.image = image;
+        cmd.tint = {1, 1, 1, 1};
+        // Deux quadrilatères : la moitié gauche de l'image (rouge) en (0,0), la moitié droite (bleu) en (8,8), au centre des texels.
+        const float q[] = {0, 0, 0.25f, 0.5f, 0, 8, 0.25f, 0.5f, 8, 8, 0.25f, 0.5f, 0, 0, 0.25f, 0.5f, 8, 8, 0.25f, 0.5f, 8, 0, 0.25f, 0.5f,
+                           8, 8, 0.75f, 0.5f, 8, 16, 0.75f, 0.5f, 16, 16, 0.75f, 0.5f, 8, 8, 0.75f, 0.5f, 16, 16, 0.75f, 0.5f, 16, 8, 0.75f, 0.5f};
+        cmd.vertices.assign(std::begin(q), std::end(q));
+        rd::DrawList l = listOf();
+        l.image(cmd);
+        cmd.tint = {0, 1, 0, 1}; // teinte verte sur le rouge : noir
+        cmd.vertices.resize(24);
+        for (std::size_t i = 0; i < 24; i += 4)
+            cmd.vertices[i + 1] += 8.0f; // en (0, 8)
+        l.image(cmd);
+        REQUIRE(c.render(l, false).has_value());
+        CHECK(c.px(3, 3) == Px{255, 0, 0, 255});
+        CHECK(c.px(12, 12) == Px{0, 0, 255, 255});
+        CHECK(c.px(3, 12) == Px{0, 0, 0, 255});
+        CHECK(c.px(12, 3) == Px{0, 0, 0, 0});
         c.gpu.expectNoValidationErrors();
     }
 
@@ -182,6 +262,31 @@ TEST_SUITE("renderer/canvas")
         rd::DrawList bad = listOf();
         bad.glyphs(run);
         CHECK((tests::errorOf(c.render(bad)) == ErrorCode::kInvalidArgument));
+        c.gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("glyph runs keep their alpha up to the shader; without alpha they stay opaque")
+    {
+        Canvas c;
+        SKIP_TEST_IF_NULL(c.gpu.device.get(), "OpenGL 4.3 context");
+        auto atlas = std::make_shared<rd::AtlasImage>();
+        atlas->id = rd::newAtlasId();
+        atlas->width = 2;
+        atlas->height = 2;
+        atlas->rgba.assign(16, 255); // couverture 1 partout
+        rd::DrawGlyphs run;
+        run.atlas = atlas;
+        run.color = {0.0f, 0.0f, 1.0f};
+        CHECK(run.alpha == 1.0f); // défaut : une couleur RGB seule est opaque
+        run.vertices = {4, 4, 0, 0, 4, 12, 0, 1, 12, 12, 1, 1, 4, 4, 0, 0, 12, 12, 1, 1, 12, 4, 1, 0};
+        run.alpha = 0.5f;
+        rd::DrawList l = listOf();
+        l.glyphs(run);
+        REQUIRE(c.render(l).has_value());
+        const Px half = c.px(8, 8); // bleu à moitié sur le vert : (0, ~128, ~128) ; avant, le bleu était opaque
+        CHECK(half[0] == 0);
+        CHECK(std::abs(int(half[1]) - 128) <= 2);
+        CHECK(std::abs(int(half[2]) - 128) <= 2);
         c.gpu.expectNoValidationErrors();
     }
 

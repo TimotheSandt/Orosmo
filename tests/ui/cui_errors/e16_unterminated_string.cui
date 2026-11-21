@@ -1,0 +1,6 @@
+// expect: 5:11: error: Unterminated string literal
+import "orosmo/ui"
+
+view V {
+    Label("never closed)
+}

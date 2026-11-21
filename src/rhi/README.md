@@ -1,23 +1,23 @@
 # rhi
 
 Couche 2 de `docs/03` : l'interface graphique abstraite (RHI) et ses backends. Archive : `librhi.a`.
-API publique : `include/engine/rhi/` (aucun type d'API graphique). Backends privés : `src/rhi/<backend>/`, **seuls endroits** où
+API publique : `include/orosmo/rhi/` (aucun type d'API graphique). Backends privés : `src/rhi/<backend>/`, **seuls endroits** où
 `gl*`, `Vk*`, `MTL*` ont le droit d'exister (`tools/check_api_isolation.py`).
 
 | Fichier | Rôle |
 | --- | --- |
-| `include/engine/rhi/handle.hpp` | `Handle<Tag>` (indice + génération) et `HandlePool<Tag, T>` : un handle périmé est refusé, jamais déréférencé |
-| `include/engine/rhi/types.hpp` | formats, usages, descriptions (buffer, texture, échantillonneur, shader, pipeline, groupe de liaison, passe) |
-| `include/engine/rhi/capabilities.hpp` | `Capabilities` : limites, fonctions, capacités optionnelles réservées (toutes `false`, RHI-18) |
-| `include/engine/rhi/device.hpp` | `Device`, `CommandEncoder`, `DeviceStats`, `createDevice` |
+| `include/orosmo/rhi/handle.hpp` | `Handle<Tag>` (indice + génération) et `HandlePool<Tag, T>` : un handle périmé est refusé, jamais déréférencé |
+| `include/orosmo/rhi/types.hpp` | formats, usages, descriptions (buffer, texture, échantillonneur, shader, pipeline, groupe de liaison, passe) |
+| `include/orosmo/rhi/capabilities.hpp` | `Capabilities` : limites, fonctions, capacités optionnelles réservées (toutes `false`, RHI-18) |
+| `include/orosmo/rhi/device.hpp` | `Device`, `CommandEncoder`, `DeviceStats`, `createDevice` |
 | `src/rhi/format.cpp`, `src/rhi/device.cpp` | `formatInfo`, choix du backend |
-| `include/engine/rhi/shader_compiler.hpp`, `src/rhi/shader_compiler.cpp` | pipeline de shaders (RHI-12) : `compileGlsl`, `translateToGlsl430`, `ShaderCache`, `createShaderFromGlsl`, `ShaderHotReloader` |
+| `include/orosmo/rhi/shader_compiler.hpp`, `src/rhi/shader_compiler.cpp` | pipeline de shaders (RHI-12) : `compileGlsl`, `translateToGlsl430`, `ShaderCache`, `createShaderFromGlsl`, `ShaderHotReloader` |
 | `src/rhi/opengl/` | backend OpenGL 4.3 (`gl_device.cpp` ressources, `gl_encoder.cpp` commandes, `gl_translate.hpp` tables) |
 
 ## Utilisation
 
 ```cpp
-using namespace engine::rhi;
+using namespace orosmo::rhi;
 DeviceDesc desc;                       // backend OpenGL, surface hors écran 1x1 par défaut
 desc.surface.size = {1280, 720};
 auto device = createDevice(desc);      // Result<unique_ptr<Device>> ; kUnsupported avec la raison si GL 4.3 est absent
@@ -75,7 +75,7 @@ shaderc → SPIR-V (sans optimisation : stable, noms conservés) → réflexion 
 constants, taille de groupe de calcul, sorties couleur ; refus d'une liaison hors des 3 groupes × 8, de textures et échantillonneurs
 séparés, de ressources qui se chevauchent : un tableau `sampler2D t[N]` occupe N liaisons consécutives, qui doivent tenir dans
 son groupe ; `ReflectedBinding::count` donne N) → pour OpenGL, GLSL 430 avec **liaison = set × 8 + binding** et push constants en UBO 24.
-Pas de correction d'espace de clipping (A26). Le choix « SPIRV-Cross plutôt que `GL_ARB_gl_spirv` » vient du minimum OpenGL 4.3 ;
+Pas de correction d'espace de clipping : le repère du RHI (A26) est le même pour tous les backends. Le choix « SPIRV-Cross plutôt que `GL_ARB_gl_spirv` » vient du minimum OpenGL 4.3 ;
 `GL_ARB_gl_spirv` (4.6) pourra être ajouté derrière `Capabilities::spirvShaders`.
 
 - **Cache** (`ShaderCache`) : clé = hachage du source *prétraité* (includes et macros développés) + étage + version du cache ; mémoire
@@ -87,12 +87,20 @@ corrompu ou rejeté par la réflexion : recompilé). Cache de **pipelines** nati
   conservées (une modification enregistrée pendant une compilation n'est pas perdue). Ni copiable ni déplaçable.
 - Dépendance : `spirv-cross` (vcpkg, toutes plateformes), `shaderc` (apt sous Linux).
 
-## Conventions (choix du lot A, à confirmer : `docs/QUESTIONS.md` A26)
+## Conventions (repère du RHI, décidé par l'auteur : `docs/QUESTIONS.md` A26, appliqué en M3)
 
-Repère **OpenGL** : origine du viewport et du ciseau en bas à gauche, Y vers le haut, première ligne lue par `readTexture` = bas
-de l'image, profondeur NDC −1..1 (`glDepthRange` 0..1). Vulkan et Metal ont l'origine en haut ; l'harmonisation (viseur négatif,
-`GL_ARB_clip_control` pour la profondeur 0..1 et le reverse-Z de REN-02) est décidée avec le premier shader commun (lot B) et
-M4. Les textures d'image sont stockées sans inversion ici.
+- **Origine en haut à gauche** pour toutes les cibles : la ligne 0 d'une texture (envoi, lecture, rendu) est son **haut** ; les
+  rectangles de viewport et de ciseau partent du haut ; une image se lit et s'enregistre sans retournement.
+- **NDC** : x vers la droite, **y = +1 en haut**, profondeur dans **[0, 1]**. Les projections de la caméra sont en reverse-Z (1 au
+  plan proche, 0 au loin) : effacement de profondeur à 0, test « plus grand » (REN-02).
+- **Faces** : un triangle anti-horaire en NDC est la face avant (`FrontFace::kCounterClockwise`).
+- **OpenGL** : `glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE)` (cœur 4.5 ou `GL_ARB_clip_control` sur un pilote 4.3 : sinon
+  `createDevice` refuse avec un message clair). Le framebuffer de la **fenêtre** est affiché ligne 0 en bas de l'écran : ses passes
+  utilisent l'origine basse, ses rectangles et ses lectures sont retournés par le backend ; l'utilisateur ne voit que la convention.
+- **Vulkan (M4)** : hauteur de viewport négative (cœur 1.1) pour garder y = +1 en haut ; profondeur [0, 1] native.
+- Preuves : `tests/rhi/opengl_state_tests.cpp` (« A26: a counter-clockwise triangle... »), tous les tests de lecture de pixels, et
+  les images de référence, identiques avant et après le changement (capture de la démo ; `parity_tests.cpp` à l'époque, supprimé
+  le 2026-11-20 avec l'interface héritée).
 
 ## Surface : hors écran ou fenêtre (B2, RHI-08)
 

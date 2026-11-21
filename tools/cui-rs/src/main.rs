@@ -1,18 +1,16 @@
+// Compilateur du langage d'interface (.cui) vers le module orosmo::ui (docs/UI_LANGUAGE.md). La cible héritée `UI::View`
+// (générateur, registre des composants lu dans include/UI) a été supprimée avec l'interface héritée : un fichier doit importer
+// "orosmo/ui".
 mod ast;
-mod generator;
+mod engine;
 mod json;
 mod lexer;
 mod parser;
-mod registry;
-mod scanner;
-mod validator;
+#[cfg(test)]
+mod tests;
 
-use crate::generator::Generator;
 use crate::json::json_escape;
 use crate::lexer::{Lexer, TokenType};
-use crate::registry::{Registry, registry_from_json, registry_to_json};
-use crate::scanner::Scanner;
-use crate::validator::validate;
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
@@ -21,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 const HASH_TAG: &str = "// @cui-hash:";
 // Bump this whenever generator output changes without a corresponding .cui syntax change.
-const OUTPUT_FORMAT_VERSION: &str = "2";
+const OUTPUT_FORMAT_VERSION: &str = "10"; // 10 : en-têtes `orosmo/ui/...`, namespace `orosmo::ui` ; 9 : cible héritée UI::View supprimée
 
 fn main() {
     if let Err(err) = run_cli() {
@@ -38,11 +36,13 @@ fn run_cli() -> Result<(), String> {
     }
     let command = args.remove(0);
     match command.as_str() {
-        "scan" => cmd_scan(&args),
-        "build" => cmd_build(&args),
         "run" => cmd_run(&args),
         "redirect" => cmd_redirect(&args),
         "check" => cmd_check(&args),
+        "spec" => {
+            println!("{}", engine::spec_json());
+            Ok(())
+        }
         "-h" | "--help" | "help" => {
             print_usage();
             Ok(())
@@ -54,69 +54,9 @@ fn run_cli() -> Result<(), String> {
     }
 }
 
-fn cmd_scan(args: &[String]) -> Result<(), String> {
-    let parsed = parse_args(args);
-    let headers = required_opt(&parsed.options, "--headers")?;
-    let output = required_opt(&parsed.options, "--output")?;
-    let headers_dir = PathBuf::from(headers);
-    if !headers_dir.is_dir() {
-        return Err(format!(
-            "Error: headers dir not found: {}",
-            headers_dir.display()
-        ));
-    }
-    let registry = Scanner::new().scan_directory(&headers_dir)?;
-    let out_path = PathBuf::from(output);
-    if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
-    }
-    fs::write(&out_path, registry_to_json(&registry))
-        .map_err(|err| format!("failed to write {}: {err}", out_path.display()))?;
-    println!(
-        "[cui scan] {} component(s), {} function(s), {} enum(s) -> {}",
-        registry.components.len(),
-        registry.functions.len(),
-        registry.enums.len(),
-        out_path.display()
-    );
-    Ok(())
-}
-
-fn cmd_build(args: &[String]) -> Result<(), String> {
-    let parsed = parse_args(args);
-    let registry_path = required_opt(&parsed.options, "--registry")?;
-    let output = required_opt(&parsed.options, "--output")?;
-    let registry = read_registry(Path::new(registry_path))?;
-    let out_dir = PathBuf::from(output);
-    fs::create_dir_all(&out_dir)
-        .map_err(|err| format!("failed to create {}: {err}", out_dir.display()))?;
-    if parsed.positionals.is_empty() {
-        return Err("build requires at least one .cui file".to_string());
-    }
-    for file in &parsed.positionals {
-        let cui_path = PathBuf::from(file);
-        if !cui_path.exists() {
-            eprintln!("Error: file not found: {}", cui_path.display());
-            continue;
-        }
-        compile_file(&cui_path, &out_dir, &registry)?;
-    }
-    Ok(())
-}
-
 fn cmd_run(args: &[String]) -> Result<(), String> {
-    let parsed = parse_args(args);
-    let headers = required_opt(&parsed.options, "--headers")?;
+    let parsed = parse_args(args)?;
     let output = required_opt(&parsed.options, "--output")?;
-    let headers_dir = PathBuf::from(headers);
-    if !headers_dir.is_dir() {
-        return Err(format!(
-            "Error: headers dir not found: {}",
-            headers_dir.display()
-        ));
-    }
-    let registry = Scanner::new().scan_directory(&headers_dir)?;
     let out_dir = PathBuf::from(output);
     fs::create_dir_all(&out_dir)
         .map_err(|err| format!("failed to create {}: {err}", out_dir.display()))?;
@@ -129,13 +69,13 @@ fn cmd_run(args: &[String]) -> Result<(), String> {
             eprintln!("Error: file not found: {}", cui_path.display());
             continue;
         }
-        compile_file(&cui_path, &out_dir, &registry)?;
+        compile_file(&cui_path, &out_dir)?;
     }
     Ok(())
 }
 
 fn cmd_redirect(args: &[String]) -> Result<(), String> {
-    let parsed = parse_args(args);
+    let parsed = parse_args(args)?;
     let output = required_opt(&parsed.options, "--output")?;
     let out_dir = PathBuf::from(output);
     fs::create_dir_all(&out_dir)
@@ -155,7 +95,7 @@ fn cmd_redirect(args: &[String]) -> Result<(), String> {
 }
 
 fn cmd_check(args: &[String]) -> Result<(), String> {
-    let parsed = parse_args(args);
+    let parsed = parse_args(args)?;
     let read_stdin = parsed.flags.iter().any(|flag| flag == "--stdin");
     let file = parsed
         .positionals
@@ -173,14 +113,7 @@ fn cmd_check(args: &[String]) -> Result<(), String> {
         if !path.exists() {
             println!(
                 "[{}]",
-                diagnostic_json(
-                    1,
-                    1,
-                    1,
-                    1,
-                    &format!("File not found: {}", path.display()),
-                    "error"
-                )
+                diagnostic_json(&file, 1, 1, 1, 1, &format!("File not found: {}", path.display()), "error")
             );
             return Ok(());
         }
@@ -188,71 +121,64 @@ fn cmd_check(args: &[String]) -> Result<(), String> {
             .map_err(|err| format!("failed to read {}: {err}", path.display()))?
     };
 
+    let mut diagnostics = Vec::new();
     let tokens = match Lexer::new(&source).tokenize() {
         Ok(tokens) => tokens,
         Err(err) => {
-            println!(
-                "[{}]",
-                diagnostic_json(
-                    err.line,
-                    err.col,
-                    err.line,
-                    err.col + 1,
-                    &err.to_string(),
-                    "error"
-                )
-            );
+            println!("[{}]", diagnostic_json(&file, err.line, err.col, err.line, err.col + 1, &err.message, "error"));
             return Ok(());
         }
     };
-
-    let ast = match parser::parse(tokens) {
+    let ast = match parser::parse(tokens, &source) {
         Ok(ast) => ast,
         Err(err) => {
-            let end_col = err.token.col + token_len(&err.token).max(1);
-            println!(
-                "[{}]",
-                diagnostic_json(
-                    err.token.line.max(1),
-                    err.token.col.max(1),
-                    err.token.line.max(1),
-                    end_col,
-                    &err.to_string(),
-                    "error"
-                )
-            );
+            let end_col = err.col + token_len(&err.token).max(1);
+            println!("[{}]", diagnostic_json(&file, err.line.max(1), err.col.max(1), err.line.max(1), end_col, &err.message, "error"));
             return Ok(());
         }
     };
-
-    let mut diagnostics = Vec::new();
-    if let Some(registry_path) = parsed.options.get("--registry") {
-        let path = Path::new(registry_path);
-        if path.exists() {
-            let registry = read_registry(path)?;
-            for diagnostic in validate(&ast, &registry) {
-                let line = diagnostic.line.max(1);
-                let col = diagnostic.col.max(1);
-                diagnostics.push(diagnostic_json(
-                    line,
-                    col,
-                    line,
-                    col + 1,
-                    &diagnostic.message,
-                    if diagnostic.is_warning {
-                        "warning"
-                    } else {
-                        "error"
-                    },
-                ));
-            }
+    // Même refus que la compilation : l'éditeur ne doit pas accepter ce que `cui` refusera.
+    if !engine::is_engine_target(&ast) {
+        diagnostics.push(diagnostic_json(&file, 1, 1, 1, 2, &missing_import_message(), "error"));
+    } else if let Err(errors) = engine::compile(&ast, &file, "check") {
+        for e in errors {
+            diagnostics.push(diagnostic_json(&file, e.line.max(1), e.col.max(1), e.line.max(1), e.col.max(1) + 1, &e.message, "error"));
         }
     }
     println!("[{}]", diagnostics.join(","));
     Ok(())
 }
 
-fn compile_file(cui_path: &Path, out_dir: &Path, registry: &Registry) -> Result<(), String> {
+// Diagnostic au format des compilateurs (cliquable dans un éditeur) : `fichier:ligne:colonne: error: message`.
+fn diagnostic_line(file: &str, line: usize, col: usize, severity: &str, message: &str) -> String {
+    format!("{file}:{}:{}: {severity}: {message}", line.max(1), col.max(1))
+}
+
+// Message d'un fichier sans `import "orosmo/ui"` (seule cible depuis la suppression de l'interface héritée `UI::View`).
+fn missing_import_message() -> String {
+    format!("missing `import \"{}\"`: it is the only target of the interface language (the legacy UI::View target was removed)", engine::IMPORT)
+}
+
+// Compile un source `.cui` en mémoire : (en-tête, implémentation) ou la liste des diagnostics `fichier:ligne:colonne`.
+pub fn compile_source(source: &str, display: &str, stem: &str) -> Result<(String, String), Vec<String>> {
+    let tokens = Lexer::new(source)
+        .tokenize()
+        .map_err(|err| vec![diagnostic_line(display, err.line, err.col, "error", &err.message)])?;
+    let ast = parser::parse(tokens, source).map_err(|err| vec![diagnostic_line(display, err.line, err.col, "error", &err.message)])?;
+    if !engine::is_engine_target(&ast) {
+        return Err(vec![diagnostic_line(display, 1, 1, "error", &missing_import_message())]);
+    }
+    engine::compile(&ast, display, stem)
+        .map(|out| (out.header, out.source))
+        .map_err(|errors| {
+            errors
+                .iter()
+                .map(|e| diagnostic_line(display, e.line, e.col, "error", &e.message))
+                .collect()
+        })
+}
+
+fn compile_file(cui_path: &Path, out_dir: &Path) -> Result<(), String> {
     let source = fs::read_to_string(cui_path)
         .map_err(|err| format!("failed to read {}: {err}", cui_path.display()))?;
     let stem = cui_path
@@ -262,32 +188,47 @@ fn compile_file(cui_path: &Path, out_dir: &Path, registry: &Registry) -> Result<
     let header_path = out_dir.join(format!("{stem}.gen.h"));
     let cpp_path = out_dir.join(format!("{stem}.gen.cpp"));
 
-    write_redirect(out_dir, cui_path)?;
-
     let current_hash = source_hash(&source);
-    if read_stored_hash(&header_path).as_deref() == Some(current_hash.as_str()) {
+    if read_stored_hash(&header_path).as_deref() == Some(current_hash.as_str()) && cpp_path.is_file() {
         println!("[cui] {} unchanged, skipping", file_name(cui_path));
         return Ok(());
     }
 
-    let tokens = Lexer::new(&source)
-        .tokenize()
-        .map_err(|err| format!("[cui] ERROR parsing {}: {}", cui_path.display(), err))?;
-    let ast = parser::parse(tokens)
-        .map_err(|err| format!("[cui] ERROR parsing {}: {}", cui_path.display(), err))?;
-    let diagnostics = validate(&ast, registry);
-    for diagnostic in &diagnostics {
-        eprintln!("[cui] {}: {}", file_name(cui_path), diagnostic);
+    let display = cui_path.display().to_string();
+    let (header, implementation) = match compile_source(&source, &display, stem) {
+        Ok(out) => out,
+        Err(diagnostics) => {
+            for d in &diagnostics {
+                eprintln!("{d}");
+            }
+            // Rien n'est écrit pour un source invalide (ni en-tête, ni redirection) : l'ancien code généré disparaît aussi, pour
+            // que le build échoue au lieu de compiler une version périmée.
+            let _ = fs::remove_file(&header_path);
+            let _ = fs::remove_file(&cpp_path);
+            return Err(format!("[cui] {} error(s) in {}", diagnostics.iter().filter(|d| d.contains(": error: ")).count(), display));
+        }
+    };
+    let invalidate_cache = || {
+        let _ = fs::remove_file(&header_path);
+        let _ = fs::remove_file(&cpp_path);
+    };
+    if let Err(err) = write_redirect(out_dir, cui_path) {
+        invalidate_cache();
+        return Err(err);
     }
-    if diagnostics.iter().any(|diagnostic| diagnostic.fatal()) {
-        return Err(format!("[cui] ERROR validating {}", cui_path.display()));
+    // Publie l'en-tête (sans hash) puis le .gen.cpp avant d'enregistrer le hash du cache : un échec partiel invalide le cache.
+    if let Err(err) = fs::write(&header_path, &header) {
+        invalidate_cache();
+        return Err(format!("failed to write {}: {err}", header_path.display()));
     }
-
-    let (header, implementation) = Generator::new(registry, file_name(cui_path)).generate(&ast)?;
-    fs::write(&header_path, format!("{HASH_TAG} {current_hash}\n{header}"))
-        .map_err(|err| format!("failed to write {}: {err}", header_path.display()))?;
-    fs::write(&cpp_path, implementation)
-        .map_err(|err| format!("failed to write {}: {err}", cpp_path.display()))?;
+    if let Err(err) = fs::write(&cpp_path, &implementation) {
+        invalidate_cache();
+        return Err(format!("failed to write {}: {err}", cpp_path.display()));
+    }
+    if let Err(err) = fs::write(&header_path, format!("{HASH_TAG} {current_hash}\n{header}")) {
+        invalidate_cache();
+        return Err(format!("failed to write {}: {err}", header_path.display()));
+    }
     println!(
         "[cui] {} -> {}, {}",
         file_name(cui_path),
@@ -314,15 +255,6 @@ fn write_redirect(out_dir: &Path, cui_path: &Path) -> Result<(), String> {
     )
     .map_err(|err| format!("failed to write {}: {err}", redirect_path.display()))?;
     Ok(())
-}
-
-fn read_registry(path: &Path) -> Result<Registry, String> {
-    if !path.exists() {
-        return Err(format!("Error: registry not found: {}", path.display()));
-    }
-    let text = fs::read_to_string(path)
-        .map_err(|err| format!("failed to read {}: {err}", path.display()))?;
-    registry_from_json(&text)
 }
 
 fn source_hash(source: &str) -> String {
@@ -354,13 +286,16 @@ struct ParsedArgs {
     positionals: Vec<String>,
 }
 
-fn parse_args(args: &[String]) -> ParsedArgs {
+fn parse_args(args: &[String]) -> Result<ParsedArgs, String> {
     let mut parsed = ParsedArgs::default();
     let mut index = 0usize;
     while index < args.len() {
         let arg = &args[index];
         match arg.as_str() {
-            "--headers" | "--output" | "--registry" => {
+            "--headers" | "--registry" => {
+                return Err(format!("{arg} was removed with the legacy UI::View target (`import \"{}\"` needs no registry)", engine::IMPORT));
+            }
+            "--output" => {
                 if let Some(value) = args.get(index + 1) {
                     parsed.options.insert(arg.clone(), value.clone());
                     index += 2;
@@ -379,7 +314,7 @@ fn parse_args(args: &[String]) -> ParsedArgs {
             }
         }
     }
-    parsed
+    Ok(parsed)
 }
 
 fn required_opt<'a>(options: &'a BTreeMap<String, String>, name: &str) -> Result<&'a str, String> {
@@ -391,6 +326,7 @@ fn required_opt<'a>(options: &'a BTreeMap<String, String>, name: &str) -> Result
 }
 
 fn diagnostic_json(
+    file: &str,
     line: usize,
     col: usize,
     end_line: usize,
@@ -399,7 +335,8 @@ fn diagnostic_json(
     severity: &str,
 ) -> String {
     format!(
-        "{{\"line\":{},\"col\":{},\"endLine\":{},\"endCol\":{},\"message\":\"{}\",\"severity\":\"{}\"}}",
+        "{{\"file\":\"{}\",\"line\":{},\"col\":{},\"endLine\":{},\"endCol\":{},\"message\":\"{}\",\"severity\":\"{}\"}}",
+        json_escape(file),
         line,
         col,
         end_line,
@@ -425,6 +362,6 @@ fn file_name(path: &Path) -> String {
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  cui scan --headers <dir> --output <registry.json>\n  cui build --registry <registry.json> --output <dir> <file.cui>...\n  cui run --headers <dir> --output <dir> <file.cui>...\n  cui redirect --output <dir> <file.cui>...\n  cui check [--registry <registry.json>] [--stdin] <file.cui>"
+        "Usage:\n  cui run --output <dir> <file.cui>...\n  cui redirect --output <dir> <file.cui>...\n  cui check [--stdin] <file.cui>\n  cui spec        components, modifiers and theme properties (JSON, for editors)\nEvery .cui file starts with `import \"orosmo/ui\"`."
     );
 }

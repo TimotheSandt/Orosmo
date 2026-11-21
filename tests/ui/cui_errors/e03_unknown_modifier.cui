@@ -1,0 +1,6 @@
+// expect: 5:19: error: 'Label' has no modifier 'colour' (modifiers: width, height, margin, align, span, id, tooltip, visible, enabled, style, variant, overflow, textAlign, onHover, onFocus)
+import "orosmo/ui"
+
+view V {
+    Label("hello").colour("#ff0000")
+}

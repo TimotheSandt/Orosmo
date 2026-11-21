@@ -1,11 +1,11 @@
-#include <engine/core/error.hpp>
+#include <orosmo/core/error.hpp>
 
 #include <atomic>
 #include <cstdlib>
 
-#include "Utilities/Logger.h"
+#include <orosmo/core/log.hpp>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 const char *toString(ErrorCode code) noexcept
@@ -62,4 +62,4 @@ void assertFailed(const char *expression, const char *message, std::source_locat
     std::abort();
 }
 
-} // namespace engine::core
+} // namespace orosmo::core

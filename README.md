@@ -1,14 +1,16 @@
-# ProceduralGeneration
+# Orosmo
 
-Moteur de jeu 3D et 2D en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec une interface décrite dans un langage maison (`.cui`) précompilé en C++. Le premier produit visé est un générateur de terrain et de planètes procédural.
+**Orosmo** est un moteur de jeu 3D et 2D en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec une interface décrite dans un langage maison (`.cui`) précompilé en C++. Le premier produit visé est un générateur de terrain et de planètes procédural.
 
-> Travail en cours : l'architecture et les API évoluent. Spécification, checklist et plan : [docs/](docs/README.md). Règles de travail : [CLAUDE.md](CLAUDE.md).
+> Première release utilisable : M3 (guide : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)). L'architecture évolue encore ;
+> les changements incompatibles sont listés dans [docs/releases/](docs/releases/). Spécification, checklist et plan : [docs/](docs/README.md). Règles de travail : [CLAUDE.md](CLAUDE.md).
 
 ## Prérequis
 
 - **Compilateur** : GCC 13+ ou Clang 17+ (testé : GCC 13.3, Linux), MSVC 2022 / MinGW sous Windows.
 - **Outils** : GNU Make, CMake, Rust (`cargo`, pour `tools/cui-rs` et `tools/engine-init-rs`), Python 3 (contrôles et comparaison d'images).
-- **Pilotes** : OpenGL 4.3+ et Vulkan ; couches de validation Vulkan conseillées.
+- **Pilotes** : OpenGL 4.3+ avec `glClipControl` (OpenGL 4.5 ou `GL_ARB_clip_control`, présent sur les pilotes actuels) ; Vulkan à
+  partir de M4, couches de validation conseillées.
 - **Dépendances** : glfw3, glm, stb, freetype, vulkan, shaderc, glad (v1), msdfgen, nlohmann-json (JSON), doctest (tests) — liste dans [vcpkg.json](vcpkg.json).
 
 ## Compiler
@@ -53,9 +55,14 @@ make all-debug
 | `python3 tools/compare_png.py A.png B.png` | Compare deux images (tolérance, budget de pixels, image de différence) |
 | `python3 -m unittest discover -s tests/tools` | Tests des outils Python |
 | `make debug` / `make release` | Archives du moteur dans `lib/<type>/` |
-| `make all-debug` / `make all-release` | Moteur → `apps/demo/engine/` → démo |
-| `make sync-demo` | Copie le moteur construit dans `apps/demo/engine/` |
-| `make dist` / `make engine-tool` | Paquet du moteur / outil `engine init` |
+| `make all-debug` / `make all-release` | Moteur → `apps/demo/orosmo/` → démo |
+| `make sync-demo` | Copie le moteur construit dans `apps/demo/orosmo/` |
+| `make dist` / `make engine-tool` | Paquet du moteur / outil `orosmo init` |
+| `make terrain-gen` / `make terrain-gen-check` | Générateur en ligne de commande (TOOL-02) / son déterminisme et ses codes de retour |
+| `make viewer-run ARGS="--seed 42 --preset mountains"` / `make viewer-capture` | Visualiseur de terrain (TOOL-01) / images sans fenêtre, thèmes sombre et clair |
+| `make gallery-run` / `make gallery-capture` | Galerie de l'interface : chaque widget, conteneur, événement et thème (exemple) |
+| `make cui-test` | Tests du compilateur du langage d'interface (cargo test + entrées invalides de bout en bout) |
+| `make e2e-init` | De bout en bout depuis le paquet : `orosmo init`, compilation, lancement, exemples (BLD-02) |
 | `make clean` / `make fclean` / `make demo-fclean` | Nettoyage |
 | `sh tools/check-repo.sh` | Contrôle d'hygiène du dépôt (binaires, casse, CRLF) |
 | `sh tools/format_sources.sh` | Formatage (`clang-format`) |
@@ -63,9 +70,9 @@ make all-debug
 ## Organisation
 
 ```
-include/      en-têtes publics du moteur, par module (Graphics, UI, Noise, Profiler, Utilities, Benchmark)
-src/          implémentations, même découpage ; README.md par module
-apps/demo/    application de démonstration (sources, Makefile, installeurs, benchmark)
+include/orosmo/  en-têtes publics du moteur, un dossier par module : core, platform, rhi, renderer, world, ui
+src/          implémentations, même découpage (src/rhi/<backend>/ pour les API graphiques) ; README.md par module
+apps/         demo (terrain orosmo::world + panneau de performances), terrain_viewer, terrain_gen, ui_gallery, minimal, core_demo, rhi_demo
 tests/        tests (doctest) et tests des outils Python (tests/tools)
 shaders/      shaders GLSL (copiés vers <bin>/res/shader/)
 res/          polices, icône (copiés vers <bin>/res/)
@@ -74,13 +81,14 @@ tools/        précompilateur .cui (cui-rs), outil engine-init-rs, SDK (engine-s
 docs/         spécification, plan, rapports (voir docs/README.md)
 ```
 
-Le moteur compile en bibliothèques statiques (`libgraphics.a`, `libui.a`, `libnoise.a`, `libprofiler.a`, `libutilities.a`, `libthirdparty.a`, `libbenchmark.a`) ; la démo les relie via `apps/demo/engine/`.
+Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libworld.a`, `libui.a`, `libthirdparty.a`) ; la démo les relie via `apps/demo/orosmo/`.
 
 ## Documentation
 
 - Vision, checklist, architecture : [docs/](docs/README.md)
-- Backends graphiques : [docs/GRAPHICS_BACKENDS.md](docs/GRAPHICS_BACKENDS.md)
-- Langage d'interface : [docs/UI_DSL_Spec.md](docs/UI_DSL_Spec.md)
+- Couche graphique (RHI) : [docs/RHI.md](docs/RHI.md)
+- **Utiliser le moteur depuis une release** (`orosmo init`, paquet, projet minimal, stabilité de l'API) : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)
+- Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `orosmo/ui`)
 - Nettoyage M00 : [docs/CLEANUP_PLAN.md](docs/CLEANUP_PLAN.md), [docs/releases/M00.md](docs/releases/M00.md)
 
 ## Licence

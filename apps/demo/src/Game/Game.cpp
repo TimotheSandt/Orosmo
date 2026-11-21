@@ -5,13 +5,15 @@
 
 #include <utility>
 
-#include "Utilities.h"
+#include <orosmo/core/paths.hpp>
 #include "UI/Views/PerformanceView.gen.h"
-#include "engine/renderer/image.hpp"
+#include "orosmo/renderer/draw_list.hpp"
+#include "orosmo/renderer/image.hpp"
 
 
-namespace rd = engine::renderer;
-namespace rhi = engine::rhi;
+namespace rd = orosmo::renderer;
+using orosmo::core::Profiler;
+namespace rhi = orosmo::rhi;
 
 namespace
 {
@@ -27,7 +29,7 @@ constexpr float kHeadlessStep = 1.0f / 60.0f;
 
 Game::Game(bool headlessMode) : headless(headlessMode) {}
 
-engine::core::Result<std::unique_ptr<Game>> Game::create(bool headless)
+orosmo::core::Result<std::unique_ptr<Game>> Game::create(bool headless)
 {
     std::unique_ptr<Game> game(new Game(headless));
     if (auto r = game->createGraphics(); !r)
@@ -37,10 +39,10 @@ engine::core::Result<std::unique_ptr<Game>> Game::create(bool headless)
     return game;
 }
 
-engine::core::Result<> Game::createGraphics()
+orosmo::core::Result<> Game::createGraphics()
 {
-    using engine::core::ErrorCode;
-    using engine::core::makeError;
+    using orosmo::core::ErrorCode;
+    using orosmo::core::makeError;
     LOG_TRACE("Initializing window");
     rhi::DeviceDesc desc;
     desc.backend = rhi::Backend::kOpenGL;
@@ -92,25 +94,30 @@ engine::core::Result<> Game::createGraphics()
 
 Game::~Game() { this->stop(); }
 
-engine::core::Result<> Game::init()
+orosmo::core::Result<> Game::init()
 {
     this->refreshViewSize();
 
-    this->camera.setPosition(glm::vec3(0.0f, 1.0f, 0.0f));
+    // Départ au-dessus du sol, regard vers le relief (la hauteur du terrain ne dépend que de la graine).
+    this->camera.setPosition(World::StartPosition(this->terrainSeed));
+    this->camera.setOrientation(World::StartOrientation());
     this->camera.setFovDegrees(75.0f);
     this->camera.setNearPlane(0.1f);
     this->camera.setFarPlane(1000.0f);
     this->camera.setAspect(static_cast<unsigned>(this->viewWidth), static_cast<unsigned>(this->viewHeight));
 
     this->world = std::make_unique<World>();
-    if (auto ready = this->world->Init(*device, *shaders, kShaderDirectory, this->terrainSeed); !ready)
+    // Capture et mode sans fenêtre : chaque image attend toutes les tuiles visibles (image complète, reproductible).
+    const bool waitForTiles = this->headless || !this->captureDirectory.empty();
+    if (auto ready = this->world->Init(*device, *shaders, kShaderDirectory, this->terrainSeed, waitForTiles); !ready)
     {
-        return engine::core::makeError(ready.error().code, "Failed to initialize the world: " + ready.error().message);
+        return orosmo::core::makeError(ready.error().code, "Failed to initialize the world: " + ready.error().message);
     }
 
-    // Initialize UI system
-    UI::Manager::Instance().Init(this->viewWidth, this->viewHeight);
-    UI::Manager::Instance().GetRootContainer()->AddChild(UI::CreatePerformanceView(&window));
+    if (auto created = this->createUi(); !created)
+    {
+        return created;
+    }
 
     LOG_INFO("Game initialized");
     return {};
@@ -135,7 +142,10 @@ void Game::stop()
         this->world->Destroy();
         this->world.reset();
     }
-    UI::Manager::Instance().Shutdown();
+    // L'interface référence la police, qui référence le rendu du texte.
+    ui.reset();
+    font.reset();
+    text.reset();
     // Ordre inverse de la création : tout ce qui référence le périphérique avant lui, la fenêtre en dernier.
     composed.reset();
     uiTarget.reset();
@@ -183,11 +193,12 @@ void Game::run()
             if (!this->beginFrame())
             {
                 LOG_ERROR(1, "Headless: the frame could not be started");
+                this->headlessFrameFailed = true;
                 return;
             }
             Profiler::ProfileGPU("Render", &Game::render, this);
             this->endFrame();
-            if (captureFailed)
+            if (headlessFrameFailed)
             {
                 return;
             }
@@ -281,20 +292,44 @@ void Game::update()
     }
 
     this->world->Update();
-    UI::Manager::Instance().Update(deltaTime, this->viewWidth, this->viewHeight);
+    this->performance.tick(deltaTime, [&]() { return samplePerformance(this->window.GetAverageFPS()); });
+    orosmo::ui::InputFrame input; // le panneau n'est pas interactif : pas d'entrées, seulement le temps écoulé
+    input.deltaTime = deltaTime;
+    this->ui->update(input, {static_cast<float>(this->viewWidth), static_cast<float>(this->viewHeight)});
+}
+
+// Interface : police de l'application (Roboto, taille de base 48 px), thème du panneau (res/themes/hud.json), vue générée par cui.
+orosmo::core::Result<> Game::createUi()
+{
+    using orosmo::core::ErrorCode;
+    using orosmo::core::makeError;
+    this->text = std::make_unique<orosmo::ui::TextRenderer>();
+    if (!this->text->init(static_cast<unsigned>(this->viewWidth), static_cast<unsigned>(this->viewHeight)) ||
+        !this->text->loadFont(GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"), "default", 48))
+    {
+        return makeError(ErrorCode::kNotFound, "UI: cannot load the font " GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"));
+    }
+    this->text->setActiveFont("default");
+    this->font = std::make_unique<orosmo::ui::TextRendererFont>(*this->text);
+    this->ui = std::make_unique<orosmo::ui::Ui>(*this->font);
+    if (auto theme = this->ui->themes().load(GET_RESOURCE_PATH("themes/hud.json")); !theme)
+    {
+        return makeError(theme.error().code, "UI: " + theme.error().message);
+    }
+    this->ui->setRoot(cui::buildPerformanceView(*this->ui, this->performance));
+    return {};
 }
 
 // L'interface se pose sur l'image composée : directement, ou rendue à échelle réduite sur une cible TRANSPARENTE puis composée
 // par-dessus la scène (touches de debug 5 à 8, ancien `Renderer2D::SetRenderScale`) : seule l'interface perd en définition.
-// Si son rendu échoue, le contenu des couches mis en cache par Collect n'existe pas : l'interface redessinera tout à l'image suivante.
+// L'interface (orosmo::ui) produit une liste complète à chaque image : un échec ne laisse rien à invalider.
 bool Game::renderUi(rhi::CommandEncoder &encoder, const rhi::TextureHandle &composedTexture)
 {
     rd::DrawList list;
-    UI::Manager::Instance().Collect(list, this->viewWidth, this->viewHeight);
-    auto failed = [&](const std::string &what, const engine::core::Error &error)
+    this->ui->draw(list);
+    auto failed = [&](const std::string &what, const orosmo::core::Error &error)
     {
         LOG_ERROR(1, what, error.message);
-        UI::Manager::Instance().InvalidateLayers();
         return false;
     };
 
@@ -380,7 +415,7 @@ void Game::render()
     sceneRenderer->setOutputResolution(this->pixelWidth, this->pixelHeight);
     const glm::vec4 clear = window.GetClearColor();
     // Un échec de la scène (pipeline qui ne se lie pas, cible refusée...) rend l'image fausse : elle n'est ni comptée ni capturée.
-    auto keep = [&](engine::core::Result<> r, const char *step)
+    auto keep = [&](orosmo::core::Result<> r, const char *step)
     {
         if (!r && !this->sceneError)
         {
@@ -393,7 +428,8 @@ void Game::render()
     Profiler::ProfileGPU("RenderWorld", [&]() { keep(this->world->Render(*sceneRenderer, this->camera), "world"); });
     Profiler::ProfileGPU("Upscale", [&]() { keep(sceneRenderer->endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame"); });
 
-    Profiler::ProfileGPU("UIUpscale", [&]() { (void)renderUi(encoder, composed.color(0)); });
+    // Interface refusée (liste ou cible invalide) : une partie a pu être encodée, l'image n'est ni comptée ni capturée (ui.png).
+    Profiler::ProfileGPU("UIUpscale", [&]() { this->uiFailed = !renderUi(encoder, composed.color(0)); });
 
     // Présentation : l'image composée est copiée (étirée si la vue n'a pas la taille de la fenêtre) sur le backbuffer.
     (void)sceneRenderer->blit().copy(encoder, composed.color(0), sceneRenderer->blit().linearSampler(), backbuffer, rhi::Format::kRGBA8Unorm, "present");
@@ -408,12 +444,18 @@ void Game::endFrame()
         LOG_ERROR(1, "Frame: ", result.error().message);
     }
     // Image valide : soumise ET scène dessinée sans erreur (sinon la capture lirait une cible incomplète).
-    const bool submitted = result.has_value() && !this->sceneError;
+    const bool submitted = result.has_value() && !this->sceneError && !this->uiFailed;
     this->sceneError.reset();
+    this->uiFailed = false;
 
     if (!submitted)
     {
-        // Image refusée : pas comptée. Pendant une capture, la sortie ne serait pas fiable : on s'arrête en échec.
+        // Image refusée : pas comptée. Sans fenêtre, l'exécution échoue (code de sortie) ; pendant une capture, la sortie ne
+        // serait pas fiable : on s'arrête en échec.
+        if (this->headless)
+        {
+            this->headlessFrameFailed = true;
+        }
         if (!this->captureDirectory.empty())
         {
             this->captureFailed = true;

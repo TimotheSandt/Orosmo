@@ -2,10 +2,13 @@
 // redimensionnement, vsync). Fenêtre invisible ; sans affichage ni pilote OpenGL 4.3, chaque test s'arrête avec un avertissement.
 #include <doctest/doctest.h>
 
+#include <cstdint>
+#include <limits>
+
 #include "support/test_support.hpp"
 #include "rhi/gpu_fixture.hpp"
 
-#include <engine/rhi/shader_compiler.hpp>
+#include <orosmo/rhi/shader_compiler.hpp>
 
 #include <GLFW/glfw3.h>
 
@@ -165,6 +168,62 @@ TEST_SUITE("rhi/opengl/window")
             CHECK(rgba(*b)[2] == (frameIndex == 2 ? 255 : 0)); // le triangle bleu n'atteint que le coin découpé
             REQUIRE(device->present().has_value());
         }
+        CHECK(device->validationErrorCount() == 0);
+    }
+
+    TEST_CASE("a scissor far below the window is flipped without signed overflow and hides the draw")
+    {
+        TestWindow window;
+        SKIP_TEST_IF_NULL(window.handle, "OpenGL 4.3 window");
+        auto device = window.device();
+        SKIP_TEST_IF_NULL(device.get(), "windowed OpenGL 4.3 device");
+        auto vs = createShaderFromGlsl(*device, ShaderStage::kVertex, kFullscreen450Vs, {.name = "vs"});
+        auto fs = createShaderFromGlsl(*device, ShaderStage::kFragment, kBlueFs, {.name = "fs"});
+        REQUIRE(vs.has_value());
+        REQUIRE(fs.has_value());
+        GraphicsPipelineDesc pd;
+        pd.vertex = *vs;
+        pd.fragment = *fs;
+        pd.colorTargets.assign(1, ColorTargetState{});
+        pd.raster.cull = CullMode::kNone;
+        auto pipe = device->createGraphicsPipeline(pd);
+        REQUIRE(pipe.has_value());
+
+        auto frame = device->beginFrame();
+        REQUIRE(frame.has_value());
+        auto encoder = device->createCommandEncoder();
+        RenderPassDesc pass;
+        pass.colors = {{.texture = *frame, .clearColor = {0.0f, 1.0f, 0.0f, 1.0f}}};
+        encoder->beginRenderPass(pass);
+        encoder->setPipeline(*pipe);
+        // y + height dépasse INT32_MAX : le retournement vers la fenêtre se fait en 64 bits (UBSan le vérifie).
+        encoder->setScissor({0, std::numeric_limits<std::int32_t>::max(), 8, 8});
+        encoder->draw(3);
+        encoder->endRenderPass();
+        REQUIRE(device->submit(std::move(encoder)).has_value());
+
+        TextureCopy px;
+        px.offset = {2, 2, 0};
+        px.size = {1, 1, 1};
+        auto a = device->readTexture(*frame, px);
+        REQUIRE(a.has_value());
+        CHECK(rgba(*a)[2] == 0); // ciseau hors de la cible : rien n'est dessiné
+        REQUIRE(device->present().has_value());
+
+        // Hauteur immense : le rectangle couvre toute la hauteur de la cible (intersection avant conversion), le dessin passe.
+        auto next = device->beginFrame();
+        REQUIRE(next.has_value());
+        auto tall = device->createCommandEncoder();
+        pass.colors = {{.texture = *next, .clearColor = {0.0f, 1.0f, 0.0f, 1.0f}}};
+        tall->beginRenderPass(pass);
+        tall->setPipeline(*pipe);
+        tall->setScissor({0, 0, 8, std::numeric_limits<std::uint32_t>::max()});
+        tall->draw(3);
+        tall->endRenderPass();
+        REQUIRE(device->submit(std::move(tall)).has_value());
+        auto b = device->readTexture(*next, px);
+        REQUIRE(b.has_value());
+        CHECK(rgba(*b)[2] == 255);
         CHECK(device->validationErrorCount() == 0);
     }
 

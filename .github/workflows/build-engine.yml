@@ -189,7 +189,7 @@ jobs:
 
       # ── Build dist package + engine tool ───────────────────────────────────────
       # 'engine-tool' builds debug+release archives, packages the dist/ into a zip,
-      # and compiles the engine binary (downloads the pkg from GitHub at runtime).
+      # and compiles the orosmo tool (downloads the pkg from GitHub at runtime).
       - name: Build engine tool (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -210,15 +210,15 @@ jobs:
 
       # ── Upload artifacts ───────────────────────────────────────────────────────
       # 'make engine-tool' already produces:
-      #   dist/engine-<platform>[.exe]      — standalone engine tool binary
-      #   dist/engine-pkg-<platform>.zip    — engine package (headers, libs, make/, tools/)
+      #   dist/orosmo-<platform>[.exe]      — standalone orosmo tool binary
+      #   dist/orosmo-pkg-<platform>.zip    — engine package (headers, libs, make/, tools/)
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: engine-${{ matrix.platform }}
+          name: orosmo-${{ matrix.platform }}
           path: |
-            dist/engine-${{ matrix.platform }}${{ matrix.exe_ext }}
-            dist/engine-pkg-${{ matrix.platform }}.zip
+            dist/orosmo-${{ matrix.platform }}${{ matrix.exe_ext }}
+            dist/orosmo-pkg-${{ matrix.platform }}.zip
           retention-days: 7
 
   # ── GitHub Release ─────────────────────────────────────────────────────────────
@@ -252,31 +252,38 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Engine ${{ github.ref_name }}"
+          name: "Orosmo ${{ github.ref_name }}"
           body: |
-            ## C++ Game Engine — ${{ github.ref_name }}
+            ## Orosmo — ${{ github.ref_name }}
 
             ### Download
 
-            | Platform | Engine tool | Engine package |
+            | Platform | Orosmo tool | Engine package |
             |---|---|---|
-            | Windows x64 (MinGW) | `engine-windows-x64.exe` | `engine-pkg-windows-x64.zip` |
-            | Linux x64           | `engine-linux-x64`       | `engine-pkg-linux-x64.zip`   |
-            | Linux arm64         | `engine-linux-arm64`     | `engine-pkg-linux-arm64.zip` |
-            | macOS arm64 (M1+)   | `engine-macos-arm64`     | `engine-pkg-macos-arm64.zip` |
-            | macOS x64 (Intel)   | `engine-macos-x64`       | `engine-pkg-macos-x64.zip`   |
+            | Windows x64 (MinGW) | `orosmo-windows-x64.exe` | `orosmo-pkg-windows-x64.zip` |
+            | Linux x64           | `orosmo-linux-x64`       | `orosmo-pkg-linux-x64.zip`   |
+            | Linux arm64         | `orosmo-linux-arm64`     | `orosmo-pkg-linux-arm64.zip` |
+            | macOS arm64 (M1+)   | `orosmo-macos-arm64`     | `orosmo-pkg-macos-arm64.zip` |
+            | macOS x64 (Intel)   | `orosmo-macos-x64`       | `orosmo-pkg-macos-x64.zip`   |
 
-            **Engine tool** — downloads the engine package automatically from this release.
+            **Orosmo tool** (`orosmo`) — downloads the engine package automatically from this release.
             ```sh
             # New project
-            ./engine init myproject
+            ./orosmo init myproject
             cd myproject && make install && make debug
 
             # Update existing project
-            cd myproject && ./engine update
+            cd myproject && ./orosmo update
             ```
 
-            **Engine package** — headers, pre-built libs (debug + release), `engine.mk`, CUI tools, and `vcpkg.json`.
-            Downloaded automatically by `engine init` / `engine update`. Run `make install` to populate `vcpkg_installed/`.
+            **Engine package** — public headers (`include/orosmo/{core,platform,rhi,renderer,world,ui}`), pre-built static
+            libraries (debug + release: `libcore`, `libplatform`, `librhi`, `librenderer`, `libworld`, `libui`, …), `engine.mk`,
+            the interface language compiler `cui`, the RHI shaders (`shaders/rhi`), the default font and themes (`res/`),
+            two examples buildable from the package (`examples/terrain_gen`, `examples/terrain_viewer`) and `vcpkg.json`.
+            Downloaded automatically by `orosmo init` / `orosmo update`, or used offline: `orosmo init --package orosmo-pkg-<platform>.zip myproject`.
+            Run `make install` in the project to populate `vcpkg_installed/`.
+
+            **Graphics API**: the RHI has an OpenGL 4.3+ backend (with `glClipControl`: OpenGL 4.5 or `GL_ARB_clip_control`);
+            Vulkan arrives in M4, Metal later. **Guide**: `docs/USING_THE_ENGINE.md`; incompatible changes: `docs/releases/`.
           generate_release_notes: true
           files: dist/*

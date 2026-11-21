@@ -1,11 +1,11 @@
-#include <engine/core/tasks.hpp>
+#include <orosmo/core/tasks.hpp>
 
 #include <algorithm>
 #include <exception>
 
-#include "Utilities/Logger.h"
+#include <orosmo/core/log.hpp>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 namespace detail
@@ -237,4 +237,4 @@ void TaskSystem::parallelFor(std::size_t count, std::size_t grain, const std::fu
     group.wait();
 }
 
-} // namespace engine::core
+} // namespace orosmo::core

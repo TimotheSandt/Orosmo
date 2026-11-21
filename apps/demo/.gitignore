@@ -8,6 +8,8 @@ Generated/
 logs/
 *.log
 imgui.ini
-engine/
+orosmo/
 vcpkg_installed/
 config.local.mk
+/orosmo
+/orosmo.exe

@@ -1,0 +1,16 @@
+// Toutes les erreurs d'un fichier sont signalées, pas seulement la première.
+// expect: 9:9: error: 'Button' requires the argument 'text'
+// expect: 10:19: error: '.width(.huge)': expected a number, .fit or .fill
+// expect: 11:9: error: 'ScrollView' takes exactly one child (put several in a VBox)
+import "orosmo/ui"
+
+view V {
+    VBox {
+        Button()
+        Label("x").width(.huge)
+        ScrollView {
+            Label("a")
+            Label("b")
+        }
+    }
+}

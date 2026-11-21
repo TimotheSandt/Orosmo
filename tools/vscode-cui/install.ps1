@@ -10,7 +10,7 @@ param(
     [switch]$List
 )
 
-$extDirName  = "proceduralgeneration.cui-language-0.2.0"
+$extDirName  = "orosmo.cui-language-0.3.0"
 $profilesDir = "$env:APPDATA\Code\User\profiles"
 $storageJson = "$env:APPDATA\Code\User\globalStorage\storage.json"
 
@@ -70,8 +70,8 @@ if ($Profile -ne "") {
     $timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 
     $entry = @{
-        identifier = @{ id = "proceduralgeneration.cui-language" }
-        version    = "0.2.0"
+        identifier = @{ id = "orosmo.cui-language" }
+        version    = "0.3.0"
         location   = @{ "`$mid" = 1; fsPath = $dest; _sep = 1; external = $external; path = $posixPath; scheme = "file" }
         metadata   = @{
             isApplicationScoped = $false
@@ -85,8 +85,8 @@ if ($Profile -ne "") {
 
     if (Test-Path $regFile) {
         $reg = Get-Content $regFile -Raw -Encoding UTF8 | ConvertFrom-Json
-        # Remove any existing entry for our extension
-        $reg = @($reg | Where-Object { $_.identifier.id -ne "proceduralgeneration.cui-language" })
+        # Remove any existing entry for our extension (including the one published under the old project name)
+        $reg = @($reg | Where-Object { $_.identifier.id -notin @("orosmo.cui-language", "proceduralgeneration.cui-language") })
     } else {
         $reg = @()
     }

@@ -11,20 +11,19 @@
 #   VCPKG_INSTALLED_ROOT, VCPKG_TRIPLET
 #
 # ── Output ────────────────────────────────────────────────────────────────────
-#   lib/<build>/libgraphics.a    lib/<build>/libui.a
-#   lib/<build>/libnoise.a       lib/<build>/libprofiler.a
-#   lib/<build>/libcore.a  lib/<build>/libplatform.a  lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libutilities.a   lib/<build>/libthirdparty.a
+#   lib/<build>/libui.a
+#   lib/<build>/libcore.a  lib/<build>/libplatform.a  lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libworld.a lib/<build>/libthirdparty.a
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
-#   dist/engine-<platform>/
-#     dist/         — engine package (embedded in engine[.exe] as a zip)
+#   dist/pkg-<platform>/          — staging, zipped into dist/orosmo-pkg-<platform>.zip
+#     (the zip is also embedded in the orosmo[.exe] tool)
 #       includes/   — public headers
 #       lib/        — debug + release archives
 #       make/       — engine.mk
 #       tools/      — CUI precompiler
 #
-# ── engine tool (make engine-tool) ───────────────────────────────────────────
-#   dist/engine-<platform>/engine[.exe]  — scaffolding tool (engine init/update)
+# ── orosmo tool (make engine-tool) ───────────────────────────────────────────
+#   dist/orosmo-<platform>[.exe]  — scaffolding tool (orosmo init/update)
 
 SHELL := sh
 
@@ -108,15 +107,18 @@ DEPFLAGS ?= -MMD -MP
 WERROR     ?= 1
 WARNFLAGS  ?= -Wall -Wextra -Wpedantic $(if $(filter 1,$(WERROR)),-Werror)
 SANFLAGS   := $(if $(SANITIZE),-fsanitize=$(SANITIZE) -fno-omit-frame-pointer)
+# Déterminisme (TEST-03) : pas de fusion a*b+c en FMA (Clang la fait par défaut sur arm64 ; GCC en mode ISO non) : la génération
+# procédurale donne les mêmes octets sur tous les systèmes.
+FPFLAGS    := -ffp-contract=off
 
 ifeq ($(BUILD_TYPE),debug)
-    CFLAGS   ?= $(WARNFLAGS) $(SANFLAGS) $(ARCH_FLAG) -O1 -g -DDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
+    CFLAGS   ?= $(WARNFLAGS) $(SANFLAGS) $(FPFLAGS) $(ARCH_FLAG) -O1 -g -DDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
     CXXFLAGS ?= -std=c++23 $(CFLAGS)
 else ifeq ($(BUILD_TYPE),dev)
-    CFLAGS   ?= $(WARNFLAGS) $(SANFLAGS) $(ARCH_FLAG) -g3 -O0 -DDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
+    CFLAGS   ?= $(WARNFLAGS) $(SANFLAGS) $(FPFLAGS) $(ARCH_FLAG) -g3 -O0 -DDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
     CXXFLAGS ?= -std=c++23 $(CFLAGS)
 else
-    CFLAGS   ?= $(WARNFLAGS) $(SANFLAGS) $(ARCH_FLAG) -O3 -DNDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
+    CFLAGS   ?= $(WARNFLAGS) $(SANFLAGS) $(FPFLAGS) $(ARCH_FLAG) -O3 -DNDEBUG $(PLATFORM_DEFINES) -DGLM_ENABLE_EXPERIMENTAL
     CXXFLAGS ?= -std=c++23 $(CFLAGS)
 endif
 
@@ -135,50 +137,38 @@ INCLUDES ?= \
     -isystem $(VCPKG_INSTALLED_DIR)/include
 
 # ── Subsystem archives ────────────────────────────────────────────────────────
-LIB_GRAPHICS   := $(LIB_DIR)/$(BUILD_TYPE)/libgraphics.a
 LIB_UI         := $(LIB_DIR)/$(BUILD_TYPE)/libui.a
-LIB_NOISE      := $(LIB_DIR)/$(BUILD_TYPE)/libnoise.a
-LIB_PROFILER   := $(LIB_DIR)/$(BUILD_TYPE)/libprofiler.a
-LIB_UTILITIES  := $(LIB_DIR)/$(BUILD_TYPE)/libutilities.a
 LIB_CORE       := $(LIB_DIR)/$(BUILD_TYPE)/libcore.a
 LIB_PLATFORM   := $(LIB_DIR)/$(BUILD_TYPE)/libplatform.a
 LIB_RHI        := $(LIB_DIR)/$(BUILD_TYPE)/librhi.a
 LIB_RENDERER   := $(LIB_DIR)/$(BUILD_TYPE)/librenderer.a
+LIB_WORLD      := $(LIB_DIR)/$(BUILD_TYPE)/libworld.a
 LIB_THIRDPARTY := $(LIB_DIR)/$(BUILD_TYPE)/libthirdparty.a
-LIB_BENCHMARK  := $(LIB_DIR)/$(BUILD_TYPE)/libbenchmark.a
 
-ENGINE_LIBS := $(LIB_GRAPHICS) $(LIB_UI) $(LIB_NOISE) $(LIB_PROFILER) $(LIB_UTILITIES) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_THIRDPARTY)
+ENGINE_LIBS := $(LIB_UI) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_WORLD) $(LIB_THIRDPARTY)
 
 # ── Per-subsystem sources ─────────────────────────────────────────────────────
-Graphics_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/Graphics   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-UI_SRCS         := $(shell find $(LIBRARIES_SRC_DIR)/UI         -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-Noise_SRCS      := $(shell find $(LIBRARIES_SRC_DIR)/Noise      -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-Profiler_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/Profiler   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-Utilities_SRCS  := $(shell find $(LIBRARIES_SRC_DIR)/Utilities  -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+UI_SRCS         := $(shell find $(LIBRARIES_SRC_DIR)/ui         -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Core_SRCS       := $(shell find $(LIBRARIES_SRC_DIR)/core       -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Platform_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/platform   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Rhi_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/rhi        -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Renderer_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/renderer   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+World_SRCS      := $(shell find $(LIBRARIES_SRC_DIR)/world      -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 ThirdParty_SRCS := $(shell find $(LIBRARIES_SRC_DIR)/ThirdParty -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
-Benchmark_SRCS  := $(shell find $(LIBRARIES_SRC_DIR)/Benchmark  -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 
 obj_from_src = \
     $(patsubst $(LIBRARIES_SRC_DIR)/%.cpp,$(OBJ_DIR_TYPE)/Libraries/%.o,$(filter %.cpp,$(1))) \
     $(patsubst $(LIBRARIES_SRC_DIR)/%.c,$(OBJ_DIR_TYPE)/Libraries/%.o,$(filter %.c,$(1)))
 
-Graphics_OBJS   := $(call obj_from_src,$(Graphics_SRCS))
 UI_OBJS         := $(call obj_from_src,$(UI_SRCS))
-Noise_OBJS      := $(call obj_from_src,$(Noise_SRCS))
-Profiler_OBJS   := $(call obj_from_src,$(Profiler_SRCS))
-Utilities_OBJS  := $(call obj_from_src,$(Utilities_SRCS))
 Core_OBJS       := $(call obj_from_src,$(Core_SRCS))
 Platform_OBJS   := $(call obj_from_src,$(Platform_SRCS))
 Rhi_OBJS        := $(call obj_from_src,$(Rhi_SRCS))
 Renderer_OBJS   := $(call obj_from_src,$(Renderer_SRCS))
+World_OBJS      := $(call obj_from_src,$(World_SRCS))
 ThirdParty_OBJS := $(call obj_from_src,$(ThirdParty_SRCS))
-Benchmark_OBJS  := $(call obj_from_src,$(Benchmark_SRCS))
 
-ALL_ENGINE_OBJS := $(Graphics_OBJS) $(UI_OBJS) $(Noise_OBJS) $(Profiler_OBJS) $(Utilities_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(ThirdParty_OBJS) $(Benchmark_OBJS)
+ALL_ENGINE_OBJS := $(UI_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(World_OBJS) $(ThirdParty_OBJS)
 
 # ── Git remote detection ──────────────────────────────────────────────────────
 # Reads the 'origin' remote and extracts the host and owner/repo slug.
@@ -202,31 +192,31 @@ CARGO_TARGET_DIR  ?= build/cargo-tools
 
 ifeq ($(DETECTED_OS),Windows)
     CUI_EXE         := $(CARGO_TARGET_DIR)/release/cui.exe
-    ENGINE_INIT_EXE := $(CARGO_TARGET_DIR)/release/engine.exe
+    ENGINE_INIT_EXE := $(CARGO_TARGET_DIR)/release/orosmo.exe
 else
     CUI_EXE         := $(CARGO_TARGET_DIR)/release/cui
-    ENGINE_INIT_EXE := $(CARGO_TARGET_DIR)/release/engine
+    ENGINE_INIT_EXE := $(CARGO_TARGET_DIR)/release/orosmo
 endif
 
 _CUI_INSTALLED := tools/$(notdir $(CUI_EXE))
 
 # ── Distribution paths ─────────────────────────────────────────────────────────
 # Layout (GitHub release artifacts):
-#   dist/engine-<platform>[.exe]      — standalone engine tool binary
-#   dist/engine-pkg-<platform>.zip    — engine package (headers, libs, tools)
+#   dist/orosmo-<platform>[.exe]      — standalone orosmo tool binary
+#   dist/orosmo-pkg-<platform>.zip    — engine package (headers, libs, tools)
 #
 # Staging directory (build-time only, not uploaded):
 #   dist/pkg-<platform>/              — package contents before zipping
 _DIST_STAGING    := dist/pkg-$(ENGINE_PLATFORM)
 DIST_PKG_DIR     := $(_DIST_STAGING)
-ENGINE_PKG_ZIP   := dist/engine-pkg-$(ENGINE_PLATFORM).zip
+ENGINE_PKG_ZIP   := dist/orosmo-pkg-$(ENGINE_PLATFORM).zip
 ENGINE_PAYLOAD_DIR := build/engine-payload
 ENGINE_PAYLOAD_ZIP := $(ENGINE_PAYLOAD_DIR)/engine-$(ENGINE_PLATFORM)-$(shell date +%s%N 2>/dev/null || date +%s).zip
 
 ifeq ($(DETECTED_OS),Windows)
-    ENGINE_TOOL_EXE := dist/engine-$(ENGINE_PLATFORM).exe
+    ENGINE_TOOL_EXE := dist/orosmo-$(ENGINE_PLATFORM).exe
 else
-    ENGINE_TOOL_EXE := dist/engine-$(ENGINE_PLATFORM)
+    ENGINE_TOOL_EXE := dist/orosmo-$(ENGINE_PLATFORM)
 endif
 
 # ── Main targets ──────────────────────────────────────────────────────────────
@@ -266,33 +256,15 @@ all debug release dev: $(ENGINE_LIBS) $(_CUI_INSTALLED)
 	@echo "Engine [$(BUILD_TYPE)] — all archives up to date"
 
 engine: install-demo
-	@echo "Engine fully prepared in apps/demo/engine/"
+	@echo "Engine fully prepared in apps/demo/orosmo/"
 
 # ── Archive rules ─────────────────────────────────────────────────────────────
-$(LIB_GRAPHICS): $(Graphics_OBJS)
-	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Graphics]    $(BUILD_TYPE): $@"
-
+# Archive recréée (rm) : `ar rcs` garderait les objets des fichiers supprimés (ancienne interface src/ui/legacy/).
 $(LIB_UI): $(UI_OBJS)
 	@mkdir -p "$(dir $@)"
+	rm -f $@
 	$(AR) rcs $@ $^
 	@echo "Archived [UI]          $(BUILD_TYPE): $@"
-
-$(LIB_NOISE): $(Noise_OBJS)
-	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Noise]       $(BUILD_TYPE): $@"
-
-$(LIB_PROFILER): $(Profiler_OBJS)
-	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Profiler]    $(BUILD_TYPE): $@"
-
-$(LIB_UTILITIES): $(Utilities_OBJS)
-	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Utilities]   $(BUILD_TYPE): $@"
 
 $(LIB_CORE): $(Core_OBJS)
 	@mkdir -p "$(dir $@)"
@@ -314,15 +286,15 @@ $(LIB_RENDERER): $(Renderer_OBJS)
 	$(AR) rcs $@ $^
 	@echo "Archived [Renderer]    $(BUILD_TYPE): $@"
 
+$(LIB_WORLD): $(World_OBJS)
+	@mkdir -p "$(dir $@)"
+	$(AR) rcs $@ $^
+	@echo "Archived [World]       $(BUILD_TYPE): $@"
+
 $(LIB_THIRDPARTY): $(ThirdParty_OBJS)
 	@mkdir -p "$(dir $@)"
 	$(AR) rcs $@ $^
 	@echo "Archived [ThirdParty]  $(BUILD_TYPE): $@"
-
-$(LIB_BENCHMARK): $(Benchmark_OBJS)
-	@mkdir -p "$(dir $@)"
-	$(AR) rcs $@ $^
-	@echo "Archived [Benchmark]   $(BUILD_TYPE): $@"
 
 # ── Compilation rules ─────────────────────────────────────────────────────────
 $(OBJ_DIR_TYPE)/Libraries/%.o: $(LIBRARIES_SRC_DIR)/%.cpp
@@ -362,6 +334,7 @@ dist: $(_CUI_INSTALLED)
 	@$(MAKE) -f mk/engine.mk BUILD_TYPE=debug debug
 	@$(MAKE) -f mk/engine.mk BUILD_TYPE=release release
 ifeq ($(DETECTED_OS),Windows)
+	@powershell -NoProfile -Command "if (Test-Path '$(_DIST_STAGING)') { Remove-Item -Path '$(_DIST_STAGING)' -Recurse -Force }"  # comme Unix : pas de fichier d'un paquet précédent
 	@mkdir -p "$(DIST_PKG_DIR)/includes" "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
 	          "$(DIST_PKG_DIR)/make" "$(DIST_PKG_DIR)/tools"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination '$(DIST_PKG_DIR)/includes' -Recurse -Force"
@@ -372,6 +345,15 @@ ifeq ($(DETECTED_OS),Windows)
 	@powershell -NoProfile -Command "Copy-Item -Path 'vcpkg.json' -Destination '$(DIST_PKG_DIR)' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist.gitignore' -Destination '$(DIST_PKG_DIR)/.gitignore' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist-README.md' -Destination '$(DIST_PKG_DIR)/README.md' -Force"
+	@mkdir -p "$(DIST_PKG_DIR)/res" "$(DIST_PKG_DIR)/examples/terrain_gen" "$(DIST_PKG_DIR)/examples/terrain_viewer"
+	@powershell -NoProfile -Command "Copy-Item -Path 'shaders' -Destination '$(DIST_PKG_DIR)/shaders' -Recurse -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'res/fonts','res/themes' -Destination '$(DIST_PKG_DIR)/res' -Recurse -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'apps/terrain_gen/main.cpp','apps/terrain_gen/Makefile','apps/terrain_gen/README.md' -Destination '$(DIST_PKG_DIR)/examples/terrain_gen' -Force"
+	@mkdir -p "$(DIST_PKG_DIR)/examples/minimal"
+	@powershell -NoProfile -Command "Copy-Item -Path 'apps/minimal/main.cpp','apps/minimal/Makefile' -Destination '$(DIST_PKG_DIR)/examples/minimal' -Force"
+	@mkdir -p "$(DIST_PKG_DIR)/examples/ui_gallery"
+	@powershell -NoProfile -Command "Copy-Item -Path 'apps/ui_gallery/src','apps/ui_gallery/Makefile','apps/ui_gallery/README.md' -Destination '$(DIST_PKG_DIR)/examples/ui_gallery' -Recurse -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'apps/terrain_viewer/src','apps/terrain_viewer/presets','apps/terrain_viewer/Makefile','apps/terrain_viewer/README.md' -Destination '$(DIST_PKG_DIR)/examples/terrain_viewer' -Recurse -Force"
 else
 	@rm -rf "$(_DIST_STAGING)"
 	@mkdir -p "$(DIST_PKG_DIR)/lib/debug" "$(DIST_PKG_DIR)/lib/release" \
@@ -384,16 +366,28 @@ else
 	@cp vcpkg.json      "$(DIST_PKG_DIR)/vcpkg.json"
 	@cp tools/engine-sdk/dist.gitignore "$(DIST_PKG_DIR)/.gitignore"
 	@cp tools/engine-sdk/dist-README.md "$(DIST_PKG_DIR)/README.md"
+	@# Shaders du RHI, police et thèmes (ressources des programmes) ; exemples compilables depuis le paquet (BLD-02).
+	@cp -r shaders "$(DIST_PKG_DIR)/shaders"
+	@mkdir -p "$(DIST_PKG_DIR)/res" "$(DIST_PKG_DIR)/examples/terrain_gen" "$(DIST_PKG_DIR)/examples/terrain_viewer"
+	@cp -r res/fonts res/themes "$(DIST_PKG_DIR)/res/"
+	@cp apps/terrain_gen/main.cpp apps/terrain_gen/Makefile apps/terrain_gen/README.md "$(DIST_PKG_DIR)/examples/terrain_gen/"
+	@mkdir -p "$(DIST_PKG_DIR)/examples/minimal" "$(DIST_PKG_DIR)/examples/ui_gallery"
+	@cp apps/minimal/main.cpp apps/minimal/Makefile "$(DIST_PKG_DIR)/examples/minimal/"
+	@cp -r apps/ui_gallery/src apps/ui_gallery/Makefile apps/ui_gallery/README.md "$(DIST_PKG_DIR)/examples/ui_gallery/"
+	@cp -r apps/terrain_viewer/src apps/terrain_viewer/presets apps/terrain_viewer/Makefile apps/terrain_viewer/README.md \
+	       "$(DIST_PKG_DIR)/examples/terrain_viewer/"
 endif
 	@echo "Engine package ready: $(DIST_PKG_DIR)/"
 
 # ── zip helper ────────────────────────────────────────────────────────────────
 # Zips from the *parent* of _DIST_STAGING so the top-level dir in the archive
 # is the staging dir name (e.g. pkg-linux-x64/...).  strip_top_dir() in Rust
-# strips that prefix, placing files directly under engine/.
+# strips that prefix, placing files directly under orosmo/.
 _STAGING_PARENT := $(patsubst %/,%,$(dir $(_DIST_STAGING)))
 _STAGING_NAME   := $(notdir $(_DIST_STAGING))
+# The archive is removed first: `zip -r` updates an existing archive and would keep files deleted from the engine.
 define _DO_ZIP
+	rm -f "$(abspath $(1))" && \
 	cd "$(_STAGING_PARENT)" && \
 	if command -v zip >/dev/null 2>&1; then \
 	    zip -r "$(abspath $(1))" "$(_STAGING_NAME)/"; \
@@ -432,7 +426,7 @@ $(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) dist
 	ENGINE_HOMEPAGE="$(ENGINE_HOMEPAGE)" \
 	ENGINE_PAYLOAD_ZIP="$(abspath $(ENGINE_PAYLOAD_ZIP))" \
 	CARGO_TARGET_DIR="$(abspath $(CARGO_TARGET_DIR))" \
-	    $(CARGO) build --release --manifest-path $(TOOLS_WORKSPACE) --bin engine
+	    $(CARGO) build --release --manifest-path $(TOOLS_WORKSPACE) --bin orosmo
 	@echo "Built: $(ENGINE_INIT_EXE)"
 
 $(ENGINE_TOOL_EXE): $(ENGINE_INIT_EXE)
@@ -444,61 +438,65 @@ else
 endif
 	@echo "Engine tool: $@"
 
+.PHONY: print-platform
+print-platform:
+	@echo $(ENGINE_PLATFORM)
+
 .PHONY: engine-tool
 engine-tool: $(ENGINE_PKG_ZIP) $(ENGINE_TOOL_EXE)
 	@echo "engine-tool done: $(ENGINE_TOOL_EXE)  $(ENGINE_PKG_ZIP)"
 
 # ── Sync demo ─────────────────────────────────────────────────────────────────
-# Copies the current BUILD_TYPE artifacts directly into apps/demo/engine/.
+# Copies the current BUILD_TYPE artifacts directly into apps/demo/orosmo/.
 # Faster than install-demo: no dist packaging step required.
 # vcpkg_installed/ is linked (not copied) to avoid duplicating hundreds of MB.
 .PHONY: sync-demo
 sync-demo: $(ENGINE_LIBS) $(_CUI_INSTALLED)
-	@mkdir -p apps/demo/engine/lib/$(BUILD_TYPE) apps/demo/engine/make apps/demo/engine/tools
+	@mkdir -p apps/demo/orosmo/lib/$(BUILD_TYPE) apps/demo/orosmo/make apps/demo/orosmo/tools
 ifeq ($(DETECTED_OS),Windows)
-	@mkdir -p apps/demo/engine/includes
-	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination 'apps/demo/engine/includes' -Recurse -Force"
+	@mkdir -p apps/demo/orosmo/includes
+	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination 'apps/demo/orosmo/includes' -Recurse -Force"
 else
-	@rm -rf apps/demo/engine/includes && cp -r $(INCLUDES_BASE) apps/demo/engine/includes
+	@rm -rf apps/demo/orosmo/includes && cp -r $(INCLUDES_BASE) apps/demo/orosmo/includes
 endif
 ifeq ($(DETECTED_OS),Windows)
-	@for f in $(ENGINE_LIBS); do powershell -NoProfile -Command "Copy-Item -Path '$$f' -Destination 'apps/demo/engine/lib/$(BUILD_TYPE)' -Force"; done
-	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination 'apps/demo/engine/make' -Force"
-	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination 'apps/demo/engine/tools' -Force"
+	@for f in $(ENGINE_LIBS); do powershell -NoProfile -Command "Copy-Item -Path '$$f' -Destination 'apps/demo/orosmo/lib/$(BUILD_TYPE)' -Force"; done
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination 'apps/demo/orosmo/make' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination 'apps/demo/orosmo/tools' -Force"
 else
-	@cp $(ENGINE_LIBS) apps/demo/engine/lib/$(BUILD_TYPE)/
-	@cp tools/engine-sdk/engine.mk apps/demo/engine/make/
-	@cp "$(_CUI_INSTALLED)" apps/demo/engine/tools/
+	@cp $(ENGINE_LIBS) apps/demo/orosmo/lib/$(BUILD_TYPE)/
+	@cp tools/engine-sdk/engine.mk apps/demo/orosmo/make/
+	@cp "$(_CUI_INSTALLED)" apps/demo/orosmo/tools/
 endif
-	@if [ ! -e apps/demo/engine/vcpkg_installed ]; then \
+	@if [ ! -e apps/demo/orosmo/vcpkg_installed ]; then \
 	    if [ "$(DETECTED_OS)" = "Windows" ]; then \
 	        TARGET=$$(cd "$(VCPKG_INSTALLED_ROOT)" && pwd -W 2>/dev/null || echo "$(VCPKG_INSTALLED_ROOT)"); \
-	        MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\engine\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
-	            || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
+	        MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\orosmo\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
+	            || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
 	    else \
-	        ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
+	        ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
 	    fi; \
 	fi
-	@echo "Synced [$(BUILD_TYPE)] → apps/demo/engine/"
+	@echo "Synced [$(BUILD_TYPE)] → apps/demo/orosmo/"
 
 # ── Install demo ──────────────────────────────────────────────────────────────
 # Full dist-based install: packages headers, both build types, and tools.
 install-demo: engine-tool
 ifeq ($(DETECTED_OS),Windows)
-	@mkdir -p apps/demo/engine
-	@powershell -NoProfile -Command "Copy-Item -Path '$(DIST_PKG_DIR)/*' -Destination 'apps/demo/engine' -Recurse -Force"
+	@mkdir -p apps/demo/orosmo
+	@powershell -NoProfile -Command "Copy-Item -Path '$(DIST_PKG_DIR)/*' -Destination 'apps/demo/orosmo' -Recurse -Force"
 else
-	@rm -rf apps/demo/engine
-	@cp -r "$(DIST_PKG_DIR)" apps/demo/engine
+	@rm -rf apps/demo/orosmo
+	@cp -r "$(DIST_PKG_DIR)" apps/demo/orosmo
 endif
 	@if [ "$(DETECTED_OS)" = "Windows" ]; then \
 	    TARGET=$$(cd "$(VCPKG_INSTALLED_ROOT)" && pwd -W 2>/dev/null || echo "$(VCPKG_INSTALLED_ROOT)"); \
-	    MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\engine\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
-	        || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
+	    MSYS_NO_PATHCONV=1 cmd /c "mklink /J \"apps\\demo\\orosmo\\vcpkg_installed\" \"$$TARGET\"" 2>/dev/null \
+	        || ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
 	else \
-	    ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/engine/vcpkg_installed; \
+	    ln -sfn "../../../$(VCPKG_INSTALLED_ROOT)" apps/demo/orosmo/vcpkg_installed; \
 	fi
-	@echo "Engine installed to apps/demo/engine/"
+	@echo "Engine installed to apps/demo/orosmo/"
 
 # ── vcpkg dependency management ───────────────────────────────────────────────
 # install:   no args → install all vcpkg.json deps (incremental)

@@ -1,0 +1,8 @@
+// expect: 7:15: error: 'Label' has no event 'onChange' (events: onHover, onFocus)
+import "orosmo/ui"
+import "state.hpp"
+
+view V {
+    @Mutable var state: State
+    Label("x").onChange(state.changed)
+}

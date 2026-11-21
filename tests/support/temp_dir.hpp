@@ -3,7 +3,7 @@
 #pragma once
 
 #include <doctest/doctest.h>
-#include <engine/core/system.hpp>
+#include <orosmo/core/system.hpp>
 
 #include <atomic>
 #include <cstdint>
@@ -24,7 +24,7 @@ struct TempDir
         for (;;)
         {
             path = std::filesystem::temp_directory_path() /
-                   (prefix + "_" + std::to_string(engine::core::system::processId()) + "_" + std::to_string(counter.fetch_add(1)));
+                   (prefix + "_" + std::to_string(orosmo::core::system::processId()) + "_" + std::to_string(counter.fetch_add(1)));
             std::error_code ec;
             if (std::filesystem::create_directory(path, ec))
             {

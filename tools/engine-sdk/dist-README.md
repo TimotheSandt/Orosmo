@@ -1,4 +1,4 @@
-# C++ Game Engine — Release Package
+# Orosmo — Release Package
 
 This directory is a self-contained engine release. It contains everything needed
 to build a game project against this engine without having to compile the engine itself.
@@ -6,17 +6,29 @@ to build a game project against this engine without having to compile the engine
 ## Contents
 
 ```
-engine-<platform>/
-  includes/          — Public C++ headers (Graphics, UI, Noise, Profiler, …)
+orosmo-pkg-<platform>/
+  includes/
+    orosmo/          — public API (stable within a minor version, see docs/USING_THE_ENGINE.md in the repository):
+      core/            errors (std::expected), logger, tasks, file watcher, reflection + JSON/MessagePack serialization
+      platform/        Window, InputManager (names still PascalCase: will change, see "API stability")
+      rhi/             graphics abstraction (Device, CommandEncoder, handles) — OpenGL 4.3+ backend before M4
+      renderer/        SceneRenderer, Camera (reverse-Z), CanvasRenderer, DrawList, TerrainRenderer, DebugDraw
+      world/           deterministic noise, terrain tiles, LOD streaming, GPU noise, export (PNG16/EXR/OBJ/glTF/STL)
+      ui/              orosmo::ui — widgets, layout, JSON themes, reflected parameter panels
   lib/
-    debug/           — Static archives built with debug flags
-    release/         — Static archives built with optimisations
-  make/
-    engine.mk        — Include this in your project Makefile
-  tools/
-    cui[.exe]        — CUI precompiler (converts .cui DSL files to C++)
-  .gitignore         — Ignores everything here (all files are generated)
-  README.md          — This file
+    debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libworld, libui, … (link them all:
+                       ENGINE_LINK_LIBS)
+  make/engine.mk     — include this in your project Makefile
+  tools/cui[.exe]    — interface language compiler (.cui → C++), run by engine.mk
+  shaders/rhi/       — GLSL 450 shaders of the RHI renderers: copy them next to your executable (res/shader/rhi/)
+  res/fonts, res/themes — default font and the dark/light themes of orosmo::ui
+  examples/
+    minimal/         — the smallest program linked to the engine (one terrain tile, no window): make -C examples/minimal
+    terrain_gen/     — command-line generator (no window, no GPU):  make -C examples/terrain_gen
+    terrain_viewer/  — viewer with a .cui control panel:            make -C examples/terrain_viewer
+    ui_gallery/      — every widget, layout, event and theme of orosmo::ui: make -C examples/ui_gallery
+  vcpkg.json         — third-party dependencies (make install in a project created by `orosmo init`)
+  .gitignore, README.md
 ```
 
 ## Prerequisites
@@ -24,7 +36,7 @@ engine-<platform>/
 | Tool | Minimum version | Notes |
 |------|----------------|-------|
 | GNU Make | 4.x | `make --version` |
-| g++ or clang++ | C++23 support | set `CXX` to override |
+| g++ or clang++ | g++ 13 (verified: 13.3) or clang++ 17 | C++23 (`std::expected`, `<stacktrace>`); set `CXX` to override |
 | vcpkg | any | only needed for `make install` |
 
 No Python, no Rust toolchain required. The CUI precompiler ships as a native binary.
@@ -34,7 +46,7 @@ No Python, no Rust toolchain required. The CUI precompiler ships as a native bin
 ### 1 — Point your Makefile at the engine
 
 ```makefile
-ENGINE_DIR   := path/to/engine-<platform>   # this directory
+ENGINE_DIR   := path/to/orosmo-pkg-<platform>   # this directory
 GAME_SRC_DIR := src
 BUILD_TYPE   ?= release                      # debug | dev | release
 include $(ENGINE_DIR)/make/engine.mk
@@ -59,7 +71,7 @@ SHELL := /bin/sh
 CXX ?= g++
 CC  ?= gcc
 
-ENGINE_DIR   := path/to/engine-<platform>
+ENGINE_DIR   := path/to/orosmo-pkg-<platform>
 GAME_SRC_DIR := src
 BUILD_TYPE   ?= release
 
@@ -140,3 +152,16 @@ Recommended workflows:
 
 - **Submodule**: reference the engine source repository as a submodule and run
   `make -f mk/engine.mk dist` locally. Keep the `dist/` output gitignored.
+
+## Examples and resources
+
+Both examples build from this package alone: `ENGINE_DIR` defaults to the package root when they sit in `examples/`.
+A program that renders needs the RHI shaders and, for `orosmo::ui`, a font and a theme at run time: the examples copy
+`shaders/rhi`, `res/fonts` and `res/themes` into `bin/res/`. The template project created by `orosmo init` does the same.
+
+## Interface language
+
+`.cui` files (each starts with `import "orosmo/ui"`, the only target) describe an `orosmo::ui` panel: widgets, two-way bindings (`$state.value`),
+events that name C++ functions (`.onClick(state.regenerate)`), local theme overrides by token. Errors are reported as
+`file:line:column: error: message`, and `#line` directives map C++ errors back to the `.cui` line. Specification:
+`docs/UI_LANGUAGE.md` in the engine repository.

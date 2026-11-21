@@ -27,7 +27,7 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 
 **A1. Le plan suppose un seul backend existant, il y en a deux.** `docs/05` (M2) migre le rendu OpenGL « derrière le RHI », M4 écrit Vulkan. Dans le code, un backend Vulkan fonctionnel (2 500 lignes) et un OpenGL existent déjà derrière une autre abstraction (`IGraphicsDevice`). Proposition : M2 réécrit l'interface (handles, `CommandEncoder`, groupes) et porte **les deux** backends existants à parité de tests ; M4 devient parité/VMA/cache disque/validation. Alternative : conserver l'abstraction actuelle jusqu'à M3. *Décision demandée.*
 
-**A2. Arborescence et nommage de `docs/03`.** `docs/03` §2 : `include/engine/<module>/*.hpp`, fichiers en `snake_case`, fonctions en `camelCase`. Le code : `include/<Module>/*.h`, fichiers en `PascalCase`, méthodes en `PascalCase` (`GetInstance`), macros `LOG_*`. `CLAUDE.md` demande de suivre l'existant. Proposition : **garder l'existant**, l'inscrire dans `CLAUDE.md`, et n'ajouter `engine/` que si l'API est publiée à des tiers. *Choix demandé.*
+**A2. Arborescence et nommage de `docs/03`.** `docs/03` §2 : `include/orosmo/<module>/*.hpp`, fichiers en `snake_case`, fonctions en `camelCase`. Le code : `include/<Module>/*.h`, fichiers en `PascalCase`, méthodes en `PascalCase` (`GetInstance`), macros `LOG_*`. `CLAUDE.md` demande de suivre l'existant. Proposition : **garder l'existant**, l'inscrire dans `CLAUDE.md`, et n'ajouter `engine/` que si l'API est publiée à des tiers. *Choix demandé.*
 
 **A3. `-Wall -Wextra -Wpedantic -Werror`** (`docs/03` §7) : le build actuel émet 6 avertissements (`-Wmissing-field-initializers`). Proposition : corriger puis activer `-Werror` en M0 pour le code du dépôt (pas pour les bibliothèques tierces).
 
@@ -69,7 +69,7 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 | A6 | TOOL-03 passe en P0 | `docs/02` modifié ; fait en M0 (capture PNG + outil de comparaison) |
 | A11 | Corriger en temps voulu, selon le plan | Rien changé : capacités Vulkan fausses et minuterie GPU factice restent notées (`GAPS.md`) pour M2/M4 |
 
-**A17. Quand migrer l'arborescence et les noms vers `docs/03` ?** Option 1 (recommandée) : au fil des jalons, comme écrit plus haut. Option 2 : une migration de masse dédiée avant M1 (`include/engine/<module>/*.hpp`, fichiers en `snake_case`, fonctions en `camelCase`), qui touche ~19 000 lignes mécaniquement mais fait passer tous les `#include` et tous les appels ; je la ferais avec les tests comme filet. *Dis-moi si tu préfères l'option 2.*
+**A17. Quand migrer l'arborescence et les noms vers `docs/03` ?** Option 1 (recommandée) : au fil des jalons, comme écrit plus haut. Option 2 : une migration de masse dédiée avant M1 (`include/orosmo/<module>/*.hpp`, fichiers en `snake_case`, fonctions en `camelCase`), qui touche ~19 000 lignes mécaniquement mais fait passer tous les `#include` et tous les appels ; je la ferais avec les tests comme filet. *Dis-moi si tu préfères l'option 2.*
 
 **A18. Windows et macOS dans la CI.** Les jobs correspondants de `.github/workflows/ci.yml` n'ont jamais tourné (aucune machine disponible pendant M0) : ils sont en `continue-on-error`. Quand tu auras vu un premier run, dis-moi ce qu'il affiche pour que je corrige et retire ce drapeau.
 
@@ -107,7 +107,7 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 
 ## Décisions prises en M1 bis, à valider par l'auteur
 
-**A24. Comment `core` utilise le système sans dépendre de `platform`.** Le plan dit « sortir `<windows.h>` de `Logger`, `Utilities` et `FPSCounter` derrière une interface `platform` ». Or `core` est la couche 0 (`docs/03` §1) : il ne peut rien inclure au-dessus. J'ai donc fait un **port** : `include/engine/core/system.hpp` (dans `core`) *déclare* six fonctions, `src/platform/system.cpp` (nouvelle archive `libplatform.a`) les *définit*. Aucun `#include` ne remonte, aucun enregistrement à l'exécution, comportement identique, et une plateforme sans implémentation échoue à l'édition de liens. Alternative écartée : une interface virtuelle que `platform` installerait au démarrage (plus souple pour les tests, mais l'application doit penser à l'installer, et `Logger` fonctionnerait sans elle avec des valeurs par défaut différentes). **`std::filesystem` reste** dans `Vfs`, `FileWatcher`, `Config`, `TraceRecorder` : c'est la bibliothèque standard, pas un appel système, et l'envelopper dans `platform` ajouterait une couche sans autre bénéfice aujourd'hui. À confirmer ; si tu veux l'envelopper, c'est un jalon de plus.
+**A24. Comment `core` utilise le système sans dépendre de `platform`.** Le plan dit « sortir `<windows.h>` de `Logger`, `Utilities` et `FPSCounter` derrière une interface `platform` ». Or `core` est la couche 0 (`docs/03` §1) : il ne peut rien inclure au-dessus. J'ai donc fait un **port** : `include/orosmo/core/system.hpp` (dans `core`) *déclare* six fonctions, `src/platform/system.cpp` (nouvelle archive `libplatform.a`) les *définit*. Aucun `#include` ne remonte, aucun enregistrement à l'exécution, comportement identique, et une plateforme sans implémentation échoue à l'édition de liens. Alternative écartée : une interface virtuelle que `platform` installerait au démarrage (plus souple pour les tests, mais l'application doit penser à l'installer, et `Logger` fonctionnerait sans elle avec des valeurs par défaut différentes). **`std::filesystem` reste** dans `Vfs`, `FileWatcher`, `Config`, `TraceRecorder` : c'est la bibliothèque standard, pas un appel système, et l'envelopper dans `platform` ajouterait une couche sans autre bénéfice aujourd'hui. À confirmer ; si tu veux l'envelopper, c'est un jalon de plus.
 
 **A25. Le RHI s'enregistre auprès des couches du dessous.** Pour supprimer les deux violations restantes (`Profiler` → RHI, `Window` → RHI), le haut dépend du bas par des interfaces définies en bas : `IGpuTimerFactory` (`include/Profiler/GpuTimer.h`) et `IWindowGraphicsBinding` (`include/Graphics/Presentation/WindowGraphicsBinding.h`). `BindGraphicsRuntime` installe les deux ; ils restent installés après `ClearGraphicsRuntime` (sinon `Window::Close` ne libérerait plus le contexte). C'est le même principe que celui prévu pour les backends (`docs/03` §3) ; à confirmer pour les futures couches (renderer, assets).
 
@@ -124,3 +124,60 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 **Décision de l'auteur (2026-11-19) : option (2), repère Vulkan** (origine en haut, profondeur 0..1). À appliquer en M3, pas avant : le backend OpenGL passera par `glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE)` (OpenGL 4.5 ou `GL_ARB_clip_control`, à lire dans `Capabilities`, règle 11 ; le minimum 4.3 est relevé ou un repli est écrit), les shaders, les images de référence (`scene.png`, `ui.png`) et les tests de parité devront être régénérés avec la nouvelle orientation, et `docs/RHI.md` et `docs/03` mis à jour. Le lot A à C (M2) suit encore le repère OpenGL : c'est l'état livré.
 
 **A28. Migration du rendu hérité : décidé par l'auteur le 2026-11-18** : **réécriture explicite** des façades (`Mesh`, `Texture`, `ShaderProgram`, `RenderTarget`, `Renderer`, `Sprite`, texte, interface) sur `Device` / `CommandEncoder`, **sans adaptateur d'état implicite** (l'option « adaptateur provisoire » a été écartée : elle n'aurait pas été rattachée à un jalon et risquait de devenir permanente). L'API publique des façades change ; la démo peut être incomplète entre sous-lots ; plan en B1-B6 dans `docs/05`.
+
+**A29. Découpage de M3 (proposé et appliqué par l'IA le 2026-11-19).** M3 regroupe le terrain, le rendu, les outils,
+l'interface et la release utilisable. Comme pour M2 (A27), il est découpé en six lots A à F (`docs/05`), dans l'ordre des
+dépendances : bruit → tuiles → rendu → export/outils → interface et visualiseur → release. La portée ne change pas ; l'ordre et
+le découpage sont une organisation du travail. Conséquence de A26 (repère Vulkan) appliquée au lot C : le backend OpenGL exige
+`glClipControl` (OpenGL 4.5 ou `GL_ARB_clip_control`, lu dans les extensions) ; sans lui, la création du périphérique est
+refusée avec un message clair (CLAUDE.md règle 11 : refus propre). *À contester si l'auteur préfère un autre ordre.*
+
+**A26 : appliqué en M3 lot C (2026-11-19).** Repère du RHI : origine en haut à gauche (ligne 0 = haut), NDC y = +1 en haut,
+profondeur [0, 1] ; OpenGL par `glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE)`, la fenêtre étant traitée à part par le backend ;
+caméra en reverse-Z (plan lointain infini par défaut). Précision sur « repère Vulkan » : la profondeur [0, 1] et l'origine en haut
+sont celles de Vulkan ; pour le sens de y en NDC, le RHI garde y = +1 en haut (projections usuelles de glm), et le backend Vulkan
+retournera le viewport (hauteur négative, cœur 1.1). Les images de référence sont restées identiques au pixel près.
+
+
+**A13 : choix par défaut appliqués en M3 lot E (2026-11-19), à contester.** Faute de réponse et pour livrer UI-05 : (a) le
+compilateur **reste en Rust** (`tools/cui-rs`, déjà construit par le build et la CI ; le passage en C++ reste possible plus tard) ;
+(b) un événement s'écrit comme un **modificateur qui nomme une fonction** : `.onClick(state.regenerate)` (appel direct) ou
+`.onClick(regenerate)` (action retrouvée par nom dans le registre de l'interface, docs/03 §12) — cohérent avec la grammaire
+existante ; jamais une expression ; (c) l'en-tête généré porte le nom du **fichier** (`st.cui` → `st.gen.h`), défaut corrigé pour
+les deux cibles ; (d) `docs/UI_LANGUAGE.md` (français) est la spécification de la nouvelle cible `orosmo/ui` ;
+`docs/UI_DSL_Spec.md` (anglais) reste celle de la cible héritée `UI::View`, utilisée par la démo.
+
+**A30. Deux modules d'interface pendant la migration (M3 lot E, 2026-11-19).** Le module `orosmo::ui` de `docs/03` (§1 couche
+`ui`, §12) est écrit à neuf (`include/orosmo/ui/`, `src/ui/`) : widgets, mise en page, thèmes JSON, événements, liste de dessin. Il
+ne remplace pas encore l'interface héritée `UI::` de la démo (`PerformanceView`, parité de `ui.png`) : comme pour le rendu en M2,
+l'ancien code reste jusqu'à sa bascule, sous `src/ui/legacy/` (déplacé de `src/UI/` : deux dossiers qui ne diffèrent que par la
+casse sont impossibles sous Windows et macOS). Le langage choisit la cible par `import "orosmo/ui"`. *Proposition : basculer la
+démo et retirer `UI::` dans un jalon ultérieur (M5, avec le batch 2D R2D-01), à confirmer.*
+
+**A31. API de `platform` et version de la release de M3 (2026-11-19, proposition).** Le lot F demande l'API publique figée et
+nommée selon `docs/03` §7. `core`, `rhi`, `renderer`, `world` et `ui` le sont. `platform` (`Window`, `InputManager`) ne l'est pas :
+la renommer casse la cible héritée du langage (`Get` + nom déduit par `generator.rs`) et la démo. Proposition : le guide déclare
+`platform` **provisoire** (`docs/USING_THE_ENGINE.md` §7), le renommage est fait avec la bascule de la démo vers `orosmo::ui`
+(A30), et la release de M3 porte le numéro **v0.3.0** (`mk/config.mk` ; 0.x : un changement mineur peut casser l'API, la liste
+est dans `docs/releases/`). *L'étiquette est posée par l'auteur ; à contester.*
+
+*A30 et A31, suite (2026-11-20)* : à la demande de l'auteur, l'interface héritée `UI::` et la cible `UI::View` du langage sont
+supprimées, et la démo passe sur `orosmo::ui` et `orosmo::world` (nettoyage « Orosmo », `docs/releases/M3.md`). `platform`
+reste provisoire (G96).
+
+**A32. Nom Orosmo : jusqu'où renommer ? (2026-11-20, tranchée).** L'auteur a renommé le projet **Orosmo**. Fait d'abord : nom
+affiché (`mk/config.mk`, bannière de l'outil, README, CLAUDE.md, SDK, extension VS Code, dossier de données `Orosmo/`). Proposition
+initiale : garder l'espace de noms, le dossier des en-têtes et l'outil `engine`, renommer l'outil seulement à M4. **Décision de
+l'auteur (2026-11-20)** : tout renommer tout de suite, aucun projet extérieur n'utilisant encore le moteur : outil `orosmo`
+(`orosmo init`, `orosmo update`, fichiers `orosmo-<plateforme>[.exe]` et `orosmo-pkg-<plateforme>.zip`, branche
+`chore/rename-cli-orosmo`), espace de noms `orosmo::`, en-têtes `include/orosmo/<module>/` (`#include <orosmo/core/log.hpp>`),
+dossier du paquet dans un projet `orosmo/` (`apps/demo/orosmo/` dans le dépôt), import `.cui` `import "orosmo/ui"` (branche
+`chore/rename-namespace-orosmo`). Restent nommés « engine » : les variables de build `ENGINE_*` (`ENGINE_DIR`…), le fichier
+`make/engine.mk` du SDK et les dossiers d'outils `tools/engine-sdk/`, `tools/engine-init-rs/` (internes).
+
+**A33. `generateRegion` hors des limites d'int64 : région vide ou erreur ? (2026-11-20, proposition).** Revue CodeRabbit 3 de la
+PR #8 : une région dont le dernier indice global dépasse int64 est maintenant refusée avant toute allocation
+(`fix/M3-review3-world`). Pour ne pas changer l'API figée de 0.3.x, `generateRegion` renvoie alors un `HeightField` vide
+(largeur et hauteur 0, documenté dans `export.hpp`), que tous les exports refusent ensuite (`kInvalidArgument`). Plus propre :
+`Result<HeightField>` (règle 10), au prix d'un changement incompatible (`terrain-gen`, `terrain-viewer`, une dizaine de tests).
+Proposition : garder le champ vide en 0.3.x et passer à `Result` à M4 avec les autres changements d'API. *À trancher par l'auteur.*

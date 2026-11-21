@@ -1,7 +1,7 @@
 # demo/Makefile — game project build system
 #
 # Works in two modes:
-#   Template mode  (standalone game project): ENGINE_DIR = engine (default)
+#   Template mode  (standalone game project): ENGINE_DIR = orosmo (default)
 #   In-repo mode   (demo/ inside engine repo): override via config.local.mk
 #
 # ── Quick start ───────────────────────────────────────────────────────────────
@@ -30,10 +30,10 @@ VCPKG        ?= vcpkg
 
 # ── Engine integration ────────────────────────────────────────────────────────
 # Defaults for standalone (template) use. In-repo: override via config.local.mk
-#   ENGINE_DIR  ?= engine
+#   ENGINE_DIR  ?= orosmo
 #   _ENGINE_MK  ?= $(ENGINE_DIR)/make/engine.mk
 #   _VCPKG_ROOT ?= vcpkg_installed
-ENGINE_DIR  ?= engine
+ENGINE_DIR  ?= orosmo
 _ENGINE_MK  ?= $(ENGINE_DIR)/make/engine.mk
 _VCPKG_ROOT ?= vcpkg_installed
 
@@ -121,10 +121,11 @@ SRC_DIR  := src
 OBJ_DIR  := obj/$(BUILD_TYPE)
 BIN_DIR  := bin/$(BUILD_TYPE)
 TEST_DIR  ?= tests
-RES_DIR   ?= res
+# Projet créé par `orosmo init` : sans res/ propre, les ressources du paquet (police, thèmes) ; shaders du RHI du paquet.
+RES_DIR   ?= $(if $(wildcard res),res,$(if $(wildcard $(ENGINE_DIR)/res),$(ENGINE_DIR)/res,res))
 # Shaders, copied to $(BIN_DIR)/res/shader (runtime path "res/shader/...").
 # In the engine repo they live at the repository root; see DEMO_ARGS in the root Makefile.
-SHADER_DIR ?=
+SHADER_DIR ?= $(if $(wildcard $(ENGINE_DIR)/shaders),$(ENGINE_DIR)/shaders,)
 
 # ── Build target name ─────────────────────────────────────────────────────────
 ifeq ($(BUILD_TYPE),release)
@@ -161,7 +162,11 @@ endif
 
 # Test sources
 TEST_SRCS   := $(shell find $(TEST_DIR) -type f -name "*.cpp" 2>/dev/null)
-TEST_OBJS   := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/tests/%.o) $(TEST_GAME_OBJS) $(GEN_OBJS)
+# UI-11 : les vues .cui des tests (sauf les cas d'erreur de cui_errors/) sont compilées par cui, puis avec les tests.
+TEST_CUI_SRCS := $(shell find $(TEST_DIR) -type f -name "*.cui" -not -path "*/cui_errors/*" 2>/dev/null)
+TEST_GEN_CPP  := $(patsubst $(TEST_DIR)/%.cui,$(ENGINE_GEN_DIR)/tests/%.gen.cpp,$(TEST_CUI_SRCS))
+TEST_GEN_OBJS := $(TEST_GEN_CPP:$(ENGINE_GEN_DIR)/%.gen.cpp=$(OBJ_DIR)/gen/%.o)
+TEST_OBJS   := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/tests/%.o) $(TEST_GAME_OBJS) $(GEN_OBJS) $(TEST_GEN_OBJS)
 TEST_TARGET := bin/tests/tests$(ENGINE_EXE_EXT)
 
 # Style sources
@@ -169,7 +174,6 @@ BENCH_DIR    := benchmark
 BENCH_SRCS   := $(shell find $(BENCH_DIR) -type f -name "*.cpp" 2>/dev/null)
 BENCH_OBJS   := $(BENCH_SRCS:$(BENCH_DIR)/%.cpp=$(OBJ_DIR)/benchmark/%.o)
 BENCH_TARGET := bin/benchmark/benchmark$(ENGINE_EXE_EXT)
-BENCH_LIB    := $(ENGINE_DIR)/lib/$(BUILD_TYPE)/libbenchmark.a
 
 STYLE_SRCS := $(shell find $(SRC_DIR) $(TEST_DIR) $(BENCH_DIR) -type f \( -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 LINT_FLAGS  := $(filter-out -flto=jobserver,$(ENGINE_CXXFLAGS))
@@ -252,7 +256,18 @@ test: $(TEST_TARGET)
 $(TEST_TARGET): $(TEST_OBJS) $(ENGINE_LIBS) | bin/tests
 	$(CXX) $(ENGINE_CXXFLAGS) $(TEST_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
 
-$(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp
+# Les tests incluent aussi les vues générées de la démo (UI/Views/*.gen.h) : elles doivent exister avant leur compilation.
+$(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp | $(TEST_GEN_CPP) $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
+	@mkdir -p "$(dir $@)"
+	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+
+$(ENGINE_GEN_DIR)/tests/%.gen.cpp: $(TEST_DIR)/%.cui $(_ENG_CUI_TOOL)
+	@mkdir -p "$(dir $@)"
+	$(_ENG_CUI_TOOL) run --output "$(dir $@)" $<
+
+# Règle statique : prioritaire sur $(OBJ_DIR)/gen/%.o (sans -I$(TEST_DIR)) quel que soit make ; GNU make 3.81 (macOS) prend
+# la première règle implicite qui correspond, pas la plus précise.
+$(TEST_GEN_OBJS): $(OBJ_DIR)/gen/tests/%.o: $(ENGINE_GEN_DIR)/tests/%.gen.cpp
 	@mkdir -p "$(dir $@)"
 	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 
@@ -261,11 +276,8 @@ $(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp
 benchmark: $(BENCH_TARGET)
 	@./$(BENCH_TARGET)
 
-$(BENCH_LIB):
-	$(error Missing libbenchmark.a — run 'make sync-demo' from the project root first)
-
-$(BENCH_TARGET): $(BENCH_OBJS) $(BENCH_LIB) | bin/benchmark
-	$(CXX) $(ENGINE_CXXFLAGS) $(BENCH_OBJS) $(BENCH_LIB) -o $@
+$(BENCH_TARGET): $(BENCH_OBJS) $(ENGINE_LIBS) | bin/benchmark
+	$(CXX) $(ENGINE_CXXFLAGS) $(BENCH_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
 
 $(OBJ_DIR)/benchmark/%.o: $(BENCH_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
@@ -463,12 +475,13 @@ info:
 # ── Dependency files ──────────────────────────────────────────────────────────
 -include $(wildcard $(ALL_OBJS:.o=.d))
 -include $(wildcard $(TEST_OBJS:.o=.d))
+-include $(wildcard $(BENCH_OBJS:.o=.d))
 
 # ── Installer (packaging) ─────────────────────────────────────────────────────
 .PHONY: installer create_windows_installer create_linux_installer
 
 BUILD_ARTIFACTS_DIR := build
-TMP_DEB_DIR         := /tmp/proceduralgeneration_deb
+TMP_DEB_DIR         := /tmp/$(PACKAGE)_deb
 
 ifeq ($(ENGINE_OS),Windows)
     INSTALLER_FILE := $(PROJECT_NAME)-$(VERSION)-x64-setup.exe

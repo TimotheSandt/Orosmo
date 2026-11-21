@@ -1,5 +1,5 @@
-# Démo du RHI (M2 lot A) : utilise le SDK moteur synchronisé dans apps/demo/engine (voir `make rhi-demo` à la racine).
-ENGINE_DIR   := ../demo/engine
+# Démo du RHI (M2 lot A) : utilise le SDK moteur synchronisé dans apps/demo/orosmo (voir `make rhi-demo` à la racine).
+ENGINE_DIR   := ../demo/orosmo
 GAME_SRC_DIR := src
 BUILD_TYPE   ?= release
 SHELL        := sh

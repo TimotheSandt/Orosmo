@@ -1,7 +1,7 @@
 # renderer
 
 Couche 3 de `docs/03` : ce qui se construit **sur** le RHI. Archive : `librenderer.a` (`src/renderer/`), API publique
-`include/engine/renderer/`. Dépend de `rhi`, `platform` et `core` seulement. Namespace `engine::renderer`.
+`include/orosmo/renderer/`. Dépend de `rhi`, `platform` et `core` seulement. Namespace `orosmo::renderer`.
 
 Sous-lots B3, B4 et B5 de M2 : la **couche de ressources** qui remplace, objet par objet, les anciennes façades à état global (`Buffer`,
 `Texture`, `RenderTarget`, `ShaderProgram`, `ShaderLibrary`, `Screenshot`, `GPUTimestampQuery`). Elles **coexistent** avec les anciennes
@@ -28,28 +28,30 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | `fullscreen_blit.hpp` | `FullscreenBlit` : copie plein écran par triangle (le RHI n'a pas de commande de blit) ; `draw` respecte le viewport et le ciseau actifs ; `compose` pose une source prémultipliée sur la cible |
 | `upscaling.hpp` | extensions de fin d'image : `IUpscaleMode` (avec `initialize`/`shutdown`), `IAdvancedUpscaleMode`, `IPostProcessPass`, `IFrameGenerationMode`, `BilinearBlitUpscaleMode` |
 | `scene_renderer.hpp` | `SceneRenderer` : cible de scène, groupe de liaison (caméra + lumières, mis à jour avant chaque dessin), `beginFrame` / `setCamera` / `drawMesh` / `endFrame`, échelle de rendu, jitter de Halton (seulement pour un mode exécuté qui le demande), historique (les consommateurs lisent l'image PRÉCÉDENTE, `resetHistory` à la première image et après un redimensionnement), vecteurs de mouvement, profondeur lisible. Un mode de mise à l'échelle n'est exécuté que si `upscalingEnabled()` (sinon copie 1:1), il est initialisé avant d'être activé et arrêté quand il est remplacé ; un mode de génération refusé laisse l'actif en place ; `generatedFrame()` expose son image. Remplace `Renderer` + `Renderer3D` |
+| `debug_draw.hpp` | `DebugDraw` (REN-34) : lignes, boîtes, sphères, repères en coordonnées monde ; désactivé par défaut hors debug (chaque appel revient au premier test) ; dessiné par `SceneRenderer::drawDebug` dans la passe de scène, test de profondeur au choix (shaders `debug_line.*` chargés au premier appel) |
+| `terrain_renderer.hpp` | `TerrainRenderer` (TER-07) : tuiles de terrain déjà maillées (positions relatives à leur origine, normales) dessinées par `SceneRenderer` ; quatre couches (sable, herbe, roche, neige) d'un tableau de textures mélangées selon l'altitude et la pente (`TerrainMaterial`, réfléchi), lues en triplanaire ; couches par défaut générées (déterministes), `setLayers` pour les remplacer. Ne dépend pas de `world` |
 | `shaders/rhi/` | `mesh.vert` / `mesh.frag` (éclairage identique à l'ancien), `blit.vert` / `blit.frag` : GLSL 450 (`set`/`binding`, push constants) |
 
 ### Dessin 2D (B5)
 
 | En-tête | Rôle |
 | --- | --- |
-| `draw_list.hpp` | `DrawList` : liste de commandes **sans dépendance graphique** (rectangle, effacement partiel, série de glyphes MSDF, image de couche, début/fin de couche, découpage), coordonnées logiques en pixels, origine en haut. C'est ce que l'interface produit (`UI::Manager::Collect`, `ComponentBase::Collect`) |
-| `canvas_renderer.hpp` | `CanvasRenderer` : exécute une `DrawList` sur une texture du RHI : mélange alpha (comme l'ancien) pour les rectangles et glyphes, couches à couleur **prémultipliée** composées comme telles (pas de double alpha ; fond du conteneur derrière le contenu, alpha compris), découpages imbriqués par ciseau (calculés en flottants, bornés à la surface), atlas de glyphes mis en cache par identifiant, couches hors écran (défilement, mise à jour partielle ; une couche est gardée tant qu'elle est référencée, même masquée par le découpage, ou dessinée dans une couche gardée ; libérée sinon), tampon de sommets de glyphes envoyé une fois par liste. Erreurs : taille de couche non finie ou trop grande, erreur de l'encodeur pendant le rendu, couche manquante (kNotFound : l'interface doit tout redessiner, `UI::Manager::InvalidateLayers`) |
+| `draw_list.hpp` | `DrawList` : liste de commandes **sans dépendance graphique** (rectangle, effacement partiel, série de glyphes MSDF, image de couche, début/fin de couche, découpage), coordonnées logiques en pixels, origine en haut. C'est ce que l'interface produit (`orosmo::ui::Ui::draw`) |
+| `canvas_renderer.hpp` | `CanvasRenderer` : exécute une `DrawList` sur une texture du RHI : mélange alpha (comme l'ancien) pour les rectangles et glyphes, couches à couleur **prémultipliée** composées comme telles (pas de double alpha ; fond du conteneur derrière le contenu, alpha compris), découpages imbriqués par ciseau (calculés en flottants, bornés à la surface), atlas de glyphes mis en cache par identifiant, couches hors écran (défilement, mise à jour partielle ; une couche est gardée tant qu'elle est référencée, même masquée par le découpage, ou dessinée dans une couche gardée ; libérée sinon), tampon de sommets de glyphes envoyé une fois par liste. Erreurs : taille de couche non finie ou trop grande, erreur de l'encodeur pendant le rendu, couche manquante (kNotFound : l'appelant doit redemander une liste complète) |
 | `shaders/rhi/ui_*.vert/frag` | rectangle, glyphes MSDF, image de couche : GLSL 450, push constants, quad généré par `gl_VertexIndex` |
 
 Un rectangle = un dessin : le batch par instances (R2D-01) vient en M5 (`docs/QUESTIONS.md` A21). La taille logique de la liste est indépendante de
-la taille de la cible (échelle d'interface, HiDPI). Parité : `tests/renderer/parity_tests.cpp` rejoue `ui.png` de l'ancien rendu.
+la taille de la cible (échelle d'interface, HiDPI). (La parité avec `ui.png` de l'ancien rendu était vérifiée par `parity_tests.cpp`, supprimé avec l'interface héritée.)
 
 La scène est **toujours** dessinée dans sa propre cible, puis copiée vers la destination (1:1 sans échelle) : l'ancien « rendu direct à
-l'écran » n'existe plus, ce qui supprime la profondeur du framebuffer par défaut. Parité vérifiée par `tests/renderer/parity_tests.cpp`.
+l'écran » n'existe plus, ce qui supprime la profondeur du framebuffer par défaut. Parité vérifiée en M2 par `parity_tests.cpp` (supprimé avec l'ancien terrain) ; la capture de la démo est comparée à `docs/BASELINE/reference/` par la CI.
 
 ## Règles
 
 - **Le périphérique survit aux objets** qui le référencent (pointeur non possédé) ; la destruction des handles est différée par le RHI.
 - **Erreurs** : `Result<T>`, jamais d'exception. Une recréation qui échoue (`resize`, `reconfigure`, rechargement de shader) laisse
   l'objet dans son état précédent.
-- **Repère** du RHI (A26) : les octets envoyés ou lus commencent par le **bas** de l'image ; `Image` et `readPixel*` utilisent
+- **Repère** du RHI (A26) : les octets envoyés ou lus commencent par le **haut** de l'image, comme les fichiers ; `Image` et `readPixel*` utilisent
   l'origine en **haut**, avec retournement explicite.
 - **Pas d'état global, pas de singleton** : ni `GraphicsRenderState`, ni `ShaderLibrary::Instance()`.
 

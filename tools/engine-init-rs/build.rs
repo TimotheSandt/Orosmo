@@ -52,7 +52,7 @@ fn main() {
         println!("cargo:rerun-if-env-changed={key}");
     };
 
-    bake("ENGINE_NAME",        "GameEngine");
+    bake("ENGINE_NAME",        "Orosmo");
     bake("ENGINE_VERSION",     env!("CARGO_PKG_VERSION"));
     bake("ENGINE_PUBLISHER",   "");
     bake("ENGINE_AUTHOR",      "");
@@ -63,7 +63,7 @@ fn main() {
     // Git host and repo slug — set by the Makefile's remote detection.
     let repo_host   = env::var("REPO_HOST").unwrap_or_else(|_| "github.com".to_string());
     let github_repo = env::var("GITHUB_REPO")
-        .unwrap_or_else(|_| "TimotheSandt/ProceduralGeneration".to_string());
+        .unwrap_or_else(|_| "TimotheSandt/Orosmo".to_string());
     println!("cargo:rustc-env=REPO_HOST={repo_host}");
     println!("cargo:rustc-env=GITHUB_REPO={github_repo}");
     println!("cargo:rerun-if-env-changed=REPO_HOST");

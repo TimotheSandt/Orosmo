@@ -1,12 +1,12 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/memory.hpp>
+#include <orosmo/core/memory.hpp>
 
 #include <cstdint>
 #include <set>
 #include <stdexcept>
 
-using namespace engine::core;
+using namespace orosmo::core;
 
 namespace
 {

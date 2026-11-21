@@ -1,0 +1,31 @@
+{
+    "name": "dark",
+    "extends": "base.json",
+    "tokens": {
+        "color.background": "#121419",
+        "color.surface": "#1d2028e8",
+        "color.surfaceRaised": "#272b35",
+        "color.outline": "#3a3f4d",
+        "color.outlineHover": "#59607a",
+        "color.text": "#e6e8ef",
+        "color.textMuted": "#9aa1b2",
+        "color.textDisabled": "#5d6373",
+        "color.muted": "#3a3f4d",
+        "color.control": "#2c303b",
+        "color.controlHover": "#363b48",
+        "color.controlDisabled": "#23262e",
+        "color.field": "#15171d",
+        "color.primary": "#4c8dff",
+        "color.primaryHover": "#6ea3ff",
+        "color.onPrimary": "#ffffff",
+        "color.focus": "#8ab4ff",
+        "color.scrollbar": "#59607a",
+        "color.tooltip": "#e6e8ef",
+        "color.onTooltip": "#15171d",
+        "color.success": "#3fb950",
+        "color.warning": "#d29922",
+        "color.error": "#f85149",
+        "color.backdrop": "#00000099",
+        "color.shadow": "#00000080"
+    }
+}

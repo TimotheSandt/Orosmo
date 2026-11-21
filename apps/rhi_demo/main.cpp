@@ -7,16 +7,16 @@
 //
 //   make rhi-demo                       construit et lance (écrit rhi-demo.png)
 //   bin/rhi_demo --out /chemin/image.png
-#include <engine/rhi/device.hpp>
+#include <orosmo/rhi/device.hpp>
 
-#include <engine/renderer/image.hpp>
+#include <orosmo/renderer/image.hpp>
 
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <string_view>
 
-using namespace engine::rhi;
+using namespace orosmo::rhi;
 
 namespace
 {
@@ -59,7 +59,7 @@ void main() {
 
 template <typename T> std::span<const std::byte> bytesOf(const std::vector<T> &v) { return std::as_bytes(std::span(v)); }
 
-int fail(const char *what, const engine::core::Error &error)
+int fail(const char *what, const orosmo::core::Error &error)
 {
     std::fprintf(stderr, "rhi_demo: %s: %s\n", what, error.describe().c_str());
     return 1;
@@ -215,7 +215,7 @@ int main(int argc, char **argv)
     std::printf("  identifiant d'objet au centre : %u (attendu 7 : un triangle)\n", centerId);
 
     // Une seule implémentation de l'export (ordre des lignes, erreurs) : celle du renderer.
-    if (auto saved = engine::renderer::savePng(device, *color, outPath); !saved)
+    if (auto saved = orosmo::renderer::savePng(device, *color, outPath); !saved)
     {
         return fail("savePng", saved.error());
     }

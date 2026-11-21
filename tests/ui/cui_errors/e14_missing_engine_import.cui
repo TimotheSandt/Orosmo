@@ -1,0 +1,8 @@
+// expect: 1:1: error: missing `import "orosmo/ui"`: it is the only target of the interface language (the legacy UI::View target was removed)
+// Sans import "orosmo/ui" : refusé (la cible héritée UI::View n'existe plus), aucun fichier généré.
+view V {
+    @Mutable var window: Window
+    VBox {
+        Label("x")
+    }
+}

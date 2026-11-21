@@ -1,8 +1,8 @@
-#include "engine/renderer/gpu_buffer.hpp"
+#include "orosmo/renderer/gpu_buffer.hpp"
 
 #include <algorithm>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 core::Result<GpuBuffer> GpuBuffer::create(rhi::Device &device, const rhi::BufferDesc &desc, std::span<const std::byte> initial)
@@ -77,4 +77,4 @@ void GpuBuffer::reset() noexcept
     desc_ = {};
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

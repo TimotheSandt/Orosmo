@@ -1,10 +1,12 @@
-#include "engine/renderer/scene_renderer.hpp"
+#include "orosmo/renderer/scene_renderer.hpp"
 
-#include "engine/renderer/image.hpp"
+#include "orosmo/renderer/image.hpp"
 
+#include <algorithm>
 #include <cstring>
+#include <vector>
 
-namespace engine::renderer
+namespace orosmo::renderer
 {
 
 using core::ErrorCode;
@@ -49,6 +51,7 @@ core::Result<std::unique_ptr<SceneRenderer>> SceneRenderer::create(rhi::Device &
         return std::unexpected(program.error());
     }
     renderer->meshProgram_ = *program;
+    renderer->shaderDirectory_ = config.shaderDirectory;
     rhi::BufferDesc cb;
     cb.size = sizeof(CameraData);
     cb.usage = rhi::BufferUsage::kUniform | rhi::BufferUsage::kCopyDst;
@@ -311,6 +314,7 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
     PassOptions pass;
     pass.clearColor = options.clearColor;
     pass.depthLoad = options.clearDepth ? rhi::LoadOp::kClear : rhi::LoadOp::kLoad;
+    pass.clearDepth = 0.0f; // reverse-Z (REN-02) : 0 est le plus lointain
     encoder_ = &encoder;
     encoder.beginRenderPass(sceneTarget_.passDesc(pass));
     passOpen_ = true;
@@ -324,7 +328,8 @@ core::Result<> SceneRenderer::setCamera(Camera &camera)
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::setCamera: not created");
     }
     camera.setJitter(currentJitter_);
-    const CameraData data = camera.data();
+    cameraOrigin_ = cameraRelative_ ? camera.position() : glm::vec3(0.0f);
+    const CameraData data = camera.data(cameraRelative_);
     return cameraBuffer_.update(0, std::as_bytes(std::span(&data, 1)));
 }
 
@@ -335,8 +340,9 @@ core::Result<> SceneRenderer::draw(Mesh &mesh, const Camera &, bool lines)
     state.vertexAttributes = mesh.vertexAttributes();
     state.raster.cull = rhi::CullMode::kNone;
     state.raster.fill = lines ? rhi::FillMode::kLine : rhi::FillMode::kFill;
-    // Le passage fil de fer redessine la même géométrie : à profondeur égale, ses arêtes doivent passer.
-    state.depth = {true, true, lines ? rhi::CompareOp::kLessEqual : rhi::CompareOp::kLess};
+    // Reverse-Z (REN-02) : le plus proche a la plus GRANDE profondeur. Le passage fil de fer redessine la même géométrie : à
+    // profondeur égale, ses arêtes doivent passer.
+    state.depth = {true, true, lines ? rhi::CompareOp::kGreaterEqual : rhi::CompareOp::kGreater};
     state.depthFormat = rhi::Format::kD32Float;
     state.colorTargets.clear();
     for (std::size_t i = 0; i < sceneTarget_.info().colorFormats.size(); ++i)
@@ -402,7 +408,7 @@ core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: the mesh is empty or has no graphics program");
     }
-    if (auto r = mesh.uploadTransform(); !r)
+    if (auto r = mesh.uploadTransform(cameraOrigin_); !r)
     {
         return r;
     }
@@ -411,6 +417,91 @@ core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
         return r;
     }
     return camera.wireframe() ? draw(mesh, camera, true) : core::Result<>{};
+}
+
+core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
+{
+    if (!debug.enabled() || debug.lineCount() == 0)
+    {
+        return {};
+    }
+    if (!passOpen_)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawDebug: no frame is open");
+    }
+    if (!debugProgram_)
+    {
+        auto program = library_.loadGraphics(shaderDirectory_ / "debug_line.vert", shaderDirectory_ / "debug_line.frag");
+        if (!program)
+        {
+            return std::unexpected(program.error());
+        }
+        debugProgram_ = *program;
+    }
+    if (auto r = rebuildFrameGroup(); !r)
+    {
+        return r;
+    }
+    // Rendu relatif à la caméra : les positions sont ramenées à l'origine de la caméra avant l'envoi.
+    std::vector<float> vertices = debug.vertices();
+    if (cameraRelative_)
+    {
+        for (std::size_t v = 0; v < vertices.size(); v += DebugDraw::kFloatsPerVertex)
+        {
+            vertices[v] -= cameraOrigin_.x;
+            vertices[v + 1] -= cameraOrigin_.y;
+            vertices[v + 2] -= cameraOrigin_.z;
+        }
+    }
+    const std::uint64_t bytes = vertices.size() * sizeof(float);
+    if (!debugBuffer_.valid() || debugBuffer_.size() < bytes)
+    {
+        rhi::BufferDesc desc;
+        desc.size = std::max<std::uint64_t>(bytes, 64 * 1024);
+        desc.usage = rhi::BufferUsage::kVertex | rhi::BufferUsage::kCopyDst;
+        desc.debugName = "debug.lines";
+        auto buffer = GpuBuffer::create(device_, desc);
+        if (!buffer)
+        {
+            return std::unexpected(buffer.error());
+        }
+        debugBuffer_ = std::move(*buffer);
+    }
+    if (auto r = debugBuffer_.update(0, std::as_bytes(std::span(vertices))); !r)
+    {
+        return r;
+    }
+    GraphicsState state;
+    state.topology = rhi::PrimitiveTopology::kLineList;
+    // assign(1, ...) et non `= {{...}}` : GCC 13 en -O3 avec ASan signale à tort -Warray-bounds sur la liste d'un élément.
+    state.vertexBuffers.assign(1, rhi::VertexBufferLayout{.binding = 0,
+                                                          .stride = static_cast<std::uint32_t>(DebugDraw::kFloatsPerVertex * sizeof(float)),
+                                                          .stepRate = rhi::VertexStepRate::kVertex});
+    state.vertexAttributes = {{.location = 0, .binding = 0, .format = rhi::VertexFormat::kFloat3, .offset = 0},
+                              {.location = 1, .binding = 0, .format = rhi::VertexFormat::kFloat4, .offset = 12}};
+    state.raster.cull = rhi::CullMode::kNone;
+    state.depth = {debug.depthTest(), false, rhi::CompareOp::kGreaterEqual}; // reverse-Z ; n'écrit pas la profondeur
+    state.depthFormat = rhi::Format::kD32Float;
+    state.colorTargets.clear();
+    for (std::size_t i = 0; i < sceneTarget_.info().colorFormats.size(); ++i)
+    {
+        rhi::ColorTargetState t;
+        t.format = sceneTarget_.info().colorFormats[i];
+        t.writeMask = i == 0 ? rhi::ColorWriteMask::kAll : rhi::ColorWriteMask::kNone;
+        state.colorTargets.push_back(t);
+    }
+    state.debugName = "debug.lines";
+    auto pipeline = pipelines_.graphics(*debugProgram_, state);
+    if (!pipeline)
+    {
+        return std::unexpected(pipeline.error());
+    }
+    rhi::CommandEncoder &e = *encoder_;
+    e.setPipeline(*pipeline);
+    e.setBindGroup(0, frameGroup_);
+    e.setVertexBuffer(0, debugBuffer_.handle());
+    e.draw(static_cast<std::uint32_t>(vertices.size() / DebugDraw::kFloatsPerVertex));
+    return {};
 }
 
 core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
@@ -548,4 +639,4 @@ core::Result<> SceneRenderer::saveColorPng(const std::filesystem::path &path) co
     return savePng(device_, sceneTarget_.color(0), path);
 }
 
-} // namespace engine::renderer
+} // namespace orosmo::renderer

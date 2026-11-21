@@ -1,0 +1,6 @@
+// expect: 5:18: error: expected ')' (found '}')
+import "orosmo/ui"
+
+view V {
+    Label("hello"
+}

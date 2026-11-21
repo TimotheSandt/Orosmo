@@ -1,8 +1,8 @@
-#include <engine/core/time.hpp>
+#include <orosmo/core/time.hpp>
 
 #include <algorithm>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 Nanoseconds SteadyClock::now() const
@@ -54,4 +54,4 @@ double FixedStepper::alpha() const
     return std::chrono::duration<double>(mAccumulator).count() / std::chrono::duration<double>(mStep).count();
 }
 
-} // namespace engine::core
+} // namespace orosmo::core

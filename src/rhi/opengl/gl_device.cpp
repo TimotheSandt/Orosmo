@@ -2,7 +2,7 @@
 
 #include "gl_translate.hpp"
 
-#include "Logger.h"
+#include <orosmo/core/log.hpp>
 
 #include <GLFW/glfw3.h>
 
@@ -10,11 +10,11 @@
 #include <cstring>
 #include <string>
 
-namespace engine::rhi::gl
+namespace orosmo::rhi::gl
 {
 
-using engine::core::ErrorCode;
-using engine::core::makeError;
+using orosmo::core::ErrorCode;
+using orosmo::core::makeError;
 
 namespace
 {
@@ -188,6 +188,18 @@ Result<> GlDevice::init(const DeviceDesc &desc)
     {
         return makeError(ErrorCode::kUnsupported, "OpenGL RHI: OpenGL 4.3 or newer is required");
     }
+    // Repère du RHI (QUESTIONS A26) : origine en HAUT à gauche (la ligne 0 d'une cible est son haut) et profondeur dans [0, 1],
+    // comme Vulkan et Metal. OpenGL l'obtient par glClipControl (cœur 4.5, ou GL_ARB_clip_control sur un pilote 4.3).
+    if (glad_glClipControl == nullptr && hasExtension("GL_ARB_clip_control"))
+    {
+        glad_glClipControl = reinterpret_cast<PFNGLCLIPCONTROLPROC>(glfwGetProcAddress("glClipControl"));
+    }
+    if (glad_glClipControl == nullptr)
+    {
+        return makeError(ErrorCode::kUnsupported, "OpenGL RHI: glClipControl is required (OpenGL 4.5 or GL_ARB_clip_control): the RHI uses an "
+                                                  "upper-left origin and a [0, 1] depth range");
+    }
+    glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE);
     glReady_ = true;
 
     if (desc.validation)
@@ -231,6 +243,7 @@ Result<> GlDevice::init(const DeviceDesc &desc)
     caps_.bc7Textures = false; // aucun format compressé exposé par `Format` pour l'instant
     caps_.wireframe = true;
     caps_.spirvShaders = false; // GL_ARB_gl_spirv : non utilisé avant le lot B
+    caps_.shaderFloat64 = true;  // cœur de GL 4.0 (GL_ARB_gpu_shader_fp64)
     maxImageUnits_ = getInt(GL_MAX_IMAGE_UNITS);
 
     // Tampons de stockage : OpenGL 4.3 n'en garantit que 8 ; la limite est exposée et vérifiée à la liaison (setBindGroup), un
@@ -791,10 +804,15 @@ Result<> GlDevice::readRegion(const TextureRes &texture, const SliceRegion &regi
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glReadBuffer(GL_BACK);
-        glPixelStorei(GL_PACK_ROW_LENGTH, static_cast<GLint>(rowLength));
-        glReadPixels(region.offset.x, region.offset.y, static_cast<GLsizei>(region.size.width), static_cast<GLsizei>(region.size.height), gf.format,
-                     gf.type, reinterpret_cast<void *>(destination));
-        glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+        // La fenêtre range sa ligne 0 en BAS de l'écran ; le RHI rend la ligne 0 = haut : lecture ligne par ligne, retournée.
+        const std::uint64_t rowBytes = rowTexels * info.bytesPerTexel;
+        const auto height = static_cast<GLint>(texture.desc.size.height);
+        for (std::uint32_t r = 0; r < region.size.height; ++r)
+        {
+            const GLint glRow = height - 1 - (region.offset.y + static_cast<GLint>(r));
+            glReadPixels(region.offset.x, glRow, static_cast<GLsizei>(region.size.width), 1, gf.format, gf.type,
+                         reinterpret_cast<void *>(destination + rowBytes * r));
+        }
         glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
         return {};
     }
@@ -1423,4 +1441,4 @@ GLuint GlDevice::framebufferFor(const FboKey &key, std::uint32_t colorCount,
     return fbo;
 }
 
-} // namespace engine::rhi::gl
+} // namespace orosmo::rhi::gl

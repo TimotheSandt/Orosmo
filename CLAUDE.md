@@ -1,6 +1,6 @@
-# ProceduralGeneration : règles permanentes
+# Orosmo : règles permanentes
 
-Moteur de jeu 3D et 2D en **C++23**, rendu par une couche d'abstraction (**RHI**) avec backends **Vulkan** (principal), **OpenGL 4.3+** et **Metal** (via MoltenVK d'abord, natif ensuite). Le premier produit visé est un générateur de terrain et de planètes procédural. L'interface s'écrit dans un langage maison précompilé en C++, avec thèmes JSON.
+Orosmo est un moteur de jeu 3D et 2D en **C++23**, rendu par une couche d'abstraction (**RHI**) avec backends **Vulkan** (principal), **OpenGL 4.3+** et **Metal** (via MoltenVK d'abord, natif ensuite). Le premier produit visé est un générateur de terrain et de planètes procédural. L'interface s'écrit dans un langage maison précompilé en C++, avec thèmes JSON.
 
 Lis `docs/` avant tout travail : `01` vision, `02` checklist, `03` architecture, `04` audit, `05` plan.
 
@@ -53,7 +53,7 @@ Toute correction de portabilité Windows → Linux est faite sans casser la comp
 
 ## Conventions de code (décision de l'auteur, 2026-11-17)
 
-On suit `docs/03` §2 (arborescence `include/engine/<module>/*.hpp`, `src/<module>/`, `src/rhi/<backend>/`, `tests/<module>/`, `apps/<nom>/`) et §7 (types `PascalCase`, fonctions et variables `camelCase`, constantes `kPascalCase`, fichiers `snake_case`, `-Wall -Wextra -Wpedantic -Werror`). Le code existant (`include/<Module>/*.h`, noms `PascalCase`) **migre module par module** quand le jalon du plan le réécrit (M1 core, M2 rhi/platform/renderer…) : tout code neuf suit déjà `docs/03`. Pas de renommage de masse hors jalon.
+On suit `docs/03` §2 (arborescence `include/orosmo/<module>/*.hpp`, `src/<module>/`, `src/rhi/<backend>/`, `tests/<module>/`, `apps/<nom>/`) et §7 (types `PascalCase`, fonctions et variables `camelCase`, constantes `kPascalCase`, fichiers `snake_case`, `-Wall -Wextra -Wpedantic -Werror`). Le code existant (`include/<Module>/*.h`, noms `PascalCase`) **migre module par module** quand le jalon du plan le réécrit (M1 core, M2 rhi/platform/renderer…) : tout code neuf suit déjà `docs/03`. Pas de renommage de masse hors jalon.
 
 ## Commandes
 
@@ -68,11 +68,11 @@ git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.
 ~/vcpkg/vcpkg install                   # à la racine du dépôt ; make relie ensuite les paquets apt tout seul
 
 # 2. Build et démo
-make all-debug                          # moteur (debug, -Wpedantic -Werror) -> apps/demo/engine -> démo
+make all-debug                          # moteur (debug, -Wpedantic -Werror) -> apps/demo/orosmo -> démo
 make run                                # lance la démo (OpenGL par défaut ; --api vulkan non fiable avant M4)
 
 # 3. Tests et contrôles
-make demo-test                          # doctest : 117 cas (construit les archives release d'abord)
+make demo-test                          # doctest : 419 cas (construit les archives release d'abord)
 make demo-test SANITIZE=address,undefined   # ASan + UBSan (partir d'un arbre propre : make fclean)
 make check                              # dépôt, couches, isolation des API, en-têtes autonomes (bloquant depuis M2)
 make demo-test-unit                     # tests sans GPU ni fenêtre ; make demo-test-gpu : seulement l'intégration graphique

@@ -3,6 +3,10 @@ use std::io::{self, Cursor, Read};
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
+thread_local! {
+    static LOCAL_PACKAGE: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
 // ── Embedded payloads (set by build.rs) ──────────────────────────────────────
 // ENGINE_ZIP may be a zero-byte stub (dev build without ENGINE_PAYLOAD_ZIP).
 // Use has_embedded_engine() before relying on it; GitHub is always tried first.
@@ -23,7 +27,7 @@ const TPL_CONFIG_LOCAL_MK: &str = "\
 # Machine-specific overrides — gitignored, do NOT commit.\n\
 # Uncomment and set values relevant to your setup.\n\
 \n\
-# ENGINE_DIR  := engine\n\
+# ENGINE_DIR  := orosmo\n\
 # _ENGINE_MK  := $(ENGINE_DIR)/make/engine.mk\n\
 # _VCPKG_ROOT := vcpkg_installed\n\
 ";
@@ -50,21 +54,23 @@ fn platform() -> &'static str {
         "macos-arm64"
     } else if cfg!(target_os = "macos") {
         "macos-x64"
+    } else if cfg!(target_arch = "aarch64") {
+        "linux-arm64"
     } else {
         "linux-x64"
     }
 }
 
-fn engine_asset_name() -> String {
+fn tool_asset_name() -> String {
     if cfg!(windows) {
-        format!("engine-{}.exe", platform())
+        format!("orosmo-{}.exe", platform())
     } else {
-        format!("engine-{}", platform())
+        format!("orosmo-{}", platform())
     }
 }
 
 fn engine_pkg_name() -> String {
-    format!("engine-pkg-{}.zip", platform())
+    format!("orosmo-pkg-{}.zip", platform())
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -76,8 +82,26 @@ fn main() {
     }
 }
 
+// `--package <zip>` : paquet local (téléchargé à la main, ou construit par `make engine-tool`) au lieu de la dernière release.
+fn take_package_option(args: &mut Vec<String>) -> Result<Option<PathBuf>, String> {
+    if let Some(i) = args.iter().position(|a| a == "--package") {
+        if i + 1 >= args.len() {
+            return Err("--package expects the path of an orosmo-pkg-<platform>.zip".to_string());
+        }
+        let path = PathBuf::from(args.remove(i + 1));
+        args.remove(i);
+        if !path.is_file() {
+            return Err(format!("package not found: {}", path.display()));
+        }
+        return Ok(Some(path));
+    }
+    Ok(None)
+}
+
 fn run() -> Result<(), String> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let package = take_package_option(&mut args)?;
+    LOCAL_PACKAGE.with(|p| *p.borrow_mut() = package);
     let cmd = args.first().map(String::as_str).unwrap_or("");
 
     match cmd {
@@ -91,7 +115,7 @@ fn run() -> Result<(), String> {
     }
 }
 
-// ── engine init [project-name] ────────────────────────────────────────────────
+// ── orosmo init [project-name] ────────────────────────────────────────────────
 
 fn cmd_init(args: &[String]) -> Result<(), String> {
     let (name, dir, in_place) = match args.first() {
@@ -139,16 +163,16 @@ fn cmd_init(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-// ── engine update [path] ──────────────────────────────────────────────────────
+// ── orosmo update [path] ──────────────────────────────────────────────────────
 
 fn cmd_update(args: &[String]) -> Result<(), String> {
     let project_dir = args.first()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
 
-    if !project_dir.join("engine").exists() {
+    if !project_dir.join("orosmo").exists() {
         return Err(format!(
-            "'{}' does not look like an engine project (no engine/ directory)",
+            "'{}' does not look like an Orosmo project (no orosmo/ directory)",
             project_dir.display()
         ));
     }
@@ -172,6 +196,9 @@ fn cmd_update(args: &[String]) -> Result<(), String> {
 // ── GitHub release ────────────────────────────────────────────────────────────
 
 fn fetch_release_or_warn() -> Option<Release> {
+    if LOCAL_PACKAGE.with(|p| p.borrow().is_some()) {
+        return None; // paquet local : pas de réseau
+    }
     println!("Fetching latest engine release from GitHub...");
     match Release::fetch_latest() {
         Ok(r) => Some(r),
@@ -303,13 +330,18 @@ fn is_newer(remote_tag: &str, local: &str) -> bool {
 // ── Engine extraction ─────────────────────────────────────────────────────────
 
 fn extract_engine(project_dir: &Path, release: Option<&Release>) -> Result<(), String> {
+    if let Some(path) = LOCAL_PACKAGE.with(|p| p.borrow().clone()) {
+        println!("  Using local package {}...", path.display());
+        let bytes = fs::read(&path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+        return extract_zip_bytes(project_dir, &bytes, "orosmo/");
+    }
     // Try GitHub first if a release is available.
     if let Some(r) = release {
         let pkg_name = engine_pkg_name();
         if let Some(url) = r.find_asset(&pkg_name) {
             println!("  Downloading {} ({})...", pkg_name, r.tag);
             match download_bytes(url, &pkg_name) {
-                Ok(bytes) => return extract_zip_bytes(project_dir, &bytes, "engine/"),
+                Ok(bytes) => return extract_zip_bytes(project_dir, &bytes, "orosmo/"),
                 Err(e) => eprintln!("  Warning: download failed ({e}), trying embedded package..."),
             }
         } else {
@@ -321,12 +353,12 @@ fn extract_engine(project_dir: &Path, release: Option<&Release>) -> Result<(), S
     // Fallback: use the engine payload embedded at build time.
     if has_embedded_engine() {
         println!("  Using embedded engine package...");
-        return extract_zip_bytes(project_dir, ENGINE_ZIP, "engine/");
+        return extract_zip_bytes(project_dir, ENGINE_ZIP, "orosmo/");
     }
 
     Err(format!(
         "no engine package available: {REPO_HOST} unreachable and this binary has no embedded payload.\n\
-         Download engine-pkg-{}.zip from {REPO_HOST}/{GITHUB_REPO} and run 'engine update' when online.",
+         Download orosmo-pkg-{}.zip from {REPO_HOST}/{GITHUB_REPO} and run 'orosmo update' when online.",
         platform()
     ))
 }
@@ -348,8 +380,10 @@ fn extract_zip_bytes(project_dir: &Path, bytes: &[u8], subdir: &str) -> Result<(
         // The pkg zip has a top-level directory prefix — strip it.
         let rel = strip_top_dir(&raw);
         if rel.is_empty() { continue; }
+        // Untrusted archive (--package): every entry must stay inside dest_root (no "..", no absolute path, no drive).
+        let safe = safe_relative(rel).ok_or_else(|| format!("unsafe path in the engine package: {raw}"))?;
 
-        let dest = dest_root.join(rel);
+        let dest = dest_root.join(safe);
 
         if entry.is_dir() {
             fs::create_dir_all(&dest)
@@ -424,12 +458,12 @@ fn is_text_file(name: &str) -> bool {
 }
 
 // ── Tool binary self-update ───────────────────────────────────────────────────
-// If engine[.exe] exists in the project dir and a newer release is available,
+// If orosmo[.exe] exists in the project dir and a newer release is available,
 // replaces it with the binary from the GitHub release.
 
 fn update_tool_binary(project_dir: &Path, release: Option<&Release>) -> Result<(), String> {
     let ext = if cfg!(windows) { ".exe" } else { "" };
-    let dest = project_dir.join(format!("engine{ext}"));
+    let dest = project_dir.join(format!("orosmo{ext}"));
     if !dest.exists() {
         return Ok(());
     }
@@ -437,17 +471,17 @@ fn update_tool_binary(project_dir: &Path, release: Option<&Release>) -> Result<(
     let release = match release {
         Some(r) => r,
         None => {
-            println!("  [skip] engine{ext} (GitHub unreachable, binary not updated)");
+            println!("  [skip] orosmo{ext} (GitHub unreachable, binary not updated)");
             return Ok(());
         }
     };
 
     if !is_newer(&release.tag, ENGINE_VERSION) {
-        println!("  [skip] engine{ext} (already up to date — v{ENGINE_VERSION})");
+        println!("  [skip] orosmo{ext} (already up to date — v{ENGINE_VERSION})");
         return Ok(());
     }
 
-    let asset_name = engine_asset_name();
+    let asset_name = tool_asset_name();
     let url = release.find_asset(&asset_name)
         .ok_or_else(|| format!("release {} has no asset '{asset_name}'", release.tag))?;
 
@@ -533,7 +567,7 @@ fn merge_config_mk(path: &Path, template: &str, project_dir: &Path) -> Result<()
 
     let mut content = existing;
     if !content.ends_with('\n') { content.push('\n'); }
-    content.push_str("\n# Added by engine update\n");
+    content.push_str("\n# Added by orosmo update\n");
     for line in &new_lines {
         content.push_str(line);
         content.push('\n');
@@ -634,6 +668,24 @@ fn render(template: &str, project_name: &str) -> String {
         .replace("{{GUARD}}", &guard)
 }
 
+/// Relative path made only of normal components, or None if `path` could leave the destination: a `..` component, an
+/// absolute path (leading `/` or `\\`), or a drive / stream prefix (`C:`, `file:stream`). `.` and empty components are dropped.
+fn safe_relative(path: &str) -> Option<PathBuf> {
+    if path.starts_with('/') || path.starts_with('\\') {
+        return None;
+    }
+    let mut out = PathBuf::new();
+    for part in path.split(['/', '\\']) {
+        match part {
+            "" | "." => continue,
+            ".." => return None,
+            p if p.contains(':') => return None,
+            p => out.push(p),
+        }
+    }
+    if out.as_os_str().is_empty() { None } else { Some(out) }
+}
+
 fn strip_top_dir(path: &str) -> &str {
     match path.find('/') {
         Some(i) => &path[i + 1..],
@@ -658,26 +710,44 @@ fn print_usage() {
     if !ENGINE_HOMEPAGE.is_empty() { eprintln!("  {ENGINE_HOMEPAGE}"); }
     eprintln!();
     eprintln!("Usage:");
-    eprintln!("  engine init [project-name]   create a new project");
-    eprintln!("  engine update [path]         update engine package and template files");
+    eprintln!("  orosmo init [project-name]   create a new project");
+    eprintln!("  orosmo update [path]         update engine package and template files");
+    eprintln!("  --package <orosmo-pkg.zip>   use this local package instead of downloading the latest release");
     eprintln!();
-    eprintln!("'engine init' with no argument initialises the current directory,");
+    eprintln!("'orosmo init' with no argument initialises the current directory,");
     eprintln!("using the directory name as the project name.");
     eprintln!();
     eprintln!("Both commands download the engine package from the latest release on {REPO_HOST}.");
     eprintln!("An internet connection is required (falls back to the embedded package if offline).");
     eprintln!();
     eprintln!("Created files:");
-    eprintln!("  engine/          pre-built engine (headers, libraries, tools)");
+    eprintln!("  orosmo/          pre-built engine (headers, libraries, tools)");
     eprintln!("  src/             C++ sources from the reference demo project");
-    eprintln!("  Makefile         build system  — updated by 'engine update'");
-    eprintln!("  .gitignore       standard ignores — updated by 'engine update'");
+    eprintln!("  Makefile         build system  — updated by 'orosmo update'");
+    eprintln!("  .gitignore       standard ignores — updated by 'orosmo update'");
     eprintln!("  config.mk        project config (name, version, ...) — yours to edit");
     eprintln!("  config.local.mk  machine-specific paths — gitignored");
     eprintln!();
-    eprintln!("'engine update' (in a project directory):");
-    eprintln!("  - Downloads and replaces engine/ with the latest release");
+    eprintln!("'orosmo update' (in a project directory):");
+    eprintln!("  - Downloads and replaces orosmo/ with the latest release");
     eprintln!("  - Updates Makefile and .gitignore if unmodified (prompts otherwise)");
     eprintln!("  - Appends new fields to config.mk without touching existing values");
-    eprintln!("  - Updates a local engine[.exe] binary if one exists in the project");
+    eprintln!("  - Updates a local orosmo[.exe] binary if one exists in the project");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn package_paths_cannot_leave_the_destination() {
+        assert_eq!(safe_relative("includes/orosmo/core.hpp"), Some(PathBuf::from("includes/orosmo/core.hpp")));
+        assert_eq!(safe_relative("./lib//release/x.a"), Some(PathBuf::from("lib/release/x.a")));
+        assert_eq!(safe_relative(strip_top_dir("pkg/../Makefile")), None);
+        assert_eq!(safe_relative("a/../../b"), None);
+        assert_eq!(safe_relative("/etc/passwd"), None);
+        assert_eq!(safe_relative("\\server\\share"), None);
+        assert_eq!(safe_relative("C:/Windows/x"), None);
+        assert_eq!(safe_relative("a\\..\\..\\b"), None);
+    }
 }

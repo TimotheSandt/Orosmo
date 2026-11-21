@@ -1,12 +1,12 @@
-#include <engine/platform/window.hpp>
+#include <orosmo/platform/window.hpp>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
-#include <engine/platform/input_manager.hpp>
-#include "Profiler.h"
-#include "Logger.h"
-#include "Utilities.h"
+#include <orosmo/platform/input_manager.hpp>
+#include <orosmo/core/profiler.hpp>
+#include <orosmo/core/log.hpp>
+#include <orosmo/core/paths.hpp>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -224,6 +224,20 @@ void Window::SetCursorMode(CursorMode mode)
     glfwSetInputMode(native(this->window), GLFW_CURSOR, value);
 }
 
+std::string Window::GetClipboardText() const
+{
+    if (!this->window)
+        return {};
+    const char *text = glfwGetClipboardString(native(this->window));
+    return text != nullptr ? std::string(text) : std::string();
+}
+
+void Window::SetClipboardText(const std::string &text) const
+{
+    if (this->window)
+        glfwSetClipboardString(native(this->window), text.c_str());
+}
+
 glm::dvec2 Window::GetCursorPosition() const
 {
     glm::dvec2 position{0.0, 0.0};
@@ -244,11 +258,11 @@ void Window::SetCursorPosition(glm::dvec2 position)
 
 bool Window::NewFrame()
 {
-    Profiler::Profile("PollEvents", &glfwPollEvents);
-    Profiler::Process();
+    orosmo::core::Profiler::Profile("PollEvents", &glfwPollEvents);
+    orosmo::core::Profiler::Process();
     this->inputManager->Update();
 
-    if (!Profiler::Profile("HealthCheck", &Window::IsWindowHealthy, this))
+    if (!orosmo::core::Profiler::Profile("HealthCheck", &Window::IsWindowHealthy, this))
     {
         LOG_WARNING("Window is not healthy");
         return false;
@@ -547,7 +561,7 @@ void Window::CallbackPosition(int x, int y)
 
 void Window::CallbackFocus(int focused)
 {
-    UNUSED(focused);
+    (void)focused;
 
     LOG_DEBUGGING("Window focus changed");
 

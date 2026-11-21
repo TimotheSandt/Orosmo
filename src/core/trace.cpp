@@ -1,4 +1,4 @@
-#include <engine/core/trace.hpp>
+#include <orosmo/core/trace.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -6,7 +6,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace engine::core
+namespace orosmo::core
 {
 
 TraceRecorder::TraceRecorder(const IClock &clock, std::size_t maxSamples) : mClock(&clock), mMax(maxSamples) {}
@@ -108,4 +108,4 @@ Result<> TraceRecorder::writeChromeTrace(const std::filesystem::path &path) cons
     return out ? Result<>{} : makeError(ErrorCode::kIo, "trace write failed: " + path.string());
 }
 
-} // namespace engine::core
+} // namespace orosmo::core

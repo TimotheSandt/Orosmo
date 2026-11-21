@@ -9,32 +9,34 @@ use std::collections::BTreeMap;
 pub struct ParseError {
     pub message: String,
     pub token: Token,
+    pub line: usize,
+    pub col: usize,
 }
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Parse error at {}:{}: {} (got {:?})",
-            self.token.line, self.token.col, self.message, self.token.ty
-        )
+        write!(f, "{}:{}: {}", self.line, self.col, self.message)
     }
 }
 
-pub fn parse(tokens: Vec<Token>) -> Result<FileAst, ParseError> {
-    Parser::new(tokens).parse_file()
+// `source` : le texte lexé (les blocs `@cui-cpp` en sont recopiés tels quels).
+pub fn parse(tokens: Vec<Token>, source: &str) -> Result<FileAst, ParseError> {
+    let mut parser = Parser::new(tokens);
+    parser.source = source.chars().collect();
+    parser.parse_file()
 }
 
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    source: Vec<char>, // vide pour les sous-analyses (interpolations de chaînes)
 }
 
 impl Parser {
     fn new(mut tokens: Vec<Token>) -> Self {
         tokens.retain(|token| token.ty != TokenType::Eof);
         tokens.push(Token::new(TokenType::Eof, TokenValue::None, 0, 0));
-        Self { tokens, pos: 0 }
+        Self { tokens, pos: 0, source: Vec::new() }
     }
 
     fn parse_file(&mut self) -> Result<FileAst, ParseError> {
@@ -75,7 +77,10 @@ impl Parser {
                 ViewStmt::Field(field) => fields.push(field),
                 ViewStmt::Element(element) => {
                     if root.is_some() {
-                        return Err(self.error("A view may only have one root element"));
+                        let mut err = self.error("A view may only have one root element");
+                        err.line = element.line;
+                        err.col = element.col;
+                        return Err(err);
                     }
                     root = Some(element);
                 }
@@ -218,9 +223,10 @@ impl Parser {
 
     fn parse_cpp_block(&mut self) -> Result<CppBlock, ParseError> {
         let cpp_token = self.expect(TokenType::AtCuiCpp)?;
-        self.expect(TokenType::LBrace)?;
+        let open = self.expect(TokenType::LBrace)?;
         let mut depth = 1usize;
         let mut parts = Vec::new();
+        let mut close_start = None;
         while !self.at(TokenType::Eof) {
             let token = self.advance().clone();
             match token.ty {
@@ -231,6 +237,7 @@ impl Parser {
                 TokenType::RBrace => {
                     depth -= 1;
                     if depth == 0 {
+                        close_start = Some(token.start);
                         break;
                     }
                     parts.push("}".to_string());
@@ -238,8 +245,16 @@ impl Parser {
                 _ => parts.push(token.text()),
             }
         }
+        // Texte exact entre les accolades (littéraux, espaces, retours à la ligne) quand la source est connue ; sinon, les jetons
+        // recollés (le texte d'un littéral de chaîne serait perdu).
+        let content = match close_start {
+            Some(end) if open.end <= end && end <= self.source.len() => {
+                self.source[open.end..end].iter().collect::<String>().trim().to_string()
+            }
+            _ => parts.join(" "),
+        };
         Ok(CppBlock {
-            content: parts.join(" "),
+            content,
             line: cpp_token.line,
             col: cpp_token.col,
         })
@@ -313,7 +328,16 @@ impl Parser {
         named_args: &mut BTreeMap<String, Expr>,
     ) -> Result<(), ParseError> {
         if self.at(TokenType::Ident) && self.peek_n(1).ty == TokenType::Colon {
-            let label = self.advance().text();
+            let label_token = self.advance().clone();
+            let label = label_token.text();
+            if named_args.contains_key(&label) {
+                return Err(ParseError {
+                    message: format!("argument '{label}' is given twice"),
+                    token: label_token.clone(),
+                    line: label_token.line,
+                    col: label_token.col,
+                });
+            }
             self.advance();
             named_args.insert(label, self.parse_expr()?);
         } else {
@@ -344,6 +368,15 @@ impl Parser {
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        if self.at(TokenType::Dollar) {
+            self.advance();
+            let target = self.parse_postfix()?;
+            return match target {
+                Expr::Identifier(name) => Ok(Expr::Binding(name)),
+                Expr::PropertyAccess { obj, prop } => Ok(Expr::Binding(format!("{obj}.{prop}"))),
+                _ => Err(self.error_at_previous("'$' must be followed by a field path (for example $state.seed)")),
+            };
+        }
         if self.at(TokenType::KwOnce) || self.at(TokenType::KwAlways) {
             let mode = if self.advance().ty == TokenType::KwOnce {
                 "once"
@@ -428,7 +461,7 @@ impl Parser {
                 self.expect(TokenType::RParen)?;
                 Ok(expr)
             }
-            _ => Err(self.error("Expected expression")),
+            _ => Err(self.error(&format!("expected an expression, found {}", token.ty.describe()))),
         }
     }
 
@@ -471,7 +504,9 @@ impl Parser {
 
     fn expect(&mut self, ty: TokenType) -> Result<Token, ParseError> {
         if self.peek().ty != ty {
-            return Err(self.error(&format!("expected {ty:?}")));
+            // Un symbole manquant est signalé juste après le jeton précédent (là où il manque), pas sur le jeton suivant.
+            let found = self.peek().ty.describe();
+            return Err(self.error_at_previous(&format!("expected {} (found {found})", ty.describe())));
         }
         Ok(self.advance().clone())
     }
@@ -507,9 +542,31 @@ impl Parser {
     }
 
     fn error(&self, message: &str) -> ParseError {
+        let token = self.peek().clone();
+        let (line, col) = if token.ty == TokenType::Eof && self.pos > 0 {
+            let prev = &self.tokens[self.pos - 1];
+            (prev.end_line, prev.end_col)
+        } else {
+            (token.line, token.col)
+        };
+        ParseError {
+            message: message.to_string(),
+            token,
+            line,
+            col,
+        }
+    }
+
+    fn error_at_previous(&self, message: &str) -> ParseError {
+        if self.pos == 0 {
+            return self.error(message);
+        }
+        let prev = &self.tokens[self.pos - 1];
         ParseError {
             message: message.to_string(),
             token: self.peek().clone(),
+            line: prev.end_line,
+            col: prev.end_col,
         }
     }
 }

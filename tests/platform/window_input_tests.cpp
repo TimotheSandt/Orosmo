@@ -4,8 +4,8 @@
 
 #include "support/test_support.hpp"
 
-#include <engine/platform/input_manager.hpp>
-#include <engine/platform/window.hpp>
+#include <orosmo/platform/input_manager.hpp>
+#include <orosmo/platform/window.hpp>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>

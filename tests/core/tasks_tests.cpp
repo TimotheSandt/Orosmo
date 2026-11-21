@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include <engine/core/tasks.hpp>
+#include <orosmo/core/tasks.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -9,7 +9,7 @@
 #include <thread>
 #include <vector>
 
-using namespace engine::core;
+using namespace orosmo::core;
 
 TEST_SUITE("core/tasks")
 {
