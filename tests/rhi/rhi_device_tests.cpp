@@ -557,7 +557,7 @@ void main() { outColor = pc.color; })";
             encoder->endRenderPass();
             CHECK((tests::errorOf(gpu->submit(std::move(encoder))) == ErrorCode::kInvalidArgument));
 
-            std::vector<std::byte> tooBig(256);
+            std::vector<std::byte> tooBig(gpu->capabilities().maxPushConstantSize + 4); // OpenGL : 128 octets ; Vulkan : la limite du pilote
             auto e2 = gpu->createCommandEncoder();
             e2->setPushConstants(tooBig);
             CHECK((tests::errorOf(gpu->submit(std::move(e2))) == ErrorCode::kInvalidArgument));
