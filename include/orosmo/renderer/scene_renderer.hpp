@@ -1,16 +1,21 @@
-// Rendu d'une scène 3D : cible de rendu de la scène, caméra et lumières liées par un groupe de liaison par image, dessin de maillages,
-// puis fin d'image (post-traitements, historique temporel, mise à l'échelle vers la destination, génération d'images). Remplace
-// l'ancien couple `Renderer` / `Renderer3D` avec les mêmes options, sans état global : tout passe par l'encodeur de l'image.
+// Rendu d'une scène 3D : cible de rendu de la scène, caméra, lumières et données par image (REN-03) liées par le groupe 0, dessin de
+// maillages, puis fin d'image (post-traitements, historique temporel, mise à l'échelle vers la destination, génération d'images,
+// plugins). Depuis M5 (REN-01), tout passe par un graphe de passes (`render_graph.hpp`) construit et exécuté par `endFrame` :
+// `drawMesh` / `drawDebug` ENREGISTRENT des dessins, joués par la passe « scene » ; les plugins (`RenderFeature`) y ajoutent leurs
+// passes. Remplace l'ancien couple `Renderer` / `Renderer3D` avec les mêmes options, sans état global.
 #pragma once
 
 #include "orosmo/core/error.hpp"
 #include "orosmo/renderer/camera.hpp"
 #include "orosmo/renderer/debug_draw.hpp"
+#include "orosmo/renderer/frame_data.hpp"
 #include "orosmo/renderer/fullscreen_blit.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/light.hpp"
 #include "orosmo/renderer/mesh.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
+#include "orosmo/renderer/render_feature.hpp"
+#include "orosmo/renderer/render_graph.hpp"
 #include "orosmo/renderer/render_target.hpp"
 #include "orosmo/renderer/shader_library.hpp"
 #include "orosmo/renderer/upscaling.hpp"
@@ -99,20 +104,41 @@ class SceneRenderer
     void setCameraRelative(bool enabled) noexcept { cameraRelative_ = enabled; }
     bool cameraRelative() const noexcept { return cameraRelative_; }
 
-    // Lumières lues par les shaders ; sans appel, une lumière ambiante nulle. Peut être appelé après beginFrame : le groupe de
-    // liaison est mis à jour avant le dessin suivant.
+    // Lumières lues par les shaders ; sans appel, une lumière ambiante nulle. Peut être appelé après beginFrame : chaque dessin
+    // enregistré utilise les lumières choisies au moment de son `drawMesh`.
     void setLights(LightManager *lights) noexcept { lights_ = lights; }
 
+    // ── Plugins de rendu (REN-01) ───────────────────────────────────────────────────────────────────────────────────
+    // Enregistre un plugin : ses passes sont ajoutées au graphe à chaque `endFrame`, dans l'ordre d'enregistrement. Refusé
+    // (kUnsupported) si `supports` est faux, (kAlreadyExists) si un plugin du même nom existe. Renvoie le plugin (non possédé).
+    core::Result<RenderFeature *> addFeature(std::unique_ptr<RenderFeature> feature);
+    void removeFeature(const std::string &name);
+    std::vector<std::string> featureNames() const;
+    // Graphe de la dernière image (ordre d'exécution, passes écartées, ressources transitoires).
+    const RenderGraph &renderGraph() const noexcept { return graph_; }
+
+    // ── Données par image (REN-03) ──────────────────────────────────────────────────────────────────────────────────
+    void setFrameEnvironment(const FrameEnvironment &environment) noexcept { environment_ = environment; }
+    const FrameEnvironment &frameEnvironment() const noexcept { return environment_; }
+    // Contenu envoyé au GPU par le dernier `endFrame` (groupe 0, binding kFrameDataBinding).
+    const FrameData &frameData() const noexcept { return frameData_; }
+    std::uint64_t frameIndex() const noexcept { return frameIndex_; }
+
     // ── Image ───────────────────────────────────────────────────────────────────────────────────────────────────────
-    // Ouvre la passe de la scène sur la cible interne (taille de rendu = sortie × échelle), vide couleur (et profondeur).
+    // Prépare l'image : cible de la scène (taille de rendu = sortie × échelle), jitter. `encoder` reçoit toutes les commandes de
+    // l'image, enregistrées par `endFrame` ; il doit vivre jusque-là.
     core::Result<> beginFrame(rhi::CommandEncoder &encoder, const FrameOptions &options = {});
     // Applique le jitter courant à la caméra, envoie ses données au GPU.
     core::Result<> setCamera(Camera &camera);
+    // Enregistre le dessin (pipeline, constantes et transformation sont résolus ici ; les tampons du maillage doivent rester
+    // valides jusqu'à `endFrame`).
     core::Result<> drawMesh(Mesh &mesh, const Camera &camera);
     // REN-34 : dessine les segments de `debug` dans la passe de scène (après setCamera). Sans segment ou désactivé : rien (aucun
-    // coût). Les shaders `debug_line.vert/frag` sont chargés au premier appel.
+    // coût). Les shaders `debug_line.vert/frag` sont chargés au premier appel. Les segments sont copiés à l'appel.
     core::Result<> drawDebug(const DebugDraw &debug);
-    // Referme la passe, exécute post-traitements, historique, mise à l'échelle vers `output`, génération d'images.
+    // Construit et exécute le graphe de l'image : passe de scène (dessins enregistrés), post-traitements, mise à l'échelle vers
+    // `output`, génération d'images, historique, puis les passes des plugins. Chaque passe est mesurée par le Profiler sous
+    // « RenderGraph/<passe> » (scene, post.<nom>, upscale, frame-generation, history).
     core::Result<> endFrame(const UpscaleTarget &output);
 
     // Outil de copie plein écran partagé (présentation, mises à l'échelle de l'application).
@@ -124,13 +150,39 @@ class SceneRenderer
     core::Result<> saveColorPng(const std::filesystem::path &path) const;
 
   private:
-    SceneRenderer(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines) : device_(device), library_(library), pipelines_(pipelines) {}
+    // Dessin enregistré par drawMesh / drawDebug, joué par la passe « scene ».
+    struct SceneDraw
+    {
+        rhi::PipelineHandle pipeline;
+        std::vector<std::byte> pushConstants;
+        LightManager *lights = nullptr;
+        rhi::BindGroupHandle textureGroup;
+        rhi::BindGroupHandle modelGroup;
+        rhi::BufferHandle vertexBuffer;
+        rhi::BufferHandle instanceBuffer;
+        rhi::BufferHandle indexBuffer;
+        std::uint32_t count = 0; // index (maillage) ou sommets (lignes de debug)
+        std::uint32_t instanceCount = 1;
+        std::uint64_t vertexOffset = 0; // octets, dans le tampon des lignes de debug
+        bool debugLines = false;
+    };
+
+    SceneRenderer(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines)
+        : device_(device), library_(library), pipelines_(pipelines), graph_(device)
+    {
+    }
     bool scaled() const noexcept { return upscalingEnabled_ && renderScale_ < 1.0f && outputWidth_ > 0 && outputHeight_ > 0; }
     bool modeRuns() const noexcept { return upscalingEnabled_ && activeUpscaleMode_ != nullptr; }
     bool needsJitter() const noexcept;
     bool needsHistory() const noexcept;
-    core::Result<> rebuildFrameGroup();
-    core::Result<> draw(Mesh &mesh, const Camera &camera, bool lines);
+    LightManager &activeLights() noexcept { return lights_ != nullptr ? *lights_ : defaultLights_; }
+    core::Result<> rebuildFrameGroup(LightManager &lights);
+    core::Result<> record(Mesh &mesh, bool lines);
+    core::Result<> playDraws(rhi::CommandEncoder &encoder);
+    core::Result<> uploadDebugLines();
+    core::Result<> updateFrameData();
+    core::Result<> ensureHistory(RenderTarget &target, bool &fresh);
+    core::Result<> buildGraph(const UpscaleTarget &output);
 
     rhi::Device &device_;
     ShaderLibrary &library_;
@@ -139,18 +191,40 @@ class SceneRenderer
     std::shared_ptr<ShaderProgram> meshProgram_;
     std::shared_ptr<ShaderProgram> debugProgram_;
     GpuBuffer debugBuffer_;
+    std::vector<float> debugVertices_; // segments de debug de l'image (envoyés une fois, à endFrame)
     std::filesystem::path shaderDirectory_;
     GpuBuffer cameraBuffer_;
+    GpuBuffer frameBuffer_; // FrameData (REN-03)
     LightManager defaultLights_;
     LightManager *lights_ = nullptr;
     rhi::BindGroupHandle frameGroup_;
     rhi::BufferHandle groupCamera_;
     rhi::BufferHandle groupLights_;
+    FrameResources frameResources_;
+
+    RenderGraph graph_;
+    std::vector<std::unique_ptr<RenderFeature>> features_;
+    std::vector<SceneDraw> draws_;
+    FrameOptions frameOptions_;
 
     RenderTarget sceneTarget_;
-    RenderTarget historyTarget_;
+    // Historique en double tampon : on lit l'image précédente dans l'un pendant que l'image courante est copiée dans l'autre (le
+    // graphe n'a ainsi aucune écriture à ordonner après les lecteurs).
+    std::array<RenderTarget, 2> history_;
+    std::uint32_t lastHistory_ = 0; // tampon écrit par la dernière image qui a réussi sa copie (si historyValid_)
     rhi::CommandEncoder *encoder_ = nullptr;
-    bool passOpen_ = false;
+    bool frameOpen_ = false;
+
+    FrameData frameData_;
+    FrameEnvironment environment_;
+    glm::mat4 cameraView_{1.0f};
+    glm::mat4 cameraProjection_{1.0f};
+    glm::dvec3 cameraWorld_{0.0};
+    glm::mat4 previousViewProj_{1.0f};
+    glm::vec2 previousJitter_{0.0f};
+    bool hasPreviousFrame_ = false;
+    double timeSeconds_ = 0.0;
+    std::uint64_t frameIndex_ = 0;
 
     int outputWidth_ = 0;
     int outputHeight_ = 0;
@@ -164,7 +238,7 @@ class SceneRenderer
     std::vector<std::unique_ptr<IPostProcessPass>> postProcessPasses_;
     std::unique_ptr<IFrameGenerationMode> frameGenMode_;
     rhi::TextureHandle generatedFrame_;
-    bool historyValid_ = false; // historyTarget_ contient l'image précédente (écrite avec succès à l'image précédente)
+    bool historyValid_ = false; // history_[lastHistory_] contient l'image précédente (écrite avec succès à l'image précédente)
 
     bool motionVectorsEnabled_ = false;
     bool cameraRelative_ = false;
