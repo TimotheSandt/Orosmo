@@ -35,9 +35,11 @@ SHELL := sh
 # (`@@ors begin <cible absolue> <affiché> <étiquette>` / `@@ors end <cible>`) et la commande n'est plus affichée (V=1 la montre). Sans
 # ORS_PROGRESS (CI, redirection) : commande complète et étiquette `  CXX fichier`, comme avant.
 ORS_Q := $(if $(ORS_PROGRESS),$(if $(filter 1,$(V)),,@))
-ors_compile = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $(abspath $@) $< $(1),  $(1) $<)'
-ors_link = @printf '%s\n' '$(if $(ORS_PROGRESS),@@ors begin $(abspath $@) $@ $(1),  $(1) $@)'
-ors_end = $(if $(ORS_PROGRESS),@printf '%s\n' '@@ors end $(abspath $@)')
+# Apostrophes des valeurs (chemin du dépôt, noms de fichiers) protégées : le texte reste entre apostrophes dans le printf.
+_ors_sq = $(subst ','\'',$(1))
+ors_compile = @printf '%s\n' '$(call _ors_sq,$(if $(ORS_PROGRESS),@@ors begin $(abspath $@) $< $(1),  $(1) $<))'
+ors_link = @printf '%s\n' '$(call _ors_sq,$(if $(ORS_PROGRESS),@@ors begin $(abspath $@) $@ $(1),  $(1) $@))'
+ors_end = $(if $(ORS_PROGRESS),@printf '%s\n' '$(call _ors_sq,@@ors end $(abspath $@))')
 
 # ── Engine identity (single source of truth) ──────────────────────────────────
 # Path relative to wherever make is invoked (always from project root).

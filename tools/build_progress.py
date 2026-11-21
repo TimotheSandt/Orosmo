@@ -48,6 +48,8 @@ def plan(make_cmd: list[str], env: dict[str, str]) -> tuple[set[str], set[str]]:
                                  timeout=120).stdout
         except (OSError, subprocess.SubprocessError):
             return set()
+        # `make -n` affiche le texte de la commande : une apostrophe y est écrite '\'' (échappement du shell), pas telle quelle.
+        out = out.replace("'\\''", "'")
         return {m.group(2) for m in map(MARK.search, out.splitlines()) if m and m.group(1) == "begin"}
 
     result: dict[str, set[str]] = {}
