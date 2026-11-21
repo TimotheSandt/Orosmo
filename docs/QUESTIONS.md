@@ -174,3 +174,10 @@ l'auteur (2026-11-20)** : tout renommer tout de suite, aucun projet extérieur n
 dossier du paquet dans un projet `orosmo/` (`apps/demo/orosmo/` dans le dépôt), import `.cui` `import "orosmo/ui"` (branche
 `chore/rename-namespace-orosmo`). Restent nommés « engine » : les variables de build `ENGINE_*` (`ENGINE_DIR`…), le fichier
 `make/engine.mk` du SDK et les dossiers d'outils `tools/engine-sdk/`, `tools/engine-init-rs/` (internes).
+
+**A33. `generateRegion` hors des limites d'int64 : région vide ou erreur ? (2026-11-20, proposition).** Revue CodeRabbit 3 de la
+PR #8 : une région dont le dernier indice global dépasse int64 est maintenant refusée avant toute allocation
+(`fix/M3-review3-world`). Pour ne pas changer l'API figée de 0.3.x, `generateRegion` renvoie alors un `HeightField` vide
+(largeur et hauteur 0, documenté dans `export.hpp`), que tous les exports refusent ensuite (`kInvalidArgument`). Plus propre :
+`Result<HeightField>` (règle 10), au prix d'un changement incompatible (`terrain-gen`, `terrain-viewer`, une dizaine de tests).
+Proposition : garder le champ vide en 0.3.x et passer à `Result` à M4 avec les autres changements d'API. *À trancher par l'auteur.*
