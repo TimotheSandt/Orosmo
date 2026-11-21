@@ -1,4 +1,5 @@
 // RHI-12 : pipeline de shaders GLSL 450 -> SPIR-V -> GLSL 430, réflexion, inclusions, cache, rechargement à chaud.
+#include <cstdlib>
 #include <doctest/doctest.h>
 
 #include "support/test_support.hpp"
@@ -458,9 +459,9 @@ TEST_SUITE("rhi/backend/shader")
                     e.endRenderPass();
                 });
             const auto px = gpu.pixel(color, 1, 1);
-            CHECK(static_cast<std::uint8_t>(px[0]) == 128); // 1.0 * 1.0 * 0.5
-            CHECK(static_cast<std::uint8_t>(px[1]) == 128); // 1.0 * 0.5 * 1.0
-            CHECK(static_cast<std::uint8_t>(px[2]) == 64);  // 1.0 * 0.25 * 1.0
+            CHECK(std::abs(static_cast<int>(static_cast<std::uint8_t>(px[0])) - 128) <= 1); // 1.0 * 1.0 * 0.5 (arrondi UNORM : tolérance d'un niveau)
+            CHECK(std::abs(static_cast<int>(static_cast<std::uint8_t>(px[1])) - 128) <= 1); // 1.0 * 0.5 * 1.0 (arrondi UNORM : tolérance d'un niveau)
+            CHECK(std::abs(static_cast<int>(static_cast<std::uint8_t>(px[2])) - 64) <= 1); // 1.0 * 0.25 * 1.0 (arrondi UNORM : tolérance d'un niveau)
             std::uint32_t id = 0;
             const auto idPx = gpu.pixel(ids, 1, 1);
             std::memcpy(&id, idPx.data(), 4);

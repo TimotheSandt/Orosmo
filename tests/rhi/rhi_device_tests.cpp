@@ -1045,7 +1045,9 @@ TEST_SUITE("rhi/backend/query")
             CHECK(real->size.width == 8);
             auto frame = gpu->beginFrame();
             REQUIRE(frame.has_value());
-            CHECK(gpu->textureDesc(*frame)->size.width == 6);
+            auto frameDesc = gpu->textureDesc(*frame);
+            REQUIRE(frameDesc.has_value());
+            CHECK(frameDesc->size.width == 6);
             gpu->destroy(*t);
             CHECK((tests::errorOf(gpu->textureDesc(*t)) == ErrorCode::kNotFound));
         }
@@ -1057,6 +1059,11 @@ TEST_SUITE("rhi/backend/query")
         {
             Gpu gpu(backend);
             REQUIRE(gpu.device);
+            if (!gpu->capabilities().timestampQueries)
+            {
+                MESSAGE("Skipped: no timestamp queries on ", tests::backendName(backend));
+                continue;
+            }
             auto pool = gpu->createQueryPool(2, "ready");
             REQUIRE(pool.has_value());
             CHECK_FALSE(tests::valueOf(gpu->timestampsReady(*pool, 0, 2)));
