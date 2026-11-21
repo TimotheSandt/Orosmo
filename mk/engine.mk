@@ -360,6 +360,7 @@ ifeq ($(DETECTED_OS),Windows)
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination '$(DIST_PKG_DIR)/make' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination '$(DIST_PKG_DIR)/tools' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/build_progress.py' -Destination '$(DIST_PKG_DIR)/tools' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/gen_compile_commands.py' -Destination '$(DIST_PKG_DIR)/tools' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'vcpkg.json' -Destination '$(DIST_PKG_DIR)' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist.gitignore' -Destination '$(DIST_PKG_DIR)/.gitignore' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist-README.md' -Destination '$(DIST_PKG_DIR)/README.md' -Force"
@@ -379,6 +380,7 @@ else
 	@cp tools/engine-sdk/engine.mk      "$(DIST_PKG_DIR)/make/"
 	@cp "$(_CUI_INSTALLED)"       "$(DIST_PKG_DIR)/tools/"
 	@cp tools/build_progress.py   "$(DIST_PKG_DIR)/tools/"   # barre de progression des projets (Makefile du modèle)
+	@cp tools/gen_compile_commands.py "$(DIST_PKG_DIR)/tools/"
 	@cp vcpkg.json      "$(DIST_PKG_DIR)/vcpkg.json"
 	@cp tools/engine-sdk/dist.gitignore "$(DIST_PKG_DIR)/.gitignore"
 	@cp tools/engine-sdk/dist-README.md "$(DIST_PKG_DIR)/README.md"

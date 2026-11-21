@@ -52,8 +52,11 @@ else
 # ferait disparaître les en-têtes sous la compilation de l'autre.
 .NOTPARALLEL:
 
-.PHONY: check check-repo check-layers check-api check-headers
+.PHONY: check check-repo check-layers check-api check-headers compile-commands
 check: check-repo check-layers check-api check-headers
+
+compile-commands:
+	@python3 tools/gen_compile_commands.py --build-type $(BUILD_TYPE) --cxx "$(CXX)" --cc "$(CC)"
 
 check-repo:
 	@sh tools/check-repo.sh
