@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -68,7 +69,12 @@ struct ColorLut
 {
     std::uint32_t size = 0;
     std::vector<glm::vec3> values;
-    bool valid() const noexcept { return size >= 2 && values.size() == static_cast<std::size_t>(size) * size * size; }
+    // size >= 2 et size³ couleurs ; le cube est calculé sans dépassement (une taille énorme est invalide, pas un repli à zéro).
+    bool valid() const noexcept
+    {
+        const auto n = static_cast<std::size_t>(size);
+        return size >= 2 && n <= std::numeric_limits<std::size_t>::max() / n / n && values.size() == n * n * n;
+    }
 };
 ColorLut identityLut(std::uint32_t size);
 // Lecture trilinéaire de la LUT (même interpolation que l'échantillonneur linéaire du GPU, centres des texels). Entrée bornée.

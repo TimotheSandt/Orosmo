@@ -121,7 +121,9 @@ class AutoExposureFeature final : public PostEffect
     ~AutoExposureFeature() override;
 
     std::string name() const override { return kName; }
-    bool supports(const rhi::Capabilities &capabilities) const noexcept override { return capabilities.compute; }
+    // Compute, et des groupes de 256 invocations (histogramme 16 × 16, moyenne 256 × 1) : limites lues dans les capacités.
+    static bool supportedBy(const rhi::Capabilities &capabilities) noexcept;
+    bool supports(const rhi::Capabilities &capabilities) const noexcept override { return supportedBy(capabilities); }
     core::Result<> prepare(const FrameData &frame) override;
 
     AutoExposureSettings &settings() noexcept { return settings_; }
@@ -213,7 +215,8 @@ class ColorGradingFeature final : public PostEffect
     std::string name() const override { return kName; }
     // Valeurs affichées (après tonemapping) : la LUT n'a pas besoin d'une scène HDR.
     bool needsHdr() const noexcept override { return false; }
-    // Remplace la LUT (envoyée en RGBA16F). kInvalidArgument si elle n'est pas valide ; l'ancienne reste alors en place.
+    // Remplace la LUT (envoyée en RGBA16F), active à l'image suivante. kInvalidArgument si elle n'est pas valide, a une composante non finie
+    // ou hors de [0, 1] ; l'ancienne reste alors en place.
     core::Result<> setLut(const ColorLut &lut);
     std::uint32_t lutSize() const noexcept { return lutSize_; }
     // 0 : image inchangée, 1 : LUT entière (bornée à [0, 1]).
@@ -225,8 +228,10 @@ class ColorGradingFeature final : public PostEffect
     core::Result<> declare(RenderGraphBuilder &builder) override;
 
     std::shared_ptr<ShaderProgram> program_;
-    rhi::TextureHandle lut_;
-    std::uint32_t lutSize_ = 0;
+    rhi::TextureHandle lut_;        // LUT utilisée par les passes déclarées
+    rhi::TextureHandle pendingLut_; // dernière LUT envoyée, active au prochain declare()
+    std::uint32_t lutSize_ = 0;       // taille de la dernière LUT envoyée
+    std::uint32_t activeLutSize_ = 0; // taille de lut_
     float strength_ = 1.0f;
 };
 
