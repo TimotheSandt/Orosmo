@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <array>
+#include <cstring>
 #include <numeric>
 #include <string>
 
@@ -26,7 +27,7 @@ static_assert(sizeof(glm::mat4) == 64);
 static_assert(offsetof(ModelBlock, model) == 0);
 static_assert(offsetof(ModelBlock, normalMatrix) == 64);
 static_assert(offsetof(ModelBlock, prevModel) == 128 && offsetof(ModelBlock, info) == 192);
-static_assert(sizeof(ModelBlock) == 208);
+static_assert(sizeof(ModelBlock) == 208 && sizeof(ModelBlock) == Mesh::kModelBlockSize);
 } // namespace
 
 
@@ -186,7 +187,9 @@ core::Result<> Mesh::uploadTransform(const glm::vec3 &origin, const TransformHis
     {
         if (history.frame != lastFrame_)
         {
-            previousWorld_ = hasLastWorld_ ? lastWorld_ : world;
+            // Le modèle suivi n'est « précédent » que pour l'image qui suit directement : après une interruption du suivi (maillage
+            // non dessiné, AOV de mouvement retiré), le dernier vu est périmé et le modèle courant sert de repli (aucun mouvement).
+            previousWorld_ = hasLastWorld_ && history.frame == lastFrame_ + 1 ? lastWorld_ : world;
             lastFrame_ = history.frame;
             tracked = true; // nouvelle image : le « précédent » change même si l'objet est immobile
         }
@@ -217,6 +220,7 @@ core::Result<> Mesh::uploadTransform(const glm::vec3 &origin, const TransformHis
     {
         return r;
     }
+    std::memcpy(modelBlock_.data(), &block, sizeof block);
     transformDirty_ = false;
     uploadedOrigin_ = origin;
     uploadedPreviousWorld_ = history.frame != 0 ? previousWorld_ : world;
@@ -350,6 +354,7 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(lastFrame_, other.lastFrame_);
     std::swap(objectId_, other.objectId_);
     std::swap(aovMaterial_, other.aovMaterial_);
+    std::swap(modelBlock_, other.modelBlock_);
 }
 
 } // namespace orosmo::renderer
