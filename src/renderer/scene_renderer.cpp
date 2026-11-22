@@ -279,7 +279,11 @@ core::Result<> SceneRenderer::setFrameGenerationMode(std::unique_ptr<IFrameGener
     return {};
 }
 
-bool SceneRenderer::needsJitter() const noexcept { return modeRuns() && activeUpscaleMode_->requirements().needsJitter; }
+bool SceneRenderer::needsJitter() const noexcept
+{
+    return (modeRuns() && activeUpscaleMode_->requirements().needsJitter) ||
+           std::any_of(features_.begin(), features_.end(), [](const auto &feature) { return feature->wantsJitter(); }); // REN-19 : TAA
+}
 
 bool SceneRenderer::needsHistory() const noexcept
 {

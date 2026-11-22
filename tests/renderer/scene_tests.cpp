@@ -97,8 +97,15 @@ TEST_SUITE("renderer/camera")
         CHECK(std::memcmp(data.matrix, glm::value_ptr(proj * view), sizeof data.matrix) == 0);
 
         camera.setJitter({0.01f, -0.02f});
-        CHECK(camera.projectionMatrix()[2][0] == doctest::Approx(proj[2][0] + 0.01f));
-        CHECK(camera.projectionMatrix()[2][1] == doctest::Approx(proj[2][1] - 0.02f));
+        CHECK(camera.projectionMatrix()[2][0] == doctest::Approx(proj[2][0] - 0.01f)); // w = -z_vue : NDC décalé de +jitter
+        CHECK(camera.projectionMatrix()[2][1] == doctest::Approx(proj[2][1] + 0.02f));
+        {
+            // Un point projeté est décalé de +jitter en NDC (même convention que l'orthographique et les vecteurs de mouvement).
+            const glm::vec4 p = camera.projectionMatrix() * glm::vec4(0.3f, -0.2f, -4.0f, 1.0f);
+            const glm::vec4 q = proj * glm::vec4(0.3f, -0.2f, -4.0f, 1.0f);
+            CHECK(p.x / p.w - q.x / q.w == doctest::Approx(0.01f));
+            CHECK(p.y / p.w - q.y / q.w == doctest::Approx(-0.02f));
+        }
         camera.setAspect(10, 0); // hauteur nulle : pas de division par zéro
         CHECK(camera.aspect() == 1.0f);
 

@@ -17,6 +17,7 @@
 #include <orosmo/core/profiler.hpp>
 #include <orosmo/platform/input_manager.hpp>
 #include <orosmo/platform/window.hpp>
+#include <orosmo/renderer/antialiasing.hpp>
 #include <orosmo/renderer/camera.hpp>
 #include <orosmo/renderer/canvas_renderer.hpp>
 #include <orosmo/renderer/gpu_timer.hpp>
@@ -61,6 +62,8 @@ class Game
     void setShadowsEnabled(bool enabled) noexcept { this->shadowsEnabled = enabled; }
     // --post (REN-17/18) : effets activés par init() ; kNone (défaut) : aucun effet enregistré, scène LDR inchangée.
     void setPostMode(demo::PostMode mode) noexcept { postMode = mode; }
+    // --aa (REN-19) : technique activée par init() ; kNone (défaut) : aucun plugin enregistré, image inchangée.
+    void setAntiAliasing(orosmo::renderer::AntiAliasingMode mode) noexcept { antiAliasingMode = mode; }
     // --lighting / --lights (REN-04) : mode d'éclairage demandé (forward+ : repli sur forward sans compute) et lumières ponctuelles.
     void setLighting(demo::LightingMode mode, std::uint32_t pointLights) noexcept
     {
@@ -158,6 +161,8 @@ class Game
     bool shadowsEnabled = false;
     demo::PostMode postMode = demo::PostMode::kNone;
     orosmo::renderer::PostEffects post; // effets possédés par sceneRenderer
+    orosmo::renderer::AntiAliasingMode antiAliasingMode = orosmo::renderer::AntiAliasingMode::kNone;
+    orosmo::renderer::AntiAliasing antiAliasing; // plugins possédés par sceneRenderer
     demo::LightingMode lightingMode = demo::LightingMode::kForward;
     std::uint32_t pointLightCount = 0;
     std::string hoverId;

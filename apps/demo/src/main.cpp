@@ -159,6 +159,7 @@ int main(int argc, char **argv)
             game.setDebugView(launchOptions.debugView, launchOptions.freezeFrustum);
             game.setShadowsEnabled(launchOptions.shadows);
             game.setPostMode(launchOptions.post);
+            game.setAntiAliasing(launchOptions.antiAliasing);
             game.setLighting(launchOptions.lighting, launchOptions.pointLights);
             game.setMixedScene(launchOptions.mixedScene);
             LOG_TRACE("Game created");

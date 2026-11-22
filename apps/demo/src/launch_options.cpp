@@ -331,6 +331,16 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.gpuDriven = *value == "on";
         }
+        else if (matchOption("--aa", value))
+        {
+            const auto mode = value ? orosmo::renderer::parseAntiAliasingMode(*value) : std::nullopt;
+            if (!mode)
+            {
+                return makeError(ErrorCode::kInvalidArgument,
+                                 "Invalid value for --aa (none|fxaa|smaa|taa): " + (value ? *value : std::string("<missing>")));
+            }
+            options.antiAliasing = *mode;
+        }
         else if (matchOption("--debug-view", value))
         {
             const auto view = value ? orosmo::renderer::debugViewFromName(*value) : std::nullopt;
@@ -417,6 +427,7 @@ void printUsage(std::ostream &out)
         << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
         << "              [--instances N] [--gpu-driven off|on] [--debug-view none|normals|albedo|overdraw|lod|wireframe|motion] [--freeze-frustum]\n"
         << "              [--shadows off|on] [--scene default|mixed] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
+        << "              [--aa none|fxaa|smaa|taa]\n"
         << "              [--headless] [--vsync]\n"
         << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
@@ -437,6 +448,8 @@ void printUsage(std::ostream &out)
     out << "          update statistics are logged. Off by default.\n";
     out << "Post:     --post hdr renders the scene in HDR with ACES tonemapping; bloom adds bloom; full adds auto exposure,\n";
     out << "          a color grading LUT and a vignette. none (default) keeps the LDR scene unchanged.\n";
+    out << "AA:       --aa fxaa|smaa run on the displayed values (after tonemapping); taa jitters the camera and accumulates\n";
+    out << "          the HDR scene before the post-processing (motion vectors, history rejection). none (default): no AA.\n";
     out << "Lighting: --lighting forwardplus uses clustered forward+ lighting (depth pre-pass, clusters filled by a compute pass;\n";
     out << "          falls back to forward without compute shaders). --lights N adds N deterministic point lights.\n";
 }

@@ -211,6 +211,22 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--post needs a value");
     }
 
+    TEST_CASE("launch options parse --aa; none by default (REN-19)")
+    {
+        using orosmo::renderer::AntiAliasingMode;
+        const char *none[] = {"Orosmo"};
+        Assert(demo::parseLaunchOptions(1, none)->antiAliasing == AntiAliasingMode::kNone, "No anti-aliasing by default");
+        const char *taa[] = {"Orosmo", "--aa", "TAA", "--post", "hdr"};
+        const auto parsed = demo::parseLaunchOptions(5, taa);
+        Assert(parsed.has_value() && parsed->antiAliasing == AntiAliasingMode::kTaa && parsed->post == demo::PostMode::kHdr, "--aa taa combines with --post");
+        const char *smaa[] = {"Orosmo", "--aa", "smaa"};
+        Assert(demo::parseLaunchOptions(3, smaa)->antiAliasing == AntiAliasingMode::kSmaa, "--aa smaa");
+        const char *bad[] = {"Orosmo", "--aa", "msaa"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "unknown anti-aliasing mode is refused");
+        const char *missing[] = {"Orosmo", "--aa"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--aa needs a value");
+    }
+
     TEST_CASE("launch options parse --instances; none by default (REN-28)")
     {
         const char *none[] = {"Orosmo"};

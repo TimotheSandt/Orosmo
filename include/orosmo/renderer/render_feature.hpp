@@ -117,6 +117,9 @@ class RenderFeature
     // REN-21 : AOV que ce plugin lit. Ils sont ajoutés à la passe de scène (cibles supplémentaires) tant que le plugin est
     // enregistré ; sans plugin ni demande, aucune cible de plus n'existe.
     virtual AovSet requiredAovs() const { return {}; }
+    // REN-19 : vrai si ce plugin veut une caméra décalée d'un sous-pixel à chaque image (suite de Halton du renderer, en mode
+    // `JitterMode::kAuto`), comme un mode de mise à l'échelle temporel. Lu à `beginFrame` ; faux par défaut (aucun décalage).
+    virtual bool wantsJitter() const noexcept { return false; }
     // Données de l'image (caméra, temps, lumière principale), avant `declarePasses`. Un plugin peut y lire ce qu'il prépare
     // côté CPU (culling, mises à jour de tampons).
     virtual core::Result<> prepare(const FrameData &frame)

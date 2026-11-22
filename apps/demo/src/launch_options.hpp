@@ -3,6 +3,7 @@
 #pragma once
 
 #include <orosmo/core/error.hpp>
+#include <orosmo/renderer/antialiasing.hpp>
 #include <orosmo/renderer/debug_view.hpp>
 #include <orosmo/rhi/types.hpp>
 
@@ -89,6 +90,8 @@ struct LaunchOptions
     bool shadows = false;
     // --post none|hdr|bloom|full (défaut : none, captures de référence inchangées).
     PostMode post = PostMode::kNone;
+    // --aa none|fxaa|smaa|taa (REN-19) : anticrénelage. none (défaut) : aucun plugin, captures de référence inchangées.
+    orosmo::renderer::AntiAliasingMode antiAliasing = orosmo::renderer::AntiAliasingMode::kNone;
     LightingMode lighting = LightingMode::kForward;
     // --lights N (REN-04/05) : N lumières ponctuelles déterministes au-dessus de la cour, en plus du soleil. 0 (défaut) : aucune.
     std::uint32_t pointLights = 0;
