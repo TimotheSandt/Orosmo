@@ -281,6 +281,14 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.instances = *count;
         }
+        else if (matchOption("--shadows", value))
+        {
+            if (!value || (*value != "on" && *value != "off"))
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --shadows (expected on or off)");
+            }
+            options.shadows = *value == "on";
+        }
         else if (matchOption("--capture-frames", value))
         {
             if (!value)
@@ -317,7 +325,7 @@ void printUsage(std::ostream &out)
 {
     out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
         << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
-        << "              [--instances N] [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
+        << "              [--instances N] [--shadows off|on] [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
     out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
@@ -328,6 +336,8 @@ void printUsage(std::ostream &out)
     out << "          combine it with --capture <dir> to save the images.\n";
     out << "Instances: --instances N adds N instanced objects around the courtyard (frustum culling, distance LOD); the draw\n";
     out << "          calls and culling statistics are logged.\n";
+    out << "Shadows  : --shadows on draws cascaded sun shadows with a cache (redrawn only where something moves); the shadow\n";
+    out << "          update statistics are logged. Off by default.\n";
 }
 
 bool promptForBackend(std::istream &input, std::ostream &output, Backend &selected)

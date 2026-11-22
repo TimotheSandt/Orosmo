@@ -200,6 +200,7 @@ DEMO_BIN := apps/demo/bin/debug/main$(if $(filter Windows_NT,$(OS)),.exe)
 .PHONY: demo-capture demo-vulkan-check
 demo-capture: all-debug
 	./$(DEMO_BIN) --api opengl --headless --ui hud --capture build/demo-capture/hud --capture-frames 5
+	./$(DEMO_BIN) --api opengl --headless --ui off --shadows on --capture build/demo-capture/shadows --capture-frames 5
 	for tab in scene widgets controls color windows layout themes; do \
 	    ./$(DEMO_BIN) --api opengl --headless --ui full --theme dark --tab $$tab --capture build/demo-capture/dark-$$tab --capture-frames 5 || exit 1; done
 	./$(DEMO_BIN) --api opengl --headless --ui full --theme light --tab widgets --capture build/demo-capture/light-widgets --capture-frames 5

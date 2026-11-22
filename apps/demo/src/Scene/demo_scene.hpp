@@ -12,6 +12,7 @@
 #include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/scene_renderer.hpp"
 #include "orosmo/renderer/shader_library.hpp"
+#include "orosmo/renderer/shadow_feature.hpp"
 #include "orosmo/rhi/device.hpp"
 
 #include <glm/glm.hpp>
@@ -68,6 +69,9 @@ class DemoScene
     orosmo::core::Result<> initInstances(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
                                          orosmo::renderer::PipelineCache &pipelines, const std::filesystem::path &shaderDirectory,
                                          std::uint32_t count);
+    // --shadows on (REN-06 à 08) : à appeler AVANT init/initInstances. Les maillages lisent alors les ombres (programme récepteur)
+    // et sont enregistrés comme casters (fixes : la structure et les instances ; mobiles : le cristal et les prismes). Nul : rien.
+    void setShadows(orosmo::renderer::ShadowFeature *shadows) noexcept { shadows_ = shadows; }
     void destroy();
     void update(float deltaSeconds, const DemoSceneParams &params);
     orosmo::core::Result<> render(orosmo::renderer::SceneRenderer &renderer, orosmo::renderer::Camera &camera,
@@ -83,7 +87,13 @@ class DemoScene
     orosmo::core::Result<> syncLights(const DemoSceneParams &params);
     orosmo::core::Result<> syncAccentColor(const DemoSceneParams &params);
 
+    orosmo::core::Result<> registerCaster(const orosmo::renderer::Mesh &mesh, const orosmo::renderer::MeshData &data,
+                                          orosmo::renderer::CasterMobility mobility);
+
     std::shared_ptr<orosmo::renderer::ShaderProgram> meshProgram_;
+    orosmo::renderer::ShadowFeature *shadows_ = nullptr;
+    std::vector<orosmo::renderer::ShadowFeature::CasterId> casterIds_;
+    std::uint64_t shadowFrames_ = 0;
     orosmo::renderer::Mesh groundMesh_;
     orosmo::renderer::Mesh structureMesh_;
     orosmo::renderer::Mesh heroMesh_;

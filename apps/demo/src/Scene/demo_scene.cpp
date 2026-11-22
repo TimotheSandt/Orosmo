@@ -435,7 +435,7 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
     {
         return std::unexpected(program.error());
     }
-    meshProgram_ = *program;
+    meshProgram_ = shadows_ != nullptr ? shadows_->receiverProgram() : *program;
 
     auto lights = orosmo::renderer::LightManager::create(device, 4);
     if (!lights)
@@ -452,7 +452,12 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
         return r;
     }
 
-    auto ground = orosmo::renderer::Mesh::create(device, buildCourtyardMeshData());
+    if (shadows_ != nullptr)
+    {
+        shadows_->setLights(&lights_);
+    }
+    const orosmo::renderer::MeshData groundData = buildCourtyardMeshData();
+    auto ground = orosmo::renderer::Mesh::create(device, groundData);
     if (!ground)
     {
         destroy();
@@ -461,7 +466,8 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
     ground->setProgram(meshProgram_);
     groundMesh_ = std::move(*ground);
 
-    auto structure = orosmo::renderer::Mesh::create(device, buildStructureMeshData());
+    const orosmo::renderer::MeshData structureData = buildStructureMeshData();
+    auto structure = orosmo::renderer::Mesh::create(device, structureData);
     if (!structure)
     {
         destroy();
@@ -472,7 +478,8 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
 
     MeshBuilder heroBuilder = buildHeroCrystalBuilder(defaults.accentColor);
     heroVertices_ = heroBuilder.vertices;
-    auto hero = orosmo::renderer::Mesh::create(device, heroBuilder.finish("diorama.hero"));
+    const orosmo::renderer::MeshData heroData = heroBuilder.finish("diorama.hero");
+    auto hero = orosmo::renderer::Mesh::create(device, heroData);
     if (!hero)
     {
         destroy();
@@ -485,7 +492,8 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
 
     for (std::size_t i = 0; i < orbitMeshes_.size(); ++i)
     {
-        auto orbit = orosmo::renderer::Mesh::create(device, buildOrbitMeshData(i));
+        const orosmo::renderer::MeshData orbitData = buildOrbitMeshData(i);
+        auto orbit = orosmo::renderer::Mesh::create(device, orbitData);
         if (!orbit)
         {
             destroy();
@@ -493,11 +501,66 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
         }
         orbit->setProgram(meshProgram_);
         orbitMeshes_[i] = std::move(*orbit);
+        if (shadows_ != nullptr)
+        {
+            if (auto r = registerCaster(orbitMeshes_[i], orbitData, orosmo::renderer::CasterMobility::kMovable); !r)
+            {
+                destroy();
+                return r;
+            }
+        }
     }
+    if (shadows_ != nullptr)
+    {
+        // Le sol reçoit sans projeter (plat, sous tout le reste) ; la structure est fixe (cache), le cristal est mobile.
+        for (auto *mesh : {&groundMesh_, &structureMesh_, &heroMesh_})
+        {
+            mesh->setMaterialGroup(shadows_->receiverGroup());
+        }
+        for (auto &orbit : orbitMeshes_)
+        {
+            orbit.setMaterialGroup(shadows_->receiverGroup());
+        }
+        if (auto r = registerCaster(structureMesh_, structureData, orosmo::renderer::CasterMobility::kStatic); !r)
+        {
+            destroy();
+            return r;
+        }
+        if (auto r = registerCaster(heroMesh_, heroData, orosmo::renderer::CasterMobility::kMovable); !r)
+        {
+            destroy();
+            return r;
+        }
+    }
+    (void)groundData;
 
     elapsedSeconds_ = 0.0f;
     applyTransforms();
     initialized_ = true;
+    return {};
+}
+
+orosmo::core::Result<> DemoScene::registerCaster(const orosmo::renderer::Mesh &mesh, const orosmo::renderer::MeshData &data,
+                                                orosmo::renderer::CasterMobility mobility)
+{
+    // Boîte locale depuis les positions (3 premiers flottants de chaque sommet) : culling par vue d'ombre.
+    std::uint32_t stride = 0;
+    for (const std::uint32_t size : data.attributeSizes)
+    {
+        stride += size;
+    }
+    orosmo::renderer::Aabb bounds = orosmo::renderer::Aabb::empty();
+    for (std::size_t v = 0; stride >= 3 && v + 2 < data.vertices.size(); v += stride)
+    {
+        const glm::vec3 p(data.vertices[v], data.vertices[v + 1], data.vertices[v + 2]);
+        bounds.merge({p, p});
+    }
+    auto id = shadows_->addMeshCaster(mesh, bounds, mobility);
+    if (!id)
+    {
+        return std::unexpected(id.error());
+    }
+    casterIds_.push_back(*id);
     return {};
 }
 
@@ -538,7 +601,13 @@ orosmo::core::Result<> DemoScene::initInstances(orosmo::rhi::Device &device, oro
         lodIds[i] = *id;
     }
     // Deux matériaux identiques (le regroupement se fait par identifiant) : quatre lots au plus, deux LOD × deux matériaux.
-    const std::array<std::uint32_t, 2> materials{(*renderer)->addMaterial({}), (*renderer)->addMaterial({})};
+    rd::InstanceMaterial material;
+    if (shadows_ != nullptr)
+    {
+        material.program = shadows_->instancedReceiverProgram();
+        material.textures = shadows_->receiverGroup();
+    }
+    const std::array<std::uint32_t, 2> materials{(*renderer)->addMaterial(material), (*renderer)->addMaterial(material)};
 
     rd::LodSettings lod;
     lod.switchDistances = {28.0f};
@@ -578,6 +647,10 @@ orosmo::core::Result<> DemoScene::initInstances(orosmo::rhi::Device &device, oro
         }
         ++placed;
     }
+    if (shadows_ != nullptr)
+    {
+        casterIds_.push_back(shadows_->addObjectCasters(instanceObjects_, **renderer, rd::CasterMobility::kStatic));
+    }
     instanceRenderer_ = std::move(*renderer);
     return {};
 }
@@ -606,6 +679,16 @@ orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRendere
 
 void DemoScene::destroy()
 {
+    if (shadows_ != nullptr)
+    {
+        for (const auto id : casterIds_)
+        {
+            shadows_->removeCaster(id); // le plugin vit dans SceneRenderer : il ne doit plus voir ces maillages
+        }
+        shadows_->setLights(nullptr);
+    }
+    casterIds_.clear();
+    shadowFrames_ = 0;
     instanceRenderer_.reset(); // référence les maillages des LOD
     for (auto &mesh : instanceLods_)
     {
@@ -677,7 +760,13 @@ orosmo::core::Result<> DemoScene::syncLights(const DemoSceneParams &params)
     }
 
     const glm::vec3 sunDirection = sunDirectionFromAngles(params.sunElevation, params.sunAzimuth);
-    const orosmo::renderer::Light sunLight = orosmo::renderer::directionalLight(sunDirection, params.sunColor, params.sunIntensity);
+    orosmo::renderer::Light sunLight = orosmo::renderer::directionalLight(sunDirection, params.sunColor, params.sunIntensity);
+    if (shadows_ != nullptr)
+    {
+        // Soleil réglable dans l'interface : mobile ; ombres en cache (redessinées seulement quand quelque chose bouge).
+        sunLight.mobility = orosmo::renderer::LightMobility::kDynamic;
+        sunLight.shadowMode = orosmo::renderer::ShadowMode::kCached;
+    }
 
     lights_.setAmbientLight(params.ambientColor, params.ambientStrength);
     if (lights_.lights().empty())
@@ -760,6 +849,18 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
         return r;
     }
 
+    if (shadows_ != nullptr)
+    {
+        // Compteurs de l'image précédente (le plugin travaille à endFrame) : 12 premières images, puis toutes les 600.
+        const orosmo::renderer::ShadowStats &s = shadows_->stats();
+        if (shadowFrames_ > 0 && (shadowFrames_ <= 12 || shadowFrames_ % 600 == 0))
+        {
+            LOG_INFO("Shadows: ", s.views, " views, ", s.viewsUpdated, " updated (", s.staticRedraws, " static redraws, ", s.movableRedraws,
+                     " movable redraws, ", s.fullRedraws, " full, ", s.cacheCopies, " cache copies), ", s.cacheHits, " cache hits, ", s.deferred,
+                     " deferred, ", s.renderPasses, " shadow render passes, ", s.drawCalls, " draw calls, ", s.casterInstances, " caster instances");
+        }
+        ++shadowFrames_;
+    }
     if (auto r = renderer.drawMesh(groundMesh_, camera); !r)
     {
         return r;
