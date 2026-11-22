@@ -85,13 +85,54 @@ pipeline et la transformation sont résolus à `drawMesh`, les segments de debug
 dessine les casters, puis appelle `builder.addSceneInput(atlas)` : la passe d'ombre s'exécute avant `scene`, n'est jamais écartée, et
 la texture (`ctx.texture(atlas)`) est liée au groupe 1 des matériaux qui la lisent. Ni le renderer ni les backends ne changent.
 
-**Ajouter un post-traitement ou un effet HDR (REN-17 à 19, REN-21).** Un plugin qui lit `resources().sceneColor` avec `read` (et
+**Ajouter un post-traitement ou un effet HDR (REN-17 à 19, REN-21 ; exemples réels : section « HDR et post-traitements »).** Un plugin qui lit `resources().sceneColor` avec `read` (et
 `sceneDepth`, `motionVectors` au besoin), écrit une texture transitoire, puis une passe qui la réécrit dans `sceneColor` (`write`) :
 elle s'exécute après `scene` et avant `upscale`, `frame-generation` et `history`, qui lisent la scène avec `readFinal` bien qu'elles
 soient déclarées avant les plugins. Pour écrire **après** la mise à l'échelle (interface, superpositions), une passe qui écrit
 `resources().output` : les écrivains de la sortie suivent leur ordre de déclaration, et les plugins sont déclarés après `upscale`.
 C'est ainsi que la démo branche l'interface (`CanvasRenderer`) et la présentation (`apps/demo/src/Game/Game.cpp`,
 `Game::OverlayFeature`, passes `ui` et `present`).
+
+### HDR et post-traitements (M5 : REN-17, REN-18)
+
+Chaque effet est un **plugin du graphe** (`RenderFeature`), activable à l'exécution (`setEnabled` ; désactivé, il ne déclare aucune
+passe). Chaque passe déclare ses entrées (`read`) et sa sortie (`writeColor` / `write`) ; l'ordre entre effets est leur ordre
+d'enregistrement. Tout s'exécute à la résolution de rendu, entre `scene` et `upscale`.
+
+| En-tête | Rôle |
+| --- | --- |
+| `tonemap.hpp` | références CPU (mêmes formules que `shaders/rhi/post/post_common.glsl`, comparées par les tests) : `Tonemapper` (`kClamp`, `kAces` ajustement de Hill, `kAgx` approximation de Wrensch, `kReinhardExtended` sur la luminance), `tonemap`, `linearToSrgb` / `srgbToLinear`, `histogramBin` (256 cases log2, case 0 = trop sombre), `histogramAverageLuminance`, `targetExposure`, `adaptationFactor`, `vignetteFactor`, `ColorLut` / `identityLut` / `sampleLut` / `parseCubeLut` (.cube) |
+| `post_effects.hpp` | `PostContext` (shaders, copie plein écran, échantillonneurs partagés), `PostEffect` (base), les cinq effets, `PostEffects` et `addPostEffects` |
+
+| Effet (nom du plugin) | Passes | Entrées → sorties |
+| --- | --- | --- |
+| `AutoExposureFeature` (`post.auto-exposure`, exige `Capabilities::compute`) | `post.auto-exposure` (générique : 3 dispatchs, remise à zéro, histogramme par tuiles 16×16 en mémoire partagée, moyenne géométrique + exposition visée `key / moyenne` bornée + adaptation `1 - exp(-dt × vitesse)`) | scène → tampons importés `post.histogram` (256 uint) et `post.exposure` (vec4 : exposition, moyenne, visée, valide), persistants (adaptation) ; `readHistogram` / `readExposure` / `resetAdaptation` |
+| `BloomFeature` (`post.bloom`) | `post.bloom.down<i>` (13 échantillons ; seuil doux et borne anti-lucioles au premier), `post.bloom.up<i>` (tente 3×3, additif), `post.bloom.composite` (additif sur la scène, alpha intact) | scène → transitoires `post.bloom.<i>` (RGBA16F, 1/2 à 1/2^n) → scène |
+| `TonemapFeature` (`post.tonemap`) | `post.tonemap`, `post.tonemap.copy` | scène (+ `post.exposure` s'il est dans le graphe) → transitoire `post.tonemap.out` → scène. Exposition = `FrameData::exposure.x` (`FrameEnvironment::exposure`) × 2^`exposureEv` × exposition automatique ; opérateur ; sRGB en sortie (`encodeSrgb`) |
+| `ColorGradingFeature` (`post.color-grading`) | `post.color-grading`, `post.color-grading.copy` | scène + LUT 3D (RGBA16F, trilinéaire aux centres des texels, identité 16³ au départ, `setLut`, `setStrength`) → `post.color-grading.out` → scène |
+| `VignetteFeature` (`post.vignette`) | `post.vignette` (mélange multiplicatif, alpha intact) | scène (`writeColor` en `kLoad`) |
+
+**Cible HDR.** `SceneRenderer::setSceneColorFormat(kRGBA16Float)` (ou kRGBA32Float) ; défaut kRGBA8Unorm. `PostEffects::sync(renderer)`
+choisit RGBA16F seulement si un effet HDR est actif (exposition automatique, bloom, tonemapping ; la LUT et le vignettage marchent en
+LDR) : sans effet, la scène, le graphe et l'image restent ceux d'avant (vérifié au pixel près sur la démo). La capture de la scène
+(`saveColorPng`) lit aussi RGBA16F (valeurs bornées à [0, 1]).
+
+```cpp
+auto fx = addPostEffects(renderer, device, library, pipelines, shaderDir); // cinq effets enregistrés, désactivés
+fx->tonemap->setEnabled(true);                                             // ACES par défaut, sRGB en sortie
+fx->tonemap->settings().tonemapper = Tonemapper::kAgx;
+fx->bloom->setEnabled(true);
+fx->sync(renderer);                                                        // scène RGBA16F au prochain beginFrame
+```
+
+Démo : `apps/demo/bin/debug/main --post none|hdr|bloom|full` (défaut `none`) ; `hdr` = tonemapping ACES, `bloom` = + bloom, `full`
+= + exposition automatique, LUT chaude calculée, vignettage. Captures de référence : `docs/BASELINE/reference/scene-opengl-post-*.png`.
+Tests : `tests/renderer/post_effects_tests.cpp` (suites `post/math` sans GPU et `renderer/post` sur chaque backend).
+
+Limites : les couleurs des matériaux de la démo ne sont pas linéarisées (sRGB traités comme linéaires) : l'image HDR est donc plus
+claire que l'image LDR ; chaque effet qui relit la scène y recopie sa sortie (une copie plein écran par effet, pas de ping-pong) ;
+l'exposition automatique mesure toute l'image (pas de pondération centrale) ; pas de LUT d'étalonnage HDR (log) ni de sortie HDR
+(écran PQ/scRGB) ; pas d'anticrénelage (REN-19) ni d'AOV (REN-21) ici.
 
 ### Dessin 2D (B5)
 
