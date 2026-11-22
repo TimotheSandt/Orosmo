@@ -96,7 +96,7 @@ Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `lib
 
 ## Origine et méthode de développement
 
-Orosmo a été **commencé par son auteur, avec OpenGL**. L'auteur a utilisé l'IA dès son apparition, mais **mal** à l'époque : le projet a été **mis en pause, puis arrêté**. Il a **repris récemment** et utilise désormais **Claude** (assistant de programmation d'Anthropic) **correctement** : l'auteur décide de la direction, fixe les règles (`CLAUDE.md`, `docs/`), relit et fusionne ; l'IA écrit du code et des tests, que la CI et des preuves vérifient (aucune fonctionnalité n'est déclarée « Fait » sans test ni commande de démo). Les commits écrits avec l'IA portent la ligne `Co-Authored-By`.
+Orosmo a été **commencé par son auteur, avec OpenGL**. L'auteur a utilisé l'IA dès son apparition, mais **mal** à l'époque : sans plan ni structure clairs, en lui demandant simplement « fais tel truc », tout en continuant à coder lui-même un peu. Le projet a été **mis en pause, puis arrêté**. Il a **repris récemment** et utilise désormais **Claude** (assistant de programmation d'Anthropic) **correctement** : l'auteur décide de la direction, fixe les règles (`CLAUDE.md`, `docs/`), relit et fusionne ; l'IA écrit du code et des tests, que la CI et des preuves vérifient (aucune fonctionnalité n'est déclarée « Fait » sans test ni commande de démo). Les commits écrits avec l'IA portent la ligne `Co-Authored-By`.
 
 ## Licence
 
