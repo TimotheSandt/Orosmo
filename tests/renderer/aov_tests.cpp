@@ -13,6 +13,7 @@
 #include <orosmo/renderer/mesh.hpp>
 #include <orosmo/renderer/render_feature.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
+#include <orosmo/renderer/shadow_feature.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -413,6 +414,91 @@ TEST_SUITE("renderer/aov")
             std::memcpy(&linear, depth.data(), 4);
             CHECK(linear == doctest::Approx(1.0f).epsilon(0.01));
             scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("REN-21 + REN-06: shadow casters are drawn into the shadow atlas only, never into the AOVs of the scene pass")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            rd::ShaderLibraryConfig config;
+            config.includeRoots = {shaderDir()};
+            rd::ShaderLibrary library(*gpu.device, config);
+            rd::PipelineCache pipelines(*gpu.device);
+            auto created = rd::SceneRenderer::create(*gpu.device, library, pipelines, {.shaderDirectory = shaderDir()});
+            REQUIRE(created.has_value());
+            auto renderer = std::move(*created);
+            rd::ShadowSettings settings;
+            settings.atlasSize = 512;
+            settings.cascadeCount = 2;
+            settings.cascadeResolution = 256;
+            settings.maxDistance = 20.0f;
+            auto feature = rd::ShadowFeature::create(*gpu.device, library, pipelines, shaderDir(), settings);
+            REQUIRE(feature.has_value());
+            auto added = renderer->addFeature(std::move(*feature));
+            REQUIRE(added.has_value());
+            auto *shadows = static_cast<rd::ShadowFeature *>(*added);
+            REQUIRE(renderer->declareAov(rd::Aov::kObjectId).has_value());
+            const rd::AovLayout layout(renderer->activeAovs());
+            auto l = rd::LightManager::create(*gpu.device);
+            REQUIRE(l.has_value());
+            rd::Light sun = rd::directionalLight({0, 1, 0}, {1, 1, 1}, 1.0f);
+            sun.shadowMode = rd::ShadowMode::kDynamic;
+            l->addLight(sun);
+            REQUIRE(l->upload().has_value());
+            renderer->setLights(&*l);
+            shadows->setLights(&*l);
+            renderer->setOutputResolution(16, 16);
+            auto receiver = shadows->receiverProgramWith(renderer->aovShaderDefines());
+            REQUIRE(receiver.has_value());
+            auto quad = [&](float x0, float z0, float x1, float z1, float y)
+            {
+                rd::MeshData d;
+                d.vertices = {x0, y, z0, 0, 1, 0, 0.5f, 0.5f, 0.5f, x1, y, z0, 0, 1, 0, 0.5f, 0.5f, 0.5f,
+                              x1, y, z1, 0, 1, 0, 0.5f, 0.5f, 0.5f, x0, y, z1, 0, 1, 0, 0.5f, 0.5f, 0.5f};
+                d.indices = {0, 1, 2, 0, 2, 3};
+                d.attributeSizes = {3, 3, 3};
+                d.name = "aov.quad";
+                auto m = rd::Mesh::create(*gpu.device, d);
+                REQUIRE(m.has_value());
+                return std::move(*m);
+            };
+            rd::Mesh ground = quad(-10, -10, 10, 10, 0.0f);
+            rd::Mesh caster = quad(-4, -4, 4, 4, 2.0f);
+            ground.setProgram(*receiver);
+            ground.setMaterialGroup(shadows->receiverGroup());
+            ground.setObjectId(11);
+            REQUIRE(shadows->addMeshCaster(caster, {{-4, 2, -4}, {4, 2, 4}}, rd::CasterMobility::kStatic).has_value());
+            rd::Camera camera;
+            camera.setPosition({0.0f, 10.0f, 0.0f});
+            camera.setOrientation({0.0f, -1.0f, 0.0f});
+            camera.setUp({0.0f, 0.0f, -1.0f});
+            camera.setAspect(16, 16);
+            camera.setNearPlane(0.1f);
+            camera.setFarPlane(50.0f);
+            camera.setOrthographic(20.0f);
+            const TextureHandle out = gpu.target(Format::kRGBA8Unorm, {16, 16}, "out");
+            gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                    REQUIRE(renderer->setCamera(camera).has_value());
+                    REQUIRE(renderer->drawMesh(ground, camera).has_value());
+                    auto r = renderer->endFrame({out, Format::kRGBA8Unorm, {16, 16}});
+                    INFO((r ? std::string() : r.error().message));
+                    REQUIRE(r.has_value());
+                });
+            // Sous le caster (ombre) comme ailleurs : l'AOV est celui du sol ; le caster n'écrit rien dans la scène.
+            const auto shadowed = renderer->sceneTarget().readPixelUInt(*layout.index(rd::Aov::kObjectId), 8, 8);
+            const auto lit = renderer->sceneTarget().readPixelUInt(*layout.index(rd::Aov::kObjectId), 1, 1);
+            REQUIRE(shadowed.has_value());
+            REQUIRE(lit.has_value());
+            CHECK(*shadowed == 11);
+            CHECK(*lit == 11);
+            gpu.expectNoValidationErrors();
+            renderer.reset();
         }
     }
 }
