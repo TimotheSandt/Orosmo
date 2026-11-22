@@ -175,7 +175,7 @@ désactivés). `AntiAliasing::select(mode)` active l'un et désactive les autres
 
 | Plugin | Passes | Entrées → sorties |
 | --- | --- | --- |
-| `TaaFeature` (`aa.taa`) | `aa.taa.resolve` (raster, deux sorties), `aa.taa.copy` | scène + AOV `motion` et `linear-depth` (`requiredAovs`) + historique importé `aa.taa.history` / `aa.taa.info` (image précédente) → historique suivant (RGBA16F : couleur ; RGBA16F : profondeur, mouvement, images accumulées) → scène |
+| `TaaFeature` (`aa.taa`) | `aa.taa.resolve` (raster, deux sorties), `aa.taa.copy` | scène + AOV `motion` et `linear-depth` (`requiredAovs`) + historique importé `aa.taa.history` / `aa.taa.info` (image précédente) → historique suivant (RGBA16F : couleur ; RGBA32F : profondeur, mouvement, images accumulées) → scène |
 | `FxaaFeature` (`aa.fxaa`) | `aa.fxaa`, `aa.fxaa.copy` | scène (échantillonnage linéaire) → `aa.fxaa.out` → scène |
 | `SmaaFeature` (`aa.smaa`) | `aa.smaa.edges`, `aa.smaa.weights`, `aa.smaa.blend`, `aa.smaa.copy` | scène → `aa.smaa.edges` (RG8) → `aa.smaa.weights` (RGBA8) → `aa.smaa.out` (+ scène) → scène |
 
