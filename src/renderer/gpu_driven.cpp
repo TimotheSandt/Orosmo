@@ -172,9 +172,11 @@ core::Result<> GpuDrivenFeature::ensurePools()
     {
         return {};
     }
-    pools_.clear();
-    meshSlots_.assign(meshCount, MeshSlot{});
-    pendingCopies_.clear();
+    // Tout est construit dans des temporaires et publié seulement si toutes les allocations réussissent : un échec laisse l'état
+    // précédent cohérent (et l'appel suivant retente la reconstruction).
+    std::vector<Pool> pools;
+    std::vector<MeshSlot> slots(meshCount);
+    std::vector<PendingCopy> copies;
     for (std::uint32_t id = 0; id < meshCount; ++id)
     {
         const Mesh *mesh = meshes_.mesh(id);
@@ -182,17 +184,17 @@ core::Result<> GpuDrivenFeature::ensurePools()
         {
             return makeError(ErrorCode::kNotFound, "GpuDrivenFeature: mesh " + std::to_string(id) + " of the InstanceRenderer was released");
         }
-        auto pool = std::ranges::find_if(pools_, [&](const Pool &p) { return sameLayout(*p.layout, *mesh); });
-        if (pool == pools_.end())
+        auto pool = std::ranges::find_if(pools, [&](const Pool &p) { return sameLayout(*p.layout, *mesh); });
+        if (pool == pools.end())
         {
-            pools_.push_back({mesh, {}, {}, {}});
-            pool = pools_.end() - 1;
+            pools.push_back({mesh, {}, {}, {}});
+            pool = pools.end() - 1;
         }
         pool->meshes.push_back(id);
-        meshSlots_[id].pool = static_cast<std::uint32_t>(pool - pools_.begin());
+        slots[id].pool = static_cast<std::uint32_t>(pool - pools.begin());
     }
     std::uint32_t rank = 0;
-    for (Pool &pool : pools_)
+    for (Pool &pool : pools)
     {
         const std::uint32_t stride = pool.layout->vertexBuffers()[0].stride;
         std::uint64_t vertexBytes = 0;
@@ -200,7 +202,11 @@ core::Result<> GpuDrivenFeature::ensurePools()
         for (const std::uint32_t id : pool.meshes)
         {
             const Mesh &mesh = *meshes_.mesh(id);
-            MeshSlot &slot = meshSlots_[id];
+            MeshSlot &slot = slots[id];
+            if (vertexBytes / stride > 0x7FFFFFFFull || indexCount > 0xFFFFFFFFull)
+            {
+                return makeError(ErrorCode::kOutOfRange, "GpuDrivenFeature: geometry pool exceeds the indirect command offsets");
+            }
             slot.rank = rank++;
             slot.vertexOffset = static_cast<std::int32_t>(vertexBytes / stride);
             slot.firstIndex = static_cast<std::uint32_t>(indexCount);
@@ -233,14 +239,17 @@ core::Result<> GpuDrivenFeature::ensurePools()
         for (const std::uint32_t meshId : pool.meshes)
         {
             const Mesh &mesh = *meshes_.mesh(meshId);
-            const MeshSlot &slot = meshSlots_[meshId];
-            pendingCopies_.push_back({mesh.vertexBuffer(), pool.vertices.handle(),
-                                      {.srcOffset = 0, .dstOffset = std::uint64_t(slot.vertexOffset) * stride, .size = mesh.vertexBufferSize()}});
-            pendingCopies_.push_back({mesh.indexBuffer(), pool.indices.handle(),
-                                      {.srcOffset = 0, .dstOffset = std::uint64_t{slot.firstIndex} * sizeof(std::uint32_t),
-                                       .size = std::uint64_t{mesh.indexCount()} * sizeof(std::uint32_t)}});
+            const MeshSlot &slot = slots[meshId];
+            copies.push_back({mesh.vertexBuffer(), pool.vertices.handle(),
+                              {.srcOffset = 0, .dstOffset = std::uint64_t(slot.vertexOffset) * stride, .size = mesh.vertexBufferSize()}});
+            copies.push_back({mesh.indexBuffer(), pool.indices.handle(),
+                              {.srcOffset = 0, .dstOffset = std::uint64_t{slot.firstIndex} * sizeof(std::uint32_t),
+                               .size = std::uint64_t{mesh.indexCount()} * sizeof(std::uint32_t)}});
         }
     }
+    pools_ = std::move(pools);
+    meshSlots_ = std::move(slots);
+    pendingCopies_ = std::move(copies);
     meshCount_ = meshCount;
     tablesDirty_ = true;
     return {};
