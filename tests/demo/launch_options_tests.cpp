@@ -181,6 +181,23 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --shadows value is refused");
     }
 
+    TEST_CASE("launch options parse --gpu-driven on|off; off by default (REN-29)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(!demo::parseLaunchOptions(1, none)->gpuDriven, "CPU culling by default");
+        const char *on[] = {"Orosmo", "--gpu-driven", "on", "--instances", "100000"};
+        const auto parsed = demo::parseLaunchOptions(5, on);
+        Assert(parsed.has_value() && parsed->gpuDriven && parsed->instances == 100000, "--gpu-driven on with --instances");
+        const char *equals[] = {"Orosmo", "--gpu-driven=on"};
+        Assert(demo::parseLaunchOptions(2, equals)->gpuDriven, "--gpu-driven=on is accepted");
+        const char *off[] = {"Orosmo", "--gpu-driven", "off"};
+        Assert(!demo::parseLaunchOptions(3, off)->gpuDriven, "--gpu-driven off keeps the CPU culling");
+        const char *bad[] = {"Orosmo", "--gpu-driven", "yes"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --gpu-driven value is refused");
+        const char *missing[] = {"Orosmo", "--gpu-driven"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--gpu-driven needs a value");
+    }
+
     TEST_CASE("launch options parse --post; none by default (REN-17/18)")
     {
         const char *none[] = {"Orosmo"};
