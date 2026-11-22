@@ -71,6 +71,8 @@ struct LaunchOptions
     std::uint32_t instances = 0;
     // --post none|hdr|bloom|full (défaut : none, captures de référence inchangées).
     PostMode post = PostMode::kNone;
+    // --scene default|mixed (REN-32, R2D-05) : « mixed » ajoute des transparents triés et du 2D dans le monde. Défaut : scène inchangée.
+    bool mixedScene = false;
 };
 
 // Nom affiché : « OpenGL », « Vulkan », « Metal ».
