@@ -129,6 +129,7 @@ core::Result<RenderFeature *> SceneRenderer::addFeature(std::unique_ptr<RenderFe
 void SceneRenderer::removeFeature(const std::string &name)
 {
     std::erase_if(features_, [&](const std::unique_ptr<RenderFeature> &f) { return f->name() == name; });
+    featureFrameBindings_.clear(); // les liaisons d'un plugin retiré ne doivent plus entrer dans le groupe 0 (redéclarées à chaque image)
 }
 
 std::vector<std::string> SceneRenderer::featureNames() const
@@ -270,9 +271,24 @@ bool SceneRenderer::needsHistory() const noexcept
     return (modeRuns() && activeUpscaleMode_->requirements().needsHistory) || (frameGenMode_ != nullptr && frameGenMode_->description().needsHistory);
 }
 
+namespace
+{
+bool sameEntries(const std::vector<rhi::BindGroupEntry> &a, const std::vector<rhi::BindGroupEntry> &b)
+{
+    return std::ranges::equal(a, b,
+                              [](const rhi::BindGroupEntry &x, const rhi::BindGroupEntry &y)
+                              {
+                                  return x.binding == y.binding && x.type == y.type && x.buffer == y.buffer && x.offset == y.offset &&
+                                         x.size == y.size && x.dynamicOffset == y.dynamicOffset && x.texture == y.texture &&
+                                         x.sampler == y.sampler && x.mipLevel == y.mipLevel;
+                              });
+}
+} // namespace
+
 core::Result<> SceneRenderer::rebuildFrameGroup(LightManager &lights)
 {
-    if (!frameGroup_.isNull() && groupCamera_ == cameraBuffer_.handle() && groupLights_ == lights.buffer().handle())
+    if (!frameGroup_.isNull() && groupCamera_ == cameraBuffer_.handle() && groupLights_ == lights.buffer().handle() &&
+        sameEntries(groupFeatureBindings_, featureFrameBindings_))
     {
         return {};
     }
@@ -280,6 +296,7 @@ core::Result<> SceneRenderer::rebuildFrameGroup(LightManager &lights)
     desc.entries.push_back({.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = cameraBuffer_.handle(), .size = sizeof(CameraData)});
     desc.entries.push_back({.binding = 1, .type = rhi::BindingType::kStorageBuffer, .buffer = lights.buffer().handle()});
     desc.entries.push_back({.binding = kFrameDataBinding, .type = rhi::BindingType::kUniformBuffer, .buffer = frameBuffer_.handle(), .size = sizeof(FrameData)});
+    desc.entries.insert(desc.entries.end(), featureFrameBindings_.begin(), featureFrameBindings_.end());
     desc.debugName = "scene.frame";
     auto group = device_.createBindGroup(desc);
     if (!group)
@@ -291,6 +308,7 @@ core::Result<> SceneRenderer::rebuildFrameGroup(LightManager &lights)
     frameResources_.group = frameGroup_;
     groupCamera_ = cameraBuffer_.handle();
     groupLights_ = lights.buffer().handle();
+    groupFeatureBindings_ = featureFrameBindings_;
     return {};
 }
 
@@ -364,6 +382,7 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
         return r;
     }
     frameOptions_ = options;
+    prepassThisFrame_ = depthPrepass_;
     draws_.clear();
     debugVertices_.clear();
     encoder_ = &encoder;
@@ -397,6 +416,12 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines)
     // Reverse-Z (REN-02) : le plus proche a la plus GRANDE profondeur. Le passage fil de fer redessine la même géométrie : à
     // profondeur égale, ses arêtes doivent passer.
     state.depth = {true, true, lines ? rhi::CompareOp::kGreaterEqual : rhi::CompareOp::kGreater};
+    // Pré-passe (REN-04) : la scène retrouve la profondeur de la pré-passe (égale) sans la réécrire.
+    const bool prepass = prepassThisFrame_ && !lines;
+    if (prepass)
+    {
+        state.depth = {true, false, rhi::CompareOp::kGreaterEqual};
+    }
     state.depthFormat = rhi::Format::kD32Float;
     state.colorTargets.clear();
     for (std::size_t i = 0; i < sceneTarget_.info().colorFormats.size(); ++i)
@@ -415,6 +440,22 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines)
     }
     SceneDraw draw;
     draw.pipeline = *pipeline;
+    if (prepass)
+    {
+        GraphicsState depthOnly = state;
+        depthOnly.depth = {true, true, rhi::CompareOp::kGreater};
+        for (rhi::ColorTargetState &t : depthOnly.colorTargets)
+        {
+            t.writeMask = rhi::ColorWriteMask::kNone; // mêmes attachements que la scène, aucune écriture de couleur
+        }
+        depthOnly.debugName += ".prepass";
+        auto prepassPipeline = pipelines_.graphics(*mesh.program(), depthOnly);
+        if (!prepassPipeline)
+        {
+            return std::unexpected(prepassPipeline.error());
+        }
+        draw.prepassPipeline = *prepassPipeline;
+    }
     // Taille de la révision qui a construit CE pipeline (après un rechargement qui ne se lie pas, c'est l'ancienne). Les valeurs
     // sont celles de CE dessin : copiées maintenant.
     const std::uint32_t pushSize = pipelines_.pushConstantSize(*pipeline);
@@ -580,10 +621,14 @@ core::Result<> SceneRenderer::uploadDebugLines()
     return debugBuffer_.update(0, std::as_bytes(std::span(debugVertices_)));
 }
 
-core::Result<> SceneRenderer::playDraws(rhi::CommandEncoder &e)
+core::Result<> SceneRenderer::playDraws(rhi::CommandEncoder &e, bool prepass)
 {
     for (const SceneDraw &draw : draws_)
     {
+        if (prepass && draw.prepassPipeline.isNull())
+        {
+            continue; // dessin externe, lignes, fil de fer : seulement dans la passe de scène
+        }
         // Les lumières ont pu changer pendant l'image (setLights après beginFrame) : le groupe suit avant chaque dessin.
         if (auto r = rebuildFrameGroup(*draw.lights); !r)
         {
@@ -597,7 +642,7 @@ core::Result<> SceneRenderer::playDraws(rhi::CommandEncoder &e)
             }
             continue;
         }
-        e.setPipeline(draw.pipeline);
+        e.setPipeline(prepass ? draw.prepassPipeline : draw.pipeline);
         e.setBindGroup(0, frameGroup_);
         if (draw.debugLines)
         {
@@ -724,6 +769,21 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
         known.output = graph_.importTexture("output", output.texture, {.format = output.format, .size = output.size});
     }
 
+    featureFrameBindings_.clear(); // redéclarées par les plugins à chaque image
+
+    // ── Pré-passe de profondeur (REN-04) : mêmes attachements que la scène, profondeur seule ─────────────────────────
+    const bool prepass = prepassThisFrame_ && known.sceneDepth.valid();
+    if (prepass)
+    {
+        auto depth = graph_.addPass("depth-prepass", PassType::kRaster, [this](RenderPassContext &ctx) { return playDraws(ctx.encoder(), true); });
+        depth.writeColor(known.sceneColor, rhi::LoadOp::kClear, frameOptions_.clearColor);
+        if (known.motionVectors.valid())
+        {
+            depth.writeColor(known.motionVectors, rhi::LoadOp::kClear, frameOptions_.clearColor);
+        }
+        depth.writeDepth(known.sceneDepth, frameOptions_.clearDepth ? rhi::LoadOp::kClear : rhi::LoadOp::kLoad, 0.0f);
+    }
+
     // ── Passe de scène : joue les dessins enregistrés ────────────────────────────────────────────────────────────────
     {
         auto scene = graph_.addPass("scene", PassType::kRaster, [this](RenderPassContext &ctx) { return playDraws(ctx.encoder()); });
@@ -734,7 +794,8 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
         }
         if (known.sceneDepth.valid())
         {
-            scene.writeDepth(known.sceneDepth, frameOptions_.clearDepth ? rhi::LoadOp::kClear : rhi::LoadOp::kLoad, 0.0f); // reverse-Z : 0 au loin
+            const bool clear = frameOptions_.clearDepth && !prepass; // après la pré-passe : sa profondeur est gardée
+            scene.writeDepth(known.sceneDepth, clear ? rhi::LoadOp::kClear : rhi::LoadOp::kLoad, 0.0f); // reverse-Z : 0 au loin
         }
     }
 
@@ -905,7 +966,7 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
     }
 
     // ── Plugins ───────────────────────────────────────────────────────────────────────────────────────────────────────
-    RenderGraphBuilder builder(graph_, known, device_.capabilities(), "scene");
+    RenderGraphBuilder builder(graph_, known, device_.capabilities(), "scene", &featureFrameBindings_);
     for (const auto &feature : features_)
     {
         if (auto r = feature->prepare(frameData_); !r)
@@ -954,6 +1015,11 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
         return r;
     }
     if (auto r = buildGraph(output); !r)
+    {
+        return r;
+    }
+    // Les plugins ont pu ajouter des liaisons au groupe 0 (addFrameBinding) : le groupe les suit avant l'exécution.
+    if (auto r = rebuildFrameGroup(activeLights()); !r)
     {
         return r;
     }
