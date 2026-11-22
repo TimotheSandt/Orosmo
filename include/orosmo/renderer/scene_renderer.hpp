@@ -6,7 +6,9 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/aov.hpp"
 #include "orosmo/renderer/camera.hpp"
+#include "orosmo/renderer/debug_view.hpp"
 #include "orosmo/renderer/debug_draw.hpp"
 #include "orosmo/renderer/frame_data.hpp"
 #include "orosmo/renderer/fullscreen_blit.hpp"
@@ -141,6 +143,25 @@ class SceneRenderer
     // Graphe de la dernière image (ordre d'exécution, passes écartées, ressources transitoires).
     const RenderGraph &renderGraph() const noexcept { return graph_; }
 
+    // ── Sorties auxiliaires (REN-21, REN-41) ────────────────────────────────────────────────────────────────────────
+    // Demande un AOV : la cible de scène en reçoit une cible de plus à la prochaine image (kUnsupported si le périphérique n'a pas
+    // assez d'attachements couleur). Sans demande (ni plugin qui en exige via `RenderFeature::requiredAovs`, ni vecteurs de
+    // mouvement, ni mode de debug), la cible de scène n'a que sa couleur : aucune cible, aucun coût de plus.
+    core::Result<> declareAov(Aov aov);
+    void releaseAov(Aov aov) noexcept { aovDeclared_.remove(aov); }
+    // Ensemble effectif : déclarés, exigés par les plugins, mouvement si `setMotionVectorsEnabled`.
+    AovSet activeAovs() const;
+    // Macros à donner à ShaderLibrary::loadGraphics pour un programme de maillage qui écrit les AOV actifs (à recharger si
+    // l'ensemble change) ; vide sans AOV.
+    std::vector<std::pair<std::string, std::string>> aovShaderDefines() const { return orosmo::renderer::aovShaderDefines(activeAovs()); }
+    // Attachements de la cible de scène de la dernière image commencée.
+    const AovLayout &aovLayout() const noexcept { return aovLayout_; }
+    // Mode d'affichage de debug (REN-35) ; kNone (défaut) : aucun effet, aucune allocation. kNormals et kMotion demandent leur AOV
+    // (le programme de maillage doit être compilé avec `aovShaderDefines()` APRÈS cet appel) ; kAlbedo, kOverdraw et kWireframe
+    // remplacent le programme des maillages par un programme de debug ; kLod n'a d'effet que via `VisibilityOptions::lodColors`.
+    core::Result<> setDebugView(DebugView view);
+    DebugView debugView() const noexcept { return debugView_; }
+
     // ── Données par image (REN-03) ──────────────────────────────────────────────────────────────────────────────────
     void setFrameEnvironment(const FrameEnvironment &environment) noexcept { environment_ = environment; }
     const FrameEnvironment &frameEnvironment() const noexcept { return environment_; }
@@ -213,6 +234,12 @@ class SceneRenderer
     core::Result<> updateFrameData();
     core::Result<> ensureHistory(RenderTarget &target, bool &fresh);
     core::Result<> buildGraph(const UpscaleTarget &output);
+    // Mélange et profondeur du matériau (REN-41) puis effets du mode de debug, sur les cibles déjà préparées.
+    void configureMaterialState(GraphicsState &state, BlendMode blend, bool lines) const;
+    bool replacesMeshProgram() const noexcept
+    {
+        return debugView_ == DebugView::kAlbedo || debugView_ == DebugView::kOverdraw || debugView_ == DebugView::kWireframe;
+    }
 
     rhi::Device &device_;
     ShaderLibrary &library_;
@@ -272,6 +299,14 @@ class SceneRenderer
     std::unique_ptr<IFrameGenerationMode> frameGenMode_;
     rhi::TextureHandle generatedFrame_;
     bool historyValid_ = false; // history_[lastHistory_] contient l'image précédente (écrite avec succès à l'image précédente)
+
+    // AOV (REN-21)
+    AovSet aovDeclared_;
+    AovSet aovActive_;     // ensemble de la cible de scène courante (fixé par beginFrame)
+    AovLayout aovLayout_;
+    DebugView debugView_ = DebugView::kNone;
+    std::shared_ptr<ShaderProgram> debugViewProgram_;
+    glm::vec3 previousCameraOrigin_{0.0f};
 
     bool motionVectorsEnabled_ = false;
     bool depthPrepass_ = false;

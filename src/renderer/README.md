@@ -92,6 +92,36 @@ soient déclarées avant les plugins. Pour écrire **après** la mise à l'éche
 C'est ainsi que la démo branche l'interface (`CanvasRenderer`) et la présentation (`apps/demo/src/Game/Game.cpp`,
 `Game::OverlayFeature`, passes `ui` et `present`).
 
+### Sorties auxiliaires et modes de debug (M5 : REN-21, REN-41, REN-35)
+
+| En-tête | Rôle |
+| --- | --- |
+| `aov.hpp` | `Aov` (mouvement RG16F, normales octaédriques RG16F, rugosité/métal RG8, identifiant R32Uint, profondeur linéaire R32F, émission RGBA16F, albédo RGBA8), `AovSet`, `AovLayout` (couleur 0 puis un attachement par AOV actif, dans l'ordre de l'énumération), `aovShaderDefines`, `AovMaterial` / `aovWrites` (REN-41), `aovColorTargets` |
+| `debug_view.hpp` | `DebugView` (none, normals, albedo, overdraw, lod, wireframe, motion), `lodDebugColor`, `FrustumFreeze` |
+| `shaders/rhi/aov.glsl`, `debug_view*.frag` | sorties GLSL (macros `OROSMO_AOV_*`) ; visualisations |
+
+**À la demande.** `SceneRenderer::declareAov(aov)`, `RenderFeature::requiredAovs()`, `setMotionVectorsEnabled` ou un mode de debug ajoutent des
+cibles MRT à la passe de scène (`activeAovs()`, `aovLayout()`). Sans demande, la cible de scène n'a que sa couleur : aucune cible de plus,
+aucun coût, l'image de la démo est identique au pixel près (test `renderer/aov`, « nothing extra is allocated »). Un plugin lit un AOV par
+`RenderGraphBuilder::aov(Aov)` ; les AOV sont effacés à leur valeur « rien » (identifiant 0, normales -1). Le programme de maillage s'écrit pour les
+AOV actifs en le chargeant avec `SceneRenderer::aovShaderDefines()` (`mesh.vert/frag` les gèrent ; un programme sans les sorties n'écrit que la couleur,
+ses AOV gardent la valeur d'effacement). `Mesh::setObjectId` donne l'identifiant.
+
+**Mouvement.** `(NDC courant - NDC précédent) / 2`, jitter retiré. Caméra : `FrameData::prevViewProj`. Objets : le maillage garde sa matrice de l'image précédente
+(`ModelBlock::prevModel`, suivie seulement si l'AOV est actif), donc le mouvement des objets mobiles est exact ; le rendu relatif à la caméra est géré.
+
+**Résolution MSAA** (la scène est aujourd'hui mono-échantillon ; règle fixée par `aovResolveRule`) : moyenne pour mouvement, matériau, émission, albédo ;
+normales décodées, moyennées, renormalisées ; profondeur linéaire : échantillon le plus proche ; identifiants : échantillon le plus proche, JAMAIS moyennés.
+
+**Transparents (REN-41).** `Mesh::setAovMaterial({BlendMode, AovSet})` : un mode transparent (`isTransparent`) n'écrit AUCUN AOV par défaut (masque d'écriture nul) ;
+`request` liste ceux qu'il veut écrire. Le mélange et l'absence d'écriture de profondeur du mode sont appliqués au pipeline.
+
+**Debug (REN-35).** `setDebugView` : `normals` / `motion` (AOV + passe `debug.view` sur la couleur), `albedo` / `overdraw` / `wireframe` (programme de remplacement
+des maillages `drawMesh`), `lod` (`VisibilityOptions::lodColors` : couleur de l'instance = son niveau), gel du frustum (`FrustumFreeze`, `drawFrozen`).
+Démo : `--debug-view none|normals|albedo|overdraw|lod|wireframe|motion` (défaut none), `--freeze-frustum` (avec `--instances N`).
+Partiel : les modes dépendant des cascades d'ombre et des clusters forward+ (autres agents) ne sont pas là. Limites : les objets du `InstanceRenderer`
+(programme propre) n'écrivent pas encore d'AOV et ignorent `albedo`/`overdraw`/`normals` (seul `lod` les concerne) ; la profondeur linéaire et la rugosité/métal/émission sont celles du matériau par défaut (pas de PBR avant REN-09).
+
 ### HDR et post-traitements (M5 : REN-17, REN-18)
 
 Chaque effet est un **plugin du graphe** (`RenderFeature`), activable à l'exécution (`setEnabled` ; désactivé, il ne déclare aucune
@@ -135,7 +165,7 @@ Tests : `tests/renderer/post_effects_tests.cpp` (suites `post/math` sans GPU et 
 Limites : les couleurs des matériaux de la démo ne sont pas linéarisées (sRGB traités comme linéaires) : l'image HDR est donc plus
 claire que l'image LDR ; chaque effet qui relit la scène y recopie sa sortie (une copie plein écran par effet, pas de ping-pong) ;
 l'exposition automatique mesure toute l'image (pas de pondération centrale) ; pas de LUT d'étalonnage HDR (log) ni de sortie HDR
-(écran PQ/scRGB) ; pas d'anticrénelage (REN-19) ni d'AOV (REN-21) ici.
+(écran PQ/scRGB) ; pas d'anticrénelage (REN-19) ici. Les AOV (REN-21) restent corrects avec la scène RGBA16F : seul l'attachement 0 change de format ; la pré-passe forward+ n'écrit aucun AOV.
 
 ### Dessin 2D (B5)
 
@@ -366,5 +396,5 @@ Limites : le pixel parfait est sans effet avec une matrice 3D ; la copie de la s
 - Graphe : textures transitoires 2D seulement (pas de tableau, cube, 3D ni MSAA) ; partage de mémoire seulement entre ressources de même
   description (pas d'alias d'une texture sur la mémoire d'une autre de format différent) ; les passes s'exécutent sur un seul encodeur
   (pas de files asynchrones). `FrameData` : la position de la caméra est un `float` côté `Camera` (la scission en double ne gagne rien
-  tant que la caméra ne porte pas de `double`) ; pas encore d'AOV déclarés par les plugins (`declareAov`, REN-21).
+  tant que la caméra ne porte pas de `double`) .
 - Pas d'optimisation des shaders (SPIR-V stable) ni de cache de pipelines natifs.

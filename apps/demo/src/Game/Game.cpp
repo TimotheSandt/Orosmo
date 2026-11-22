@@ -234,6 +234,12 @@ orosmo::core::Result<> Game::init()
     this->camera.setFarPlane(1000.0f);
     this->camera.setAspect(static_cast<unsigned>(this->viewWidth), static_cast<unsigned>(this->viewHeight));
 
+    // REN-35 : le mode de debug demande ses AOV AVANT le chargement du programme de maillage, compilé avec leurs macros (sans mode,
+    // aucune macro : le programme et la cible de scène sont ceux d'avant).
+    if (auto set = this->sceneRenderer->setDebugView(this->debugView); !set)
+    {
+        return orosmo::core::makeError(set.error().code, "Failed to set the debug view: " + set.error().message);
+    }
     // REN-04 : forward+ (pré-passe de profondeur + clusters en compute) si demandé et possible ; sinon forward (règle 11).
     bool forwardPlus = false;
     if (this->lightingMode == demo::LightingMode::kForwardPlus)
@@ -265,7 +271,9 @@ orosmo::core::Result<> Game::init()
         }
         this->scene->setShadows(static_cast<rd::ShadowFeature *>(*added));
     }
-    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory, forwardPlus, this->pointLightCount); !ready)
+    this->scene->setDebugOptions(this->debugView, this->freezeFrustum);
+    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory, forwardPlus, this->pointLightCount,
+                                       this->sceneRenderer->aovShaderDefines()); !ready)
     {
         return orosmo::core::makeError(ready.error().code, "Failed to initialize the demo scene: " + ready.error().message);
     }

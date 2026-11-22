@@ -3,6 +3,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/aov.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/shader_library.hpp"
 #include "orosmo/rhi/device.hpp"
@@ -34,6 +35,14 @@ struct TextureBinding
 {
     rhi::TextureHandle texture;
     rhi::SamplerHandle sampler;
+};
+
+// Historique pour les vecteurs de mouvement (REN-21) : `frame` = numéro de l'image (0 : pas d'historique, le modèle précédent
+// est le courant), `previousOrigin` = origine du rendu relatif à la caméra de l'image précédente.
+struct TransformHistory
+{
+    std::uint64_t frame = 0;
+    glm::vec3 previousOrigin{0.0f};
 };
 
 class Mesh
@@ -74,7 +83,19 @@ class Mesh
     glm::mat4 modelMatrix() const;
     // Envoie la matrice au GPU si la transformation a changé.
     // `origin` : rendu relatif à la caméra (REN-02) : la translation envoyée est position - origin (origin = position de la caméra).
-    core::Result<> uploadTransform(const glm::vec3 &origin = glm::vec3(0.0f));
+    core::Result<> uploadTransform(const glm::vec3 &origin = glm::vec3(0.0f), const TransformHistory &history = {});
+
+    // Identifiant écrit dans l'AOV `kObjectId` (REN-21) ; 0 = aucun objet (valeur d'effacement).
+    void setObjectId(std::uint32_t id) noexcept
+    {
+        objectId_ = id;
+        transformDirty_ = true; // l'identifiant voyage dans le bloc du modèle
+    }
+    std::uint32_t objectId() const noexcept { return objectId_; }
+    // Matériau vu des AOV (REN-41) : mode de fusion (appliqué au pipeline : mélange sur la couleur, profondeur non écrite pour les
+    // transparents) et AOV demandés explicitement ; un transparent n'écrit AUCUN AOV par défaut.
+    void setAovMaterial(const AovMaterial &material) noexcept { aovMaterial_ = material; }
+    const AovMaterial &aovMaterial() const noexcept { return aovMaterial_; }
 
     // Écrit `data` à partir du flottant `offsetFloats` ; ne change ni la taille ni les index.
     core::Result<> updateVertices(std::span<const float> data, std::size_t offsetFloats = 0);
@@ -118,6 +139,14 @@ class Mesh
     glm::vec3 scale_{1.0f};
     bool transformDirty_ = true;
     glm::vec3 uploadedOrigin_{0.0f};
+    glm::mat4 uploadedPreviousWorld_{1.0f};
+    glm::vec3 uploadedPreviousOrigin_{0.0f};
+    glm::mat4 previousWorld_{1.0f}; // modèle (monde) de l'image précédente
+    glm::mat4 lastWorld_{1.0f};     // modèle (monde) vu par le dernier uploadTransform
+    bool hasLastWorld_ = false;
+    std::uint64_t lastFrame_ = 0;
+    std::uint32_t objectId_ = 0;
+    AovMaterial aovMaterial_;
 };
 
 } // namespace orosmo::renderer

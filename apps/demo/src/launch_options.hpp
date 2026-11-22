@@ -3,6 +3,7 @@
 #pragma once
 
 #include <orosmo/core/error.hpp>
+#include <orosmo/renderer/debug_view.hpp>
 #include <orosmo/rhi/types.hpp>
 
 #include <cstdint>
@@ -77,6 +78,10 @@ struct LaunchOptions
     // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (culling, LOD, un draw call par lot). 0 (défaut) : aucun,
     // la scène et les captures de référence sont inchangées.
     std::uint32_t instances = 0;
+    // --debug-view none|normals|albedo|overdraw|lod|wireframe|motion (REN-35). none (défaut) : image et cibles inchangées.
+    orosmo::renderer::DebugView debugView = orosmo::renderer::DebugView::kNone;
+    // --freeze-frustum (REN-35) : fige le frustum de culling des objets instanciés dès la première image et le dessine.
+    bool freezeFrustum = false;
     // --shadows off|on (REN-06 à 08) : ombres en cascade avec cache. off (défaut) : captures de référence inchangées.
     bool shadows = false;
     // --post none|hdr|bloom|full (défaut : none, captures de référence inchangées).
