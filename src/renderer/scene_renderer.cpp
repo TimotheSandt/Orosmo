@@ -655,7 +655,15 @@ core::Result<> SceneRenderer::playDraws(rhi::CommandEncoder &e, bool prepass)
             e.setBindGroup(1, draw.textureGroup);
         }
         e.setBindGroup(2, draw.modelGroup);
-        if (!draw.pushConstants.empty())
+        if (prepass && draw.pushConstants.size() >= sizeof(std::int32_t))
+        {
+            // Convention mesh.frag : premier entier = 2 dans la pré-passe (couleur masquée, le shader saute son éclairage).
+            std::vector<std::byte> constants = draw.pushConstants;
+            const std::int32_t flag = 2;
+            std::memcpy(constants.data(), &flag, sizeof flag);
+            e.setPushConstants(constants);
+        }
+        else if (!draw.pushConstants.empty())
         {
             e.setPushConstants(draw.pushConstants);
         }

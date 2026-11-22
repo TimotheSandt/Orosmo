@@ -1,6 +1,7 @@
 #version 450
 // Éclairage : ambiante, directionnelles, ponctuelles et projecteurs (REN-05, lights.glsl).
-// Convention des programmes de maillage : le premier entier du bloc push_constant est le drapeau « fil de fer ».
+// Convention des programmes de maillage : le premier entier du bloc push_constant est le drapeau « fil de fer » (1), ou 2 dans la
+// pré-passe de profondeur de SceneRenderer (couleur masquée : le programme peut sauter son éclairage).
 // Variantes : OROSMO_FORWARD_PLUS (REN-04) lit les lumières du cluster du fragment (clusters.glsl, ForwardPlusLighting) au lieu de
 // toutes les lumières ; OROSMO_CLUSTER_DEBUG (avec OROSMO_FORWARD_PLUS) affiche le nombre de lumières par cluster.
 
@@ -117,7 +118,11 @@ void main()
         }
     }
 #endif
-    if (pc.wireframe == 1)
+    if (pc.wireframe == 2)
+    {
+        FragColor = vec4(0.0f); // pré-passe de profondeur (REN-04) : couleur masquée, aucun éclairage à calculer
+    }
+    else if (pc.wireframe == 1)
     {
         FragColor = wireframeRender();
     }
