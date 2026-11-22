@@ -363,6 +363,15 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.shadows = *value == "on";
         }
+        else if (matchOption("--transparent-shadow", value))
+        {
+            const auto mode = value ? orosmo::renderer::transparentShadowModeFromName(*value) : std::unexpected(makeError(ErrorCode::kInvalidArgument, "").error());
+            if (!mode)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --transparent-shadow (none, full, masked or dithered)");
+            }
+            options.transparentShadow = *mode;
+        }
         else if (matchOption("--lighting", value))
         {
             const auto mode = value ? parseLightingMode(*value) : std::nullopt;
@@ -426,7 +435,7 @@ void printUsage(std::ostream &out)
     out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
         << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
         << "              [--instances N] [--gpu-driven off|on] [--debug-view none|normals|albedo|overdraw|lod|wireframe|motion] [--freeze-frustum]\n"
-        << "              [--shadows off|on] [--scene default|mixed] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
+        << "              [--shadows off|on] [--transparent-shadow none|full|masked|dithered] [--scene default|mixed] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
         << "              [--aa none|fxaa|smaa|taa]\n"
         << "              [--headless] [--vsync]\n"
         << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
@@ -446,6 +455,8 @@ void printUsage(std::ostream &out)
     out << "          from the previous frame); GPU and CPU culling counts are logged side by side. Falls back to CPU culling.\n";
     out << "Shadows  : --shadows on draws cascaded sun shadows with a cache (redrawn only where something moves); the shadow\n";
     out << "          update statistics are logged. Off by default.\n";
+    out << "          --transparent-shadow none|full|masked|dithered makes the panes of --scene mixed cast a shadow of that kind\n";
+    out << "          (needs --shadows on; absent: the panes cast no shadow).\n";
     out << "Post:     --post hdr renders the scene in HDR with ACES tonemapping; bloom adds bloom; full adds auto exposure,\n";
     out << "          a color grading LUT and a vignette. none (default) keeps the LDR scene unchanged.\n";
     out << "AA:       --aa fxaa|smaa run on the displayed values (after tonemapping); taa jitters the camera and accumulates\n";

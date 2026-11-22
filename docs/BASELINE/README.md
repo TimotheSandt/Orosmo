@@ -141,3 +141,7 @@ sont identiques au pixel près à celles d'avant les post-traitements, sur OpenG
 
 `reference/scene-opengl-mixed-post-full-1280x720.png` : même commande avec `--scene mixed --post full` (transparents et 2D du monde
 passés par toute la chaîne de post-traitement), vérifiée par `make demo-capture`.
+
+`reference/scene-opengl-mixed-shadow-dithered-1280x720.png` (REN-39) : `--ui off --scene mixed --shadows on --transparent-shadow dithered`
+(5 images, OpenGL), vérifiée par `make demo-capture`. Sans `--transparent-shadow`, les images par défaut (`--shadows on`, `--scene mixed`)
+sont identiques au pixel près à celles de milestone/M5 sur OpenGL et Vulkan.

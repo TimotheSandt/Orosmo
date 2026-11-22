@@ -5,6 +5,7 @@
 #include <orosmo/core/error.hpp>
 #include <orosmo/renderer/antialiasing.hpp>
 #include <orosmo/renderer/debug_view.hpp>
+#include <orosmo/renderer/transparent_shadow.hpp>
 #include <orosmo/rhi/types.hpp>
 
 #include <cstdint>
@@ -97,6 +98,9 @@ struct LaunchOptions
     std::uint32_t pointLights = 0;
     // --scene default|mixed (REN-32, R2D-05) : « mixed » ajoute des transparents triés et du 2D dans le monde. Défaut : scène inchangée.
     bool mixedScene = false;
+    // --transparent-shadow none|full|masked|dithered (REN-39) : ombre des vitres de --scene mixed avec --shadows on. Absent (défaut) :
+    // les vitres ne sont pas des casters (comportement d'avant REN-39, captures de référence inchangées).
+    std::optional<orosmo::renderer::TransparentShadowMode> transparentShadow;
 };
 
 // Nom affiché : « OpenGL », « Vulkan », « Metal ».

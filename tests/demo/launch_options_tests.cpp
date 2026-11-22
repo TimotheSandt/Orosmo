@@ -196,6 +196,30 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --gpu-driven value is refused");
         const char *missing[] = {"Orosmo", "--gpu-driven"};
         Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--gpu-driven needs a value");
+
+    TEST_CASE("launch options parse --transparent-shadow; absent by default (REN-39)")
+    {
+        namespace rd = orosmo::renderer;
+        const char *none[] = {"Orosmo"};
+        Assert(!demo::parseLaunchOptions(1, none)->transparentShadow.has_value(), "No transparent shadow mode by default");
+        const struct
+        {
+            const char *name;
+            rd::TransparentShadowMode mode;
+        } cases[] = {{"none", rd::TransparentShadowMode::kNone},
+                     {"full", rd::TransparentShadowMode::kFull},
+                     {"masked", rd::TransparentShadowMode::kMasked},
+                     {"dithered", rd::TransparentShadowMode::kDithered}};
+        for (const auto &c : cases)
+        {
+            const char *argv[] = {"Orosmo", "--scene", "mixed", "--shadows", "on", "--transparent-shadow", c.name};
+            const auto parsed = demo::parseLaunchOptions(7, argv);
+            Assert(parsed.has_value() && parsed->transparentShadow == c.mode && parsed->mixedScene && parsed->shadows, "--transparent-shadow parses each mode");
+        }
+        const char *bad[] = {"Orosmo", "--transparent-shadow", "partial"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --transparent-shadow value is refused");
+        const char *missing[] = {"Orosmo", "--transparent-shadow"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "A missing --transparent-shadow value is refused");
     }
 
     TEST_CASE("launch options parse --post; none by default (REN-17/18)")

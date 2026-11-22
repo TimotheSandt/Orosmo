@@ -18,6 +18,7 @@
 #include "orosmo/renderer/render_feature.hpp"
 #include "orosmo/renderer/shader_library.hpp"
 #include "orosmo/renderer/shadows.hpp"
+#include "orosmo/renderer/transparent_shadow.hpp"
 #include "orosmo/rhi/device.hpp"
 
 #include <glm/glm.hpp>
@@ -146,6 +147,10 @@ class ShadowFeature : public RenderFeature
     // Tous les objets de `objects` (culling et LOD par vue d'ombre ; LOD choisi depuis la caméra), maillages de `meshes`.
     CasterId addObjectCasters(ObjectSet &objects, const InstanceRenderer &meshes, CasterMobility mobility);
     void removeCaster(CasterId id);
+    // REN-39 : mode d'ombre d'un caster maillage transparent (défaut : kFull, ombre pleine). kNone : plus dessiné ; kMasked / kDithered :
+    // `alpha` et `cutoff` sont lus à chaque image, et leur changement invalide la vue (cache compris) de ce caster. Casters d'un ObjectSet :
+    // kUnsupported (ombre pleine).
+    core::Result<> setCasterTransparency(CasterId id, const TransparentShadow &shadow);
     // Oublie tout le contenu (cache compris) : tout sera redessiné.
     void invalidate() noexcept;
 
@@ -172,6 +177,7 @@ class ShadowFeature : public RenderFeature
         const Mesh *mesh = nullptr;
         Aabb localBounds;
         CasterMobility mobility = CasterMobility::kStatic;
+        TransparentShadow transparency; // REN-39
     };
     struct ObjectCasters
     {
@@ -194,6 +200,7 @@ class ShadowFeature : public RenderFeature
         glm::mat4 matrix{1.0f}; // maillage : clip × modèle ; instancié : clip
         std::uint32_t firstInstance = 0;
         std::uint32_t instanceCount = 0;
+        TransparentShadow transparency; // maillage : mode (kMasked / kDithered : programme à rejet) ; instancié : toujours kFull
     };
     enum class Action : std::uint8_t
     {
@@ -253,7 +260,7 @@ class ShadowFeature : public RenderFeature
     core::Result<> recordStatic(RenderPassContext &ctx);
     core::Result<> recordAtlas(RenderPassContext &ctx);
     core::Result<> drawCasters(rhi::CommandEncoder &e, const std::vector<CasterDraw> &draws);
-    core::Result<rhi::PipelineHandle> casterPipeline(const Mesh &mesh, bool instanced);
+    core::Result<rhi::PipelineHandle> casterPipeline(const Mesh &mesh, bool instanced, bool alphaTest);
     void writeGpuData(const glm::vec3 &origin);
 
     rhi::Device &device_;
@@ -268,6 +275,7 @@ class ShadowFeature : public RenderFeature
 
     std::shared_ptr<ShaderProgram> casterProgram_;
     std::shared_ptr<ShaderProgram> instancedCasterProgram_;
+    std::shared_ptr<ShaderProgram> alphaCasterProgram_; // REN-39 : OROSMO_SHADOW_ALPHA (rejet masqué / tramé)
     std::shared_ptr<ShaderProgram> clearProgram_;
     std::shared_ptr<ShaderProgram> copyProgram_;
     std::shared_ptr<ShaderProgram> receiverProgram_;

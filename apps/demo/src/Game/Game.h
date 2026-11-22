@@ -72,6 +72,8 @@ class Game
     }
     // --scene mixed (R2D-05, REN-32) : transparents triés et 2D dans le monde en plus de la scène ; défaut : inchangée.
     void setMixedScene(bool enabled) noexcept { mixedScene = enabled; }
+    // REN-39 : ombre des vitres de la scène mêlée (sans valeur : elles ne projettent rien).
+    void setTransparentShadow(std::optional<orosmo::renderer::TransparentShadowMode> mode) noexcept { transparentShadow = mode; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
@@ -142,6 +144,7 @@ class Game
     std::unique_ptr<demo::DemoScene> scene;
     std::unique_ptr<demo::MixedScene> mixed;
     bool mixedScene = false;
+    std::optional<orosmo::renderer::TransparentShadowMode> transparentShadow;
     bool stopped = false;
 
     int requestedWidth = 1280;
