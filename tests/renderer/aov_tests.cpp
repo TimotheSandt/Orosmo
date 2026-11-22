@@ -8,11 +8,13 @@
 #include <orosmo/renderer/aov.hpp>
 #include <orosmo/renderer/camera.hpp>
 #include <orosmo/renderer/debug_view.hpp>
+#include <orosmo/renderer/forward_plus.hpp>
 #include <orosmo/renderer/light.hpp>
 #include <orosmo/renderer/mesh.hpp>
 #include <orosmo/renderer/render_feature.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -335,6 +337,81 @@ TEST_SUITE("renderer/aov")
             }
             REQUIRE(scene.renderer->setDebugView(rd::DebugView::kNone).has_value());
             CHECK(scene.renderer->activeAovs().empty()); // sorti du mode : plus d'AOV
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("REN-21: AOVs stay correct with an HDR (RGBA16F) scene target")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            AovScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            REQUIRE(scene.renderer->setSceneColorFormat(Format::kRGBA16Float).has_value());
+            REQUIRE(scene.renderer->declareAov(rd::Aov::kObjectId).has_value());
+            const rd::AovLayout layout(scene.renderer->activeAovs());
+            auto program = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag", scene.renderer->aovShaderDefines());
+            REQUIRE(program.has_value());
+            auto mesh = rd::Mesh::create(*scene.gpu.device, triangle());
+            REQUIRE(mesh.has_value());
+            mesh->setProgram(*program);
+            mesh->setObjectId(5);
+            rd::Camera camera;
+            camera.setAspect(8, 8);
+            scene.frame(*mesh, camera, scene.gpu.target(Format::kRGBA8Unorm, {8, 8}, "out"));
+            const rd::RenderTarget &target = scene.renderer->sceneTarget();
+            CHECK((target.info().colorFormats[0] == Format::kRGBA16Float));
+            const auto id = target.readPixelUInt(*layout.index(rd::Aov::kObjectId), 4, 4);
+            REQUIRE(id.has_value());
+            CHECK(*id == 5);
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("REN-21 + REN-04: with forward+ (depth prepass) the AOVs are written once, by the scene pass only")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            AovScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            auto fp = rd::enableForwardPlus(*scene.renderer, *scene.gpu.device, *scene.library, *scene.pipelines, shaderDir());
+            if (!fp)
+            {
+                WARN(std::string("forward+ unavailable on this backend: ") + fp.error().message);
+                continue;
+            }
+            REQUIRE(scene.renderer->declareAov(rd::Aov::kObjectId).has_value());
+            REQUIRE(scene.renderer->declareAov(rd::Aov::kLinearDepth).has_value());
+            const rd::AovLayout layout(scene.renderer->activeAovs());
+            auto defines = rd::forwardPlusDefines();
+            for (const auto &d : scene.renderer->aovShaderDefines())
+            {
+                defines.push_back(d);
+            }
+            auto program = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag", defines);
+            REQUIRE(program.has_value());
+            auto mesh = rd::Mesh::create(*scene.gpu.device, triangle());
+            REQUIRE(mesh.has_value());
+            mesh->setProgram(*program);
+            mesh->setObjectId(3);
+            auto lights = rd::LightManager::create(*scene.gpu.device);
+            REQUIRE(lights.has_value());
+            lights->setAmbientLight({1, 1, 1}, 1.0f);
+            REQUIRE(lights->upload().has_value());
+            scene.renderer->setLights(&*lights);
+            rd::Camera camera;
+            camera.setAspect(8, 8);
+            scene.frame(*mesh, camera, scene.gpu.target(Format::kRGBA8Unorm, {8, 8}, "out"));
+            const auto order = scene.renderer->renderGraph().executionOrder();
+            CHECK(std::find(order.begin(), order.end(), "depth-prepass") != order.end());
+            const rd::RenderTarget &target = scene.renderer->sceneTarget();
+            const auto id = target.readPixelUInt(*layout.index(rd::Aov::kObjectId), 4, 4);
+            REQUIRE(id.has_value());
+            CHECK(*id == 3);
+            const auto depth = scene.gpu.pixel(target.color(*layout.index(rd::Aov::kLinearDepth)), 4, 4);
+            float linear = 0.0f;
+            std::memcpy(&linear, depth.data(), 4);
+            CHECK(linear == doctest::Approx(1.0f).epsilon(0.01));
             scene.gpu.expectNoValidationErrors();
         }
     }
