@@ -27,7 +27,7 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | `mesh.hpp` | `Mesh` : sommets, index (chacun vérifié contre le nombre de sommets), instances optionnelles, attributs décrits par leurs tailles en flottants, transformation (translation, rotations X/Y/Z, échelle) et matrice des normales (inverse transposée, calculée par objet), textures liées (groupe 1), constantes de shader (push constants) |
 | `fullscreen_blit.hpp` | `FullscreenBlit` : copie plein écran par triangle (le RHI n'a pas de commande de blit) ; `draw` respecte le viewport et le ciseau actifs ; `compose` pose une source prémultipliée sur la cible |
 | `upscaling.hpp` | extensions de fin d'image : `IUpscaleMode` (avec `initialize`/`shutdown`), `IAdvancedUpscaleMode`, `IPostProcessPass`, `IFrameGenerationMode`, `BilinearBlitUpscaleMode` |
-| `scene_renderer.hpp` | `SceneRenderer` : cible de scène, groupe 0 (caméra, lumières, `FrameData`, liaisons 3 à 7 des plugins), pré-passe de profondeur optionnelle (`setDepthPrepass`, REN-04), `beginFrame` / `setCamera` / `drawMesh` (enregistre) / `endFrame` (construit et exécute le graphe de l'image, voir plus bas), plugins (`addFeature`), échelle de rendu, jitter de Halton (seulement pour un mode exécuté qui le demande), historique (les consommateurs lisent l'image PRÉCÉDENTE, `resetHistory` à la première image et après un redimensionnement), vecteurs de mouvement, profondeur lisible. Un mode de mise à l'échelle n'est exécuté que si `upscalingEnabled()` (sinon copie 1:1), il est initialisé avant d'être activé et arrêté quand il est remplacé ; un mode de génération refusé laisse l'actif en place ; `generatedFrame()` expose son image. Remplace `Renderer` + `Renderer3D` |
+| `scene_renderer.hpp` | `SceneRenderer` : cible de scène, groupe 0 (caméra, lumières, `FrameData`, liaisons 3 à 7 des plugins), pré-passe de profondeur optionnelle (`setDepthPrepass`, REN-04), `beginFrame` / `setCamera` / `drawMesh` (enregistre) / `endFrame` (construit et exécute le graphe de l'image, voir plus bas), plugins (`addFeature`), échelle de rendu, jitter de Halton (seulement pour un mode exécuté ou un plugin qui le demande : `RenderFeature::wantsJitter`, REN-19), historique (les consommateurs lisent l'image PRÉCÉDENTE, `resetHistory` à la première image et après un redimensionnement), vecteurs de mouvement, profondeur lisible. Un mode de mise à l'échelle n'est exécuté que si `upscalingEnabled()` (sinon copie 1:1), il est initialisé avant d'être activé et arrêté quand il est remplacé ; un mode de génération refusé laisse l'actif en place ; `generatedFrame()` expose son image. Remplace `Renderer` + `Renderer3D` |
 | `debug_draw.hpp` | `DebugDraw` (REN-34) : lignes, boîtes, sphères, repères en coordonnées monde ; désactivé par défaut hors debug (chaque appel revient au premier test) ; dessiné par `SceneRenderer::drawDebug` dans la passe de scène, test de profondeur au choix (shaders `debug_line.*` chargés au premier appel) |
 | `shaders/rhi/` | `mesh.vert` / `mesh.frag` (éclairage identique à l'ancien), `blit.vert` / `blit.frag` : GLSL 450 (`set`/`binding`, push constants) |
 
@@ -165,7 +165,68 @@ Tests : `tests/renderer/post_effects_tests.cpp` (suites `post/math` sans GPU et 
 Limites : les couleurs des matériaux de la démo ne sont pas linéarisées (sRGB traités comme linéaires) : l'image HDR est donc plus
 claire que l'image LDR ; chaque effet qui relit la scène y recopie sa sortie (une copie plein écran par effet, pas de ping-pong) ;
 l'exposition automatique mesure toute l'image (pas de pondération centrale) ; pas de LUT d'étalonnage HDR (log) ni de sortie HDR
-(écran PQ/scRGB) ; pas d'anticrénelage (REN-19) ici. Les AOV (REN-21) restent corrects avec la scène RGBA16F : seul l'attachement 0 change de format ; la pré-passe forward+ n'écrit aucun AOV.
+(écran PQ/scRGB) ; l'anticrénelage (REN-19) est décrit plus bas. Les AOV (REN-21) restent corrects avec la scène RGBA16F : seul l'attachement 0 change de format ; la pré-passe forward+ n'écrit aucun AOV.
+
+### Anticrénelage (M5 : REN-19)
+
+Trois plugins du graphe (`antialiasing.hpp`, `src/renderer/post/antialiasing.cpp` et `taa.cpp`, shaders `shaders/rhi/post/fxaa.frag`,
+`smaa_*.frag`, `taa_resolve.frag`), dérivés de `PostEffect` (même `PostContext`, activables par `setEnabled`, aucune passe une fois
+désactivés). `AntiAliasing::select(mode)` active l'un et désactive les autres.
+
+| Plugin | Passes | Entrées → sorties |
+| --- | --- | --- |
+| `TaaFeature` (`aa.taa`) | `aa.taa.resolve` (raster, deux sorties), `aa.taa.copy` | scène + AOV `motion` et `linear-depth` (`requiredAovs`) + historique importé `aa.taa.history` / `aa.taa.info` (image précédente) → historique suivant (RGBA16F : couleur ; RGBA16F : profondeur, mouvement, images accumulées) → scène |
+| `FxaaFeature` (`aa.fxaa`) | `aa.fxaa`, `aa.fxaa.copy` | scène (échantillonnage linéaire) → `aa.fxaa.out` → scène |
+| `SmaaFeature` (`aa.smaa`) | `aa.smaa.edges`, `aa.smaa.weights`, `aa.smaa.blend`, `aa.smaa.copy` | scène → `aa.smaa.edges` (RG8) → `aa.smaa.weights` (RGBA8) → `aa.smaa.out` (+ scène) → scène |
+
+**Ordre** (test « graph order ») : `scene` (+ transparents, 2D monde) → `aa.taa.*` → `post.auto-exposure` → `post.bloom.*` →
+`post.tonemap` → `post.color-grading` → `aa.fxaa` / `aa.smaa.*` → `upscale` → superpositions. Choix retenu : le TAA travaille en
+HDR **avant** l'exposition et le tonemapping (il accumule des valeurs de scène ; poids anti-lucioles `c / (1 + L)`, réversible) ;
+FXAA et SMAA travaillent sur les valeurs affichées (contraste perceptuel). L'ordre entre plugins étant celui d'enregistrement :
+`addTemporalAntiAliasing` avant `addPostEffects`, `addEdgeAntiAliasing` après (puis les superpositions). Tout s'exécute à la
+résolution de rendu ; la mise à l'échelle suit.
+
+```cpp
+auto context = PostContext::create(device, library, pipelines, shaderDir);
+TaaFeature *taa = *addTemporalAntiAliasing(renderer, *context); // après les plugins de la scène
+auto fx = addPostEffects(renderer, device, library, pipelines, shaderDir);
+AntiAliasing aa = *addEdgeAntiAliasing(renderer, *context);
+aa.taa = taa;
+aa.select(AntiAliasingMode::kTaa);                               // ou kSmaa, kFxaa, kNone
+// Programmes de maillage compilés avec renderer.aovShaderDefines() APRÈS l'enregistrement du TAA (mouvement, profondeur).
+```
+
+**TAA.** Jitter : la suite de Halton(2, 3) de `SceneRenderer` (16 positions, `setJitterSequenceLength`), demandée par
+`TaaFeature::wantsJitter` (vrai seulement s'il est actif ; sinon, aucun jitter : image inchangée). Résolution : voisinage 3×3 en
+YCoCg (couleurs compressées), mouvement du texel le plus proche (dilatation), reprojection `uv - mouvement`, rejet si aucune
+profondeur de l'historique (3×3 autour du point reprojeté) n'est à moins de `depthTolerance` (10 %) de celle du pixel
+(désocclusion, coupure de scène) ou si le mouvement diffère de plus de `motionTolerancePixels` (rejet progressif), écrêtage
+par la variance (`clipGamma`, ∩ min/max), poids de l'image courante `1 / n` (n ≤ `maxAccumulatedFrames` = 12, remis à 1 au
+rejet). Historique propre au plugin (RGBA16F, double tampon) ; il est ignoré à la première image, après `resetHistory()`, un
+changement de taille ou une image sautée (plugin désactivé). Celui de `SceneRenderer` (RGBA8, après les post-traitements, pour
+les modes de mise à l'échelle) n'est pas utilisé : il ne convient pas à une accumulation HDR.
+
+**SMAA 1x (Partiel).** Détection des contours de luminance (seuil 0,1, adaptation au contraste local × 2), poids de mélange,
+mélange du voisinage, comme la référence (Jimenez et al., 2012). Différences : la recherche le long des contours lit les texels un
+par un (16 pas de chaque côté, pas de SearchTex) et l'aire couverte par la ligne de reconstruction (formes L, Z, U : hauteur ±1/2
+aux extrémités, 0 au milieu) est calculée dans le shader, par la construction géométrique qui produit AreaTex : aucune table n'est
+embarquée (ni provenance ni licence de données). Absents : diagonales, arrondi des coins, seuil prédiqué, T2x/S2x/4x.
+
+**FXAA.** Algorithme « qualité » de FXAA 3.11 (T. Lottes), réécrit d'après sa description (aucun code de NVIDIA copié).
+
+Démo : `apps/demo/bin/debug/main --aa none|fxaa|smaa|taa` (défaut `none` : aucun plugin, captures de référence inchangées) ;
+combinable avec `--post`. Tests : `tests/renderer/antialiasing_tests.cpp` (suites `aa/names` et `renderer/aa`, chaque backend) :
+arête en escalier lissée par FXAA et SMAA (horizontale et verticale, pixels intermédiaires comptés, zones unies intactes), ordre du
+graphe, convergence du TAA sur une image fixe (écart moyen entre images successives divisé par plus de 2) et arêtes lissées, rejet
+de l'historique sur une coupure (profondeur) et sur `resetHistory`, traînée derrière un objet en mouvement bornée (au plus 4 pixels
+à plus de 0,1 du fond hors de l'objet dilaté de 2 pixels ; mesuré : voir le rapport du test).
+
+Limites : **MSAA absent** (le RHI n'a ni nombre d'échantillons dans `TextureDesc` / `GraphicsPipelineDesc`, ni résolution de cible ;
+la règle de résolution des AOV, `aovResolveRule`, est prête). Le TAA ne reçoit pas de mouvement des objets qui n'écrivent pas
+d'AOV (`InstanceRenderer`, transparents : ils prennent le mouvement de ce qui est derrière eux, l'écrêtage limite la traînée),
+l'historique est échantillonné en bilinéaire (léger flou en mouvement, pas de Catmull-Rom ni d'accentuation), et l'image courante
+n'est pas « dé-jitterée ». La résolution dynamique n'est pas pilotée : `setRenderScale` + la mise à l'échelle bilinéaire existent,
+le TAA s'exécute à la résolution de rendu, mais aucun contrôleur ne règle l'échelle d'après le temps GPU.
 
 ### Dessin 2D (B5)
 
