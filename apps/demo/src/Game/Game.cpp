@@ -391,9 +391,62 @@ orosmo::core::Result<> Game::init()
     {
         return created;
     }
+    this->warmUp();
 
     LOG_INFO("Game initialized");
     return {};
+}
+
+// Préchauffe (fenêtre seulement) : le premier dessin de la scène, du HUD et de l'onglet courant de l'interface complète compile
+// les shaders, crée les pipelines, construit les atlas de glyphes (un par taille de police) et téléverse les textures. Fait dans
+// la boucle, ce travail figeait la première image de chaque mode (jusqu'à 2 s à la première ouverture de l'interface complète).
+// Ici, avant la boucle : une image par mode, encodée et soumise mais jamais présentée (le backbuffer est réécrit par la première
+// vraie image). Sautée sans fenêtre : les captures et les tests n'en ont pas besoin et leurs images n'en dépendent pas.
+void Game::warmUp()
+{
+    if (this->headless)
+    {
+        return;
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const demo::UiMode savedMode = this->uiMode;
+    this->refreshViewSize();
+    const glm::vec2 viewport{static_cast<float>(this->viewWidth), static_cast<float>(this->viewHeight)};
+    ui::InputFrame idle;
+    idle.deltaTime = 0.0f; // aucune entrée, aucune animation : l'état de l'interface ne bouge pas
+
+    // L'onglet ouvert par Échap seulement : chaque onglet peut demander d'autres tailles de police (0,3 à 1,5 s d'atlas chacun),
+    // tous les préparer ajouterait plusieurs secondes au démarrage.
+    int frames = 0;
+    for (const demo::UiMode mode : {demo::UiMode::kOff, demo::UiMode::kHud, demo::UiMode::kFull})
+    {
+        this->uiMode = mode;
+        if (mode == demo::UiMode::kFull && this->fullUi)
+        {
+            this->fullUi->update(idle, viewport);
+        }
+        else if (mode == demo::UiMode::kHud && this->hudUi)
+        {
+            this->hudUi->update(idle, viewport);
+        }
+        this->uiState.refreshLiveImages(mode == demo::UiMode::kFull && this->fullUi != nullptr);
+        if (!this->beginFrame())
+        {
+            break;
+        }
+        this->render();
+        this->gpuTimers->setEncoder(nullptr);
+        if (auto submitted = this->device->submit(std::move(this->frameEncoder)); !submitted)
+        {
+            LOG_WARNING("Warm-up: frame refused: ", submitted.error().message);
+        }
+        this->sceneError.reset();
+        this->uiFailed = false;
+        ++frames;
+    }
+    this->device->waitIdle();
+    this->uiMode = savedMode;
+    LOG_INFO("Warm-up: ", frames, " frames in ", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count(), " ms");
 }
 
 void Game::stop()
@@ -527,6 +580,7 @@ void Game::run()
             continue;
         }
 
+        const auto frameStart = std::chrono::steady_clock::now();
         this->update();
         if (this->window.shouldClose())
         {
@@ -538,7 +592,17 @@ void Game::run()
         }
         Profiler::ProfileGPU("Render", &Game::render, this);
         this->endFrame();
+        this->recordFrameTime(frameStart);
     }
+}
+
+// Temps CPU d'une image : de la mise à jour à la fin de la présentation (sans l'attente du limiteur de Window::newFrame ni
+// l'écriture des captures PNG).
+void Game::recordFrameTime(std::chrono::steady_clock::time_point frameStart)
+{
+    const auto elapsed = std::chrono::steady_clock::now() - frameStart - this->captureTime;
+    this->captureTime = {};
+    this->frameTimesMs.push_back(std::chrono::duration<float, std::milli>(elapsed).count());
 }
 
 void Game::processInput(bool toggleUiJustPressed)
@@ -986,6 +1050,8 @@ void Game::endFrame()
 
     ++this->renderedFrames;
 
+    // Les enregistrements PNG (lecture GPU, encodage) ne comptent pas dans le temps de l'image (recordFrameTime).
+    const auto captureStart = std::chrono::steady_clock::now();
     if (this->manualCapturePending)
     {
         this->manualCapturePending = false;
@@ -1039,6 +1105,7 @@ void Game::endFrame()
         }
         this->window.requestClose();
     }
+    this->captureTime = std::chrono::steady_clock::now() - captureStart;
 
     Profiler::Profile("SwapBuffers", [&]() { (void)this->device->present(); });
 }

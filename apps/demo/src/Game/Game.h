@@ -1,9 +1,11 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "CameraController.h"
 #include "Scene/demo_scene.hpp"
@@ -93,6 +95,8 @@ class Game
     bool captureSucceeded() const noexcept { return !captureFailed && (captureDirectory.empty() || captureDone); }
     // Sans fenêtre : faux si une image n'a pas pu être commencée ou a été refusée (submit ou scène), avec ou sans capture.
     bool headlessSucceeded() const noexcept { return !headlessFrameFailed; }
+    // Temps CPU de chaque image rendue par run() (ms), dans l'ordre : bilan de fin (médiane, première image, maximum).
+    const std::vector<float> &frameTimes() const noexcept { return frameTimesMs; }
 
   private:
     Game(bool headless, int width, int height, orosmo::rhi::Backend backend);
@@ -107,6 +111,7 @@ class Game
     void resetCamera();
     orosmo::core::Result<> createUi();
     void warmUp();
+    void recordFrameTime(std::chrono::steady_clock::time_point frameStart);
     orosmo::core::Result<> createPostEffects();
     bool loadFullUiTheme(bool reportAsError);
     bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
@@ -182,4 +187,6 @@ class Game
     std::optional<orosmo::core::Error> sceneError;
     bool uiFailed = false;
     bool headless = false;
+    std::vector<float> frameTimesMs;
+    std::chrono::steady_clock::duration captureTime{}; // écriture des PNG de l'image en cours (exclue de son temps)
 };
