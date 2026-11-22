@@ -56,6 +56,8 @@ class InstanceRenderer
     core::Result<std::uint32_t> addMesh(const Mesh &mesh);
     std::uint32_t addMaterial(InstanceMaterial material);
     std::size_t meshCount() const noexcept { return meshes_.size(); }
+    // Maillage d'un identifiant (nul si inconnu) : sert aux casters d'ombres (ShadowFeature) qui dessinent les mêmes lots.
+    const Mesh *mesh(std::uint32_t id) const noexcept { return id < meshes_.size() ? meshes_[id] : nullptr; }
     std::size_t materialCount() const noexcept { return materials_.size(); }
     const std::shared_ptr<ShaderProgram> &defaultProgram() const noexcept { return defaultProgram_; }
 

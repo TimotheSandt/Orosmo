@@ -80,10 +80,9 @@ des plugins, dans l'ordre d'enregistrement. Groupe 0 de toute passe : `ctx.frame
 Comme les dessins sont joués à `endFrame`, les tampons d'un maillage dessiné doivent rester valides jusque-là ; les constantes, le
 pipeline et la transformation sont résolus à `drawMesh`, les segments de debug copiés à `drawDebug`.
 
-**Ajouter une passe d'ombre (REN-06 à 08).** Un plugin dont `declarePasses` crée la carte (`graph.createTexture("shadow.atlas",
-{.format = kD32Float, .size = ..., .usage = kRenderTarget | kSampled})`), déclare une passe `kRaster` qui l'écrit (`writeDepth`) et
-dessine les casters, puis appelle `builder.addSceneInput(atlas)` : la passe d'ombre s'exécute avant `scene`, n'est jamais écartée, et
-la texture (`ctx.texture(atlas)`) est liée au groupe 1 des matériaux qui la lisent. Ni le renderer ni les backends ne changent.
+**Ajouter une passe d'ombre (REN-06 à 08).** C'est ce que fait `ShadowFeature` (voir « Ombres » plus bas) : atlas persistant importé
+(`graph.importTexture`), passes `kGeneric` qui l'écrivent, puis `builder.addSceneInput(atlas)` : elles s'exécutent avant `scene` et ne
+sont jamais écartées ; l'atlas est lié au groupe 1 des matériaux qui le lisent. Ni le graphe, ni le renderer, ni les backends n'ont changé.
 
 **Ajouter un post-traitement ou un effet HDR (REN-17 à 19, REN-21 ; exemples réels : section « HDR et post-traitements »).** Un plugin qui lit `resources().sceneColor` avec `read` (et
 `sceneDepth`, `motionVectors` au besoin), écrit une texture transitoire, puis une passe qui la réécrit dans `sceneColor` (`write`) :
@@ -193,6 +192,71 @@ Limites : un seul `InstanceRenderer::draw` par image et par instance de la class
 imposteurs : n'importe quel maillage (un quad) peut servir de dernier niveau, mais pas de génération automatique (atlas, orientation
 vers la caméra) ; un fondu croisé qui chevauche la bande de rejet n'est pas combiné (seul le dernier niveau s'efface) ; le tramage
 désactive l'early-Z des fragments concernés ; culling CPU seulement (le culling GPU et l'occlusion Hi-Z sont REN-29).
+
+### Ombres (M5 : REN-06, REN-07, REN-08)
+
+| En-tête | Rôle |
+| --- | --- |
+| `shadows.hpp` | sans GPU : `LightMobility`, `ShadowMode`, `CasterMobility`, `resolveShadowBehavior` (tableau ci-dessous), `cascadeSplits` (schéma pratique), `cameraShapeFrom` (forme de la caméra depuis `FrameData`, jitter ignoré), `fitCascade` (sphère de rayon constant + ancrage sur la grille de texels), `fitSpot`, `atlasTileMatrix`, `ShadowAtlasAllocator` (tuiles carrées en puissances de deux, « buddy », déterministe), `ShadowHash` (FNV-1a) |
+| `shadow_feature.hpp` | `ShadowFeature` (plugin `RenderFeature` « shadows ») : `setLights`, `setLightParams` (priorité, résolution, plans et fondu d'un projecteur), `ShadowSettings` (taille d'atlas, cascades, portée, amortissement, budget, PCF, biais), casters `addMeshCaster(mesh, boîte, mobilité)` et `addObjectCasters(ObjectSet, InstanceRenderer, mobilité)`, `receiverGroup` / `appendReceiverBindings`, `receiverProgram` / `instancedReceiverProgram`, `stats`, `lightStatus`, `gpuData` |
+| `shaders/rhi/shadow_receiver.glsl` | `orosmoLightShadow(index, position, normale, vers la lumière, œil)` : choix de la cascade (la plus fine qui contient le point, PCF compris), décalage normal, biais de pente en mètres, `shadowPcf` (REN-22), fondu ; projecteurs : profondeur recalculée depuis la distance. Groupe 1, bindings 6 (atlas, échantillonneur de comparaison) et 7 (`ShadowGpuData`, std140, vérifié par `static_assert`) |
+| `shaders/rhi/shadow_caster*.vert`, `shadow_caster.frag`, `shadow_tile.*` | casters (maillage : clip × modèle en push constants ; instancié : `GpuInstance` aux emplacements 8 à 11) ; effacement et recopie d'une tuile (le RHI n'a pas de copie de texture à texture : `gl_FragDepth`) |
+
+`Light` porte `mobility` (défaut `kDynamic`) et `shadowMode` (défaut `kNone` : aucune lumière existante n'a d'ombre sans le demander).
+`mesh.frag` multiplie la lumière directionnelle ET les projecteurs (`lightContribution`, donc en forward comme en forward+) par
+`orosmoLightShadow` ; la pré-passe de profondeur (premier entier des push constants = 2) ne calcule aucun éclairage, donc ne lit pas les
+ombres ; sans `OROSMO_SHADOWS` la fonction rend 1 (image identique au
+pixel près, vérifié sur la capture de la démo).
+
+**Comportement de chaque combinaison** (`resolveShadowBehavior`, testé sur CPU et sur GPU pour les 12 combinaisons) :
+
+| Mobilité \ mode | `None` | `Baked` | `Dynamic` | `Cached` |
+| --- | --- | --- | --- | --- |
+| `Static` (rien ne change) | pas d'ombre | pas de cuisson (REN-16 absent) : **repli `Cached`**, statut `kBakedFallback` | toutes les casters redessinées à chaque mise à jour | fixe en cache, mobiles par-dessus |
+| `Stationary` (couleur seule) | pas d'ombre | repli `Cached`, `kBakedFallback` | idem | idem |
+| `Dynamic` (tout) | pas d'ombre | combinaison invalide : **repli `Dynamic`**, `kInvalidCombination` | idem | cache invalidé à chaque changement de la lumière |
+
+Une lumière `Static` qui bouge ou change de couleur, ou `Stationary` qui bouge, est une **violation** : comptée
+(`ShadowStats::mobilityViolations`), avertie dans le journal, et ses vues sont redessinées (l'ombre reste juste). Une lumière ponctuelle
+est `kUnsupportedType` (cubemaps : REN-09), comme une directionnelle au-delà de la première ombrée.
+
+**Cascades (REN-07).** Une seule lumière directionnelle ombrée (la première), 1 à 4 cascades sur `[proche, maxDistance]`. Stabilité :
+le rayon de la sphère d'une tranche ne dépend que de la tranche et du champ (pas de l'orientation), le centre et la profondeur sont
+ancrés sur la grille de texels dans le repère de la lumière : un déplacement de la caméra décale la projection d'un nombre entier de
+texels, un déplacement sous-texel ne change pas la matrice (test `fitCascade`). Les matrices sont calculées dans le monde puis ramenées
+au repère des shaders (rendu relatif à la caméra compris). Fondu sur la dernière fraction (`fadeFraction`) de `maxDistance`.
+
+**Atlas, budget, cache (REN-08).** Un atlas de profondeur (`atlasSize`²) et un cache de même taille. Chaque vue (cascade ou projecteur)
+demande une tuile : servies par priorité de la lumière, directionnelle d'abord, cascades proches d'abord ; une vue moins prioritaire est
+évincée au besoin, puis la taille est divisée par deux jusqu'à `minTileSize`, sinon la vue est abandonnée (`dropped`, et `kAtlasFull` si la
+lumière n'a plus aucune vue). Projecteurs : résolution divisée par deux à chaque doublement de la distance au-delà de la portée, au plus
+`maxSpotShadows`, plus de vue au-delà de `fadeEnd` (`kFaded`), fondu entre `fadeStart` et `fadeEnd`. Mises à jour : au plus
+`maxViewUpdatesPerFrame` vues par image (jamais dessinées d'abord, puis priorité, puis la plus ancienne : pas de famine), une cascade `i`
+au plus une image sur `cascadeUpdateInterval[i]` ; une vue reportée garde son contenu ET sa matrice (le récepteur reste cohérent).
+Cache (`Cached`) : la géométrie fixe d'une vue est dessinée dans le cache quand la vue (matrice, tuile) ou la liste des casters fixes
+(hachage des matrices) change ; sinon la tuile n'est recopiée sous les casters mobiles que si leur liste a changé ; si rien n'a bougé,
+**rien n'est dessiné** (aucune passe). Culling par vue d'ombre (pyramide de la vue ; `ObjectSet::prepare` avec le LOD choisi depuis la
+caméra), un `drawIndexed` instancié par lot.
+
+**Passes du graphe** : `shadow.cache` (cache, s'il y a de la géométrie fixe à redessiner) puis `shadow.atlas`, avant `scene` ; aucune
+passe quand rien n'est à mettre à jour.
+
+**Mesures** (`ShadowStats`). Test `ShadowFeature cache` (2 cascades, une caster fixe, une mobile) : 1re image 2 redessins du cache +
+2 recopies (2 passes) ; **image statique : 0 vue redessinée, 0 passe, 0 dessin** ; caster mobile déplacée : 2 recopies + 2 dessins
+mobiles, 1 passe, cache non redessiné. Démo (`--shadows on`, 1280×720, 4 cascades, structure fixe, cristal et prismes mobiles,
+animation en cours) : 1re image 4 redessins du cache, 2 passes, 19 dessins ; ensuite **0 redessin de la géométrie fixe**, 2 à 4 vues
+recopiées par image (amortissement 1, 1, 2, 4), 1 passe, 7 à 15 dessins. En mode `Dynamic`, chaque vue due est redessinée entièrement à
+chaque image même immobile (test des combinaisons).
+
+Démo : `apps/demo/bin/debug/main --shadows on` (défaut `off` : captures inchangées) ; les compteurs sont journalisés (12 premières
+images, puis toutes les 600). Capture : `make demo-capture` (`build/demo-capture/shadows`), référence
+`docs/BASELINE/reference/scene-opengl-demo-shadows-1280x720.png`.
+
+Limites : pas d'ombres de contact (écran ; il faudrait une pré-passe de profondeur) ; pas de fondu entre cascades (bascule nette) ;
+une seule directionnelle ombrée ; pas de ponctuelles (REN-09) ; `Baked` sans cuisson (REN-16) ;
+le cache d'une cascade est redessiné dès que la caméra se déplace d'un texel (pas de défilement de la tuile) ; casters des deux faces
+(pas de biais matériel : le RHI n'a pas de `depthBias`), biais dans le récepteur ; les casters `Mesh` à données d'instance propres sont
+refusées ; LOD : les deux niveaux d'un fondu sont dessinés dans l'ombre (pas de tramage).
 
 ### Éclairage forward+ clusterisé et types de lumières (M5 : REN-04, REN-05)
 

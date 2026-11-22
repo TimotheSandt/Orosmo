@@ -251,6 +251,20 @@ orosmo::core::Result<> Game::init()
         }
     }
     this->scene = std::make_unique<demo::DemoScene>();
+    if (this->shadowsEnabled)
+    {
+        auto shadows = rd::ShadowFeature::create(*this->device, *this->shaders, *this->pipelines, kShaderDirectory);
+        if (!shadows)
+        {
+            return orosmo::core::makeError(shadows.error().code, "Failed to create the shadows: " + shadows.error().message);
+        }
+        auto added = this->sceneRenderer->addFeature(std::move(*shadows));
+        if (!added)
+        {
+            return std::unexpected(added.error());
+        }
+        this->scene->setShadows(static_cast<rd::ShadowFeature *>(*added));
+    }
     if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory, forwardPlus, this->pointLightCount); !ready)
     {
         return orosmo::core::makeError(ready.error().code, "Failed to initialize the demo scene: " + ready.error().message);

@@ -124,6 +124,14 @@ make demo-vulkan-check            # 5 cas (off, hud, dark/light widgets, dark sc
 - `docs/BASELINE/reference/scene-opengl-demo-1280x720.png` : la capture OpenGL actuelle en diffère de 332 pixels (0,036 %, écart max 237 : arêtes) ; la référence est peut-être à régénérer (à vérifier, non modifiée ici).
 - Performances comparées : `docs/PERF_OPENGL_VS_VULKAN.md`.
 
+## Ombres en cascade de la démo (M5, REN-07/08, 2026-11-21)
+
+`reference/scene-opengl-demo-shadows-1280x720.png` : `apps/demo/bin/debug/main --api opengl --headless --ui off --shadows on
+--capture build/demo-capture/shadows --capture-frames 5` (ligne ajoutée à `make demo-capture`), Intel Arc (Mesa 26.1.6). sha256
+`700fccec7aca1bdb10991e64d39553a3bb9396e19e6c8d5286b3c1820b1d6aac`. Vulkan donne la même image (écart max 1/255, 0 pixel au-delà de la
+tolérance 8) avec 0 message de validation. Sans `--shadows` (défaut), la capture de la scène est identique au pixel près à celle d'avant
+les ombres. La CI ne compare pas encore cette image (`.github/` à mettre à jour par l'auteur).
+
 ## Mise à jour du 2026-11-21 : post-traitements (REN-17, REN-18)
 
 `reference/scene-opengl-post-{hdr,bloom,full}-1280x720.png` : `apps/demo/bin/debug/main --api opengl --headless --ui off --post <mode>

@@ -169,6 +169,18 @@ TEST_SUITE("Demo launch options")
         AssertEqual(options.captureFrames, 25u, "Capture frame count should be parsed");
     }
 
+    TEST_CASE("launch options parse --shadows on|off; off by default (REN-07)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(!demo::parseLaunchOptions(1, none)->shadows, "No shadows by default");
+        const char *on[] = {"Orosmo", "--shadows", "on"};
+        Assert(demo::parseLaunchOptions(3, on)->shadows, "--shadows on enables them");
+        const char *off[] = {"Orosmo", "--shadows", "off"};
+        Assert(!demo::parseLaunchOptions(3, off)->shadows, "--shadows off disables them");
+        const char *bad[] = {"Orosmo", "--shadows", "maybe"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --shadows value is refused");
+    }
+
     TEST_CASE("launch options parse --post; none by default (REN-17/18)")
     {
         const char *none[] = {"Orosmo"};

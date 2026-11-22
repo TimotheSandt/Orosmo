@@ -53,6 +53,16 @@ layout(set = 0, binding = 0, std140) uniform CamBlock
     mat4 matrix;
 } camera;
 
+// REN-06 à REN-08 : ombres (variante OROSMO_SHADOWS : groupe 1, bindings 6 et 7, voir shadow_receiver.glsl). Sans elle : 1.
+#ifdef OROSMO_SHADOWS
+#include "shadow_receiver.glsl"
+#else
+float orosmoLightShadow(int lightIndex, vec3 position, vec3 n, vec3 toLight, vec3 eye)
+{
+    return 1.0;
+}
+#endif
+
 vec4 directLight(vec3 lightDirection, vec3 lightColor, float lightIntensity)
 {
     // lumière diffuse
@@ -85,15 +95,19 @@ vec4 lightContribution(int i)
     }
     if (lght.type == 2)
     {
-        return directLight(lght.direction, lght.color, lght.strength);
+        return directLight(lght.direction, lght.color, lght.strength) *
+               orosmoLightShadow(i, crntPos, normalize(normal), normalize(lght.direction), camera.position);
     }
     if (lght.type == 3 || lght.type == 4)
     {
         // Positions des lumières en coordonnées monde, ramenées dans l'espace des shaders (rendu relatif à la caméra, REN-02).
         vec3 offset = (frame.cameraWorldHigh.xyz + frame.cameraWorldLow.xyz) - frame.cameraRelativeOrigin.xyz;
         const bool spot = lght.type == 4;
+        // REN-08 : ombre du projecteur (1 sans OROSMO_SHADOWS ou sans vue d'ombre pour cette lumière).
+        const float shadow = spot ? orosmoLightShadow(i, crntPos, normalize(normal), vec3(0.0f), camera.position) : 1.0f;
         return vec4(localLightRadiance(lght.position - offset, lght.color, lght.strength, lght.a, lght.b, crntPos, normal, camera.position,
-                                       spot ? 64.0f : 16.0f, lght.direction, lght.outerCone, lght.innerCone, spot),
+                                       spot ? 64.0f : 16.0f, lght.direction, lght.outerCone, lght.innerCone, spot) *
+                        shadow,
                     0.0f);
     }
     return vec4(0.0f);
