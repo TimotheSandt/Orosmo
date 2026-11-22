@@ -461,6 +461,7 @@ void printUsage(std::ostream &out)
     out << "          a color grading LUT and a vignette. none (default) keeps the LDR scene unchanged.\n";
     out << "AA:       --aa fxaa|smaa run on the displayed values (after tonemapping); taa jitters the camera and accumulates\n";
     out << "          the HDR scene before the post-processing (motion vectors, history rejection). none (default): no AA.\n";
+    out << "          taa is refused with --instances (the instanced objects write no motion vectors): AA is then disabled.\n";
     out << "Lighting: --lighting forwardplus uses clustered forward+ lighting (depth pre-pass, clusters filled by a compute pass;\n";
     out << "          falls back to forward without compute shaders). --lights N adds N deterministic point lights.\n";
 }
@@ -553,6 +554,16 @@ BackendDecision resolveBackend(Backend requested, bool strict, BackendAvailabili
     decision.fellBack = true;
     decision.message = "Vulkan cannot start (" + reason + "); falling back to OpenGL.";
     return decision;
+}
+
+AntiAliasingDecision resolveAntiAliasing(orosmo::renderer::AntiAliasingMode requested, std::uint32_t instances)
+{
+    if (requested == orosmo::renderer::AntiAliasingMode::kTaa && instances > 0)
+    {
+        return {orosmo::renderer::AntiAliasingMode::kNone,
+                "--aa taa is not supported with --instances: the instanced objects write no motion vectors; anti-aliasing disabled"};
+    }
+    return {requested, {}};
 }
 
 } // namespace demo

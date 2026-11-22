@@ -485,6 +485,23 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::backendAvailabilityMessage(Backend::kMetal).empty(), "refusing Metal should say why");
     }
 
+    TEST_CASE("--aa taa with --instances is refused: TAA disabled, with a reason (the instances write no motion vectors)")
+    {
+        using orosmo::renderer::AntiAliasingMode;
+        const demo::AntiAliasingDecision refused = demo::resolveAntiAliasing(AntiAliasingMode::kTaa, 100);
+        CHECK((refused.mode == AntiAliasingMode::kNone));
+        CHECK(refused.message.find("--instances") != std::string::npos);
+        for (const AntiAliasingMode mode : {AntiAliasingMode::kNone, AntiAliasingMode::kFxaa, AntiAliasingMode::kSmaa})
+        {
+            const demo::AntiAliasingDecision kept = demo::resolveAntiAliasing(mode, 100);
+            CHECK((kept.mode == mode));
+            CHECK(kept.message.empty());
+        }
+        const demo::AntiAliasingDecision taa = demo::resolveAntiAliasing(AntiAliasingMode::kTaa, 0);
+        CHECK((taa.mode == AntiAliasingMode::kTaa));
+        CHECK(taa.message.empty());
+    }
+
     TEST_CASE("other backend messages are non-empty")
     {
         Assert(!demo::backendAvailabilityMessage(Backend::kVulkan).empty(), "Vulkan availability message should be present");

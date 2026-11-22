@@ -294,6 +294,14 @@ orosmo::core::Result<> Game::init()
     {
         return orosmo::core::makeError(set.error().code, "Failed to set the debug view: " + set.error().message);
     }
+    // Le TAA lit l'AOV de mouvement, que les objets instanciés n'écrivent pas : combinaison refusée (TAA désactivé), avant
+    // la déclaration des AOV et DemoScene::initInstances.
+    if (const demo::AntiAliasingDecision aa = demo::resolveAntiAliasing(this->antiAliasingMode, this->instanceCount); !aa.message.empty())
+    {
+        LOG_WARNING(aa.message);
+        std::cerr << aa.message << '\n';
+        this->antiAliasingMode = aa.mode;
+    }
     // REN-19 : le TAA lit le mouvement et la profondeur linéaire ; demandés ici pour que le programme de maillage les écrive (le
     // plugin, enregistré plus tard après les plugins de la scène, les exige aussi).
     if (this->antiAliasingMode == rd::AntiAliasingMode::kTaa)

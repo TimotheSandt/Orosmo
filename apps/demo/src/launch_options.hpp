@@ -139,4 +139,14 @@ struct BackendDecision
 // indisponibles sont refusés.
 BackendDecision resolveBackend(orosmo::rhi::Backend requested, bool strict, BackendAvailability availability, std::string_view failureReason = {});
 
+// --aa taa avec --instances N : les objets instanciés (InstanceRenderer, culling GPU) n'écrivent pas l'AOV de mouvement que le TAA
+// lit ; leur historique serait reprojeté avec un mouvement nul (traînées). Combinaison refusée : le TAA est désactivé (aucun
+// anticrénelage) et `message` dit pourquoi. Pure, testable sans GPU.
+struct AntiAliasingDecision
+{
+    orosmo::renderer::AntiAliasingMode mode = orosmo::renderer::AntiAliasingMode::kNone;
+    std::string message; // vide si la demande est acceptée telle quelle
+};
+AntiAliasingDecision resolveAntiAliasing(orosmo::renderer::AntiAliasingMode requested, std::uint32_t instances);
+
 } // namespace demo
