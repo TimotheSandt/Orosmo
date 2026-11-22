@@ -13,6 +13,7 @@
 #include <orosmo/renderer/mesh.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
 #include <orosmo/renderer/scene_view.hpp>
+#include <orosmo/renderer/texture.hpp>
 #include <orosmo/renderer/transparent_feature.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -20,6 +21,8 @@
 #include <algorithm>
 #include <array>
 #include <filesystem>
+#include <span>
+#include <string>
 
 namespace fs = std::filesystem;
 namespace rd = orosmo::renderer;
@@ -150,6 +153,27 @@ TEST_SUITE("renderer/mixed-2d-3d")
         {
             MixScene scene(backend);
             REQUIRE(scene.gpu.device);
+            // Post-traitement réel (IPostProcessPass, ajouté AVANT les plugins) : compose une couleur prémultipliée (0, 0, 0.5, 0.5)
+            // sur toute la scène : pixel = scène / 2 + (0, 0, 0.5). Il doit voir la passe principale complète, sprite du monde compris.
+            const std::uint8_t tintTexel[4] = {0, 0, 128, 128};
+            rd::TextureInfo tintInfo;
+            tintInfo.filter = rd::FilterMode::kNearest;
+            auto tintTexture = rd::Texture::create(*scene.gpu.device, tintInfo, std::as_bytes(std::span(tintTexel)));
+            REQUIRE(tintTexture.has_value());
+            struct Tint final : rd::IPostProcessPass
+            {
+                TextureHandle texture;
+                SamplerHandle sampler;
+                std::string name() const noexcept override { return "tint"; }
+                orosmo::core::Result<> process(rd::FrameContext &context, rd::RenderTarget &target) override
+                {
+                    return context.blit.compose(context.encoder, texture, sampler, target.color(0), target.info().colorFormats[0], "post.tint");
+                }
+            };
+            auto tint = std::make_unique<Tint>();
+            tint->texture = tintTexture->handle();
+            tint->sampler = tintTexture->sampler();
+            scene.renderer->addPostProcessPass(std::move(tint));
             auto transparents = rd::TransparentFeature::create(*scene.gpu.device, *scene.library, *scene.pipelines, shaderDir());
             REQUIRE(transparents.has_value());
             auto *transparentFeature = static_cast<rd::TransparentFeature *>(*scene.renderer->addFeature(std::move(*transparents)));
@@ -182,30 +206,124 @@ TEST_SUITE("renderer/mixed-2d-3d")
                         INFO((ended ? std::string() : ended.error().message));
                         REQUIRE(ended.has_value());
                     });
+                // Après le post-traitement : couleur / 2 + (0, 0, 0.5). Un sprite dessiné après lui resterait rouge pur.
                 if (planeZ < -5.0f)
                 {
                     // Plan derrière le mur et le verre : caché derrière le mur (colonnes 0 à 3). À droite il est dessiné APRÈS les
                     // transparents (ordre fixe) et sans profondeur de leur part : le sprite rouge recouvre le verre.
-                    CHECK(close(scene.at(out, 1, 2), byte(0, 0.5f, 0.5f)));   // le mur vert, vu à travers le verre bleu
-                    CHECK(close(scene.at(out, 6, 2), byte(1, 0, 0)));
+                    CHECK(close(scene.at(out, 1, 2), byte(0, 0.25f, 0.75f))); // le mur vert, vu à travers le verre bleu, teinté
+                    CHECK(close(scene.at(out, 6, 2), byte(0.5f, 0, 0.5f)));   // le sprite, traité par le post-traitement
                 }
                 else
                 {
                     // Plan devant le mur, mais derrière le verre (z = -3 : le plan à z = -2 est devant le verre aussi).
-                    CHECK(close(scene.at(out, 1, 2), byte(1, 0, 0)));
-                    CHECK(close(scene.at(out, 6, 2), byte(1, 0, 0)));
+                    CHECK(close(scene.at(out, 1, 2), byte(0.5f, 0, 0.5f)));
+                    CHECK(close(scene.at(out, 6, 2), byte(0.5f, 0, 0.5f)));
                 }
                 CHECK(close(scene.at(out, 0, 7), byte(1, 1, 1))); // superposition : coin bas gauche de la sortie (origine en haut)
                 CHECK(close(scene.at(out, 1, 6), byte(1, 1, 1)));
                 CHECK(world->passesRun() > 0);
             }
-            // Ordre fixe : 3D opaque (scene) -> 3D transparent -> 2D monde -> mise à l'échelle -> 2D en superposition.
+            // Ordre fixe (docs/03 §11) : 3D opaque (scene) -> 3D transparent -> 2D monde -> post-traitement -> mise à l'échelle -> 2D
+            // en superposition. Ordre d'exécution réel du graphe, pas celui de la déclaration.
             const auto order = scene.renderer->renderGraph().executionOrder();
             const auto position = [&](const char *pass) { return std::ranges::find(order, pass) - order.begin(); };
+            REQUIRE(position("post.tint") < static_cast<std::ptrdiff_t>(order.size()));
             CHECK(position("scene") < position("transparents"));
             CHECK(position("transparents") < position("mix.world"));
-            CHECK(position("mix.world") < position("upscale"));
+            CHECK(position("mix.world") < position("post.tint"));
+            CHECK(position("post.tint") < position("upscale"));
             CHECK(position("upscale") < position("mix.overlay"));
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("2D in the world follows camera-relative rendering: the plane stays where it is in the world (R2D-05, REN-02)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            MixScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            rd::Layer2DFeature *world = addLayer(scene, "mix.world", rd::Layer2DMode::kWorld);
+            scene.camera.setPosition({2.0f, 0.0f, 0.0f}); // vue de x = -2 à x = 6 ; le sprite couvre x de -4 à 4
+            for (const bool relative : {false, true})
+            {
+                INFO("backend ", tests::backendName(backend), ", camera-relative ", relative);
+                scene.renderer->setCameraRelative(relative);
+                const TextureHandle out = scene.out();
+                scene.gpu.run(
+                    [&](CommandEncoder &e)
+                    {
+                        REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                        REQUIRE(scene.renderer->setCamera(scene.camera).has_value());
+                        world->begin({});
+                        world->setPlaneTransform(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -6.0f)));
+                        fullSprite(*world, scene.white, {1, 0, 0, 1});
+                        REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {kSize, kSize}}).has_value());
+                    });
+                CHECK(close(scene.at(out, 1, 4), byte(1, 0, 0))); // x = -1 : sur le sprite
+                CHECK(close(scene.at(out, 5, 4), byte(1, 0, 0))); // x = 3,5
+                CHECK(close(scene.at(out, 7, 4), byte(0, 0, 0))); // x = 5,5 : hors du sprite (centré sur la caméra, il y serait)
+            }
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("a view whose drawing fails still ends its frame; placements of a failed frame expire (R2D-06)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            MixScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            // Plugin enregistré AVANT les vues, qui fait échouer endFrame avant la déclaration de leur passe.
+            struct Failing final : rd::RenderFeature
+            {
+                bool fail = false;
+                std::string name() const override { return "failing"; }
+                orosmo::core::Result<> prepare(const rd::FrameData &) override
+                {
+                    return fail ? orosmo::core::makeError(ErrorCode::kUnknown, "prepare failed") : orosmo::core::Result<>{};
+                }
+                orosmo::core::Result<> declarePasses(rd::RenderGraphBuilder &) override { return {}; }
+            };
+            auto *failing = static_cast<Failing *>(*scene.renderer->addFeature(std::make_unique<Failing>()));
+            auto views = rd::ViewsFeature::create(*scene.gpu.device, *scene.library, *scene.pipelines, shaderDir());
+            REQUIRE(views.has_value());
+            auto *placer = static_cast<rd::ViewsFeature *>(*scene.renderer->addFeature(std::move(*views)));
+            auto view = rd::SceneView::create(*scene.gpu.device, *scene.library, *scene.pipelines, shaderDir(), 4, 4);
+            REQUIRE(view.has_value());
+            (*view)->renderer().setLights(&scene.lights);
+            (*view)->camera().setOrthographic(4.0f);
+            auto blue = scene.quad(2.0f, {0, 0, 1}, 0.0f, -5.0f, "blue");
+            const TextureHandle out = scene.out();
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    // Le dépôt échoue : l'erreur est celle du dépôt, et l'image de la vue est refermée malgré tout.
+                    auto failed = (*view)->render(e, {.clearColor = {1, 0, 0, 1}}, [](rd::SceneRenderer &, rd::Camera &) -> orosmo::core::Result<>
+                                                  { return orosmo::core::makeError(ErrorCode::kInvalidArgument, "draw failed"); });
+                    REQUIRE_FALSE(failed.has_value());
+                    CHECK(failed.error().message.find("draw failed") != std::string::npos);
+                    // La vue est réutilisable tout de suite (sans le correctif : « the previous frame was not ended »).
+                    auto rendered = (*view)->render(e, {.clearColor = {0, 1, 0, 1}}, [&](rd::SceneRenderer &r, rd::Camera &c) { return r.drawMesh(blue, c); });
+                    INFO((rendered ? std::string() : rendered.error().message));
+                    REQUIRE(rendered.has_value());
+                    placer->place(**view, {0, 0, 4, 4});
+                    failing->fail = true;
+                    REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                    REQUIRE(scene.renderer->setCamera(scene.camera).has_value());
+                    CHECK_FALSE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {kSize, kSize}}).has_value());
+                });
+            CHECK(placer->placementCount() == 0); // le placement ne survit pas à l'image qui a échoué
+            failing->fail = false;
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                    REQUIRE(scene.renderer->setCamera(scene.camera).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {kSize, kSize}}).has_value());
+                });
+            CHECK(close(scene.at(out, 1, 1), byte(0, 0, 0))); // aucune vue composée dans l'image suivante
             scene.gpu.expectNoValidationErrors();
         }
     }
