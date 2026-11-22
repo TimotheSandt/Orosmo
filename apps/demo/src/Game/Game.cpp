@@ -11,6 +11,7 @@
 #include <orosmo/core/log.hpp>
 #include <orosmo/core/paths.hpp>
 #include <orosmo/renderer/draw_list.hpp>
+#include <orosmo/renderer/forward_plus.hpp>
 #include <orosmo/renderer/image.hpp>
 #include <orosmo/ui/window_input.hpp>
 
@@ -172,8 +173,24 @@ orosmo::core::Result<> Game::init()
     this->camera.setFarPlane(1000.0f);
     this->camera.setAspect(static_cast<unsigned>(this->viewWidth), static_cast<unsigned>(this->viewHeight));
 
+    // REN-04 : forward+ (pré-passe de profondeur + clusters en compute) si demandé et possible ; sinon forward (règle 11).
+    bool forwardPlus = false;
+    if (this->lightingMode == demo::LightingMode::kForwardPlus)
+    {
+        auto enabled = rd::enableForwardPlus(*this->sceneRenderer, *this->device, *this->shaders, *this->pipelines, kShaderDirectory);
+        if (enabled)
+        {
+            forwardPlus = true;
+            LOG_INFO("Lighting: clustered forward+ (", (*enabled)->settings().gridX, "x", (*enabled)->settings().gridY, "x",
+                     (*enabled)->settings().gridZ, " clusters, ", (*enabled)->settings().maxLightsPerCluster, " lights per cluster)");
+        }
+        else
+        {
+            LOG_WARNING("Lighting: forward+ unavailable, using forward: ", enabled.error().message);
+        }
+    }
     this->scene = std::make_unique<demo::DemoScene>();
-    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory); !ready)
+    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory, forwardPlus, this->pointLightCount); !ready)
     {
         return orosmo::core::makeError(ready.error().code, "Failed to initialize the demo scene: " + ready.error().message);
     }

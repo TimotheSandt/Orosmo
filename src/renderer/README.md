@@ -23,11 +23,11 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | En-tête | Rôle |
 | --- | --- |
 | `camera.hpp` | `Camera` : position, orientation, perspective (mêmes formules que l'ancienne), jitter, `data()` = `CameraData` std140 (80 octets). Aucune entrée, aucun GLFW : le pilotage clavier/souris revient à l'application (G80) |
-| `light.hpp` | `Light`, `LightManager` : lumières ambiante, directionnelle, ponctuelle, projecteur ; SSBO std430 dont la disposition est vérifiée par `static_assert` (`GpuLight` 96 octets, `GpuLightHeader` 48) ; le tampon grandit au besoin. `light(i)` en lecture seule, `setLight` renvoie kOutOfRange pour un index périmé |
+| `light.hpp` | `Light`, `LightManager` : lumières ambiante, directionnelle, ponctuelle, projecteur (toutes rendues depuis M5, voir REN-05 plus bas) ; SSBO std430 dont la disposition est vérifiée par `static_assert` (`GpuLight` 96 octets, `GpuLightHeader` 48, offsets des champs) ; le tampon grandit au besoin. `light(i)` en lecture seule, `setLight` renvoie kOutOfRange pour un index périmé |
 | `mesh.hpp` | `Mesh` : sommets, index (chacun vérifié contre le nombre de sommets), instances optionnelles, attributs décrits par leurs tailles en flottants, transformation (translation, rotations X/Y/Z, échelle) et matrice des normales (inverse transposée, calculée par objet), textures liées (groupe 1), constantes de shader (push constants) |
 | `fullscreen_blit.hpp` | `FullscreenBlit` : copie plein écran par triangle (le RHI n'a pas de commande de blit) ; `draw` respecte le viewport et le ciseau actifs ; `compose` pose une source prémultipliée sur la cible |
 | `upscaling.hpp` | extensions de fin d'image : `IUpscaleMode` (avec `initialize`/`shutdown`), `IAdvancedUpscaleMode`, `IPostProcessPass`, `IFrameGenerationMode`, `BilinearBlitUpscaleMode` |
-| `scene_renderer.hpp` | `SceneRenderer` : cible de scène, groupe 0 (caméra, lumières, `FrameData`), `beginFrame` / `setCamera` / `drawMesh` (enregistre) / `endFrame` (construit et exécute le graphe de l'image, voir plus bas), plugins (`addFeature`), échelle de rendu, jitter de Halton (seulement pour un mode exécuté qui le demande), historique (les consommateurs lisent l'image PRÉCÉDENTE, `resetHistory` à la première image et après un redimensionnement), vecteurs de mouvement, profondeur lisible. Un mode de mise à l'échelle n'est exécuté que si `upscalingEnabled()` (sinon copie 1:1), il est initialisé avant d'être activé et arrêté quand il est remplacé ; un mode de génération refusé laisse l'actif en place ; `generatedFrame()` expose son image. Remplace `Renderer` + `Renderer3D` |
+| `scene_renderer.hpp` | `SceneRenderer` : cible de scène, groupe 0 (caméra, lumières, `FrameData`, liaisons 3 à 7 des plugins), pré-passe de profondeur optionnelle (`setDepthPrepass`, REN-04), `beginFrame` / `setCamera` / `drawMesh` (enregistre) / `endFrame` (construit et exécute le graphe de l'image, voir plus bas), plugins (`addFeature`), échelle de rendu, jitter de Halton (seulement pour un mode exécuté qui le demande), historique (les consommateurs lisent l'image PRÉCÉDENTE, `resetHistory` à la première image et après un redimensionnement), vecteurs de mouvement, profondeur lisible. Un mode de mise à l'échelle n'est exécuté que si `upscalingEnabled()` (sinon copie 1:1), il est initialisé avant d'être activé et arrêté quand il est remplacé ; un mode de génération refusé laisse l'actif en place ; `generatedFrame()` expose son image. Remplace `Renderer` + `Renderer3D` |
 | `debug_draw.hpp` | `DebugDraw` (REN-34) : lignes, boîtes, sphères, repères en coordonnées monde ; désactivé par défaut hors debug (chaque appel revient au premier test) ; dessiné par `SceneRenderer::drawDebug` dans la passe de scène, test de profondeur au choix (shaders `debug_line.*` chargés au premier appel) |
 | `shaders/rhi/` | `mesh.vert` / `mesh.frag` (éclairage identique à l'ancien), `blit.vert` / `blit.frag` : GLSL 450 (`set`/`binding`, push constants) |
 
@@ -36,7 +36,7 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | En-tête | Rôle |
 | --- | --- |
 | `render_graph.hpp` | `RenderGraph` : ressources nommées (textures et tampons, importés ou transitoires), passes `kRaster` (le graphe ouvre la passe de rendu sur les attachements déclarés) ou `kGeneric` (la passe enregistre ce qu'elle veut), ordre déduit, passes inutiles écartées, cycle refusé (`compile` : kInvalidArgument avec le chemin des passes), réserve de transitoires (réutilisées d'une image à l'autre, partagées entre ressources de vies disjointes et de même description, libérées après `kTransientKeepFrames` images sans usage), une mesure du `Profiler` par passe exécutée (`RenderGraph/<passe>`, minuterie GPU si un `ProfilerGpuTimerFactory` est installé avec l'encodeur de l'image), groupe de débogage par passe (RenderDoc). Les barrières restent au RHI |
-| `render_feature.hpp` | `RenderFeature` (plugin : `supports`, `prepare(FrameData)`, `declarePasses(RenderGraphBuilder&)`) et `RenderGraphBuilder` (graphe de l'image + ressources connues : `sceneColor`, `sceneDepth`, `motionVectors`, `output`, tailles ; `addSceneInput`) |
+| `render_feature.hpp` | `RenderFeature` (plugin : `supports`, `prepare(FrameData)`, `declarePasses(RenderGraphBuilder&)`) et `RenderGraphBuilder` (graphe de l'image + ressources connues : `sceneColor`, `sceneDepth`, `motionVectors`, `output`, tailles ; `addSceneInput` pour une texture ou un tampon ; `addFrameBinding` : liaison 3 à 7 ajoutée au groupe 0 de l'image) |
 | `frame_data.hpp` | `FrameData` (docs/03 §10, std140, 640 octets, `static_assert` sur tailles et offsets), `FrameEnvironment`, `splitDouble`, `frameNoiseSeed` ; côté GLSL : `shaders/rhi/frame_data.glsl` (`#include "frame_data.glsl"`, groupe 0 binding 2) |
 
 **Règles de dépendance** (par ressource ; l'ordre de déclaration ne compte qu'entre les accès à une même ressource) :
@@ -73,7 +73,7 @@ Une passe `kGeneric` enregistre ce qu'elle veut (ses propres passes de rendu, co
 transitoire sont déduits des accès (attachement : `kRenderTarget`, lecture : `kSampled`) ; un accès en stockage ou en copie doit être
 déclaré dans `RgTextureDesc::usage`. `findTexture(nom)` retrouve une ressource déclarée par une autre passe (ex. un AOV, REN-21).
 
-**Image de `SceneRenderer`.** `endFrame` déclare, dans cet ordre : `scene` (raster : couleur, vecteurs de mouvement, profondeur ; joue
+**Image de `SceneRenderer`.** `endFrame` déclare, dans cet ordre : `depth-prepass` (seulement avec `setDepthPrepass(true)`, REN-04), `scene` (raster : couleur, vecteurs de mouvement, profondeur ; joue
 les dessins enregistrés), `post.<nom>` (un par `IPostProcessPass`), `upscale` (mode actif, ou copie 1:1), `frame-generation`,
 `history` (historique en double tampon : lecture de l'image précédente dans l'un, copie de la courante dans l'autre), puis les passes
 des plugins, dans l'ordre d'enregistrement. Groupe 0 de toute passe : `ctx.frame()->group` (caméra 0, lumières 1, `FrameData` 2).
@@ -148,6 +148,54 @@ Limites : un seul `InstanceRenderer::draw` par image et par instance de la class
 imposteurs : n'importe quel maillage (un quad) peut servir de dernier niveau, mais pas de génération automatique (atlas, orientation
 vers la caméra) ; un fondu croisé qui chevauche la bande de rejet n'est pas combiné (seul le dernier niveau s'efface) ; le tramage
 désactive l'early-Z des fragments concernés ; culling CPU seulement (le culling GPU et l'occlusion Hi-Z sont REN-29).
+
+### Éclairage forward+ clusterisé et types de lumières (M5 : REN-04, REN-05)
+
+| En-tête / fichier | Rôle |
+| --- | --- |
+| `forward_plus.hpp` | `ForwardPlusLighting` (plugin `RenderFeature` « forward-plus ») : passe compute `forwardplus.clusters` ; `ForwardPlusSettings` (grille 16×9×24 par défaut, budgets `maxLightsPerCluster` = 128 et `maxLights`, tranches exponentielles `nearDepth`/`farDepth`) ; `enableForwardPlus` / `disableForwardPlus` (plugin + pré-passe) ; `forwardPlusDefines` (variante de `mesh.frag`) ; références CPU `lightRange`, `lightAttenuation`, `clusterSlice` ; `GpuClusterHeader` (std430, `static_assert`) ; debug `readClusterLightCounts`, `readClusterLights`, `readClusterStats` / `summarizeClusterCounts` |
+| `shaders/include/orosmo/lights.glsl` | REN-05 : portée (`lightRange` : là où l'intensité atténuée tombe à 1/256), atténuation `1 / (a d² + b d + 1)` fenêtrée par `(1 - (d / portée)⁴)²` (nulle au-delà), cône de projecteur (`spotCone`, cosinus `outerCone` / `innerCone`), `localLightRadiance` (diffus + spéculaire Phong) |
+| `shaders/rhi/light_block.glsl` | bloc `LightBlock` (groupe 0, binding 1), même disposition que `GpuLightHeader` + `GpuLight` |
+| `shaders/rhi/clusters.glsl` | bloc `ClusterGrid` (binding 3 : en-tête + nombre de lumières par cluster) et `ClusterLights` (binding 4 : indices) ; `clusterIndexAt`, `clusterLightCount`, `clusterLight`, `clusterHeatColor` |
+| `shaders/rhi/light_clusters.comp` | un fil par cluster : boîte englobante en espace de vue (perspective ou orthographique), test sphère/boîte avec la portée de chaque lumière, dans l'ordre du tampon ; ambiantes et directionnelles dans tous les clusters |
+
+**Types de lumières (REN-05).** Ambiante (en-tête et type 1), directionnelle (type 2, `direction` vers la lumière), ponctuelle
+(type 3) et projecteur (type 4, `direction` = sens du faisceau, spéculaire en puissance 64 comme l'ancien shader) sont rendus par
+`mesh.frag` (forward et forward+, aussi par la variante instanciée). Les ponctuelles et projecteurs étaient « réservés, non rendus »
+avant M5 ; l'ancien shader (commenté) n'atténuait pas le spéculaire, qui l'est maintenant (sinon la portée serait infinie). Les
+positions sont en coordonnées monde ; en rendu relatif à la caméra, les shaders les ramènent à l'origine de la caméra
+(`FrameData::cameraWorldHigh/Low - cameraRelativeOrigin`). Dispositions std430 vérifiées par `static_assert` (`GpuLight`,
+`GpuLightHeader`, `GpuClusterHeader`) et lues par le GPU dans un test. Lumières de surface (P2) : absentes.
+
+**Image en forward+ (REN-04).** `enableForwardPlus(renderer, device, shaders, pipelines, dossier)` active la pré-passe de profondeur
+de `SceneRenderer` et enregistre le plugin ; les maillages prennent la variante `forwardPlusDefines()` de `mesh.frag`. Ordre
+(docs/03) : `depth-prepass` (raster : mêmes attachements que la scène, couleur masquée, profondeur écrite ; dessins de `drawMesh`
+seulement, sans fil de fer ; premier entier des push constants à 2 : `mesh.frag` n'éclaire pas ces fragments) -> `forwardplus.clusters` (compute, groupe 0 de l'image) -> `scene` (profondeur chargée, test « plus
+grand ou égal » sans écriture : chaque pixel n'est éclairé qu'une fois). Les tampons de clusters sont liés au groupe 0 par
+`RenderGraphBuilder::addFrameBinding` (liaisons 3 et 4 ; 3 à 7 sont réservées aux plugins) et lus par la scène
+(`addSceneInput(RgBuffer)`). Le forward et le forward+ évaluent chaque lumière par la même fonction et dans le même ordre ; une
+lumière écartée d'un cluster n'apporte exactement rien (fenêtre de portée) : **même image** (test : tolérance 8, en pratique
+identique). Compute absent ou moins de 5 emplacements de tampons de stockage : `supports` faux, `enableForwardPlus` renvoie
+kUnsupported, l'application garde le forward (la démo le journalise).
+
+**Budgets.** `maxLights` : seules les N premières lumières du tampon sont examinées. `maxLightsPerCluster` : un cluster liste au plus
+N lumières (les premières dans l'ordre) ; `clusterCounts` garde le nombre réel, `readClusterStats().overflowingClusters` compte les
+débordements (et la variante de debug les peint en magenta). Au-delà d'un budget, l'image du forward+ diffère du forward.
+
+**Debug « lumières par cluster ».** Côté GPU : variante `forwardPlusDefines(true)` (`OROSMO_CLUSTER_DEBUG`) qui peint chaque fragment
+selon le nombre de lumières de son cluster (bleu foncé : aucune ; bleu -> vert -> jaune -> rouge jusqu'au budget ; magenta :
+débordement). Côté CPU (lecture synchrone) : `readClusterLightCounts()` (un nombre par cluster c = x + X (y + Y z)),
+`readClusterLights(c)`, `readClusterStats()`.
+
+Démo : `apps/demo/bin/release/main --headless --lighting forwardplus --lights 1000` (défaut `--lighting forward`, sans lumière
+ponctuelle : captures de référence inchangées) ; `--lights N` place N ponctuelles déterministes (spirale de Fibonacci, hachage entier).
+Le Profiler mesure `RenderGraph/depth-prepass`, `RenderGraph/forwardplus.clusters` et `RenderGraph/scene` (journal « Perf: »).
+
+Limites : les dessins externes (`drawCustom`, donc `InstanceRenderer`) ne sont pas dans la pré-passe et la variante instanciée lit
+toutes les lumières (même image, sans le gain du forward+) ; les clusters sont construits avec les lumières actives à `endFrame` (un
+seul `LightManager` par image en forward+) ; pas de culling des clusters vides par la profondeur de la pré-passe (tous les clusters
+sont remplis) ; test sphère/boîte conservateur pour les projecteurs (pas de test de cône) ; une case de grille est en NDC, donc sa
+taille en pixels suit la résolution.
 
 ## Règles
 
