@@ -258,6 +258,41 @@ le cache d'une cascade est redessiné dès que la caméra se déplace d'un texel
 (pas de biais matériel : le RHI n'a pas de `depthBias`), biais dans le récepteur ; les casters `Mesh` à données d'instance propres sont
 refusées ; LOD : les deux niveaux d'un fondu sont dessinés dans l'ombre (pas de tramage).
 
+#### Ombres des transparents (M5 : REN-39)
+
+Avant REN-39 un transparent n'était caster que s'il était enregistré par `addMeshCaster`, et alors il projetait une ombre **pleine**
+(traité comme un opaque) ; sinon il ne projetait rien. Maintenant, `ShadowFeature::setCasterTransparency(id, {mode, alpha, cutoff})`
+choisit, **par caster maillage** (donc par matériau), un `TransparentShadowMode` (`transparent_shadow.hpp`, sans GPU) :
+
+| Mode | Texels écrits dans la carte d'ombre | Usage conseillé |
+| --- | --- | --- |
+| `kNone` | aucun (le caster n'est pas dessiné, ni dans l'empreinte du cache) | lueurs additives, particules |
+| `kFull` (défaut) | tous : ombre pleine, `alpha` ignoré | verre très opaque, comportement d'avant REN-39 |
+| `kMasked` | tous si `alpha >= cutoff`, sinon aucun (`discard`, même règle que `BlendMode::kMask`) | feuillage, grillages |
+| `kDithered` | part ≈ `alpha`, trame de Bayer 4×4 (seuil `(m + 0,5) / 16`), `discard` | verre, fumée : ombre partielle |
+
+`defaultTransparentShadowMode(BlendMode)` donne le conseil (opaque → pleine, masque → masquée, tramé / mélangé / prémultiplié /
+transmission → tramée, additif → aucune) ; il n'est **jamais appliqué en silence** (un caster sans réglage reste en ombre pleine).
+Le rejet est dans `shadow_caster.frag` (variante `OROSMO_SHADOW_ALPHA`, programme `shadow_caster.vert` + frag avec en push constants
+clip × modèle puis `(alpha, seuil, mode)`, 80 octets) ; les modes `kNone` et `kFull` gardent le programme sans rejet.
+La trame est calculée sur `gl_FragCoord` de l'atlas : **fixe dans l'espace de la carte**, donc stable dans le temps (aucune horloge,
+aucun hasard), et le PCF du récepteur la lisse en une pénombre dont la part sombre vaut l'opacité. Précision : l'opacité est quantifiée
+au seizième (`transparentShadowCoverage`), la part d'ombre mesurée sur l'image diffère d'au plus 0,12 de `alpha` (test, PCF 3×3, bords
+exclus). Si la carte est très peu résolue (un texel de carte plus grand qu'un pixel et une trame visible), la trame se voit : c'est
+la limite du tramage (pas de mélange temporel des ombres).
+
+**Cache.** L'empreinte d'un caster (hachage) contient `mode`, `alpha` et `cutoff` pour `kMasked` / `kDithered` seulement : une opacité
+animée d'un caster **fixe** redessine le cache de la vue, d'un caster **mobile** redessine les mobiles sur la recopie ; en `kFull`
+ou `kNone` l'opacité est ignorée (rien n'est redessiné). Conseil : un caster dont l'opacité s'anime est `kMovable`, pour ne pas
+redessiner toute la géométrie fixe à chaque image.
+Limites : les casters d'un `ObjectSet` (instanciés) sont toujours en ombre pleine (`setCasterTransparency` répond `kUnsupported`) ;
+une seule opacité par caster (pas de texture d'alpha par texel : le seuil et l'opacité sont par objet, comme dans `TransparentFeature`) ;
+pas de couleur d'ombre (verre teinté : REN-38).
+Démo : `--scene mixed --shadows on --transparent-shadow none|full|masked|dithered` (sans l'option : les vitres ne projettent rien,
+captures de référence inchangées). Tests : `tests/renderer/transparent_shadow_tests.cpp` (suite `renderer/transparent-shadow`, CPU puis
+OpenGL et Vulkan : aucune = éclairé, pleine = sombre, masquée au-dessus / au-dessous du seuil, tramée à 0,25 / 0,5 / 0,75, stabilité
+image à image, invalidation du cache, validation à 0).
+
 ### Éclairage forward+ clusterisé et types de lumières (M5 : REN-04, REN-05)
 
 | En-tête / fichier | Rôle |

@@ -106,9 +106,37 @@ orosmo::core::Result<> MixedScene::init(orosmo::rhi::Device &device, rd::ShaderL
     return {};
 }
 
+orosmo::core::Result<> MixedScene::addShadowCasters(rd::ShadowFeature &shadows, rd::TransparentShadowMode mode)
+{
+    shadows_ = &shadows;
+    shadowMode_ = mode;
+    for (std::size_t i = 0; i < paneCasters_.size(); ++i)
+    {
+        // Boîte invalide : toujours dessinée (quatre petits quadrilatères, pas de culling par vue d'ombre).
+        auto id = shadows.addMeshCaster(panes_[i], rd::Aabb::empty(), rd::CasterMobility::kMovable);
+        if (!id)
+        {
+            return std::unexpected(id.error());
+        }
+        paneCasters_[i] = *id;
+    }
+    return {};
+}
+
 orosmo::core::Result<> MixedScene::render(rd::SceneRenderer &renderer, const rd::Camera &, float seconds)
 {
     (void)renderer;
+    if (shadows_ != nullptr)
+    {
+        // Même opacité que le mélange (0,45) ; seuil du masque sous l'opacité, pour que l'ombre masquée existe.
+        for (const rd::ShadowFeature::CasterId id : paneCasters_)
+        {
+            if (auto r = shadows_->setCasterTransparency(id, {shadowMode_, 0.45f, 0.3f}); !r)
+            {
+                return std::unexpected(r.error());
+            }
+        }
+    }
     // Verres triés par la distance à la caméra (ordre de dépôt volontairement faux), lueur additive en dernier.
     const rd::TransparentMaterial glass{.mode = rd::BlendMode::kBlend, .alpha = 0.45f};
     for (const std::size_t i : {std::size_t{0}, std::size_t{2}, std::size_t{1}})
@@ -155,6 +183,14 @@ void MixedScene::destroy()
     }
     checker_ = rd::Texture{};
     meshProgram_.reset();
+    if (shadows_ != nullptr)
+    {
+        for (const rd::ShadowFeature::CasterId id : paneCasters_)
+        {
+            shadows_->removeCaster(id);
+        }
+        shadows_ = nullptr;
+    }
     transparents_ = nullptr;
     world_ = nullptr;
 }

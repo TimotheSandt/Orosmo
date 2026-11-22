@@ -158,6 +158,7 @@ int main(int argc, char **argv)
             game.setPostMode(launchOptions.post);
             game.setLighting(launchOptions.lighting, launchOptions.pointLights);
             game.setMixedScene(launchOptions.mixedScene);
+            game.setTransparentShadow(launchOptions.transparentShadow);
             LOG_TRACE("Game created");
             if (auto ready = game.init(); !ready)
             {

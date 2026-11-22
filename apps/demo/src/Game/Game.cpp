@@ -251,6 +251,7 @@ orosmo::core::Result<> Game::init()
         }
     }
     this->scene = std::make_unique<demo::DemoScene>();
+    rd::ShadowFeature *shadowFeature = nullptr;
     if (this->shadowsEnabled)
     {
         auto shadows = rd::ShadowFeature::create(*this->device, *this->shaders, *this->pipelines, kShaderDirectory);
@@ -263,7 +264,8 @@ orosmo::core::Result<> Game::init()
         {
             return std::unexpected(added.error());
         }
-        this->scene->setShadows(static_cast<rd::ShadowFeature *>(*added));
+        shadowFeature = static_cast<rd::ShadowFeature *>(*added);
+        this->scene->setShadows(shadowFeature);
     }
     if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory, forwardPlus, this->pointLightCount); !ready)
     {
@@ -282,6 +284,13 @@ orosmo::core::Result<> Game::init()
         if (auto ready = this->mixed->init(*this->device, *this->shaders, *this->pipelines, *this->sceneRenderer, kShaderDirectory); !ready)
         {
             return orosmo::core::makeError(ready.error().code, "Failed to initialize the mixed scene: " + ready.error().message);
+        }
+        if (shadowFeature != nullptr && this->transparentShadow)
+        {
+            if (auto casters = this->mixed->addShadowCasters(*shadowFeature, *this->transparentShadow); !casters)
+            {
+                return orosmo::core::makeError(casters.error().code, "Failed to register the pane shadows: " + casters.error().message);
+            }
         }
         auto overlayAgain = this->sceneRenderer->addFeature(std::make_unique<OverlayFeature>(*this));
         if (!overlayAgain)

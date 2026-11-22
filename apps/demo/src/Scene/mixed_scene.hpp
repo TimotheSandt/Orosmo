@@ -9,6 +9,7 @@
 #include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/scene_renderer.hpp"
 #include "orosmo/renderer/shader_library.hpp"
+#include "orosmo/renderer/shadow_feature.hpp"
 #include "orosmo/renderer/texture.hpp"
 #include "orosmo/renderer/transparent_feature.hpp"
 
@@ -24,6 +25,8 @@ class MixedScene
     // Crée les objets et enregistre les plugins dans `renderer`.
     orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders, orosmo::renderer::PipelineCache &pipelines,
                                 orosmo::renderer::SceneRenderer &renderer, const std::filesystem::path &shaderDirectory);
+    // REN-39 : les vitres projettent une ombre de ce mode (la lueur additive n'en projette jamais). À appeler après `init`, avec --shadows on.
+    orosmo::core::Result<> addShadowCasters(orosmo::renderer::ShadowFeature &shadows, orosmo::renderer::TransparentShadowMode mode);
     // Entre `SceneRenderer::setCamera` et `endFrame`, après le rendu de la scène de base.
     orosmo::core::Result<> render(orosmo::renderer::SceneRenderer &renderer, const orosmo::renderer::Camera &camera, float seconds);
     void destroy();
@@ -34,6 +37,9 @@ class MixedScene
     std::shared_ptr<orosmo::renderer::ShaderProgram> meshProgram_;
     std::array<orosmo::renderer::Mesh, 4> panes_; // 3 vitres + 1 lueur additive
     orosmo::renderer::Texture checker_;
+    orosmo::renderer::ShadowFeature *shadows_ = nullptr;
+    std::array<orosmo::renderer::ShadowFeature::CasterId, 3> paneCasters_{};
+    orosmo::renderer::TransparentShadowMode shadowMode_ = orosmo::renderer::TransparentShadowMode::kFull;
 };
 
 } // namespace demo
