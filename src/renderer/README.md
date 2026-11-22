@@ -191,7 +191,50 @@ de 10 000 tests linéaires.
 Limites : un seul `InstanceRenderer::draw` par image et par instance de la classe (le tampon d'instances est réécrit à chaque appel) ;
 imposteurs : n'importe quel maillage (un quad) peut servir de dernier niveau, mais pas de génération automatique (atlas, orientation
 vers la caméra) ; un fondu croisé qui chevauche la bande de rejet n'est pas combiné (seul le dernier niveau s'efface) ; le tramage
-désactive l'early-Z des fragments concernés ; culling CPU seulement (le culling GPU et l'occlusion Hi-Z sont REN-29).
+désactive l'early-Z des fragments concernés. Le culling GPU et l'occlusion Hi-Z sont dans « Rendu piloté par le GPU » (REN-29).
+
+### Rendu piloté par le GPU (M5 : REN-29)
+
+| En-tête | Rôle |
+| --- | --- |
+| `object_set.hpp` | ajout : suivi des changements par emplacement (`changeCounter`, `slotChange`, `objectAtSlot`, `slotCount`) pour les miroirs |
+| `gpu_scene.hpp` | `GpuScene` : **scène GPU persistante**, miroir d'un `ObjectSet` (un `GpuSceneObject` de 208 octets par emplacement : modèle, matrice des normales, couleur, boîte monde, LOD, matériau). `collect` (CPU, testable sans GPU) ne relit que les emplacements modifiés depuis la synchronisation précédente et les regroupe en plages (écart ≤ `kMergeGap`) ; `sync` envoie ces plages seulement (tout au premier envoi, sur croissance du tampon ou autre ensemble). `keyReferences` : nombre maximal d'instances par clé (maillage, matériau) |
+| `gpu_driven.hpp` | `GpuDrivenFeature` (plugin « gpu-driven ») : `draw(scene, objects, GpuDrivenView, options)` synchronise la scène GPU et enregistre les dessins indirects ; `setOcclusion` / `resetOcclusion` ; lectures `readStats` (`GpuCullStats`), `readVisibility` (drapeaux par emplacement), `readCommandCounts`, `readHiz`. `enableGpuDriven` / `disableGpuDriven` |
+| `shaders/rhi/gpu_cull.comp` | un fil par emplacement : pyramide, distance, taille à l'écran (mêmes formules que `culling.cpp`), PUIS occlusion Hi-Z (variante `OROSMO_HIZ`), puis `selectLod` (même code que `lod.cpp`) ; ajout atomique à la commande de la clé, instance écrite au format `GpuInstance` dans la plage de la commande ; compteurs en mémoire partagée |
+| `shaders/rhi/hiz_build.comp` | Hi-Z R32F, chaîne de mips complète : niveau 0 = profondeur de la scène (`OROSMO_HIZ_FROM_DEPTH`), niveau i = minimum (le plus loin en reverse-Z) des texels couverts du niveau i - 1, bords impairs compris |
+
+**Image** : `gpudriven.cull` (compute : copie des commandes modèles, remise à zéro des compteurs, copies des pools de géométrie si
+besoin, un dispatch ; `addSceneInput` des commandes et des instances) -> `scene` (par (matériau, pool de géométrie) non vide, UN
+`drawIndexedIndirect` à plusieurs commandes : multi-draw indirect ; mêmes programmes, matériaux, push constants et format d'instance
+qu'`InstanceRenderer`, donc même image) -> `gpudriven.hiz` (compute, lit la profondeur finale de la scène). Commande = (maillage,
+matériau), indice `matériau × maillages + rang du maillage` ; les maillages de même disposition sont copiés (copie GPU) dans un pool
+commun, rangés par pool. La plage de chaque commande vaut `keyReferences` : elle ne déborde jamais (`overflow` compté et annulé sinon).
+
+**Capacités** (règle 11) : `Capabilities::compute`, `indirectDraw`, 7 emplacements de stockage ; sinon `enableGpuDriven` renvoie
+`kUnsupported` et la démo garde le culling CPU (`ObjectSet::prepare` + `InstanceRenderer::draw`). Sans `multiDrawIndirect`, le RHI
+rejoue les commandes une par une.
+
+Tests (`renderer/gpu-driven`, OpenGL et Vulkan, validation à 0) : scène GPU (plages modifiées seulement), capacités, **ensemble visible
+identique au culling CPU** (2 000 objets : pyramide, petits objets, fondus et rejets de LOD, instances par clé), **image identique**
+à `InstanceRenderer`, occlusion (5 objets cachés derrière un mur rejetés à l'image 2, aucun visible rejeté ; `resetOcclusion`).
+
+Démo : `apps/demo/bin/debug/main --instances 100000 --gpu-driven on` (défaut off : captures inchangées) ; le journal compare
+« GPU-driven » et « CPU culling » (visibles, instances, dessins), le Profiler mesure `RenderGraph/gpudriven.cull`,
+`RenderGraph/gpudriven.hiz` et `RenderGraph/scene` (journal « Perf: »).
+Mesure (headless 1280×720, vue par défaut, Intel Arc MTL / Mesa, build debug, 30 images) : 100 000 objets -> **30 215 dans la vue
+sur le GPU comme sur le CPU**, 2 rejetés par la Hi-Z, 30 338 instances en 4 commandes non vides (2 appels multi-draw) contre 30 340
+instances en 4 draw calls pour le CPU (les 2 objets occultés). Temps GPU moyens : OpenGL cull 5,5 ms, hiz 0,17 ms, scene 5,2 ms (CPU :
+scene 9,2 ms) ; Vulkan cull 3,0 ms, hiz 1,4 ms, scene 4,7 ms (CPU : scene 6,0 ms). Validation Vulkan : 0 message.
+
+Limites : **occlusion de l'image précédente** (Hi-Z construite après la scène de l'image N, testée à l'image N + 1 avec la
+vue-projection de N) : un objet qui se découvre (caméra qui contourne un mur, occulteur qui bouge) manque UNE image (pas de seconde
+passe « two-phase ») ; pas d'occlusion à la première image, après un redimensionnement ou `resetOcclusion` ; un coin derrière la
+caméra ou une boîte hors de l'image précédente n'est jamais rejeté. Les occulteurs sont tout ce qui écrit la profondeur de la scène (les
+dessins `drawMesh` et les instances GPU elles-mêmes). Plus de `kGpuSceneMaxLevels` (8) LOD : objet ignoré par le GPU ; ≤ 65 535 × 64
+emplacements par dispatch ; une seule `draw` par image ; les pools sont copiés à l'enregistrement (`Mesh::updateVertices` ensuite n'est
+pas vu). Le RHI n'a pas de `drawIndexedIndirectCount` (compte lu sur le GPU) : toutes les commandes (même vides) sont jouées ; Vulkan
+exige `drawIndirectFirstInstance` (G145), non exposé dans `Capabilities`. Les ombres (`ShadowFeature::addObjectCasters`) gardent le
+culling CPU.
 
 ### Ombres (M5 : REN-06, REN-07, REN-08)
 
