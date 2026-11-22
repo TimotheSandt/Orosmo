@@ -130,3 +130,6 @@ make demo-vulkan-check            # 5 cas (off, hud, dark/light widgets, dark sc
 --capture <dir> --capture-frames 5`, Intel Arc (Mesa 26.1.6). Vérifiées par `make demo-capture` (tolérance 8, 2 %). Vulkan donne la
 même image (écart max 1/255) et `make demo-vulkan-check` couvre `--post full`. Sans `--post` (défaut `none`), `scene.png` et `ui.png`
 sont identiques au pixel près à celles d'avant les post-traitements, sur OpenGL et Vulkan.
+
+`reference/scene-opengl-mixed-post-full-1280x720.png` : même commande avec `--scene mixed --post full` (transparents et 2D du monde
+passés par toute la chaîne de post-traitement), vérifiée par `make demo-capture`.
