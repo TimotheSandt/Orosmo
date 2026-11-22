@@ -106,6 +106,7 @@ class Game
     void applySceneParams();
     void resetCamera();
     orosmo::core::Result<> createUi();
+    void warmUp();
     orosmo::core::Result<> createPostEffects();
     bool loadFullUiTheme(bool reportAsError);
     bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);

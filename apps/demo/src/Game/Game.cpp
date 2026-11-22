@@ -1,6 +1,7 @@
 #include "Game.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -497,6 +498,7 @@ void Game::run()
         const std::uint32_t totalFrames = std::max(this->captureFrames, 1u);
         for (std::uint32_t frame = 0; frame < totalFrames; ++frame)
         {
+            const auto frameStart = std::chrono::steady_clock::now();
             this->update();
             if (this->headlessFrameFailed || this->captureFailed)
             {
@@ -510,6 +512,7 @@ void Game::run()
             }
             Profiler::ProfileGPU("Render", &Game::render, this);
             this->endFrame();
+            this->recordFrameTime(frameStart);
             if (this->headlessFrameFailed || this->captureFailed)
             {
                 return;
