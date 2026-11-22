@@ -25,9 +25,10 @@ struct GpuCullParams
     glm::vec4 origin;
     glm::vec4 view;
     glm::vec4 hiz;
+    glm::vec4 forward;
     std::uint32_t counts[4];
 };
-static_assert(sizeof(GpuCullParams) == 240, "CullBlock std140 : 6 vec4, un mat4, 5 vec4");
+static_assert(sizeof(GpuCullParams) == 256, "CullBlock std140 : 6 vec4, un mat4, 6 vec4");
 
 constexpr std::uint32_t kStatsWords = 16; // en-tête du tampon des compteurs (stats[16] de gpu_cull.comp)
 constexpr std::uint32_t kCounterCount = 12;
@@ -592,6 +593,7 @@ core::Result<GpuDrawStats> GpuDrivenFeature::draw(SceneRenderer &scene, const Ob
     params.eye = glm::vec4(view.cull.eye, static_cast<float>(planes.size()));
     params.origin = glm::vec4(info->cameraOrigin, 0.0f);
     params.view = glm::vec4(view.cull.projectionScale, view.cull.viewportHeight, view.cull.minScreenRadius, view.cull.maxDistance);
+    params.forward = glm::vec4(view.cull.forward, 0.0f);
     params.hiz = glm::vec4(static_cast<float>(hizSize_.width), static_cast<float>(hizSize_.height), static_cast<float>(hizLevels_), 0.0f);
     params.counts[0] = slots;
     params.counts[1] = meshCount_;

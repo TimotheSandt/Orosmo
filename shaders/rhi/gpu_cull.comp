@@ -48,6 +48,7 @@ layout(set = 0, binding = 0, std140) uniform CullBlock // GpuCullParams (gpu_dri
     vec4 origin;            // xyz : origine du rendu relatif à la caméra (retranchée des translations)
     vec4 view;              // échelle de projection, hauteur du viewport, rayon minimal (pixels), distance maximale
     vec4 hiz;               // largeur, hauteur (niveau 0), nombre de niveaux, réservé
+    vec4 forward;           // xyz : direction de visée (unitaire ; nulle : distance euclidienne)
     uvec4 counts;           // emplacements, maillages, matériaux, drapeaux (1 : orthographique, 2 : pyramide, 4 : LOD)
 } cull;
 
@@ -94,7 +95,12 @@ float projectedRadius(vec3 center, vec3 extents)
     {
         return radius * cull.view.x * cull.view.y * 0.5;
     }
-    float distance = length(center - cull.eye.xyz);
+    vec3 toCenter = center - cull.eye.xyz;
+    float distance = length(toCenter);
+    if (dot(cull.forward.xyz, cull.forward.xyz) > 0.0)
+    {
+        distance = min(distance, dot(toCenter, cull.forward.xyz)); // profondeur de vue (≤ distance)
+    }
     if (distance <= radius)
     {
         return 3.0e38;
