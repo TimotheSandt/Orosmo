@@ -157,6 +157,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | REN-26 | Nuages volumétriques | Absent | Absent. | M13 |
 | REN-27 | Eau | Absent | Absent. | M13 |
 | REN-38 | Réfraction et transmission | Absent | Absent. | M13 |
+| WEB-01 à WEB-05 | Site vitrine, wiki, Docker et CI/CD | Absent | Absent (décidé en A43 ; hébergement, registre et déploiement à trancher au début de M14). | M14 |
 | REN-40 | Transparence indépendante de l'ordre (OIT) | Absent | Absent. | Après M10 (P2) |
 | RHI-13 | Backend Metal | Absent | Stub honnête : `IsAvailable()` renvoie faux, message clair. | M9 |
 | RHI-19 | Transferts asynchrones | Absent | Absent. | Après M10 (P2) |

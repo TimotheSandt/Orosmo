@@ -39,8 +39,9 @@ Preuves sous Linux (g++ 13.3, Mesa 26.1.6, Intel Arc, ANV, Vulkan 1.4 ; la CI ex
 | TER-05, TER-06, TER-08, TER-09, TER-10, SIM-02, SIM-03 | Absent | **Hors moteur** | A39 ; addons éventuels après M11 |
 | REN-14, REN-23 à REN-27, REN-33, REN-38 | Absent | Absent (module préinstallé, M13) | A39 |
 | MOD-05 à MOD-09 | — | Absent | registre d'addons (M12) et modèles `orosmo init` (M11) ; A38, A40 |
+| WEB-01 à WEB-05 | — | Absent | site vitrine et wiki (M14) ; A43 |
 
-Totaux de `docs/02` (161 identifiants) : **Fait 25, Partiel 40, Absent 77, Archivé 11, Hors moteur 7, Incompatible 1.** (Fait −6 :
+Totaux de `docs/02` (166 identifiants) : **Fait 25, Partiel 40, Absent 82, Archivé 11, Hors moteur 7, Incompatible 1** (WEB-01 à WEB-05 ajoutés, A43 ; total 166). (Fait −6 :
 8 archivés, +2 nouveaux ; Partiel −3.)
 
 ## Identifiants de `docs/02` touchés par M3 bis

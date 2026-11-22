@@ -224,6 +224,25 @@ Les effets de rendu retirés de M7 deviennent des **modules** au format de M11, 
 **Démo** : la scène de la démo unique avec chaque effet activé puis désactivé depuis l'interface, sans recompiler le cœur.
 **Terminé** : chaque module testé sur les deux backends (images dans la tolérance), coût GPU noté, un projet `orosmo init` peut retirer un module préinstallé sans erreur de compilation, README par module.
 
+## M14 · Site vitrine et Wiki du moteur (décidé par l'auteur le 2026-11-21, A43)
+
+*(Note : le numéro M7 reste volontairement non réattribué selon A39 pour préserver les références historiques ; ce chantier est donc numéroté **M14**.)*
+
+Objectif : fournir un **site de présentation** du moteur Orosmo et un **wiki complet** (guide d'utilisation du SDK **et** explication de l'architecture interne du moteur), construits avec **Astro**, conteneurisés en Docker et publiés par CI.
+
+- **Calendrier et indépendance** :
+  - **Peut être commencé avant M6** : ne modifie pas le code C++ du moteur et peut avancer en parallèle.
+  - **Publication initiale après M6** : mise en ligne publique une fois M5 (cœur du rendu) et M6 (import glTF / PBR / animation) livrés, puis **mise à jour à chaque jalon**.
+  - **Spécifications détaillées** (hébergement, coûts, DevOps, staging) à trancher dans `docs/QUESTIONS.md` au **début du jalon**, avant l'implémentation.
+- **WEB-01 — Wiki technique et guide utilisateur (Astro)** : documentation structurée avec Astro (ex. Astro / Starlight) couvrant (a) l'utilisation du moteur (installation, `orosmo init`/`doctor`, Make & CMake, `.cui`, thèmes, exemples) et (b) le fonctionnement interne (couches, RHI, renderer, UI, compilateur `.cui`, pipeline de shaders).
+- **WEB-02 — Site vitrine du moteur** : page(s) de présentation d'Orosmo (vision, fonctionnalités clés, captures/démos, liens vers les releases GitHub et le wiki).
+- **WEB-03 — Conteneurisation Docker et registre** : `Dockerfile` reproductible servant le site/wiki compilé ; workflow CI qui construit l'image Docker et la publie sur un registre (ex. GHCR ou autre registre choisi selon les coûts) afin de pouvoir la démarrer manuellement ou automatiquement sur un serveur.
+- **WEB-04 — CI de publication sur tag `main` et maintenance par jalon** : déclenchement automatique de la construction et publication lors de la pose d'un tag sur `main` ; stratégie de déploiement serveur (manuel ou automatique) définie selon le budget et l'infrastructure retenus au début du jalon.
+- **WEB-05 — Prévisualisation / staging sur PR *(optionnel, à trancher au début du jalon)*** : possibilité d'ajouter une CI qui construit et déploie le site/wiki en staging sur un sous-domaine de test à chaque PR pour vérification visuelle avant fusion (faisabilité, coût et spécifications à décider au démarrage de M14).
+
+**Démo** : image Docker construite par la CI, lancée localement ou sur serveur, servant le site vitrine et le wiki Astro complets ; publication déclenchée par un tag sur `main`.
+**Terminé** : site et wiki construits sans erreur en CI, image Docker publiée sur le registre, déploiement documenté (coûts et procédure dans `docs/`), processus de mise à jour par jalon en place.
+
 ## Fonctions non rattachées à un jalon
 
 Les identifiants de priorité P2 ou P3 non cités ci-dessus (par exemple REN-09, REN-12, REN-15, REN-16, REN-20, REN-40, RHI-19, PLAT-03 ; TOOL-03 est passé en M0) sont traités après M10, par ordre d'intérêt décidé avec l'auteur. RHI-11 (minuteries GPU), RHI-17 (dispatch indirect), CORE-03, CORE-05, CORE-08, PLAT-05 et REN-36 (texte) sont à placer par l'IA dans le jalon où elles servent en premier, et à signaler dans `docs/STATUS.md`. Aucun identifiant ne doit rester sans jalon : l'audit produit la table de rattachement dans `docs/GAPS.md`.

@@ -237,3 +237,13 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | MOD-07 | Installation depuis le registre | P2 | `orosmo addon search/info/add <nom>[@version]` : versions compatibles, dépendances entre addons, empreintes vérifiées, `orosmo.lock`. | Absent |
 | MOD-08 | Interface du gestionnaire d'addons | P2 | Application `orosmo::ui` : liste et détails du registre, état d'un projet, installer / mettre à jour / retirer, registres multiples ; mêmes fonctions que la CLI. | Absent |
 | MOD-09 | Modèles de démarrage multiples et projet par défaut utilisateur | P1 | `orosmo init --template <minimal\|starter\|demo\|<nom>>` permet de choisir le modèle de départ (dont la démo complète pour découvrir le moteur), et l'utilisateur peut enregistrer un de ses propres projets comme modèle par défaut (`orosmo template set-default`). | Absent |
+
+## N. Site vitrine, wiki et déploiement web (M14, décision A43)
+
+| ID | Fonctionnalité | Prio | Critère d'acceptation | État |
+| --- | --- | --- | --- | --- |
+| WEB-01 | Wiki utilisateur et architecture (Astro) | P1 | Wiki construit avec Astro couvrant l'utilisation du moteur (SDK, build, `.cui`, exemples) et son fonctionnement interne (architecture, RHI, renderer, UI), mis à jour à chaque jalon. | Absent |
+| WEB-02 | Site vitrine du moteur | P1 | Site de présentation d'Orosmo (fonctionnalités, visuels/démos, téléchargement des releases, accès au wiki), publié après M6. | Absent |
+| WEB-03 | Image Docker et registre en CI | P1 | `Dockerfile` reproductible ; la CI construit et publie l'image sur un registre pour un déploiement manuel ou automatique sur serveur (infra/coûts à trancher au début de M14). | Absent |
+| WEB-04 | Publication CI sur tag `main` | P1 | Workflow CI déclenché sur tag `main` publiant la nouvelle version du site et du wiki ; procédure de mise à jour par jalon documentée. | Absent |
+| WEB-05 | Staging automatique sur PR *(optionnel)* | P2 | Déploiement de prévisualisation sur un sous-domaine de test à chaque PR pour validation visuelle (à trancher au début de M14 selon coûts et spécifications). | Absent |
