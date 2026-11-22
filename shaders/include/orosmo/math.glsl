@@ -22,7 +22,7 @@ float pow5(float x) { float x2 = x * x; return x2 * x2 * x; }
 float remap(float x, float a, float b, float c, float d)
 {
     float span = b - a;
-    float t = abs(span) > kEpsilon ? (x - a) / span : 0.0;
+    float t = span != 0.0 ? (x - a) / span : 0.0; // tout intervalle non nul est remappé, même très petit
     return mix(c, d, t);
 }
 
@@ -40,11 +40,12 @@ float luminance(vec3 linearRgb) { return dot(linearRgb, vec3(0.2126, 0.7152, 0.0
 // sRGB <-> linéaire (courbe exacte par morceaux).
 vec3 srgbToLinear(vec3 c)
 {
-    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+    // pow n'est évalué que sur une base >= 0 (pow d'un négatif est indéfini, et mix propagerait le NaN de la branche écartée).
+    return mix(c / 12.92, pow(max((c + 0.055) / 1.055, vec3(0.0)), vec3(2.4)), step(vec3(0.04045), c));
 }
 vec3 linearToSrgb(vec3 c)
 {
-    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+    return mix(c * 12.92, 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 }
 
 // Base orthonormée (t, b) perpendiculaire à n (unitaire) : Duff et al., sans branchement instable.
