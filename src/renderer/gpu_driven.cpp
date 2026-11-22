@@ -262,8 +262,16 @@ core::Result<> GpuDrivenFeature::ensureTables()
     {
         return {};
     }
+    // Invalide le cache AVANT toute opération qui peut échouer : un échec reconstruit les tables à l'appel suivant.
+    tablesDirty_ = true;
+    // Commandes (matériau × maillages) et table combinée (rangs + capacités) : indices 32 bits dans gpu_cull.comp.
+    const std::uint64_t commandCount = std::uint64_t{materialCount} * meshCount_;
+    if (commandCount > 0xFFFFFFFFull - meshCount_ || commandCount > 0xFFFFFFFFull / kCommandStride)
+    {
+        return makeError(ErrorCode::kOutOfRange, "GpuDrivenFeature: too many (mesh, material) commands (" + std::to_string(commandCount) + ")");
+    }
     materialCount_ = materialCount;
-    commandCount_ = materialCount_ * meshCount_;
+    commandCount_ = static_cast<std::uint32_t>(commandCount);
     commandKeys_.assign(commandCount_, InstanceKey{});
     commandCapacity_.assign(commandCount_, 0);
     std::vector<std::uint32_t> meshByRank(meshCount_);
@@ -282,6 +290,10 @@ core::Result<> GpuDrivenFeature::ensureTables()
         const InstanceKey key{mesh, material};
         const auto it = refs.find(key);
         const std::uint32_t capacity = it != refs.end() ? it->second : 0;
+        if (firstInstance + capacity > 0xFFFFFFFFull / sizeof(GpuInstance))
+        {
+            return makeError(ErrorCode::kOutOfRange, "GpuDrivenFeature: too many instances for one buffer");
+        }
         commandKeys_[command] = key;
         commandCapacity_[command] = capacity;
         commands[command] = {meshes_.mesh(mesh)->indexCount(), 0, meshSlots_[mesh].firstIndex, meshSlots_[mesh].vertexOffset,
@@ -292,10 +304,6 @@ core::Result<> GpuDrivenFeature::ensureTables()
     for (std::uint32_t id = 0; id < meshCount_; ++id)
     {
         tables[id] = meshSlots_[id].rank;
-    }
-    if (firstInstance > 0xFFFFFFFFull / sizeof(GpuInstance))
-    {
-        return makeError(ErrorCode::kOutOfRange, "GpuDrivenFeature: too many instances for one buffer");
     }
     const std::uint64_t commandBytes = std::uint64_t{std::max<std::uint32_t>(commandCount_, 1)} * kCommandStride;
     if (auto r = ensureBuffer(tables_, std::uint64_t{std::max<std::size_t>(tables.size(), 1)} * sizeof(std::uint32_t),
