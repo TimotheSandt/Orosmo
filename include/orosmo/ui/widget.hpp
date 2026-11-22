@@ -370,6 +370,11 @@ class Widget
     glm::vec2 measured_{0.0f};
 
   private:
+    // Rectangle englobant le widget et ses descendants visibles non découpés (ombre comprise), posé par `layout` : sert à
+    // éliminer à `draw` un sous-arbre entièrement hors de sa zone de découpage (UI-13).
+    Rect bounds_{{-1e30f, -1e30f}, {2e30f, 2e30f}}; // jamais posé : jamais éliminé
+    Rect clipOf() const noexcept;
+
     friend class Ui;
     void adopt(std::unique_ptr<Widget> child);
 

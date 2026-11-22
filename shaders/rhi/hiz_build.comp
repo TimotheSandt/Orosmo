@@ -1,0 +1,48 @@
+#version 450
+// REN-29 : pyramide de profondeur (Hi-Z) pour l'occlusion du culling GPU (GpuDrivenFeature, passe « gpudriven.hiz »). Chaque texel
+// garde la profondeur la plus LOINTAINE de ce qu'il couvre : le minimum en reverse-Z (0 au loin). Niveau 0 (OROSMO_HIZ_FROM_DEPTH) :
+// copie de la profondeur de la scène. Niveau i : minimum des texels 2x..2x+1 du niveau i - 1 ; sur un bord de taille impaire, le
+// dernier texel prend aussi la colonne (ou la ligne) restante : la pyramide reste prudente pour toutes les tailles.
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#ifdef OROSMO_HIZ_FROM_DEPTH
+layout(set = 0, binding = 0) uniform sampler2D depthTexture;
+#else
+layout(set = 0, binding = 0, r32f) uniform readonly image2D source;
+#endif
+layout(set = 0, binding = 1, r32f) uniform writeonly image2D destination;
+
+void main()
+{
+    ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(destination);
+    if (texel.x >= size.x || texel.y >= size.y)
+    {
+        return;
+    }
+#ifdef OROSMO_HIZ_FROM_DEPTH
+    imageStore(destination, texel, vec4(texelFetch(depthTexture, texel, 0).r));
+#else
+    ivec2 sourceSize = imageSize(source);
+    ivec2 first = min(texel * 2, sourceSize - 1);
+    ivec2 last = min(texel * 2 + 1, sourceSize - 1);
+    if (texel.x == size.x - 1)
+    {
+        last.x = sourceSize.x - 1;
+    }
+    if (texel.y == size.y - 1)
+    {
+        last.y = sourceSize.y - 1;
+    }
+    float farthest = 1.0;
+    for (int y = first.y; y <= last.y; ++y)
+    {
+        for (int x = first.x; x <= last.x; ++x)
+        {
+            farthest = min(farthest, imageLoad(source, ivec2(x, y)).r);
+        }
+    }
+    imageStore(destination, texel, vec4(farthest));
+#endif
+}

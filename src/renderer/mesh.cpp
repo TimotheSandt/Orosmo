@@ -14,16 +14,19 @@ namespace orosmo::renderer
 
 namespace
 {
-// Bloc ModelBlock de shaders/rhi/mesh.vert (std140) : deux mat4 de 64 octets, la seconde à l'offset 64.
+// Bloc ModelBlock de shaders/rhi/mesh.vert (std140) : trois mat4 de 64 octets (modèle, normales, modèle précédent) puis un uvec4.
 struct ModelBlock
 {
     glm::mat4 model;
     glm::mat4 normalMatrix;
+    glm::mat4 prevModel;
+    glm::uvec4 info; // x : identifiant d'objet
 };
 static_assert(sizeof(glm::mat4) == 64);
 static_assert(offsetof(ModelBlock, model) == 0);
 static_assert(offsetof(ModelBlock, normalMatrix) == 64);
-static_assert(sizeof(ModelBlock) == 128);
+static_assert(offsetof(ModelBlock, prevModel) == 128 && offsetof(ModelBlock, info) == 192);
+static_assert(sizeof(ModelBlock) == 208);
 } // namespace
 
 
@@ -169,20 +172,42 @@ glm::mat4 Mesh::modelMatrix() const
     return glm::scale(model, scale_);
 }
 
-core::Result<> Mesh::uploadTransform(const glm::vec3 &origin)
+core::Result<> Mesh::uploadTransform(const glm::vec3 &origin, const TransformHistory &history)
 {
     if (!valid())
     {
         return makeError(ErrorCode::kInvalidArgument, "Mesh::uploadTransform: empty mesh");
     }
-    if (!transformDirty_ && origin == uploadedOrigin_)
+    // REN-21 : modèle de l'image précédente (vecteurs de mouvement). Sans historique demandé, il égale le modèle courant et rien
+    // ne change pour l'appelant : un maillage immobile n'est renvoyé que si l'origine ou la transformation change.
+    bool tracked = false;
+    glm::mat4 world = modelMatrix();
+    if (history.frame != 0)
+    {
+        if (history.frame != lastFrame_)
+        {
+            previousWorld_ = hasLastWorld_ ? lastWorld_ : world;
+            lastFrame_ = history.frame;
+            tracked = true; // nouvelle image : le « précédent » change même si l'objet est immobile
+        }
+        lastWorld_ = world;
+        hasLastWorld_ = true;
+        tracked = tracked || previousWorld_ != uploadedPreviousWorld_ || history.previousOrigin != uploadedPreviousOrigin_;
+    }
+    if (!transformDirty_ && origin == uploadedOrigin_ && !tracked)
     {
         return {};
     }
     // Les normales se transforment par l'inverse transposée de la partie 3x3 (juste aussi avec une échelle non uniforme) ; calculée
     // une fois par objet ici plutôt qu'à chaque sommet. Matrice non inversible (échelle nulle) : identité, la normale est inutile.
-    ModelBlock block{modelMatrix(), glm::mat4(1.0f)};
+    ModelBlock block{world, glm::mat4(1.0f), world, glm::uvec4(objectId_, 0u, 0u, 0u)};
     block.model[3] -= glm::vec4(origin, 0.0f); // translation relative à `origin` (0 : repère monde)
+    block.prevModel = block.model;
+    if (history.frame != 0)
+    {
+        block.prevModel = previousWorld_;
+        block.prevModel[3] -= glm::vec4(history.previousOrigin, 0.0f);
+    }
     const glm::mat3 linear(block.model);
     if (glm::determinant(linear) != 0.0f)
     {
@@ -194,6 +219,8 @@ core::Result<> Mesh::uploadTransform(const glm::vec3 &origin)
     }
     transformDirty_ = false;
     uploadedOrigin_ = origin;
+    uploadedPreviousWorld_ = history.frame != 0 ? previousWorld_ : world;
+    uploadedPreviousOrigin_ = history.previousOrigin;
     return {};
 }
 
@@ -220,9 +247,23 @@ core::Result<> Mesh::setTextures(std::span<const TextureBinding> textures)
         }
         fresh = *group;
     }
-    device_->destroy(textureGroup_);
+    if (ownsTextureGroup_)
+    {
+        device_->destroy(textureGroup_);
+    }
     textureGroup_ = fresh;
+    ownsTextureGroup_ = true;
     return {};
+}
+
+void Mesh::setMaterialGroup(rhi::BindGroupHandle group) noexcept
+{
+    if (device_ != nullptr && ownsTextureGroup_)
+    {
+        device_->destroy(textureGroup_);
+    }
+    textureGroup_ = group;
+    ownsTextureGroup_ = false;
 }
 
 core::Result<> Mesh::updateVertices(std::span<const float> data, std::size_t offsetFloats)
@@ -257,7 +298,10 @@ void Mesh::reset() noexcept
     if (device_ != nullptr)
     {
         device_->destroy(modelGroup_);
-        device_->destroy(textureGroup_);
+        if (ownsTextureGroup_)
+        {
+            device_->destroy(textureGroup_);
+        }
     }
     vertexBuffer_.reset();
     indexBuffer_.reset();
@@ -265,6 +309,7 @@ void Mesh::reset() noexcept
     modelBuffer_.reset();
     modelGroup_ = {};
     textureGroup_ = {};
+    ownsTextureGroup_ = true;
     layouts_.clear();
     attributes_.clear();
     instanceSizes_.clear();
@@ -284,6 +329,7 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(modelBuffer_, other.modelBuffer_);
     std::swap(modelGroup_, other.modelGroup_);
     std::swap(textureGroup_, other.textureGroup_);
+    std::swap(ownsTextureGroup_, other.ownsTextureGroup_);
     std::swap(layouts_, other.layouts_);
     std::swap(attributes_, other.attributes_);
     std::swap(instanceSizes_, other.instanceSizes_);
@@ -296,6 +342,14 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(scale_, other.scale_);
     std::swap(transformDirty_, other.transformDirty_);
     std::swap(uploadedOrigin_, other.uploadedOrigin_); // va avec modelBuffer_ : l'origine des matrices déjà envoyées
+    std::swap(uploadedPreviousWorld_, other.uploadedPreviousWorld_);
+    std::swap(uploadedPreviousOrigin_, other.uploadedPreviousOrigin_);
+    std::swap(previousWorld_, other.previousWorld_);
+    std::swap(lastWorld_, other.lastWorld_);
+    std::swap(hasLastWorld_, other.hasLastWorld_);
+    std::swap(lastFrame_, other.lastFrame_);
+    std::swap(objectId_, other.objectId_);
+    std::swap(aovMaterial_, other.aovMaterial_);
 }
 
 } // namespace orosmo::renderer

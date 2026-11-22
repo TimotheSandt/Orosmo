@@ -4,6 +4,7 @@
 
 #include "orosmo/core/error.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
+#include "orosmo/renderer/shadows.hpp"
 #include "orosmo/rhi/device.hpp"
 
 #include <glm/glm.hpp>
@@ -20,8 +21,8 @@ enum class LightType : std::int32_t
     kNone = 0,
     kAmbient = 1,
     kDirectional = 2,
-    kPoint = 3, // réservés : les shaders actuels ne les rendent pas (comme avant)
-    kSpot = 4,
+    kPoint = 3, // atténuation 1 / (a d² + b d + 1), coupée à la portée `lightRange` (forward_plus.hpp, REN-05)
+    kSpot = 4,  // comme la ponctuelle, dans le cône (outerCone, innerCone : cosinus) autour de `direction` (sens du faisceau)
 };
 
 struct Light
@@ -35,6 +36,9 @@ struct Light
     float innerCone = 0.0f;
     float a = 0.0f;
     float b = 0.0f;
+    // REN-06 : mobilité et mode d'ombre (lus par ShadowFeature, sans effet sur le tampon GPU ni sur l'égalité ci-dessous).
+    LightMobility mobility = LightMobility::kDynamic;
+    ShadowMode shadowMode = ShadowMode::kNone;
 
     bool operator==(const Light &other) const;
 };
@@ -77,6 +81,12 @@ struct GpuLightHeader
     float pad1[3];
 };
 static_assert(sizeof(GpuLightHeader) == 48, "le tableau de lumières commence à l'offset 48");
+static_assert(offsetof(GpuLightHeader, ambientColor) == 16 && offsetof(GpuLightHeader, ambientStrength) == 32,
+              "LightBlock std430 : int size (0), vec4 AmbientLightColor (16), float AmbientLightStrength (32)");
+static_assert(sizeof(GpuLightHeader) % 16 == 0 && sizeof(GpuLight) % 16 == 0,
+              "std430 : le tableau de LightStruct (alignement 16, celui de ses vec3) commence et avance par multiples de 16");
+static_assert(offsetof(GpuLight, type) == 0 && offsetof(GpuLight, innerCone) == 68 && offsetof(GpuLight, a) == 72,
+              "LightStruct std430 : type (0), cônes (64, 68), atténuation a (72), b (76)");
 
 class LightManager
 {

@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour pour la `v0.4.1` (2026-11-21), après la fin de M4, après M3 (2026-11-19) et le nettoyage « Orosmo » (2026-11-20). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour pour le jalon M5 (`v0.5.0`, 2026-11-22), après la `v0.4.1` (2026-11-21), après la fin de M4, après M3 (2026-11-19) et le nettoyage « Orosmo » (2026-11-20). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -23,6 +23,45 @@ Mis à jour pour la `v0.4.1` (2026-11-21), après la fin de M4, après M3 (2026-
 | **M3 bis : release cœur générique (A34), jalon M11, affichage de la compilation** | **Livré côté code, dans `dev` ; à proposer à `main`** | `docs/releases/M3bis.md` : `world`, `TerrainRenderer`, shaders `terrain.*` et exemples terrain exclus de `dist/orosmo-pkg-*.zip` (gardés dans le dépôt via `ENGINE_EXTRA_MODULES`), `make e2e-init` le vérifie ; modèle `orosmo init` et `apps/minimal` génériques ; jalon **M11** (`MOD-01..04`) ; barre de progression de `make` (`tools/build_progress.py`, 5 tests Python) ; `sync-demo` sans recopie des dates |
 | **M4 Backend Vulkan** | **Fusionné dans `main` (PR #10, `v0.4.0`)** | `docs/releases/M4.md` : backend `src/rhi/vulkan/` (volk, VMA, Vulkan 1.3, barrières déduites, cache de pipelines sur disque), `--backend` avec repli sur OpenGL, tests communs aux deux backends, `make demo-vulkan-check` (15 captures OpenGL/Vulkan dans la tolérance, `scene.png` identique bit à bit, validation à 0 message), `docs/PERF_OPENGL_VS_VULKAN.md`, `docs/ADD_A_BACKEND.md` ; démo unique sans procédural (A37), API de `platform` renommée (A31). Preuves chiffrées : clone propre de `dev` : 413 / 413 cas (13 521 assertions), 125 / 125 en Vulkan (suites GPU), ASan + UBSan propres, `make check`, `make demo-vulkan-check`, `make e2e-init`, `make cui-test`, `make demo-capture` verts. CI de la PR #10 verte sur Linux x64, ASan, arm64, macOS ; Windows corrigé (motif `grep` de `e2e-init`) |
 | **v0.4.1 Outillage DX et SDK** | **Livré côté code ; à proposer à `main`** | `docs/releases/M4-1.md` : `orosmo doctor`, `compile_commands.json`, support CMake optionnel (`OrosmoConfig.cmake`), empreinte du compilateur `cui` dans le cache (G113). Clone de la branche : `make check`, 422 / 422 cas (13 586 assertions), `cui-test`, `demo-capture`, `demo-vulkan-check`, `e2e-init` (doctor, Make, CMake, compile_commands), 14 tests Python verts |
+| **M5 Cœur du rendu** | **Livré côté code, sur `milestone/M5` ; à proposer à `main`** | `docs/releases/M5.md` : graphe de passes et plugins, `FrameData`, forward+ clusterisé, ombres en cascade avec cache, HDR et post-traitements, anticrénelage (FXAA, SMAA 1x, TAA), AOV à la demande, instancing, culling CPU et GPU (Hi-Z, multi-draw indirect), LOD, transparents triés, modes de fusion, batch 2D, mélange 2D/3D, interface économe, roue de couleur ; RHI inchangé. Linux x64, g++ 13.3, Mesa, Intel Arc : `make demo-test` **545 / 545**, suites GPU en Vulkan **229 / 229** (316 cas hors GPU ignorés), `make check`, `make demo-vulkan-check` (validation à 0 message), `make demo-capture` verts ; ASan + UBSan : 545 / 545 sans signalement ; clone propre (`df005c7`) : tout vert. 17 identifiants passent à Fait, 5 d'Absent à Partiel (G151 à G171) |
+
+## Identifiants de `docs/02` touchés par M5
+
+Preuves sous Linux (g++ 13.3, Mesa, Intel Arc ; la CI exécute aussi sous llvmpipe + xvfb), mesurées sur `milestone/M5` (`docs/releases/M5.md`). Windows, macOS et arm64 : non vérifiés pour le code de M5 (G164). Chaque « Partiel » écrit son manque dans la cellule de `docs/02`.
+
+| ID | Avant | Après | Preuve |
+| --- | --- | --- | --- |
+| REN-01 | Absent | **Fait** | `render_graph.hpp` `RenderGraph`, `render_feature.hpp` `RenderFeature` ; `tests/renderer/render_graph_tests.cpp` (ordre déduit des accès, passe inutile écartée, cycle refusé, transitoires réutilisés, `read` / `readFinal`, durée GPU par passe) ; limites G151, G152 |
+| REN-03 | Partiel | **Fait** | `frame_data.hpp` `FrameData` : 640 octets, 19 `offsetof` figés par `static_assert` ; `shaders/rhi/frame_data.glsl` ; test « FrameData (REN-03): the C++ block and frame_data.glsl share one std140 layout, read by a shader through the graph » |
+| REN-04 | Absent | **Fait** | `forward_plus.hpp` `ForwardPlusLighting`, `shaders/rhi/light_clusters.comp`, `SceneRenderer::setDepthPrepass` ; `tests/renderer/forward_plus_tests.cpp` (1000 lumières : même image que le forward, budgets appliqués) ; un pixel d'écart sur la démo (G161) ; limites G153 |
+| REN-05 | Partiel | Partiel | ponctuelles et projecteurs rendus (`lights.glsl`, `mesh.frag`) ; **manque** : lumières de surface, projecteur testé comme une sphère dans les clusters (G166) |
+| REN-06 | Absent | **Fait** | `shadows.hpp` `resolveShadowBehavior`, `ShadowFeature` ; `tests/renderer/shadow_tests.cpp` (toutes les combinaisons mobilité × mode, violations refusées) |
+| REN-07 | Absent | **Fait** | `ShadowFeature` (cascades, PCF `shadow_receiver.glsl`, translation au texel) ; `shadow_tests.cpp` (`cascadeSplits`, `fitCascade`, image identique en rendu relatif à la caméra) ; démo `--shadows on` |
+| REN-08 | Absent | Partiel | atlas, budget, priorité, cache (0 redessin quand rien ne bouge), projecteurs, fondu à distance ; **manque** : ombres de contact, fondu entre cascades, cache d'une cascade redessiné dès que la caméra bouge d'un texel (G156) |
+| REN-17 | Absent | **Fait** | `setSceneColorFormat` (RGBA16F), `tonemap.hpp`, `TonemapFeature` ; `tests/renderer/post_effects_tests.cpp` (`post/math` sans GPU, `renderer/post` sur chaque backend) ; G158 |
+| REN-18 | Absent | **Fait** | `post_effects.hpp` : `BloomFeature`, `AutoExposureFeature` (histogramme en compute), `ColorGradingFeature`, `VignetteFeature` ; `post_effects_tests.cpp` ; démo `--post full` |
+| REN-19 | Partiel | Partiel | FXAA, TAA, SMAA 1x analytique (`antialiasing.hpp`) ; **manque** : SMAA sans diagonales ni coins arrondis ni seuil prédiqué, MSAA absent, résolution dynamique sans contrôleur (G159) |
+| REN-21 | Partiel | Partiel | AOV à la demande (`aov.hpp`, `declareAov`, `requiredAovs`) ; **manque** : objets instanciés et GPU sans AOV, valeurs provisoires jusqu'à REN-09, règle MSAA non exercée (G169) |
+| REN-22 | Absent | Partiel | `shaders/include/orosmo/` (7 fichiers), `shader_toolbox_tests.cpp` ; **manque** : l'atmosphère du critère (module REN-24 : A39, A56, G168) |
+| REN-28 | Partiel | **Fait** | `instance_batch.hpp`, `instance_renderer.hpp`, `object_set.hpp` ; `tests/renderer/instancing_tests.cpp` ; démo : 10 000 instances en 2 draw calls |
+| REN-29 | Absent | **Fait** | `gpu_driven.hpp` `GpuDrivenFeature`, `gpu_scene.hpp`, `gpu_cull.comp`, `hiz_build.comp` ; `tests/renderer/gpu_driven_tests.cpp` (même ensemble visible et même image que le culling CPU, Hi-Z, OpenGL et Vulkan) ; G154 |
+| REN-30 | Absent | **Fait** | `culling.hpp` (`Frustum`, `Bvh`, petits objets) ; `tests/renderer/visibility_tests.cpp` ; BVH : 279 tests d'objets contre 10 000 en linéaire |
+| REN-31 | Absent | Partiel | `lod.hpp` `selectLod`, fondu tramé sans trou ; **manque** : imposteurs automatiques (G167) |
+| REN-32 | Absent | **Fait** | `transparent_feature.hpp` `sortTransparents` ; `tests/renderer/transparency_tests.cpp` ; démo `--scene mixed` |
+| REN-35 | Partiel | Partiel | `debug_view.hpp` : normals, albedo, overdraw, lod, wireframe, motion, gel du frustum ; **manque** : cascades, clusters, instances sur albedo, overdraw et normals (G170) |
+| REN-37 | Absent | Partiel | 8 `BlendMode` (`blend_mode.hpp`), `tests/renderer/blend_mode_tests.cpp` (image de référence par mode) ; **manque** : `kMaskA2C` = `kMask`, `kTransmission` = `kBlend` (G171) |
+| REN-39 | Absent | **Fait** | `transparent_shadow.hpp`, `ShadowFeature::setCasterTransparency` ; `tests/renderer/transparent_shadow_tests.cpp` ; instances : ombre pleine seulement ; G157 |
+| REN-41 | Absent | Partiel | `Mesh::setAovMaterial` ; `aov_tests.cpp` ; **manque** : instances sans AOV (G169) |
+| R2D-01 | Partiel | **Fait** | `renderer2d.hpp` `Renderer2D`, `canvas_renderer.hpp` ; `tests/renderer/renderer2d_tests.cpp`, `canvas_tests.cpp` ; interface 143 → 18 draw calls ; un matériau = une texture (G160) |
+| R2D-02 | Partiel | **Fait** | `camera2d.hpp` `Camera2D`, mode pixel parfait ; `renderer2d_tests.cpp` |
+| R2D-03 | Partiel | **Fait** | `Renderer2D` : rectangles, cercles, lignes, polygones ; `renderer2d_tests.cpp` ; G160 |
+| R2D-05 | Partiel | **Fait** | `layer2d_feature.hpp` `Layer2DFeature` (monde, superposition, vers texture) ; `tests/renderer/mixed_2d3d_tests.cpp` ; démo `--scene mixed` |
+| R2D-06 | Absent | **Fait** | `mixed_2d3d_tests.cpp` « several views place their own cameras in zones of the output; a view shows in the interface » ; exercé par les tests seulement, pas dans la démo |
+| UI-13 | Partiel | Partiel | cachés et hors découpage éliminés (`tests/ui/lean_render_tests.cpp`, 4 cas) ; **manque** : cache par couche (A54, G165) |
+| UI-03 | Fait | Fait | le carré d'un `ColorPicker` ouvre la roue `ColorEditor` (`tests/ui/widgets_tests.cpp` « ColorPicker: clicking the swatch opens a ColorEditor popup… ») |
+| REN-02 | Fait | Fait | inchangé (M3) |
+
+Totaux de `docs/02` (167 lignes comptées : 162 de M5 + WEB-01 à WEB-05 de M14, A43) : **Fait 42, Partiel 40, Absent 66, Archivé 11, Hors moteur 7, Incompatible 1.** Avant M5 : Fait 25, Partiel 41, Absent 77 (le fichier compte une ligne Partiel de plus que l'annonce de M4, 161 identifiants avec Partiel 40 : écart non identifié). Variation : Fait +17 (11 d'Absent, 6 de Partiel), Partiel −1 (+5 venus d'Absent, −6 passés à Fait), Absent −16.
 
 ## Identifiants de `docs/02` touchés par M4
 

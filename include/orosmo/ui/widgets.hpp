@@ -8,7 +8,9 @@
 //   Dropdown (dropdown)      choix dans une liste (fenêtre surgissante : popup, item)
 //   TextField (textField)    texte modifiable ; validé par Entrée ou la perte du focus, Échap annule
 //   NumberField (textField)  nombre saisi au clavier (refus d'une saisie invalide)
-//   ColorPicker (colorPicker) couleur : aperçu et curseurs R, G, B (A)
+//   ColorPicker (colorPicker) couleur : aperçu et curseurs R, G, B (A) ; cliquer sur l'aperçu ouvre une fenêtre surgissante avec
+//                             l'éditeur complet (ColorEditor : roue, RGB/HSV/HSL, hexadécimal) lié à la même couleur ; sans effet
+//                             si la couleur n'est pas modifiable
 //   Plot (plot)              graphique simple : barres d'une série de valeurs
 //   Tabs (tabs, tab)         onglets : une page visible à la fois
 //   Section (section)        bloc repliable avec un titre
@@ -278,6 +280,9 @@ class ColorPicker : public Widget
     ColorPicker(Binding<Color> value, bool alpha = false);
     Color color() const { return value_.value(); }
     void clearChildren() override {} // curseurs internes : pas de contenu effaçable
+    bool interactive() const override { return true; } // le carré d'aperçu reçoit le clic (les curseurs sont des enfants)
+    void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
+    const Rect &swatchRect() const noexcept { return swatch_; }
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
@@ -287,6 +292,8 @@ class ColorPicker : public Widget
 
   private:
     Binding<Color> value_;
+    bool alpha_;
+    Rect swatch_; // carré d'aperçu, posé par arrange
 };
 
 class Plot : public Widget

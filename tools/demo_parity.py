@@ -27,6 +27,7 @@ QUICK = [
     ("dark-widgets", ["--ui", "full", "--theme", "dark", "--tab", "widgets"]),
     ("dark-scene", ["--ui", "full", "--theme", "dark", "--tab", "scene"]),
     ("light-widgets", ["--ui", "full", "--theme", "light", "--tab", "widgets"]),
+    ("post-full", ["--ui", "off", "--post", "full"]),  # REN-17/18 : HDR, exposition auto (compute), bloom, LUT, vignettage
 ]
 FULL = [
     (f"dark-{t}", ["--ui", "full", "--theme", "dark", "--tab", t])

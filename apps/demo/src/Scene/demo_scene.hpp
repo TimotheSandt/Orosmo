@@ -5,10 +5,16 @@
 #include "orosmo/core/reflection.hpp"
 #include "orosmo/renderer/camera.hpp"
 #include "orosmo/renderer/debug_draw.hpp"
+#include "orosmo/renderer/debug_view.hpp"
+#include "orosmo/renderer/gpu_driven.hpp"
+#include "orosmo/renderer/instance_renderer.hpp"
 #include "orosmo/renderer/light.hpp"
 #include "orosmo/renderer/mesh.hpp"
+#include "orosmo/renderer/object_set.hpp"
+#include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/scene_renderer.hpp"
 #include "orosmo/renderer/shader_library.hpp"
+#include "orosmo/renderer/shadow_feature.hpp"
 #include "orosmo/rhi/device.hpp"
 
 #include <glm/glm.hpp>
@@ -59,25 +65,75 @@ class DemoScene
     static glm::vec3 defaultCameraPosition();
     static glm::vec3 defaultCameraOrientation();
 
+    // `forwardPlus` (REN-04) : variante forward+ de mesh.frag (le plugin ForwardPlusLighting doit être installé sur le renderer) ;
+    // `pointLights` (--lights N) : N lumières ponctuelles déterministes au-dessus de la cour, en plus du soleil.
     orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
-                                const std::filesystem::path &shaderDirectory);
+                                const std::filesystem::path &shaderDirectory, bool forwardPlus = false, std::uint32_t pointLights = 0,
+                                const std::vector<orosmo::renderer::Define> &aovDefines = {});
+    // `aovDefines` (REN-21) : macros des AOV actifs (SceneRenderer::aovShaderDefines), vides sans AOV.
+    // REN-35 : mode « lod » (couleur par niveau) et gel du frustum de culling des objets instanciés.
+    void setDebugOptions(orosmo::renderer::DebugView view, bool freezeFrustum) noexcept
+    {
+        debugView_ = view;
+        freezeFrustum_ = freezeFrustum;
+    }
+    // Lumières ponctuelles de --lights N : spirale de Fibonacci (rayon 12 m), hauteurs et couleurs tirées d'un hachage entier de
+    // l'indice (aucun hasard, aucune horloge) ; intensité réduite quand N grandit (environ une douzaine de lumières par point du sol).
+    static std::vector<orosmo::renderer::Light> pointLightField(std::uint32_t count);
+    // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (après init). 0 : rien n'est créé.
+    orosmo::core::Result<> initInstances(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
+                                         orosmo::renderer::PipelineCache &pipelines, const std::filesystem::path &shaderDirectory,
+                                         std::uint32_t count);
+    // --gpu-driven on (REN-29) : après initInstances, installe le culling GPU sur `renderer` (kUnsupported sans compute : le culling
+    // CPU reste). Les statistiques GPU et CPU sont journalisées côte à côte.
+    orosmo::core::Result<> enableGpuDriven(orosmo::renderer::SceneRenderer &renderer, orosmo::rhi::Device &device,
+                                           orosmo::renderer::ShaderLibrary &shaders, orosmo::renderer::PipelineCache &pipelines,
+                                           const std::filesystem::path &shaderDirectory);
+    // --shadows on (REN-06 à 08) : à appeler AVANT init/initInstances. Les maillages lisent alors les ombres (programme récepteur)
+    // et sont enregistrés comme casters (fixes : la structure et les instances ; mobiles : le cristal et les prismes). Nul : rien.
+    void setShadows(orosmo::renderer::ShadowFeature *shadows) noexcept { shadows_ = shadows; }
     void destroy();
     void update(float deltaSeconds, const DemoSceneParams &params);
     orosmo::core::Result<> render(orosmo::renderer::SceneRenderer &renderer, orosmo::renderer::Camera &camera,
                                   const DemoSceneParams &params);
 
+    // Statistiques du dernier dessin instancié (zéros sans --instances).
+    const orosmo::renderer::VisibilityStats &instanceVisibility() const noexcept { return instanceVisibility_; }
+    const orosmo::renderer::InstanceDrawStats &instanceDrawStats() const noexcept { return instanceDrawStats_; }
+
   private:
+    orosmo::core::Result<> renderInstances(orosmo::renderer::SceneRenderer &renderer, const orosmo::renderer::Camera &camera);
     void applyTransforms();
     orosmo::core::Result<> syncLights(const DemoSceneParams &params);
     orosmo::core::Result<> syncAccentColor(const DemoSceneParams &params);
 
+    orosmo::core::Result<> registerCaster(const orosmo::renderer::Mesh &mesh, const orosmo::renderer::MeshData &data,
+                                          orosmo::renderer::CasterMobility mobility);
+
     std::shared_ptr<orosmo::renderer::ShaderProgram> meshProgram_;
+    orosmo::renderer::ShadowFeature *shadows_ = nullptr;
+    std::vector<orosmo::renderer::ShadowFeature::CasterId> casterIds_;
+    std::uint64_t shadowFrames_ = 0;
     orosmo::renderer::Mesh groundMesh_;
     orosmo::renderer::Mesh structureMesh_;
     orosmo::renderer::Mesh heroMesh_;
     std::array<orosmo::renderer::Mesh, 3> orbitMeshes_;
     orosmo::renderer::LightManager lights_;
     orosmo::renderer::DebugDraw debugDraw_;
+
+    // Objets instanciés (--instances) : deux niveaux de détail, deux matériaux.
+    std::array<orosmo::renderer::Mesh, 2> instanceLods_;
+    std::unique_ptr<orosmo::renderer::InstanceRenderer> instanceRenderer_;
+    orosmo::renderer::ObjectSet instanceObjects_;
+    orosmo::renderer::InstanceBatchBuilder instanceBatches_;
+    orosmo::renderer::VisibilityStats instanceVisibility_;
+    orosmo::renderer::InstanceDrawStats instanceDrawStats_;
+    std::uint64_t instanceFrames_ = 0;
+    orosmo::renderer::GpuDrivenFeature *gpuDriven_ = nullptr; // possédé par le SceneRenderer
+    orosmo::renderer::SceneRenderer *gpuDrivenRenderer_ = nullptr;
+    orosmo::renderer::DebugView debugView_ = orosmo::renderer::DebugView::kNone;
+    bool freezeFrustum_ = false;
+    orosmo::renderer::FrustumFreeze frustumFreeze_;
 
     std::vector<float> heroVertices_;
     glm::vec3 heroPosition_{0.0f, 2.85f, 0.0f};

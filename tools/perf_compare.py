@@ -8,7 +8,8 @@ Lance la démo `runs` fois par backend (en alternance OpenGL / Vulkan pour répa
 - `headless` : appareil hors écran, pas de présentation, pas de fenêtre ;
 - `windowed` : fenêtre réelle, chaîne d'échange, sans synchronisation verticale (il faut un affichage).
 Chaque exécution journalise (apps/demo/src/main.cpp) la durée de la boucle et les moyennes du Profiler : `Render` (GPU, requêtes
-de temps), `RenderScene`, `Upscale`, `UIUpscale` (GPU) et `SwapBuffers` (CPU). Le script en tire, par exécution, le temps de
+de temps), les passes du graphe de l'image `RenderGraph/scene`, `RenderGraph/upscale`, `RenderGraph/ui`, `RenderGraph/present`
+(GPU, une mesure par passe depuis M5 ; avant : `RenderScene`, `Upscale`, `UIUpscale`) et `SwapBuffers` (CPU). Le script en tire, par exécution, le temps de
 frame CPU = durée de la boucle / images, puis la médiane, le minimum, le maximum et l'écart interquartile sur les exécutions.
 La première exécution de chaque couple est écartée (caches de pipelines et de shaders froids). Utiliser un binaire RELEASE
 (couches de validation coupées) : le binaire de debug mesure surtout la validation.
@@ -23,9 +24,9 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PERF = re.compile(r"Perf: (?:(\w+) avgMs|(loop)Ms)=([0-9.eE+-]+)")
+PERF = re.compile(r"Perf: (?:([\w/.-]+) avgMs|(loop)Ms)=([0-9.eE+-]+)")
 DEVICE = re.compile(r"Graphics device: (.*?)(?:\x1b\[[0-9;]*m)*$", re.M)
-METRICS = ["frameCpuMs", "Render", "RenderScene", "Upscale", "UIUpscale", "SwapBuffers"]
+METRICS = ["frameCpuMs", "Render", "RenderGraph/scene", "RenderGraph/upscale", "RenderGraph/ui", "RenderGraph/present", "SwapBuffers"]
 
 
 def run_once(binary, api, mode, frames, ui, scratch):

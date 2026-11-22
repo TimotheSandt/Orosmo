@@ -1,5 +1,6 @@
 #version 450
 layout(location = 0) in vec2 TexCoords;
+layout(location = 1) in vec4 Color; // rgb : couleur du texte, a : alpha de la série
 layout(location = 0) out vec4 color;
 
 layout(set = 1, binding = 0) uniform sampler2D text;
@@ -7,7 +8,7 @@ layout(set = 1, binding = 0) uniform sampler2D text;
 layout(push_constant) uniform Push
 {
     vec4 params; // z : msdfPixelRange, w : msdfWeight
-    vec4 color; // a : alpha de la série de glyphes
+    vec4 color; // inutilisé
 } pc;
 
 float median(vec3 value)
@@ -25,5 +26,5 @@ void main()
     vec2 screenTexSize = inversesqrt(max(vec2(dot(dx, dx), dot(dy, dy)), vec2(0.0000001)));
     float screenPxRange = max(0.5 * dot(unitRange, screenTexSize), 1.0);
     float alpha = clamp((signedDistance + pc.params.w) * screenPxRange + 0.5, 0.0, 1.0);
-    color = vec4(pc.color.rgb, alpha * pc.color.a); // pc.color.a : alpha de la série (1 pour une couleur RGB)
+    color = vec4(Color.rgb, alpha * Color.a); // Color.a : alpha de la série (1 pour une couleur RGB)
 }

@@ -2,7 +2,7 @@
 # Commit this file.  Values here are baked into the engine[.exe] binary at compile time.
 
 ENGINE_NAME        ?= Orosmo
-ENGINE_VERSION     ?= 0.4.1
+ENGINE_VERSION     ?= 0.5.0
 ENGINE_PUBLISHER   ?= Gasshog
 ENGINE_AUTHOR      ?= Timothé Sandt
 ENGINE_EMAIL       ?= timothe.sandt@proton.me

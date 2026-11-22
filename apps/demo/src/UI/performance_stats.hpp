@@ -15,7 +15,7 @@ struct PerformanceSample
     double swapBuffersMs = 0.0;
 };
 
-// Moyennes actuelles du Profiler (Render, RenderScene, Upscale, UIUpscale, SwapBuffers) ; `averageFps` vient de la fenêtre.
+// Moyennes actuelles du Profiler (Render, passes du graphe RenderGraph/scene, /upscale, /ui, SwapBuffers) ; `averageFps` vient de la fenêtre.
 PerformanceSample samplePerformance(double averageFps);
 
 struct PerformanceStats

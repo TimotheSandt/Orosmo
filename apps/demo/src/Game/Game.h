@@ -7,6 +7,7 @@
 
 #include "CameraController.h"
 #include "Scene/demo_scene.hpp"
+#include "Scene/mixed_scene.hpp"
 #include "UI/demo_ui_state.hpp"
 #include "UI/performance_stats.hpp"
 #include "launch_options.hpp"
@@ -16,10 +17,12 @@
 #include <orosmo/core/profiler.hpp>
 #include <orosmo/platform/input_manager.hpp>
 #include <orosmo/platform/window.hpp>
+#include <orosmo/renderer/antialiasing.hpp>
 #include <orosmo/renderer/camera.hpp>
 #include <orosmo/renderer/canvas_renderer.hpp>
 #include <orosmo/renderer/gpu_timer.hpp>
 #include <orosmo/renderer/pipeline_cache.hpp>
+#include <orosmo/renderer/post_effects.hpp>
 #include <orosmo/renderer/render_target.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
 #include <orosmo/renderer/shader_library.hpp>
@@ -46,6 +49,31 @@ class Game
 
     // TOOL-03: after `frames` rendered frames, save <directory>/scene.png (3D) and ui.png, then close.
     void enableCapture(std::string directory, std::uint32_t frames);
+    // --instances N (REN-28) : N objets instanciés ajoutés à la scène par init() ; 0 (défaut) : aucun.
+    void setInstanceCount(std::uint32_t count) noexcept { this->instanceCount = count; }
+    void setGpuDriven(bool enabled) noexcept { this->gpuDriven = enabled; }
+    // --debug-view / --freeze-frustum (REN-35) : appliqués par init().
+    void setDebugView(orosmo::renderer::DebugView view, bool freezeFrustum) noexcept
+    {
+        this->debugView = view;
+        this->freezeFrustum = freezeFrustum;
+    }
+    // --shadows on (REN-06 à 08) : ombres en cascade avec cache (plugin ShadowFeature) ; désactivées par défaut.
+    void setShadowsEnabled(bool enabled) noexcept { this->shadowsEnabled = enabled; }
+    // --post (REN-17/18) : effets activés par init() ; kNone (défaut) : aucun effet enregistré, scène LDR inchangée.
+    void setPostMode(demo::PostMode mode) noexcept { postMode = mode; }
+    // --aa (REN-19) : technique activée par init() ; kNone (défaut) : aucun plugin enregistré, image inchangée.
+    void setAntiAliasing(orosmo::renderer::AntiAliasingMode mode) noexcept { antiAliasingMode = mode; }
+    // --lighting / --lights (REN-04) : mode d'éclairage demandé (forward+ : repli sur forward sans compute) et lumières ponctuelles.
+    void setLighting(demo::LightingMode mode, std::uint32_t pointLights) noexcept
+    {
+        this->lightingMode = mode;
+        this->pointLightCount = pointLights;
+    }
+    // --scene mixed (R2D-05, REN-32) : transparents triés et 2D dans le monde en plus de la scène ; défaut : inchangée.
+    void setMixedScene(bool enabled) noexcept { mixedScene = enabled; }
+    // REN-39 : ombre des vitres de la scène mêlée (sans valeur : elles ne projettent rien).
+    void setTransparentShadow(std::optional<orosmo::renderer::TransparentShadowMode> mode) noexcept { transparentShadow = mode; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
@@ -78,8 +106,11 @@ class Game
     void applySceneParams();
     void resetCamera();
     orosmo::core::Result<> createUi();
+    orosmo::core::Result<> createPostEffects();
     bool loadFullUiTheme(bool reportAsError);
     bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
+    void present(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
+    class OverlayFeature; // plugin de rendu : passes « ui » et « present » du graphe de l'image (Game.cpp)
 
   private:
     orosmo::platform::Window window;
@@ -89,6 +120,7 @@ class Game
     std::unique_ptr<orosmo::renderer::PipelineCache> pipelines;
     std::unique_ptr<orosmo::renderer::SceneRenderer> sceneRenderer;
     std::unique_ptr<orosmo::renderer::CanvasRenderer> canvas;
+    OverlayFeature *overlay = nullptr; // possédé par sceneRenderer
     std::unique_ptr<orosmo::renderer::ProfilerGpuTimerFactory> gpuTimers;
     orosmo::renderer::RenderTarget composed; // image finale (scène puis interface), à la taille de la vue
     orosmo::renderer::RenderTarget uiTarget; // interface à échelle réduite (touches de debug 5 à 8)
@@ -110,6 +142,9 @@ class Game
     orosmo::renderer::Camera camera;
     CameraController cameraController;
     std::unique_ptr<demo::DemoScene> scene;
+    std::unique_ptr<demo::MixedScene> mixed;
+    bool mixedScene = false;
+    std::optional<orosmo::renderer::TransparentShadowMode> transparentShadow;
     bool stopped = false;
 
     int requestedWidth = 1280;
@@ -122,6 +157,17 @@ class Game
     demo::UiMode uiMode = demo::UiMode::kHud;
     std::string initialTheme = "dark";
     std::string initialTab = "scene";
+    std::uint32_t instanceCount = 0;
+    bool gpuDriven = false;
+    orosmo::renderer::DebugView debugView = orosmo::renderer::DebugView::kNone;
+    bool freezeFrustum = false;
+    bool shadowsEnabled = false;
+    demo::PostMode postMode = demo::PostMode::kNone;
+    orosmo::renderer::PostEffects post; // effets possédés par sceneRenderer
+    orosmo::renderer::AntiAliasingMode antiAliasingMode = orosmo::renderer::AntiAliasingMode::kNone;
+    orosmo::renderer::AntiAliasing antiAliasing; // plugins possédés par sceneRenderer
+    demo::LightingMode lightingMode = demo::LightingMode::kForward;
+    std::uint32_t pointLightCount = 0;
     std::string hoverId;
     std::string clickId;
     std::string captureDirectory;
