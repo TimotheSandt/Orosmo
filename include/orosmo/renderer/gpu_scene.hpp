@@ -71,9 +71,11 @@ class GpuScene
     // Deux plages séparées par au plus `kMergeGap` emplacements inchangés sont envoyées ensemble (moins d'appels).
     static constexpr std::uint32_t kMergeGap = 8;
 
-    // CPU seulement : met le miroir à jour depuis `objects` et calcule les plages à envoyer (`pendingRanges`). Sans GPU.
+    // CPU seulement : met le miroir à jour depuis `objects` et calcule les plages modifiées depuis le `collect` précédent
+    // (`pendingRanges`) ; elles s'ajoutent à celles qui n'ont pas encore été envoyées (`unsentRanges`). Sans GPU.
     GpuSceneSyncStats collect(const ObjectSet &objects);
-    // `collect` puis envoi des plages en attente (tampons créés ou agrandis au besoin).
+    // `collect` puis envoi de toutes les plages non envoyées (tampons créés ou agrandis au besoin) ; elles ne sont oubliées qu'après
+    // un envoi réussi : un `collect` appelé avant `sync` ne fait perdre aucune modification.
     core::Result<GpuSceneSyncStats> sync(rhi::Device &device, const ObjectSet &objects);
     // Tout sera renvoyé à la prochaine synchronisation.
     void invalidate() noexcept { fullPending_ = true; }
@@ -82,6 +84,7 @@ class GpuScene
     std::span<const GpuSceneObject> records() const noexcept { return records_; }
     std::span<const GpuLodSettings> lodSettings() const noexcept { return lodSettings_; }
     std::span<const GpuSceneRange> pendingRanges() const noexcept { return pending_; }
+    std::span<const GpuSceneRange> unsentRanges() const noexcept { return unsent_; }
     std::uint32_t slotCount() const noexcept { return static_cast<std::uint32_t>(records_.size()); }
     std::uint32_t liveObjects() const noexcept { return live_; }
 
@@ -103,7 +106,8 @@ class GpuScene
     std::size_t syncedLodSettings_ = 0;
     std::vector<GpuSceneObject> records_;
     std::vector<GpuLodSettings> lodSettings_;
-    std::vector<GpuSceneRange> pending_;
+    std::vector<GpuSceneRange> pending_; // modifiées au dernier `collect`
+    std::vector<GpuSceneRange> unsent_;  // à envoyer au prochain `sync` (fusion des `collect` depuis le dernier envoi réussi)
     bool fullPending_ = true;
     bool lodPending_ = true;
     std::uint32_t live_ = 0;

@@ -17,9 +17,11 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <cstring>
 #include <filesystem>
 #include <map>
 #include <set>
+#include <type_traits>
 
 namespace fs = std::filesystem;
 namespace rd = orosmo::renderer;
@@ -237,6 +239,66 @@ TEST_SUITE("renderer/gpu-driven")
         s = scene.collect(other);
         CHECK(s.fullUpload);
         CHECK(scene.liveObjects() == 1);
+    }
+
+    TEST_CASE("GpuScene: a collect before sync loses no change, an ObjectSet cannot be reassigned in place (REN-29)")
+    {
+        // Réaffecter un ObjectSet à la même adresse échapperait au suivi des miroirs (adresse + compteur de changements).
+        static_assert(std::is_copy_constructible_v<rd::ObjectSet>);
+        static_assert(!std::is_copy_assignable_v<rd::ObjectSet> && !std::is_move_assignable_v<rd::ObjectSet>);
+
+        rd::ObjectSet objects;
+        std::vector<rd::ObjectId> ids;
+        for (int i = 0; i < 40; ++i)
+        {
+            auto id = objects.add(cubeDesc(at(static_cast<float>(i), 0, 0)));
+            REQUIRE(id.has_value());
+            ids.push_back(*id);
+        }
+        rd::GpuScene scene;
+        scene.collect(objects);
+        REQUIRE(scene.unsentRanges().size() == 1);
+        CHECK(scene.unsentRanges()[0] == rd::GpuSceneRange{0, 40});
+        // Un second collect (rien de changé) ne fait pas oublier le premier envoi, jamais fait.
+        rd::GpuSceneSyncStats s = scene.collect(objects);
+        CHECK(s.changedObjects == 0);
+        CHECK(scene.pendingRanges().empty());
+        REQUIRE(scene.unsentRanges().size() == 1);
+        CHECK(scene.unsentRanges()[0] == rd::GpuSceneRange{0, 40});
+
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend, {16, 16});
+            REQUIRE(gpu.device);
+            rd::GpuScene mirror;
+            auto first = mirror.sync(*gpu.device, objects);
+            REQUIRE(first.has_value());
+            CHECK(first->uploadedObjects == 40);
+            CHECK(mirror.unsentRanges().empty());
+            // Couleur changée, puis un collect avant le sync : le sync l'envoie quand même (une plage, un objet).
+            REQUIRE(objects.setColor(ids[7], {0, 1, 0, 1}).has_value());
+            REQUIRE(objects.setColor(ids[30], {0, 0, 1, 1}).has_value());
+            mirror.collect(objects);
+            REQUIRE(objects.setColor(ids[31], {1, 0, 0, 1}).has_value());
+            auto second = mirror.sync(*gpu.device, objects);
+            REQUIRE(second.has_value());
+            CHECK(second->changedObjects == 1);
+            CHECK(second->uploadRanges == 2);
+            CHECK(second->uploadedObjects == 3);
+            CHECK(mirror.unsentRanges().empty());
+            auto bytes = gpu.device->readBuffer(mirror.objectBuffer(), 7 * sizeof(rd::GpuSceneObject), sizeof(rd::GpuSceneObject));
+            REQUIRE(bytes.has_value());
+            rd::GpuSceneObject record{};
+            std::memcpy(&record, bytes->data(), sizeof record);
+            CHECK(record.color.g == doctest::Approx(1.0f));
+            CHECK(record.color.r == doctest::Approx(0.0f));
+            // Sans collect préalable : seules les plages nécessaires.
+            REQUIRE(objects.setColor(ids[20], {1, 1, 0, 1}).has_value());
+            auto third = mirror.sync(*gpu.device, objects);
+            REQUIRE(third.has_value());
+            CHECK(third->uploadedObjects == 1);
+            gpu.expectNoValidationErrors();
+        }
     }
 
     TEST_CASE("GpuDrivenFeature: refused without compute or indirect draws (rule 11, CPU culling kept)")
