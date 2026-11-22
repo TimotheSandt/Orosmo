@@ -30,12 +30,12 @@ make demo-vulkan-check                                                      # m�
 
 ## Tests
 
-Linux x64, g++ 13.3, Mesa, Intel Arc, sur `milestone/M5` : `make demo-test` **545 / 545**, suites GPU en Vulkan **229 / 229** (316 cas hors GPU ignorés), `make check`, `make demo-vulkan-check` (validation à 0 message ; seul écart connu : `dark-scene` / `ui` à 0,58 % des pixels au-delà de la tolérance 8, antérieur à M5, G139), `make demo-capture`. ASan + UBSan (après nettoyage complet) : **545 / 545**, aucun signalement. Clone propre : à compléter.
+Linux x64, g++ 13.3, Mesa, Intel Arc, sur `milestone/M5` : `make demo-test` **545 / 545**, suites GPU en Vulkan **229 / 229** (316 cas hors GPU ignorés), `make check`, `make demo-vulkan-check` (validation à 0 message ; seul écart connu : `dark-scene` / `ui` à 0,58 % des pixels au-delà de la tolérance 8, antérieur à M5, G139), `make demo-capture`. ASan + UBSan (après nettoyage complet) : **545 / 545**, aucun signalement. Clone propre (`df005c7`) : `make all-debug`, `demo-test` 545 / 545, Vulkan 229 / 229, `check`, `demo-vulkan-check`, `demo-capture`, `cui-test`, `e2e-init`, tests Python verts.
 
 Mesures : interface 143 → 18 draw calls ; 10 000 instances en 2 draw calls ; 100 000 objets avec culling GPU, passe `scene` 9,2 → 5,2 ms (OpenGL) et 6,0 → 4,7 ms (Vulkan) ; forward+ avec 1000 lumières, passe `scene` 93,6 → 5,7 ms (OpenGL) et 37,5 → 2,9 ms (Vulkan) (debug -O1, Intel) ; cache d'ombres : 0 redessin de la géométrie fixe après la première image.
 
 ## Non prouvé
 
-Windows, macOS et Linux arm64 (la CI le dira) ; un seul GPU (Intel Arc, Mesa) ; clone propre à compléter ; écart d'un pixel entre forward et forward+ ; libération de ressources pendant l'enregistrement (`FullscreenBlit`, `Mesh::setTextures`) ; limites du rendu piloté par GPU, des ombres, du HDR, de l'anticrénelage et du batch 2D ; `clang-format` non installé (`docs/GAPS.md`, G151 à G171).
+Windows, macOS et Linux arm64 (la CI le dira) ; un seul GPU (Intel Arc, Mesa) ;  écart d'un pixel entre forward et forward+ ; libération de ressources pendant l'enregistrement (`FullscreenBlit`, `Mesh::setTextures`) ; limites du rendu piloté par GPU, des ombres, du HDR, de l'anticrénelage et du batch 2D ; `clang-format` non installé (`docs/GAPS.md`, G151 à G171).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
