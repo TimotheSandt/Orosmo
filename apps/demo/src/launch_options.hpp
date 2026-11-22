@@ -77,6 +77,9 @@ struct LaunchOptions
     // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (culling, LOD, un draw call par lot). 0 (défaut) : aucun,
     // la scène et les captures de référence sont inchangées.
     std::uint32_t instances = 0;
+    // --gpu-driven off|on (REN-29) : les objets de --instances passent par le culling GPU (scène GPU persistante, multi-draw
+    // indirect, occlusion Hi-Z). off (défaut) : culling CPU, captures de référence inchangées. Repli sur le CPU sans compute.
+    bool gpuDriven = false;
     // --shadows off|on (REN-06 à 08) : ombres en cascade avec cache. off (défaut) : captures de référence inchangées.
     bool shadows = false;
     // --post none|hdr|bloom|full (défaut : none, captures de référence inchangées).
