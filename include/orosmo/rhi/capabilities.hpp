@@ -35,6 +35,9 @@ struct Capabilities
     bool compute = false;
     bool indirectDraw = false;
     bool multiDrawIndirect = false;
+    // `firstInstance` non nul dans les commandes indirectes (Vulkan : drawIndirectFirstInstance ; OpenGL 4.3 : toujours). Sans elle,
+    // une commande indirecte doit avoir firstInstance = 0.
+    bool drawIndirectFirstInstance = false;
     bool timestampQueries = false;
     bool anisotropy = false;
     bool bc7Textures = false;

@@ -244,6 +244,7 @@ TEST_SUITE("renderer/gpu-driven")
         orosmo::rhi::Capabilities caps;
         caps.compute = true;
         caps.indirectDraw = true;
+        caps.drawIndirectFirstInstance = true;
         caps.maxStorageBufferBindings = 8;
         caps.maxComputeWorkGroupSize = {1024, 1024, 64};
         caps.maxComputeInvocations = 1024;
@@ -254,6 +255,9 @@ TEST_SUITE("renderer/gpu-driven")
         caps.indirectDraw = false;
         CHECK_FALSE(rd::GpuDrivenFeature::supportedBy(caps));
         caps.indirectDraw = true;
+        caps.drawIndirectFirstInstance = false; // Vulkan sans drawIndirectFirstInstance : chaque commande lit sa propre plage
+        CHECK_FALSE(rd::GpuDrivenFeature::supportedBy(caps));
+        caps.drawIndirectFirstInstance = true;
         caps.maxStorageBufferBindings = 6;
         CHECK_FALSE(rd::GpuDrivenFeature::supportedBy(caps));
     }

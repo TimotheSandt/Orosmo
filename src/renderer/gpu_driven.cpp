@@ -77,7 +77,8 @@ GpuDrivenView GpuDrivenView::fromMatrices(const glm::mat4 &view, const glm::mat4
 
 bool GpuDrivenFeature::supportedBy(const rhi::Capabilities &caps) noexcept
 {
-    return caps.compute && caps.indirectDraw && caps.maxStorageBufferBindings >= kGpuCullStorageBindings &&
+    // firstInstance : chaque commande lit sa plage du tampon d'instances (commandes indirectes à firstInstance non nul).
+    return caps.compute && caps.indirectDraw && caps.drawIndirectFirstInstance && caps.maxStorageBufferBindings >= kGpuCullStorageBindings &&
            caps.maxComputeWorkGroupSize[0] >= kGpuCullWorkgroupSize && caps.maxComputeInvocations >= kGpuCullWorkgroupSize;
 }
 

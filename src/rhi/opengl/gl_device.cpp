@@ -238,6 +238,7 @@ Result<> GlDevice::init(const DeviceDesc &desc)
     caps_.compute = true; // cœur de GL 4.3
     caps_.indirectDraw = true;
     caps_.multiDrawIndirect = true;
+    caps_.drawIndirectFirstInstance = true; // baseInstance des commandes indirectes : cœur depuis GL 4.2
     caps_.timestampQueries = true;
     caps_.anisotropy = hasExtension("GL_EXT_texture_filter_anisotropic") || hasExtension("GL_ARB_texture_filter_anisotropic");
     caps_.bc7Textures = false; // aucun format compressé exposé par `Format` pour l'instant

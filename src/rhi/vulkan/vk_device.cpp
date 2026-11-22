@@ -535,6 +535,7 @@ void VulkanDevice::fillCapabilities()
     caps_.compute = true;
     caps_.indirectDraw = true;
     caps_.multiDrawIndirect = features_.multiDrawIndirect != VK_FALSE;
+    caps_.drawIndirectFirstInstance = features_.drawIndirectFirstInstance != VK_FALSE;
     // Les horodatages dépendent de la famille de files CHOISIE (timestampValidBits), pas seulement de timestampComputeAndGraphics.
     std::uint32_t familyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &familyCount, nullptr);
