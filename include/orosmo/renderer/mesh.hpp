@@ -59,6 +59,9 @@ class Mesh
     void setProgram(std::shared_ptr<ShaderProgram> program) { program_ = std::move(program); }
     // Textures aux liaisons 0, 1, 2... du groupe 1 (dans l'ordre).
     core::Result<> setTextures(std::span<const TextureBinding> textures);
+    // Groupe 1 fourni par l'appelant (non possédé : il doit vivre jusqu'au dernier dessin), à la place des textures ; ex. le groupe
+    // des récepteurs d'ombres (ShadowFeature::receiverGroup). Un groupe nul retire le groupe 1.
+    void setMaterialGroup(rhi::BindGroupHandle group) noexcept;
     // Octets du bloc push_constant du programme (le premier entier est réservé au drapeau fil de fer, voir mesh.frag).
     void setPushConstants(std::span<const std::byte> bytes) { pushConstants_.assign(bytes.begin(), bytes.end()); }
 
@@ -102,6 +105,7 @@ class Mesh
     GpuBuffer modelBuffer_;
     rhi::BindGroupHandle modelGroup_;
     rhi::BindGroupHandle textureGroup_;
+    bool ownsTextureGroup_ = true; // faux : groupe donné par setMaterialGroup
     std::vector<rhi::VertexBufferLayout> layouts_;
     std::vector<rhi::VertexAttribute> attributes_;
     std::vector<std::uint32_t> instanceSizes_;

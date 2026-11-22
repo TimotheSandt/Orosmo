@@ -53,6 +53,16 @@ layout(set = 0, binding = 1, std430) buffer LightBlock
     LightStruct lights[];
 } lights;
 
+// REN-06 à REN-08 : ombres (variante OROSMO_SHADOWS : groupe 1, bindings 6 et 7, voir shadow_receiver.glsl). Sans elle : 1.
+#ifdef OROSMO_SHADOWS
+#include "shadow_receiver.glsl"
+#else
+float orosmoLightShadow(int lightIndex, vec3 position, vec3 n, vec3 toLight, vec3 eye)
+{
+    return 1.0;
+}
+#endif
+
 vec4 directLight(vec3 lightDirection, vec3 lightColor, float lightIntensity)
 {
     // lumière diffuse
@@ -87,7 +97,8 @@ vec4 fillRender()
         }
         else if (lght.type == 2)
         {
-            l += directLight(lght.direction, lght.color, lght.strength);
+            l += directLight(lght.direction, lght.color, lght.strength) *
+                 orosmoLightShadow(i, crntPos, normalize(normal), normalize(lght.direction), camera.position);
         }
     }
 
