@@ -224,7 +224,7 @@ Les effets de rendu retirés de M7 deviennent des **modules** au format de M11, 
 **Démo** : la scène de la démo unique avec chaque effet activé puis désactivé depuis l'interface, sans recompiler le cœur.
 **Terminé** : chaque module testé sur les deux backends (images dans la tolérance), coût GPU noté, un projet `orosmo init` peut retirer un module préinstallé sans erreur de compilation, README par module.
 
-## M14 · Site vitrine et Wiki du moteur (décidé par l'auteur le 2026-11-21, A42)
+## M14 · Site vitrine et Wiki du moteur (décidé par l'auteur le 2026-11-21, A43)
 
 *(Note : le numéro M7 reste volontairement non réattribué selon A39 pour préserver les références historiques ; ce chantier est donc numéroté **M14**.)*
 

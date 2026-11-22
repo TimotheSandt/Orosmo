@@ -238,7 +238,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | MOD-08 | Interface du gestionnaire d'addons | P2 | Application `orosmo::ui` : liste et détails du registre, état d'un projet, installer / mettre à jour / retirer, registres multiples ; mêmes fonctions que la CLI. | Absent |
 | MOD-09 | Modèles de démarrage multiples et projet par défaut utilisateur | P1 | `orosmo init --template <minimal\|starter\|demo\|<nom>>` permet de choisir le modèle de départ (dont la démo complète pour découvrir le moteur), et l'utilisateur peut enregistrer un de ses propres projets comme modèle par défaut (`orosmo template set-default`). | Absent |
 
-## N. Site vitrine, wiki et déploiement web (M14, décision A42)
+## N. Site vitrine, wiki et déploiement web (M14, décision A43)
 
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
