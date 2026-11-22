@@ -36,6 +36,15 @@ enum class UiMode : std::uint8_t
     kFull,
 };
 
+// --post none|hdr|bloom|full (REN-17/18) : post-traitements de la scène.
+enum class PostMode : std::uint8_t
+{
+    kNone,  // aucun : scène LDR, image identique à celle d'avant les post-traitements
+    kHdr,   // scène HDR + tonemapping ACES (sRGB en sortie)
+    kBloom, // kHdr + bloom
+    kFull,  // kBloom + exposition automatique, étalonnage par LUT, vignettage
+};
+
 struct LaunchOptions
 {
     orosmo::rhi::Backend api = orosmo::rhi::Backend::kOpenGL;
@@ -68,6 +77,8 @@ struct LaunchOptions
     // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (culling, LOD, un draw call par lot). 0 (défaut) : aucun,
     // la scène et les captures de référence sont inchangées.
     std::uint32_t instances = 0;
+    // --post none|hdr|bloom|full (défaut : none, captures de référence inchangées).
+    PostMode post = PostMode::kNone;
     LightingMode lighting = LightingMode::kForward;
     // --lights N (REN-04/05) : N lumières ponctuelles déterministes au-dessus de la cour, en plus du soleil. 0 (défaut) : aucune.
     std::uint32_t pointLights = 0;
@@ -81,6 +92,8 @@ std::string_view backendDisplayName(orosmo::rhi::Backend api) noexcept;
 std::optional<orosmo::rhi::Backend> parseBackend(std::string_view value) noexcept;
 // « off », « hud », « full » (casse indifférente).
 std::optional<UiMode> parseUiMode(std::string_view value) noexcept;
+// « none », « hdr », « bloom », « full » (casse indifférente).
+std::optional<PostMode> parsePostMode(std::string_view value) noexcept;
 // « forward », « forwardplus » / « forward+ » (casse indifférente).
 std::optional<LightingMode> parseLightingMode(std::string_view value) noexcept;
 

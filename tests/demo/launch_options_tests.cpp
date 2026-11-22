@@ -169,6 +169,19 @@ TEST_SUITE("Demo launch options")
         AssertEqual(options.captureFrames, 25u, "Capture frame count should be parsed");
     }
 
+    TEST_CASE("launch options parse --post; none by default (REN-17/18)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(demo::parseLaunchOptions(1, none)->post == demo::PostMode::kNone, "No post-processing by default");
+        const char *full[] = {"Orosmo", "--post", "FULL", "--scene", "mixed"};
+        const auto parsed = demo::parseLaunchOptions(5, full);
+        Assert(parsed.has_value() && parsed->post == demo::PostMode::kFull && parsed->mixedScene, "--post full combines with --scene mixed");
+        const char *bad[] = {"Orosmo", "--post", "filmic"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "unknown post mode is refused");
+        const char *missing[] = {"Orosmo", "--post"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--post needs a value");
+    }
+
     TEST_CASE("launch options parse --instances; none by default (REN-28)")
     {
         const char *none[] = {"Orosmo"};

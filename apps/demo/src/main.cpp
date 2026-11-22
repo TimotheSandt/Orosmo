@@ -154,6 +154,7 @@ int main(int argc, char **argv)
             game.setCaptureInteraction(launchOptions.hoverId, launchOptions.clickId);
             game.setVSync(launchOptions.vsync);
             game.setInstanceCount(launchOptions.instances);
+            game.setPostMode(launchOptions.post);
             game.setLighting(launchOptions.lighting, launchOptions.pointLights);
             game.setMixedScene(launchOptions.mixedScene);
             LOG_TRACE("Game created");
