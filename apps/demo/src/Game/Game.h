@@ -77,6 +77,8 @@ class Game
     // REN-39 : ombre des vitres de la scène mêlée (sans valeur : elles ne projettent rien).
     void setTransparentShadow(std::optional<orosmo::renderer::TransparentShadowMode> mode) noexcept { transparentShadow = mode; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
+    // --hud (niveau du panneau de performances ; Ctrl+F le change ensuite).
+    void setHudLevel(demo::HudLevel level) noexcept { performance.level = level; }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
     void setCaptureInteraction(std::string hover, std::string click)
@@ -86,6 +88,7 @@ class Game
     }
     void setVSync(bool enabled)
     {
+        vsyncEnabled = enabled;
         if (device)
         {
             device->setVSync(enabled);
@@ -112,6 +115,8 @@ class Game
     orosmo::core::Result<> createUi();
     void warmUp();
     void recordFrameTime(std::chrono::steady_clock::time_point frameStart);
+    // Mesures du panneau de performances (4 fois par seconde) : tout ce qui est affiché vient d'ici.
+    PerformanceSample samplePerformance() const;
     orosmo::core::Result<> createPostEffects();
     bool loadFullUiTheme(bool reportAsError);
     bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
@@ -189,4 +194,8 @@ class Game
     bool headless = false;
     std::vector<float> frameTimesMs;
     std::chrono::steady_clock::duration captureTime{}; // écriture des PNG de l'image en cours (exclue de son temps)
+    std::optional<std::chrono::steady_clock::time_point> lastFrameStart; // intervalle entre images (FPS du panneau)
+    bool vsyncEnabled = false;
+    bool forwardPlusActive = false;
+    orosmo::renderer::ShadowFeature *shadowFeature = nullptr; // possédé par sceneRenderer (--shadows on)
 };

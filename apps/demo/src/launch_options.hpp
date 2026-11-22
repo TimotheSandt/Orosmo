@@ -39,6 +39,15 @@ enum class UiMode : std::uint8_t
     kFull,
 };
 
+// --hud off|fps|full|graph : niveau du panneau de performances (mode d'interface « hud ») ; Ctrl+F passe au suivant.
+enum class HudLevel : std::uint8_t
+{
+    kOff,   // rien d'affiché
+    kFps,   // les FPS seulement
+    kFull,  // toutes les mesures (défaut : le contenu du panneau d'avant, complété)
+    kGraph, // toutes les mesures + l'historique des temps d'image, en bas à droite
+};
+
 // --post none|hdr|bloom|full (REN-17/18) : post-traitements de la scène.
 enum class PostMode : std::uint8_t
 {
@@ -67,6 +76,8 @@ struct LaunchOptions
     bool vsync = false;
     // --ui off|hud|full (défaut : hud).
     UiMode uiMode = UiMode::kHud;
+    // --hud off|fps|full|graph (défaut : full, le panneau complet comme avant ; Ctrl+F fait défiler les niveaux).
+    HudLevel hudLevel = HudLevel::kFull;
     // --theme dark|light|framed (défaut : dark).
     std::string theme = "dark";
     // --tab scene|widgets|controls|color|windows|layout|themes (défaut : scene).
@@ -109,8 +120,14 @@ std::string_view backendDisplayName(orosmo::rhi::Backend api) noexcept;
 std::optional<orosmo::rhi::Backend> parseBackend(std::string_view value) noexcept;
 // « off », « hud », « full » (casse indifférente).
 std::optional<UiMode> parseUiMode(std::string_view value) noexcept;
+// « off », « fps », « full », « graph » (casse indifférente).
+std::optional<HudLevel> parseHudLevel(std::string_view value) noexcept;
+// Niveau suivant de Ctrl+F : off -> fps -> full -> graph -> off.
+HudLevel nextHudLevel(HudLevel level) noexcept;
+std::string_view hudLevelName(HudLevel level) noexcept;
 // « none », « hdr », « bloom », « full » (casse indifférente).
 std::optional<PostMode> parsePostMode(std::string_view value) noexcept;
+std::string_view postModeName(PostMode mode) noexcept;
 // « forward », « forwardplus » / « forward+ » (casse indifférente).
 std::optional<LightingMode> parseLightingMode(std::string_view value) noexcept;
 

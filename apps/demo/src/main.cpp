@@ -163,6 +163,7 @@ int main(int argc, char **argv)
                 game.enableCapture(captureDirectory, launchOptions.captureFrames);
             }
             game.setUiMode(launchOptions.uiMode);
+            game.setHudLevel(launchOptions.hudLevel);
             game.setInitialTheme(launchOptions.theme);
             game.setInitialTab(launchOptions.tab);
             game.setCaptureInteraction(launchOptions.hoverId, launchOptions.clickId);

@@ -134,6 +134,66 @@ std::optional<UiMode> parseUiMode(std::string_view value) noexcept
     return std::nullopt;
 }
 
+std::optional<HudLevel> parseHudLevel(std::string_view value) noexcept
+{
+    for (const HudLevel level : {HudLevel::kOff, HudLevel::kFps, HudLevel::kFull, HudLevel::kGraph})
+    {
+        if (equalsIgnoreCase(value, hudLevelName(level)))
+        {
+            return level;
+        }
+    }
+    return std::nullopt;
+}
+
+HudLevel nextHudLevel(HudLevel level) noexcept
+{
+    switch (level)
+    {
+    case HudLevel::kOff:
+        return HudLevel::kFps;
+    case HudLevel::kFps:
+        return HudLevel::kFull;
+    case HudLevel::kFull:
+        return HudLevel::kGraph;
+    case HudLevel::kGraph:
+        break;
+    }
+    return HudLevel::kOff;
+}
+
+std::string_view hudLevelName(HudLevel level) noexcept
+{
+    switch (level)
+    {
+    case HudLevel::kOff:
+        return "off";
+    case HudLevel::kFps:
+        return "fps";
+    case HudLevel::kFull:
+        return "full";
+    case HudLevel::kGraph:
+        break;
+    }
+    return "graph";
+}
+
+std::string_view postModeName(PostMode mode) noexcept
+{
+    switch (mode)
+    {
+    case PostMode::kNone:
+        return "none";
+    case PostMode::kHdr:
+        return "hdr";
+    case PostMode::kBloom:
+        return "bloom";
+    case PostMode::kFull:
+        break;
+    }
+    return "full";
+}
+
 std::optional<PostMode> parsePostMode(std::string_view value) noexcept
 {
     constexpr std::pair<const char *, PostMode> kModes[] = {{"none", PostMode::kNone}, {"hdr", PostMode::kHdr}, {"bloom", PostMode::kBloom}, {"full", PostMode::kFull}};
@@ -229,6 +289,19 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
                 return makeError(ErrorCode::kInvalidArgument, "Unknown UI mode (expected off|hud|full): " + *value);
             }
             options.uiMode = *uiMode;
+        }
+        else if (matchOption("--hud", value))
+        {
+            if (!value)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after --hud");
+            }
+            const auto level = parseHudLevel(*value);
+            if (!level)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Unknown HUD level (expected off|fps|full|graph): " + *value);
+            }
+            options.hudLevel = *level;
         }
         else if (matchOption("--post", value))
         {
@@ -432,8 +505,9 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
 
 void printUsage(std::ostream &out)
 {
-    out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
-        << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
+    out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--hud off|fps|full|graph]\n"
+        << "              [--theme dark|light|framed]"
+        << " [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
         << "              [--instances N] [--gpu-driven off|on] [--debug-view none|normals|albedo|overdraw|lod|wireframe|motion] [--freeze-frustum]\n"
         << "              [--shadows off|on] [--transparent-shadow none|full|masked|dithered] [--scene default|mixed] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
         << "              [--aa none|fxaa|smaa|taa]\n"
@@ -447,6 +521,8 @@ void printUsage(std::ostream &out)
     out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames, --hover >= 2).\n";
     out << "Headless: --headless creates no window (offscreen device, fixed time step), renders N frames and exits;\n";
     out << "          combine it with --capture <dir> to save the images.\n";
+    out << "HUD     : --hud sets the performance panel shown with --ui hud: off (nothing), fps (FPS only), full (default: every\n";
+    out << "          measurement), graph (full + CPU/GPU frame time history in the bottom right corner). Ctrl+F cycles the levels.\n";
     out << "Debug   : --debug-view shows normals, albedo, overdraw, LOD colors (needs --instances), wireframe or motion vectors;\n";
     out << "          --freeze-frustum freezes the culling frustum of the instanced objects (needs --instances) and draws it.\n";
     out << "Instances: --instances N adds N instanced objects around the courtyard (frustum culling, distance LOD); the draw\n";
