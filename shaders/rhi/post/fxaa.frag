@@ -32,7 +32,7 @@ void main()
     const float lMin = min(lC, min(min(lU, lD), min(lL, lR)));
     const float lMax = max(lC, max(max(lU, lD), max(lL, lR)));
     const float range = lMax - lMin;
-    if (range < max(pc.params.w, lMax * pc.params.z))
+    if (range <= 0.0 || range < max(pc.params.w, lMax * pc.params.z)) // range nul : aucune division, quels que soient les seuils
     {
         FragColor = center; // pas de contour : pixel inchangé
         return;
