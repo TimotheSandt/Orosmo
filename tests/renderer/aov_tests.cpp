@@ -501,4 +501,40 @@ TEST_SUITE("renderer/aov")
             renderer.reset();
         }
     }
+
+    TEST_CASE("REN-35: the debug view keeps its resources alive until the encoder is submitted (synchronous read between recording and submit)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            AovScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            for (const rd::DebugView view : {rd::DebugView::kNormals, rd::DebugView::kMotion})
+            {
+                REQUIRE(scene.renderer->setDebugView(view).has_value());
+                auto program = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag", scene.renderer->aovShaderDefines());
+                REQUIRE(program.has_value());
+                auto mesh = rd::Mesh::create(*scene.gpu.device, triangle());
+                REQUIRE(mesh.has_value());
+                mesh->setProgram(*program);
+                rd::Camera camera;
+                camera.setAspect(8, 8);
+                const TextureHandle out = scene.gpu.target(Format::kRGBA8Unorm, {8, 8}, "out");
+                const TextureHandle probe = scene.gpu.target(Format::kRGBA8Unorm, {8, 8}, "probe");
+                for (int image = 0; image < 4; ++image)
+                {
+                    scene.gpu.run(
+                        [&](CommandEncoder &e)
+                        {
+                            REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                            REQUIRE(scene.renderer->setCamera(camera).has_value());
+                            REQUIRE(scene.renderer->drawMesh(*mesh, camera).has_value());
+                            REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
+                            // Soumission synchrone AVANT le submit de cet encodeur (ex. une lecture de statistiques GPU).
+                            (void)scene.gpu.pixel(probe, 0, 0);
+                        });
+                }
+                scene.gpu.expectNoValidationErrors();
+            }
+        }
+    }
 }

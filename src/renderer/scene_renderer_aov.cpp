@@ -21,7 +21,11 @@ class DebugViewFeature final : public RenderFeature
         : device_(device), pipelines_(pipelines), program_(std::move(program)), aov_(aov), sampler_(sampler)
     {
     }
-    ~DebugViewFeature() override { device_.destroy(sampler_); }
+    ~DebugViewFeature() override
+    {
+        device_.destroy(group_);
+        device_.destroy(sampler_);
+    }
 
     std::string name() const override { return "debug.view"; }
     AovSet requiredAovs() const override { return {aov_}; }
@@ -38,13 +42,23 @@ class DebugViewFeature final : public RenderFeature
             .addPass("debug.view", PassType::kRaster,
                      [this, source, sceneColor](RenderPassContext &ctx) -> core::Result<>
                      {
-                         rhi::BindGroupDesc desc;
-                         desc.entries.push_back({.binding = 0, .type = rhi::BindingType::kSampledTexture, .texture = ctx.texture(source), .sampler = sampler_});
-                         desc.debugName = "debug.view.source";
-                         auto group = ctx.device().createBindGroup(desc);
-                         if (!group)
+                         // Le groupe vit jusqu'à ce que la texture change (redimensionnement) ou que le plugin disparaisse : le détruire ici
+                         // le libérerait pendant l'enregistrement, avant le submit de l'encodeur (une soumission synchrone entre-temps le
+                         // verrait libéré : VUID-vkFreeDescriptorSets-pDescriptorSets-00309). Destruction retardée par le RHI ensuite.
+                         const rhi::TextureHandle texture = ctx.texture(source);
+                         if (group_.isNull() || texture != groupTexture_)
                          {
-                             return std::unexpected(group.error());
+                             rhi::BindGroupDesc desc;
+                             desc.entries.push_back({.binding = 0, .type = rhi::BindingType::kSampledTexture, .texture = texture, .sampler = sampler_});
+                             desc.debugName = "debug.view.source";
+                             auto created = ctx.device().createBindGroup(desc);
+                             if (!created)
+                             {
+                                 return std::unexpected(created.error());
+                             }
+                             ctx.device().destroy(group_); // l'ancien n'est plus utilisé par l'image en cours d'enregistrement
+                             group_ = *created;
+                             groupTexture_ = texture;
                          }
                          GraphicsState state;
                          state.raster.cull = rhi::CullMode::kNone;
@@ -53,13 +67,11 @@ class DebugViewFeature final : public RenderFeature
                          auto pipeline = pipelines_.graphics(*program_, state);
                          if (!pipeline)
                          {
-                             ctx.device().destroy(*group);
                              return std::unexpected(pipeline.error());
                          }
                          ctx.encoder().setPipeline(*pipeline);
-                         ctx.encoder().setBindGroup(1, *group);
+                         ctx.encoder().setBindGroup(1, group_);
                          ctx.encoder().draw(3);
-                         ctx.device().destroy(*group); // destruction différée par le RHI : valable jusqu'à la fin de l'image
                          return {};
                      })
             .read(source)
@@ -73,6 +85,8 @@ class DebugViewFeature final : public RenderFeature
     std::shared_ptr<ShaderProgram> program_;
     Aov aov_;
     rhi::SamplerHandle sampler_;
+    rhi::BindGroupHandle group_;
+    rhi::TextureHandle groupTexture_;
 };
 
 } // namespace
