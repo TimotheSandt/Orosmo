@@ -62,10 +62,13 @@ class TransparentFeature final : public RenderFeature
     std::string name() const override { return kName; }
     core::Result<> prepare(const FrameData &frame) override;
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
+    void frameEnded() noexcept override;
 
     // Dépose un objet pour l'image (entre `SceneRenderer::setCamera` et `endFrame`). La géométrie de `mesh` est utilisée ; son
-    // programme est remplacé par celui du plugin (éclairage de mesh.frag, sortie avec alpha). Le maillage doit rester valide
-    // jusqu'à `endFrame`. Retourne l'indice de dépôt (celui de `drawOrder`).
+    // programme est remplacé par celui du plugin (éclairage de mesh.frag, sortie avec alpha). La transformation est copiée au dépôt
+    // (`SceneRenderer::recordModelSlice`) : un même maillage peut être déposé plusieurs fois avec des poses différentes. Ses tampons
+    // doivent rester valides jusqu'à `endFrame`. Les dépôts valent pour une image, même si `endFrame` échoue (`frameEnded`).
+    // Retourne l'indice de dépôt (celui de `drawOrder`).
     core::Result<std::uint32_t> submit(SceneRenderer &scene, Mesh &mesh, const TransparentMaterial &material);
 
     // Ordre de dessin de la dernière image : indices de dépôt, dans l'ordre exécuté (tests, outils de debug).
@@ -75,7 +78,7 @@ class TransparentFeature final : public RenderFeature
     struct Entry
     {
         rhi::PipelineHandle pipeline;
-        rhi::BindGroupHandle modelGroup;
+        std::uint32_t modelOffset = 0; // tranche du modèle de ce dépôt dans FrameResources::modelGroup
         rhi::BindGroupHandle textureGroup;
         rhi::BufferHandle vertexBuffer;
         rhi::BufferHandle indexBuffer;

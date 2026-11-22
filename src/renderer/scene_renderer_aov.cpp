@@ -130,6 +130,7 @@ core::Result<> SceneRenderer::setDebugView(DebugView view)
         return {};
     }
     std::shared_ptr<ShaderProgram> program;
+    std::shared_ptr<ShaderProgram> texturedProgram;
     std::unique_ptr<RenderFeature> feature;
     switch (view)
     {
@@ -168,6 +169,14 @@ core::Result<> SceneRenderer::setDebugView(DebugView view)
             return std::unexpected(loaded.error());
         }
         program = *loaded;
+        // Variante des maillages texturés (mesh_textured.vert : uv à l'emplacement 2) : l'albédo est le texel, pas les uv.
+        auto textured = library_.loadGraphics(shaderDirectory_ / "mesh_textured.vert", shaderDirectory_ / "debug_view.frag",
+                                              {{"OROSMO_DEBUG_VIEW", mode}, {"OROSMO_TEXTURED", "1"}});
+        if (!textured)
+        {
+            return std::unexpected(textured.error());
+        }
+        texturedProgram = *textured;
         break;
     }
     case DebugView::kNone:
@@ -176,6 +185,7 @@ core::Result<> SceneRenderer::setDebugView(DebugView view)
     }
     removeFeature("debug.view");
     debugViewProgram_ = std::move(program);
+    debugViewTexturedProgram_ = std::move(texturedProgram);
     debugView_ = DebugView::kNone;
     if (feature)
     {

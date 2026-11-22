@@ -1,9 +1,11 @@
 #include "orosmo/renderer/scene_renderer.hpp"
 
+#include "orosmo/renderer/blend_mode.hpp"
 #include "orosmo/renderer/image.hpp"
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <vector>
 
 namespace orosmo::renderer
@@ -103,6 +105,7 @@ SceneRenderer::~SceneRenderer()
     graph_.reset(); // les passes retiennent des pointeurs vers ce renderer et ses plugins
     features_.clear();
     device_.destroy(frameGroup_);
+    device_.destroy(modelSliceGroup_);
 }
 
 core::Result<RenderFeature *> SceneRenderer::addFeature(std::unique_ptr<RenderFeature> feature)
@@ -337,6 +340,12 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::beginFrame: the previous frame was not ended");
     }
+    if (executing_)
+    {
+        // Appelé depuis un dessin ou une passe de l'image en cours d'exécution (endFrame) : vider les dessins invaliderait celui
+        // qui s'exécute.
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::beginFrame: the previous frame is still executing (called from endFrame)");
+    }
     if (outputWidth_ <= 0 || outputHeight_ <= 0)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::beginFrame: set a non-empty output resolution first");
@@ -407,6 +416,7 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
     prepassThisFrame_ = depthPrepass_;
     draws_.clear();
     debugVertices_.clear();
+    modelSliceBytes_.clear();
     encoder_ = &encoder;
     frameOpen_ = true;
     return {};
@@ -428,7 +438,7 @@ core::Result<> SceneRenderer::setCamera(Camera &camera)
     return cameraBuffer_.update(0, std::as_bytes(std::span(&data, 1)));
 }
 
-core::Result<> SceneRenderer::record(Mesh &mesh, bool lines)
+core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t modelOffset)
 {
     GraphicsState state;
     state.vertexBuffers = mesh.vertexBuffers();
@@ -438,17 +448,25 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines)
     // Reverse-Z (REN-02) : le plus proche a la plus GRANDE profondeur. Le passage fil de fer redessine la même géométrie : à
     // profondeur égale, ses arêtes doivent passer.
     state.depth = {true, true, lines ? rhi::CompareOp::kGreaterEqual : rhi::CompareOp::kGreater};
-    // Pré-passe (REN-04) : la scène retrouve la profondeur de la pré-passe (égale) sans la réécrire.
-    const bool prepass = prepassThisFrame_ && !lines;
+    // Pré-passe (REN-04) : la scène retrouve la profondeur de la pré-passe (égale) sans la réécrire. Seuls les matériaux qui
+    // écrivent la profondeur y sont (opaques, masqués : REN-41) ; un transparent n'y écrirait pas sa profondeur, il cacherait ce
+    // qui est derrière lui. Il teste quand même la profondeur de la pré-passe, sans l'écrire.
+    const bool prepass = prepassThisFrame_ && !lines && blendModeState(mesh.aovMaterial().blend).depthWrite;
     if (prepass)
     {
         state.depth = {true, false, rhi::CompareOp::kGreaterEqual};
     }
     state.depthFormat = rhi::Format::kD32Float;
-    const ShaderProgram &program = replacesMeshProgram() && debugViewProgram_ ? *debugViewProgram_ : *mesh.program();
+    // Mode de debug (REN-35) : un maillage texturé (uv à l'emplacement 2, groupe 1 de textures) prend la variante texturée.
+    const bool textured = !mesh.textureGroup().isNull() &&
+                          std::ranges::any_of(mesh.vertexAttributes(), [](const rhi::VertexAttribute &a)
+                                              { return a.location == 2 && a.binding == 0 && a.format == rhi::VertexFormat::kFloat2; });
+    const ShaderProgram &program = !replacesMeshProgram() || !debugViewProgram_ ? *mesh.program()
+                                   : textured && debugViewTexturedProgram_     ? *debugViewTexturedProgram_
+                                                                               : *debugViewProgram_;
     // REN-21 / REN-41 : un AOV n'est écrit que s'il est actif, si le matériau le veut (un transparent n'en écrit aucun par défaut) et
     // si le programme a la sortie ; le passage filaire n'en écrit jamais. Sans AOV, c'est la couleur seule, comme avant.
-    aovColorTargets(state.colorTargets, aovLayout_, sceneColorFormat_, lines ? AovSet{} : aovWrites(mesh.aovMaterial(), aovActive_),
+    aovColorTargets(state.colorTargets, aovLayout_, frameColorFormat(), lines ? AovSet{} : aovWrites(mesh.aovMaterial(), aovActive_),
                     program.reflection().colorOutputs);
     configureMaterialState(state, mesh.aovMaterial().blend, lines);
     state.debugName = program.name() + (lines ? ".lines" : "");
@@ -493,7 +511,7 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines)
     }
     draw.lights = &activeLights(); // les lumières choisies au moment du dessin, comme avant l'enregistrement différé
     draw.textureGroup = mesh.textureGroup();
-    draw.modelGroup = mesh.modelGroup();
+    draw.modelOffset = modelOffset;
     draw.vertexBuffer = mesh.vertexBuffer();
     draw.instanceBuffer = mesh.instanced() ? mesh.instanceBuffer() : rhi::BufferHandle{};
     draw.indexBuffer = mesh.indexBuffer();
@@ -521,11 +539,77 @@ core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
     {
         return r;
     }
-    if (auto r = record(mesh, false); !r)
+    // Transformation de CE dessin, copiée maintenant : le maillage peut être redessiné ailleurs dans l'image (REN-01).
+    auto slice = recordModelSlice(mesh);
+    if (!slice)
+    {
+        return std::unexpected(slice.error());
+    }
+    if (auto r = record(mesh, false, *slice); !r)
     {
         return r;
     }
-    return camera.wireframe() || debugView_ == DebugView::kWireframe ? record(mesh, true) : core::Result<>{};
+    return camera.wireframe() || debugView_ == DebugView::kWireframe ? record(mesh, true, *slice) : core::Result<>{};
+}
+
+core::Result<std::uint32_t> SceneRenderer::recordModelSlice(const Mesh &mesh)
+{
+    if (!frameOpen_)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::recordModelSlice: no frame is open");
+    }
+    if (modelSliceStride_ == 0)
+    {
+        const std::uint64_t alignment = std::max<std::uint64_t>(device_.capabilities().minUniformAlignment, 1);
+        modelSliceStride_ = (Mesh::kModelBlockSize + alignment - 1) / alignment * alignment;
+    }
+    const std::size_t offset = modelSliceBytes_.size();
+    if (offset + modelSliceStride_ > std::numeric_limits<std::uint32_t>::max())
+    {
+        return makeError(ErrorCode::kOutOfRange, "SceneRenderer::recordModelSlice: too many draws in one frame");
+    }
+    modelSliceBytes_.resize(offset + modelSliceStride_, std::byte{0});
+    const std::span<const std::byte> block = mesh.modelBlock();
+    std::memcpy(modelSliceBytes_.data() + offset, block.data(), block.size());
+    return static_cast<std::uint32_t>(offset);
+}
+
+core::Result<> SceneRenderer::uploadModelSlices()
+{
+    if (modelSliceBytes_.empty())
+    {
+        return {};
+    }
+    const std::uint64_t bytes = modelSliceBytes_.size();
+    if (!modelSlices_.valid() || modelSlices_.size() < bytes)
+    {
+        rhi::BufferDesc desc;
+        desc.size = std::max<std::uint64_t>(bytes * 2, 16 * modelSliceStride_); // croissance géométrique : rarement recréé
+        desc.usage = rhi::BufferUsage::kUniform | rhi::BufferUsage::kCopyDst;
+        desc.debugName = "scene.model-slices";
+        auto buffer = GpuBuffer::create(device_, desc);
+        if (!buffer)
+        {
+            return std::unexpected(buffer.error());
+        }
+        rhi::BindGroupDesc group;
+        group.entries.push_back({.binding = 0,
+                                 .type = rhi::BindingType::kUniformBuffer,
+                                 .buffer = buffer->handle(),
+                                 .size = Mesh::kModelBlockSize,
+                                 .dynamicOffset = true});
+        group.debugName = "scene.model-slices";
+        auto created = device_.createBindGroup(group);
+        if (!created)
+        {
+            return std::unexpected(created.error());
+        }
+        device_.destroy(modelSliceGroup_); // destruction différée par le RHI : l'image précédente a pu le lier
+        modelSliceGroup_ = *created;
+        modelSlices_ = std::move(*buffer);
+        frameResources_.modelGroup = modelSliceGroup_;
+    }
+    return modelSlices_.update(0, std::span<const std::byte>(modelSliceBytes_));
 }
 
 core::Result<SceneDrawInfo> SceneRenderer::sceneDrawInfo() const
@@ -595,7 +679,7 @@ core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
     state.raster.cull = rhi::CullMode::kNone;
     state.depth = {debug.depthTest(), false, rhi::CompareOp::kGreaterEqual}; // reverse-Z ; n'écrit pas la profondeur
     state.depthFormat = rhi::Format::kD32Float;
-    aovColorTargets(state.colorTargets, aovLayout_, sceneColorFormat_, AovSet{}, 1); // les lignes ne touchent que la couleur
+    aovColorTargets(state.colorTargets, aovLayout_, frameColorFormat(), AovSet{}, 1); // les lignes ne touchent que la couleur
     state.debugName = "debug.lines";
     auto pipeline = pipelines_.graphics(*debugProgram_, state);
     if (!pipeline)
@@ -670,7 +754,8 @@ core::Result<> SceneRenderer::playDraws(rhi::CommandEncoder &e, bool prepass)
         {
             e.setBindGroup(1, draw.textureGroup);
         }
-        e.setBindGroup(2, draw.modelGroup);
+        const std::uint32_t modelOffset = draw.modelOffset;
+        e.setBindGroup(2, modelSliceGroup_, std::span(&modelOffset, 1)); // la tranche de CE dessin
         if (prepass && draw.pushConstants.size() >= sizeof(std::int32_t))
         {
             // Convention mesh.frag : premier entier = 2 dans la pré-passe (couleur masquée, le shader saute son éclairage).
@@ -773,7 +858,7 @@ core::Result<> SceneRenderer::ensureHistory(RenderTarget &target, bool &fresh)
     return {};
 }
 
-core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
+core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHistory)
 {
     graph_.reset();
     const rhi::Extent2D renderSize{static_cast<std::uint32_t>(frameWidth_), static_cast<std::uint32_t>(frameHeight_)};
@@ -833,39 +918,20 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
         }
     }
 
-    // ── Post-traitements : modifient la cible de la scène, dans l'ordre d'ajout ───────────────────────────────────────
-    for (std::size_t i = 0; i < postProcessPasses_.size(); ++i)
-    {
-        IPostProcessPass *post = postProcessPasses_[i].get();
-        std::string name = "post." + post->name();
-        if (graph_.pass(name))
-        {
-            name += "#" + std::to_string(i);
-        }
-        graph_
-            .addPass(std::move(name), PassType::kGeneric,
-                     [this, post](RenderPassContext &ctx)
-                     {
-                         FrameContext context{device_, ctx.encoder(), *blit_};
-                         return post->process(context, sceneTarget_);
-                     })
-            .read(known.sceneColor)
-            .write(known.sceneColor);
-    }
-
     // ── Historique en double tampon : lecture de l'image précédente, copie de l'image courante dans l'autre tampon ──────
-    // L'historique n'est « l'image précédente » que s'il a été écrit avec succès à l'image précédente, à la même taille. Il est
-    // marqué invalide tout de suite : seule une copie réussie à la fin de CETTE image le revalide (un retour anticipé le laisse
-    // invalide, de même qu'une image qui n'en a pas besoin).
+    // L'historique n'est « l'image précédente » que s'il a été écrit avec succès à l'image précédente, à la même taille.
+    // `hadHistory` est l'état lu par endFrame AVANT toute opération qui peut échouer ; historyValid_ est déjà faux : seule une copie
+    // réussie suivie d'une exécution réussie du graphe le revalide (un échec le laisse invalide, de même qu'une image qui n'en a
+    // pas besoin).
     const bool history = needsHistory();
     bool previousValid = false;
     RgTexture previousHistory;
     RgTexture nextHistory;
-    const std::uint32_t next = historyValid_ ? (lastHistory_ ^ 1u) : lastHistory_;
+    const std::uint32_t next = hadHistory ? (lastHistory_ ^ 1u) : lastHistory_;
     if (history)
     {
         bool fresh = false;
-        if (historyValid_)
+        if (hadHistory)
         {
             RenderTarget &previous = history_[lastHistory_];
             previousValid = previous.valid() && previous.width() == renderSize.width && previous.height() == renderSize.height;
@@ -880,7 +946,6 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
         }
         nextHistory = graph_.importTexture("history.next", history_[next].color(0), {.size = renderSize});
     }
-    historyValid_ = false;
     const bool resetHistory = resetHistoryNextFrame_ || !previousValid;
     const rhi::TextureHandle previous = previousValid ? history_[lastHistory_].color(0) : rhi::TextureHandle{};
 
@@ -990,7 +1055,7 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
                          {
                              return r;
                          }
-                         historyValid_ = true;
+                         historyWritten_ = true; // publié par endFrame seulement si tout le graphe réussit
                          lastHistory_ = next;
                          resetHistoryNextFrame_ = false; // la demande de réinitialisation a été transmise avec un historique neuf
                          return {};
@@ -1012,6 +1077,29 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
             return makeError(r.error().code, "feature '" + feature->name() + "': " + r.error().message, r.error().where);
         }
     }
+
+    // ── Post-traitements (IPostProcessPass) : modifient la cible de la scène, dans l'ordre d'ajout ────────────────────
+    // Déclarés APRÈS les plugins : les écrivains de la scène s'exécutent dans leur ordre de déclaration, donc les post-traitements
+    // voient la passe principale complète (3D opaque, transparents, 2D du monde : docs/03 §11) et les effets des plugins. La mise à
+    // l'échelle, la génération d'images et l'historique, déclarés avant, lisent la scène avec readFinal : ils passent après eux.
+    for (std::size_t i = 0; i < postProcessPasses_.size(); ++i)
+    {
+        IPostProcessPass *post = postProcessPasses_[i].get();
+        std::string name = "post." + post->name();
+        if (graph_.pass(name))
+        {
+            name += "#" + std::to_string(i);
+        }
+        graph_
+            .addPass(std::move(name), PassType::kGeneric,
+                     [this, post](RenderPassContext &ctx)
+                     {
+                         FrameContext context{device_, ctx.encoder(), *blit_};
+                         return post->process(context, sceneTarget_);
+                     })
+            .read(known.sceneColor)
+            .write(known.sceneColor);
+    }
     return {};
 }
 
@@ -1021,20 +1109,34 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::endFrame: no frame is open");
     }
+    // Cycle de vie : enregistrement (frameOpen_) -> exécution (executing_ : beginFrame refusé) -> disponible, après le nettoyage
+    // ci-dessous, que l'image réussisse ou non.
     frameOpen_ = false;
+    executing_ = true;
     generatedFrame_ = {}; // pas de handle d'une image précédente si cette fin d'image échoue avant la génération
     rhi::CommandEncoder &encoder = *encoder_;
     encoder_ = nullptr;
-    // Les dessins enregistrés ne survivent pas à l'image, qu'elle réussisse ou non.
-    struct ClearDraws
+    // Historique (REN-19) : l'état de l'image précédente est lu avant toute opération qui peut échouer, puis invalidé ; il n'est
+    // republié qu'après la réussite de la copie ET du graphe entier.
+    const bool hadHistory = historyValid_;
+    historyValid_ = false;
+    historyWritten_ = false;
+    // Les dessins enregistrés et les dépôts des plugins ne survivent pas à l'image, qu'elle réussisse ou non.
+    struct EndOfFrame
     {
         SceneRenderer &self;
-        ~ClearDraws()
+        ~EndOfFrame()
         {
             self.draws_.clear();
             self.debugVertices_.clear();
+            self.modelSliceBytes_.clear();
+            for (const auto &feature : self.features_)
+            {
+                feature->frameEnded();
+            }
+            self.executing_ = false;
         }
-    } clearDraws{*this};
+    } endOfFrame{*this};
 
     if (auto r = rebuildFrameGroup(activeLights()); !r)
     {
@@ -1044,11 +1146,15 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
     {
         return r;
     }
+    if (auto r = uploadModelSlices(); !r)
+    {
+        return r;
+    }
     if (auto r = updateFrameData(); !r)
     {
         return r;
     }
-    if (auto r = buildGraph(output); !r)
+    if (auto r = buildGraph(output, hadHistory); !r)
     {
         return r;
     }
@@ -1057,7 +1163,26 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
     {
         return r;
     }
-    return graph_.execute(encoder);
+    // Les liaisons des plugins (clusters du forward+, REN-04) sont calculées pour les lumières actives à endFrame : un dessin
+    // enregistré avec un autre LightManager lirait des listes d'indices d'un autre tampon. Refusé plutôt que rendu faux.
+    if (!featureFrameBindings_.empty())
+    {
+        LightManager *frameLights = &activeLights();
+        for (const SceneDraw &draw : draws_)
+        {
+            if (draw.lights != frameLights)
+            {
+                return makeError(ErrorCode::kUnsupported, "SceneRenderer::endFrame: plugin frame bindings (forward+ clusters) are built for the lights "
+                                                          "active at endFrame; a draw was recorded with another LightManager");
+            }
+        }
+    }
+    if (auto r = graph_.execute(encoder); !r)
+    {
+        return r;
+    }
+    historyValid_ = historyWritten_;
+    return {};
 }
 
 core::Result<> SceneRenderer::saveColorPng(const std::filesystem::path &path) const

@@ -9,12 +9,14 @@
 #include <orosmo/renderer/camera.hpp>
 #include <orosmo/renderer/light.hpp>
 #include <orosmo/renderer/mesh.hpp>
+#include <orosmo/renderer/render_feature.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
 #include <orosmo/renderer/transparent_feature.hpp>
 
 #include <algorithm>
 #include <array>
 #include <filesystem>
+#include <string>
 
 namespace fs = std::filesystem;
 namespace rd = orosmo::renderer;
@@ -316,6 +318,60 @@ TEST_SUITE("renderer/transparency")
             const TextureHandle through = scene.render({0, 0, 0}, {{&front, half}}, {&wall});
             CHECK(close(scene.at(through, 1, 1), byte(0, 0.5f, 0.5f))); // devant le mur : le mur se voit à travers
             CHECK(close(scene.at(through, 6, 1), byte(0, 0, 0.5f)));
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("one mesh submitted twice keeps both poses; deposits of a failed frame are not replayed (REN-32)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            TransparentScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            INFO("backend ", tests::backendName(backend));
+            // Un seul maillage, déposé à deux positions : chaque dépôt garde la transformation qu'il avait au dépôt.
+            auto glass = scene.quad(2.0f, {1, 0, 0}, -2.0f, -5.0f, "glass");
+            const TextureHandle out = scene.gpu.target(Format::kRGBA8Unorm, {kSize, kSize}, "output");
+            const rd::TransparentMaterial opaque{.mode = rd::BlendMode::kOpaque};
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                    REQUIRE(scene.renderer->setCamera(scene.camera).has_value());
+                    glass.setPosition({-2.0f, 0.0f, -5.0f});
+                    REQUIRE(scene.feature->submit(*scene.renderer, glass, opaque).has_value());
+                    glass.setPosition({2.0f, 0.0f, -5.0f});
+                    REQUIRE(scene.feature->submit(*scene.renderer, glass, opaque).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {kSize, kSize}}).has_value());
+                });
+            CHECK(close(scene.at(out, 2, 4), byte(1, 0, 0)));
+            CHECK(close(scene.at(out, 5, 4), byte(1, 0, 0)));
+            CHECK(close(scene.at(out, 0, 4), byte(0, 0, 0)));
+
+            // Image qui échoue avant la passe des transparents (plugin enregistré après eux qui échoue à la déclaration) : ses
+            // dépôts ne survivent pas, l'image suivante sans dépôt ne les rejoue pas.
+            struct Failing final : rd::RenderFeature
+            {
+                bool fail = true;
+                std::string name() const override { return "failing"; }
+                orosmo::core::Result<> declarePasses(rd::RenderGraphBuilder &) override
+                {
+                    return fail ? orosmo::core::makeError(ErrorCode::kUnknown, "declare failed") : orosmo::core::Result<>{};
+                }
+            };
+            auto *failing = static_cast<Failing *>(*scene.renderer->addFeature(std::make_unique<Failing>()));
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                    REQUIRE(scene.renderer->setCamera(scene.camera).has_value());
+                    REQUIRE(scene.feature->submit(*scene.renderer, glass, opaque).has_value());
+                    CHECK_FALSE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {kSize, kSize}}).has_value());
+                });
+            failing->fail = false;
+            const TextureHandle next = scene.render({0, 0, 0}, {});
+            CHECK(close(scene.at(next, 5, 4), byte(0, 0, 0))); // le dépôt de l'image ratée n'est pas dessiné
+            CHECK(scene.feature->stats().submitted == 0);
             scene.gpu.expectNoValidationErrors();
         }
     }

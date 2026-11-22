@@ -509,4 +509,36 @@ void main()
             f.gpu.expectNoValidationErrors();
         }
     }
+
+    TEST_CASE("forward+ refuses a frame whose draws use another LightManager than the one its clusters were built for (REN-04)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Fixture f(backend);
+            REQUIRE(f.gpu.device);
+            f.lights->addLight(rd::directionalLight({0, 1, 0}, {1, 1, 1}, 0.2f));
+            REQUIRE(f.lights->upload().has_value());
+            auto other = rd::LightManager::create(*f.gpu.device);
+            REQUIRE(other.has_value());
+            other->addLight(rd::pointLight({0, 0.5f, 0}, {1, 0, 0}, 1.0f, 2.0f, 0.5f));
+            REQUIRE(other->upload().has_value());
+            f.enable();
+            f.ground->setProgram(f.forwardPlus);
+            f.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(f.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                    REQUIRE(f.renderer->setCamera(f.camera).has_value());
+                    f.renderer->setLights(&*other);
+                    REQUIRE(f.renderer->drawMesh(*f.ground, f.camera).has_value());
+                    f.renderer->setLights(&*f.lights); // les clusters seront construits pour CES lumières
+                    const auto ended = f.renderer->endFrame({f.output, Format::kRGBA8Unorm, {kWidth, kHeight}});
+                    REQUIRE_FALSE(ended.has_value());
+                    CHECK((ended.error().code == ErrorCode::kUnsupported));
+                });
+            // Un seul LightManager pour l'image : accepté.
+            f.render(f.forwardPlus);
+            f.gpu.expectNoValidationErrors();
+        }
+    }
 }

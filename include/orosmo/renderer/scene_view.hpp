@@ -48,21 +48,31 @@ class SceneView
     std::uint32_t height() const noexcept { return target_.height(); }
 
     // Rend la vue : beginFrame, setCamera, `draw(renderer, camera)` (dépôt des dessins : drawMesh...), endFrame vers la texture de la vue.
+    // Après un beginFrame réussi, l'image est TOUJOURS refermée (endFrame), même si setCamera ou `draw` échoue : le renderer reste
+    // utilisable et ses dessins sont nettoyés. L'erreur rendue est alors la première (code et message de setCamera ou de `draw`) ;
+    // si endFrame échoue aussi, son message y est ajouté sans masquer la cause.
     template <typename Draw> core::Result<> render(rhi::CommandEncoder &encoder, const FrameOptions &options, Draw &&draw)
     {
         if (auto r = renderer_->beginFrame(encoder, options); !r)
         {
             return r;
         }
-        if (auto r = renderer_->setCamera(camera_); !r)
+        core::Result<> status = renderer_->setCamera(camera_);
+        if (status)
         {
-            return r;
+            status = draw(*renderer_, camera_);
         }
-        if (auto r = draw(*renderer_, camera_); !r)
+        auto ended = renderer_->endFrame({target_.color(0), target_.info().colorFormats[0], {target_.width(), target_.height()}});
+        if (status)
         {
-            return r;
+            return ended;
         }
-        return renderer_->endFrame({target_.color(0), target_.info().colorFormats[0], {target_.width(), target_.height()}});
+        if (!ended)
+        {
+            return core::makeError(status.error().code, status.error().message + " (then endFrame: " + ended.error().message + ")",
+                                   status.error().where);
+        }
+        return status;
     }
 
     rhi::TextureHandle texture() const noexcept { return target_.color(0); }
@@ -84,7 +94,7 @@ struct ViewPlacement
 };
 
 // Plugin : compose les vues placées dans la sortie de l'image (après la mise à l'échelle). Les placements valent pour UNE image
-// (vidés par la passe). Une zone qui dépasse la sortie est découpée par la destination ; une zone vide est ignorée.
+// (retirés à la déclaration de la passe, et à la fin de l'image même si elle échoue). Une zone qui dépasse la sortie est découpée par la destination ; une zone vide est ignorée.
 class ViewsFeature final : public RenderFeature
 {
   public:
@@ -93,6 +103,8 @@ class ViewsFeature final : public RenderFeature
                                                               const std::filesystem::path &shaderDirectory);
     std::string name() const override { return kName; }
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
+    // Les placements d'une image qui échoue avant la déclaration de la passe expirent aussi (`RenderFeature::frameEnded`).
+    void frameEnded() noexcept override { placements_.clear(); }
 
     void place(const ViewPlacement &placement) { placements_.push_back(placement); }
     void place(const SceneView &view, const ViewRect &rect) { placements_.push_back({view.texture(), view.sampler(), rect}); }

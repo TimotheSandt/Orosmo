@@ -73,12 +73,13 @@ core::Result<> ViewsFeature::declarePasses(RenderGraphBuilder &builder)
         placements_.clear();
         return makeError(ErrorCode::kInvalidArgument, "ViewsFeature: the frame has no output texture");
     }
+    // Les placements sont retirés AVANT la déclaration et appartiennent à la passe : consommés même si elle échoue ou est écartée.
+    std::vector<ViewPlacement> placements = std::move(placements_);
+    placements_.clear();
     builder.graph()
         .addPass("views", PassType::kGeneric,
-                 [this, output](RenderPassContext &ctx) -> core::Result<>
+                 [this, output, placements = std::move(placements)](RenderPassContext &ctx) -> core::Result<>
                  {
-                     const std::vector<ViewPlacement> placements = std::move(placements_);
-                     placements_.clear();
                      const RgTextureDesc &desc = ctx.desc(output);
                      rhi::CommandEncoder &e = ctx.encoder();
                      rhi::RenderPassDesc pass;

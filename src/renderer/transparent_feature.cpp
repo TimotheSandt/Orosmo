@@ -97,6 +97,13 @@ core::Result<std::uint32_t> TransparentFeature::submit(SceneRenderer &scene, Mes
     {
         return std::unexpected(r.error());
     }
+    // Transformation de CE dépôt, copiée maintenant dans une tranche de l'image (groupe 2 à décalage dynamique) : elle reste celle
+    // du dépôt jusqu'à l'exécution différée à endFrame, même si le maillage est déplacé ou redéposé entre-temps.
+    auto slice = scene.recordModelSlice(mesh);
+    if (!slice)
+    {
+        return std::unexpected(slice.error());
+    }
     const BlendModeState state = blendModeState(material.mode);
     GraphicsState gs;
     gs.vertexBuffers = mesh.vertexBuffers();
@@ -124,7 +131,7 @@ core::Result<std::uint32_t> TransparentFeature::submit(SceneRenderer &scene, Mes
     }
     Entry e;
     e.pipeline = *pipeline;
-    e.modelGroup = mesh.modelGroup();
+    e.modelOffset = *slice;
     e.textureGroup = mesh.textureGroup();
     e.vertexBuffer = mesh.vertexBuffer();
     e.indexBuffer = mesh.indexBuffer();
@@ -162,6 +169,11 @@ core::Result<> TransparentFeature::declarePasses(RenderGraphBuilder &builder)
     return {};
 }
 
+void TransparentFeature::frameEnded() noexcept
+{
+    entries_.clear(); // dépôts d'une image qui a échoué avant la passe : jamais rejoués à l'image suivante
+}
+
 core::Result<> TransparentFeature::play(RenderPassContext &ctx)
 {
     rhi::CommandEncoder &e = ctx.encoder();
@@ -189,7 +201,8 @@ core::Result<> TransparentFeature::play(RenderPassContext &ctx)
         {
             e.setBindGroup(1, entry.textureGroup);
         }
-        e.setBindGroup(2, entry.modelGroup);
+        const std::uint32_t modelOffset = entry.modelOffset;
+        e.setBindGroup(2, ctx.frame()->modelGroup, std::span(&modelOffset, 1));
         e.setPushConstants(std::as_bytes(std::span(&push, 1)));
         e.setVertexBuffer(0, entry.vertexBuffer);
         e.setIndexBuffer(entry.indexBuffer, rhi::IndexType::kUint32);
