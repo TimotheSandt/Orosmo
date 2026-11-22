@@ -53,6 +53,7 @@ struct VisibilityOptions
     bool useBvh = true;     // faux : test linéaire objet par objet (référence, mesures)
     bool frustumCulling = true;
     bool lod = true;        // faux : toujours le niveau 0
+    bool lodColors = false; // REN-35 : une couleur par niveau de détail (debug_view.hpp : lodDebugColor)
 };
 
 struct VisibilityStats

@@ -455,12 +455,15 @@ std::vector<orosmo::renderer::Light> DemoScene::pointLightField(std::uint32_t co
 }
 
 orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
-                                       const std::filesystem::path &shaderDirectory, bool forwardPlus, std::uint32_t pointLights)
+                                       const std::filesystem::path &shaderDirectory, bool forwardPlus, std::uint32_t pointLights,
+                                       const std::vector<orosmo::renderer::Define> &aovDefines)
 {
     destroy();
 
-    auto program = forwardPlus ? shaders.loadGraphics(shaderDirectory / "mesh.vert", shaderDirectory / "mesh.frag", orosmo::renderer::forwardPlusDefines())
-                               : shaders.loadGraphics(shaderDirectory / "mesh.vert", shaderDirectory / "mesh.frag");
+    // Variante forward+ (REN-04) et sorties auxiliaires (REN-21) : leurs macros s'additionnent.
+    std::vector<orosmo::renderer::Define> meshDefines = forwardPlus ? orosmo::renderer::forwardPlusDefines() : std::vector<orosmo::renderer::Define>{};
+    meshDefines.insert(meshDefines.end(), aovDefines.begin(), aovDefines.end());
+    auto program = shaders.loadGraphics(shaderDirectory / "mesh.vert", shaderDirectory / "mesh.frag", meshDefines);
     if (!program)
     {
         return std::unexpected(program.error());
@@ -468,8 +471,8 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
     meshProgram_ = *program;
     if (shadows_ != nullptr)
     {
-        // Ombres (variante OROSMO_SHADOWS), combinées au forward+ s'il est actif.
-        auto receiver = shadows_->receiverProgramWith(forwardPlus ? orosmo::renderer::forwardPlusDefines() : std::vector<orosmo::renderer::Define>{});
+        // Ombres (variante OROSMO_SHADOWS), combinées au forward+ et aux sorties auxiliaires (macros de meshDefines).
+        auto receiver = shadows_->receiverProgramWith(meshDefines);
         if (!receiver)
         {
             return std::unexpected(receiver.error());
@@ -729,6 +732,12 @@ orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRendere
     rd::CullView view = rd::CullView::fromMatrices(camera.viewMatrix(), camera.projectionMatrix(), static_cast<float>(renderer.frameHeight()),
                                                    camera.projection() == rd::Camera::Projection::kOrthographic);
     view.minScreenRadius = 1.0f; // moins d'un pixel de rayon : rejeté
+    // REN-35 : gel du frustum (la vue de culling reste celle de l'image du gel, la pyramide gelée est dessinée) et couleurs de LOD.
+    if (freezeFrustum_ && !frustumFreeze_.frozen())
+    {
+        frustumFreeze_.freeze(view, camera.projectionMatrix() * camera.viewMatrix());
+    }
+    view = frustumFreeze_.apply(view);
     if (gpuDriven_ != nullptr)
     {
         // Journal (image 2 puis toutes les 600) : compteurs GPU de l'image précédente, comparés au culling CPU de la même vue.
@@ -758,7 +767,10 @@ orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRendere
         ++instanceFrames_;
         return {};
     }
-    instanceVisibility_ = instanceObjects_.prepare(view, instanceBatches_);
+    rd::VisibilityOptions visibility;
+    visibility.lodColors = debugView_ == rd::DebugView::kLod;
+    instanceVisibility_ = instanceObjects_.prepare(view, instanceBatches_, visibility);
+
     auto drawn = instanceRenderer_->draw(renderer, instanceBatches_, camera.wireframe());
     if (!drawn)
     {
@@ -802,6 +814,7 @@ void DemoScene::destroy()
     instanceVisibility_ = {};
     instanceDrawStats_ = {};
     instanceFrames_ = 0;
+    frustumFreeze_.unfreeze();
     groundMesh_.reset();
     structureMesh_.reset();
     heroMesh_.reset();
@@ -993,7 +1006,12 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
     }
 
     debugDraw_.clear();
-    debugDraw_.setEnabled(params.debugDraw);
+    const bool frozenFrustum = frustumFreeze_.frozen();
+    debugDraw_.setEnabled(params.debugDraw || frozenFrustum);
+    if (frozenFrustum)
+    {
+        frustumFreeze_.drawFrozen(debugDraw_);
+    }
     if (params.debugDraw)
     {
         debugDraw_.axes(glm::mat4(1.0f), 3.5f);
@@ -1006,7 +1024,9 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
         const glm::vec4 sunRayColor(1.0f, 0.90f, 0.15f, 1.0f);
         debugDraw_.line(rayOrigin, rayEnd, sunRayColor);
         debugDraw_.sphere(rayEnd, 0.22f, sunRayColor, 12);
-
+    }
+    if (params.debugDraw || frozenFrustum)
+    {
         if (auto r = renderer.drawDebug(debugDraw_); !r)
         {
             return r;

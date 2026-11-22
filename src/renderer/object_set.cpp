@@ -1,5 +1,7 @@
 #include "orosmo/renderer/object_set.hpp"
 
+#include "orosmo/renderer/debug_view.hpp"
+
 #include <string>
 
 namespace orosmo::renderer
@@ -220,7 +222,9 @@ VisibilityStats ObjectSet::prepare(const CullView &view, InstanceBatchBuilder &o
         for (std::uint8_t i = 0; i < selection.count; ++i)
         {
             const LodDraw &draw = selection.draws[i];
-            out.add({object.lodMeshes[draw.level], object.material}, object.transform, object.color, draw.dither);
+            // REN-35 : la couleur de l'instance devient celle de son niveau de détail (mode « lod »).
+            const glm::vec4 color = options.lodColors ? glm::vec4(lodDebugColor(draw.level), object.color.a) : object.color;
+            out.add({object.lodMeshes[draw.level], object.material}, object.transform, color, draw.dither);
             ++stats.instances;
         }
     }

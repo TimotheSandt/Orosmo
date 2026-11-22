@@ -3,6 +3,7 @@
 #pragma once
 
 #include <orosmo/core/error.hpp>
+#include <orosmo/renderer/debug_view.hpp>
 #include <orosmo/rhi/types.hpp>
 
 #include <cstdint>
@@ -80,6 +81,10 @@ struct LaunchOptions
     // --gpu-driven off|on (REN-29) : les objets de --instances passent par le culling GPU (scène GPU persistante, multi-draw
     // indirect, occlusion Hi-Z). off (défaut) : culling CPU, captures de référence inchangées. Repli sur le CPU sans compute.
     bool gpuDriven = false;
+    // --debug-view none|normals|albedo|overdraw|lod|wireframe|motion (REN-35). none (défaut) : image et cibles inchangées.
+    orosmo::renderer::DebugView debugView = orosmo::renderer::DebugView::kNone;
+    // --freeze-frustum (REN-35) : fige le frustum de culling des objets instanciés dès la première image et le dessine.
+    bool freezeFrustum = false;
     // --shadows off|on (REN-06 à 08) : ombres en cascade avec cache. off (défaut) : captures de référence inchangées.
     bool shadows = false;
     // --post none|hdr|bloom|full (défaut : none, captures de référence inchangées).

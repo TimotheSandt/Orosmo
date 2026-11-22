@@ -13,6 +13,11 @@
 #ifdef OROSMO_FORWARD_PLUS
 #include "clusters.glsl"
 #endif
+// REN-21 : sorties auxiliaires (macros OROSMO_AOV_* : aovShaderDefines) ; sans elles, rien de plus que la couleur.
+#include "aov.glsl"
+#ifdef OROSMO_AOV_NORMALS
+#include "../include/orosmo/coords.glsl"
+#endif
 
 layout(location = 0) in vec3 normal;
 layout(location = 1) in vec3 crntPos;
@@ -26,6 +31,13 @@ layout(location = 2) in vec3 color;
 #ifdef OROSMO_INSTANCED
 // REN-31 : seuil de tramage par instance (lod.hpp) ; les seuils f et -f de deux niveaux couvrent chaque pixel une fois.
 layout(location = 3) flat in float dither;
+#endif
+#ifdef OROSMO_AOV_MOTION
+layout(location = 4) in vec4 currentClip;
+layout(location = 5) in vec4 previousClip;
+#endif
+#ifdef OROSMO_AOV_OBJECT_ID
+layout(location = 6) flat in uint objectId;
 #endif
 
 layout(location = 0) out vec4 FragColor;
@@ -140,6 +152,31 @@ vec4 fillRender()
 #endif
 }
 
+void writeAovs()
+{
+#ifdef OROSMO_AOV_MOTION
+    aovMotion = aovMotionVector(currentClip, previousClip, frame.jitter);
+#endif
+#ifdef OROSMO_AOV_NORMALS
+    aovNormals = octEncode(normalize(normal));
+#endif
+#ifdef OROSMO_AOV_MATERIAL
+    aovMaterial = vec2(0.5, 0.0); // rugosité, métal : constantes du matériau par défaut (pas de PBR avant REN-09)
+#endif
+#ifdef OROSMO_AOV_OBJECT_ID
+    aovObjectId = objectId;
+#endif
+#ifdef OROSMO_AOV_LINEAR_DEPTH
+    aovLinearDepth = 1.0 / gl_FragCoord.w; // w de l'espace de découpe = distance le long de l'axe de la vue
+#endif
+#ifdef OROSMO_AOV_EMISSION
+    aovEmission = vec4(0.0); // aucune émission avant REN-09
+#endif
+#ifdef OROSMO_AOV_ALBEDO
+    aovAlbedo = vec4(color, 1.0);
+#endif
+}
+
 void main()
 {
 #ifdef OROSMO_INSTANCED
@@ -198,4 +235,5 @@ void main()
     }
     FragColor.a = alpha;
 #endif
+    writeAovs();
 }

@@ -5,6 +5,7 @@
 #include "orosmo/core/reflection.hpp"
 #include "orosmo/renderer/camera.hpp"
 #include "orosmo/renderer/debug_draw.hpp"
+#include "orosmo/renderer/debug_view.hpp"
 #include "orosmo/renderer/gpu_driven.hpp"
 #include "orosmo/renderer/instance_renderer.hpp"
 #include "orosmo/renderer/light.hpp"
@@ -67,7 +68,15 @@ class DemoScene
     // `forwardPlus` (REN-04) : variante forward+ de mesh.frag (le plugin ForwardPlusLighting doit être installé sur le renderer) ;
     // `pointLights` (--lights N) : N lumières ponctuelles déterministes au-dessus de la cour, en plus du soleil.
     orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
-                                const std::filesystem::path &shaderDirectory, bool forwardPlus = false, std::uint32_t pointLights = 0);
+                                const std::filesystem::path &shaderDirectory, bool forwardPlus = false, std::uint32_t pointLights = 0,
+                                const std::vector<orosmo::renderer::Define> &aovDefines = {});
+    // `aovDefines` (REN-21) : macros des AOV actifs (SceneRenderer::aovShaderDefines), vides sans AOV.
+    // REN-35 : mode « lod » (couleur par niveau) et gel du frustum de culling des objets instanciés.
+    void setDebugOptions(orosmo::renderer::DebugView view, bool freezeFrustum) noexcept
+    {
+        debugView_ = view;
+        freezeFrustum_ = freezeFrustum;
+    }
     // Lumières ponctuelles de --lights N : spirale de Fibonacci (rayon 12 m), hauteurs et couleurs tirées d'un hachage entier de
     // l'indice (aucun hasard, aucune horloge) ; intensité réduite quand N grandit (environ une douzaine de lumières par point du sol).
     static std::vector<orosmo::renderer::Light> pointLightField(std::uint32_t count);
@@ -122,6 +131,9 @@ class DemoScene
     std::uint64_t instanceFrames_ = 0;
     orosmo::renderer::GpuDrivenFeature *gpuDriven_ = nullptr; // possédé par le SceneRenderer
     orosmo::renderer::SceneRenderer *gpuDrivenRenderer_ = nullptr;
+    orosmo::renderer::DebugView debugView_ = orosmo::renderer::DebugView::kNone;
+    bool freezeFrustum_ = false;
+    orosmo::renderer::FrustumFreeze frustumFreeze_;
 
     std::vector<float> heroVertices_;
     glm::vec3 heroPosition_{0.0f, 2.85f, 0.0f};

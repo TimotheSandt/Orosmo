@@ -331,6 +331,20 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.gpuDriven = *value == "on";
         }
+        else if (matchOption("--debug-view", value))
+        {
+            const auto view = value ? orosmo::renderer::debugViewFromName(*value) : std::nullopt;
+            if (!view)
+            {
+                return makeError(ErrorCode::kInvalidArgument,
+                                 "Invalid value for --debug-view (none|normals|albedo|overdraw|lod|wireframe|motion): " + (value ? *value : std::string("<missing>")));
+            }
+            options.debugView = *view;
+        }
+        else if (argument == "--freeze-frustum")
+        {
+            options.freezeFrustum = true;
+        }
         else if (matchOption("--shadows", value))
         {
             if (!value || (*value != "on" && *value != "off"))
@@ -401,7 +415,8 @@ void printUsage(std::ostream &out)
 {
     out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
         << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
-        << "              [--instances N] [--gpu-driven off|on] [--shadows off|on] [--scene default|mixed] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
+        << "              [--instances N] [--gpu-driven off|on] [--debug-view none|normals|albedo|overdraw|lod|wireframe|motion] [--freeze-frustum]\n"
+        << "              [--shadows off|on] [--scene default|mixed] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
         << "              [--headless] [--vsync]\n"
         << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
@@ -412,6 +427,8 @@ void printUsage(std::ostream &out)
     out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames, --hover >= 2).\n";
     out << "Headless: --headless creates no window (offscreen device, fixed time step), renders N frames and exits;\n";
     out << "          combine it with --capture <dir> to save the images.\n";
+    out << "Debug   : --debug-view shows normals, albedo, overdraw, LOD colors (needs --instances), wireframe or motion vectors;\n";
+    out << "          --freeze-frustum freezes the culling frustum of the instanced objects (needs --instances) and draws it.\n";
     out << "Instances: --instances N adds N instanced objects around the courtyard (frustum culling, distance LOD); the draw\n";
     out << "          calls and culling statistics are logged.\n";
     out << "GPU-driven: --gpu-driven on culls those objects on the GPU (persistent GPU scene, multi-draw indirect, Hi-Z occlusion\n";
