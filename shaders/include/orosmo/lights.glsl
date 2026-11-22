@@ -24,7 +24,10 @@ float lightRange(vec3 color, float strength, float a, float b)
     }
     if (a > 0.0)
     {
-        return min((-b + sqrt(b * b + 4.0 * a * k)) / (2.0 * a), kLightMaxRange);
+        float root = sqrt(b * b + 4.0 * a * k);
+        // b > 0 : -b + root s'annule quand 4ak << b² (petites portées) ; la forme conjuguée 2k / (b + root) est stable.
+        float range = b > 0.0 ? 2.0 * k / (b + root) : (-b + root) / (2.0 * a);
+        return min(range, kLightMaxRange);
     }
     if (b > 0.0)
     {

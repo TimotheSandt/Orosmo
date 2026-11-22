@@ -35,7 +35,10 @@ float lightRange(const Light &light) noexcept
     }
     if (light.a > 0.0f)
     {
-        return std::min((-light.b + std::sqrt(light.b * light.b + 4.0f * light.a * k)) / (2.0f * light.a), kLightMaxRange);
+        const float root = std::sqrt(light.b * light.b + 4.0f * light.a * k);
+        // b > 0 : -b + root s'annule quand 4ak << b² (petites portées) ; la forme conjuguée 2k / (b + root) est stable.
+        const float range = light.b > 0.0f ? 2.0f * k / (light.b + root) : (-light.b + root) / (2.0f * light.a);
+        return std::min(range, kLightMaxRange);
     }
     if (light.b > 0.0f)
     {
@@ -77,8 +80,14 @@ core::Result<> validateSettings(const ForwardPlusSettings &s)
     {
         return makeError(ErrorCode::kInvalidArgument, "ForwardPlusSettings: expected 0 < nearDepth < farDepth (finite)");
     }
-    const std::uint64_t clusters = std::uint64_t{s.gridX} * s.gridY * s.gridZ;
-    if (clusters > (1u << 20) || clusters * s.maxLightsPerCluster * sizeof(std::uint32_t) > kMaxClusterBufferBytes)
+    // Chaque dimension est bornée avant toute multiplication (2³¹ × 2³¹ × 4 repasse par zéro en 64 bits), puis chaque produit partiel.
+    constexpr std::uint64_t kMaxClusters = 1u << 20;
+    if (s.gridX > kMaxClusters || s.gridY > kMaxClusters || s.gridZ > kMaxClusters || std::uint64_t{s.gridX} * s.gridY > kMaxClusters)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "ForwardPlusSettings: the cluster grid exceeds " + std::to_string(kMaxClusters) + " clusters");
+    }
+    const std::uint64_t clusters = std::uint64_t{s.gridX} * s.gridY * s.gridZ; // gridX * gridY <= 2^20 et gridZ <= 2^20 : tient en 64 bits
+    if (clusters > kMaxClusters || clusters * s.maxLightsPerCluster * sizeof(std::uint32_t) > kMaxClusterBufferBytes)
     {
         return makeError(ErrorCode::kInvalidArgument, "ForwardPlusSettings: the cluster buffers would exceed 256 MiB (" + std::to_string(clusters) +
                                                           " clusters x " + std::to_string(s.maxLightsPerCluster) + " lights)");
@@ -148,7 +157,7 @@ core::Result<> ForwardPlusLighting::ensureBuffers()
     {
         return {};
     }
-    const ForwardPlusSettings &s = settings_;
+    const ForwardPlusSettings s = settings_;
     rhi::BufferDesc gridDesc;
     gridDesc.size = gridBytes(s);
     gridDesc.usage = rhi::BufferUsage::kStorage | rhi::BufferUsage::kCopyDst | rhi::BufferUsage::kCopySrc;
@@ -181,6 +190,7 @@ core::Result<> ForwardPlusLighting::ensureBuffers()
     }
     grid_ = std::move(*grid);
     lightLists_ = std::move(*lists);
+    bufferSettings_ = s; // les lectures décrivent ces tampons, pas les réglages en attente
     buffersDirty_ = false;
     return {};
 }
@@ -237,7 +247,7 @@ core::Result<std::vector<std::uint32_t>> ForwardPlusLighting::readClusterLightCo
     {
         return std::vector<std::uint32_t>{};
     }
-    const std::uint32_t clusters = settings_.clusterCount();
+    const std::uint32_t clusters = bufferSettings_.clusterCount();
     auto bytes = grid_.read(sizeof(GpuClusterHeader), std::uint64_t{clusters} * sizeof(std::uint32_t));
     if (!bytes)
     {
@@ -250,9 +260,9 @@ core::Result<std::vector<std::uint32_t>> ForwardPlusLighting::readClusterLightCo
 
 core::Result<std::vector<std::uint32_t>> ForwardPlusLighting::readClusterLights(std::uint32_t cluster) const
 {
-    if (cluster >= settings_.clusterCount())
+    if (cluster >= bufferSettings_.clusterCount())
     {
-        return makeError(ErrorCode::kOutOfRange, "readClusterLights: cluster " + std::to_string(cluster) + " >= " + std::to_string(settings_.clusterCount()));
+        return makeError(ErrorCode::kOutOfRange, "readClusterLights: cluster " + std::to_string(cluster) + " >= " + std::to_string(bufferSettings_.clusterCount()));
     }
     if (!grid_.valid() || !lightLists_.valid())
     {
@@ -265,13 +275,13 @@ core::Result<std::vector<std::uint32_t>> ForwardPlusLighting::readClusterLights(
     }
     std::uint32_t count = 0;
     std::memcpy(&count, countBytes->data(), sizeof count);
-    count = std::min(count, settings_.maxLightsPerCluster);
+    count = std::min(count, bufferSettings_.maxLightsPerCluster);
     std::vector<std::uint32_t> lights(count);
     if (count == 0)
     {
         return lights;
     }
-    auto listBytesRead = lightLists_.read(std::uint64_t{cluster} * settings_.maxLightsPerCluster * sizeof(std::uint32_t), std::uint64_t{count} * sizeof(std::uint32_t));
+    auto listBytesRead = lightLists_.read(std::uint64_t{cluster} * bufferSettings_.maxLightsPerCluster * sizeof(std::uint32_t), std::uint64_t{count} * sizeof(std::uint32_t));
     if (!listBytesRead)
     {
         return std::unexpected(listBytesRead.error());
@@ -287,7 +297,7 @@ core::Result<ClusterStats> ForwardPlusLighting::readClusterStats() const
     {
         return std::unexpected(counts.error());
     }
-    return summarizeClusterCounts(*counts, settings_.maxLightsPerCluster);
+    return summarizeClusterCounts(*counts, bufferSettings_.maxLightsPerCluster);
 }
 
 core::Result<ForwardPlusLighting *> enableForwardPlus(SceneRenderer &renderer, rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
