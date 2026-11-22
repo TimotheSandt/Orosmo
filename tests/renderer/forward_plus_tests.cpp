@@ -196,6 +196,10 @@ TEST_SUITE("renderer/forward-plus")
         CHECK(rd::lightRange(rd::pointLight({}, {1, 1, 1}, 1.0f, 0.0f, 0.0f)) == rd::kLightMaxRange); // sans atténuation
         CHECK(rd::lightRange(rd::pointLight({}, {1, 1, 1}, 1.0f, 0.0f, 2.0f)) == doctest::Approx((1.5f * 256.0f - 1.0f) / 2.0f));
         CHECK(rd::lightRange(rd::pointLight({}, {0.001f, 0.001f, 0.001f}, 0.5f, 1.0f, 1.0f)) == 0.0f); // déjà sous le seuil
+        // Petite portée non nulle : -b + sqrt(b² + 4ak) s'annulerait en float ; la forme stable donne ≈ k / b.
+        const float small = rd::lightRange(rd::pointLight({}, {1, 1, 1}, 1.0f, 1.0f, 1.0e6f));
+        CHECK(small > 0.0f);
+        CHECK(small == doctest::Approx((1.5f * 256.0f - 1.0f) / 1.0e6f).epsilon(1e-3));
     }
 
     TEST_CASE("ForwardPlusSettings: validation, exponential slices, cluster statistics, capability check (rule 11)")
@@ -227,6 +231,13 @@ TEST_SUITE("renderer/forward-plus")
         bad = s;
         bad.maxLightsPerCluster = 1u << 20; // tampon de listes gigantesque
         CHECK_FALSE(rd::validateSettings(bad).has_value());
+        bad = s;
+        bad.gridX = 2147483648u; // 2^31 * 2^31 * 4 = 2^64 : le produit en 64 bits reviendrait à zéro
+        bad.gridY = 2147483648u;
+        bad.gridZ = 4;
+        const auto huge = rd::validateSettings(bad);
+        REQUIRE_FALSE(huge.has_value());
+        CHECK((huge.error().code == ErrorCode::kInvalidArgument));
 
         const std::vector<std::uint32_t> counts{0, 1, 3, 5};
         const rd::ClusterStats stats = rd::summarizeClusterCounts(counts, 4);
@@ -275,6 +286,7 @@ void main()
     o[14] = lights.lights[1].a;
     o[15] = lights.lights[1].b;
     o[16] = float(lights.lights[0].type);
+    o[17] = lightRange(vec3(1.0), 1.0, 1.0, 1.0e6); // b >> sqrt(a k) : forme conjuguée stable
 }
 )";
         FOR_EACH_BACKEND(backend)
@@ -334,6 +346,8 @@ void main()
             CHECK(v[14] == 0.125f);
             CHECK(v[15] == 0.375f);
             CHECK(v[16] == 3.0f);
+            CHECK(v[17] > 0.0f);
+            CHECK(v[17] == doctest::Approx(rd::lightRange(rd::pointLight({}, {1, 1, 1}, 1.0f, 1.0f, 1.0e6f))).epsilon(1e-3));
             gpu.expectNoValidationErrors();
         }
     }
@@ -465,6 +479,19 @@ void main()
             CHECK(listOf(redAt) == std::vector<std::uint32_t>{0, 1});
             CHECK(listOf(blueAt) == std::vector<std::uint32_t>{0});
             CHECK_FALSE(fp->setSettings(rd::ForwardPlusSettings{.gridX = 0}).has_value());
+
+            // Les lectures décrivent les tampons existants, pas les réglages en attente (tampons recréés à la prochaine image).
+            rd::ForwardPlusSettings finer = s;
+            finer.gridX = s.gridX * 2;
+            REQUIRE(fp->setSettings(finer).has_value());
+            auto before = fp->readClusterLightCounts();
+            REQUIRE(before.has_value());
+            CHECK(before->size() == s.clusterCount());
+            CHECK(fp->readClusterLights(s.clusterCount() - 1).has_value());
+            (void)f.render(f.forwardPlus);
+            auto after = fp->readClusterLightCounts();
+            REQUIRE(after.has_value());
+            CHECK(after->size() == finer.clusterCount());
             f.gpu.expectNoValidationErrors();
         }
     }
