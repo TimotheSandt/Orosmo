@@ -63,15 +63,21 @@ class DemoScene
     static glm::vec3 defaultCameraPosition();
     static glm::vec3 defaultCameraOrientation();
 
-    // `meshDefines` : macros des AOV actifs (SceneRenderer::aovShaderDefines), vides sans AOV.
-    orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders, const std::filesystem::path &shaderDirectory,
-                                const std::vector<orosmo::renderer::Define> &meshDefines = {});
+    // `forwardPlus` (REN-04) : variante forward+ de mesh.frag (le plugin ForwardPlusLighting doit être installé sur le renderer) ;
+    // `pointLights` (--lights N) : N lumières ponctuelles déterministes au-dessus de la cour, en plus du soleil.
+    orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
+                                const std::filesystem::path &shaderDirectory, bool forwardPlus = false, std::uint32_t pointLights = 0,
+                                const std::vector<orosmo::renderer::Define> &aovDefines = {});
+    // `aovDefines` (REN-21) : macros des AOV actifs (SceneRenderer::aovShaderDefines), vides sans AOV.
     // REN-35 : mode « lod » (couleur par niveau) et gel du frustum de culling des objets instanciés.
     void setDebugOptions(orosmo::renderer::DebugView view, bool freezeFrustum) noexcept
     {
         debugView_ = view;
         freezeFrustum_ = freezeFrustum;
     }
+    // Lumières ponctuelles de --lights N : spirale de Fibonacci (rayon 12 m), hauteurs et couleurs tirées d'un hachage entier de
+    // l'indice (aucun hasard, aucune horloge) ; intensité réduite quand N grandit (environ une douzaine de lumières par point du sol).
+    static std::vector<orosmo::renderer::Light> pointLightField(std::uint32_t count);
     // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (après init). 0 : rien n'est créé.
     orosmo::core::Result<> initInstances(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
                                          orosmo::renderer::PipelineCache &pipelines, const std::filesystem::path &shaderDirectory,

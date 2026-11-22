@@ -7,6 +7,7 @@
 
 #include "CameraController.h"
 #include "Scene/demo_scene.hpp"
+#include "Scene/mixed_scene.hpp"
 #include "UI/demo_ui_state.hpp"
 #include "UI/performance_stats.hpp"
 #include "launch_options.hpp"
@@ -20,6 +21,7 @@
 #include <orosmo/renderer/canvas_renderer.hpp>
 #include <orosmo/renderer/gpu_timer.hpp>
 #include <orosmo/renderer/pipeline_cache.hpp>
+#include <orosmo/renderer/post_effects.hpp>
 #include <orosmo/renderer/render_target.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
 #include <orosmo/renderer/shader_library.hpp>
@@ -54,6 +56,16 @@ class Game
         this->debugView = view;
         this->freezeFrustum = freezeFrustum;
     }
+    // --post (REN-17/18) : effets activés par init() ; kNone (défaut) : aucun effet enregistré, scène LDR inchangée.
+    void setPostMode(demo::PostMode mode) noexcept { postMode = mode; }
+    // --lighting / --lights (REN-04) : mode d'éclairage demandé (forward+ : repli sur forward sans compute) et lumières ponctuelles.
+    void setLighting(demo::LightingMode mode, std::uint32_t pointLights) noexcept
+    {
+        this->lightingMode = mode;
+        this->pointLightCount = pointLights;
+    }
+    // --scene mixed (R2D-05, REN-32) : transparents triés et 2D dans le monde en plus de la scène ; défaut : inchangée.
+    void setMixedScene(bool enabled) noexcept { mixedScene = enabled; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
@@ -86,6 +98,7 @@ class Game
     void applySceneParams();
     void resetCamera();
     orosmo::core::Result<> createUi();
+    orosmo::core::Result<> createPostEffects();
     bool loadFullUiTheme(bool reportAsError);
     bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
     void present(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
@@ -121,6 +134,8 @@ class Game
     orosmo::renderer::Camera camera;
     CameraController cameraController;
     std::unique_ptr<demo::DemoScene> scene;
+    std::unique_ptr<demo::MixedScene> mixed;
+    bool mixedScene = false;
     bool stopped = false;
 
     int requestedWidth = 1280;
@@ -136,6 +151,10 @@ class Game
     std::uint32_t instanceCount = 0;
     orosmo::renderer::DebugView debugView = orosmo::renderer::DebugView::kNone;
     bool freezeFrustum = false;
+    demo::PostMode postMode = demo::PostMode::kNone;
+    orosmo::renderer::PostEffects post; // effets possédés par sceneRenderer
+    demo::LightingMode lightingMode = demo::LightingMode::kForward;
+    std::uint32_t pointLightCount = 0;
     std::string hoverId;
     std::string clickId;
     std::string captureDirectory;

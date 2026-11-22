@@ -4,10 +4,12 @@
 // post-traitements, mise à l'échelle, génération d'images, historique).
 #pragma once
 
+#include "orosmo/core/error.hpp"
 #include "orosmo/renderer/aov.hpp"
 #include "orosmo/renderer/frame_data.hpp"
 #include "orosmo/renderer/render_graph.hpp"
 #include "orosmo/rhi/capabilities.hpp"
+#include "orosmo/rhi/types.hpp"
 
 #include <array>
 #include <string>
@@ -31,8 +33,10 @@ class RenderGraphBuilder
         rhi::Extent2D outputSize{};
     };
 
-    RenderGraphBuilder(RenderGraph &graph, const Resources &resources, const rhi::Capabilities &capabilities, std::string scenePass)
-        : graph_(graph), resources_(resources), capabilities_(capabilities), scenePass_(std::move(scenePass))
+    // `frameBindings` : liaisons que les plugins ajoutent au groupe 0 de l'image (nul : `addFrameBinding` est refusé).
+    RenderGraphBuilder(RenderGraph &graph, const Resources &resources, const rhi::Capabilities &capabilities, std::string scenePass,
+                       std::vector<rhi::BindGroupEntry> *frameBindings = nullptr)
+        : graph_(graph), resources_(resources), capabilities_(capabilities), scenePass_(std::move(scenePass)), frameBindings_(frameBindings)
     {
     }
 
@@ -52,6 +56,40 @@ class RenderGraphBuilder
             scene->readFinal(texture); // déclarée avant les plugins : sans readFinal, elle lirait le contenu d'avant l'image
         }
     }
+    // Même chose pour un tampon (ex. les clusters de lumières du forward+, REN-04, lus par les matériaux).
+    void addSceneInput(RgBuffer buffer)
+    {
+        if (auto scene = graph_.pass(scenePass_))
+        {
+            scene->readFinal(buffer);
+        }
+    }
+
+    // Ajoute une liaison au groupe 0 de l'image (caméra 0, lumières 1, FrameData 2 sont au renderer ; liaisons
+    // kFirstFeatureFrameBinding à 7 : plugins). Liée à la passe de scène et à toute passe qui utilise `ctx.frame()->group`, pour
+    // cette image. Refusée (kInvalidArgument) hors de [kFirstFeatureFrameBinding, rhi::kBindingsPerGroup), déjà prise, ou sans
+    // renderer qui l'accepte. Exemple : les tampons de clusters du forward+ (liaisons 3 et 4).
+    static constexpr std::uint32_t kFirstFeatureFrameBinding = 3;
+    core::Result<> addFrameBinding(const rhi::BindGroupEntry &entry)
+    {
+        if (frameBindings_ == nullptr)
+        {
+            return core::makeError(core::ErrorCode::kInvalidArgument, "addFrameBinding: this renderer does not take frame bindings");
+        }
+        if (entry.binding < kFirstFeatureFrameBinding || entry.binding >= rhi::kBindingsPerGroup)
+        {
+            return core::makeError(core::ErrorCode::kInvalidArgument, "addFrameBinding: binding " + std::to_string(entry.binding) + " is reserved or out of range");
+        }
+        for (const rhi::BindGroupEntry &existing : *frameBindings_)
+        {
+            if (existing.binding == entry.binding)
+            {
+                return core::makeError(core::ErrorCode::kInvalidArgument, "addFrameBinding: binding " + std::to_string(entry.binding) + " is already taken");
+            }
+        }
+        frameBindings_->push_back(entry);
+        return {};
+    }
 
     // Écrire APRÈS la mise à l'échelle (interface, superpositions) : une passe déclarée ici qui écrit `resources().output` suit
     // l'écriture de la mise à l'échelle (écrivains dans l'ordre de déclaration). Écrire AVANT (post-traitement de la scène) :
@@ -62,6 +100,7 @@ class RenderGraphBuilder
     Resources resources_;
     const rhi::Capabilities &capabilities_;
     std::string scenePass_;
+    std::vector<rhi::BindGroupEntry> *frameBindings_ = nullptr;
 };
 
 class RenderFeature

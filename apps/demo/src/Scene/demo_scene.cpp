@@ -1,6 +1,7 @@
 #include "Scene/demo_scene.hpp"
 
 #include <orosmo/core/log.hpp>
+#include <orosmo/renderer/forward_plus.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -425,11 +426,43 @@ glm::vec3 DemoScene::defaultCameraOrientation()
     return glm::normalize(glm::vec3(0.0f, 1.5f, 0.0f) - defaultCameraPosition());
 }
 
+std::vector<orosmo::renderer::Light> DemoScene::pointLightField(std::uint32_t count)
+{
+    std::vector<orosmo::renderer::Light> lights;
+    lights.reserve(count);
+    const auto hash = [](std::uint32_t v)
+    {
+        v ^= v >> 16;
+        v *= 0x7feb352du;
+        v ^= v >> 15;
+        v *= 0x846ca68bu;
+        v ^= v >> 16;
+        return v;
+    };
+    const auto unit = [&](std::uint32_t v) { return static_cast<float>(hash(v) >> 8) / 16777216.0f; };
+    constexpr float kRadius = 12.0f;
+    constexpr float kGoldenAngle = 2.39996323f;
+    const float strength = count <= 64 ? 0.6f : 0.6f * std::sqrt(64.0f / static_cast<float>(count));
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        const float r = kRadius * std::sqrt((static_cast<float>(i) + 0.5f) / static_cast<float>(count));
+        const float angle = static_cast<float>(i) * kGoldenAngle;
+        const float height = 0.35f + 1.6f * unit(i * 4u);
+        const glm::vec3 color(0.35f + 0.65f * unit(i * 4u + 1u), 0.35f + 0.65f * unit(i * 4u + 2u), 0.35f + 0.65f * unit(i * 4u + 3u));
+        lights.push_back(orosmo::renderer::pointLight({r * std::cos(angle), height, r * std::sin(angle)}, color, strength, 60.0f, 3.0f));
+    }
+    return lights;
+}
+
 orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
-                                       const std::filesystem::path &shaderDirectory, const std::vector<orosmo::renderer::Define> &meshDefines)
+                                       const std::filesystem::path &shaderDirectory, bool forwardPlus, std::uint32_t pointLights,
+                                       const std::vector<orosmo::renderer::Define> &aovDefines)
 {
     destroy();
 
+    // Variante forward+ (REN-04) et sorties auxiliaires (REN-21) : leurs macros s'additionnent.
+    std::vector<orosmo::renderer::Define> meshDefines = forwardPlus ? orosmo::renderer::forwardPlusDefines() : std::vector<orosmo::renderer::Define>{};
+    meshDefines.insert(meshDefines.end(), aovDefines.begin(), aovDefines.end());
     auto program = shaders.loadGraphics(shaderDirectory / "mesh.vert", shaderDirectory / "mesh.frag", meshDefines);
     if (!program)
     {
@@ -450,6 +483,15 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
     {
         destroy();
         return r;
+    }
+    if (pointLights > 0)
+    {
+        lights_.addLights(pointLightField(pointLights)); // après le soleil (indice 0, mis à jour par syncLights)
+        if (auto r = lights_.upload(); !r)
+        {
+            destroy();
+            return r;
+        }
     }
 
     auto ground = orosmo::renderer::Mesh::create(device, buildCourtyardMeshData());

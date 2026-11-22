@@ -33,9 +33,10 @@ class DebugViewFeature final : public RenderFeature
         {
             return makeError(ErrorCode::kInvalidArgument, "debug view: the AOV '" + std::string(aovInfo(aov_).name) + "' is not active");
         }
+        const RgTexture sceneColor = builder.resources().sceneColor;
         builder.graph()
             .addPass("debug.view", PassType::kRaster,
-                     [this, source](RenderPassContext &ctx) -> core::Result<>
+                     [this, source, sceneColor](RenderPassContext &ctx) -> core::Result<>
                      {
                          rhi::BindGroupDesc desc;
                          desc.entries.push_back({.binding = 0, .type = rhi::BindingType::kSampledTexture, .texture = ctx.texture(source), .sampler = sampler_});
@@ -47,7 +48,7 @@ class DebugViewFeature final : public RenderFeature
                          }
                          GraphicsState state;
                          state.raster.cull = rhi::CullMode::kNone;
-                         state.colorTargets.assign(1, rhi::ColorTargetState{.format = rhi::Format::kRGBA8Unorm});
+                         state.colorTargets.assign(1, rhi::ColorTargetState{.format = ctx.desc(sceneColor).format});
                          state.debugName = "debug.view";
                          auto pipeline = pipelines_.graphics(*program_, state);
                          if (!pipeline)

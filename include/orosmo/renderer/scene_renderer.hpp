@@ -100,6 +100,10 @@ class SceneRenderer
     void setMotionVectorsEnabled(bool enabled) noexcept { motionVectorsEnabled_ = enabled; }
     bool motionVectorsEnabled() const noexcept { return motionVectorsEnabled_; }
     void setDepthAsTextureEnabled(bool enabled) noexcept { depthAsTextureEnabled_ = enabled; }
+    // REN-17 : format de la couleur de la scène, appliqué au prochain `beginFrame`. kRGBA8Unorm (défaut, LDR) ; kRGBA16Float ou
+    // kRGBA32Float pour une scène HDR (post-traitements HDR, `post_effects.hpp`). Un autre format est refusé (kInvalidArgument).
+    core::Result<> setSceneColorFormat(rhi::Format format);
+    rhi::Format sceneColorFormat() const noexcept { return sceneColorFormat_; }
     bool depthAsTextureEnabled() const noexcept { return depthAsTextureEnabled_; }
     void setDeltaTime(float seconds) noexcept { deltaTime_ = seconds; }
     void setJitterMode(JitterMode mode) noexcept { jitterMode_ = mode; }
@@ -121,6 +125,14 @@ class SceneRenderer
     // Lumières lues par les shaders ; sans appel, une lumière ambiante nulle. Peut être appelé après beginFrame : chaque dessin
     // enregistré utilise les lumières choisies au moment de son `drawMesh`.
     void setLights(LightManager *lights) noexcept { lights_ = lights; }
+
+    // REN-04 : pré-passe de profondeur (docs/03 §9 : « pré-passe de profondeur -> clusters -> passe principale »). Activée, la passe
+    // « depth-prepass » joue les maillages (`drawMesh`, hors fil de fer) sans écrire la couleur, puis la passe « scene » garde cette
+    // profondeur (test « plus grand ou égal », sans écriture) : chaque pixel n'est éclairé qu'une fois. Les dessins externes
+    // (`drawCustom`) et les lignes de debug ne sont pas dans la pré-passe (ils testent et écrivent la profondeur comme avant). Prise
+    // en compte au `beginFrame` suivant. Désactivée par défaut (image et coût inchangés).
+    void setDepthPrepass(bool enabled) noexcept { depthPrepass_ = enabled; }
+    bool depthPrepass() const noexcept { return depthPrepass_; }
 
     // ── Plugins de rendu (REN-01) ───────────────────────────────────────────────────────────────────────────────────
     // Enregistre un plugin : ses passes sont ajoutées au graphe à chaque `endFrame`, dans l'ordre d'enregistrement. Refusé
@@ -191,6 +203,7 @@ class SceneRenderer
     struct SceneDraw
     {
         rhi::PipelineHandle pipeline;
+        rhi::PipelineHandle prepassPipeline; // pré-passe de profondeur (nul : absent de la pré-passe)
         std::vector<std::byte> pushConstants;
         LightManager *lights = nullptr;
         rhi::BindGroupHandle textureGroup;
@@ -216,7 +229,7 @@ class SceneRenderer
     LightManager &activeLights() noexcept { return lights_ != nullptr ? *lights_ : defaultLights_; }
     core::Result<> rebuildFrameGroup(LightManager &lights);
     core::Result<> record(Mesh &mesh, bool lines);
-    core::Result<> playDraws(rhi::CommandEncoder &encoder);
+    core::Result<> playDraws(rhi::CommandEncoder &encoder, bool prepass = false);
     core::Result<> uploadDebugLines();
     core::Result<> updateFrameData();
     core::Result<> ensureHistory(RenderTarget &target, bool &fresh);
@@ -244,6 +257,9 @@ class SceneRenderer
     rhi::BindGroupHandle frameGroup_;
     rhi::BufferHandle groupCamera_;
     rhi::BufferHandle groupLights_;
+    // Liaisons du groupe 0 ajoutées par les plugins (RenderGraphBuilder::addFrameBinding) pour cette image, et celles du groupe actuel.
+    std::vector<rhi::BindGroupEntry> featureFrameBindings_;
+    std::vector<rhi::BindGroupEntry> groupFeatureBindings_;
     FrameResources frameResources_;
 
     RenderGraph graph_;
@@ -293,9 +309,12 @@ class SceneRenderer
     glm::vec3 previousCameraOrigin_{0.0f};
 
     bool motionVectorsEnabled_ = false;
+    bool depthPrepass_ = false;
+    bool prepassThisFrame_ = false; // depthPrepass_ lu au beginFrame
     bool cameraRelative_ = false;
     glm::vec3 cameraOrigin_{0.0f};
     bool depthAsTextureEnabled_ = false;
+    rhi::Format sceneColorFormat_ = rhi::Format::kRGBA8Unorm;
     float deltaTime_ = 0.0f;
     glm::vec2 currentJitter_{0.0f};
     bool resetHistoryNextFrame_ = false;

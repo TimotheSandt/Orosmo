@@ -23,11 +23,11 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | En-tête | Rôle |
 | --- | --- |
 | `camera.hpp` | `Camera` : position, orientation, perspective (mêmes formules que l'ancienne), jitter, `data()` = `CameraData` std140 (80 octets). Aucune entrée, aucun GLFW : le pilotage clavier/souris revient à l'application (G80) |
-| `light.hpp` | `Light`, `LightManager` : lumières ambiante, directionnelle, ponctuelle, projecteur ; SSBO std430 dont la disposition est vérifiée par `static_assert` (`GpuLight` 96 octets, `GpuLightHeader` 48) ; le tampon grandit au besoin. `light(i)` en lecture seule, `setLight` renvoie kOutOfRange pour un index périmé |
+| `light.hpp` | `Light`, `LightManager` : lumières ambiante, directionnelle, ponctuelle, projecteur (toutes rendues depuis M5, voir REN-05 plus bas) ; SSBO std430 dont la disposition est vérifiée par `static_assert` (`GpuLight` 96 octets, `GpuLightHeader` 48, offsets des champs) ; le tampon grandit au besoin. `light(i)` en lecture seule, `setLight` renvoie kOutOfRange pour un index périmé |
 | `mesh.hpp` | `Mesh` : sommets, index (chacun vérifié contre le nombre de sommets), instances optionnelles, attributs décrits par leurs tailles en flottants, transformation (translation, rotations X/Y/Z, échelle) et matrice des normales (inverse transposée, calculée par objet), textures liées (groupe 1), constantes de shader (push constants) |
 | `fullscreen_blit.hpp` | `FullscreenBlit` : copie plein écran par triangle (le RHI n'a pas de commande de blit) ; `draw` respecte le viewport et le ciseau actifs ; `compose` pose une source prémultipliée sur la cible |
 | `upscaling.hpp` | extensions de fin d'image : `IUpscaleMode` (avec `initialize`/`shutdown`), `IAdvancedUpscaleMode`, `IPostProcessPass`, `IFrameGenerationMode`, `BilinearBlitUpscaleMode` |
-| `scene_renderer.hpp` | `SceneRenderer` : cible de scène, groupe 0 (caméra, lumières, `FrameData`), `beginFrame` / `setCamera` / `drawMesh` (enregistre) / `endFrame` (construit et exécute le graphe de l'image, voir plus bas), plugins (`addFeature`), échelle de rendu, jitter de Halton (seulement pour un mode exécuté qui le demande), historique (les consommateurs lisent l'image PRÉCÉDENTE, `resetHistory` à la première image et après un redimensionnement), vecteurs de mouvement, profondeur lisible. Un mode de mise à l'échelle n'est exécuté que si `upscalingEnabled()` (sinon copie 1:1), il est initialisé avant d'être activé et arrêté quand il est remplacé ; un mode de génération refusé laisse l'actif en place ; `generatedFrame()` expose son image. Remplace `Renderer` + `Renderer3D` |
+| `scene_renderer.hpp` | `SceneRenderer` : cible de scène, groupe 0 (caméra, lumières, `FrameData`, liaisons 3 à 7 des plugins), pré-passe de profondeur optionnelle (`setDepthPrepass`, REN-04), `beginFrame` / `setCamera` / `drawMesh` (enregistre) / `endFrame` (construit et exécute le graphe de l'image, voir plus bas), plugins (`addFeature`), échelle de rendu, jitter de Halton (seulement pour un mode exécuté qui le demande), historique (les consommateurs lisent l'image PRÉCÉDENTE, `resetHistory` à la première image et après un redimensionnement), vecteurs de mouvement, profondeur lisible. Un mode de mise à l'échelle n'est exécuté que si `upscalingEnabled()` (sinon copie 1:1), il est initialisé avant d'être activé et arrêté quand il est remplacé ; un mode de génération refusé laisse l'actif en place ; `generatedFrame()` expose son image. Remplace `Renderer` + `Renderer3D` |
 | `debug_draw.hpp` | `DebugDraw` (REN-34) : lignes, boîtes, sphères, repères en coordonnées monde ; désactivé par défaut hors debug (chaque appel revient au premier test) ; dessiné par `SceneRenderer::drawDebug` dans la passe de scène, test de profondeur au choix (shaders `debug_line.*` chargés au premier appel) |
 | `shaders/rhi/` | `mesh.vert` / `mesh.frag` (éclairage identique à l'ancien), `blit.vert` / `blit.frag` : GLSL 450 (`set`/`binding`, push constants) |
 
@@ -36,7 +36,7 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | En-tête | Rôle |
 | --- | --- |
 | `render_graph.hpp` | `RenderGraph` : ressources nommées (textures et tampons, importés ou transitoires), passes `kRaster` (le graphe ouvre la passe de rendu sur les attachements déclarés) ou `kGeneric` (la passe enregistre ce qu'elle veut), ordre déduit, passes inutiles écartées, cycle refusé (`compile` : kInvalidArgument avec le chemin des passes), réserve de transitoires (réutilisées d'une image à l'autre, partagées entre ressources de vies disjointes et de même description, libérées après `kTransientKeepFrames` images sans usage), une mesure du `Profiler` par passe exécutée (`RenderGraph/<passe>`, minuterie GPU si un `ProfilerGpuTimerFactory` est installé avec l'encodeur de l'image), groupe de débogage par passe (RenderDoc). Les barrières restent au RHI |
-| `render_feature.hpp` | `RenderFeature` (plugin : `supports`, `prepare(FrameData)`, `declarePasses(RenderGraphBuilder&)`) et `RenderGraphBuilder` (graphe de l'image + ressources connues : `sceneColor`, `sceneDepth`, `motionVectors`, `output`, tailles ; `addSceneInput`) |
+| `render_feature.hpp` | `RenderFeature` (plugin : `supports`, `prepare(FrameData)`, `declarePasses(RenderGraphBuilder&)`) et `RenderGraphBuilder` (graphe de l'image + ressources connues : `sceneColor`, `sceneDepth`, `motionVectors`, `output`, tailles ; `addSceneInput` pour une texture ou un tampon ; `addFrameBinding` : liaison 3 à 7 ajoutée au groupe 0 de l'image) |
 | `frame_data.hpp` | `FrameData` (docs/03 §10, std140, 640 octets, `static_assert` sur tailles et offsets), `FrameEnvironment`, `splitDouble`, `frameNoiseSeed` ; côté GLSL : `shaders/rhi/frame_data.glsl` (`#include "frame_data.glsl"`, groupe 0 binding 2) |
 
 **Règles de dépendance** (par ressource ; l'ordre de déclaration ne compte qu'entre les accès à une même ressource) :
@@ -73,7 +73,7 @@ Une passe `kGeneric` enregistre ce qu'elle veut (ses propres passes de rendu, co
 transitoire sont déduits des accès (attachement : `kRenderTarget`, lecture : `kSampled`) ; un accès en stockage ou en copie doit être
 déclaré dans `RgTextureDesc::usage`. `findTexture(nom)` retrouve une ressource déclarée par une autre passe (ex. un AOV, REN-21).
 
-**Image de `SceneRenderer`.** `endFrame` déclare, dans cet ordre : `scene` (raster : couleur, vecteurs de mouvement, profondeur ; joue
+**Image de `SceneRenderer`.** `endFrame` déclare, dans cet ordre : `depth-prepass` (seulement avec `setDepthPrepass(true)`, REN-04), `scene` (raster : couleur, vecteurs de mouvement, profondeur ; joue
 les dessins enregistrés), `post.<nom>` (un par `IPostProcessPass`), `upscale` (mode actif, ou copie 1:1), `frame-generation`,
 `history` (historique en double tampon : lecture de l'image précédente dans l'un, copie de la courante dans l'autre), puis les passes
 des plugins, dans l'ordre d'enregistrement. Groupe 0 de toute passe : `ctx.frame()->group` (caméra 0, lumières 1, `FrameData` 2).
@@ -85,7 +85,7 @@ pipeline et la transformation sont résolus à `drawMesh`, les segments de debug
 dessine les casters, puis appelle `builder.addSceneInput(atlas)` : la passe d'ombre s'exécute avant `scene`, n'est jamais écartée, et
 la texture (`ctx.texture(atlas)`) est liée au groupe 1 des matériaux qui la lisent. Ni le renderer ni les backends ne changent.
 
-**Ajouter un post-traitement ou un effet HDR (REN-17 à 19, REN-21).** Un plugin qui lit `resources().sceneColor` avec `read` (et
+**Ajouter un post-traitement ou un effet HDR (REN-17 à 19, REN-21 ; exemples réels : section « HDR et post-traitements »).** Un plugin qui lit `resources().sceneColor` avec `read` (et
 `sceneDepth`, `motionVectors` au besoin), écrit une texture transitoire, puis une passe qui la réécrit dans `sceneColor` (`write`) :
 elle s'exécute après `scene` et avant `upscale`, `frame-generation` et `history`, qui lisent la scène avec `readFinal` bien qu'elles
 soient déclarées avant les plugins. Pour écrire **après** la mise à l'échelle (interface, superpositions), une passe qui écrit
@@ -123,6 +123,51 @@ Démo : `--debug-view none|normals|albedo|overdraw|lod|wireframe|motion` (défau
 Partiel : les modes dépendant des cascades d'ombre et des clusters forward+ (autres agents) ne sont pas là. Limites : les objets du `InstanceRenderer`
 (programme propre) n'écrivent pas encore d'AOV et ignorent `albedo`/`overdraw`/`normals` (seul `lod` les concerne) ; la profondeur linéaire et la rugosité/métal/émission sont celles du matériau par défaut (pas de PBR avant REN-09).
 
+### HDR et post-traitements (M5 : REN-17, REN-18)
+
+Chaque effet est un **plugin du graphe** (`RenderFeature`), activable à l'exécution (`setEnabled` ; désactivé, il ne déclare aucune
+passe). Chaque passe déclare ses entrées (`read`) et sa sortie (`writeColor` / `write`) ; l'ordre entre effets est leur ordre
+d'enregistrement. Tout s'exécute à la résolution de rendu, entre `scene` et `upscale`.
+
+| En-tête | Rôle |
+| --- | --- |
+| `tonemap.hpp` | références CPU (mêmes formules que `shaders/rhi/post/post_common.glsl`, comparées par les tests) : `Tonemapper` (`kClamp`, `kAces` ajustement de Hill, `kAgx` approximation de Wrensch, `kReinhardExtended` sur la luminance), `tonemap`, `linearToSrgb` / `srgbToLinear`, `histogramBin` (256 cases log2, case 0 = trop sombre), `histogramAverageLuminance`, `targetExposure`, `adaptationFactor`, `vignetteFactor`, `ColorLut` / `identityLut` / `sampleLut` / `parseCubeLut` (.cube) |
+| `post_effects.hpp` | `PostContext` (shaders, copie plein écran, échantillonneurs partagés), `PostEffect` (base), les cinq effets, `PostEffects` et `addPostEffects` |
+
+| Effet (nom du plugin) | Passes | Entrées → sorties |
+| --- | --- | --- |
+| `AutoExposureFeature` (`post.auto-exposure`, exige `Capabilities::compute`) | `post.auto-exposure` (générique : 3 dispatchs, remise à zéro, histogramme par tuiles 16×16 en mémoire partagée, moyenne géométrique + exposition visée `key / moyenne` bornée + adaptation `1 - exp(-dt × vitesse)`) | scène → tampons importés `post.histogram` (256 uint) et `post.exposure` (vec4 : exposition, moyenne, visée, valide), persistants (adaptation) ; `readHistogram` / `readExposure` / `resetAdaptation` |
+| `BloomFeature` (`post.bloom`) | `post.bloom.down<i>` (13 échantillons ; seuil doux et borne anti-lucioles au premier), `post.bloom.up<i>` (tente 3×3, additif), `post.bloom.composite` (additif sur la scène, alpha intact) | scène → transitoires `post.bloom.<i>` (RGBA16F, 1/2 à 1/2^n) → scène |
+| `TonemapFeature` (`post.tonemap`) | `post.tonemap`, `post.tonemap.copy` | scène (+ `post.exposure` s'il est dans le graphe) → transitoire `post.tonemap.out` → scène. Exposition = `FrameData::exposure.x` (`FrameEnvironment::exposure`) × 2^`exposureEv` × exposition automatique ; opérateur ; sRGB en sortie (`encodeSrgb`) |
+| `ColorGradingFeature` (`post.color-grading`) | `post.color-grading`, `post.color-grading.copy` | scène + LUT 3D (RGBA16F, trilinéaire aux centres des texels, identité 16³ au départ, `setLut`, `setStrength`) → `post.color-grading.out` → scène |
+| `VignetteFeature` (`post.vignette`) | `post.vignette` (mélange multiplicatif, alpha intact) | scène (`writeColor` en `kLoad`) |
+
+**Cible HDR.** `SceneRenderer::setSceneColorFormat(kRGBA16Float)` (ou kRGBA32Float) ; défaut kRGBA8Unorm. `PostEffects::sync(renderer)`
+choisit RGBA16F seulement si un effet HDR est actif (exposition automatique, bloom, tonemapping ; la LUT et le vignettage marchent en
+LDR) : sans effet, la scène, le graphe et l'image restent ceux d'avant (vérifié au pixel près sur la démo). La capture de la scène
+(`saveColorPng`) lit aussi RGBA16F (valeurs bornées à [0, 1]).
+
+```cpp
+auto fx = addPostEffects(renderer, device, library, pipelines, shaderDir); // cinq effets enregistrés, désactivés
+fx->tonemap->setEnabled(true);                                             // ACES par défaut, sRGB en sortie
+fx->tonemap->settings().tonemapper = Tonemapper::kAgx;
+fx->bloom->setEnabled(true);
+fx->sync(renderer);                                                        // scène RGBA16F au prochain beginFrame
+```
+
+Avec les plugins de la scène (transparents `TransparentFeature`, 2D monde `Layer2DFeature` en `kWorld`), enregistrer les effets
+**après** eux (ils lisent la scène que ces plugins complètent) et **avant** les superpositions qui écrivent `output` (interface, 2D
+`kOverlay`) : c'est l'ordre de docs/03 §11 (3D opaque → transparents → 2D monde → post-traitement → 2D en superposition).
+
+Démo : `apps/demo/bin/debug/main --post none|hdr|bloom|full` (défaut `none`) ; `hdr` = tonemapping ACES, `bloom` = + bloom, `full`
+= + exposition automatique, LUT chaude calculée, vignettage. Captures de référence : `docs/BASELINE/reference/scene-opengl-post-*.png`.
+Tests : `tests/renderer/post_effects_tests.cpp` (suites `post/math` sans GPU et `renderer/post` sur chaque backend).
+
+Limites : les couleurs des matériaux de la démo ne sont pas linéarisées (sRGB traités comme linéaires) : l'image HDR est donc plus
+claire que l'image LDR ; chaque effet qui relit la scène y recopie sa sortie (une copie plein écran par effet, pas de ping-pong) ;
+l'exposition automatique mesure toute l'image (pas de pondération centrale) ; pas de LUT d'étalonnage HDR (log) ni de sortie HDR
+(écran PQ/scRGB) ; pas d'anticrénelage (REN-19) ici. Les AOV (REN-21) restent corrects avec la scène RGBA16F : seul l'attachement 0 change de format ; la pré-passe forward+ n'écrit aucun AOV.
+
 ### Dessin 2D (B5)
 
 | En-tête | Rôle |
@@ -148,7 +193,7 @@ la taille de la cible (échelle d'interface, HiDPI). (La parité avec `ui.png` d
 | `renderer2d.hpp` | `Renderer2D` : `material(texture)`, `begin(camera)`, `draw(Sprite)`, `line` / `polyline` / `rect` / `rectOutline` / `circle` / `circleOutline` / `polygon` (découpage en oreilles, concave accepté), `render(encoder, cible, ...)`. Tri par `z` croissant, puis type, puis matériau : **un appel de dessin par (z, type, matériau)** ; sprites instanciés (un quad par instance), formes en triangles colorés. Pixel parfait : filtrage au plus proche et sprites non tournés alignés sur les pixels |
 | `shaders/rhi/sprite2d.*`, `shape2d.*` | GLSL 450 des sprites et des formes |
 
-Texte : il passe par le chemin existant (`ui::TextRenderer` -> `DrawList` -> `CanvasRenderer::render` sur la même cible, après `Renderer2D::render`). Limites : à `z` égal les matériaux peuvent s'intercaler (donner des `z` différents pour un ordre précis) ; atlas = une texture par matériau (pas de tableau de textures) ; contours de formes sans anticrénelage ; les modes de mélange 2D/3D (R2D-05) et plusieurs vues (R2D-06) ne sont pas faits.
+Texte : il passe par le chemin existant (`ui::TextRenderer` -> `DrawList` -> `CanvasRenderer::render` sur la même cible, après `Renderer2D::render`). Limites : à `z` égal les matériaux peuvent s'intercaler (donner des `z` différents pour un ordre précis) ; atlas = une texture par matériau (pas de tableau de textures) ; contours de formes sans anticrénelage ; le mélange 2D/3D (R2D-05) et plusieurs vues (R2D-06) sont décrits plus bas.
 
 La scène est **toujours** dessinée dans sa propre cible, puis copiée vers la destination (1:1 sans échelle) : l'ancien « rendu direct à
 l'écran » n'existe plus, ce qui supprime la profondeur du framebuffer par défaut. Parité vérifiée en M2 par `parity_tests.cpp` (supprimé avec l'ancien terrain) ; la capture de la démo est comparée à `docs/BASELINE/reference/` par la CI.
@@ -179,6 +224,54 @@ imposteurs : n'importe quel maillage (un quad) peut servir de dernier niveau, ma
 vers la caméra) ; un fondu croisé qui chevauche la bande de rejet n'est pas combiné (seul le dernier niveau s'efface) ; le tramage
 désactive l'early-Z des fragments concernés ; culling CPU seulement (le culling GPU et l'occlusion Hi-Z sont REN-29).
 
+### Éclairage forward+ clusterisé et types de lumières (M5 : REN-04, REN-05)
+
+| En-tête / fichier | Rôle |
+| --- | --- |
+| `forward_plus.hpp` | `ForwardPlusLighting` (plugin `RenderFeature` « forward-plus ») : passe compute `forwardplus.clusters` ; `ForwardPlusSettings` (grille 16×9×24 par défaut, budgets `maxLightsPerCluster` = 128 et `maxLights`, tranches exponentielles `nearDepth`/`farDepth`) ; `enableForwardPlus` / `disableForwardPlus` (plugin + pré-passe) ; `forwardPlusDefines` (variante de `mesh.frag`) ; références CPU `lightRange`, `lightAttenuation`, `clusterSlice` ; `GpuClusterHeader` (std430, `static_assert`) ; debug `readClusterLightCounts`, `readClusterLights`, `readClusterStats` / `summarizeClusterCounts` |
+| `shaders/include/orosmo/lights.glsl` | REN-05 : portée (`lightRange` : là où l'intensité atténuée tombe à 1/256), atténuation `1 / (a d² + b d + 1)` fenêtrée par `(1 - (d / portée)⁴)²` (nulle au-delà), cône de projecteur (`spotCone`, cosinus `outerCone` / `innerCone`), `localLightRadiance` (diffus + spéculaire Phong) |
+| `shaders/rhi/light_block.glsl` | bloc `LightBlock` (groupe 0, binding 1), même disposition que `GpuLightHeader` + `GpuLight` |
+| `shaders/rhi/clusters.glsl` | bloc `ClusterGrid` (binding 3 : en-tête + nombre de lumières par cluster) et `ClusterLights` (binding 4 : indices) ; `clusterIndexAt`, `clusterLightCount`, `clusterLight`, `clusterHeatColor` |
+| `shaders/rhi/light_clusters.comp` | un fil par cluster : boîte englobante en espace de vue (perspective ou orthographique), test sphère/boîte avec la portée de chaque lumière, dans l'ordre du tampon ; ambiantes et directionnelles dans tous les clusters |
+
+**Types de lumières (REN-05).** Ambiante (en-tête et type 1), directionnelle (type 2, `direction` vers la lumière), ponctuelle
+(type 3) et projecteur (type 4, `direction` = sens du faisceau, spéculaire en puissance 64 comme l'ancien shader) sont rendus par
+`mesh.frag` (forward et forward+, aussi par la variante instanciée). Les ponctuelles et projecteurs étaient « réservés, non rendus »
+avant M5 ; l'ancien shader (commenté) n'atténuait pas le spéculaire, qui l'est maintenant (sinon la portée serait infinie). Les
+positions sont en coordonnées monde ; en rendu relatif à la caméra, les shaders les ramènent à l'origine de la caméra
+(`FrameData::cameraWorldHigh/Low - cameraRelativeOrigin`). Dispositions std430 vérifiées par `static_assert` (`GpuLight`,
+`GpuLightHeader`, `GpuClusterHeader`) et lues par le GPU dans un test. Lumières de surface (P2) : absentes.
+
+**Image en forward+ (REN-04).** `enableForwardPlus(renderer, device, shaders, pipelines, dossier)` active la pré-passe de profondeur
+de `SceneRenderer` et enregistre le plugin ; les maillages prennent la variante `forwardPlusDefines()` de `mesh.frag`. Ordre
+(docs/03) : `depth-prepass` (raster : mêmes attachements que la scène, couleur masquée, profondeur écrite ; dessins de `drawMesh`
+seulement, sans fil de fer ; premier entier des push constants à 2 : `mesh.frag` n'éclaire pas ces fragments) -> `forwardplus.clusters` (compute, groupe 0 de l'image) -> `scene` (profondeur chargée, test « plus
+grand ou égal » sans écriture : chaque pixel n'est éclairé qu'une fois). Les tampons de clusters sont liés au groupe 0 par
+`RenderGraphBuilder::addFrameBinding` (liaisons 3 et 4 ; 3 à 7 sont réservées aux plugins) et lus par la scène
+(`addSceneInput(RgBuffer)`). Le forward et le forward+ évaluent chaque lumière par la même fonction et dans le même ordre ; une
+lumière écartée d'un cluster n'apporte exactement rien (fenêtre de portée) : **même image** (test : tolérance 8, en pratique
+identique). Compute absent ou moins de 5 emplacements de tampons de stockage : `supports` faux, `enableForwardPlus` renvoie
+kUnsupported, l'application garde le forward (la démo le journalise).
+
+**Budgets.** `maxLights` : seules les N premières lumières du tampon sont examinées. `maxLightsPerCluster` : un cluster liste au plus
+N lumières (les premières dans l'ordre) ; `clusterCounts` garde le nombre réel, `readClusterStats().overflowingClusters` compte les
+débordements (et la variante de debug les peint en magenta). Au-delà d'un budget, l'image du forward+ diffère du forward.
+
+**Debug « lumières par cluster ».** Côté GPU : variante `forwardPlusDefines(true)` (`OROSMO_CLUSTER_DEBUG`) qui peint chaque fragment
+selon le nombre de lumières de son cluster (bleu foncé : aucune ; bleu -> vert -> jaune -> rouge jusqu'au budget ; magenta :
+débordement). Côté CPU (lecture synchrone) : `readClusterLightCounts()` (un nombre par cluster c = x + X (y + Y z)),
+`readClusterLights(c)`, `readClusterStats()`.
+
+Démo : `apps/demo/bin/release/main --headless --lighting forwardplus --lights 1000` (défaut `--lighting forward`, sans lumière
+ponctuelle : captures de référence inchangées) ; `--lights N` place N ponctuelles déterministes (spirale de Fibonacci, hachage entier).
+Le Profiler mesure `RenderGraph/depth-prepass`, `RenderGraph/forwardplus.clusters` et `RenderGraph/scene` (journal « Perf: »).
+
+Limites : les dessins externes (`drawCustom`, donc `InstanceRenderer`) ne sont pas dans la pré-passe et la variante instanciée lit
+toutes les lumières (même image, sans le gain du forward+) ; les clusters sont construits avec les lumières actives à `endFrame` (un
+seul `LightManager` par image en forward+) ; pas de culling des clusters vides par la profondeur de la pré-passe (tous les clusters
+sont remplis) ; test sphère/boîte conservateur pour les projecteurs (pas de test de cône) ; une case de grille est en NDC, donc sa
+taille en pixels suit la résolution.
+
 ## Règles
 
 - **Le périphérique survit aux objets** qui le référencent (pointeur non possédé) ; la destruction des handles est différée par le RHI.
@@ -197,7 +290,40 @@ désactive l'early-Z des fragments concernés ; culling CPU seulement (le cullin
   avec `shaders/include` dans `ShaderLibraryConfig::includeRoots`. Tests : `tests/renderer/shader_toolbox_tests.cpp` (compilation sur
   chaque backend, valeurs en compute GPU comparées à des références CPU).
 - `blend_mode.hpp` : `BlendMode` (8 modes), `blendModeState`, `applyBlendMode(GraphicsPipelineDesc&, mode)`. Le rendu des transparents
-  (tri, passes, réfraction) n'est pas encore là.
+  est dans `transparent_feature.hpp` (ci-dessous) ; la réfraction (REN-38) n'est pas là.
+
+## Transparents triés (REN-32, REN-37 rendu)
+
+`TransparentFeature` (`transparent_feature.hpp`) est un `RenderFeature` : sa passe `transparents` (raster, couleur et profondeur de la
+scène en `kLoad`) s'exécute après `scene`. `submit(scene, mesh, TransparentMaterial)` dépose un objet (mode, opacité, seuil, priorité de
+tri, décalage du centre) ; le pipeline vient de `blendModeState` (mélange, écriture de profondeur). Ordre fixe : (1) opaques, masqués,
+tramés (profondeur écrite, ordre de dépôt) ; (2) `Blend` / `Premultiplied` / `Transmission` triés de l'arrière vers l'avant (distance du
+centre à la caméra, priorité de matériau d'abord, égalité : ordre de dépôt) sans écriture de profondeur ; (3) `Additive` après les mélangés.
+`sortTransparents` est pure (testée sans GPU). Shader : `mesh.frag` compilé avec `OROSMO_TRANSPARENT` (push constants : fil de fer,
+opacité, seuil, mode ; `Mask`, `Dithered` par trame de Bayer 4x4, `Premultiplied` prémultiplie dans le shader). Tests :
+`tests/renderer/transparency_tests.cpp` (une image de référence CPU par mode, tri, priorité, profondeur de la scène, OpenGL et Vulkan).
+Limites : `MaskA2C` est **Partiel** (se comporte comme `Mask` : `rhi::GraphicsPipelineDesc` n'a pas de champ `alphaToCoverage` ni de MSAA ;
+proposition : ajouter `bool alphaToCoverage` et un nombre d'échantillons au RHI) ; `Transmission` se compose comme `Blend` (pas de copie de
+la scène, REN-38) ; l'opacité et le seuil sont par objet, pas par texel.
+
+## Mélange 2D/3D et plusieurs vues (R2D-05, R2D-06)
+
+Décision : `Renderer2D::render` reste (même API, plus une surcharge à `Render2DOptions` : profondeur et matrice de vue-projection), mais il
+est enveloppé dans des `RenderFeature` (`layer2d_feature.hpp`, `Layer2DFeature`, un `Renderer2D` par plugin). L'ordre fixe 3D opaque (passe
+`scene`) -> 3D transparent -> 2D monde -> post-traitement -> 2D en superposition découle de l'ordre d'enregistrement avec `addFeature` :
+
+| Mode | Passe | Détail |
+| --- | --- | --- |
+| `kWorld` | lit `scene.depth`, écrit `scene.color` | le plan 2D est placé dans le monde par `setPlaneTransform` et vu par la caméra 3D ; test de profondeur (reverse-Z, lecture seule). Dessiné après les transparents, qui n'écrivent pas la profondeur : un sprite derrière une vitre la recouvre |
+| `kOverlay` | écrit `output` | après la mise à l'échelle, en pixels de la sortie, sans profondeur |
+| `kTexture` | avant `scene` | `setTextureSize`, `binding()` à donner à `Mesh::setTextures` ; shaders `mesh_textured.vert` + `mesh.frag` avec `OROSMO_TEXTURED` |
+
+R2D-06 (`scene_view.hpp`) : `SceneView` = un `SceneRenderer` + une `Camera` + une texture de sortie (zone d'affichage) ; `render(encoder,
+options, draw)` la rend. `ViewsFeature::place(vue, ViewRect)` compose des vues dans des zones de la sortie (écran partagé, incrustation,
+passe `views`). Vue 3D dans l'interface : `CanvasRenderer::registerExternalImage(id, texture, sampler)` associe une `AtlasImage` sans pixels
+(`newAtlasId`) à une texture du GPU, affichée par `ImageView` / `DrawImage` (le chemin de texture existant de l'UI). Les vues se rendent
+avant l'`endFrame` de l'image principale. Tests : `tests/renderer/mixed_2d3d_tests.cpp`. Démo : `--scene mixed` (`apps/demo/src/Scene/mixed_scene.*`).
+Limites : le pixel parfait est sans effet avec une matrice 3D ; la copie de la sortie d'une vue vers une autre fenêtre n'est pas faite.
 
 ## Limites connues
 

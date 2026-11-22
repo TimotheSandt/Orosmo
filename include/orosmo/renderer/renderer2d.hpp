@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -51,6 +52,19 @@ struct Renderer2DStats
     std::uint32_t vertices = 0;   // sommets de formes
     std::uint32_t drawCalls = 0;  // appels de dessin émis par `render`
     std::uint64_t bufferBytes = 0;
+};
+
+// Options d'un `render` (R2D-05). Sans profondeur ni matrice : dessin 2D plein cible, comme avant.
+struct Render2DOptions
+{
+    bool loadExisting = true;        // garde le contenu de la cible ; sinon effacée avec `clearColor`
+    glm::vec4 clearColor{0, 0, 0, 0};
+    // 2D dans le monde : profondeur de la scène (reverse-Z) testée en lecture seule (`kGreaterEqual`, jamais écrite). Nulle : pas de test.
+    rhi::TextureHandle depth{};
+    rhi::Format depthFormat = rhi::Format::kD32Float;
+    // Remplace la matrice de la caméra 2D : (x, y) du plan 2D -> espace de découpe (ex. vue-projection 3D x placement du plan). Le
+    // pixel parfait est alors sans effet (l'alignement sur la grille des pixels n'a pas de sens en perspective).
+    std::optional<glm::mat4> viewProjection{};
 };
 
 class Renderer2D
@@ -92,6 +106,8 @@ class Renderer2D
     // L'encodeur ne doit avoir aucune passe ouverte. Les dépôts sont vidés à la fin, succès ou échec.
     core::Result<> render(rhi::CommandEncoder &encoder, rhi::TextureHandle target, rhi::Format format, rhi::Extent2D size, bool loadExisting = true,
                           const glm::vec4 &clearColor = {0, 0, 0, 0});
+    // Idem avec profondeur et/ou matrice 3D (R2D-05).
+    core::Result<> render(rhi::CommandEncoder &encoder, rhi::TextureHandle target, rhi::Format format, rhi::Extent2D size, const Render2DOptions &options);
 
     const Renderer2DStats &stats() const noexcept { return stats_; }
 
@@ -125,7 +141,7 @@ class Renderer2D
     void quad(const glm::vec2 &a, const glm::vec2 &b, const glm::vec2 &c, const glm::vec2 &d, const glm::vec4 &color);
     void ring(const glm::vec2 &center, float inner, float outer, const glm::vec4 &color, std::uint32_t segments);
     std::uint32_t segmentsFor(float radius, std::uint32_t requested) const;
-    core::Result<rhi::PipelineHandle> pipeline(const ShaderProgram &program, rhi::Format format, bool sprite);
+    core::Result<rhi::PipelineHandle> pipeline(const ShaderProgram &program, rhi::Format format, bool sprite, rhi::Format depthFormat = rhi::Format::kUndefined);
 
     rhi::Device &device_;
     PipelineCache &pipelines_;
