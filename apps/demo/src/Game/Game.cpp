@@ -11,6 +11,7 @@
 #include <orosmo/core/log.hpp>
 #include <orosmo/core/paths.hpp>
 #include <orosmo/renderer/draw_list.hpp>
+#include <orosmo/renderer/forward_plus.hpp>
 #include <orosmo/renderer/image.hpp>
 #include <orosmo/ui/window_input.hpp>
 
@@ -162,6 +163,67 @@ orosmo::core::Result<> Game::createGraphics()
 
 Game::~Game() { this->stop(); }
 
+orosmo::core::Result<> Game::createPostEffects()
+{
+    if (this->postMode == demo::PostMode::kNone)
+    {
+        return {}; // rien d'enregistré : graphe et image identiques à ceux d'avant les post-traitements
+    }
+    // Ordre de docs/03 §11 : 3D (scene, transparents, 2D monde de --scene mixed) -> post-traitements -> interface et présentation.
+    // Les effets sont enregistrés après les plugins de la scène, et l'interface est réenregistrée après eux.
+    this->sceneRenderer->removeFeature("demo.overlay");
+    this->overlay = nullptr;
+    auto added = rd::addPostEffects(*this->sceneRenderer, *this->device, *this->shaders, *this->pipelines, kShaderDirectory);
+    if (!added)
+    {
+        return orosmo::core::makeError(added.error().code, "Failed to create the post-processing effects: " + added.error().message);
+    }
+    this->post = *added;
+    auto overlayAgain = this->sceneRenderer->addFeature(std::make_unique<OverlayFeature>(*this));
+    if (!overlayAgain)
+    {
+        return orosmo::core::makeError(overlayAgain.error().code, "Failed to register the overlay pass: " + overlayAgain.error().message);
+    }
+    this->overlay = static_cast<OverlayFeature *>(*overlayAgain);
+    // Les couleurs de la démo sont écrites en sRGB et lues comme linéaires (pas de linéarisation des matériaux) : l'image HDR,
+    // encodée en sRGB en sortie, est plus claire que l'image LDR. Exposition neutre.
+    this->post.tonemap->setEnabled(true);
+    this->post.tonemap->settings().tonemapper = rd::Tonemapper::kAces;
+    this->post.tonemap->settings().exposureEv = 0.0f;
+    if (this->postMode == demo::PostMode::kBloom || this->postMode == demo::PostMode::kFull)
+    {
+        this->post.bloom->setEnabled(true);
+        this->post.bloom->settings().threshold = 0.8f;
+        this->post.bloom->settings().intensity = 0.15f;
+    }
+    if (this->postMode == demo::PostMode::kFull)
+    {
+        if (this->post.autoExposure != nullptr)
+        {
+            this->post.autoExposure->setEnabled(true);
+            this->post.autoExposure->settings().key = 0.18f;
+        }
+        // Étalonnage chaud et un peu plus contrasté, calculé (aucun fichier) : rouge relevé, bleu baissé, courbe en S douce.
+        rd::ColorLut lut = rd::identityLut(17);
+        for (glm::vec3 &c : lut.values)
+        {
+            const glm::vec3 s = c * c * (3.0f - 2.0f * c);
+            const glm::vec3 contrast = glm::mix(c, s, 0.35f);
+            c = glm::clamp(contrast * glm::vec3(1.06f, 1.0f, 0.9f) + glm::vec3(0.015f, 0.005f, 0.0f), 0.0f, 1.0f);
+        }
+        if (auto r = this->post.colorGrading->setLut(lut); !r)
+        {
+            return r;
+        }
+        this->post.colorGrading->setEnabled(true);
+        this->post.vignette->setEnabled(true);
+    }
+    LOG_INFO("Post-processing: HDR scene, ", rd::toString(this->post.tonemap->settings().tonemapper), " tonemapping",
+             this->post.bloom->enabled() ? ", bloom" : "", this->post.autoExposure != nullptr && this->post.autoExposure->enabled() ? ", auto exposure" : "",
+             this->post.colorGrading->enabled() ? ", LUT, vignette" : "");
+    return this->post.sync(*this->sceneRenderer);
+}
+
 orosmo::core::Result<> Game::init()
 {
     this->refreshViewSize();
@@ -172,6 +234,22 @@ orosmo::core::Result<> Game::init()
     this->camera.setFarPlane(1000.0f);
     this->camera.setAspect(static_cast<unsigned>(this->viewWidth), static_cast<unsigned>(this->viewHeight));
 
+    // REN-04 : forward+ (pré-passe de profondeur + clusters en compute) si demandé et possible ; sinon forward (règle 11).
+    bool forwardPlus = false;
+    if (this->lightingMode == demo::LightingMode::kForwardPlus)
+    {
+        auto enabled = rd::enableForwardPlus(*this->sceneRenderer, *this->device, *this->shaders, *this->pipelines, kShaderDirectory);
+        if (enabled)
+        {
+            forwardPlus = true;
+            LOG_INFO("Lighting: clustered forward+ (", (*enabled)->settings().gridX, "x", (*enabled)->settings().gridY, "x",
+                     (*enabled)->settings().gridZ, " clusters, ", (*enabled)->settings().maxLightsPerCluster, " lights per cluster)");
+        }
+        else
+        {
+            LOG_WARNING("Lighting: forward+ unavailable, using forward: ", enabled.error().message);
+        }
+    }
     this->scene = std::make_unique<demo::DemoScene>();
     if (this->shadowsEnabled)
     {
@@ -187,7 +265,7 @@ orosmo::core::Result<> Game::init()
         }
         this->scene->setShadows(static_cast<rd::ShadowFeature *>(*added));
     }
-    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory); !ready)
+    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory, forwardPlus, this->pointLightCount); !ready)
     {
         return orosmo::core::makeError(ready.error().code, "Failed to initialize the demo scene: " + ready.error().message);
     }
@@ -196,6 +274,27 @@ orosmo::core::Result<> Game::init()
         return orosmo::core::makeError(ready.error().code, "Failed to create the instanced objects: " + ready.error().message);
     }
 
+    if (this->mixedScene)
+    {
+        // Les plugins du mélange passent AVANT l'interface et la présentation : on réenregistre ces dernières après eux.
+        this->sceneRenderer->removeFeature("demo.overlay");
+        this->mixed = std::make_unique<demo::MixedScene>();
+        if (auto ready = this->mixed->init(*this->device, *this->shaders, *this->pipelines, *this->sceneRenderer, kShaderDirectory); !ready)
+        {
+            return orosmo::core::makeError(ready.error().code, "Failed to initialize the mixed scene: " + ready.error().message);
+        }
+        auto overlayAgain = this->sceneRenderer->addFeature(std::make_unique<OverlayFeature>(*this));
+        if (!overlayAgain)
+        {
+            return orosmo::core::makeError(overlayAgain.error().code, "Failed to register the overlay pass: " + overlayAgain.error().message);
+        }
+        this->overlay = static_cast<OverlayFeature *>(*overlayAgain);
+    }
+
+    if (auto created = this->createPostEffects(); !created)
+    {
+        return created;
+    }
     if (auto created = this->createUi(); !created)
     {
         return created;
@@ -219,6 +318,11 @@ void Game::stop()
     }
     Profiler::SetGpuTimerFactory(nullptr);
     Profiler::ClearGpuQueries(); // les minuteurs en attente référencent le périphérique
+    if (this->mixed)
+    {
+        this->mixed->destroy();
+        this->mixed.reset();
+    }
     if (this->scene)
     {
         this->scene->destroy();
@@ -732,6 +836,10 @@ void Game::render()
     keep(this->sceneRenderer->beginFrame(encoder, {.clearColor = {clear.r, clear.g, clear.b, clear.a}}), "beginFrame");
     keep(this->sceneRenderer->setCamera(this->camera), "setCamera");
     Profiler::Profile("RecordScene", [&]() { keep(this->scene->render(*this->sceneRenderer, this->camera, this->uiState.scene), "scene"); });
+    if (this->mixed)
+    {
+        keep(this->mixed->render(*this->sceneRenderer, this->camera, static_cast<float>(this->renderedFrames) / 60.0f), "mixed scene");
+    }
     keep(this->sceneRenderer->endFrame({this->composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame");
 
     // Graphe interrompu (scène refusée) : l'interface et la présentation sont encodées quand même, comme avant le graphe.

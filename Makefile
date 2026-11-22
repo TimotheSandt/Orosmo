@@ -210,6 +210,14 @@ demo-capture: all-debug
 	./$(DEMO_BIN) --api opengl --headless --ui full --theme dark --tab windows --click openDialog --capture build/demo-capture/dark-dialog --capture-frames 5
 	./$(DEMO_BIN) --api opengl --headless --ui full --theme dark --tab windows --click menuFile --capture build/demo-capture/dark-menu --capture-frames 5
 	./$(DEMO_BIN) --api opengl --headless --ui full --theme light --tab windows --click notifyWarning --capture build/demo-capture/light-notification --capture-frames 5
+	@# REN-17/18 : post-traitements (--post hdr|bloom|full) comparés à leurs références (tolérance de llvmpipe contre un GPU).
+	for post in hdr bloom full; do \
+	    ./$(DEMO_BIN) --api opengl --headless --ui off --post $$post --capture build/demo-capture/post-$$post --capture-frames 5 || exit 1; \
+	    python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-post-$$post-1280x720.png build/demo-capture/post-$$post/scene.png \
+	        --tolerance 8 --max-diff-percent 2 || exit 1; done
+	./$(DEMO_BIN) --api opengl --headless --ui off --scene mixed --post full --capture build/demo-capture/mixed-post-full --capture-frames 5
+	python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-mixed-post-full-1280x720.png build/demo-capture/mixed-post-full/scene.png \
+	    --tolerance 8 --max-diff-percent 2
 	test -s build/demo-capture/dark-widgets/ui.png
 	test -s build/demo-capture/light-widgets/ui.png
 	@# compare_png.py : code 0 = identiques (erreur ici) ; 1 + ligne DIFFERENT = images différentes (attendu) ; autre = erreur d'exécution.

@@ -43,6 +43,7 @@ core::Result<std::unique_ptr<ShadowFeature>> ShadowFeature::create(rhi::Device &
                                                                    const std::filesystem::path &shaderDirectory, const ShadowSettings &settings)
 {
     std::unique_ptr<ShadowFeature> f(new ShadowFeature(device, library, pipelines));
+    f->shaderDirectory_ = shaderDirectory;
     const auto load = [&](std::shared_ptr<ShaderProgram> &out, const char *vert, const char *frag, const std::vector<Define> &defines) -> core::Result<>
     {
         auto program = library.loadGraphics(shaderDirectory / vert, shaderDirectory / frag, defines);
@@ -206,6 +207,17 @@ void ShadowFeature::appendReceiverBindings(rhi::BindGroupDesc &desc) const
 {
     desc.entries.push_back({.binding = kShadowAtlasBinding, .type = rhi::BindingType::kSampledTexture, .texture = atlas_, .sampler = compareSampler_});
     desc.entries.push_back({.binding = kShadowDataBinding, .type = rhi::BindingType::kUniformBuffer, .buffer = dataBuffer_.handle(), .size = sizeof(ShadowGpuData)});
+}
+
+core::Result<std::shared_ptr<ShaderProgram>> ShadowFeature::receiverProgramWith(const std::vector<Define> &extraDefines, bool instanced) const
+{
+    std::vector<Define> defines = extraDefines;
+    defines.emplace_back("OROSMO_SHADOWS", "1");
+    if (instanced)
+    {
+        defines.emplace_back("OROSMO_INSTANCED", "1");
+    }
+    return library_.loadGraphics(shaderDirectory_ / (instanced ? "mesh_instanced.vert" : "mesh.vert"), shaderDirectory_ / "mesh.frag", defines);
 }
 
 void ShadowFeature::setLightParams(std::size_t lightIndex, const LightShadowParams &params) { params_[lightIndex] = params; }

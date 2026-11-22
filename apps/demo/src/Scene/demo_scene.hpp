@@ -63,8 +63,13 @@ class DemoScene
     static glm::vec3 defaultCameraPosition();
     static glm::vec3 defaultCameraOrientation();
 
+    // `forwardPlus` (REN-04) : variante forward+ de mesh.frag (le plugin ForwardPlusLighting doit être installé sur le renderer) ;
+    // `pointLights` (--lights N) : N lumières ponctuelles déterministes au-dessus de la cour, en plus du soleil.
     orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
-                                const std::filesystem::path &shaderDirectory);
+                                const std::filesystem::path &shaderDirectory, bool forwardPlus = false, std::uint32_t pointLights = 0);
+    // Lumières ponctuelles de --lights N : spirale de Fibonacci (rayon 12 m), hauteurs et couleurs tirées d'un hachage entier de
+    // l'indice (aucun hasard, aucune horloge) ; intensité réduite quand N grandit (environ une douzaine de lumières par point du sol).
+    static std::vector<orosmo::renderer::Light> pointLightField(std::uint32_t count);
     // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (après init). 0 : rien n'est créé.
     orosmo::core::Result<> initInstances(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
                                          orosmo::renderer::PipelineCache &pipelines, const std::filesystem::path &shaderDirectory,

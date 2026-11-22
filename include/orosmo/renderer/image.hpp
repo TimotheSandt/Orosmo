@@ -20,7 +20,7 @@ struct Image
     bool empty() const noexcept { return width == 0 || height == 0 || rgba.size() != static_cast<std::size_t>(width) * height * 4; }
 };
 
-// Lit toute la texture (RGBA8Unorm, RGBA8Srgb ou BGRA8Unorm). Repère du RHI (A26) : la première ligne est le haut, comme dans
+// Lit toute la texture (RGBA8Unorm, RGBA8Srgb, BGRA8Unorm, ou RGBA16Float : valeurs bornées à [0, 1] et arrondies au 1/255). Repère du RHI (A26) : la première ligne est le haut, comme dans
 // l'image produite (aucun retournement).
 core::Result<Image> readImage(rhi::Device &device, rhi::TextureHandle texture);
 

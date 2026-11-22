@@ -181,6 +181,19 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --shadows value is refused");
     }
 
+    TEST_CASE("launch options parse --post; none by default (REN-17/18)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(demo::parseLaunchOptions(1, none)->post == demo::PostMode::kNone, "No post-processing by default");
+        const char *full[] = {"Orosmo", "--post", "FULL", "--scene", "mixed"};
+        const auto parsed = demo::parseLaunchOptions(5, full);
+        Assert(parsed.has_value() && parsed->post == demo::PostMode::kFull && parsed->mixedScene, "--post full combines with --scene mixed");
+        const char *bad[] = {"Orosmo", "--post", "filmic"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "unknown post mode is refused");
+        const char *missing[] = {"Orosmo", "--post"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--post needs a value");
+    }
+
     TEST_CASE("launch options parse --instances; none by default (REN-28)")
     {
         const char *none[] = {"Orosmo"};
@@ -191,6 +204,38 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(3, bad).has_value(), "A non-numeric --instances is refused");
         const char *missing[] = {"Orosmo", "--instances"};
         Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--instances without a value is refused");
+    }
+
+    TEST_CASE("launch options parse --lighting and --lights; forward without extra lights by default (REN-04)")
+    {
+        const char *none[] = {"Orosmo"};
+        const demo::LaunchOptions defaults = *demo::parseLaunchOptions(1, none);
+        Assert(defaults.lighting == demo::LightingMode::kForward, "Forward lighting by default");
+        AssertEqual(defaults.pointLights, 0u, "No point lights by default");
+        const char *argv[] = {"Orosmo", "--lighting", "ForwardPlus", "--lights", "1000"};
+        const demo::LaunchOptions options = *demo::parseLaunchOptions(5, argv);
+        Assert(options.lighting == demo::LightingMode::kForwardPlus, "--lighting forwardplus should be parsed");
+        AssertEqual(options.pointLights, 1000u, "--lights should be parsed");
+        const char *plus[] = {"Orosmo", "--lighting=forward+"};
+        Assert(demo::parseLaunchOptions(2, plus)->lighting == demo::LightingMode::kForwardPlus, "forward+ is an alias");
+        const char *bad[] = {"Orosmo", "--lighting", "deferred"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown lighting mode is refused");
+        const char *badCount[] = {"Orosmo", "--lights", "lots"};
+        Assert(!demo::parseLaunchOptions(3, badCount).has_value(), "A non-numeric --lights is refused");
+        const char *missing[] = {"Orosmo", "--lights"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--lights without a value is refused");
+    }
+
+    TEST_CASE("launch options parse --scene; the default scene is unchanged (R2D-05)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(!demo::parseLaunchOptions(1, none)->mixedScene, "The default scene is not the mixed one");
+        const char *mixed[] = {"Orosmo", "--scene", "mixed"};
+        Assert(demo::parseLaunchOptions(3, mixed)->mixedScene, "--scene mixed is parsed");
+        const char *plain[] = {"Orosmo", "--scene", "default"};
+        Assert(!demo::parseLaunchOptions(3, plain)->mixedScene, "--scene default is parsed");
+        const char *bad[] = {"Orosmo", "--scene", "other"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --scene is refused");
     }
 
     TEST_CASE("launch options default to no capture")

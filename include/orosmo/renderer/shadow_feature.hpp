@@ -156,6 +156,8 @@ class ShadowFeature : public RenderFeature
     // Programmes récepteurs : mesh.vert + mesh.frag (ou mesh_instanced.vert + mesh.frag instancié) avec OROSMO_SHADOWS.
     const std::shared_ptr<ShaderProgram> &receiverProgram() const noexcept { return receiverProgram_; }
     const std::shared_ptr<ShaderProgram> &instancedReceiverProgram() const noexcept { return instancedReceiverProgram_; }
+    // Variante réceptrice avec des définitions en plus (ex. forwardPlusDefines() : forward+ et ombres ensemble).
+    core::Result<std::shared_ptr<ShaderProgram>> receiverProgramWith(const std::vector<Define> &extraDefines, bool instanced = false) const;
 
     const ShadowStats &stats() const noexcept { return stats_; }
     ShadowStatus lightStatus(std::size_t lightIndex) const noexcept;
@@ -257,6 +259,7 @@ class ShadowFeature : public RenderFeature
     rhi::Device &device_;
     ShaderLibrary &library_;
     PipelineCache &pipelines_;
+    std::filesystem::path shaderDirectory_;
     ShadowSettings settings_;
     const LightManager *lights_ = nullptr;
     std::map<std::size_t, LightShadowParams> params_;

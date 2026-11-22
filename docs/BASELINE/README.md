@@ -131,3 +131,13 @@ make demo-vulkan-check            # 5 cas (off, hud, dark/light widgets, dark sc
 `700fccec7aca1bdb10991e64d39553a3bb9396e19e6c8d5286b3c1820b1d6aac`. Vulkan donne la même image (écart max 1/255, 0 pixel au-delà de la
 tolérance 8) avec 0 message de validation. Sans `--shadows` (défaut), la capture de la scène est identique au pixel près à celle d'avant
 les ombres. La CI ne compare pas encore cette image (`.github/` à mettre à jour par l'auteur).
+
+## Mise à jour du 2026-11-21 : post-traitements (REN-17, REN-18)
+
+`reference/scene-opengl-post-{hdr,bloom,full}-1280x720.png` : `apps/demo/bin/debug/main --api opengl --headless --ui off --post <mode>
+--capture <dir> --capture-frames 5`, Intel Arc (Mesa 26.1.6). Vérifiées par `make demo-capture` (tolérance 8, 2 %). Vulkan donne la
+même image (écart max 1/255) et `make demo-vulkan-check` couvre `--post full`. Sans `--post` (défaut `none`), `scene.png` et `ui.png`
+sont identiques au pixel près à celles d'avant les post-traitements, sur OpenGL et Vulkan.
+
+`reference/scene-opengl-mixed-post-full-1280x720.png` : même commande avec `--scene mixed --post full` (transparents et 2D du monde
+passés par toute la chaîne de post-traitement), vérifiée par `make demo-capture`.

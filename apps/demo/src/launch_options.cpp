@@ -8,6 +8,7 @@
 #include <charconv>
 #include <istream>
 #include <ostream>
+#include <utility>
 
 namespace demo
 {
@@ -101,6 +102,21 @@ std::optional<Backend> parseBackend(std::string_view value) noexcept
     return std::nullopt;
 }
 
+std::optional<LightingMode> parseLightingMode(std::string_view value) noexcept
+{
+    std::string lower(value);
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (lower == "forward")
+    {
+        return LightingMode::kForward;
+    }
+    if (lower == "forwardplus" || lower == "forward+")
+    {
+        return LightingMode::kForwardPlus;
+    }
+    return std::nullopt;
+}
+
 std::optional<UiMode> parseUiMode(std::string_view value) noexcept
 {
     if (equalsIgnoreCase(value, "off"))
@@ -114,6 +130,19 @@ std::optional<UiMode> parseUiMode(std::string_view value) noexcept
     if (equalsIgnoreCase(value, "full"))
     {
         return UiMode::kFull;
+    }
+    return std::nullopt;
+}
+
+std::optional<PostMode> parsePostMode(std::string_view value) noexcept
+{
+    constexpr std::pair<const char *, PostMode> kModes[] = {{"none", PostMode::kNone}, {"hdr", PostMode::kHdr}, {"bloom", PostMode::kBloom}, {"full", PostMode::kFull}};
+    for (const auto &[name, mode] : kModes)
+    {
+        if (equalsIgnoreCase(value, name))
+        {
+            return mode;
+        }
     }
     return std::nullopt;
 }
@@ -200,6 +229,19 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
                 return makeError(ErrorCode::kInvalidArgument, "Unknown UI mode (expected off|hud|full): " + *value);
             }
             options.uiMode = *uiMode;
+        }
+        else if (matchOption("--post", value))
+        {
+            if (!value)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after --post");
+            }
+            const auto post = parsePostMode(*value);
+            if (!post)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Unknown post-processing mode (expected none|hdr|bloom|full): " + *value);
+            }
+            options.post = *post;
         }
         else if (matchOption("--theme", value))
         {
@@ -289,6 +331,32 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.shadows = *value == "on";
         }
+        else if (matchOption("--lighting", value))
+        {
+            const auto mode = value ? parseLightingMode(*value) : std::nullopt;
+            if (!mode)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --lighting (forward or forwardplus): " + value.value_or(""));
+            }
+            options.lighting = *mode;
+        }
+        else if (matchOption("--lights", value))
+        {
+            const auto count = value ? parseUnsigned(*value, 100000U) : std::nullopt;
+            if (!count)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --lights (0 to 100000): " + value.value_or(""));
+            }
+            options.pointLights = *count;
+        }
+        else if (matchOption("--scene", value))
+        {
+            if (!value || (*value != "default" && *value != "mixed"))
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --scene (default or mixed): " + (value ? *value : std::string()));
+            }
+            options.mixedScene = *value == "mixed";
+        }
         else if (matchOption("--capture-frames", value))
         {
             if (!value)
@@ -325,7 +393,9 @@ void printUsage(std::ostream &out)
 {
     out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
         << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
-        << "              [--instances N] [--shadows off|on] [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
+        << "              [--instances N] [--shadows off|on] [--scene default|mixed] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
+        << "              [--headless] [--vsync]\n"
+        << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
     out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
@@ -338,6 +408,10 @@ void printUsage(std::ostream &out)
     out << "          calls and culling statistics are logged.\n";
     out << "Shadows  : --shadows on draws cascaded sun shadows with a cache (redrawn only where something moves); the shadow\n";
     out << "          update statistics are logged. Off by default.\n";
+    out << "Post:     --post hdr renders the scene in HDR with ACES tonemapping; bloom adds bloom; full adds auto exposure,\n";
+    out << "          a color grading LUT and a vignette. none (default) keeps the LDR scene unchanged.\n";
+    out << "Lighting: --lighting forwardplus uses clustered forward+ lighting (depth pre-pass, clusters filled by a compute pass;\n";
+    out << "          falls back to forward without compute shaders). --lights N adds N deterministic point lights.\n";
 }
 
 bool promptForBackend(std::istream &input, std::ostream &output, Backend &selected)
