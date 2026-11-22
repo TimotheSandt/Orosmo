@@ -3,7 +3,11 @@
 #include <stb_image.h>
 #include <stb_image_write.h>
 
+#include <glm/gtc/packing.hpp>
+
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -22,10 +26,11 @@ core::Result<Image> readImage(rhi::Device &device, rhi::TextureHandle texture)
         return std::unexpected(desc.error());
     }
     const bool bgra = desc->format == rhi::Format::kBGRA8Unorm;
+    const bool half = desc->format == rhi::Format::kRGBA16Float; // scène HDR (REN-17) : valeurs bornées à [0, 1] puis arrondies
     if (desc->dimension != rhi::TextureDimension::k2D ||
-        (desc->format != rhi::Format::kRGBA8Unorm && desc->format != rhi::Format::kRGBA8Srgb && !bgra))
+        (desc->format != rhi::Format::kRGBA8Unorm && desc->format != rhi::Format::kRGBA8Srgb && !bgra && !half))
     {
-        return makeError(ErrorCode::kUnsupported, std::string("readImage: only 2D RGBA8/BGRA8 textures can be read as an image, got ") +
+        return makeError(ErrorCode::kUnsupported, std::string("readImage: only 2D RGBA8/BGRA8/RGBA16F textures can be read as an image, got ") +
                                                       rhi::toString(desc->format));
     }
     auto raw = device.readTexture(texture);
@@ -38,6 +43,19 @@ core::Result<Image> readImage(rhi::Device &device, rhi::TextureHandle texture)
     image.height = desc->size.height;
     const std::size_t rowBytes = static_cast<std::size_t>(image.width) * 4;
     image.rgba.resize(rowBytes * image.height);
+    if (half)
+    {
+        const std::size_t count = rowBytes * image.height;
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            std::uint16_t bits = 0;
+            std::memcpy(&bits, raw->data() + i * 2, sizeof bits);
+            const float v = glm::unpackHalf1x16(bits);
+            const float clamped = std::isnan(v) ? 0.0f : std::clamp(v, 0.0f, 1.0f);
+            image.rgba[i] = static_cast<std::uint8_t>(std::lround(clamped * 255.0f));
+        }
+        return image;
+    }
     // Repère du RHI (A26) : la ligne 0 est le haut de la texture, comme celle d'une image : copie directe.
     std::memcpy(image.rgba.data(), raw->data(), rowBytes * image.height);
     if (bgra)

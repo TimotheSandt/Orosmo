@@ -98,6 +98,10 @@ class SceneRenderer
     void setMotionVectorsEnabled(bool enabled) noexcept { motionVectorsEnabled_ = enabled; }
     bool motionVectorsEnabled() const noexcept { return motionVectorsEnabled_; }
     void setDepthAsTextureEnabled(bool enabled) noexcept { depthAsTextureEnabled_ = enabled; }
+    // REN-17 : format de la couleur de la scène, appliqué au prochain `beginFrame`. kRGBA8Unorm (défaut, LDR) ; kRGBA16Float ou
+    // kRGBA32Float pour une scène HDR (post-traitements HDR, `post_effects.hpp`). Un autre format est refusé (kInvalidArgument).
+    core::Result<> setSceneColorFormat(rhi::Format format);
+    rhi::Format sceneColorFormat() const noexcept { return sceneColorFormat_; }
     bool depthAsTextureEnabled() const noexcept { return depthAsTextureEnabled_; }
     void setDeltaTime(float seconds) noexcept { deltaTime_ = seconds; }
     void setJitterMode(JitterMode mode) noexcept { jitterMode_ = mode; }
@@ -261,6 +265,7 @@ class SceneRenderer
     bool cameraRelative_ = false;
     glm::vec3 cameraOrigin_{0.0f};
     bool depthAsTextureEnabled_ = false;
+    rhi::Format sceneColorFormat_ = rhi::Format::kRGBA8Unorm;
     float deltaTime_ = 0.0f;
     glm::vec2 currentJitter_{0.0f};
     bool resetHistoryNextFrame_ = false;

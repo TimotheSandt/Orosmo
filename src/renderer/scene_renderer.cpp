@@ -157,6 +157,16 @@ void SceneRenderer::setRenderScale(float scale) noexcept
     upscalingEnabled_ = scale < 1.0f;
 }
 
+core::Result<> SceneRenderer::setSceneColorFormat(rhi::Format format)
+{
+    if (format != rhi::Format::kRGBA8Unorm && format != rhi::Format::kRGBA16Float && format != rhi::Format::kRGBA32Float)
+    {
+        return makeError(ErrorCode::kInvalidArgument, std::string("SceneRenderer::setSceneColorFormat: unsupported format ") + rhi::toString(format));
+    }
+    sceneColorFormat_ = format;
+    return {};
+}
+
 void SceneRenderer::setJitterSequenceLength(std::uint32_t length) noexcept
 {
     jitterSequenceLength_ = length > 0 ? length : 1;
@@ -330,7 +340,7 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
 
     RenderTargetInfo info;
     info.size = {static_cast<std::uint32_t>(frameWidth_), static_cast<std::uint32_t>(frameHeight_)};
-    info.colorFormats = {rhi::Format::kRGBA8Unorm};
+    info.colorFormats = {sceneColorFormat_};
     if (motionVectorsEnabled_)
     {
         info.colorFormats.push_back(rhi::Format::kRG16Float);
