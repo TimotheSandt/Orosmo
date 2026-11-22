@@ -530,7 +530,7 @@ core::Result<GpuDrawStats> GpuDrivenFeature::draw(SceneRenderer &scene, const Ob
     {
         return std::unexpected(info.error());
     }
-    if (pending_ && lastDrawFrame_ == scene.frameIndex())
+    if (pending_ && lastDrawFrame_ == scene.frameSerial())
     {
         return makeError(ErrorCode::kInvalidArgument, "GpuDrivenFeature::draw: already called for this frame (the command buffers are reused)");
     }
@@ -684,7 +684,7 @@ core::Result<GpuDrawStats> GpuDrivenFeature::draw(SceneRenderer &scene, const Ob
         }
     }
     pending_ = true;
-    lastDrawFrame_ = scene.frameIndex();
+    lastDrawFrame_ = scene.frameSerial();
     slotCount_ = slots;
     return stats;
 }

@@ -168,6 +168,9 @@ class SceneRenderer
     // Contenu envoyé au GPU par le dernier `endFrame` (groupe 0, binding kFrameDataBinding).
     const FrameData &frameData() const noexcept { return frameData_; }
     std::uint64_t frameIndex() const noexcept { return frameIndex_; }
+    // Nombre de `beginFrame` réussis : identifie l'image ouverte, même quand l'image précédente a échoué dans `endFrame` (avant que
+    // frameIndex n'avance).
+    std::uint64_t frameSerial() const noexcept { return frameSerial_; }
 
     // ── Image ───────────────────────────────────────────────────────────────────────────────────────────────────────
     // Prépare l'image : cible de la scène (taille de rendu = sortie × échelle), jitter. `encoder` reçoit toutes les commandes de
@@ -285,6 +288,7 @@ class SceneRenderer
     bool hasPreviousFrame_ = false;
     double timeSeconds_ = 0.0;
     std::uint64_t frameIndex_ = 0;
+    std::uint64_t frameSerial_ = 0;
 
     int outputWidth_ = 0;
     int outputHeight_ = 0;

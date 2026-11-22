@@ -223,7 +223,7 @@ class GpuDrivenFeature final : public RenderFeature
     bool pending_ = false;
     bool cullWithHiz_ = false;
     std::uint32_t slotCount_ = 0;
-    std::uint64_t lastDrawFrame_ = 0;
+    std::uint64_t lastDrawFrame_ = 0; // SceneRenderer::frameSerial de l'image ouverte qui a déposé les dessins
     glm::mat4 frameViewProj_{1.0f};
 };
 
