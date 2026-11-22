@@ -154,6 +154,7 @@ int main(int argc, char **argv)
             game.setCaptureInteraction(launchOptions.hoverId, launchOptions.clickId);
             game.setVSync(launchOptions.vsync);
             game.setInstanceCount(launchOptions.instances);
+            game.setDebugView(launchOptions.debugView, launchOptions.freezeFrustum);
             game.setShadowsEnabled(launchOptions.shadows);
             game.setPostMode(launchOptions.post);
             game.setLighting(launchOptions.lighting, launchOptions.pointLights);

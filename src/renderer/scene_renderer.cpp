@@ -122,6 +122,11 @@ core::Result<RenderFeature *> SceneRenderer::addFeature(std::unique_ptr<RenderFe
             return makeError(ErrorCode::kAlreadyExists, "SceneRenderer::addFeature: a feature named '" + feature->name() + "' is registered");
         }
     }
+    if (const std::uint32_t needed = (activeAovs() | feature->requiredAovs()).count() + 1; needed > device_.capabilities().maxColorAttachments)
+    {
+        return makeError(ErrorCode::kUnsupported, "SceneRenderer::addFeature: '" + feature->name() + "' needs " + std::to_string(needed) +
+                                                      " color attachments, the device has " + std::to_string(device_.capabilities().maxColorAttachments));
+    }
     features_.push_back(std::move(feature));
     return features_.back().get();
 }
@@ -358,11 +363,14 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
 
     RenderTargetInfo info;
     info.size = {static_cast<std::uint32_t>(frameWidth_), static_cast<std::uint32_t>(frameHeight_)};
-    info.colorFormats = {sceneColorFormat_};
-    if (motionVectorsEnabled_)
+    aovActive_ = activeAovs();
+    if (aovActive_.count() + 1 > device_.capabilities().maxColorAttachments)
     {
-        info.colorFormats.push_back(rhi::Format::kRG16Float);
+        return makeError(ErrorCode::kUnsupported, "SceneRenderer::beginFrame: " + std::to_string(aovActive_.count()) +
+                                                      " auxiliary outputs need more color attachments than the device has");
     }
+    aovLayout_ = AovLayout(aovActive_);
+    info.colorFormats = aovLayout_.colorFormats(sceneColorFormat_); // sans AOV : la couleur seule, comme avant
     info.depth = true;
     info.depthSampled = depthAsTextureEnabled_;
     info.debugName = "scene";
@@ -433,17 +441,14 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines)
         state.depth = {true, false, rhi::CompareOp::kGreaterEqual};
     }
     state.depthFormat = rhi::Format::kD32Float;
-    state.colorTargets.clear();
-    for (std::size_t i = 0; i < sceneTarget_.info().colorFormats.size(); ++i)
-    {
-        rhi::ColorTargetState t;
-        t.format = sceneTarget_.info().colorFormats[i];
-        // Les shaders de maillage n'écrivent que la couleur : les cibles supplémentaires (vecteurs de mouvement) restent intactes.
-        t.writeMask = i == 0 ? rhi::ColorWriteMask::kAll : rhi::ColorWriteMask::kNone;
-        state.colorTargets.push_back(t);
-    }
-    state.debugName = mesh.program()->name() + (lines ? ".lines" : "");
-    auto pipeline = pipelines_.graphics(*mesh.program(), state);
+    const ShaderProgram &program = replacesMeshProgram() && debugViewProgram_ ? *debugViewProgram_ : *mesh.program();
+    // REN-21 / REN-41 : un AOV n'est écrit que s'il est actif, si le matériau le veut (un transparent n'en écrit aucun par défaut) et
+    // si le programme a la sortie ; le passage filaire n'en écrit jamais. Sans AOV, c'est la couleur seule, comme avant.
+    aovColorTargets(state.colorTargets, aovLayout_, sceneColorFormat_, lines ? AovSet{} : aovWrites(mesh.aovMaterial(), aovActive_),
+                    program.reflection().colorOutputs);
+    configureMaterialState(state, mesh.aovMaterial().blend, lines);
+    state.debugName = program.name() + (lines ? ".lines" : "");
+    auto pipeline = pipelines_.graphics(program, state);
     if (!pipeline)
     {
         return std::unexpected(pipeline.error());
@@ -504,7 +509,11 @@ core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: the mesh is empty or has no graphics program");
     }
-    if (auto r = mesh.uploadTransform(cameraOrigin_); !r)
+    // Vecteurs de mouvement : l'historique du modèle n'est suivi que si l'AOV existe (sinon l'envoi est celui d'avant).
+    const TransformHistory history = aovActive_.has(Aov::kMotion)
+                                               ? TransformHistory{frameIndex_ + 1, hasPreviousFrame_ ? previousCameraOrigin_ : cameraOrigin_}
+                                               : TransformHistory{};
+    if (auto r = mesh.uploadTransform(cameraOrigin_, history); !r)
     {
         return r;
     }
@@ -512,7 +521,7 @@ core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
     {
         return r;
     }
-    return camera.wireframe() ? record(mesh, true) : core::Result<>{};
+    return camera.wireframe() || debugView_ == DebugView::kWireframe ? record(mesh, true) : core::Result<>{};
 }
 
 core::Result<SceneDrawInfo> SceneRenderer::sceneDrawInfo() const
@@ -582,14 +591,7 @@ core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
     state.raster.cull = rhi::CullMode::kNone;
     state.depth = {debug.depthTest(), false, rhi::CompareOp::kGreaterEqual}; // reverse-Z ; n'écrit pas la profondeur
     state.depthFormat = rhi::Format::kD32Float;
-    state.colorTargets.clear();
-    for (std::size_t i = 0; i < sceneTarget_.info().colorFormats.size(); ++i)
-    {
-        rhi::ColorTargetState t;
-        t.format = sceneTarget_.info().colorFormats[i];
-        t.writeMask = i == 0 ? rhi::ColorWriteMask::kAll : rhi::ColorWriteMask::kNone;
-        state.colorTargets.push_back(t);
-    }
+    aovColorTargets(state.colorTargets, aovLayout_, sceneColorFormat_, AovSet{}, 1); // les lignes ne touchent que la couleur
     state.debugName = "debug.lines";
     auto pipeline = pipelines_.graphics(*debugProgram_, state);
     if (!pipeline)
@@ -729,6 +731,7 @@ core::Result<> SceneRenderer::updateFrameData()
     f.exposure = {environment_.exposure, 0.0f, 0.0f, 0.0f};
     frameData_ = f;
     previousViewProj_ = f.viewProj;
+    previousCameraOrigin_ = cameraOrigin_;
     previousJitter_ = currentJitter_;
     hasPreviousFrame_ = true;
     ++frameIndex_;
@@ -774,9 +777,16 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
     known.renderSize = renderSize;
     known.outputSize = output.size;
     known.sceneColor = graph_.importTexture("scene.color", sceneTarget_.color(0), {.format = sceneTarget_.info().colorFormats[0], .size = renderSize});
-    if (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1)
+    for (const Aov aov : aovLayout_.set().list())
     {
-        known.motionVectors = graph_.importTexture("scene.motion", sceneTarget_.color(1), {.format = rhi::Format::kRG16Float, .size = renderSize});
+        const AovInfo &info = aovInfo(aov);
+        const RgTexture texture = graph_.importTexture(aov == Aov::kMotion ? std::string("scene.motion") : "scene.aov." + std::string(info.name),
+                                                       sceneTarget_.color(*aovLayout_.index(aov)), {.format = info.format, .size = renderSize});
+        known.aovs[static_cast<std::size_t>(aov)] = texture;
+        if (aov == Aov::kMotion)
+        {
+            known.motionVectors = texture;
+        }
     }
     if (!sceneTarget_.depth().isNull())
     {
@@ -795,9 +805,9 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
     {
         auto depth = graph_.addPass("depth-prepass", PassType::kRaster, [this](RenderPassContext &ctx) { return playDraws(ctx.encoder(), true); });
         depth.writeColor(known.sceneColor, rhi::LoadOp::kClear, frameOptions_.clearColor);
-        if (known.motionVectors.valid())
+        for (const Aov aov : aovLayout_.set().list()) // mêmes attachements que la scène ; la pré-passe n'écrit AUCUN AOV (masque nul)
         {
-            depth.writeColor(known.motionVectors, rhi::LoadOp::kClear, frameOptions_.clearColor);
+            depth.writeColor(known.aovs[static_cast<std::size_t>(aov)], rhi::LoadOp::kClear, aovInfo(aov).clear);
         }
         depth.writeDepth(known.sceneDepth, frameOptions_.clearDepth ? rhi::LoadOp::kClear : rhi::LoadOp::kLoad, 0.0f);
     }
@@ -805,10 +815,12 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
     // ── Passe de scène : joue les dessins enregistrés ────────────────────────────────────────────────────────────────
     {
         auto scene = graph_.addPass("scene", PassType::kRaster, [this](RenderPassContext &ctx) { return playDraws(ctx.encoder()); });
-        scene.writeColor(known.sceneColor, rhi::LoadOp::kClear, frameOptions_.clearColor);
-        if (known.motionVectors.valid())
+        // Surdessin : le comptage s'additionne sur un fond noir, quelle que soit la couleur de fond demandée.
+        scene.writeColor(known.sceneColor, rhi::LoadOp::kClear,
+                         debugView_ == DebugView::kOverdraw ? std::array<float, 4>{0.0f, 0.0f, 0.0f, 0.0f} : frameOptions_.clearColor);
+        for (const Aov aov : aovLayout_.set().list()) // les AOV sont effacés à leur valeur « rien » (aov.hpp), pas à la couleur de fond
         {
-            scene.writeColor(known.motionVectors, rhi::LoadOp::kClear, frameOptions_.clearColor);
+            scene.writeColor(known.aovs[static_cast<std::size_t>(aov)], rhi::LoadOp::kClear, aovInfo(aov).clear);
         }
         if (known.sceneDepth.valid())
         {
@@ -891,7 +903,7 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
                     UpscaleInput input;
                     input.color = sceneTarget_.color(0);
                     input.depth = sceneTarget_.depth();
-                    input.motionVectors = (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1) ? sceneTarget_.color(1) : rhi::TextureHandle{};
+                    input.motionVectors = aovLayout_.set().has(Aov::kMotion) ? sceneTarget_.color(1) : rhi::TextureHandle{};
                     input.historyColor = previous;
                     input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
                     input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
@@ -932,7 +944,7 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output)
                                              input.previousColor = previous;
                                              input.depth = sceneTarget_.depth();
                                              input.motionVectors =
-                                                 (motionVectorsEnabled_ && sceneTarget_.colorCount() > 1) ? sceneTarget_.color(1) : rhi::TextureHandle{};
+                                                 aovLayout_.set().has(Aov::kMotion) ? sceneTarget_.color(1) : rhi::TextureHandle{};
                                              input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
                                              input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
                                              input.jitter = currentJitter_;

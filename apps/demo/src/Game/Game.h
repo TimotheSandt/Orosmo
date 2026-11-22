@@ -50,6 +50,12 @@ class Game
     void enableCapture(std::string directory, std::uint32_t frames);
     // --instances N (REN-28) : N objets instanciés ajoutés à la scène par init() ; 0 (défaut) : aucun.
     void setInstanceCount(std::uint32_t count) noexcept { this->instanceCount = count; }
+    // --debug-view / --freeze-frustum (REN-35) : appliqués par init().
+    void setDebugView(orosmo::renderer::DebugView view, bool freezeFrustum) noexcept
+    {
+        this->debugView = view;
+        this->freezeFrustum = freezeFrustum;
+    }
     // --shadows on (REN-06 à 08) : ombres en cascade avec cache (plugin ShadowFeature) ; désactivées par défaut.
     void setShadowsEnabled(bool enabled) noexcept { this->shadowsEnabled = enabled; }
     // --post (REN-17/18) : effets activés par init() ; kNone (défaut) : aucun effet enregistré, scène LDR inchangée.
@@ -148,6 +154,8 @@ class Game
     std::string initialTheme = "dark";
     std::string initialTab = "scene";
     std::uint32_t instanceCount = 0;
+    orosmo::renderer::DebugView debugView = orosmo::renderer::DebugView::kNone;
+    bool freezeFrustum = false;
     bool shadowsEnabled = false;
     demo::PostMode postMode = demo::PostMode::kNone;
     orosmo::renderer::PostEffects post; // effets possédés par sceneRenderer
