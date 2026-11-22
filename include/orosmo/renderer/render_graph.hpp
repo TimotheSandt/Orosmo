@@ -6,13 +6,16 @@
 //
 // Règles de dépendance (par ressource ; l'ordre de déclaration ne compte qu'entre les accès à une même ressource) :
 //   - les écrivains d'une même ressource s'exécutent dans leur ordre de déclaration (une passe qui lit et écrit est un écrivain) ;
+//     un écrivain ne DÉPEND du précédent (qui est alors gardé avec lui) que s'il consomme l'ancien contenu : attachement en `kLoad`,
+//     `write` générique ou lecture dans la même passe ; un attachement en `kClear` / `kDontCare` ne fait qu'ordonner ;
 //   - `read` voit la version laissée par le dernier écrivain déclaré AVANT la passe, et l'écrivain suivant attend la passe
 //     (écriture après lecture) ; sans écrivain déclaré avant elle, la passe voit le contenu FINAL (elle suit tous les écrivains) ;
 //   - `readFinal` voit toujours le contenu final, même si des écrivains sont déclarés après (ex. la mise à l'échelle du renderer,
 //     déclarée avant les post-traitements des plugins) ;
-//   - une ressource importée sans écrivain est lue telle qu'elle est (contenu d'avant l'image).
+//   - une ressource importée sans écrivain est lue telle qu'elle est (contenu d'avant l'image) ; une ressource TRANSITOIRE lue sans
+//     producteur (aucun écrivain, ou premier attachement en `kLoad`) par une passe gardée est refusée par `compile` (kInvalidArgument).
 // Une passe est gardée si elle a un effet de bord (`sideEffect`), si elle écrit une ressource importée (visible hors du graphe), ou
-// si une passe gardée lit ce qu'elle écrit. Les autres sont écartées. Un cycle est refusé par `compile` (kInvalidArgument).
+// si une passe gardée en consomme le résultat. Les autres sont écartées. Un cycle est refusé par `compile` (kInvalidArgument).
 #pragma once
 
 #include "orosmo/core/error.hpp"
@@ -79,6 +82,9 @@ struct FrameResources
     rhi::BindGroupHandle group;  // groupe 0 : caméra (0), lumières (1), FrameData (2)
     rhi::BufferHandle buffer;    // tampon uniforme de FrameData
     const FrameData *data = nullptr;
+    // Groupe 2 des tranches de modèle de l'image (SceneRenderer::recordModelSlice) : un bloc ModelBlock par dessin, choisi par
+    // décalage dynamique à `setBindGroup(2, modelGroup, {décalage})`. Nul tant qu'aucune tranche n'a été enregistrée.
+    rhi::BindGroupHandle modelGroup;
 };
 
 class RenderGraph;
@@ -168,10 +174,12 @@ class RenderGraph
 
     // ── Compilation et exécution ───────────────────────────────────────────────────────────────────────────────────
     // Vérifie les déclarations (noms en double, handles invalides, attachements de tailles différentes, passe raster sans
-    // attachement), calcule l'ordre et écarte les passes inutiles. Un cycle est refusé avec le chemin des passes.
+    // attachement), calcule l'ordre et écarte les passes inutiles. Un cycle est refusé avec le chemin des passes ; une lecture
+    // gardée d'une transitoire sans producteur aussi.
     core::Result<> compile();
     // Compile si besoin, alloue les transitoires, exécute les passes gardées dans l'ordre. Une passe en erreur arrête l'image
-    // (la passe de rendu ouverte par le graphe est refermée) et l'erreur est rendue, préfixée du nom de la passe.
+    // (la passe de rendu ouverte par le graphe est refermée) et l'erreur est rendue, préfixée du nom de la passe : erreur rendue
+    // par la passe, sinon première commande refusée par l'encodeur pendant la passe (`CommandEncoder::error`, apparue pendant elle).
     core::Result<> execute(rhi::CommandEncoder &encoder);
 
     // ── Introspection (après compile) ──────────────────────────────────────────────────────────────────────────────

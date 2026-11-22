@@ -270,6 +270,128 @@ TEST_SUITE("renderer/render_graph")
         }
     }
 
+    TEST_CASE("RenderGraph (REN-01): a writer that clears does not keep the pass it overwrites; a transient read without producer is refused")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            GraphGpu g(backend);
+            REQUIRE(g.gpu.device);
+            const TextureHandle out = g.gpu.target(Format::kRGBA8Unorm, {4, 4}, "out");
+            rd::RenderGraph graph(*g.gpu.device);
+            std::vector<std::string> log;
+
+            // `overwritten` est entièrement effacé par `clears` : son résultat n'est lu par personne, elle est écartée (mais l'ordre
+            // des écrivains reste celui de la déclaration). `loads` (kLoad) consomme le contenu précédent : `kept` est gardée.
+            const rd::RgTexture output = graph.importTexture("output", out, {.size = {4, 4}});
+            const rd::RgTexture a = graph.createTexture("a", {.size = {4, 4}});
+            const rd::RgTexture b = graph.createTexture("b", {.size = {4, 4}});
+            graph.addPass("overwritten", rd::PassType::kRaster, note(log, "overwritten")).writeColor(a, LoadOp::kClear, {1, 0, 0, 1});
+            graph.addPass("clears", rd::PassType::kRaster, note(log, "clears")).writeColor(a, LoadOp::kClear, {0, 1, 0, 1});
+            graph.addPass("kept", rd::PassType::kRaster, note(log, "kept")).writeColor(b, LoadOp::kClear);
+            graph.addPass("loads", rd::PassType::kRaster, note(log, "loads")).writeColor(b, LoadOp::kLoad);
+            graph.addPass("present", rd::PassType::kGeneric, note(log, "present")).read(a).read(b).write(output);
+            REQUIRE(graph.compile().has_value());
+            CHECK(graph.executionOrder() == std::vector<std::string>{"clears", "kept", "loads", "present"});
+            CHECK(graph.culledPasses() == std::vector<std::string>{"overwritten"});
+            g.gpu.run([&](CommandEncoder &e) { REQUIRE(graph.execute(e).has_value()); });
+
+            // Lecture d'une transitoire que personne n'écrit : refusée (contenu indéfini).
+            graph.reset();
+            const rd::RgTexture output2 = graph.importTexture("output", out, {.size = {4, 4}});
+            const rd::RgTexture orphan = graph.createTexture("orphan", {.size = {4, 4}});
+            graph.addPass("reads-orphan", rd::PassType::kGeneric, note(log, "reads-orphan")).read(orphan).write(output2);
+            auto refused = graph.compile();
+            REQUIRE_FALSE(refused.has_value());
+            CHECK((refused.error().code == ErrorCode::kInvalidArgument));
+            CHECK(refused.error().message.find("'orphan'") != std::string::npos);
+            // Premier attachement d'une transitoire en kLoad : même refus.
+            graph.reset();
+            const rd::RgTexture loaded = graph.createTexture("loaded", {.size = {4, 4}});
+            graph.addPass("loads-first", rd::PassType::kRaster, note(log, "loads-first")).writeColor(loaded, LoadOp::kLoad).sideEffect();
+            CHECK((tests::errorOf(graph.compile()) == ErrorCode::kInvalidArgument));
+            // Une passe écartée qui lit une transitoire sans producteur ne gêne pas ; une ressource IMPORTÉE sans écrivain est lue
+            // telle quelle (contenu fourni par l'appelant).
+            graph.reset();
+            const rd::RgTexture imported = graph.importTexture("output", out, {.size = {4, 4}});
+            const rd::RgTexture unread = graph.createTexture("unread", {.size = {4, 4}});
+            const rd::RgTexture sink = graph.createTexture("sink", {.size = {4, 4}});
+            graph.addPass("culled", rd::PassType::kGeneric, note(log, "culled")).read(unread).write(sink);
+            graph.addPass("reads-import", rd::PassType::kGeneric, note(log, "reads-import")).read(imported).sideEffect();
+            REQUIRE(graph.compile().has_value());
+            CHECK(graph.culledPasses() == std::vector<std::string>{"culled"});
+            g.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("RenderGraph (REN-01): a command rejected by the encoder stops the frame with the name of the pass")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            GraphGpu g(backend);
+            REQUIRE(g.gpu.device);
+            const TextureHandle out = g.gpu.target(Format::kRGBA8Unorm, {4, 4}, "out");
+            rd::RenderGraph graph(*g.gpu.device);
+            std::vector<std::string> log;
+            const rd::RgTexture output = graph.importTexture("output", out, {.size = {4, 4}});
+            // La passe rend un succès mais l'encodeur refuse sa commande (dessin hors de toute passe de rendu, sans pipeline).
+            graph
+                .addPass("bad-command", rd::PassType::kGeneric,
+                         [](rd::RenderPassContext &ctx) -> core::Result<>
+                         {
+                             ctx.encoder().draw(3);
+                             return {};
+                         })
+                .write(output);
+            graph.addPass("after", rd::PassType::kGeneric, note(log, "after")).read(output).sideEffect();
+            auto encoder = g.gpu->createCommandEncoder();
+            auto result = graph.execute(*encoder);
+            REQUIRE_FALSE(result.has_value());
+            INFO(result.error().message);
+            CHECK(result.error().message.find("pass 'bad-command'") != std::string::npos);
+            CHECK(log.empty()); // l'image s'est arrêtée
+            CHECK_FALSE(g.gpu->submit(std::move(encoder)).has_value()); // l'encodeur garde son erreur
+            g.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("RenderGraph (REN-01): without timestamp queries, every executed pass is still measured (CPU fallback)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            GraphGpu g(backend);
+            REQUIRE(g.gpu.device);
+            rd::ProfilerGpuTimerFactory timers(*g.gpu.device);
+            if (!g.gpu->capabilities().timestampQueries)
+            {
+                CHECK(timers.CreateTimer("x") == nullptr); // pas de minuterie GPU qui ne serait jamais prête
+            }
+            // Fournisseur d'un périphérique sans horodatages : aucune minuterie, comme ProfilerGpuTimerFactory dans ce cas.
+            struct NoTimestamps final : core::IGpuTimerFactory
+            {
+                std::unique_ptr<core::IGpuTimer> CreateTimer(const std::string &) const override { return nullptr; }
+            };
+            const NoTimestamps none;
+            struct FactoryGuard
+            {
+                ~FactoryGuard()
+                {
+                    core::Profiler::ClearGpuQueries();
+                    core::Profiler::SetGpuTimerFactory(nullptr);
+                }
+            } guard;
+            core::Profiler::SetGpuTimerFactory(&none);
+            const TextureHandle out = g.gpu.target(Format::kRGBA8Unorm, {4, 4}, "out");
+            rd::RenderGraph graph(*g.gpu.device);
+            const std::string prefix = std::string("test.cpu.") + tests::backendName(backend) + "/";
+            graph.setProfilePrefix(prefix);
+            const rd::RgTexture output = graph.importTexture("output", out, {.size = {4, 4}});
+            graph.addPass("timed", rd::PassType::kRaster, [](rd::RenderPassContext &) -> core::Result<> { return {}; }).writeColor(output);
+            g.gpu.run([&](CommandEncoder &e) { REQUIRE(graph.execute(e).has_value()); });
+            CHECK(core::Profiler::GetLastTime(prefix + "timed").count() > 0); // une mesure, pas seulement un nom
+            g.gpu.expectNoValidationErrors();
+        }
+    }
+
     TEST_CASE("RenderGraph (REN-01): transient textures are created once, reused by the next frame, and shared by disjoint lifetimes")
     {
         FOR_EACH_BACKEND(backend)
@@ -388,6 +510,15 @@ TEST_SUITE("renderer/render_graph")
             };
             rd::ProfilerGpuTimerFactory timers(*g.gpu.device);
             Recording recording(timers);
+            // Nettoyage garanti même si un REQUIRE échoue, avant la destruction du périphérique (déclaré après lui, détruit avant).
+            struct FactoryGuard
+            {
+                ~FactoryGuard()
+                {
+                    core::Profiler::ClearGpuQueries();
+                    core::Profiler::SetGpuTimerFactory(nullptr);
+                }
+            } guard;
             core::Profiler::SetGpuTimerFactory(&recording);
 
             const TextureHandle out = g.gpu.target(Format::kRGBA8Unorm, {16, 16}, "out");
@@ -416,8 +547,6 @@ TEST_SUITE("renderer/render_graph")
             {
                 CHECK(recording.readySeen); // au moins une mesure GPU de passe terminée et relevée par le Profiler
             }
-            core::Profiler::ClearGpuQueries();
-            core::Profiler::SetGpuTimerFactory(nullptr);
             g.gpu.expectNoValidationErrors();
         }
     }
@@ -447,7 +576,7 @@ TEST_SUITE("renderer/render_graph")
             groupDesc.entries.push_back({.binding = rd::kFrameDataBinding, .type = BindingType::kUniformBuffer, .buffer = buffer, .size = sizeof(rd::FrameData)});
             auto group = g.gpu->createBindGroup(groupDesc);
             REQUIRE(group.has_value());
-            rd::FrameResources resources{.group = *group, .buffer = buffer, .data = &data};
+            rd::FrameResources resources{.group = *group, .buffer = buffer, .data = &data, .modelGroup = {}};
 
             auto program = g.library->graphicsFromSource("frame.layout", kFrameVs, kLayoutFs);
             INFO((program ? std::string() : program.error().message));

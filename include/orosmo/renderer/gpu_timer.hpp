@@ -36,7 +36,8 @@ class GpuTimer
 
 // Fournisseur de minuteries GPU du `Profiler` (A25) : chaque minuteur écrit deux horodatages dans l'encodeur COURANT, que l'application
 // donne au début de l'image (`setEncoder`) et retire à la fin. Hors image (aucun encodeur), les minuteurs ne mesurent rien et ne sont
-// jamais prêts (le Profiler les abandonne après son délai).
+// jamais prêts (le Profiler les abandonne après son délai). Sans `Capabilities::timestampQueries`, `CreateTimer` rend nul : le
+// Profiler mesure alors sur le CPU (une mesure par appel).
 class ProfilerGpuTimerFactory final : public core::IGpuTimerFactory
 {
   public:

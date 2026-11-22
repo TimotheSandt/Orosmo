@@ -91,6 +91,11 @@ class ProfilerTimer final : public core::IGpuTimer
 
 std::unique_ptr<core::IGpuTimer> ProfilerGpuTimerFactory::CreateTimer(const std::string &name) const
 {
+    // Sans horodatages (capacité absente, règle 11), une minuterie GPU ne serait jamais prête : nul, et le Profiler mesure sur le CPU.
+    if (!device_.capabilities().timestampQueries)
+    {
+        return nullptr;
+    }
     auto timer = std::make_unique<ProfilerTimer>(*this, device_, name);
     return timer;
 }
