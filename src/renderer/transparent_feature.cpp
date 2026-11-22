@@ -146,12 +146,17 @@ core::Result<> TransparentFeature::declarePasses(RenderGraphBuilder &builder)
         stats_ = {};
         return {};
     }
-    // Même nombre de cibles que la passe « scene » : les vecteurs de mouvement sont chargés et laissés intacts (masque nul).
+    // Mêmes cibles que la passe « scene » (couleur puis chaque AOV actif, dans l'ordre de l'énumération : AovLayout) : les AOV
+    // sont chargés et laissés intacts (masque nul du pipeline). Toutes doivent y être, sinon le pipeline (construit sur
+    // `sceneDrawInfo().colorFormats`) ne correspond plus à la passe (ex. TAA : mouvement + profondeur linéaire, REN-19).
     auto pass = builder.graph().addPass(kPassName, PassType::kRaster, [this](RenderPassContext &ctx) { return play(ctx); });
     pass.writeColor(r.sceneColor, rhi::LoadOp::kLoad);
-    if (r.motionVectors.valid())
+    for (const RgTexture aov : r.aovs)
     {
-        pass.writeColor(r.motionVectors, rhi::LoadOp::kLoad);
+        if (aov.valid())
+        {
+            pass.writeColor(aov, rhi::LoadOp::kLoad);
+        }
     }
     pass.writeDepth(r.sceneDepth, rhi::LoadOp::kLoad);
     return {};
