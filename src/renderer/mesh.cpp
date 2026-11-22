@@ -247,9 +247,23 @@ core::Result<> Mesh::setTextures(std::span<const TextureBinding> textures)
         }
         fresh = *group;
     }
-    device_->destroy(textureGroup_);
+    if (ownsTextureGroup_)
+    {
+        device_->destroy(textureGroup_);
+    }
     textureGroup_ = fresh;
+    ownsTextureGroup_ = true;
     return {};
+}
+
+void Mesh::setMaterialGroup(rhi::BindGroupHandle group) noexcept
+{
+    if (device_ != nullptr && ownsTextureGroup_)
+    {
+        device_->destroy(textureGroup_);
+    }
+    textureGroup_ = group;
+    ownsTextureGroup_ = false;
 }
 
 core::Result<> Mesh::updateVertices(std::span<const float> data, std::size_t offsetFloats)
@@ -284,7 +298,10 @@ void Mesh::reset() noexcept
     if (device_ != nullptr)
     {
         device_->destroy(modelGroup_);
-        device_->destroy(textureGroup_);
+        if (ownsTextureGroup_)
+        {
+            device_->destroy(textureGroup_);
+        }
     }
     vertexBuffer_.reset();
     indexBuffer_.reset();
@@ -292,6 +309,7 @@ void Mesh::reset() noexcept
     modelBuffer_.reset();
     modelGroup_ = {};
     textureGroup_ = {};
+    ownsTextureGroup_ = true;
     layouts_.clear();
     attributes_.clear();
     instanceSizes_.clear();
@@ -311,6 +329,7 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(modelBuffer_, other.modelBuffer_);
     std::swap(modelGroup_, other.modelGroup_);
     std::swap(textureGroup_, other.textureGroup_);
+    std::swap(ownsTextureGroup_, other.ownsTextureGroup_);
     std::swap(layouts_, other.layouts_);
     std::swap(attributes_, other.attributes_);
     std::swap(instanceSizes_, other.instanceSizes_);

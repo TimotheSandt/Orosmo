@@ -82,6 +82,8 @@ struct LaunchOptions
     orosmo::renderer::DebugView debugView = orosmo::renderer::DebugView::kNone;
     // --freeze-frustum (REN-35) : fige le frustum de culling des objets instanciés dès la première image et le dessine.
     bool freezeFrustum = false;
+    // --shadows off|on (REN-06 à 08) : ombres en cascade avec cache. off (défaut) : captures de référence inchangées.
+    bool shadows = false;
     // --post none|hdr|bloom|full (défaut : none, captures de référence inchangées).
     PostMode post = PostMode::kNone;
     LightingMode lighting = LightingMode::kForward;

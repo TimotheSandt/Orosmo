@@ -56,6 +56,8 @@ class Game
         this->debugView = view;
         this->freezeFrustum = freezeFrustum;
     }
+    // --shadows on (REN-06 à 08) : ombres en cascade avec cache (plugin ShadowFeature) ; désactivées par défaut.
+    void setShadowsEnabled(bool enabled) noexcept { this->shadowsEnabled = enabled; }
     // --post (REN-17/18) : effets activés par init() ; kNone (défaut) : aucun effet enregistré, scène LDR inchangée.
     void setPostMode(demo::PostMode mode) noexcept { postMode = mode; }
     // --lighting / --lights (REN-04) : mode d'éclairage demandé (forward+ : repli sur forward sans compute) et lumières ponctuelles.
@@ -151,6 +153,7 @@ class Game
     std::uint32_t instanceCount = 0;
     orosmo::renderer::DebugView debugView = orosmo::renderer::DebugView::kNone;
     bool freezeFrustum = false;
+    bool shadowsEnabled = false;
     demo::PostMode postMode = demo::PostMode::kNone;
     orosmo::renderer::PostEffects post; // effets possédés par sceneRenderer
     demo::LightingMode lightingMode = demo::LightingMode::kForward;
