@@ -23,7 +23,8 @@ static void reportPerformance(std::chrono::steady_clock::duration elapsed)
 {
     using orosmo::core::Profiler;
     LOG_INFO("Perf: loopMs=", std::chrono::duration<double, std::milli>(elapsed).count());
-    for (const char *name : {"Render", "RenderGraph/depth-prepass", "RenderGraph/forwardplus.clusters", "RenderGraph/scene", "RenderGraph/upscale",
+    for (const char *name : {"Render", "RenderGraph/depth-prepass", "RenderGraph/forwardplus.clusters", "RenderGraph/gpudriven.cull",
+                             "RenderGraph/gpudriven.hiz", "RenderGraph/scene", "RenderGraph/upscale",
                              "RenderGraph/ui", "RenderGraph/present", "SwapBuffers"})
     {
         LOG_INFO("Perf: ", name, " avgMs=", Profiler::GetAverageTimeMs(name));
@@ -154,6 +155,7 @@ int main(int argc, char **argv)
             game.setCaptureInteraction(launchOptions.hoverId, launchOptions.clickId);
             game.setVSync(launchOptions.vsync);
             game.setInstanceCount(launchOptions.instances);
+            game.setGpuDriven(launchOptions.gpuDriven);
             game.setDebugView(launchOptions.debugView, launchOptions.freezeFrustum);
             game.setShadowsEnabled(launchOptions.shadows);
             game.setPostMode(launchOptions.post);

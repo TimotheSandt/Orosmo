@@ -79,6 +79,9 @@ struct LaunchOptions
     // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (culling, LOD, un draw call par lot). 0 (défaut) : aucun,
     // la scène et les captures de référence sont inchangées.
     std::uint32_t instances = 0;
+    // --gpu-driven off|on (REN-29) : les objets de --instances passent par le culling GPU (scène GPU persistante, multi-draw
+    // indirect, occlusion Hi-Z). off (défaut) : culling CPU, captures de référence inchangées. Repli sur le CPU sans compute.
+    bool gpuDriven = false;
     // --debug-view none|normals|albedo|overdraw|lod|wireframe|motion (REN-35). none (défaut) : image et cibles inchangées.
     orosmo::renderer::DebugView debugView = orosmo::renderer::DebugView::kNone;
     // --freeze-frustum (REN-35) : fige le frustum de culling des objets instanciés dès la première image et le dessine.

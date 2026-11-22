@@ -338,6 +338,15 @@ orosmo::core::Result<> Game::init()
     {
         return orosmo::core::makeError(ready.error().code, "Failed to create the instanced objects: " + ready.error().message);
     }
+    if (this->gpuDriven && this->instanceCount > 0)
+    {
+        // REN-29 : culling GPU si possible ; sinon (règle 11) le culling CPU reste en place.
+        if (auto enabled = this->scene->enableGpuDriven(*this->sceneRenderer, *this->device, *this->shaders, *this->pipelines, kShaderDirectory);
+            !enabled)
+        {
+            LOG_WARNING("GPU-driven: unavailable, using CPU culling: ", enabled.error().message);
+        }
+    }
 
     if (this->mixedScene)
     {

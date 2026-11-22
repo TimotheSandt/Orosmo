@@ -707,6 +707,25 @@ orosmo::core::Result<> DemoScene::initInstances(orosmo::rhi::Device &device, oro
     return {};
 }
 
+orosmo::core::Result<> DemoScene::enableGpuDriven(orosmo::renderer::SceneRenderer &renderer, orosmo::rhi::Device &device,
+                                                 orosmo::renderer::ShaderLibrary &shaders, orosmo::renderer::PipelineCache &pipelines,
+                                                 const std::filesystem::path &shaderDirectory)
+{
+    if (!instanceRenderer_)
+    {
+        return {};
+    }
+    auto enabled = orosmo::renderer::enableGpuDriven(renderer, device, shaders, pipelines, shaderDirectory, *instanceRenderer_);
+    if (!enabled)
+    {
+        return std::unexpected(enabled.error());
+    }
+    gpuDriven_ = *enabled;
+    gpuDrivenRenderer_ = &renderer;
+    LOG_INFO("GPU-driven: ", instanceObjects_.size(), " objects culled on the GPU (frustum, Hi-Z occlusion, LOD), multi-draw indirect");
+    return {};
+}
+
 orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRenderer &renderer, const orosmo::renderer::Camera &camera)
 {
     namespace rd = orosmo::renderer;
@@ -718,9 +737,39 @@ orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRendere
     {
         frustumFreeze_.freeze(view, camera.projectionMatrix() * camera.viewMatrix());
     }
+    view = frustumFreeze_.apply(view);
+    if (gpuDriven_ != nullptr)
+    {
+        // Journal (image 2 puis toutes les 600) : compteurs GPU de l'image précédente, comparés au culling CPU de la même vue.
+        const bool log = instanceFrames_ == 2 || (instanceFrames_ > 0 && instanceFrames_ % 600 == 0);
+        if (log)
+        {
+            auto gpu = gpuDriven_->readStats();
+            const rd::VisibilityStats cpu = instanceObjects_.prepare(view, instanceBatches_);
+            if (gpu)
+            {
+                LOG_INFO("GPU-driven: ", gpu->objects, " objects, ", gpu->frustumVisible, " in view (", gpu->frustumCulled, " outside, ", gpu->smallCulled,
+                         " too small), ", gpu->occlusionCulled, " occluded (Hi-Z), ", gpu->visible, " visible, ", gpu->instances, " instances in ",
+                         gpu->drawsWithInstances, " indirect draws | CPU culling: ", cpu.cull.visible, " visible, ", cpu.instances, " instances in ",
+                         instanceBatches_.batches().size(), " draw calls");
+            }
+        }
+        rd::GpuDrivenView gpuView;
+        gpuView.cull = view;
+        gpuView.viewProjection = camera.projectionMatrix() * camera.viewMatrix();
+        rd::GpuDrivenOptions options;
+        options.wireframe = camera.wireframe();
+        auto drawn = gpuDriven_->draw(renderer, instanceObjects_, gpuView, options);
+        if (!drawn)
+        {
+            return std::unexpected(drawn.error());
+        }
+        ++instanceFrames_;
+        return {};
+    }
     rd::VisibilityOptions visibility;
     visibility.lodColors = debugView_ == rd::DebugView::kLod;
-    instanceVisibility_ = instanceObjects_.prepare(frustumFreeze_.apply(view), instanceBatches_, visibility);
+    instanceVisibility_ = instanceObjects_.prepare(view, instanceBatches_, visibility);
 
     auto drawn = instanceRenderer_->draw(renderer, instanceBatches_, camera.wireframe());
     if (!drawn)
@@ -749,6 +798,12 @@ void DemoScene::destroy()
     }
     casterIds_.clear();
     shadowFrames_ = 0;
+    if (gpuDriven_ != nullptr && gpuDrivenRenderer_ != nullptr)
+    {
+        orosmo::renderer::disableGpuDriven(*gpuDrivenRenderer_); // référence InstanceRenderer et ses maillages
+    }
+    gpuDriven_ = nullptr;
+    gpuDrivenRenderer_ = nullptr;
     instanceRenderer_.reset(); // référence les maillages des LOD
     for (auto &mesh : instanceLods_)
     {

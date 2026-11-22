@@ -53,6 +53,7 @@ core::Result<ObjectId> ObjectSet::add(const ObjectDesc &desc)
     slots_[slot].dense = static_cast<std::uint32_t>(objects_.size());
     objects_.push_back({desc.lodMeshes, desc.material, desc.lodSettings, desc.localBounds, desc.transform, desc.color, slot});
     worldBounds_.push_back(desc.localBounds.transformed(desc.transform));
+    slots_[slot].changed = ++changeCounter_;
     structureDirty_ = true;
     return ObjectId{slot, slots_[slot].generation};
 }
@@ -90,6 +91,7 @@ core::Result<> ObjectSet::remove(ObjectId id)
     worldBounds_.pop_back();
     slots_[id.index].dense = kFree;
     ++slots_[id.index].generation; // les anciens identifiants deviennent périmés
+    slots_[id.index].changed = ++changeCounter_;
     freeSlots_.push_back(id.index);
     structureDirty_ = true;
     return {};
@@ -104,6 +106,7 @@ core::Result<> ObjectSet::setTransform(ObjectId id, const glm::mat4 &transform)
     }
     object->transform = transform;
     worldBounds_[slots_[id.index].dense] = object->localBounds.transformed(transform);
+    slots_[id.index].changed = ++changeCounter_;
     boundsDirty_ = true;
     return {};
 }
@@ -116,6 +119,7 @@ core::Result<> ObjectSet::setColor(ObjectId id, const glm::vec4 &color)
         return makeError(ErrorCode::kNotFound, "ObjectSet::setColor: stale or unknown object");
     }
     object->color = color;
+    slots_[id.index].changed = ++changeCounter_;
     return {};
 }
 
@@ -129,6 +133,7 @@ void ObjectSet::clear() noexcept
         {
             slot.dense = kFree;
             ++slot.generation;
+            slot.changed = ++changeCounter_;
         }
     }
     freeSlots_.clear();
@@ -139,6 +144,17 @@ void ObjectSet::clear() noexcept
     bvh_.clear();
     structureDirty_ = true;
     boundsDirty_ = false;
+}
+
+std::optional<ObjectView> ObjectSet::objectAtSlot(std::uint32_t slot) const noexcept
+{
+    if (slot >= slots_.size() || slots_[slot].dense == kFree)
+    {
+        return std::nullopt;
+    }
+    const std::uint32_t dense = slots_[slot].dense;
+    const Object &object = objects_[dense];
+    return ObjectView{object.lodMeshes, object.material, object.lodSettings, worldBounds_[dense], object.transform, object.color};
 }
 
 VisibilityStats ObjectSet::prepare(const CullView &view, InstanceBatchBuilder &out, const VisibilityOptions &options)

@@ -6,6 +6,7 @@
 #include "orosmo/renderer/camera.hpp"
 #include "orosmo/renderer/debug_draw.hpp"
 #include "orosmo/renderer/debug_view.hpp"
+#include "orosmo/renderer/gpu_driven.hpp"
 #include "orosmo/renderer/instance_renderer.hpp"
 #include "orosmo/renderer/light.hpp"
 #include "orosmo/renderer/mesh.hpp"
@@ -83,6 +84,11 @@ class DemoScene
     orosmo::core::Result<> initInstances(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
                                          orosmo::renderer::PipelineCache &pipelines, const std::filesystem::path &shaderDirectory,
                                          std::uint32_t count);
+    // --gpu-driven on (REN-29) : après initInstances, installe le culling GPU sur `renderer` (kUnsupported sans compute : le culling
+    // CPU reste). Les statistiques GPU et CPU sont journalisées côte à côte.
+    orosmo::core::Result<> enableGpuDriven(orosmo::renderer::SceneRenderer &renderer, orosmo::rhi::Device &device,
+                                           orosmo::renderer::ShaderLibrary &shaders, orosmo::renderer::PipelineCache &pipelines,
+                                           const std::filesystem::path &shaderDirectory);
     // --shadows on (REN-06 à 08) : à appeler AVANT init/initInstances. Les maillages lisent alors les ombres (programme récepteur)
     // et sont enregistrés comme casters (fixes : la structure et les instances ; mobiles : le cristal et les prismes). Nul : rien.
     void setShadows(orosmo::renderer::ShadowFeature *shadows) noexcept { shadows_ = shadows; }
@@ -123,6 +129,8 @@ class DemoScene
     orosmo::renderer::VisibilityStats instanceVisibility_;
     orosmo::renderer::InstanceDrawStats instanceDrawStats_;
     std::uint64_t instanceFrames_ = 0;
+    orosmo::renderer::GpuDrivenFeature *gpuDriven_ = nullptr; // possédé par le SceneRenderer
+    orosmo::renderer::SceneRenderer *gpuDrivenRenderer_ = nullptr;
     orosmo::renderer::DebugView debugView_ = orosmo::renderer::DebugView::kNone;
     bool freezeFrustum_ = false;
     orosmo::renderer::FrustumFreeze frustumFreeze_;

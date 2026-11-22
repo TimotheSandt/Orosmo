@@ -323,6 +323,14 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.instances = *count;
         }
+        else if (matchOption("--gpu-driven", value))
+        {
+            if (!value || (*value != "on" && *value != "off"))
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --gpu-driven (expected on or off)");
+            }
+            options.gpuDriven = *value == "on";
+        }
         else if (matchOption("--aa", value))
         {
             const auto mode = value ? orosmo::renderer::parseAntiAliasingMode(*value) : std::nullopt;
@@ -417,7 +425,7 @@ void printUsage(std::ostream &out)
 {
     out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
         << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
-        << "              [--instances N] [--debug-view none|normals|albedo|overdraw|lod|wireframe|motion] [--freeze-frustum]\n"
+        << "              [--instances N] [--gpu-driven off|on] [--debug-view none|normals|albedo|overdraw|lod|wireframe|motion] [--freeze-frustum]\n"
         << "              [--shadows off|on] [--scene default|mixed] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
         << "              [--aa none|fxaa|smaa|taa]\n"
         << "              [--headless] [--vsync]\n"
@@ -434,6 +442,8 @@ void printUsage(std::ostream &out)
     out << "          --freeze-frustum freezes the culling frustum of the instanced objects (needs --instances) and draws it.\n";
     out << "Instances: --instances N adds N instanced objects around the courtyard (frustum culling, distance LOD); the draw\n";
     out << "          calls and culling statistics are logged.\n";
+    out << "GPU-driven: --gpu-driven on culls those objects on the GPU (persistent GPU scene, multi-draw indirect, Hi-Z occlusion\n";
+    out << "          from the previous frame); GPU and CPU culling counts are logged side by side. Falls back to CPU culling.\n";
     out << "Shadows  : --shadows on draws cascaded sun shadows with a cache (redrawn only where something moves); the shadow\n";
     out << "          update statistics are logged. Off by default.\n";
     out << "Post:     --post hdr renders the scene in HDR with ACES tonemapping; bloom adds bloom; full adds auto exposure,\n";

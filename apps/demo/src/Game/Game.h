@@ -51,6 +51,7 @@ class Game
     void enableCapture(std::string directory, std::uint32_t frames);
     // --instances N (REN-28) : N objets instanciés ajoutés à la scène par init() ; 0 (défaut) : aucun.
     void setInstanceCount(std::uint32_t count) noexcept { this->instanceCount = count; }
+    void setGpuDriven(bool enabled) noexcept { this->gpuDriven = enabled; }
     // --debug-view / --freeze-frustum (REN-35) : appliqués par init().
     void setDebugView(orosmo::renderer::DebugView view, bool freezeFrustum) noexcept
     {
@@ -154,6 +155,7 @@ class Game
     std::string initialTheme = "dark";
     std::string initialTab = "scene";
     std::uint32_t instanceCount = 0;
+    bool gpuDriven = false;
     orosmo::renderer::DebugView debugView = orosmo::renderer::DebugView::kNone;
     bool freezeFrustum = false;
     bool shadowsEnabled = false;

@@ -110,6 +110,7 @@ class Mesh
     const std::vector<rhi::VertexBufferLayout> &vertexBuffers() const noexcept { return layouts_; }
     const std::vector<rhi::VertexAttribute> &vertexAttributes() const noexcept { return attributes_; }
     rhi::BufferHandle vertexBuffer() const noexcept { return vertexBuffer_.handle(); }
+    std::uint64_t vertexBufferSize() const noexcept { return vertexBuffer_.size(); } // octets (copie dans un pool, REN-29)
     rhi::BufferHandle instanceBuffer() const noexcept { return instanceBuffer_.handle(); }
     rhi::BufferHandle indexBuffer() const noexcept { return indexBuffer_.handle(); }
     rhi::BindGroupHandle modelGroup() const noexcept { return modelGroup_; }
