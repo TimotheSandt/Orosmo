@@ -6,6 +6,7 @@
 #include "rhi/gpu_fixture.hpp"
 
 #include <orosmo/renderer/camera.hpp>
+#include <orosmo/renderer/forward_plus.hpp>
 #include <orosmo/renderer/instance_renderer.hpp>
 #include <orosmo/renderer/light.hpp>
 #include <orosmo/renderer/mesh.hpp>
@@ -669,6 +670,53 @@ void main()
             CHECK(scene.red(-4.0f, -3.5f) == 255);
             CHECK(scene.red(0.0f, 0.0f) == 255);
             CHECK(scene.red(8.0f, 8.0f) == 255);
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("Spot shadow in mesh.frag, forward and forward+ (with its depth pre-pass) (REN-08, REN-04)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            ShadowScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            REQUIRE(scene.shadows->addMeshCaster(scene.caster, {{-6, 2, -2}, {-2, 2, 2}}, rd::CasterMobility::kStatic).has_value());
+            scene.lights.setAmbientLight({1, 1, 1}, 0.0f); // seul le projecteur éclaire : à l'ombre, noir
+            rd::Light spot = rd::spotLight({-4, 8, 0}, {0, -1, 0}, {1, 1, 1}, 1.0f, std::cos(glm::radians(30.0f)), std::cos(glm::radians(25.0f)),
+                                           0.0f, 0.0f);
+            spot.shadowMode = rd::ShadowMode::kCached;
+            scene.lights.addLight(spot);
+            REQUIRE(scene.lights.upload().has_value());
+            scene.shadows->setLightParams(0, {.maxResolution = 256, .spotNear = 0.5f, .spotRange = 20.0f});
+            for (const bool forwardPlus : {false, true})
+            {
+                INFO("forward+ ", forwardPlus);
+                if (forwardPlus)
+                {
+                    auto fp = rd::enableForwardPlus(*scene.renderer, *scene.gpu.device, *scene.library, *scene.pipelines, shaderDir());
+                    if (!fp)
+                    {
+                        MESSAGE("forward+ unavailable: ", fp.error().message);
+                        break;
+                    }
+                }
+                auto program = scene.shadows->receiverProgramWith(forwardPlus ? rd::forwardPlusDefines() : std::vector<rd::Define>{});
+                INFO((program ? std::string() : program.error().message));
+                REQUIRE(program.has_value());
+                scene.ground.setProgram(*program);
+                scene.shadows->invalidate();
+                scene.frame();
+                if (forwardPlus)
+                {
+                    const auto order = scene.renderer->renderGraph().executionOrder();
+                    CHECK(std::find(order.begin(), order.end(), "depth-prepass") != order.end());
+                }
+                CHECK(scene.shadows->lightStatus(0) == rd::ShadowStatus::kRealtime);
+                CHECK(scene.red(-4.0f, 0.0f) == 0);    // sous le carré : ombre du projecteur
+                CHECK(scene.red(-4.0f, -3.5f) > 60);   // dans le cône, hors de l'ombre portée
+                CHECK(scene.red(8.0f, 8.0f) == 0);     // hors du cône
+            }
+            rd::disableForwardPlus(*scene.renderer);
             scene.gpu.expectNoValidationErrors();
         }
     }
