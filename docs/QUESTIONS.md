@@ -280,3 +280,9 @@ fichiers de version passés à 0.3.1 (`fix/M3bis-macos-intel`).
   D'après A40 (rapport de la session de Gemini) : `REN-25` (brouillard), `REN-14` (AO), `REN-33` (particules) et `REN-38`
   (réfraction) **restent dans le cœur** ; seuls `REN-23`, `24`, `26`, `27` et `TER-*` / `SIM-02` / `SIM-03` deviennent des modules.
   `docs/05` applique A39. **Tranchée par l'auteur (2026-11-21) : modules préinstallés dans M13** (tous les effets, y compris `REN-25`, `14`, `33`, `38`) ; A40, point 1, est remplacé en conséquence.
+- **A42. Jalon M14 : site vitrine et wiki Astro, Docker et CI/CD (2026-11-21, tranchée sur le principe ; détails DevOps à trancher au début de M14).**
+  1. Le numéro **M7** restant non réattribué (A39), le nouveau jalon est ajouté en **M14** (`WEB-01` à `WEB-05`).
+  2. Portée : un **wiki** créé avec **Astro** (utilisation du moteur + explication de son fonctionnement interne) et un **site vitrine** présentant Orosmo.
+  3. **Calendrier** : peut être commencé **avant M6** (aucune modification du code moteur), mais **publié après M6** puis mis à jour à chaque jalon.
+  4. **CI/CD et Docker** : une CI construit l'image Docker et l'enregistre sur un registre pour un déploiement manuel ou automatique sur serveur ; la publication en production se déclenche lors de la publication d'un **tag sur `main`**.
+  5. **À trancher au début de M14** : choix de l'hébergement et du registre en fonction des prix, mode de déploiement serveur (manuel vs automatique), et décision + spécifications sur le déploiement de **staging sur sous-domaine de test** à l'ouverture d'une PR (`WEB-05`).
