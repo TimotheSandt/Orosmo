@@ -165,26 +165,71 @@ Game::~Game() { this->stop(); }
 
 orosmo::core::Result<> Game::createPostEffects()
 {
-    if (this->postMode == demo::PostMode::kNone)
+    const bool aaOn = this->antiAliasingMode != rd::AntiAliasingMode::kNone;
+    if (this->postMode == demo::PostMode::kNone && !aaOn)
     {
-        return {}; // rien d'enregistré : graphe et image identiques à ceux d'avant les post-traitements
+        return {}; // rien d'enregistré : graphe et image identiques à ceux d'avant les post-traitements et l'anticrénelage
     }
     // Ordre de docs/03 §11 : 3D (scene, transparents, 2D monde de --scene mixed) -> post-traitements -> interface et présentation.
     // Les effets sont enregistrés après les plugins de la scène, et l'interface est réenregistrée après eux.
     this->sceneRenderer->removeFeature("demo.overlay");
     this->overlay = nullptr;
-    auto added = rd::addPostEffects(*this->sceneRenderer, *this->device, *this->shaders, *this->pipelines, kShaderDirectory);
-    if (!added)
+    // REN-19 : TAA avant les effets (scène HDR), FXAA / SMAA après (valeurs affichées).
+    std::shared_ptr<rd::PostContext> aaContext;
+    if (aaOn)
     {
-        return orosmo::core::makeError(added.error().code, "Failed to create the post-processing effects: " + added.error().message);
+        auto context = rd::PostContext::create(*this->device, *this->shaders, *this->pipelines, kShaderDirectory);
+        if (!context)
+        {
+            return orosmo::core::makeError(context.error().code, "Failed to create the anti-aliasing: " + context.error().message);
+        }
+        aaContext = *context;
     }
-    this->post = *added;
+    if (this->antiAliasingMode == rd::AntiAliasingMode::kTaa)
+    {
+        auto taa = rd::addTemporalAntiAliasing(*this->sceneRenderer, aaContext);
+        if (!taa)
+        {
+            return orosmo::core::makeError(taa.error().code, "Failed to create the TAA: " + taa.error().message);
+        }
+        this->antiAliasing.taa = *taa;
+    }
+    if (this->postMode != demo::PostMode::kNone)
+    {
+        auto added = rd::addPostEffects(*this->sceneRenderer, *this->device, *this->shaders, *this->pipelines, kShaderDirectory);
+        if (!added)
+        {
+            return orosmo::core::makeError(added.error().code, "Failed to create the post-processing effects: " + added.error().message);
+        }
+        this->post = *added;
+    }
+    if (this->antiAliasingMode == rd::AntiAliasingMode::kFxaa || this->antiAliasingMode == rd::AntiAliasingMode::kSmaa)
+    {
+        auto edge = rd::addEdgeAntiAliasing(*this->sceneRenderer, aaContext);
+        if (!edge)
+        {
+            return orosmo::core::makeError(edge.error().code, "Failed to create the anti-aliasing: " + edge.error().message);
+        }
+        this->antiAliasing = *edge;
+    }
     auto overlayAgain = this->sceneRenderer->addFeature(std::make_unique<OverlayFeature>(*this));
     if (!overlayAgain)
     {
         return orosmo::core::makeError(overlayAgain.error().code, "Failed to register the overlay pass: " + overlayAgain.error().message);
     }
     this->overlay = static_cast<OverlayFeature *>(*overlayAgain);
+    if (aaOn)
+    {
+        if (auto selected = this->antiAliasing.select(this->antiAliasingMode); !selected)
+        {
+            return selected;
+        }
+        LOG_INFO("Anti-aliasing: ", rd::toString(this->antiAliasingMode));
+    }
+    if (this->postMode == demo::PostMode::kNone)
+    {
+        return {};
+    }
     // Les couleurs de la démo sont écrites en sRGB et lues comme linéaires (pas de linéarisation des matériaux) : l'image HDR,
     // encodée en sRGB en sortie, est plus claire que l'image LDR. Exposition neutre.
     this->post.tonemap->setEnabled(true);
@@ -239,6 +284,18 @@ orosmo::core::Result<> Game::init()
     if (auto set = this->sceneRenderer->setDebugView(this->debugView); !set)
     {
         return orosmo::core::makeError(set.error().code, "Failed to set the debug view: " + set.error().message);
+    }
+    // REN-19 : le TAA lit le mouvement et la profondeur linéaire ; demandés ici pour que le programme de maillage les écrive (le
+    // plugin, enregistré plus tard après les plugins de la scène, les exige aussi).
+    if (this->antiAliasingMode == rd::AntiAliasingMode::kTaa)
+    {
+        for (const rd::Aov aov : rd::AovSet{rd::Aov::kMotion, rd::Aov::kLinearDepth}.list())
+        {
+            if (auto declared = this->sceneRenderer->declareAov(aov); !declared)
+            {
+                return orosmo::core::makeError(declared.error().code, "Failed to request the TAA inputs: " + declared.error().message);
+            }
+        }
     }
     // REN-04 : forward+ (pré-passe de profondeur + clusters en compute) si demandé et possible ; sinon forward (règle 11).
     bool forwardPlus = false;
