@@ -201,6 +201,18 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--lights without a value is refused");
     }
 
+    TEST_CASE("launch options parse --scene; the default scene is unchanged (R2D-05)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(!demo::parseLaunchOptions(1, none)->mixedScene, "The default scene is not the mixed one");
+        const char *mixed[] = {"Orosmo", "--scene", "mixed"};
+        Assert(demo::parseLaunchOptions(3, mixed)->mixedScene, "--scene mixed is parsed");
+        const char *plain[] = {"Orosmo", "--scene", "default"};
+        Assert(!demo::parseLaunchOptions(3, plain)->mixedScene, "--scene default is parsed");
+        const char *bad[] = {"Orosmo", "--scene", "other"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --scene is refused");
+    }
+
     TEST_CASE("launch options default to no capture")
     {
         const char *argv[] = {"Orosmo"};

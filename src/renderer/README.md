@@ -118,7 +118,7 @@ la taille de la cible (échelle d'interface, HiDPI). (La parité avec `ui.png` d
 | `renderer2d.hpp` | `Renderer2D` : `material(texture)`, `begin(camera)`, `draw(Sprite)`, `line` / `polyline` / `rect` / `rectOutline` / `circle` / `circleOutline` / `polygon` (découpage en oreilles, concave accepté), `render(encoder, cible, ...)`. Tri par `z` croissant, puis type, puis matériau : **un appel de dessin par (z, type, matériau)** ; sprites instanciés (un quad par instance), formes en triangles colorés. Pixel parfait : filtrage au plus proche et sprites non tournés alignés sur les pixels |
 | `shaders/rhi/sprite2d.*`, `shape2d.*` | GLSL 450 des sprites et des formes |
 
-Texte : il passe par le chemin existant (`ui::TextRenderer` -> `DrawList` -> `CanvasRenderer::render` sur la même cible, après `Renderer2D::render`). Limites : à `z` égal les matériaux peuvent s'intercaler (donner des `z` différents pour un ordre précis) ; atlas = une texture par matériau (pas de tableau de textures) ; contours de formes sans anticrénelage ; les modes de mélange 2D/3D (R2D-05) et plusieurs vues (R2D-06) ne sont pas faits.
+Texte : il passe par le chemin existant (`ui::TextRenderer` -> `DrawList` -> `CanvasRenderer::render` sur la même cible, après `Renderer2D::render`). Limites : à `z` égal les matériaux peuvent s'intercaler (donner des `z` différents pour un ordre précis) ; atlas = une texture par matériau (pas de tableau de textures) ; contours de formes sans anticrénelage ; le mélange 2D/3D (R2D-05) et plusieurs vues (R2D-06) sont décrits plus bas.
 
 La scène est **toujours** dessinée dans sa propre cible, puis copiée vers la destination (1:1 sans échelle) : l'ancien « rendu direct à
 l'écran » n'existe plus, ce qui supprime la profondeur du framebuffer par défaut. Parité vérifiée en M2 par `parity_tests.cpp` (supprimé avec l'ancien terrain) ; la capture de la démo est comparée à `docs/BASELINE/reference/` par la CI.
@@ -215,7 +215,40 @@ taille en pixels suit la résolution.
   avec `shaders/include` dans `ShaderLibraryConfig::includeRoots`. Tests : `tests/renderer/shader_toolbox_tests.cpp` (compilation sur
   chaque backend, valeurs en compute GPU comparées à des références CPU).
 - `blend_mode.hpp` : `BlendMode` (8 modes), `blendModeState`, `applyBlendMode(GraphicsPipelineDesc&, mode)`. Le rendu des transparents
-  (tri, passes, réfraction) n'est pas encore là.
+  est dans `transparent_feature.hpp` (ci-dessous) ; la réfraction (REN-38) n'est pas là.
+
+## Transparents triés (REN-32, REN-37 rendu)
+
+`TransparentFeature` (`transparent_feature.hpp`) est un `RenderFeature` : sa passe `transparents` (raster, couleur et profondeur de la
+scène en `kLoad`) s'exécute après `scene`. `submit(scene, mesh, TransparentMaterial)` dépose un objet (mode, opacité, seuil, priorité de
+tri, décalage du centre) ; le pipeline vient de `blendModeState` (mélange, écriture de profondeur). Ordre fixe : (1) opaques, masqués,
+tramés (profondeur écrite, ordre de dépôt) ; (2) `Blend` / `Premultiplied` / `Transmission` triés de l'arrière vers l'avant (distance du
+centre à la caméra, priorité de matériau d'abord, égalité : ordre de dépôt) sans écriture de profondeur ; (3) `Additive` après les mélangés.
+`sortTransparents` est pure (testée sans GPU). Shader : `mesh.frag` compilé avec `OROSMO_TRANSPARENT` (push constants : fil de fer,
+opacité, seuil, mode ; `Mask`, `Dithered` par trame de Bayer 4x4, `Premultiplied` prémultiplie dans le shader). Tests :
+`tests/renderer/transparency_tests.cpp` (une image de référence CPU par mode, tri, priorité, profondeur de la scène, OpenGL et Vulkan).
+Limites : `MaskA2C` est **Partiel** (se comporte comme `Mask` : `rhi::GraphicsPipelineDesc` n'a pas de champ `alphaToCoverage` ni de MSAA ;
+proposition : ajouter `bool alphaToCoverage` et un nombre d'échantillons au RHI) ; `Transmission` se compose comme `Blend` (pas de copie de
+la scène, REN-38) ; l'opacité et le seuil sont par objet, pas par texel.
+
+## Mélange 2D/3D et plusieurs vues (R2D-05, R2D-06)
+
+Décision : `Renderer2D::render` reste (même API, plus une surcharge à `Render2DOptions` : profondeur et matrice de vue-projection), mais il
+est enveloppé dans des `RenderFeature` (`layer2d_feature.hpp`, `Layer2DFeature`, un `Renderer2D` par plugin). L'ordre fixe 3D opaque (passe
+`scene`) -> 3D transparent -> 2D monde -> post-traitement -> 2D en superposition découle de l'ordre d'enregistrement avec `addFeature` :
+
+| Mode | Passe | Détail |
+| --- | --- | --- |
+| `kWorld` | lit `scene.depth`, écrit `scene.color` | le plan 2D est placé dans le monde par `setPlaneTransform` et vu par la caméra 3D ; test de profondeur (reverse-Z, lecture seule). Dessiné après les transparents, qui n'écrivent pas la profondeur : un sprite derrière une vitre la recouvre |
+| `kOverlay` | écrit `output` | après la mise à l'échelle, en pixels de la sortie, sans profondeur |
+| `kTexture` | avant `scene` | `setTextureSize`, `binding()` à donner à `Mesh::setTextures` ; shaders `mesh_textured.vert` + `mesh.frag` avec `OROSMO_TEXTURED` |
+
+R2D-06 (`scene_view.hpp`) : `SceneView` = un `SceneRenderer` + une `Camera` + une texture de sortie (zone d'affichage) ; `render(encoder,
+options, draw)` la rend. `ViewsFeature::place(vue, ViewRect)` compose des vues dans des zones de la sortie (écran partagé, incrustation,
+passe `views`). Vue 3D dans l'interface : `CanvasRenderer::registerExternalImage(id, texture, sampler)` associe une `AtlasImage` sans pixels
+(`newAtlasId`) à une texture du GPU, affichée par `ImageView` / `DrawImage` (le chemin de texture existant de l'UI). Les vues se rendent
+avant l'`endFrame` de l'image principale. Tests : `tests/renderer/mixed_2d3d_tests.cpp`. Démo : `--scene mixed` (`apps/demo/src/Scene/mixed_scene.*`).
+Limites : le pixel parfait est sans effet avec une matrice 3D ; la copie de la sortie d'une vue vers une autre fenêtre n'est pas faite.
 
 ## Limites connues
 

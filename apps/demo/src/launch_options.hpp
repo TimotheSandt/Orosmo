@@ -71,6 +71,8 @@ struct LaunchOptions
     LightingMode lighting = LightingMode::kForward;
     // --lights N (REN-04/05) : N lumières ponctuelles déterministes au-dessus de la cour, en plus du soleil. 0 (défaut) : aucune.
     std::uint32_t pointLights = 0;
+    // --scene default|mixed (REN-32, R2D-05) : « mixed » ajoute des transparents triés et du 2D dans le monde. Défaut : scène inchangée.
+    bool mixedScene = false;
 };
 
 // Nom affiché : « OpenGL », « Vulkan », « Metal ».

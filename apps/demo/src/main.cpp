@@ -155,6 +155,7 @@ int main(int argc, char **argv)
             game.setVSync(launchOptions.vsync);
             game.setInstanceCount(launchOptions.instances);
             game.setLighting(launchOptions.lighting, launchOptions.pointLights);
+            game.setMixedScene(launchOptions.mixedScene);
             LOG_TRACE("Game created");
             if (auto ready = game.init(); !ready)
             {
