@@ -48,6 +48,12 @@ class Game
     void enableCapture(std::string directory, std::uint32_t frames);
     // --instances N (REN-28) : N objets instanciés ajoutés à la scène par init() ; 0 (défaut) : aucun.
     void setInstanceCount(std::uint32_t count) noexcept { this->instanceCount = count; }
+    // --lighting / --lights (REN-04) : mode d'éclairage demandé (forward+ : repli sur forward sans compute) et lumières ponctuelles.
+    void setLighting(demo::LightingMode mode, std::uint32_t pointLights) noexcept
+    {
+        this->lightingMode = mode;
+        this->pointLightCount = pointLights;
+    }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
@@ -128,6 +134,8 @@ class Game
     std::string initialTheme = "dark";
     std::string initialTab = "scene";
     std::uint32_t instanceCount = 0;
+    demo::LightingMode lightingMode = demo::LightingMode::kForward;
+    std::uint32_t pointLightCount = 0;
     std::string hoverId;
     std::string clickId;
     std::string captureDirectory;

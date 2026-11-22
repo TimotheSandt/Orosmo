@@ -21,6 +21,14 @@ enum class BackendAvailability : std::uint8_t
     kUnsupportedPlatform,
 };
 
+// --lighting forward|forwardplus (REN-04) : forward (toutes les lumières par fragment, défaut : captures de référence inchangées)
+// ou forward+ clusterisé (pré-passe de profondeur, clusters remplis en compute ; repli sur forward si le GPU n'a pas le compute).
+enum class LightingMode : std::uint8_t
+{
+    kForward,
+    kForwardPlus,
+};
+
 enum class UiMode : std::uint8_t
 {
     kOff,
@@ -60,6 +68,9 @@ struct LaunchOptions
     // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (culling, LOD, un draw call par lot). 0 (défaut) : aucun,
     // la scène et les captures de référence sont inchangées.
     std::uint32_t instances = 0;
+    LightingMode lighting = LightingMode::kForward;
+    // --lights N (REN-04/05) : N lumières ponctuelles déterministes au-dessus de la cour, en plus du soleil. 0 (défaut) : aucune.
+    std::uint32_t pointLights = 0;
 };
 
 // Nom affiché : « OpenGL », « Vulkan », « Metal ».
@@ -68,6 +79,8 @@ std::string_view backendDisplayName(orosmo::rhi::Backend api) noexcept;
 std::optional<orosmo::rhi::Backend> parseBackend(std::string_view value) noexcept;
 // « off », « hud », « full » (casse indifférente).
 std::optional<UiMode> parseUiMode(std::string_view value) noexcept;
+// « forward », « forwardplus » / « forward+ » (casse indifférente).
+std::optional<LightingMode> parseLightingMode(std::string_view value) noexcept;
 
 // Argument inconnu ou valeur invalide : erreur kInvalidArgument (message prêt à afficher).
 orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv);
