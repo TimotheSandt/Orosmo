@@ -48,6 +48,12 @@ class Game
     void enableCapture(std::string directory, std::uint32_t frames);
     // --instances N (REN-28) : N objets instanciés ajoutés à la scène par init() ; 0 (défaut) : aucun.
     void setInstanceCount(std::uint32_t count) noexcept { this->instanceCount = count; }
+    // --debug-view / --freeze-frustum (REN-35) : appliqués par init().
+    void setDebugView(orosmo::renderer::DebugView view, bool freezeFrustum) noexcept
+    {
+        this->debugView = view;
+        this->freezeFrustum = freezeFrustum;
+    }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
@@ -128,6 +134,8 @@ class Game
     std::string initialTheme = "dark";
     std::string initialTab = "scene";
     std::uint32_t instanceCount = 0;
+    orosmo::renderer::DebugView debugView = orosmo::renderer::DebugView::kNone;
+    bool freezeFrustum = false;
     std::string hoverId;
     std::string clickId;
     std::string captureDirectory;

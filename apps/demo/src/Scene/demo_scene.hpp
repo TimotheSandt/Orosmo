@@ -5,6 +5,7 @@
 #include "orosmo/core/reflection.hpp"
 #include "orosmo/renderer/camera.hpp"
 #include "orosmo/renderer/debug_draw.hpp"
+#include "orosmo/renderer/debug_view.hpp"
 #include "orosmo/renderer/instance_renderer.hpp"
 #include "orosmo/renderer/light.hpp"
 #include "orosmo/renderer/mesh.hpp"
@@ -62,8 +63,15 @@ class DemoScene
     static glm::vec3 defaultCameraPosition();
     static glm::vec3 defaultCameraOrientation();
 
-    orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
-                                const std::filesystem::path &shaderDirectory);
+    // `meshDefines` : macros des AOV actifs (SceneRenderer::aovShaderDefines), vides sans AOV.
+    orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders, const std::filesystem::path &shaderDirectory,
+                                const std::vector<orosmo::renderer::Define> &meshDefines = {});
+    // REN-35 : mode « lod » (couleur par niveau) et gel du frustum de culling des objets instanciés.
+    void setDebugOptions(orosmo::renderer::DebugView view, bool freezeFrustum) noexcept
+    {
+        debugView_ = view;
+        freezeFrustum_ = freezeFrustum;
+    }
     // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (après init). 0 : rien n'est créé.
     orosmo::core::Result<> initInstances(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
                                          orosmo::renderer::PipelineCache &pipelines, const std::filesystem::path &shaderDirectory,
@@ -99,6 +107,9 @@ class DemoScene
     orosmo::renderer::VisibilityStats instanceVisibility_;
     orosmo::renderer::InstanceDrawStats instanceDrawStats_;
     std::uint64_t instanceFrames_ = 0;
+    orosmo::renderer::DebugView debugView_ = orosmo::renderer::DebugView::kNone;
+    bool freezeFrustum_ = false;
+    orosmo::renderer::FrustumFreeze frustumFreeze_;
 
     std::vector<float> heroVertices_;
     glm::vec3 heroPosition_{0.0f, 2.85f, 0.0f};

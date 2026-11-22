@@ -172,8 +172,15 @@ orosmo::core::Result<> Game::init()
     this->camera.setFarPlane(1000.0f);
     this->camera.setAspect(static_cast<unsigned>(this->viewWidth), static_cast<unsigned>(this->viewHeight));
 
+    // REN-35 : le mode de debug demande ses AOV AVANT le chargement du programme de maillage, compilé avec leurs macros (sans mode,
+    // aucune macro : le programme et la cible de scène sont ceux d'avant).
+    if (auto set = this->sceneRenderer->setDebugView(this->debugView); !set)
+    {
+        return orosmo::core::makeError(set.error().code, "Failed to set the debug view: " + set.error().message);
+    }
     this->scene = std::make_unique<demo::DemoScene>();
-    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory); !ready)
+    this->scene->setDebugOptions(this->debugView, this->freezeFrustum);
+    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory, this->sceneRenderer->aovShaderDefines()); !ready)
     {
         return orosmo::core::makeError(ready.error().code, "Failed to initialize the demo scene: " + ready.error().message);
     }

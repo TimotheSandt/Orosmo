@@ -426,11 +426,11 @@ glm::vec3 DemoScene::defaultCameraOrientation()
 }
 
 orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
-                                       const std::filesystem::path &shaderDirectory)
+                                       const std::filesystem::path &shaderDirectory, const std::vector<orosmo::renderer::Define> &meshDefines)
 {
     destroy();
 
-    auto program = shaders.loadGraphics(shaderDirectory / "mesh.vert", shaderDirectory / "mesh.frag");
+    auto program = shaders.loadGraphics(shaderDirectory / "mesh.vert", shaderDirectory / "mesh.frag", meshDefines);
     if (!program)
     {
         return std::unexpected(program.error());
@@ -588,7 +588,15 @@ orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRendere
     rd::CullView view = rd::CullView::fromMatrices(camera.viewMatrix(), camera.projectionMatrix(), static_cast<float>(renderer.frameHeight()),
                                                    camera.projection() == rd::Camera::Projection::kOrthographic);
     view.minScreenRadius = 1.0f; // moins d'un pixel de rayon : rejeté
-    instanceVisibility_ = instanceObjects_.prepare(view, instanceBatches_);
+    // REN-35 : gel du frustum (la vue de culling reste celle de l'image du gel, la pyramide gelée est dessinée) et couleurs de LOD.
+    if (freezeFrustum_ && !frustumFreeze_.frozen())
+    {
+        frustumFreeze_.freeze(view, camera.projectionMatrix() * camera.viewMatrix());
+    }
+    rd::VisibilityOptions visibility;
+    visibility.lodColors = debugView_ == rd::DebugView::kLod;
+    instanceVisibility_ = instanceObjects_.prepare(frustumFreeze_.apply(view), instanceBatches_, visibility);
+
     auto drawn = instanceRenderer_->draw(renderer, instanceBatches_, camera.wireframe());
     if (!drawn)
     {
@@ -616,6 +624,7 @@ void DemoScene::destroy()
     instanceVisibility_ = {};
     instanceDrawStats_ = {};
     instanceFrames_ = 0;
+    frustumFreeze_.unfreeze();
     groundMesh_.reset();
     structureMesh_.reset();
     heroMesh_.reset();
@@ -789,7 +798,12 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
     }
 
     debugDraw_.clear();
-    debugDraw_.setEnabled(params.debugDraw);
+    const bool frozenFrustum = frustumFreeze_.frozen();
+    debugDraw_.setEnabled(params.debugDraw || frozenFrustum);
+    if (frozenFrustum)
+    {
+        frustumFreeze_.drawFrozen(debugDraw_);
+    }
     if (params.debugDraw)
     {
         debugDraw_.axes(glm::mat4(1.0f), 3.5f);
@@ -802,7 +816,9 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
         const glm::vec4 sunRayColor(1.0f, 0.90f, 0.15f, 1.0f);
         debugDraw_.line(rayOrigin, rayEnd, sunRayColor);
         debugDraw_.sphere(rayEnd, 0.22f, sunRayColor, 12);
-
+    }
+    if (params.debugDraw || frozenFrustum)
+    {
         if (auto r = renderer.drawDebug(debugDraw_); !r)
         {
             return r;

@@ -281,6 +281,20 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.instances = *count;
         }
+        else if (matchOption("--debug-view", value))
+        {
+            const auto view = value ? orosmo::renderer::debugViewFromName(*value) : std::nullopt;
+            if (!view)
+            {
+                return makeError(ErrorCode::kInvalidArgument,
+                                 "Invalid value for --debug-view (none|normals|albedo|overdraw|lod|wireframe|motion): " + (value ? *value : std::string("<missing>")));
+            }
+            options.debugView = *view;
+        }
+        else if (argument == "--freeze-frustum")
+        {
+            options.freezeFrustum = true;
+        }
         else if (matchOption("--capture-frames", value))
         {
             if (!value)
@@ -317,7 +331,7 @@ void printUsage(std::ostream &out)
 {
     out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
         << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
-        << "              [--instances N] [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
+        << "              [--instances N] [--debug-view none|normals|albedo|overdraw|lod|wireframe|motion] [--freeze-frustum] [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
     out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
@@ -326,6 +340,8 @@ void printUsage(std::ostream &out)
     out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames, --hover >= 2).\n";
     out << "Headless: --headless creates no window (offscreen device, fixed time step), renders N frames and exits;\n";
     out << "          combine it with --capture <dir> to save the images.\n";
+    out << "Debug   : --debug-view shows normals, albedo, overdraw, LOD colors (needs --instances), wireframe or motion vectors;\n";
+    out << "          --freeze-frustum freezes the culling frustum of the instanced objects (needs --instances) and draws it.\n";
     out << "Instances: --instances N adds N instanced objects around the courtyard (frustum culling, distance LOD); the draw\n";
     out << "          calls and culling statistics are logged.\n";
 }
