@@ -290,6 +290,10 @@ core::Result<std::unique_ptr<CanvasRenderer>> CanvasRenderer::create(rhi::Device
 CanvasRenderer::~CanvasRenderer()
 {
     clear();
+    for (auto &[id, external] : externals_)
+    {
+        device_.destroy(external.group);
+    }
     device_.destroy(atlasSampler_);
 }
 
@@ -312,7 +316,7 @@ void CanvasRenderer::clear()
         device_.destroy(atlas.group);
         atlas.texture.reset();
     }
-    atlases_.clear();
+    atlases_.clear(); // les images externes restent inscrites : leur texture n'est pas à `clear`
 }
 
 core::Result<rhi::PipelineHandle> CanvasRenderer::pipeline(const ShaderProgram &program, rhi::Format format, Blend blend, Layout layout)
@@ -352,8 +356,42 @@ core::Result<rhi::PipelineHandle> CanvasRenderer::pipeline(const ShaderProgram &
     return pipelines_.graphics(program, state);
 }
 
+core::Result<> CanvasRenderer::registerExternalImage(std::uint64_t id, rhi::TextureHandle texture, rhi::SamplerHandle sampler)
+{
+    if (id == 0 || texture.isNull())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "CanvasRenderer::registerExternalImage: invalid id or texture");
+    }
+    rhi::BindGroupDesc desc;
+    desc.entries.push_back({.binding = 0, .type = rhi::BindingType::kSampledTexture, .texture = texture, .sampler = sampler});
+    desc.debugName = "ui.external." + std::to_string(id);
+    auto group = device_.createBindGroup(desc);
+    if (!group)
+    {
+        return std::unexpected(group.error());
+    }
+    unregisterExternalImage(id);
+    Atlas atlas;
+    atlas.group = *group;
+    externals_.emplace(id, std::move(atlas));
+    return {};
+}
+
+void CanvasRenderer::unregisterExternalImage(std::uint64_t id)
+{
+    if (auto it = externals_.find(id); it != externals_.end())
+    {
+        device_.destroy(it->second.group);
+        externals_.erase(it);
+    }
+}
+
 core::Result<CanvasRenderer::Atlas *> CanvasRenderer::atlasFor(const AtlasImage &image)
 {
+    if (auto it = externals_.find(image.id); it != externals_.end())
+    {
+        return &it->second;
+    }
     if (image.width == 0 || image.height == 0 || image.rgba.size() != static_cast<std::size_t>(image.width) * image.height * 4)
     {
         return makeError(ErrorCode::kInvalidArgument, "CanvasRenderer: invalid glyph atlas or image");
