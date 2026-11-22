@@ -42,6 +42,14 @@ struct InstanceDrawStats
     std::uint64_t uploadedBytes = 0;
 };
 
+// État de pipeline d'un dessin instancié : attributs de `layoutOf` (emplacements 0..7, liaison 0) + GpuInstance (emplacements 8..15,
+// liaison 1, pas d'instance), cull du matériau, reverse-Z (fil de fer : profondeur égale acceptée), formats de la cible de scène
+// (couleur écrite dans la première cible seulement). Partagé par InstanceRenderer et le rendu piloté par GPU (gpu_driven.hpp).
+GraphicsState instancedGraphicsState(const Mesh &layoutOf, rhi::CullMode cull, const SceneDrawInfo &info, bool lines);
+// Push constants d'un matériau pour `pipeline` (taille réfléchie du programme, zéros au-delà des octets du matériau ; premier
+// entier = drapeau fil de fer, convention de mesh.frag). Vide si le programme n'a pas de push constants.
+std::vector<std::byte> instancedPushConstants(PipelineCache &pipelines, rhi::PipelineHandle pipeline, const InstanceMaterial &material, bool lines);
+
 class InstanceRenderer
 {
   public:
@@ -59,6 +67,8 @@ class InstanceRenderer
     // Maillage d'un identifiant (nul si inconnu) : sert aux casters d'ombres (ShadowFeature) qui dessinent les mêmes lots.
     const Mesh *mesh(std::uint32_t id) const noexcept { return id < meshes_.size() ? meshes_[id] : nullptr; }
     std::size_t materialCount() const noexcept { return materials_.size(); }
+    // Matériau d'un identifiant (nul si inconnu).
+    const InstanceMaterial *material(std::uint32_t id) const noexcept { return id < materials_.size() ? &materials_[id] : nullptr; }
     const std::shared_ptr<ShaderProgram> &defaultProgram() const noexcept { return defaultProgram_; }
 
     // Envoie les instances de `batches` (après build) et enregistre un draw call par lot dans `scene` (entre beginFrame, setCamera et

@@ -11,6 +11,51 @@ namespace orosmo::renderer
 using core::ErrorCode;
 using core::makeError;
 
+GraphicsState instancedGraphicsState(const Mesh &layoutOf, rhi::CullMode cull, const SceneDrawInfo &info, bool lines)
+{
+    GraphicsState state;
+    state.vertexBuffers = layoutOf.vertexBuffers();
+    state.vertexBuffers.push_back({.binding = 1, .stride = sizeof(GpuInstance), .stepRate = rhi::VertexStepRate::kInstance});
+    state.vertexAttributes = layoutOf.vertexAttributes();
+    for (std::uint32_t i = 0; i < kInstanceAttributeCount; ++i)
+    {
+        state.vertexAttributes.push_back({.location = kInstanceFirstLocation + i, .binding = 1, .format = rhi::VertexFormat::kFloat4, .offset = i * 16});
+    }
+    state.raster.cull = cull;
+    state.raster.fill = lines ? rhi::FillMode::kLine : rhi::FillMode::kFill;
+    // Mêmes règles que SceneRenderer::drawMesh : reverse-Z, le fil de fer passe à profondeur égale.
+    state.depth = {true, true, lines ? rhi::CompareOp::kGreaterEqual : rhi::CompareOp::kGreater};
+    state.depthFormat = info.depthFormat;
+    state.colorTargets.clear();
+    for (std::size_t i = 0; i < info.colorFormats.size(); ++i)
+    {
+        rhi::ColorTargetState t;
+        t.format = info.colorFormats[i];
+        t.writeMask = i == 0 ? rhi::ColorWriteMask::kAll : rhi::ColorWriteMask::kNone;
+        state.colorTargets.push_back(t);
+    }
+    return state;
+}
+
+std::vector<std::byte> instancedPushConstants(PipelineCache &pipelines, rhi::PipelineHandle pipeline, const InstanceMaterial &material, bool lines)
+{
+    std::vector<std::byte> bytes;
+    if (const std::uint32_t pushSize = pipelines.pushConstantSize(pipeline); pushSize > 0)
+    {
+        bytes.assign(pushSize, std::byte{0});
+        if (const std::size_t n = std::min<std::size_t>(pushSize, material.pushConstants.size()); n > 0)
+        {
+            std::memcpy(bytes.data(), material.pushConstants.data(), n);
+        }
+        if (pushSize >= sizeof(std::int32_t))
+        {
+            const std::int32_t flag = lines ? 1 : 0; // convention mesh.frag : premier entier = fil de fer
+            std::memcpy(bytes.data(), &flag, sizeof flag);
+        }
+    }
+    return bytes;
+}
+
 core::Result<std::unique_ptr<InstanceRenderer>> InstanceRenderer::create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                                          const std::filesystem::path &shaderDirectory)
 {
@@ -149,28 +194,7 @@ core::Result<InstanceDrawStats> InstanceRenderer::draw(SceneRenderer &scene, con
             const InstanceMaterial &material = materials_[batch.key.material];
             const ShaderProgram &program = material.program ? *material.program : *defaultProgram_;
 
-            GraphicsState state;
-            state.vertexBuffers = mesh.vertexBuffers();
-            state.vertexBuffers.push_back({.binding = 1, .stride = sizeof(GpuInstance), .stepRate = rhi::VertexStepRate::kInstance});
-            state.vertexAttributes = mesh.vertexAttributes();
-            for (std::uint32_t i = 0; i < kInstanceAttributeCount; ++i)
-            {
-                state.vertexAttributes.push_back(
-                    {.location = kInstanceFirstLocation + i, .binding = 1, .format = rhi::VertexFormat::kFloat4, .offset = i * 16});
-            }
-            state.raster.cull = material.cull;
-            state.raster.fill = lines ? rhi::FillMode::kLine : rhi::FillMode::kFill;
-            // Mêmes règles que SceneRenderer::drawMesh : reverse-Z, le fil de fer passe à profondeur égale.
-            state.depth = {true, true, lines ? rhi::CompareOp::kGreaterEqual : rhi::CompareOp::kGreater};
-            state.depthFormat = info->depthFormat;
-            state.colorTargets.clear();
-            for (std::size_t i = 0; i < info->colorFormats.size(); ++i)
-            {
-                rhi::ColorTargetState t;
-                t.format = info->colorFormats[i];
-                t.writeMask = i == 0 ? rhi::ColorWriteMask::kAll : rhi::ColorWriteMask::kNone;
-                state.colorTargets.push_back(t);
-            }
+            GraphicsState state = instancedGraphicsState(mesh, material.cull, *info, lines);
             state.debugName = program.name() + ".instanced" + (lines ? ".lines" : "");
             auto pipeline = pipelines_.graphics(program, state);
             if (!pipeline)
@@ -185,19 +209,7 @@ core::Result<InstanceDrawStats> InstanceRenderer::draw(SceneRenderer &scene, con
                 ++stats.pipelineChanges;
             }
             command.textures = material.textures;
-            if (const std::uint32_t pushSize = pipelines_.pushConstantSize(*pipeline); pushSize > 0)
-            {
-                command.pushConstants.assign(pushSize, std::byte{0});
-                if (const std::size_t n = std::min<std::size_t>(pushSize, material.pushConstants.size()); n > 0)
-                {
-                    std::memcpy(command.pushConstants.data(), material.pushConstants.data(), n);
-                }
-                if (pushSize >= sizeof(std::int32_t))
-                {
-                    const std::int32_t flag = lines ? 1 : 0; // convention mesh.frag : premier entier = fil de fer
-                    std::memcpy(command.pushConstants.data(), &flag, sizeof flag);
-                }
-            }
+            command.pushConstants = instancedPushConstants(pipelines_, *pipeline, material, lines);
             command.vertexBuffer = mesh.vertexBuffer();
             command.indexBuffer = mesh.indexBuffer();
             command.indexCount = mesh.indexCount();
