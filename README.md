@@ -94,6 +94,10 @@ Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `lib
 - Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `orosmo/ui`)
 - Nettoyage M00 : [docs/CLEANUP_PLAN.md](docs/CLEANUP_PLAN.md), [docs/releases/M00.md](docs/releases/M00.md)
 
+## Origine et méthode de développement
+
+Orosmo a été **commencé par son auteur, avec OpenGL**. Son développement s'est ensuite **poursuivi avec l'aide de Claude** (assistant de programmation d'Anthropic) : l'auteur décide de la direction, fixe les règles (`CLAUDE.md`, `docs/`), relit et fusionne ; l'IA écrit du code et des tests, que la CI et des preuves vérifient (aucune fonctionnalité n'est déclarée « Fait » sans test ni commande de démo). Les commits écrits avec l'IA portent la ligne `Co-Authored-By`.
+
 ## Licence
 
 À décider (Apache-2.0 envisagée). Aucun fichier `LICENSE` pour l'instant.
