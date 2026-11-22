@@ -3,6 +3,7 @@
 #include "orosmo/ui/font.hpp"
 
 #include <orosmo/core/log.hpp>
+#include <orosmo/core/tasks.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -11,6 +12,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <vector>
 #include <glm/gtc/matrix_transform.hpp>
 #include <msdfgen/msdfgen.h>
@@ -323,15 +325,26 @@ std::vector<std::uint8_t> GenerateMtsdfBitmap(msdfgen::Shape shape, int width, i
     return bitmap;
 }
 
-GlyphBitmap BuildMtsdfGlyphBitmap(FT_Face face, char32_t c)
+// Glyphe préparé (FreeType, séquentiel : une FT_Face n'est pas partageable entre threads) ; la forme est convertie en MTSDF ensuite,
+// en parallèle (GenerateMtsdfBitmap ne lit que la forme : résultat identique quel que soit l'ordre).
+struct PreparedGlyph
 {
     GlyphBitmap glyph;
+    std::optional<msdfgen::Shape> shape;
+    float minX = 0.0f;
+    float minY = 0.0f;
+};
+
+PreparedGlyph PrepareMtsdfGlyph(FT_Face face, char32_t c)
+{
+    PreparedGlyph prepared;
+    GlyphBitmap &glyph = prepared.glyph;
     glyph.character = c;
 
     if (FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING) != 0)
     {
         LOG_ERROR(1, "ERROR::FREETYPE: Failed to load glyph U+", static_cast<unsigned>(c));
-        return glyph;
+        return prepared;
     }
 
     glyph.advance = static_cast<unsigned int>(face->glyph->advance.x);
@@ -339,13 +352,13 @@ GlyphBitmap BuildMtsdfGlyphBitmap(FT_Face face, char32_t c)
 
     if (face->glyph->format != FT_GLYPH_FORMAT_OUTLINE || face->glyph->outline.n_contours <= 0)
     {
-        return glyph;
+        return prepared;
     }
 
     msdfgen::Shape shape = BuildShapeFromOutline(face->glyph->outline);
     if (shape.contours.empty() || shape.edgeCount() <= 0 || !shape.validate())
     {
-        return glyph;
+        return prepared;
     }
 
     FT_BBox boundingBox{};
@@ -359,8 +372,10 @@ GlyphBitmap BuildMtsdfGlyphBitmap(FT_Face face, char32_t c)
     glyph.height = std::max(1, static_cast<int>(std::ceil(maxY - minY)));
     glyph.bearingX = static_cast<int>(std::floor(static_cast<float>(boundingBox.xMin) / 64.0f)) - MsdfPaddingPixels;
     glyph.bearingY = static_cast<int>(std::ceil(static_cast<float>(boundingBox.yMax) / 64.0f)) + MsdfPaddingPixels;
-    glyph.pixels = GenerateMtsdfBitmap(std::move(shape), glyph.width, glyph.height, minX, minY);
-    return glyph;
+    prepared.shape = std::move(shape);
+    prepared.minX = minX;
+    prepared.minY = minY;
+    return prepared;
 }
 
 } // namespace
@@ -477,11 +492,11 @@ bool TextRenderer::ensureFontLoaded(const std::string &fontName, unsigned int fo
 void TextRenderer::buildAtlas(FontData &fontData, bool extended)
 {
     // L'ASCII d'abord, toujours au même endroit de l'atlas (l'atlas étendu ne fait que s'allonger vers le bas).
-    std::vector<GlyphBitmap> glyphs;
-    glyphs.reserve(extended ? 400 : 128);
+    std::vector<PreparedGlyph> prepared;
+    prepared.reserve(extended ? 400 : 128);
     for (char32_t c = 0; c < 128; ++c)
     {
-        glyphs.push_back(BuildMtsdfGlyphBitmap(fontData.face, c));
+        prepared.push_back(PrepareMtsdfGlyph(fontData.face, c));
     }
     if (extended)
     {
@@ -489,9 +504,29 @@ void TextRenderer::buildAtlas(FontData &fontData, bool extended)
         {
             if (FT_Get_Char_Index(fontData.face, static_cast<FT_ULong>(c)) != 0) // absent de la police : non chargé
             {
-                glyphs.push_back(BuildMtsdfGlyphBitmap(fontData.face, c));
+                prepared.push_back(PrepareMtsdfGlyph(fontData.face, c));
             }
         }
+    }
+    // Le champ de distance (msdfgen) coûte 5 à 10 ms par glyphe : environ 1 s par taille de police en séquentiel. Chaque glyphe est
+    // indépendant : réparti sur les threads (pixels identiques à ceux du calcul séquentiel).
+    {
+        orosmo::core::TaskSystem tasks;
+        tasks.parallelFor(prepared.size(), 1,
+                          [&prepared](std::size_t i)
+                          {
+                              PreparedGlyph &p = prepared[i];
+                              if (p.shape)
+                              {
+                                  p.glyph.pixels = GenerateMtsdfBitmap(std::move(*p.shape), p.glyph.width, p.glyph.height, p.minX, p.minY);
+                              }
+                          });
+    }
+    std::vector<GlyphBitmap> glyphs;
+    glyphs.reserve(prepared.size());
+    for (PreparedGlyph &p : prepared)
+    {
+        glyphs.push_back(std::move(p.glyph));
     }
     fontData.characters.clear();
     fontData.extended = extended;
