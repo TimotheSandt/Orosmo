@@ -196,6 +196,7 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --gpu-driven value is refused");
         const char *missing[] = {"Orosmo", "--gpu-driven"};
         Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--gpu-driven needs a value");
+    }
 
     TEST_CASE("launch options parse --transparent-shadow; absent by default (REN-39)")
     {
