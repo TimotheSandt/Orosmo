@@ -531,6 +531,9 @@ TEST_SUITE("renderer/aov")
                             REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
                             // Soumission synchrone AVANT le submit de cet encodeur (ex. une lecture de statistiques GPU).
                             (void)scene.gpu.pixel(probe, 0, 0);
+                            auto other = scene.gpu.device->createCommandEncoder();
+                            REQUIRE(scene.gpu.device->submit(std::move(other)).has_value());
+                            scene.gpu.device->waitIdle();
                         });
                 }
                 scene.gpu.expectNoValidationErrors();
