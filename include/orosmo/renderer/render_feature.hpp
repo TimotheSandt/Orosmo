@@ -4,10 +4,12 @@
 // post-traitements, mise à l'échelle, génération d'images, historique).
 #pragma once
 
+#include "orosmo/renderer/aov.hpp"
 #include "orosmo/renderer/frame_data.hpp"
 #include "orosmo/renderer/render_graph.hpp"
 #include "orosmo/rhi/capabilities.hpp"
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -24,6 +26,7 @@ class RenderGraphBuilder
         RgTexture sceneDepth;    // profondeur de la scène (invalide si absente)
         RgTexture motionVectors; // vecteurs de mouvement (invalide s'ils ne sont pas activés)
         RgTexture output;        // destination de l'image (résolution de sortie)
+        std::array<RgTexture, kAovCount> aovs{}; // AOV de la passe de scène (REN-21) ; invalides s'ils ne sont pas actifs
         rhi::Extent2D renderSize{};
         rhi::Extent2D outputSize{};
     };
@@ -36,6 +39,9 @@ class RenderGraphBuilder
     RenderGraph &graph() noexcept { return graph_; }
     const Resources &resources() const noexcept { return resources_; }
     const rhi::Capabilities &capabilities() const noexcept { return capabilities_; }
+
+    // Texture d'un AOV (invalide si personne ne l'a demandé : voir `RenderFeature::requiredAovs`).
+    RgTexture aov(Aov which) const noexcept { return resources_.aovs[static_cast<std::size_t>(which)]; }
 
     // La passe de scène lit `texture` : la passe qui l'écrit s'exécute avant la scène et n'est pas écartée (ex. carte d'ombre,
     // REN-06 ; la texture est ensuite liée au groupe 1 des matériaux qui la lisent).
@@ -69,6 +75,9 @@ class RenderFeature
         (void)capabilities;
         return true;
     }
+    // REN-21 : AOV que ce plugin lit. Ils sont ajoutés à la passe de scène (cibles supplémentaires) tant que le plugin est
+    // enregistré ; sans plugin ni demande, aucune cible de plus n'existe.
+    virtual AovSet requiredAovs() const { return {}; }
     // Données de l'image (caméra, temps, lumière principale), avant `declarePasses`. Un plugin peut y lire ce qu'il prépare
     // côté CPU (culling, mises à jour de tampons).
     virtual core::Result<> prepare(const FrameData &frame)
