@@ -13,6 +13,8 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <optional>
+#include <span>
 #include <vector>
 
 namespace orosmo::renderer
@@ -31,6 +33,17 @@ struct ObjectDesc
     std::uint32_t material = 0;
     std::uint32_t lodSettings = 0; // identifiant rendu par ObjectSet::addLodSettings ; 0 : un seul niveau, jamais rejeté au loin
     Aabb localBounds;               // dans le repère du maillage
+    glm::mat4 transform{1.0f};
+    glm::vec4 color{1.0f};
+};
+
+// Lecture d'un objet par son emplacement (miroirs comme GpuScene, REN-29). Valable jusqu'à la prochaine modification de l'ensemble.
+struct ObjectView
+{
+    std::span<const std::uint32_t> lodMeshes;
+    std::uint32_t material = 0;
+    std::uint32_t lodSettings = 0;
+    Aabb worldBounds;
     glm::mat4 transform{1.0f};
     glm::vec4 color{1.0f};
 };
@@ -72,6 +85,17 @@ class ObjectSet
     // réajustée (refit) après des déplacements.
     VisibilityStats prepare(const CullView &view, InstanceBatchBuilder &out, const VisibilityOptions &options = {});
 
+    // Suivi des changements, pour les miroirs (GpuScene, REN-29) : chaque ajout, retrait, déplacement ou changement de couleur
+    // incrémente `changeCounter()` et date l'emplacement touché (`slotChange`). Un miroir garde le compteur de sa dernière
+    // synchronisation et ne relit que les emplacements plus récents. Les emplacements (ObjectId::index) sont stables : un retrait
+    // ne déplace pas les autres objets.
+    std::uint32_t slotCount() const noexcept { return static_cast<std::uint32_t>(slots_.size()); }
+    std::uint64_t changeCounter() const noexcept { return changeCounter_; }
+    std::uint64_t slotChange(std::uint32_t slot) const noexcept { return slot < slots_.size() ? slots_[slot].changed : 0; }
+    // Objet vivant à cet emplacement (nullopt : libre ou hors limites).
+    std::optional<ObjectView> objectAtSlot(std::uint32_t slot) const noexcept;
+    std::size_t lodSettingsCount() const noexcept { return lodSettings_.size(); }
+
   private:
     struct Object
     {
@@ -87,6 +111,7 @@ class ObjectSet
     {
         std::uint32_t dense = 0xFFFFFFFFu; // index dans objects_, ou libre
         std::uint32_t generation = 0;
+        std::uint64_t changed = 0; // valeur de changeCounter_ à la dernière modification
     };
     Object *find(ObjectId id) noexcept;
 
@@ -99,6 +124,7 @@ class ObjectSet
     bool structureDirty_ = true;
     bool boundsDirty_ = false;
     std::vector<std::uint32_t> visible_;
+    std::uint64_t changeCounter_ = 0;
 };
 
 } // namespace orosmo::renderer
