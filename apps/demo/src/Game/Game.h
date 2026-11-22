@@ -20,6 +20,7 @@
 #include <orosmo/renderer/canvas_renderer.hpp>
 #include <orosmo/renderer/gpu_timer.hpp>
 #include <orosmo/renderer/pipeline_cache.hpp>
+#include <orosmo/renderer/post_effects.hpp>
 #include <orosmo/renderer/render_target.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
 #include <orosmo/renderer/shader_library.hpp>
@@ -48,6 +49,8 @@ class Game
     void enableCapture(std::string directory, std::uint32_t frames);
     // --instances N (REN-28) : N objets instanciés ajoutés à la scène par init() ; 0 (défaut) : aucun.
     void setInstanceCount(std::uint32_t count) noexcept { this->instanceCount = count; }
+    // --post (REN-17/18) : effets activés par init() ; kNone (défaut) : aucun effet enregistré, scène LDR inchangée.
+    void setPostMode(demo::PostMode mode) noexcept { postMode = mode; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
@@ -80,6 +83,7 @@ class Game
     void applySceneParams();
     void resetCamera();
     orosmo::core::Result<> createUi();
+    orosmo::core::Result<> createPostEffects();
     bool loadFullUiTheme(bool reportAsError);
     bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
     void present(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
@@ -128,6 +132,8 @@ class Game
     std::string initialTheme = "dark";
     std::string initialTab = "scene";
     std::uint32_t instanceCount = 0;
+    demo::PostMode postMode = demo::PostMode::kNone;
+    orosmo::renderer::PostEffects post; // effets possédés par sceneRenderer
     std::string hoverId;
     std::string clickId;
     std::string captureDirectory;

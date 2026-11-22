@@ -153,6 +153,7 @@ int main(int argc, char **argv)
             game.setCaptureInteraction(launchOptions.hoverId, launchOptions.clickId);
             game.setVSync(launchOptions.vsync);
             game.setInstanceCount(launchOptions.instances);
+            game.setPostMode(launchOptions.post);
             LOG_TRACE("Game created");
             if (auto ready = game.init(); !ready)
             {

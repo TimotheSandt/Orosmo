@@ -8,6 +8,7 @@
 #include <charconv>
 #include <istream>
 #include <ostream>
+#include <utility>
 
 namespace demo
 {
@@ -118,6 +119,19 @@ std::optional<UiMode> parseUiMode(std::string_view value) noexcept
     return std::nullopt;
 }
 
+std::optional<PostMode> parsePostMode(std::string_view value) noexcept
+{
+    constexpr std::pair<const char *, PostMode> kModes[] = {{"none", PostMode::kNone}, {"hdr", PostMode::kHdr}, {"bloom", PostMode::kBloom}, {"full", PostMode::kFull}};
+    for (const auto &[name, mode] : kModes)
+    {
+        if (equalsIgnoreCase(value, name))
+        {
+            return mode;
+        }
+    }
+    return std::nullopt;
+}
+
 orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv)
 {
     LaunchOptions options;
@@ -200,6 +214,19 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
                 return makeError(ErrorCode::kInvalidArgument, "Unknown UI mode (expected off|hud|full): " + *value);
             }
             options.uiMode = *uiMode;
+        }
+        else if (matchOption("--post", value))
+        {
+            if (!value)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after --post");
+            }
+            const auto post = parsePostMode(*value);
+            if (!post)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Unknown post-processing mode (expected none|hdr|bloom|full): " + *value);
+            }
+            options.post = *post;
         }
         else if (matchOption("--theme", value))
         {
@@ -317,7 +344,7 @@ void printUsage(std::ostream &out)
 {
     out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
         << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
-        << "              [--instances N] [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
+        << "              [--instances N] [--post none|hdr|bloom|full] [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
     out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
@@ -328,6 +355,8 @@ void printUsage(std::ostream &out)
     out << "          combine it with --capture <dir> to save the images.\n";
     out << "Instances: --instances N adds N instanced objects around the courtyard (frustum culling, distance LOD); the draw\n";
     out << "          calls and culling statistics are logged.\n";
+    out << "Post:     --post hdr renders the scene in HDR with ACES tonemapping; bloom adds bloom; full adds auto exposure,\n";
+    out << "          a color grading LUT and a vignette. none (default) keeps the LDR scene unchanged.\n";
 }
 
 bool promptForBackend(std::istream &input, std::ostream &output, Backend &selected)

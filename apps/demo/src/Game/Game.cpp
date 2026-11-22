@@ -162,6 +162,57 @@ orosmo::core::Result<> Game::createGraphics()
 
 Game::~Game() { this->stop(); }
 
+orosmo::core::Result<> Game::createPostEffects()
+{
+    if (this->postMode == demo::PostMode::kNone)
+    {
+        return {}; // rien d'enregistré : graphe et image identiques à ceux d'avant les post-traitements
+    }
+    auto added = rd::addPostEffects(*this->sceneRenderer, *this->device, *this->shaders, *this->pipelines, kShaderDirectory);
+    if (!added)
+    {
+        return orosmo::core::makeError(added.error().code, "Failed to create the post-processing effects: " + added.error().message);
+    }
+    this->post = *added;
+    // Les couleurs de la démo sont écrites en sRGB et lues comme linéaires (pas de linéarisation des matériaux) : l'image HDR,
+    // encodée en sRGB en sortie, est plus claire que l'image LDR. Exposition neutre.
+    this->post.tonemap->setEnabled(true);
+    this->post.tonemap->settings().tonemapper = rd::Tonemapper::kAces;
+    this->post.tonemap->settings().exposureEv = 0.0f;
+    if (this->postMode == demo::PostMode::kBloom || this->postMode == demo::PostMode::kFull)
+    {
+        this->post.bloom->setEnabled(true);
+        this->post.bloom->settings().threshold = 0.8f;
+        this->post.bloom->settings().intensity = 0.15f;
+    }
+    if (this->postMode == demo::PostMode::kFull)
+    {
+        if (this->post.autoExposure != nullptr)
+        {
+            this->post.autoExposure->setEnabled(true);
+            this->post.autoExposure->settings().key = 0.18f;
+        }
+        // Étalonnage chaud et un peu plus contrasté, calculé (aucun fichier) : rouge relevé, bleu baissé, courbe en S douce.
+        rd::ColorLut lut = rd::identityLut(17);
+        for (glm::vec3 &c : lut.values)
+        {
+            const glm::vec3 s = c * c * (3.0f - 2.0f * c);
+            const glm::vec3 contrast = glm::mix(c, s, 0.35f);
+            c = glm::clamp(contrast * glm::vec3(1.06f, 1.0f, 0.9f) + glm::vec3(0.015f, 0.005f, 0.0f), 0.0f, 1.0f);
+        }
+        if (auto r = this->post.colorGrading->setLut(lut); !r)
+        {
+            return r;
+        }
+        this->post.colorGrading->setEnabled(true);
+        this->post.vignette->setEnabled(true);
+    }
+    LOG_INFO("Post-processing: HDR scene, ", rd::toString(this->post.tonemap->settings().tonemapper), " tonemapping",
+             this->post.bloom->enabled() ? ", bloom" : "", this->post.autoExposure != nullptr && this->post.autoExposure->enabled() ? ", auto exposure" : "",
+             this->post.colorGrading->enabled() ? ", LUT, vignette" : "");
+    return this->post.sync(*this->sceneRenderer);
+}
+
 orosmo::core::Result<> Game::init()
 {
     this->refreshViewSize();
@@ -182,6 +233,10 @@ orosmo::core::Result<> Game::init()
         return orosmo::core::makeError(ready.error().code, "Failed to create the instanced objects: " + ready.error().message);
     }
 
+    if (auto created = this->createPostEffects(); !created)
+    {
+        return created;
+    }
     if (auto created = this->createUi(); !created)
     {
         return created;
