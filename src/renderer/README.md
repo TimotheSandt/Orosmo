@@ -42,15 +42,20 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 **Règles de dépendance** (par ressource ; l'ordre de déclaration ne compte qu'entre les accès à une même ressource) :
 
 - les écrivains d'une ressource (`write`, `writeColor`, `writeDepth` ; une passe qui lit et écrit est un écrivain) s'exécutent dans
-  leur ordre de déclaration ;
+  leur ordre de déclaration ; un écrivain ne **dépend** du précédent (qui est alors gardé avec lui) que s'il consomme l'ancien contenu :
+  attachement en `kLoad`, `write` générique (écriture partielle possible) ou lecture dans la même passe. Un attachement en `kClear` ou
+  `kDontCare` ne fait qu'ordonner : la passe dont le résultat est entièrement écrasé est écartée si rien d'autre ne la lit ;
 - `read` voit la version laissée par le dernier écrivain déclaré **avant** la passe, et l'écrivain suivant attend cette passe
   (écriture après lecture) ; sans écrivain déclaré avant elle, la passe voit le contenu **final** ;
 - `readFinal` voit toujours le contenu final (après tous les écrivains de l'image, même déclarés plus tard) ;
-- une ressource importée sans écrivain est lue telle quelle (contenu d'avant l'image).
+- une ressource importée sans écrivain est lue telle quelle (contenu d'avant l'image) ; une ressource **transitoire** lue sans
+  producteur (aucun écrivain, ou premier attachement en `kLoad`) par une passe gardée est refusée par `compile` (kInvalidArgument :
+  son contenu serait indéfini).
 
-Sont gardées : les passes à effet de bord (`sideEffect`), celles qui écrivent une ressource importée, et tout ce dont elles lisent
+Sont gardées : les passes à effet de bord (`sideEffect`), celles qui écrivent une ressource importée, et tout ce dont elles consomment
 les données (une écriture après lecture ordonne sans garder le lecteur). À égalité, l'ordre de déclaration est conservé. Un cycle est
-refusé par `compile` avec le chemin des passes.
+refusé par `compile` avec le chemin des passes. À l'exécution, une passe en erreur arrête l'image : l'erreur rendue par la passe, ou
+sinon la première commande refusée par l'encodeur pendant la passe (`CommandEncoder::error`), est rendue préfixée du nom de la passe.
 
 **API en bref** (entrées et sorties d'une passe) :
 
@@ -74,11 +79,23 @@ transitoire sont déduits des accès (attachement : `kRenderTarget`, lecture : `
 déclaré dans `RgTextureDesc::usage`. `findTexture(nom)` retrouve une ressource déclarée par une autre passe (ex. un AOV, REN-21).
 
 **Image de `SceneRenderer`.** `endFrame` déclare, dans cet ordre : `depth-prepass` (seulement avec `setDepthPrepass(true)`, REN-04), `scene` (raster : couleur, vecteurs de mouvement, profondeur ; joue
-les dessins enregistrés), `post.<nom>` (un par `IPostProcessPass`), `upscale` (mode actif, ou copie 1:1), `frame-generation`,
-`history` (historique en double tampon : lecture de l'image précédente dans l'un, copie de la courante dans l'autre), puis les passes
-des plugins, dans l'ordre d'enregistrement. Groupe 0 de toute passe : `ctx.frame()->group` (caméra 0, lumières 1, `FrameData` 2).
+les dessins enregistrés), `upscale` (mode actif, ou copie 1:1), `frame-generation`, `history` (historique en double tampon : lecture
+de l'image précédente dans l'un, copie de la courante dans l'autre), puis les passes des plugins, dans l'ordre d'enregistrement, et
+enfin `post.<nom>` (un par `IPostProcessPass`) : déclarés après les plugins, les post-traitements voient la passe principale complète
+(3D opaque, transparents, 2D du monde : docs/03 §11) ; `upscale`, `frame-generation` et `history` lisent la scène avec `readFinal`,
+donc après eux. Groupe 0 de toute passe : `ctx.frame()->group` (caméra 0, lumières 1, `FrameData` 2).
 Comme les dessins sont joués à `endFrame`, les tampons d'un maillage dessiné doivent rester valides jusque-là ; les constantes, le
-pipeline et la transformation sont résolus à `drawMesh`, les segments de debug copiés à `drawDebug`.
+pipeline et la transformation sont résolus à `drawMesh`, les segments de debug copiés à `drawDebug`. La transformation de chaque dessin
+est copiée dans sa propre **tranche** (`recordModelSlice` : bloc `ModelBlock` de 208 octets, pas `minUniformAlignment`, un tampon
+envoyé une fois par image, groupe 2 lié avec un décalage dynamique, `FrameResources::modelGroup`) : un maillage dessiné (ou déposé
+dans `TransparentFeature`) plusieurs fois dans l'image garde chaque pose.
+
+Cycle de vie : `beginFrame` (enregistrement) → `endFrame` (exécution : `beginFrame` y est refusé, par exemple depuis un `drawCustom`)
+→ disponible, après le nettoyage, que l'image réussisse ou non : dessins et tranches vidés, `RenderFeature::frameEnded` de chaque
+plugin (dépôts des transparents, placements des vues). L'historique temporel n'est publié comme « image précédente » que si la copie
+et le graphe entier réussissent ; un échec l'invalide (réinitialisation signalée à l'image suivante). Avec des liaisons de plugins au
+groupe 0 (clusters du forward+), tous les dessins de l'image doivent utiliser le `LightManager` actif à `endFrame` : sinon
+`endFrame` refuse l'image (kUnsupported) au lieu de lire les clusters d'autres lumières.
 
 **Ajouter une passe d'ombre (REN-06 à 08).** C'est ce que fait `ShadowFeature` (voir « Ombres » plus bas) : atlas persistant importé
 (`graph.importTexture`), passes `kGeneric` qui l'écrivent, puis `builder.addSceneInput(atlas)` : elles s'exécutent avant `scene` et ne
@@ -104,11 +121,14 @@ C'est ainsi que la démo branche l'interface (`CanvasRenderer`) et la présentat
 cibles MRT à la passe de scène (`activeAovs()`, `aovLayout()`). Sans demande, la cible de scène n'a que sa couleur : aucune cible de plus,
 aucun coût, l'image de la démo est identique au pixel près (test `renderer/aov`, « nothing extra is allocated »). Un plugin lit un AOV par
 `RenderGraphBuilder::aov(Aov)` ; les AOV sont effacés à leur valeur « rien » (identifiant 0, normales -1). Le programme de maillage s'écrit pour les
-AOV actifs en le chargeant avec `SceneRenderer::aovShaderDefines()` (`mesh.vert/frag` les gèrent ; un programme sans les sorties n'écrit que la couleur,
-ses AOV gardent la valeur d'effacement). `Mesh::setObjectId` donne l'identifiant.
+AOV actifs en le chargeant avec `SceneRenderer::aovShaderDefines()` (`mesh.vert/frag` et la variante texturée `mesh_textured.vert` + `OROSMO_TEXTURED`
+les gèrent, albédo = texel ; un programme sans les sorties n'écrit que la couleur, ses AOV gardent la valeur d'effacement). `Mesh::setObjectId` donne
+l'identifiant. Profondeur linéaire : `-z` de la position en espace de vue (`FrameData::view`), juste en perspective comme en orthographique.
 
 **Mouvement.** `(NDC courant - NDC précédent) / 2`, jitter retiré. Caméra : `FrameData::prevViewProj`. Objets : le maillage garde sa matrice de l'image précédente
 (`ModelBlock::prevModel`, suivie seulement si l'AOV est actif), donc le mouvement des objets mobiles est exact ; le rendu relatif à la caméra est géré.
+Le modèle précédent n'est repris que de l'image directement précédente : après une interruption du suivi (maillage non dessiné), le modèle courant sert
+de repli (aucun mouvement).
 
 **Résolution MSAA** (la scène est aujourd'hui mono-échantillon ; règle fixée par `aovResolveRule`) : moyenne pour mouvement, matériau, émission, albédo ;
 normales décodées, moyennées, renormalisées ; profondeur linéaire : échantillon le plus proche ; identifiants : échantillon le plus proche, JAMAIS moyennés.
@@ -117,7 +137,8 @@ normales décodées, moyennées, renormalisées ; profondeur linéaire : échant
 `request` liste ceux qu'il veut écrire. Le mélange et l'absence d'écriture de profondeur du mode sont appliqués au pipeline.
 
 **Debug (REN-35).** `setDebugView` : `normals` / `motion` (AOV + passe `debug.view` sur la couleur), `albedo` / `overdraw` / `wireframe` (programme de remplacement
-des maillages `drawMesh`), `lod` (`VisibilityOptions::lodColors` : couleur de l'instance = son niveau), gel du frustum (`FrustumFreeze`, `drawFrozen`).
+des maillages `drawMesh` ; variante texturée `mesh_textured.vert` + `OROSMO_TEXTURED` pour un maillage à uv et groupe de textures : l'albédo est le
+texel), `lod` (`VisibilityOptions::lodColors` : couleur de l'instance = son niveau), gel du frustum (`FrustumFreeze`, `drawFrozen`).
 Démo : `--debug-view none|normals|albedo|overdraw|lod|wireframe|motion` (défaut none), `--freeze-frustum` (avec `--instances N`).
 Partiel : les modes dépendant des cascades d'ombre et des clusters forward+ (autres agents) ne sont pas là. Limites : les objets du `InstanceRenderer`
 (programme propre) n'écrivent pas encore d'AOV et ignorent `albedo`/`overdraw`/`normals` (seul `lod` les concerne) ; la profondeur linéaire et la rugosité/métal/émission sont celles du matériau par défaut (pas de PBR avant REN-09).
@@ -475,6 +496,9 @@ Démo : `apps/demo/bin/release/main --headless --lighting forwardplus --lights 1
 ponctuelle : captures de référence inchangées) ; `--lights N` place N ponctuelles déterministes (spirale de Fibonacci, hachage entier).
 Le Profiler mesure `RenderGraph/depth-prepass`, `RenderGraph/forwardplus.clusters` et `RenderGraph/scene` (journal « Perf: »).
 
+La pré-passe ne contient que les matériaux qui écrivent la profondeur (`blendModeState(mode).depthWrite` : opaques, masqués) ; un
+maillage transparent (`Mesh::setAovMaterial`) teste la profondeur de la pré-passe sans y avoir écrit la sienne.
+
 Limites : les dessins externes (`drawCustom`, donc `InstanceRenderer`) ne sont pas dans la pré-passe et la variante instanciée lit
 toutes les lumières (même image, sans le gain du forward+) ; les clusters sont construits avec les lumières actives à `endFrame` (un
 seul `LightManager` par image en forward+) ; pas de culling des clusters vides par la profondeur de la pré-passe (tous les clusters
@@ -523,7 +547,7 @@ est enveloppé dans des `RenderFeature` (`layer2d_feature.hpp`, `Layer2DFeature`
 
 | Mode | Passe | Détail |
 | --- | --- | --- |
-| `kWorld` | lit `scene.depth`, écrit `scene.color` | le plan 2D est placé dans le monde par `setPlaneTransform` et vu par la caméra 3D ; test de profondeur (reverse-Z, lecture seule). Dessiné après les transparents, qui n'écrivent pas la profondeur : un sprite derrière une vitre la recouvre |
+| `kWorld` | lit `scene.depth`, écrit `scene.color` | le plan 2D est placé dans le monde par `setPlaneTransform` et vu par la caméra 3D ; test de profondeur (reverse-Z, lecture seule). Dessiné après les transparents, qui n'écrivent pas la profondeur : un sprite derrière une vitre la recouvre. Rendu relatif à la caméra (REN-02) géré : le plan est ramené côté CPU dans le repère des maillages |
 | `kOverlay` | écrit `output` | après la mise à l'échelle, en pixels de la sortie, sans profondeur |
 | `kTexture` | avant `scene` | `setTextureSize`, `binding()` à donner à `Mesh::setTextures` ; shaders `mesh_textured.vert` + `mesh.frag` avec `OROSMO_TEXTURED` |
 
