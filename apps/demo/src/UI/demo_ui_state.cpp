@@ -361,7 +361,45 @@ void DemoUiState::tick(float deltaTime, float frameTimeMs)
         std::rotate(frameSamples.begin(), frameSamples.begin() + 1, frameSamples.end());
         frameSamples.back() = sample;
     }
+}
 
-    drawPreview();
-    drawCompass();
+bool DemoUiState::liveImagesVisible(bool fullUiShown) const
+{
+    static const int kWindowsTab = [] {
+        const auto names = tabNames();
+        return static_cast<int>(std::find(names.begin(), names.end(), "windows") - names.begin());
+    }();
+    return fullUiShown && tab == kWindowsTab;
+}
+
+bool DemoUiState::previewInputsChanged() const
+{
+    if (!drawnPreview_)
+    {
+        return true;
+    }
+    const PreviewInputs &d = *drawnPreview_;
+    return d.rangeLow != rangeLow || d.rangeHigh != rangeHigh || d.steps != steps || d.showMarker != showMarker ||
+           (showMarker && (d.cameraYawRadians != cameraYawRadians || d.accent != accent)) || d.gradient != paletteGradient ||
+           d.curve != responseCurve;
+}
+
+void DemoUiState::refreshLiveImages(bool fullUiShown)
+{
+    if (!liveImagesVisible(fullUiShown))
+    {
+        return;
+    }
+    if (previewInputsChanged())
+    {
+        drawPreview();
+        drawnPreview_ = PreviewInputs{rangeLow, rangeHigh, steps, showMarker, cameraYawRadians, accent, paletteGradient, responseCurve};
+        ++previewDraws;
+    }
+    if (drawnCompassYaw_ != cameraYawRadians)
+    {
+        drawCompass();
+        drawnCompassYaw_ = cameraYawRadians;
+        ++compassDraws;
+    }
 }

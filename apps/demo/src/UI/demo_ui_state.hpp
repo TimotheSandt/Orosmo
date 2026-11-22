@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -109,13 +110,36 @@ struct DemoUiState
     // ── Frame update & event log ──
     void record(std::string line);
     void tick(float deltaTime, float frameTimeMs);
+    // Images vivantes (prévisualisation et boussole, onglet « Windows ») : redessinées seulement si elles sont visibles
+    // (`fullUiShown` et onglet « Windows ») et que leurs entrées ont changé depuis le dernier dessin. À appeler après la mise à
+    // jour de l'interface (l'onglet choisi cette image) et avant son dessin.
+    void refreshLiveImages(bool fullUiShown);
+    bool liveImagesVisible(bool fullUiShown) const;
 
     std::deque<std::string> log;
     std::vector<float> frameSamples;
     float time = 0.0f;
     int notified = 0;
+    // Nombre de dessins de chaque image vivante depuis la création (tests et diagnostics).
+    std::uint64_t previewDraws = 0;
+    std::uint64_t compassDraws = 0;
 
   private:
+    // Entrées dont dépendent les pixels de la prévisualisation.
+    struct PreviewInputs
+    {
+        double rangeLow = 0.0;
+        double rangeHigh = 0.0;
+        int steps = 0;
+        bool showMarker = false;
+        float cameraYawRadians = 0.0f;
+        glm::vec4 accent{0.0f};
+        orosmo::ui::Gradient gradient;
+        orosmo::ui::Curve curve;
+    };
+    bool previewInputsChanged() const;
     void drawPreview();
     void drawCompass();
+    std::optional<PreviewInputs> drawnPreview_;
+    std::optional<float> drawnCompassYaw_;
 };

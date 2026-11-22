@@ -712,6 +712,8 @@ void Game::update()
         hudInput.deltaTime = deltaTime;
         this->hudUi->update(hudInput, viewport);
     }
+    // Après la mise à jour de l'interface (onglet et réglages de cette image), avant son dessin par render().
+    this->uiState.refreshLiveImages(this->uiMode == demo::UiMode::kFull && this->fullUi != nullptr);
 }
 
 bool Game::loadFullUiTheme(bool reportAsError)
