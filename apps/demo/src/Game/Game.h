@@ -7,6 +7,7 @@
 
 #include "CameraController.h"
 #include "Scene/demo_scene.hpp"
+#include "Scene/mixed_scene.hpp"
 #include "UI/demo_ui_state.hpp"
 #include "UI/performance_stats.hpp"
 #include "launch_options.hpp"
@@ -48,6 +49,8 @@ class Game
     void enableCapture(std::string directory, std::uint32_t frames);
     // --instances N (REN-28) : N objets instanciés ajoutés à la scène par init() ; 0 (défaut) : aucun.
     void setInstanceCount(std::uint32_t count) noexcept { this->instanceCount = count; }
+    // --scene mixed (R2D-05, REN-32) : transparents triés et 2D dans le monde en plus de la scène ; défaut : inchangée.
+    void setMixedScene(bool enabled) noexcept { mixedScene = enabled; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
@@ -115,6 +118,8 @@ class Game
     orosmo::renderer::Camera camera;
     CameraController cameraController;
     std::unique_ptr<demo::DemoScene> scene;
+    std::unique_ptr<demo::MixedScene> mixed;
+    bool mixedScene = false;
     bool stopped = false;
 
     int requestedWidth = 1280;

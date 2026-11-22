@@ -281,6 +281,14 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.instances = *count;
         }
+        else if (matchOption("--scene", value))
+        {
+            if (!value || (*value != "default" && *value != "mixed"))
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --scene (default or mixed): " + (value ? *value : std::string()));
+            }
+            options.mixedScene = *value == "mixed";
+        }
         else if (matchOption("--capture-frames", value))
         {
             if (!value)
@@ -317,7 +325,7 @@ void printUsage(std::ostream &out)
 {
     out << "Usage: Orosmo [--api|--backend <name>] [--strict-backend] [--choose-api] [--list-apis] [--ui off|hud|full] [--theme dark|light|framed]\n"
         << "              [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
-        << "              [--instances N] [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
+        << "              [--instances N] [--scene default|mixed] [--headless] [--vsync] [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
     out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";

@@ -378,10 +378,15 @@ void Renderer2D::polygon(std::span<const glm::vec2> points, const glm::vec4 &col
     addShape(z, first);
 }
 
-core::Result<rhi::PipelineHandle> Renderer2D::pipeline(const ShaderProgram &program, rhi::Format format, bool sprite)
+core::Result<rhi::PipelineHandle> Renderer2D::pipeline(const ShaderProgram &program, rhi::Format format, bool sprite, rhi::Format depthFormat)
 {
     GraphicsState state;
     state.raster.cull = rhi::CullMode::kNone;
+    if (depthFormat != rhi::Format::kUndefined)
+    {
+        state.depth = {true, false, rhi::CompareOp::kGreaterEqual}; // reverse-Z : le plus proche a la plus grande profondeur ; lecture seule
+        state.depthFormat = depthFormat;
+    }
     rhi::ColorTargetState target;
     target.format = format;
     target.blend = {true, rhi::BlendFactor::kSrcAlpha, rhi::BlendFactor::kOneMinusSrcAlpha, rhi::BlendOp::kAdd,
@@ -408,6 +413,18 @@ core::Result<rhi::PipelineHandle> Renderer2D::pipeline(const ShaderProgram &prog
 core::Result<> Renderer2D::render(rhi::CommandEncoder &encoder, rhi::TextureHandle target, rhi::Format format, rhi::Extent2D size, bool loadExisting,
                                   const glm::vec4 &clearColor)
 {
+    Render2DOptions options;
+    options.loadExisting = loadExisting;
+    options.clearColor = clearColor;
+    return render(encoder, target, format, size, options);
+}
+
+core::Result<> Renderer2D::render(rhi::CommandEncoder &encoder, rhi::TextureHandle target, rhi::Format format, rhi::Extent2D size,
+                                  const Render2DOptions &options)
+{
+    const bool loadExisting = options.loadExisting;
+    const glm::vec4 &clearColor = options.clearColor;
+    const bool depthTested = !options.depth.isNull();
     struct Cleanup
     {
         Renderer2D &self;
@@ -424,7 +441,7 @@ core::Result<> Renderer2D::render(rhi::CommandEncoder &encoder, rhi::TextureHand
         return makeError(ErrorCode::kInvalidArgument, "Renderer2D::render: the target must be non-empty");
     }
     camera_.setViewport(size.width, size.height);
-    const bool pixelPerfect = camera_.pixelPerfect();
+    const bool pixelPerfect = camera_.pixelPerfect() && !options.viewProjection;
     const float zoom = camera_.effectiveZoom();
     stats_.vertices = static_cast<std::uint32_t>(shapeData_.size() / kShapeVertexFloats);
     stats_.drawCalls = 0;
@@ -516,12 +533,16 @@ core::Result<> Renderer2D::render(rhi::CommandEncoder &encoder, rhi::TextureHand
     }
 
     Push push{};
-    const glm::mat4 viewProj = camera_.matrix();
+    const glm::mat4 viewProj = options.viewProjection ? *options.viewProjection : camera_.matrix();
     std::memcpy(push.viewProj, &viewProj[0][0], sizeof(push.viewProj));
 
     rhi::RenderPassDesc pass;
     pass.colors.push_back({.texture = target, .load = loadExisting ? rhi::LoadOp::kLoad : rhi::LoadOp::kClear,
                            .clearColor = {clearColor.r, clearColor.g, clearColor.b, clearColor.a}});
+    if (depthTested)
+    {
+        pass.depth = rhi::DepthAttachment{.texture = options.depth, .load = rhi::LoadOp::kLoad, .store = rhi::StoreOp::kStore};
+    }
     pass.debugName = "renderer2d";
     const bool encoderFailedBefore = encoder.error().has_value();
     encoder.beginRenderPass(pass);
@@ -530,7 +551,7 @@ core::Result<> Renderer2D::render(rhi::CommandEncoder &encoder, rhi::TextureHand
     for (const Run &run : runs)
     {
         const bool sprite = run.kind == Kind::kSprite;
-        auto pipe = pipeline(sprite ? *spriteProgram_ : *shapeProgram_, format, sprite);
+        auto pipe = pipeline(sprite ? *spriteProgram_ : *shapeProgram_, format, sprite, depthTested ? options.depthFormat : rhi::Format::kUndefined);
         if (!pipe)
         {
             status = std::unexpected(pipe.error());

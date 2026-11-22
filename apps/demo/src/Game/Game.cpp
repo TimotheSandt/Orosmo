@@ -182,6 +182,23 @@ orosmo::core::Result<> Game::init()
         return orosmo::core::makeError(ready.error().code, "Failed to create the instanced objects: " + ready.error().message);
     }
 
+    if (this->mixedScene)
+    {
+        // Les plugins du mélange passent AVANT l'interface et la présentation : on réenregistre ces dernières après eux.
+        this->sceneRenderer->removeFeature("demo.overlay");
+        this->mixed = std::make_unique<demo::MixedScene>();
+        if (auto ready = this->mixed->init(*this->device, *this->shaders, *this->pipelines, *this->sceneRenderer, kShaderDirectory); !ready)
+        {
+            return orosmo::core::makeError(ready.error().code, "Failed to initialize the mixed scene: " + ready.error().message);
+        }
+        auto overlayAgain = this->sceneRenderer->addFeature(std::make_unique<OverlayFeature>(*this));
+        if (!overlayAgain)
+        {
+            return orosmo::core::makeError(overlayAgain.error().code, "Failed to register the overlay pass: " + overlayAgain.error().message);
+        }
+        this->overlay = static_cast<OverlayFeature *>(*overlayAgain);
+    }
+
     if (auto created = this->createUi(); !created)
     {
         return created;
@@ -205,6 +222,11 @@ void Game::stop()
     }
     Profiler::SetGpuTimerFactory(nullptr);
     Profiler::ClearGpuQueries(); // les minuteurs en attente référencent le périphérique
+    if (this->mixed)
+    {
+        this->mixed->destroy();
+        this->mixed.reset();
+    }
     if (this->scene)
     {
         this->scene->destroy();
@@ -718,6 +740,10 @@ void Game::render()
     keep(this->sceneRenderer->beginFrame(encoder, {.clearColor = {clear.r, clear.g, clear.b, clear.a}}), "beginFrame");
     keep(this->sceneRenderer->setCamera(this->camera), "setCamera");
     Profiler::Profile("RecordScene", [&]() { keep(this->scene->render(*this->sceneRenderer, this->camera, this->uiState.scene), "scene"); });
+    if (this->mixed)
+    {
+        keep(this->mixed->render(*this->sceneRenderer, this->camera, static_cast<float>(this->renderedFrames) / 60.0f), "mixed scene");
+    }
     keep(this->sceneRenderer->endFrame({this->composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame");
 
     // Graphe interrompu (scène refusée) : l'interface et la présentation sont encodées quand même, comme avant le graphe.

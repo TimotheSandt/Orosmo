@@ -60,6 +60,8 @@ struct LaunchOptions
     // --instances N (REN-28/30/31) : N objets instanciés autour de la cour (culling, LOD, un draw call par lot). 0 (défaut) : aucun,
     // la scène et les captures de référence sont inchangées.
     std::uint32_t instances = 0;
+    // --scene default|mixed (REN-32, R2D-05) : « mixed » ajoute des transparents triés et du 2D dans le monde. Défaut : scène inchangée.
+    bool mixedScene = false;
 };
 
 // Nom affiché : « OpenGL », « Vulkan », « Metal ».

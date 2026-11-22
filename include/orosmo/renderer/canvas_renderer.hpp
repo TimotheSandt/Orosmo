@@ -53,6 +53,15 @@ class CanvasRenderer
     // par l'appelant est perdu : il doit redemander une liste complète, sans image de couche).
     core::Result<> render(rhi::CommandEncoder &encoder, const DrawList &list, const CanvasTarget &target, bool loadExisting = true);
 
+    // R2D-06 : image dont les pixels sont déjà sur le GPU (vue 3D incrustée dans un widget, rendu vers texture). `image` est une
+    // `AtlasImage` sans pixels (`id` neuf par `newAtlasId`, `width`/`height` = taille d'affichage, `rgba` vide) que l'interface
+    // dessine comme n'importe quelle image (`ImageView`, `DrawImage`) : elle utilise cette texture au lieu d'envoyer des pixels. La
+    // texture n'est pas possédée (à garder vivante, `unregisterExternalImage` avant de la détruire) ; son échantillonneur est
+    // celui donné. La première ligne de la texture est le HAUT de l'image. Réinscrire le même `id` remplace la texture (taille de la vue
+    // changée).
+    core::Result<> registerExternalImage(std::uint64_t id, rhi::TextureHandle texture, rhi::SamplerHandle sampler);
+    void unregisterExternalImage(std::uint64_t id);
+    std::size_t externalImageCount() const noexcept { return externals_.size(); }
     // Libère les textures d'atlas et de couches (les handles sont détruits ; la prochaine liste les recrée).
     void clear();
     std::size_t layerCount() const noexcept { return layers_.size(); }
@@ -132,6 +141,7 @@ class CanvasRenderer
     CanvasStats stats_;
     std::map<std::uint64_t, Layer> layers_;
     std::map<std::uint64_t, Atlas> atlases_;
+    std::map<std::uint64_t, Atlas> externals_; // textures non possédées (`texture` de l'Atlas reste vide)
     std::uint64_t renderCount_ = 0;
 };
 

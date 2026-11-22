@@ -7,7 +7,13 @@
 
 layout(location = 0) in vec3 normal;
 layout(location = 1) in vec3 crntPos;
+#ifdef OROSMO_TEXTURED
+// R2D-05 : couleur lue dans une texture (groupe 1, binding 0) au lieu de la couleur des sommets ; à associer à mesh_textured.vert.
+layout(location = 2) in vec2 uv;
+layout(set = 1, binding = 0) uniform sampler2D albedo;
+#else
 layout(location = 2) in vec3 color;
+#endif
 #ifdef OROSMO_INSTANCED
 // REN-31 : seuil de tramage par instance (lod.hpp) ; les seuils f et -f de deux niveaux couvrent chaque pixel une fois.
 layout(location = 3) flat in float dither;
@@ -15,10 +21,22 @@ layout(location = 3) flat in float dither;
 
 layout(location = 0) out vec4 FragColor;
 
+#ifdef OROSMO_TRANSPARENT
+// REN-32 / REN-37 : matériau à mode de fusion. `mode` suit BlendMode (blend_mode.hpp) : 0 opaque, 1 mask, 2 mask_a2c, 3 dithered,
+// 4 blend, 5 additive, 6 premultiplied, 7 transmission. `alpha` est l'opacité de l'objet.
+layout(push_constant) uniform Push
+{
+    int wireframe;
+    float alpha;
+    float cutoff;
+    int mode;
+} pc;
+#else
 layout(push_constant) uniform Push
 {
     int wireframe;
 } pc;
+#endif
 
 layout(set = 0, binding = 0, std140) uniform CamBlock
 {
@@ -91,7 +109,11 @@ vec4 fillRender()
         }
     }
 
+#ifdef OROSMO_TEXTURED
+    return vec4(texture(albedo, uv).rgb, 1.0f) * l;
+#else
     return vec4(color, 1.0f) * l;
+#endif
 }
 
 void main()
@@ -116,4 +138,36 @@ void main()
     {
         FragColor = fillRender();
     }
+#ifdef OROSMO_TRANSPARENT
+    float alpha = pc.alpha;
+    if (pc.mode == 1 || pc.mode == 2)
+    {
+        // Seuil : pixel gardé ou rejeté (alpha-to-coverage, pas encore dans le RHI : mask_a2c se comporte comme mask).
+        if (alpha < pc.cutoff)
+        {
+            discard;
+        }
+        alpha = 1.0f;
+    }
+    else if (pc.mode == 3)
+    {
+        // Tramage de Bayer 4x4 : la part de pixels gardés vaut alpha (lissé ensuite par le TAA).
+        const float bayerMask[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+        const ivec2 q = ivec2(gl_FragCoord.xy) & 3;
+        if ((bayerMask[q.y * 4 + q.x] + 0.5f) / 16.0f > alpha)
+        {
+            discard;
+        }
+        alpha = 1.0f;
+    }
+    else if (pc.mode == 0)
+    {
+        alpha = 1.0f;
+    }
+    else if (pc.mode == 6)
+    {
+        FragColor.rgb *= alpha; // prémultiplié
+    }
+    FragColor.a = alpha;
+#endif
 }
