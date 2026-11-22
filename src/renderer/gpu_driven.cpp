@@ -430,12 +430,17 @@ core::Result<> GpuDrivenFeature::ensureHiz(rhi::Extent2D size)
         return std::unexpected(texture.error());
     }
     hiz_ = *texture;
+    // hizSize_ n'est mémorisée qu'une fois tous les groupes créés : un échec libère l'état partiel (l'appel suivant reconstruit).
+    auto fail = [this](const core::Error &error) -> core::Result<>
+    {
+        releaseHiz();
+        return std::unexpected(error);
+    };
     auto real = device_.textureDesc(hiz_);
     if (!real)
     {
-        return std::unexpected(real.error());
+        return fail(real.error());
     }
-    hizSize_ = size;
     hizLevels_ = real->mipLevels;
     rhi::BindGroupDesc sample;
     sample.debugName = "gpudriven.hiz.sample";
@@ -443,7 +448,7 @@ core::Result<> GpuDrivenFeature::ensureHiz(rhi::Extent2D size)
     auto sampleGroup = device_.createBindGroup(sample);
     if (!sampleGroup)
     {
-        return std::unexpected(sampleGroup.error());
+        return fail(sampleGroup.error());
     }
     hizSampleGroup_ = *sampleGroup;
     hizLevelGroups_.assign(hizLevels_, rhi::BindGroupHandle{});
@@ -456,10 +461,11 @@ core::Result<> GpuDrivenFeature::ensureHiz(rhi::Extent2D size)
         auto group = device_.createBindGroup(reduce);
         if (!group)
         {
-            return std::unexpected(group.error());
+            return fail(group.error());
         }
         hizLevelGroups_[level] = *group;
     }
+    hizSize_ = size;
     return {};
 }
 
