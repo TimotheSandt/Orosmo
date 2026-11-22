@@ -36,6 +36,9 @@ struct GpuSceneObject
     std::uint32_t lods[kGpuSceneMaxLevels]; // maillage de chaque niveau
 };
 static_assert(sizeof(GpuSceneObject) == 208, "GpuSceneObject : 13 vec4 (std430)");
+static_assert(offsetof(GpuSceneObject, color) == 112 && offsetof(GpuSceneObject, boundsMin) == 128 && offsetof(GpuSceneObject, info) == 160 &&
+                  offsetof(GpuSceneObject, lods) == 176,
+              "GpuSceneObject : offsets de SceneObject (gpu_cull.comp)");
 inline constexpr std::uint32_t kGpuSceneAlive = 1u;
 
 // Réglages de LOD (std430, `LodSettings` de gpu_cull.comp) : bascules (7 au plus : 8 niveaux), largeur du fondu, distance de rejet,
@@ -46,6 +49,7 @@ struct GpuLodSettings
     float params[4];
 };
 static_assert(sizeof(GpuLodSettings) == 48, "GpuLodSettings : 3 vec4 (std430)");
+static_assert(offsetof(GpuLodSettings, params) == 32, "GpuLodSettings : offset de params (LodSettings de gpu_cull.comp)");
 
 // Plage d'emplacements à renvoyer : [first, first + count).
 struct GpuSceneRange
