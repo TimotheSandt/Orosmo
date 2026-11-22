@@ -4,6 +4,7 @@
 
 #include "orosmo/core/error.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
+#include "orosmo/renderer/shadows.hpp"
 #include "orosmo/rhi/device.hpp"
 
 #include <glm/glm.hpp>
@@ -35,6 +36,9 @@ struct Light
     float innerCone = 0.0f;
     float a = 0.0f;
     float b = 0.0f;
+    // REN-06 : mobilité et mode d'ombre (lus par ShadowFeature, sans effet sur le tampon GPU ni sur l'égalité ci-dessous).
+    LightMobility mobility = LightMobility::kDynamic;
+    ShadowMode shadowMode = ShadowMode::kNone;
 
     bool operator==(const Light &other) const;
 };
