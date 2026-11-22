@@ -74,7 +74,7 @@ struct AovScene
                 REQUIRE(renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
                 REQUIRE(renderer->setCamera(camera).has_value());
                 auto drawn = renderer->drawMesh(mesh, camera);
-                INFO(drawn ? std::string() : drawn.error().message);
+                INFO((drawn ? std::string() : drawn.error().message));
                 REQUIRE(drawn.has_value());
                 REQUIRE(renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
             });
@@ -224,9 +224,9 @@ TEST_SUITE("renderer/aov")
                 std::memcpy(&mx, m.data(), 2);
                 return halfToFloat(mx);
             };
-            CHECK(motion() == doctest::Approx(0.0f).margin(1e-4)); // première image : aucun mouvement
+            CHECK(std::abs(motion()) < 1e-4f); // première image : aucun mouvement
             scene.frame(*mesh, camera, out);
-            CHECK(motion() == doctest::Approx(0.0f).margin(1e-4)); // caméra et objet immobiles
+            CHECK(std::abs(motion()) < 1e-4f); // caméra et objet immobiles
             camera.setPosition({0.5f, 0.0f, 0.0f});               // la caméra se décale vers +X : la géométrie glisse vers -X à l'écran
             scene.frame(*mesh, camera, out);
             CHECK(motion() < -0.01f);
