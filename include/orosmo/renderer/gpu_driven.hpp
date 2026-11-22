@@ -90,7 +90,7 @@ struct GpuCullStats
 inline constexpr std::uint32_t kGpuVisibleAlive = 1u;
 inline constexpr std::uint32_t kGpuVisibleFrustum = 2u;   // a passé pyramide, distance et taille
 inline constexpr std::uint32_t kGpuVisibleOcclusion = 4u; // a aussi passé l'occlusion
-inline constexpr std::uint32_t kGpuVisibleDrawn = 8u;     // au moins une instance (LOD non rejeté)
+inline constexpr std::uint32_t kGpuVisibleDrawn = 8u;     // au moins une instance écrite (LOD non rejeté, maillage et matériau connus)
 
 struct GpuCommandCount
 {

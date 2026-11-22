@@ -158,7 +158,8 @@ bool occluded(vec3 lo, vec3 hi)
 
 float switchAt(LodSettings s, int j) { return s.switches[j >> 2][j & 3]; }
 
-void emit(SceneObject o, uint level, float dither)
+// Vrai si l'instance a été écrite (faux : maillage ou matériau inconnu, ou plage pleine) : seul un objet écrit est « dessiné ».
+bool emit(SceneObject o, uint level, float dither)
 {
     uint mesh = o.lods[level >> 2u][level & 3u];
     uint material = o.info.w;
@@ -166,7 +167,7 @@ void emit(SceneObject o, uint level, float dither)
     if (mesh >= meshCount || material >= cull.counts.z)
     {
         count(kInvalid);
-        return;
+        return false;
     }
     uint command = material * meshCount + tables[mesh];
     uint capacity = tables[meshCount + command];
@@ -175,7 +176,7 @@ void emit(SceneObject o, uint level, float dither)
     {
         atomicAdd(commands[command].instanceCount, 0xFFFFFFFFu); // annule l'ajout : la commande ne déborde jamais de sa plage
         count(kOverflow);
-        return;
+        return false;
     }
     Instance instance;
     instance.model[0] = o.model[0];
@@ -188,6 +189,7 @@ void emit(SceneObject o, uint level, float dither)
     instance.color = o.color;
     instances[commands[command].firstInstance + index] = instance;
     count(kInstances);
+    return true;
 }
 
 uint cullObject(uint slot)
@@ -248,8 +250,7 @@ uint cullObject(uint slot)
     uint levelCount = max(o.info.y, 1u);
     if ((cull.counts.w & 4u) == 0u)
     {
-        emit(o, 0u, 0.0);
-        return flags | 8u;
+        return emit(o, 0u, 0.0) ? flags | 8u : flags;
     }
     LodSettings s = lodSettings[o.info.z];
     float distance = length(center - cull.eye.xyz);
@@ -291,19 +292,17 @@ uint cullObject(uint slot)
         if (width > 0.0 && d > cullDistance - halfWidth)
         {
             float t = (d - (cullDistance - halfWidth)) / width;
-            emit(o, uint(crossing ? level + 1 : level), t);
-            return flags | 8u;
+            return emit(o, uint(crossing ? level + 1 : level), t) ? flags | 8u : flags;
         }
     }
     if (crossing)
     {
         count(kCrossFades);
-        emit(o, uint(level), crossT);
-        emit(o, uint(level + 1), -crossT);
-        return flags | 8u;
+        bool drawnNear = emit(o, uint(level), crossT);
+        bool drawnFar = emit(o, uint(level + 1), -crossT); // toujours émise, même si la première a échoué
+        return drawnNear || drawnFar ? flags | 8u : flags;
     }
-    emit(o, uint(level), 0.0);
-    return flags | 8u;
+    return emit(o, uint(level), 0.0) ? flags | 8u : flags;
 }
 
 void main()

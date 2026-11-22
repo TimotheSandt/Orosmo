@@ -80,7 +80,7 @@ struct GpuDrivenScene
     std::array<rd::Mesh, 2> meshes;
     std::uint32_t size;
 
-    GpuDrivenScene(Backend backend, std::uint32_t side) : gpu(backend, {side, side}), size(side)
+    GpuDrivenScene(Backend backend, std::uint32_t side, std::uint32_t materials = 2) : gpu(backend, {side, side}), size(side)
     {
         if (!gpu.device)
         {
@@ -101,8 +101,10 @@ struct GpuDrivenScene
             meshes[i] = std::move(*mesh);
             REQUIRE(instances->addMesh(meshes[i]).has_value());
         }
-        instances->addMaterial({});
-        instances->addMaterial({});
+        for (std::uint32_t m = 0; m < materials; ++m)
+        {
+            instances->addMaterial({});
+        }
         auto enabled = rd::enableGpuDriven(*renderer, *gpu.device, *library, *pipelines, shaderDir(), *instances);
         INFO((enabled ? std::string() : enabled.error().message));
         REQUIRE(enabled.has_value());
@@ -459,6 +461,56 @@ TEST_SUITE("renderer/gpu-driven")
             REQUIRE(again.has_value());
             CHECK(again->occlusionCulled == 5);
             scene.gpu.expectNoValidationErrors();
+        }
+    }
+    TEST_CASE("GpuDrivenFeature: visibility flags are written without commands and the drawn bit means an instance was written (REN-29)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            // Aucun matériau : aucune commande indirecte, mais le culling écrit quand même les drapeaux de visibilité.
+            {
+                GpuDrivenScene scene(backend, 32, 0);
+                REQUIRE(scene.gpu.device);
+                rd::ObjectSet objects;
+                REQUIRE(objects.add(cubeDesc(at(0, 0, -5))).has_value());
+                REQUIRE(objects.add(cubeDesc(at(0, 0, 5))).has_value()); // derrière la caméra
+                const TextureHandle out = scene.gpu.target(Format::kRGBA8Unorm, {32, 32}, "out");
+                scene.render(out, objects, true);
+                auto stats = scene.feature->readStats();
+                REQUIRE(stats.has_value());
+                CHECK(stats->objects == 2);
+                CHECK(stats->frustumCulled == 1);
+                CHECK(stats->invalid == 1);
+                CHECK(stats->instances == 0);
+                auto flags = scene.feature->readVisibility();
+                REQUIRE(flags.has_value());
+                REQUIRE(flags->size() == 2);
+                CHECK((*flags)[0] == (rd::kGpuVisibleAlive | rd::kGpuVisibleFrustum | rd::kGpuVisibleOcclusion));
+                CHECK((*flags)[1] == rd::kGpuVisibleAlive);
+                scene.gpu.expectNoValidationErrors();
+            }
+            // Maillage inconnu : visible, compté invalide, mais pas « dessiné » ; un maillage connu l'est.
+            {
+                GpuDrivenScene scene(backend, 32);
+                REQUIRE(scene.gpu.device);
+                rd::ObjectSet objects;
+                REQUIRE(objects.add(cubeDesc(at(-1, 0, -5), {7})).has_value());
+                REQUIRE(objects.add(cubeDesc(at(1, 0, -5), {0})).has_value());
+                const TextureHandle out = scene.gpu.target(Format::kRGBA8Unorm, {32, 32}, "out");
+                scene.render(out, objects, true);
+                auto stats = scene.feature->readStats();
+                REQUIRE(stats.has_value());
+                CHECK(stats->visible == 2);
+                CHECK(stats->invalid == 1);
+                CHECK(stats->instances == 1);
+                auto flags = scene.feature->readVisibility();
+                REQUIRE(flags.has_value());
+                REQUIRE(flags->size() == 2);
+                CHECK(((*flags)[0] & rd::kGpuVisibleOcclusion) != 0);
+                CHECK(((*flags)[0] & rd::kGpuVisibleDrawn) == 0);
+                CHECK(((*flags)[1] & rd::kGpuVisibleDrawn) != 0);
+                scene.gpu.expectNoValidationErrors();
+            }
         }
     }
 }

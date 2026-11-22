@@ -705,11 +705,12 @@ core::Result<> GpuDrivenFeature::declarePasses(RenderGraphBuilder &builder)
                      }
                      pendingCopies_.clear();
                      e.copyBuffer(zeros_.handle(), stats_.handle(), {.srcOffset = 0, .dstOffset = 0, .size = kStatsWords * sizeof(std::uint32_t)});
-                     if (commands == 0)
+                     if (commands > 0)
                      {
-                         return {};
+                         e.copyBuffer(template_.handle(), args_.handle(), {.srcOffset = 0, .dstOffset = 0, .size = std::uint64_t{commands} * kCommandStride});
                      }
-                     e.copyBuffer(template_.handle(), args_.handle(), {.srcOffset = 0, .dstOffset = 0, .size = std::uint64_t{commands} * kCommandStride});
+                     // Sans commande (aucun maillage ou matériau), le culling tourne quand même : il écrit les drapeaux de visibilité
+                     // lus par readVisibility ; emit vérifie la clé avant tout accès aux tables (instance comptée invalide).
                      if (slots == 0)
                      {
                          return {};
