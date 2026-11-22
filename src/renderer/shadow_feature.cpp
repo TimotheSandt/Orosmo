@@ -56,6 +56,7 @@ core::Result<std::unique_ptr<ShadowFeature>> ShadowFeature::create(rhi::Device &
     };
     for (auto r : {load(f->casterProgram_, "shadow_caster.vert", "shadow_caster.frag", {}),
                    load(f->instancedCasterProgram_, "shadow_caster_instanced.vert", "shadow_caster.frag", {}),
+                   load(f->alphaCasterProgram_, "shadow_caster.vert", "shadow_caster.frag", {{"OROSMO_SHADOW_ALPHA", "1"}}),
                    load(f->clearProgram_, "shadow_tile.vert", "shadow_tile.frag", {}),
                    load(f->copyProgram_, "shadow_tile.vert", "shadow_tile.frag", {{"OROSMO_SHADOW_COPY", "1"}}),
                    load(f->receiverProgram_, "mesh.vert", "mesh.frag", {{"OROSMO_SHADOWS", "1"}}),
@@ -254,7 +255,7 @@ core::Result<ShadowFeature::CasterId> ShadowFeature::addMeshCaster(const Mesh &m
     }
     Caster c;
     c.id = nextCaster_++;
-    c.mesh = {&mesh, localBounds, mobility};
+    c.mesh = {&mesh, localBounds, mobility, {}};
     casters_.push_back(c);
     return c.id;
 }
@@ -267,6 +268,28 @@ ShadowFeature::CasterId ShadowFeature::addObjectCasters(ObjectSet &objects, cons
     c.objects = {&objects, &meshes, mobility};
     casters_.push_back(c);
     return c.id;
+}
+
+core::Result<> ShadowFeature::setCasterTransparency(CasterId id, const TransparentShadow &shadow)
+{
+    for (Caster &c : casters_)
+    {
+        if (c.id != id)
+        {
+            continue;
+        }
+        if (c.object)
+        {
+            return makeError(ErrorCode::kUnsupported, "ShadowFeature::setCasterTransparency: ObjectSet casters only cast full shadows");
+        }
+        if (!std::isfinite(shadow.alpha) || !std::isfinite(shadow.cutoff))
+        {
+            return makeError(ErrorCode::kInvalidArgument, "ShadowFeature::setCasterTransparency: alpha and cutoff must be finite");
+        }
+        c.mesh.transparency = shadow;
+        return {};
+    }
+    return makeError(ErrorCode::kNotFound, "ShadowFeature::setCasterTransparency: unknown caster");
 }
 
 void ShadowFeature::removeCaster(CasterId id)
@@ -491,14 +514,26 @@ std::uint64_t ShadowFeature::gatherCasters(const ShadowViewFit &fit, const glm::
             {
                 continue;
             }
+            const TransparentShadow &transparency = caster.mesh.transparency;
+            if (transparency.mode == TransparentShadowMode::kNone)
+            {
+                continue; // REN-39 : ne projette aucune ombre (ni dessin, ni empreinte)
+            }
             const glm::mat4 model = caster.mesh.mesh->modelMatrix();
             if (caster.mesh.localBounds.valid() && frustum.test(caster.mesh.localBounds.transformed(model)) == CullResult::kOutside)
             {
                 continue;
             }
-            draws.push_back({caster.mesh.mesh, false, fit.viewProjection * model, 0, 1});
+            draws.push_back({caster.mesh.mesh, false, fit.viewProjection * model, 0, 1, transparency});
             hash.value(caster.id);
             hash.value(model);
+            if (transparency.mode == TransparentShadowMode::kMasked || transparency.mode == TransparentShadowMode::kDithered)
+            {
+                // REN-39 : l'opacité animée d'un caster fait changer l'empreinte, donc invalide le cache (fixe) ou la recopie (mobile).
+                hash.value(static_cast<std::uint32_t>(transparency.mode));
+                hash.value(transparency.alpha);
+                hash.value(transparency.cutoff);
+            }
             continue;
         }
         if (caster.objects.mobility != mobility || caster.objects.objects == nullptr || caster.objects.meshes == nullptr)
@@ -526,7 +561,7 @@ std::uint64_t ShadowFeature::gatherCasters(const ShadowViewFit &fit, const glm::
                 frameInstances_.push_back(instance);
                 hash.bytes(std::as_bytes(std::span(instance.model)));
             }
-            draws.push_back({mesh, true, fit.viewProjection, first, batch.instanceCount});
+            draws.push_back({mesh, true, fit.viewProjection, first, batch.instanceCount, {}});
         }
     }
     return hash.digest();
@@ -818,7 +853,7 @@ core::Result<> ShadowFeature::declarePasses(RenderGraphBuilder &builder)
     return {};
 }
 
-core::Result<rhi::PipelineHandle> ShadowFeature::casterPipeline(const Mesh &mesh, bool instanced)
+core::Result<rhi::PipelineHandle> ShadowFeature::casterPipeline(const Mesh &mesh, bool instanced, bool alphaTest)
 {
     GraphicsState state;
     state.vertexBuffers.clear();
@@ -848,8 +883,8 @@ core::Result<rhi::PipelineHandle> ShadowFeature::casterPipeline(const Mesh &mesh
     state.depth = {true, true, rhi::CompareOp::kLess};
     state.depthFormat = kShadowFormat;
     state.colorTargets.clear();
-    state.debugName = instanced ? "shadow.caster.instanced" : "shadow.caster";
-    return pipelines_.graphics(instanced ? *instancedCasterProgram_ : *casterProgram_, state);
+    state.debugName = instanced ? "shadow.caster.instanced" : (alphaTest ? "shadow.caster.alpha" : "shadow.caster");
+    return pipelines_.graphics(instanced ? *instancedCasterProgram_ : (alphaTest ? *alphaCasterProgram_ : *casterProgram_), state);
 }
 
 core::Result<> ShadowFeature::drawCasters(rhi::CommandEncoder &e, const std::vector<CasterDraw> &draws)
@@ -857,7 +892,8 @@ core::Result<> ShadowFeature::drawCasters(rhi::CommandEncoder &e, const std::vec
     rhi::PipelineHandle current;
     for (const CasterDraw &d : draws)
     {
-        auto pipeline = casterPipeline(*d.mesh, d.instanced);
+        const bool alphaTest = !d.instanced && (d.transparency.mode == TransparentShadowMode::kMasked || d.transparency.mode == TransparentShadowMode::kDithered);
+        auto pipeline = casterPipeline(*d.mesh, d.instanced, alphaTest);
         if (!pipeline)
         {
             return std::unexpected(pipeline.error());
@@ -867,7 +903,20 @@ core::Result<> ShadowFeature::drawCasters(rhi::CommandEncoder &e, const std::vec
             e.setPipeline(*pipeline);
             current = *pipeline;
         }
-        e.setPushConstants(std::as_bytes(std::span(&d.matrix, 1)));
+        if (alphaTest)
+        {
+            // Bloc du shader : clip × modèle puis (alpha, seuil, mode, 0) ; mode comme TransparentShadowMode (2 masqué, 3 tramé).
+            struct AlphaPush
+            {
+                glm::mat4 matrix;
+                glm::vec4 params;
+            } push{d.matrix, {d.transparency.alpha, d.transparency.cutoff, static_cast<float>(static_cast<int>(d.transparency.mode)), 0.0f}};
+            e.setPushConstants(std::as_bytes(std::span(&push, 1)));
+        }
+        else
+        {
+            e.setPushConstants(std::as_bytes(std::span(&d.matrix, 1)));
+        }
         e.setVertexBuffer(0, d.mesh->vertexBuffer());
         if (d.instanced)
         {
