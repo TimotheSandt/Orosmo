@@ -11,11 +11,14 @@
 
 #include <orosmo/renderer/antialiasing.hpp>
 #include <orosmo/renderer/camera.hpp>
+#include <orosmo/renderer/layer2d_feature.hpp>
 #include <orosmo/renderer/light.hpp>
 #include <orosmo/renderer/mesh.hpp>
 #include <orosmo/renderer/post_effects.hpp>
 #include <orosmo/renderer/render_graph.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
+#include <orosmo/renderer/texture.hpp>
+#include <orosmo/renderer/transparent_feature.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -135,8 +138,22 @@ struct AaScene
     std::shared_ptr<rd::ShaderProgram> program;
     Extent2D size;
     TextureHandle out;
+    // Scène mélangée (comme `--scene mixed` de la démo) : transparents et 2D monde AVANT le TAA, 2D en superposition après tout.
+    rd::TransparentFeature *transparents = nullptr;
+    rd::Layer2DFeature *world = nullptr;
+    rd::Layer2DFeature *overlay = nullptr;
 
-    AaScene(Backend backend, Extent2D extent) : gpu(backend, extent), size(extent)
+    rd::Layer2DFeature *addLayer(const char *name, rd::Layer2DMode mode)
+    {
+        auto feature = rd::Layer2DFeature::create(name, mode, *gpu.device, *library, *pipelines, shaderDir());
+        INFO((feature ? std::string() : feature.error().message));
+        REQUIRE(feature.has_value());
+        auto added = renderer->addFeature(std::move(*feature));
+        REQUIRE(added.has_value());
+        return static_cast<rd::Layer2DFeature *>(*added);
+    }
+
+    AaScene(Backend backend, Extent2D extent, bool mixed = false) : gpu(backend, extent), size(extent)
     {
         if (!gpu.device)
         {
@@ -151,6 +168,15 @@ struct AaScene
         auto ctx = rd::PostContext::create(*gpu.device, *library, *pipelines, shaderDir());
         REQUIRE(ctx.has_value());
         context = *ctx;
+        if (mixed)
+        {
+            auto t = rd::TransparentFeature::create(*gpu.device, *library, *pipelines, shaderDir());
+            REQUIRE(t.has_value());
+            auto added = renderer->addFeature(std::move(*t));
+            REQUIRE(added.has_value());
+            transparents = static_cast<rd::TransparentFeature *>(*added);
+            world = addLayer("aa.mix.world", rd::Layer2DMode::kWorld);
+        }
         auto taa = rd::addTemporalAntiAliasing(*renderer, context);
         INFO((taa ? std::string() : taa.error().message));
         REQUIRE(taa.has_value());
@@ -161,6 +187,10 @@ struct AaScene
         REQUIRE(edge.has_value());
         aa = *edge;
         aa.taa = *taa;
+        if (mixed)
+        {
+            overlay = addLayer("aa.mix.overlay", rd::Layer2DMode::kOverlay);
+        }
         auto l = rd::LightManager::create(*gpu.device);
         REQUIRE(l.has_value());
         lights = std::make_unique<rd::LightManager>(std::move(*l));
@@ -509,6 +539,71 @@ TEST_SUITE("renderer/aa")
             MESSAGE("TAA ghosting: ", ghosts, " pixels off by more than 0.1 (worst ", worst, "), object of ", objectPixels, " pixels");
             CHECK(objectPixels > 20);
             CHECK(ghosts <= kMaxGhostPixels);
+            s.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("REN-19: each AA mode runs with transparents and 2D layers (world and overlay) of a mixed scene")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            constexpr std::uint32_t kSize = 32;
+            AaScene s(backend, {kSize, kSize}, true);
+            REQUIRE(s.gpu.device);
+            REQUIRE(s.transparents != nullptr);
+            rd::Mesh wall = s.mesh(quad(0, 0, -4.0f, 1.5f, {0, 1, 0}));
+            rd::Mesh glass = s.mesh(quad(0.5f, 0, -2.0f, 0.6f, {0, 0, 1}));
+            const std::uint8_t texel[4] = {255, 255, 255, 255};
+            rd::TextureInfo info;
+            info.filter = rd::FilterMode::kNearest;
+            auto white = rd::Texture::create(*s.gpu.device, info, std::as_bytes(std::span(texel)));
+            REQUIRE(white.has_value());
+            for (const rd::AntiAliasingMode mode : {rd::AntiAliasingMode::kTaa, rd::AntiAliasingMode::kFxaa, rd::AntiAliasingMode::kSmaa, rd::AntiAliasingMode::kNone})
+            {
+                INFO("mode ", rd::toString(mode));
+                REQUIRE(s.aa.select(mode).has_value());
+                for (int i = 0; i < 3; ++i)
+                {
+                    s.gpu.run(
+                        [&](CommandEncoder &e)
+                        {
+                            REQUIRE(s.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                            rd::Camera camera;
+                            camera.setAspect(kSize, kSize);
+                            REQUIRE(s.renderer->setCamera(camera).has_value());
+                            REQUIRE(s.renderer->drawMesh(wall, camera).has_value());
+                            auto submitted = s.transparents->submit(*s.renderer, glass, {.mode = rd::BlendMode::kBlend, .alpha = 0.5f});
+                            INFO((submitted ? std::string() : submitted.error().message));
+                            REQUIRE(submitted.has_value());
+                            s.world->begin({});
+                            auto material = s.world->renderer().material(*white, true);
+                            REQUIRE(material.has_value());
+                            rd::Sprite sprite;
+                            sprite.material = *material;
+                            sprite.size = {0.5f, 0.5f};
+                            sprite.color = {1, 0, 0, 1};
+                            REQUIRE(s.world->renderer().draw(sprite).has_value());
+                            rd::Camera2D screen;
+                            screen.setViewport(kSize, kSize);
+                            screen.setCenter({kSize * 0.5f, kSize * 0.5f});
+                            s.overlay->begin(screen);
+                            s.overlay->renderer().rect({0, 0}, {4, 4}, {1, 1, 1, 1});
+                            auto ended = s.renderer->endFrame({s.out, Format::kRGBA8Unorm, s.size});
+                            INFO((ended ? std::string() : ended.error().message));
+                            REQUIRE(ended.has_value());
+                        });
+                }
+                const auto order = s.renderer->renderGraph().executionOrder();
+                CHECK(std::find(order.begin(), order.end(), "transparents") != order.end());
+                CHECK(std::find(order.begin(), order.end(), "aa.mix.world") != order.end());
+                if (mode == rd::AntiAliasingMode::kTaa)
+                {
+                    CHECK(position(order, "transparents") < position(order, "aa.taa.resolve"));
+                    CHECK(position(order, "aa.mix.world") < position(order, "aa.taa.resolve"));
+                    CHECK(s.aa.taa->historyValid());
+                }
+                CHECK(s.gpu->validationErrorCount() == 0);
+            }
             s.gpu.expectNoValidationErrors();
         }
     }
