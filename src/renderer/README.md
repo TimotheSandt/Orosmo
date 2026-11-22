@@ -188,10 +188,15 @@ résolution de rendu ; la mise à l'échelle suit.
 
 ```cpp
 auto context = PostContext::create(device, library, pipelines, shaderDir);
-TaaFeature *taa = *addTemporalAntiAliasing(renderer, *context); // après les plugins de la scène
+if (!context) return std::unexpected(context.error());
+auto taa = addTemporalAntiAliasing(renderer, *context);         // après les plugins de la scène
+if (!taa) return std::unexpected(taa.error());
 auto fx = addPostEffects(renderer, device, library, pipelines, shaderDir);
-AntiAliasing aa = *addEdgeAntiAliasing(renderer, *context);
-aa.taa = taa;
+if (!fx) return std::unexpected(fx.error());
+auto edge = addEdgeAntiAliasing(renderer, *context);
+if (!edge) return std::unexpected(edge.error());
+AntiAliasing aa = *edge;
+aa.taa = *taa;
 aa.select(AntiAliasingMode::kTaa);                               // ou kSmaa, kFxaa, kNone
 // Programmes de maillage compilés avec renderer.aovShaderDefines() APRÈS l'enregistrement du TAA (mouvement, profondeur).
 ```
