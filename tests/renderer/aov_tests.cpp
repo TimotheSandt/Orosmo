@@ -377,7 +377,7 @@ TEST_SUITE("renderer/aov")
             auto fp = rd::enableForwardPlus(*scene.renderer, *scene.gpu.device, *scene.library, *scene.pipelines, shaderDir());
             if (!fp)
             {
-                MESSAGE(std::string("forward+ unavailable on this backend: ") + fp.error().message);
+                MESSAGE("forward+ unavailable on this backend: " << fp.error().message);
                 continue;
             }
             REQUIRE(scene.renderer->declareAov(rd::Aov::kObjectId).has_value());
