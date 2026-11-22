@@ -124,6 +124,14 @@ class SceneRenderer
     // enregistré utilise les lumières choisies au moment de son `drawMesh`.
     void setLights(LightManager *lights) noexcept { lights_ = lights; }
 
+    // REN-04 : pré-passe de profondeur (docs/03 §9 : « pré-passe de profondeur -> clusters -> passe principale »). Activée, la passe
+    // « depth-prepass » joue les maillages (`drawMesh`, hors fil de fer) sans écrire la couleur, puis la passe « scene » garde cette
+    // profondeur (test « plus grand ou égal », sans écriture) : chaque pixel n'est éclairé qu'une fois. Les dessins externes
+    // (`drawCustom`) et les lignes de debug ne sont pas dans la pré-passe (ils testent et écrivent la profondeur comme avant). Prise
+    // en compte au `beginFrame` suivant. Désactivée par défaut (image et coût inchangés).
+    void setDepthPrepass(bool enabled) noexcept { depthPrepass_ = enabled; }
+    bool depthPrepass() const noexcept { return depthPrepass_; }
+
     // ── Plugins de rendu (REN-01) ───────────────────────────────────────────────────────────────────────────────────
     // Enregistre un plugin : ses passes sont ajoutées au graphe à chaque `endFrame`, dans l'ordre d'enregistrement. Refusé
     // (kUnsupported) si `supports` est faux, (kAlreadyExists) si un plugin du même nom existe. Renvoie le plugin (non possédé).
@@ -174,6 +182,7 @@ class SceneRenderer
     struct SceneDraw
     {
         rhi::PipelineHandle pipeline;
+        rhi::PipelineHandle prepassPipeline; // pré-passe de profondeur (nul : absent de la pré-passe)
         std::vector<std::byte> pushConstants;
         LightManager *lights = nullptr;
         rhi::BindGroupHandle textureGroup;
@@ -199,7 +208,7 @@ class SceneRenderer
     LightManager &activeLights() noexcept { return lights_ != nullptr ? *lights_ : defaultLights_; }
     core::Result<> rebuildFrameGroup(LightManager &lights);
     core::Result<> record(Mesh &mesh, bool lines);
-    core::Result<> playDraws(rhi::CommandEncoder &encoder);
+    core::Result<> playDraws(rhi::CommandEncoder &encoder, bool prepass = false);
     core::Result<> uploadDebugLines();
     core::Result<> updateFrameData();
     core::Result<> ensureHistory(RenderTarget &target, bool &fresh);
@@ -221,6 +230,9 @@ class SceneRenderer
     rhi::BindGroupHandle frameGroup_;
     rhi::BufferHandle groupCamera_;
     rhi::BufferHandle groupLights_;
+    // Liaisons du groupe 0 ajoutées par les plugins (RenderGraphBuilder::addFrameBinding) pour cette image, et celles du groupe actuel.
+    std::vector<rhi::BindGroupEntry> featureFrameBindings_;
+    std::vector<rhi::BindGroupEntry> groupFeatureBindings_;
     FrameResources frameResources_;
 
     RenderGraph graph_;
@@ -262,6 +274,8 @@ class SceneRenderer
     bool historyValid_ = false; // history_[lastHistory_] contient l'image précédente (écrite avec succès à l'image précédente)
 
     bool motionVectorsEnabled_ = false;
+    bool depthPrepass_ = false;
+    bool prepassThisFrame_ = false; // depthPrepass_ lu au beginFrame
     bool cameraRelative_ = false;
     glm::vec3 cameraOrigin_{0.0f};
     bool depthAsTextureEnabled_ = false;

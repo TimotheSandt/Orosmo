@@ -21,6 +21,14 @@ enum class BackendAvailability : std::uint8_t
     kUnsupportedPlatform,
 };
 
+// --lighting forward|forwardplus (REN-04) : forward (toutes les lumières par fragment, défaut : captures de référence inchangées)
+// ou forward+ clusterisé (pré-passe de profondeur, clusters remplis en compute ; repli sur forward si le GPU n'a pas le compute).
+enum class LightingMode : std::uint8_t
+{
+    kForward,
+    kForwardPlus,
+};
+
 enum class UiMode : std::uint8_t
 {
     kOff,
@@ -71,6 +79,9 @@ struct LaunchOptions
     std::uint32_t instances = 0;
     // --post none|hdr|bloom|full (défaut : none, captures de référence inchangées).
     PostMode post = PostMode::kNone;
+    LightingMode lighting = LightingMode::kForward;
+    // --lights N (REN-04/05) : N lumières ponctuelles déterministes au-dessus de la cour, en plus du soleil. 0 (défaut) : aucune.
+    std::uint32_t pointLights = 0;
     // --scene default|mixed (REN-32, R2D-05) : « mixed » ajoute des transparents triés et du 2D dans le monde. Défaut : scène inchangée.
     bool mixedScene = false;
 };
@@ -83,6 +94,8 @@ std::optional<orosmo::rhi::Backend> parseBackend(std::string_view value) noexcep
 std::optional<UiMode> parseUiMode(std::string_view value) noexcept;
 // « none », « hdr », « bloom », « full » (casse indifférente).
 std::optional<PostMode> parsePostMode(std::string_view value) noexcept;
+// « forward », « forwardplus » / « forward+ » (casse indifférente).
+std::optional<LightingMode> parseLightingMode(std::string_view value) noexcept;
 
 // Argument inconnu ou valeur invalide : erreur kInvalidArgument (message prêt à afficher).
 orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv);

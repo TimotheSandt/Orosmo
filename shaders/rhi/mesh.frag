@@ -1,9 +1,18 @@
 #version 450
-// Éclairage : ambiante + directionnelles (ponctuelles et projecteurs : types réservés, non rendus, comme avant).
-// Convention des programmes de maillage : le premier entier du bloc push_constant est le drapeau « fil de fer ».
+// Éclairage : ambiante, directionnelles, ponctuelles et projecteurs (REN-05, lights.glsl).
+// Convention des programmes de maillage : le premier entier du bloc push_constant est le drapeau « fil de fer » (1), ou 2 dans la
+// pré-passe de profondeur de SceneRenderer (couleur masquée : le programme peut sauter son éclairage).
+// Variantes : OROSMO_FORWARD_PLUS (REN-04) lit les lumières du cluster du fragment (clusters.glsl, ForwardPlusLighting) au lieu de
+// toutes les lumières ; OROSMO_CLUSTER_DEBUG (avec OROSMO_FORWARD_PLUS) affiche le nombre de lumières par cluster.
 
 // Boîte à outils partagée (REN-22) : chemin relatif à ce fichier, sans racine d'inclusion à configurer.
 #include "../include/orosmo/math.glsl"
+#include "../include/orosmo/lights.glsl"
+#include "frame_data.glsl"
+#include "light_block.glsl"
+#ifdef OROSMO_FORWARD_PLUS
+#include "clusters.glsl"
+#endif
 
 layout(location = 0) in vec3 normal;
 layout(location = 1) in vec3 crntPos;
@@ -44,33 +53,6 @@ layout(set = 0, binding = 0, std140) uniform CamBlock
     mat4 matrix;
 } camera;
 
-struct LightStruct
-{
-    int type;
-
-    vec3 position;
-    vec3 direction;
-    vec3 color;
-
-    float strength;
-
-    float outerCone;
-    float innerCone;
-    float a;
-    float b;
-    float _pad[3];
-};
-
-layout(set = 0, binding = 1, std430) buffer LightBlock
-{
-    int size;
-
-    vec4 AmbientLightColor;
-    float AmbientLightStrength;
-
-    LightStruct lights[];
-} lights;
-
 vec4 directLight(vec3 lightDirection, vec3 lightColor, float lightIntensity)
 {
     // lumière diffuse
@@ -93,21 +75,49 @@ vec4 wireframeRender()
     return vec4(0.0f);
 }
 
+// Apport de la lumière i (même fonction en forward et en forward+ : même image).
+vec4 lightContribution(int i)
+{
+    LightStruct lght = lights.lights[i];
+    if (lght.type == 1)
+    {
+        return vec4(lght.color * lght.strength, 1.0f);
+    }
+    if (lght.type == 2)
+    {
+        return directLight(lght.direction, lght.color, lght.strength);
+    }
+    if (lght.type == 3 || lght.type == 4)
+    {
+        // Positions des lumières en coordonnées monde, ramenées dans l'espace des shaders (rendu relatif à la caméra, REN-02).
+        vec3 offset = (frame.cameraWorldHigh.xyz + frame.cameraWorldLow.xyz) - frame.cameraRelativeOrigin.xyz;
+        const bool spot = lght.type == 4;
+        return vec4(localLightRadiance(lght.position - offset, lght.color, lght.strength, lght.a, lght.b, crntPos, normal, camera.position,
+                                       spot ? 64.0f : 16.0f, lght.direction, lght.outerCone, lght.innerCone, spot),
+                    0.0f);
+    }
+    return vec4(0.0f);
+}
+
 vec4 fillRender()
 {
     vec4 l = vec4(lights.AmbientLightColor.rgb * lights.AmbientLightStrength, 1.0f);
+#ifdef OROSMO_FORWARD_PLUS
+    const uint cluster = clusterIndexAt(crntPos);
+#ifdef OROSMO_CLUSTER_DEBUG
+    return vec4(clusterHeatColor(cluster), 1.0f);
+#endif
+    const uint count = clusterLightCount(cluster);
+    for (uint k = 0u; k < count; k++)
+    {
+        l += lightContribution(int(clusterLight(cluster, k)));
+    }
+#else
     for (int i = 0; i < lights.size; i++)
     {
-        LightStruct lght = lights.lights[i];
-        if (lght.type == 1)
-        {
-            l += vec4(lght.color * lght.strength, 1.0f);
-        }
-        else if (lght.type == 2)
-        {
-            l += directLight(lght.direction, lght.color, lght.strength);
-        }
+        l += lightContribution(i);
     }
+#endif
 
 #ifdef OROSMO_TEXTURED
     return vec4(texture(albedo, uv).rgb, 1.0f) * l;
@@ -130,7 +140,11 @@ void main()
         }
     }
 #endif
-    if (pc.wireframe == 1)
+    if (pc.wireframe == 2)
+    {
+        FragColor = vec4(0.0f); // pré-passe de profondeur (REN-04) : couleur masquée, aucun éclairage à calculer
+    }
+    else if (pc.wireframe == 1)
     {
         FragColor = wireframeRender();
     }

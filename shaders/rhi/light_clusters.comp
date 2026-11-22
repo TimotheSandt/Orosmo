@@ -1,0 +1,84 @@
+#version 450
+// REN-04 : remplissage des clusters du forward+ (ForwardPlusLighting, passe « forwardplus.clusters »). Un fil par cluster : boîte
+// englobante du cluster en espace de vue, puis test sphère (portée de la lumière, lights.glsl) contre boîte pour chaque lumière, dans
+// l'ordre du tampon (même ordre de sommation que le forward : même image). Ambiantes et directionnelles touchent tous les clusters.
+// Groupe 0 : celui de l'image (lumières 1, FrameData 2, grille 3, listes 4).
+
+#define OROSMO_CLUSTER_ACCESS
+#include "light_block.glsl"
+#include "clusters.glsl"
+#include "../include/orosmo/lights.glsl"
+
+layout(local_size_x = 64) in;
+
+vec3 unprojectView(vec2 ndc, float depth)
+{
+    vec4 v = frame.invProj * vec4(ndc, depth, 1.0);
+    return v.xyz / v.w;
+}
+
+// Point du rayon de vue de `ndc` à la profondeur de vue `viewDepth` (perspective ou orthographique : droite par deux points).
+vec3 pointAtViewDepth(vec2 ndc, float viewDepth)
+{
+    vec3 p0 = unprojectView(ndc, 1.0); // plan proche (reverse-Z)
+    vec3 p1 = unprojectView(ndc, 0.5);
+    float t = (-viewDepth - p0.z) / (p1.z - p0.z);
+    return p0 + (p1 - p0) * t;
+}
+
+void main()
+{
+    uint total = clusterGrid.x * clusterGrid.y * clusterGrid.z;
+    uint c = gl_GlobalInvocationID.x;
+    if (c >= total)
+    {
+        return;
+    }
+    uint cx = c % clusterGrid.x;
+    uint cy = (c / clusterGrid.x) % clusterGrid.y;
+    uint cz = c / (clusterGrid.x * clusterGrid.y);
+
+    vec2 cellSize = 2.0 / vec2(clusterGrid.xy);
+    vec2 ndcMin = vec2(cx, cy) * cellSize - 1.0;
+    vec2 ndcMax = ndcMin + cellSize;
+    float zNear = clusterSliceStart(cz);
+    float zFar = cz + 1u < clusterGrid.z ? clusterSliceStart(cz + 1u) : kLightMaxRange;
+
+    vec3 lo = vec3(3.0e38);
+    vec3 hi = vec3(-3.0e38);
+    for (int corner = 0; corner < 8; ++corner)
+    {
+        vec2 ndc = vec2((corner & 1) != 0 ? ndcMax.x : ndcMin.x, (corner & 2) != 0 ? ndcMax.y : ndcMin.y);
+        vec3 p = pointAtViewDepth(ndc, (corner & 4) != 0 ? zFar : zNear);
+        lo = min(lo, p);
+        hi = max(hi, p);
+    }
+
+    // Position des lumières (monde) ramenée dans l'espace des shaders : 0 hors rendu relatif, la position de la caméra sinon.
+    vec3 offset = (frame.cameraWorldHigh.xyz + frame.cameraWorldLow.xyz) - frame.cameraRelativeOrigin.xyz;
+    uint limit = min(uint(max(lights.size, 0)), clusterLimits.x);
+    uint budget = clusterGrid.w;
+    uint n = 0u;
+    for (uint i = 0u; i < limit; ++i)
+    {
+        int type = lights.lights[i].type;
+        bool touches = type == 1 || type == 2;
+        if (type == 3 || type == 4)
+        {
+            LightStruct l = lights.lights[i];
+            float range = lightRange(l.color, l.strength, l.a, l.b);
+            vec3 p = (frame.view * vec4(l.position - offset, 1.0)).xyz;
+            vec3 d = p - clamp(p, lo, hi);
+            touches = range > 0.0 && dot(d, d) <= range * range;
+        }
+        if (touches)
+        {
+            if (n < budget)
+            {
+                clusterLightIndices[c * budget + n] = i;
+            }
+            ++n;
+        }
+    }
+    clusterCounts[c] = n;
+}

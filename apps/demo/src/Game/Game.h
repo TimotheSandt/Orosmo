@@ -52,6 +52,12 @@ class Game
     void setInstanceCount(std::uint32_t count) noexcept { this->instanceCount = count; }
     // --post (REN-17/18) : effets activés par init() ; kNone (défaut) : aucun effet enregistré, scène LDR inchangée.
     void setPostMode(demo::PostMode mode) noexcept { postMode = mode; }
+    // --lighting / --lights (REN-04) : mode d'éclairage demandé (forward+ : repli sur forward sans compute) et lumières ponctuelles.
+    void setLighting(demo::LightingMode mode, std::uint32_t pointLights) noexcept
+    {
+        this->lightingMode = mode;
+        this->pointLightCount = pointLights;
+    }
     // --scene mixed (R2D-05, REN-32) : transparents triés et 2D dans le monde en plus de la scène ; défaut : inchangée.
     void setMixedScene(bool enabled) noexcept { mixedScene = enabled; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
@@ -139,6 +145,8 @@ class Game
     std::uint32_t instanceCount = 0;
     demo::PostMode postMode = demo::PostMode::kNone;
     orosmo::renderer::PostEffects post; // effets possédés par sceneRenderer
+    demo::LightingMode lightingMode = demo::LightingMode::kForward;
+    std::uint32_t pointLightCount = 0;
     std::string hoverId;
     std::string clickId;
     std::string captureDirectory;
