@@ -365,6 +365,11 @@ TEST_SUITE("renderer/aa")
             const char *chain[] = {"scene",        "aa.taa.resolve", "aa.taa.copy",    "post.bloom.down0", "post.bloom.composite", "post.tonemap",
                                    "post.tonemap.copy", "aa.fxaa",   "aa.fxaa.copy",   "aa.smaa.edges",    "aa.smaa.weights",      "aa.smaa.blend",
                                    "aa.smaa.copy", "upscale"};
+            for (const char *name : chain)
+            {
+                INFO(name);
+                REQUIRE(std::find(order.begin(), order.end(), name) != order.end()); // position() d'une passe absente ne ferait pas échouer
+            }
             for (std::size_t i = 0; i + 1 < std::size(chain); ++i)
             {
                 const std::string step = std::string(chain[i]) + " < " + chain[i + 1];
@@ -596,6 +601,13 @@ TEST_SUITE("renderer/aa")
                 const auto order = s.renderer->renderGraph().executionOrder();
                 CHECK(std::find(order.begin(), order.end(), "transparents") != order.end());
                 CHECK(std::find(order.begin(), order.end(), "aa.mix.world") != order.end());
+                REQUIRE(std::find(order.begin(), order.end(), "aa.mix.overlay") != order.end());
+                if (mode != rd::AntiAliasingMode::kNone)
+                {
+                    const char *lastAaPass = mode == rd::AntiAliasingMode::kTaa ? "aa.taa.copy" : mode == rd::AntiAliasingMode::kFxaa ? "aa.fxaa.copy" : "aa.smaa.copy";
+                    REQUIRE(std::find(order.begin(), order.end(), lastAaPass) != order.end());
+                    CHECK(position(order, lastAaPass) < position(order, "aa.mix.overlay")); // la 2D en superposition vient après l'anticrénelage
+                }
                 if (mode == rd::AntiAliasingMode::kTaa)
                 {
                     CHECK(position(order, "transparents") < position(order, "aa.taa.resolve"));

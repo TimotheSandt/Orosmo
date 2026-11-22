@@ -242,7 +242,11 @@ core::Result<std::unique_ptr<ColorGradingFeature>> ColorGradingFeature::create(s
     return feature;
 }
 
-ColorGradingFeature::~ColorGradingFeature() { context_->device().destroy(lut_); }
+ColorGradingFeature::~ColorGradingFeature()
+{
+    context_->device().destroy(lut_);
+    context_->device().destroy(pendingLut_);
+}
 
 void ColorGradingFeature::setStrength(float strength) noexcept { strength_ = std::clamp(strength, 0.0f, 1.0f); }
 
@@ -251,6 +255,14 @@ core::Result<> ColorGradingFeature::setLut(const ColorLut &lut)
     if (!lut.valid())
     {
         return makeError(ErrorCode::kInvalidArgument, "ColorGradingFeature::setLut: the LUT needs size^3 colors (size >= 2)");
+    }
+    // Toutes les composantes dans [0, 1] et finies, avant toute création : la LUT précédente reste intacte sinon.
+    const bool inRange = std::ranges::all_of(lut.values, [](const glm::vec3 &v)
+                                             { return std::isfinite(v.r) && std::isfinite(v.g) && std::isfinite(v.b) && glm::all(glm::greaterThanEqual(v, glm::vec3(0.0f))) &&
+                                                      glm::all(glm::lessThanEqual(v, glm::vec3(1.0f))); });
+    if (!inRange)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "ColorGradingFeature::setLut: every LUT component must be finite and in [0, 1]");
     }
     rhi::Device &device = context_->device();
     rhi::TextureDesc desc;
@@ -281,8 +293,9 @@ core::Result<> ColorGradingFeature::setLut(const ColorLut &lut)
         device.destroy(*texture);
         return r;
     }
-    device.destroy(lut_);
-    lut_ = *texture;
+    // Le remplacement est différé au prochain declare() : une passe déjà déclarée garde sa texture jusqu'à son exécution.
+    device.destroy(pendingLut_);
+    pendingLut_ = *texture;
     lutSize_ = lut.size;
     return {};
 }
@@ -292,7 +305,15 @@ core::Result<> ColorGradingFeature::declare(RenderGraphBuilder &builder)
     RenderGraph &graph = builder.graph();
     const RgTexture scene = builder.resources().sceneColor;
     const RgTexture out = graph.createTexture("post.color-grading.out", {.format = kPostFormat, .size = builder.resources().renderSize});
-    const float n = static_cast<float>(lutSize_);
+    if (pendingLut_)
+    {
+        // Début d'image : la LUT en attente devient la LUT active ; l'ancienne n'est plus référencée par une passe à exécuter.
+        context_->device().destroy(lut_);
+        lut_ = pendingLut_;
+        pendingLut_ = {};
+        activeLutSize_ = lutSize_;
+    }
+    const float n = static_cast<float>(activeLutSize_);
     const glm::vec4 params((n - 1.0f) / n, 0.5f / n, strength_, 0.0f);
     const rhi::TextureHandle lut = lut_;
     graph
@@ -410,7 +431,7 @@ core::Result<PostEffects> addPostEffects(SceneRenderer &renderer, rhi::Device &d
     }
     // Tout est créé avant d'enregistrer quoi que ce soit : un échec ne laisse aucun effet à moitié installé.
     std::unique_ptr<AutoExposureFeature> autoExposure;
-    if (device.capabilities().compute) // capacité lue, jamais supposée (règle 11) : sans compute, pas d'exposition automatique
+    if (AutoExposureFeature::supportedBy(device.capabilities())) // capacités lues (règle 11) : sinon pas d'exposition automatique, exposition unitaire
     {
         auto created = AutoExposureFeature::create(*context);
         if (!created)

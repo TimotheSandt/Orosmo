@@ -29,7 +29,8 @@ layout(location = 0) out vec4 outColor;
 layout(location = 1) out vec4 outInfo;
 
 vec3 compress(vec3 c) { return c / (1.0 + luminance(c)); }
-vec3 expand(vec3 t) { return t / max(1.0 - luminance(t), 1e-4); }
+// 1 - L vaut 1 / (1 + L_hdr) : la borne 2^-16 couvre jusqu'au maximum de RGBA16F (65504), sans écraser les valeurs HDR.
+vec3 expand(vec3 t) { return t / max(1.0 - luminance(t), 1.0 / 65536.0); }
 vec3 toYCoCg(vec3 c) { return vec3(0.25 * c.r + 0.5 * c.g + 0.25 * c.b, 0.5 * c.r - 0.5 * c.b, -0.25 * c.r + 0.5 * c.g - 0.25 * c.b); }
 vec3 fromYCoCg(vec3 c) { return vec3(c.x + c.y - c.z, c.x + c.z, c.x - c.y - c.z); }
 
@@ -92,6 +93,7 @@ void main()
     const vec2 previousUv = uv + vec2(-motion.x, motion.y);
 
     float frames = 1.0;
+    bool blended = false; // faux : historique rejeté, la couleur courante sort telle quelle (sans compression puis expansion)
     vec3 result = current;
     const bool inside = all(greaterThanEqual(previousUv, vec2(0.0))) && all(lessThanEqual(previousUv, vec2(1.0)));
     if (pc.flags.x < 0.5 && inside)
@@ -121,9 +123,10 @@ void main()
             }
             const float accumulated = min(info.a + 1.0, pc.params.x);
             result = mix(history, current, mix(1.0 / accumulated, 1.0, reject));
+            blended = true;
             frames = mix(accumulated, 1.0, reject);
         }
     }
-    outColor = vec4(expand(fromYCoCg(result)), center.a);
+    outColor = vec4(blended ? expand(fromYCoCg(result)) : center.rgb, center.a);
     outInfo = vec4(ownDepth, ownMotion, frames);
 }

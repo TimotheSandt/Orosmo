@@ -214,6 +214,13 @@ void main()
     float sum = 0.0;
     for (int i = 0; i < 8; ++i) { sum += orthonormalBasisDot(i); }
     put(46, sum);
+    put(47, remap(1.5e-7, 1.0e-7, 2.0e-7, 10.0, 20.0)); // intervalle non nul mais minuscule : remappé (milieu)
+    put(48, remap(2.0e-7, 0.0, 2.0e-7, 10.0, 20.0));    // x = b donne d
+    put(49, remap(3.0, 2.0, 2.0, 7.0, 9.0));            // a == b donne c
+    put(50, srgbToLinear(vec3(-0.5)).x);                // négatif : branche linéaire, pas de NaN
+    put(51, linearToSrgb(vec3(-0.5)).x);
+    put3(52, vec3(dirToSpherical(vec3(0.0, 1.0, 0.0)), 0.0));  // pôle nord : azimut conventionnel 0
+    put3(55, vec3(dirToSpherical(vec3(0.0, -1.0, 0.0)), 0.0)); // pôle sud
 }
 )";
         // orthonormalBasisDot est définie ici pour exercer orthonormalBasis : t, b et n doivent être orthonormaux.
@@ -274,6 +281,13 @@ void main()
             CHECK(v[8] == 150.0f);
             CHECK(v[9] == approx(0.21404114f));
             CHECK(v[10] == approx(0.25f));
+            CHECK(v[47] == approx(15.0f));
+            CHECK(v[48] == approx(20.0f));
+            CHECK(v[49] == 7.0f);
+            CHECK(v[50] == approx(-0.5f / 12.92f));
+            CHECK(v[51] == approx(-0.5f * 12.92f));
+            near3(52, glm::vec3(0.0f, glm::half_pi<float>(), 0.0f), 1e-5f);
+            near3(55, glm::vec3(0.0f, -glm::half_pi<float>(), 0.0f), 1e-5f);
             // coordonnées : allers-retours
             near3(11, glm::normalize(glm::vec3(1, 2, -3)), 1e-3f);
             near3(14, glm::normalize(glm::vec3(-1, 0.5f, 2)), 1e-3f);

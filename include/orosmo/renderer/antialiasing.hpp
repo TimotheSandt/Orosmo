@@ -120,7 +120,7 @@ class TaaFeature final : public PostEffect
   public:
     static constexpr const char *kName = "aa.taa";
     static constexpr const char *kHistoryTexture = "aa.taa.history"; // couleur accumulée (RGBA16F), image précédente
-    static constexpr const char *kInfoTexture = "aa.taa.info";       // r profondeur linéaire, gb mouvement, a images accumulées
+    static constexpr const char *kInfoTexture = "aa.taa.info";       // RGBA32F : r profondeur linéaire, gb mouvement, a images accumulées
     static core::Result<std::unique_ptr<TaaFeature>> create(std::shared_ptr<PostContext> context);
     ~TaaFeature() override;
 

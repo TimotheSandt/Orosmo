@@ -19,6 +19,8 @@ using core::makeError;
 namespace
 {
 constexpr rhi::Format kHistoryFormat = rhi::Format::kRGBA16Float;
+// Information : la profondeur linéaire brute (jusqu'au plan lointain) ne tient pas dans un demi-flottant (65504 au plus, 11 bits de mantisse) : 32 bits.
+constexpr rhi::Format kInfoFormat = rhi::Format::kRGBA32Float;
 
 template <typename T> std::span<const std::byte> asBytes(const T &value) { return std::as_bytes(std::span(&value, 1)); }
 } // namespace
@@ -66,11 +68,11 @@ core::Result<> TaaFeature::ensureTargets(rhi::Extent2D size)
     }
     destroyTargets();
     rhi::TextureDesc desc;
-    desc.format = kHistoryFormat;
     desc.size = {size.width, size.height, 1};
     desc.usage = rhi::TextureUsage::kSampled | rhi::TextureUsage::kRenderTarget | rhi::TextureUsage::kCopySrc;
     for (std::size_t i = 0; i < 2; ++i)
     {
+        desc.format = kHistoryFormat;
         desc.debugName = i == 0 ? "aa.taa.history0" : "aa.taa.history1";
         auto color = context_->device().createTexture(desc);
         if (!color)
@@ -79,6 +81,7 @@ core::Result<> TaaFeature::ensureTargets(rhi::Extent2D size)
             return std::unexpected(color.error());
         }
         color_[i] = *color;
+        desc.format = kInfoFormat;
         desc.debugName = i == 0 ? "aa.taa.info0" : "aa.taa.info1";
         auto info = context_->device().createTexture(desc);
         if (!info)
@@ -122,9 +125,10 @@ core::Result<> TaaFeature::declare(RenderGraphBuilder &builder)
     const RgTexture scene = builder.resources().sceneColor;
     const RgTextureDesc historyDesc{.format = kHistoryFormat, .size = size};
     const RgTexture previousColor = graph.importTexture(kHistoryTexture, color_[previous], historyDesc);
-    const RgTexture previousInfo = graph.importTexture(kInfoTexture, info_[previous], historyDesc);
+    const RgTextureDesc infoDesc{.format = kInfoFormat, .size = size};
+    const RgTexture previousInfo = graph.importTexture(kInfoTexture, info_[previous], infoDesc);
     const RgTexture nextColor = graph.importTexture("aa.taa.history.next", color_[next], historyDesc);
-    const RgTexture nextInfo = graph.importTexture("aa.taa.info.next", info_[next], historyDesc);
+    const RgTexture nextInfo = graph.importTexture("aa.taa.info.next", info_[next], infoDesc);
     struct Push
     {
         glm::vec4 params;
@@ -139,7 +143,7 @@ core::Result<> TaaFeature::declare(RenderGraphBuilder &builder)
                  {
                      GraphicsState state;
                      state.raster.cull = rhi::CullMode::kNone;
-                     state.colorTargets.assign(2, rhi::ColorTargetState{.format = kHistoryFormat});
+                     state.colorTargets = {rhi::ColorTargetState{.format = kHistoryFormat}, rhi::ColorTargetState{.format = kInfoFormat}};
                      state.debugName = program_->name();
                      auto pipeline = context_->pipelines().graphics(*program_, state);
                      if (!pipeline)
@@ -195,13 +199,8 @@ core::Result<std::vector<std::array<float, 4>>> TaaFeature::readHistoryInfo() co
     {
         return std::unexpected(raw.error());
     }
-    std::vector<std::array<float, 4>> out(raw->size() / 8);
-    for (std::size_t i = 0; i < out.size(); ++i)
-    {
-        std::uint16_t h[4];
-        std::memcpy(h, raw->data() + i * 8, sizeof h);
-        out[i] = {glm::unpackHalf1x16(h[0]), glm::unpackHalf1x16(h[1]), glm::unpackHalf1x16(h[2]), glm::unpackHalf1x16(h[3])};
-    }
+    std::vector<std::array<float, 4>> out(raw->size() / sizeof(std::array<float, 4>));
+    std::memcpy(out.data(), raw->data(), out.size() * sizeof(std::array<float, 4>));
     return out;
 }
 

@@ -20,6 +20,9 @@ namespace
 template <typename T> std::span<const std::byte> asBytes(const T &value) { return std::as_bytes(std::span(&value, 1)); }
 
 glm::vec2 texelSize(rhi::Extent2D size) { return {1.0f / static_cast<float>(std::max(size.width, 1u)), 1.0f / static_cast<float>(std::max(size.height, 1u))}; }
+
+// Fonction (et non constante locale) : évite une capture de lambda que clang juge inutile (-Wunused-lambda-capture) et que GCC exigerait.
+rhi::ColorWriteMask rgbMask() { return rhi::ColorWriteMask::kR | rhi::ColorWriteMask::kG | rhi::ColorWriteMask::kB; }
 } // namespace
 
 core::Result<std::unique_ptr<BloomFeature>> BloomFeature::create(std::shared_ptr<PostContext> context)
@@ -72,7 +75,6 @@ core::Result<> BloomFeature::declare(RenderGraphBuilder &builder)
 
     const rhi::BlendState additive{true, rhi::BlendFactor::kOne, rhi::BlendFactor::kOne, rhi::BlendOp::kAdd,
                                    rhi::BlendFactor::kZero, rhi::BlendFactor::kOne, rhi::BlendOp::kAdd};
-    const rhi::ColorWriteMask rgb = rhi::ColorWriteMask::kR | rhi::ColorWriteMask::kG | rhi::ColorWriteMask::kB;
 
     // Passe plein écran : `program` lit `source` (échantillonneur linéaire) et écrit l'attachement de la passe.
     auto draw = [this](RenderPassContext &ctx, const ShaderProgram &program, RgTexture source, rhi::Format format, const rhi::BlendState &blend,
@@ -123,8 +125,8 @@ core::Result<> BloomFeature::declare(RenderGraphBuilder &builder)
         const glm::vec4 push(texelSize(sizes[i + 1]), s.radius, 1.0f);
         graph
             .addPass("post.bloom.up" + std::to_string(i), PassType::kRaster,
-                     [this, draw, source, push, additive, rgb](RenderPassContext &ctx)
-                     { return draw(ctx, *up_, source, rhi::Format::kRGBA16Float, additive, rgb, asBytes(push)); })
+                     [this, draw, source, push, additive](RenderPassContext &ctx)
+                     { return draw(ctx, *up_, source, rhi::Format::kRGBA16Float, additive, rgbMask(), asBytes(push)); })
             .read(source)
             .writeColor(levels[i], rhi::LoadOp::kLoad);
     }
@@ -132,8 +134,8 @@ core::Result<> BloomFeature::declare(RenderGraphBuilder &builder)
     const glm::vec4 push(texelSize(sizes[0]), s.radius, std::max(s.intensity, 0.0f));
     graph
         .addPass("post.bloom.composite", PassType::kRaster,
-                 [this, draw, scene, source = levels[0], push, additive, rgb](RenderPassContext &ctx)
-                 { return draw(ctx, *up_, source, ctx.desc(scene).format, additive, rgb, asBytes(push)); })
+                 [this, draw, scene, source = levels[0], push, additive](RenderPassContext &ctx)
+                 { return draw(ctx, *up_, source, ctx.desc(scene).format, additive, rgbMask(), asBytes(push)); })
         .read(levels[0])
         .writeColor(scene, rhi::LoadOp::kLoad);
     return {};

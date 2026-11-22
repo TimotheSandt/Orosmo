@@ -42,7 +42,9 @@ vec3 sphericalToDir(float azimuth, float elevation)
 
 vec2 dirToSpherical(vec3 d)
 {
-    return vec2(atan(d.x, d.z), asin(clamp(d.y, -1.0, 1.0)));
+    // Aux pôles (x = z = 0) atan(0, 0) est indéfini : azimut conventionnel 0.
+    float azimuth = (d.x == 0.0 && d.z == 0.0) ? 0.0 : atan(d.x, d.z);
+    return vec2(azimuth, asin(clamp(d.y, -1.0, 1.0)));
 }
 
 // Normale d'espace tangent (déjà décodée dans [-1, 1]) -> espace monde, avec la base (t, b, n) orthonormée.

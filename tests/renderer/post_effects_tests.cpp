@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -268,6 +269,26 @@ TEST_SUITE("post/math")
         CHECK((tests::errorOf(rd::parseCubeLut("LUT_3D_SIZE 2\n0 0 x\n")) == ErrorCode::kInvalidArgument));
         CHECK((tests::errorOf(rd::parseCubeLut("LUT_1D_SIZE 4\n")) == ErrorCode::kUnsupported));
         CHECK((tests::errorOf(rd::parseCubeLut("DOMAIN_MAX 2 2 2\n")) == ErrorCode::kUnsupported));
+
+        // Un « + » initial est valide ; un jeton partiellement numérique, un séparateur ambigu, une valeur non finie ne le sont pas.
+        const std::string header = "LUT_3D_SIZE 2\n";
+        const std::string tail = "1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n";
+        auto plus = rd::parseCubeLut(header + "+0.5 +0 +1e-1\n" + tail);
+        REQUIRE(plus.has_value());
+        CHECK(plus->values[0] == glm::vec3(0.5f, 0.0f, 0.1f));
+        for (const char *bad : {"+ 0 0", "++0.5 0 0", "+-0.5 0 0", "0.1,0.2,0.3", "0.1 0.2 0.3x", "0.1 0.2x 0.3", "inf 0 0", "0 nan 0", "0 0", "0 0 0 0"})
+        {
+            INFO(bad);
+            CHECK((tests::errorOf(rd::parseCubeLut(header + bad + "\n" + tail)) == ErrorCode::kInvalidArgument));
+        }
+        // Trop de couleurs : refusé à la première ligne en trop ; taille annoncée énorme sans lignes : table tronquée, sans réservation.
+        CHECK((tests::errorOf(rd::parseCubeLut(header + "0 0 0\n" + tail + "0 0 0\n")) == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(rd::parseCubeLut("LUT_3D_SIZE 256\n0 0 0\n")) == ErrorCode::kInvalidArgument));
+        // Une LUT dont size³ déborde n'est pas valide (et sampleLut renvoie la couleur d'entrée).
+        rd::ColorLut overflow;
+        overflow.size = 0xFFFFFFFFu;
+        CHECK_FALSE(overflow.valid());
+        CHECK(rd::sampleLut(overflow, {0.2f, 0.4f, 0.6f}) == glm::vec3(0.2f, 0.4f, 0.6f));
     }
 }
 
@@ -435,7 +456,7 @@ void main()
         {
             PostGpu g(backend);
             REQUIRE(g.gpu.device);
-            if (!g.gpu->capabilities().compute)
+            if (!rd::AutoExposureFeature::supportedBy(g.gpu->capabilities()))
             {
                 MESSAGE("no compute: auto exposure skipped");
                 continue;
@@ -538,6 +559,14 @@ void main()
             REQUIRE(grading.setLut(lut).has_value());
             CHECK((tests::errorOf(grading.setLut(rd::ColorLut{})) == ErrorCode::kInvalidArgument));
             CHECK(grading.lutSize() == 8); // refus : l'ancienne LUT reste
+            for (const float bad : {1.5f, -0.25f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity()})
+            {
+                rd::ColorLut broken = rd::identityLut(4);
+                broken.values[5].g = bad;
+                INFO(bad);
+                CHECK((tests::errorOf(grading.setLut(broken)) == ErrorCode::kInvalidArgument));
+                CHECK(grading.lutSize() == 8);
+            }
             const TextureHandle u = imageTexture(g.gpu, Format::kRGBA8Unorm, size, std::as_bytes(std::span(bytes)));
             runEffects(g, {&grading}, u, Format::kRGBA8Unorm, size);
             auto rotated = g.gpu->readTexture(u);
@@ -667,7 +696,8 @@ void main()
             REQUIRE(added.has_value());
             rd::PostEffects fx = *added;
             REQUIRE(fx.tonemap != nullptr);
-            CHECK(fx.autoExposure != nullptr); // OpenGL 4.3 et Vulkan ont le compute
+            const bool hasAutoExposure = rd::AutoExposureFeature::supportedBy(g.gpu->capabilities());
+            CHECK((fx.autoExposure != nullptr) == hasAutoExposure); // présent seulement si le périphérique a le compute voulu
             CHECK_FALSE(fx.hdrActive());
             renderer.setOutputResolution(16, 16);
             const TextureHandle out = g.gpu.target(Format::kRGBA8Unorm, {16, 16}, "output");
@@ -711,13 +741,29 @@ void main()
             // Chaîne complète : ordre scène -> exposition -> bloom -> tonemapping -> LUT -> vignettage -> mise à l'échelle.
             for (rd::PostEffect *e : std::initializer_list<rd::PostEffect *>{fx.autoExposure, fx.bloom, fx.colorGrading, fx.vignette})
             {
-                e->setEnabled(true);
+                if (e != nullptr)
+                {
+                    e->setEnabled(true);
+                }
             }
             frame();
             const auto order = renderer.renderGraph().executionOrder();
-            const char *chain[] = {"scene", "post.auto-exposure", "post.bloom.down0", "post.bloom.composite", "post.tonemap", "post.tonemap.copy",
-                                   "post.color-grading", "post.color-grading.copy", "post.vignette", "upscale"};
-            for (std::size_t i = 0; i + 1 < std::size(chain); ++i)
+            std::vector<const char *> chain = {"scene", "post.bloom.down0", "post.bloom.composite", "post.tonemap", "post.tonemap.copy",
+                                               "post.color-grading", "post.color-grading.copy", "post.vignette", "upscale"};
+            if (hasAutoExposure)
+            {
+                chain.insert(chain.begin() + 1, "post.auto-exposure");
+            }
+            else
+            {
+                CHECK_FALSE(contains(order, "post.auto-exposure")); // sans compute adapté : exposition unitaire, les autres effets restent
+            }
+            for (const char *name : chain)
+            {
+                INFO(name);
+                REQUIRE(contains(order, name)); // un effet requis absent fait échouer le test (position() ne le détecterait pas)
+            }
+            for (std::size_t i = 0; i + 1 < chain.size(); ++i)
             {
                 const std::string step = std::string(chain[i]) + " < " + chain[i + 1];
                 INFO(step);
@@ -726,7 +772,10 @@ void main()
             CHECK(renderer.renderGraph().culledPasses().empty());
 
             // Effets non HDR seuls (LUT, vignettage) : la scène repasse en RGBA8.
-            fx.autoExposure->setEnabled(false);
+            if (fx.autoExposure != nullptr)
+            {
+                fx.autoExposure->setEnabled(false);
+            }
             fx.bloom->setEnabled(false);
             fx.tonemap->setEnabled(false);
             CHECK_FALSE(fx.hdrActive());

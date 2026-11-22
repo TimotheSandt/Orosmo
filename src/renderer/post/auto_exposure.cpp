@@ -24,15 +24,21 @@ constexpr std::uint32_t kTile = 16;
 template <typename T> std::span<const std::byte> asBytes(const T &value) { return std::as_bytes(std::span(&value, 1)); }
 } // namespace
 
+bool AutoExposureFeature::supportedBy(const rhi::Capabilities &capabilities) noexcept
+{
+    return capabilities.compute && capabilities.maxComputeInvocations >= 256 && capabilities.maxComputeWorkGroupSize[0] >= 256 &&
+           capabilities.maxComputeWorkGroupSize[1] >= 16;
+}
+
 core::Result<std::unique_ptr<AutoExposureFeature>> AutoExposureFeature::create(std::shared_ptr<PostContext> context)
 {
     if (context == nullptr)
     {
         return makeError(ErrorCode::kInvalidArgument, "AutoExposureFeature::create: null context");
     }
-    if (!context->device().capabilities().compute)
+    if (!supportedBy(context->device().capabilities()))
     {
-        return makeError(ErrorCode::kUnsupported, "AutoExposureFeature::create: the device has no compute shaders");
+        return makeError(ErrorCode::kUnsupported, "AutoExposureFeature::create: the device lacks compute or 256-invocation work groups");
     }
     std::unique_ptr<AutoExposureFeature> feature(new AutoExposureFeature(std::move(context)));
     PostContext &ctx = *feature->context_;

@@ -122,7 +122,8 @@ class ForwardPlusLighting final : public RenderFeature
     rhi::Device &device_;
     PipelineCache &pipelines_;
     std::shared_ptr<ShaderProgram> program_;
-    ForwardPlusSettings settings_;
+    ForwardPlusSettings settings_;       // réglages demandés (appliqués à la prochaine création des tampons)
+    ForwardPlusSettings bufferSettings_; // réglages avec lesquels grid_ et lightLists_ ont été créés (lectures de debug)
     GpuBuffer grid_;
     GpuBuffer lightLists_;
     bool buffersDirty_ = true;

@@ -92,7 +92,8 @@ std::string_view trim(std::string_view s) noexcept
     return s;
 }
 
-// Lit jusqu'à `count` flottants séparés par des blancs ; faux si un champ n'est pas un nombre ou s'il en manque.
+// Lit exactement `count` flottants finis séparés par des blancs ; faux si un jeton n'est pas entièrement un nombre fini
+// (« 0.1,0.2 », « 1x », « inf », « +-1 »), s'il en manque ou s'il en reste. Un « + » initial unique est accepté (« +0.5 »).
 bool readFloats(std::string_view s, float *out, int count) noexcept
 {
     for (int i = 0; i < count; ++i)
@@ -102,12 +103,25 @@ bool readFloats(std::string_view s, float *out, int count) noexcept
         {
             return false;
         }
-        const auto [end, ec] = std::from_chars(s.data(), s.data() + s.size(), out[i]);
-        if (ec != std::errc{})
+        const char *begin = s.data();
+        if (*begin == '+')
+        {
+            ++begin;
+            if (begin == s.data() + s.size() || *begin == '+' || *begin == '-')
+            {
+                return false;
+            }
+        }
+        const auto [end, ec] = std::from_chars(begin, s.data() + s.size(), out[i]);
+        if (ec != std::errc{} || !std::isfinite(out[i]))
         {
             return false;
         }
         s.remove_prefix(static_cast<std::size_t>(end - s.data()));
+        if (!s.empty() && s.front() != ' ' && s.front() != '\t' && s.front() != '\r')
+        {
+            return false; // le jeton n'est pas consommé en entier
+        }
     }
     return trim(s).empty();
 }
@@ -244,11 +258,13 @@ glm::vec3 sampleLut(const ColorLut &lut, const glm::vec3 &color) noexcept
     {
         return color;
     }
-    const auto n = static_cast<int>(lut.size);
-    const glm::vec3 p = saturate(color) * static_cast<float>(n - 1);
-    const glm::ivec3 i0 = glm::min(glm::ivec3(glm::floor(p)), glm::ivec3(n - 2));
+    const auto n = static_cast<std::size_t>(lut.size);
+    const auto last = static_cast<int>(lut.size) - 1;
+    const glm::vec3 p = saturate(color) * static_cast<float>(last);
+    const glm::ivec3 i0 = glm::min(glm::ivec3(glm::floor(p)), glm::ivec3(last - 1));
     const glm::vec3 f = p - glm::vec3(i0);
-    auto at = [&](int r, int g, int b) { return lut.values[static_cast<std::size_t>(r + n * (g + n * b))]; };
+    auto at = [&](int r, int g, int b)
+    { return lut.values[static_cast<std::size_t>(r) + n * (static_cast<std::size_t>(g) + n * static_cast<std::size_t>(b))]; };
     glm::vec3 result(0.0f);
     for (int dz = 0; dz < 2; ++dz)
     {
@@ -296,8 +312,7 @@ core::Result<ColorLut> parseCubeLut(std::string_view text)
                 return makeError(ErrorCode::kInvalidArgument, "parseCubeLut: LUT_3D_SIZE must be an integer in [2, 256]" + where);
             }
             lut.size = static_cast<std::uint32_t>(size);
-            lut.values.reserve(static_cast<std::size_t>(lut.size) * lut.size * lut.size);
-            continue;
+            continue; // pas de réservation d'après la taille annoncée : le tableau croît avec les lignes réellement lues
         }
         if (line.starts_with("DOMAIN_MIN") || line.starts_with("DOMAIN_MAX"))
         {
@@ -317,6 +332,11 @@ core::Result<ColorLut> parseCubeLut(std::string_view text)
         if (lut.size == 0)
         {
             return makeError(ErrorCode::kInvalidArgument, "parseCubeLut: a color comes before LUT_3D_SIZE" + where);
+        }
+        const std::size_t expected = static_cast<std::size_t>(lut.size) * lut.size * lut.size;
+        if (lut.values.size() >= expected)
+        {
+            return makeError(ErrorCode::kInvalidArgument, "parseCubeLut: more than " + std::to_string(expected) + " colors" + where);
         }
         lut.values.emplace_back(rgb[0], rgb[1], rgb[2]);
     }
