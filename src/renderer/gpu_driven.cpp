@@ -556,7 +556,8 @@ core::Result<GpuDrawStats> GpuDrivenFeature::draw(SceneRenderer &scene, const Ob
         return std::unexpected(r.error());
     }
 
-    cullWithHiz_ = occlusion_ && hizValid_ && !hiz_.isNull();
+    // Sans culling (frustumCulling faux : tout est visible), pas d'occlusion non plus.
+    cullWithHiz_ = occlusion_ && options.frustumCulling && hizValid_ && !hiz_.isNull();
     GpuCullParams params{};
     const auto planes = view.cull.frustum.planes();
     for (std::size_t i = 0; i < planes.size(); ++i)

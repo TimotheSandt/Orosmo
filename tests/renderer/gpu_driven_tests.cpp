@@ -141,7 +141,7 @@ struct GpuDrivenScene
     }
 
     // Une image dessinée par le GPU (gpu = vrai) ou par le culling CPU + InstanceRenderer.
-    void render(TextureHandle out, rd::ObjectSet &objects, bool gpuDriven, float minScreenRadius = 0.0f)
+    void render(TextureHandle out, rd::ObjectSet &objects, bool gpuDriven, float minScreenRadius = 0.0f, const rd::GpuDrivenOptions &options = {})
     {
         gpu.run(
             [&](CommandEncoder &e)
@@ -150,7 +150,7 @@ struct GpuDrivenScene
                 REQUIRE(renderer->setCamera(camera).has_value());
                 if (gpuDriven)
                 {
-                    auto drawn = feature->draw(*renderer, objects, view(minScreenRadius));
+                    auto drawn = feature->draw(*renderer, objects, view(minScreenRadius), options);
                     INFO((drawn ? std::string() : drawn.error().message));
                     REQUIRE(drawn.has_value());
                 }
@@ -442,6 +442,14 @@ TEST_SUITE("renderer/gpu-driven")
                 INFO("slot ", slot);
                 CHECK((((*flags)[slot] & rd::kGpuVisibleOcclusion) == 0) == hidden.contains(slot));
             }
+
+            // Sans culling (frustumCulling faux : tout est visible), la Hi-Z, pourtant valide, ne rejette rien.
+            CHECK(scene.feature->hizValid());
+            scene.render(out, objects, true, 0.0f, {.frustumCulling = false});
+            auto noCulling = scene.feature->readStats();
+            REQUIRE(noCulling.has_value());
+            CHECK(noCulling->occlusionCulled == 0);
+            CHECK(noCulling->visible == 9);
 
             // Sans occlusion : tout redevient visible ; après une coupure de caméra (resetOcclusion), l'image suivante n'en a pas.
             scene.feature->setOcclusion(false);
