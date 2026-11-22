@@ -10,6 +10,7 @@
 #include "UI/Views/PerformanceView.gen.h"
 #include <orosmo/core/log.hpp>
 #include <orosmo/core/paths.hpp>
+#include <orosmo/core/system.hpp>
 #include <orosmo/renderer/draw_list.hpp>
 #include <orosmo/renderer/forward_plus.hpp>
 #include <orosmo/renderer/image.hpp>
@@ -134,7 +135,14 @@ orosmo::core::Result<> Game::createGraphics()
         this->uiState.deviceInfo = std::string(demo::backendDisplayName(this->selectedBackend));
     }
 
-    this->shaders = std::make_unique<rd::ShaderLibrary>(*this->device);
+    // Cache SPIR-V sur disque (à côté du cache de pipelines Vulkan, Orosmo/pipeline_cache) : les lancements suivants ne
+    // recompilent plus le GLSL (shaderc). Clé = source prétraitée et étage : un shader modifié est recompilé.
+    rd::ShaderLibraryConfig shaderConfig;
+    if (const std::filesystem::path data = orosmo::core::system::userDataDirectory(); !data.empty())
+    {
+        shaderConfig.cacheDirectory = data / "Orosmo" / "shader_cache";
+    }
+    this->shaders = std::make_unique<rd::ShaderLibrary>(*this->device, std::move(shaderConfig));
     this->pipelines = std::make_unique<rd::PipelineCache>(*this->device);
     auto createdSceneRenderer = rd::SceneRenderer::create(*this->device, *this->shaders, *this->pipelines, {.shaderDirectory = kShaderDirectory});
     if (!createdSceneRenderer)
