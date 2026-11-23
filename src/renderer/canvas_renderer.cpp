@@ -147,6 +147,8 @@ void appendItem(Plan &plan, const Item &item, bool inLayer)
     }
 }
 
+constexpr std::size_t kSearchBudget = 512; // comparaisons de lots et d'éléments par commande
+
 void flushSegment(Plan &plan, std::vector<Item> &segment, bool inLayer)
 {
     std::vector<Batch> batches;
@@ -154,16 +156,46 @@ void flushSegment(Plan &plan, std::vector<Item> &segment, bool inLayer)
     {
         const Item &item = segment[index];
         std::size_t target = batches.size();
+        // Budget de comparaisons par commande (lots visités + éléments comparés) : borne le coût d'un segment de milliers de dessins.
+        // Épuisé, on garde le lot compatible déjà trouvé (atteignable : tout ce qui est plus récent a été vérifié) ou on ouvre un
+        // nouveau lot en fin de segment : l'ordre des dessins qui se recouvrent est toujours préservé.
+        std::size_t budget = kSearchBudget;
         for (std::size_t k = batches.size(); k-- > 0;)
         {
+            if (budget == 0)
+            {
+                break;
+            }
+            --budget;
             Batch &b = batches[k];
             if (compatible(b, item))
             {
                 target = k; // le plus ancien lot compatible atteignable
             }
-            if (overlaps(b.box, item.box) && std::ranges::any_of(b.items, [&](std::uint32_t other) { return overlaps(segment[other].box, item.box); }))
+            if (overlaps(b.box, item.box))
             {
-                break; // un dessin de ce lot est recouvert par celui-ci : on ne peut pas passer devant
+                bool covered = false;
+                for (std::uint32_t other : b.items)
+                {
+                    if (overlaps(segment[other].box, item.box))
+                    {
+                        covered = true;
+                        break;
+                    }
+                    if (budget == 0)
+                    {
+                        break;
+                    }
+                    --budget;
+                }
+                if (covered)
+                {
+                    break; // un dessin de ce lot est recouvert par celui-ci : on ne peut pas passer devant
+                }
+                if (budget == 0)
+                {
+                    break; // comparaison interrompue : on ne sait pas si on peut passer devant ce lot
+                }
             }
         }
         if (target == batches.size())
@@ -516,27 +548,16 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
     // garde le résultat. Un seul envoi pour tout le tampon : chaque lot a son décalage.
     const Plan plan = buildPlan(list);
     stats_.drawCommands = plan.drawCommands;
+    BatchArena::Range batch{};
     if (!plan.data.empty())
     {
-        const std::uint64_t needed = plan.data.size() * sizeof(float);
-        if (!batchBuffer_.valid() || batchBuffer_.size() < needed)
+        auto uploaded = arena_.upload(device_, &encoder, std::as_bytes(std::span(plan.data)), "ui.batch");
+        if (!uploaded)
         {
-            rhi::BufferDesc bd;
-            bd.size = std::max<std::uint64_t>(needed, 64 * 1024);
-            bd.usage = rhi::BufferUsage::kVertex | rhi::BufferUsage::kCopyDst;
-            bd.debugName = "ui.batch";
-            auto buffer = GpuBuffer::create(device_, bd);
-            if (!buffer)
-            {
-                return std::unexpected(buffer.error());
-            }
-            batchBuffer_ = std::move(*buffer);
+            return std::unexpected(uploaded.error());
         }
-        if (auto r = batchBuffer_.update(0, std::as_bytes(std::span(plan.data))); !r)
-        {
-            return r;
-        }
-        stats_.bufferBytes = needed;
+        batch = *uploaded;
+        stats_.bufferBytes = plan.data.size() * sizeof(float);
     }
 
     for (auto &[id, layer] : layers_)
@@ -582,7 +603,7 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
                 const RectPush push{{surface.logical.x, surface.logical.y, 0, 0}};
                 encoder.setPipeline(*pipe);
                 encoder.setPushConstants(bytesOf(push));
-                encoder.setVertexBuffer(0, batchBuffer_.handle(), op.byteOffset);
+                encoder.setVertexBuffer(0, batch.buffer, batch.offset + op.byteOffset);
                 encoder.draw(6, op.count);
             }
             else
@@ -599,7 +620,7 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
                 encoder.setPipeline(*pipe);
                 encoder.setBindGroup(1, (*atlas)->group);
                 encoder.setPushConstants(bytesOf(push));
-                encoder.setVertexBuffer(0, batchBuffer_.handle(), op.byteOffset);
+                encoder.setVertexBuffer(0, batch.buffer, batch.offset + op.byteOffset);
                 encoder.draw(op.count);
             }
             ++stats_.drawCalls;

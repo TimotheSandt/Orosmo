@@ -5,6 +5,7 @@
 
 #include "orosmo/core/error.hpp"
 #include "orosmo/renderer/draw_list.hpp"
+#include "orosmo/renderer/batch_arena.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/render_target.hpp"
@@ -137,7 +138,7 @@ class CanvasRenderer
     std::shared_ptr<ShaderProgram> layerImage_;
     std::shared_ptr<ShaderProgram> image_;
     rhi::SamplerHandle atlasSampler_;
-    GpuBuffer batchBuffer_;
+    BatchArena arena_; // une plage par appel de render() sur un même encodeur
     CanvasStats stats_;
     std::map<std::uint64_t, Layer> layers_;
     std::map<std::uint64_t, Atlas> atlases_;

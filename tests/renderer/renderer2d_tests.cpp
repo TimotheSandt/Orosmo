@@ -10,6 +10,7 @@
 #include <orosmo/renderer/renderer2d.hpp>
 
 #include <cmath>
+#include <limits>
 #include <numbers>
 
 namespace rd = orosmo::renderer;
@@ -369,7 +370,81 @@ TEST_SUITE("renderer/renderer2d")
         }
     }
 
-    TEST_CASE("R2D-03: text goes through the existing path: a DrawList drawn after render() on the same target")
+    TEST_CASE("R2D-01: two render() calls on one encoder before submit keep the vertices of both")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Scene s(backend);
+            REQUIRE(s.gpu.device);
+            auto encoder = s.gpu->createCommandEncoder();
+            s.r2d->begin(s.camera());
+            s.r2d->rect({0, 0}, {8, 16}, {1, 0, 0, 1});
+            REQUIRE(s.r2d->render(*encoder, s.target, Format::kRGBA8Unorm, {16, 16}, false, {0, 0, 0, 1}).has_value());
+            s.r2d->begin(s.camera());
+            s.r2d->rect({8, 0}, {8, 16}, {0, 0, 1, 1});
+            REQUIRE(s.r2d->render(*encoder, s.target, Format::kRGBA8Unorm, {16, 16}, true, {0, 0, 0, 1}).has_value());
+            REQUIRE(s.gpu->submit(std::move(encoder)).has_value());
+            CHECK(s.px(3, 8) == kRed);
+            CHECK(s.px(12, 8) == kBlue);
+            s.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("R2D-03: a translucent polyline blends each pixel once: collinear points and corners leave no overlap")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Scene s(backend);
+            REQUIRE(s.gpu.device);
+            const std::array<glm::vec2, 3> aligned{{{1, 8}, {8, 8}, {15, 8}}};
+            s.r2d->begin(s.camera());
+            s.r2d->polyline(aligned, 4, {1, 0, 0, 0.5f});
+            REQUIRE(s.render().has_value());
+            const Px side = s.px(4, 8);
+            CHECK(near(side[0], 128, 2));
+            CHECK(s.px(8, 8) == side); // au point du milieu : pas de disque superposé
+            CHECK(s.px(8, 7) == side);
+
+            const std::array<glm::vec2, 3> corner{{{2, 2}, {2, 14}, {14, 14}}};
+            s.r2d->begin(s.camera());
+            s.r2d->polyline(corner, 4, {1, 0, 0, 0.5f});
+            REQUIRE(s.render().has_value());
+            const Px arm = s.px(2, 8);
+            CHECK(near(arm[0], 128, 2));
+            CHECK(s.px(3, 3) == arm);  // intérieur du coude (2, 14) -> pixel (2, 2) : pas de double mélange
+            CHECK(s.px(1, 1) == arm);  // extérieur arrondi
+            s.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("R2D-01: a material cleared after a deposit refuses the render cleanly; NaN z is ordered")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Scene s(backend);
+            REQUIRE(s.gpu.device);
+            rd::Texture white = s.solid({255, 255, 255, 255});
+            auto m = s.r2d->material(white);
+            REQUIRE(m.has_value());
+            s.r2d->begin(s.camera());
+            REQUIRE(s.r2d->draw({.material = *m, .size = {4, 4}}).has_value());
+            s.r2d->clearMaterials();
+            auto r = s.render();
+            CHECK_FALSE(r.has_value());
+            CHECK((r.error().code == orosmo::core::ErrorCode::kInvalidArgument));
+
+            s.r2d->begin(s.camera());
+            const float nan = std::numeric_limits<float>::quiet_NaN();
+            s.r2d->rect({0, 0}, {8, 16}, {1, 0, 0, 1}, 0.0f, nan);
+            s.r2d->rect({8, 0}, {8, 16}, {0, 0, 1, 1}, 0.0f, 1.0f);
+            s.r2d->rect({0, 0}, {4, 4}, {0, 1, 0, 1}, 0.0f, 0.0f);
+            REQUIRE(s.render().has_value());
+            CHECK(s.px(12, 8) == kBlue);
+            s.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("R2D-03: layering contract: a CanvasRenderer list (UI, text) drawn with loadExisting after render() keeps the 2D picture")
     {
         FOR_EACH_BACKEND(backend)
         {
