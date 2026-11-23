@@ -4,6 +4,7 @@
 #include "ui/ui_harness.hpp"
 
 #include <orosmo/ui/color.hpp>
+#include <functional>
 #include <orosmo/ui/reflect.hpp>
 
 namespace ui = orosmo::ui;
@@ -373,6 +374,44 @@ TEST_SUITE("ui/widgets")
         CHECK_FALSE(h.ui.anyPopupOpen());
         h.click(onSwatch);
         REQUIRE(h.ui.popupOpenFor(picker));
+        h.keys({ui::kKeyEscape});
+        CHECK_FALSE(h.ui.anyPopupOpen());
+    }
+
+    TEST_CASE("ColorPicker: focusable; Enter and Space open the editor; Escape on a focused slider of the popup closes it")
+    {
+        UiHarness h;
+        ui::Color color{0.0f, 0.5f, 1.0f, 1.0f};
+        auto &picker = place(h, std::make_unique<ui::ColorPicker>(ui::Binding<ui::Color>::ref(color), true), {160, 60});
+        CHECK(picker.focusable());
+        h.keys({ui::kKeyTab}); // Tab atteint le sélecteur
+        REQUIRE(h.ui.focused() == &picker);
+        h.keys({ui::kKeyEnter});
+        REQUIRE(h.ui.popupOpenFor(picker));
+        h.keys({ui::kKeyEscape});
+        CHECK_FALSE(h.ui.anyPopupOpen());
+        h.keys({ui::kKeySpace});
+        CHECK(h.ui.popupOpenFor(picker));
+
+        // Parcours souris : ouvrir, cliquer un curseur de la fenêtre (il prend le focus), puis Échap ferme la fenêtre.
+        h.click({h.viewport.x - 2, h.viewport.y - 2});
+        CHECK_FALSE(h.ui.anyPopupOpen());
+        const ui::Rect sw = picker.swatchRect();
+        h.click(sw.position + sw.size * 0.5f);
+        REQUIRE(h.ui.popupOpenFor(picker));
+        std::function<ui::Widget *(ui::Widget &)> firstSlider = [&](ui::Widget &w) -> ui::Widget *
+        {
+            if (dynamic_cast<ui::Slider *>(&w) != nullptr)
+                return &w;
+            for (const auto &c : w.children())
+                if (ui::Widget *f = firstSlider(*c))
+                    return f;
+            return nullptr;
+        };
+        ui::Widget *slider = firstSlider(*h.ui.popup());
+        REQUIRE(slider != nullptr);
+        h.click(UiHarness::center(*slider));
+        REQUIRE(h.ui.focused() == slider);
         h.keys({ui::kKeyEscape});
         CHECK_FALSE(h.ui.anyPopupOpen());
     }

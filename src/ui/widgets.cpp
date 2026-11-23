@@ -49,6 +49,25 @@ Label &Label::bindText(std::function<std::string()> text)
 
 std::string Label::text() const { return source_ ? source_() : text_; }
 
+Rect Label::contentExtent(Ui &ui, const Style &style) const
+{
+    const std::string t = text();
+    if (t.empty())
+    {
+        return rect_;
+    }
+    // Même placement que Widget::drawText : le texte est centré verticalement et aligné selon textAlign_ dans le rectangle intérieur.
+    const Rect r = inset(rect_, style.padding);
+    const glm::vec2 size = ui.font().measure(t, style.fontSize, style.font.get());
+    float x = r.position.x;
+    if (textAlign_ == Align::kCenter)
+        x += (r.size.x - size.x) * 0.5f;
+    else if (textAlign_ == Align::kEnd)
+        x += r.size.x - size.x;
+    const float y = r.position.y + (r.size.y - size.y) * 0.5f;
+    return {{std::round(x), std::round(y)}, size};
+}
+
 glm::vec2 Label::measureContent(Ui &ui, glm::vec2, const Style &style)
 {
     const std::string t = text();
@@ -737,15 +756,40 @@ void ColorPicker::arrange(Ui &ui, const Rect &content, const Style &style)
 
 void ColorPicker::onRelease(Ui &ui, glm::vec2 mouse, bool inside)
 {
-    // Seul le carré d'aperçu ouvre l'éditeur ; un binding en lecture seule n'ouvre rien. Un clic extérieur ou sur le carré quand la
-    // fenêtre est ouverte la ferme déjà (Ui::update) : ici elle est donc toujours fermée.
-    if (!inside || !swatch_.contains(mouse) || !value_.writable() || ui.popupOpenFor(*this))
+    // Seul le carré d'aperçu ouvre l'éditeur ; un clic extérieur ou sur le carré quand la fenêtre est ouverte la ferme déjà
+    // (Ui::update) : ici elle est donc toujours fermée.
+    if (!inside || !swatch_.contains(mouse))
+    {
+        return;
+    }
+    openEditor(ui);
+}
+
+void ColorPicker::onKey(Ui &ui, int key)
+{
+    if (key == kKeyEnter || key == kKeySpace)
+    {
+        openEditor(ui); // même chemin que le clic sur le carré
+    }
+}
+
+void ColorPicker::openEditor(Ui &ui)
+{
+    // Un binding en lecture seule n'ouvre rien.
+    if (!value_.writable() || ui.popupOpenFor(*this))
     {
         return;
     }
     auto content = std::make_unique<VBox>("popup");
     auto &editor = content->emplace<ColorEditor>(value_, alpha_);
-    editor.onChange([this](const Event &) { fire(EventKind::kChange); }); // modifier la couleur dans la fenêtre = la modifier ici
+    // Modifier la couleur dans la fenêtre = la modifier ici ; la fenêtre peut survivre au sélecteur le temps d'une image.
+    editor.onChange([this, alive = lifetimeToken()](const Event &)
+                    {
+                        if (!alive.expired())
+                        {
+                            fire(EventKind::kChange);
+                        }
+                    });
     ui.openPopup(*this, std::move(content), swatch_);
 }
 

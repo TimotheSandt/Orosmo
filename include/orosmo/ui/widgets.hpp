@@ -39,6 +39,7 @@ class Label : public Widget
     Label &setTextAlign(Align align) { textAlign_ = align; return *this; }
 
   protected:
+    Rect contentExtent(Ui &ui, const Style &style) const override;
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
     void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
 
@@ -281,7 +282,9 @@ class ColorPicker : public Widget
     Color color() const { return value_.value(); }
     void clearChildren() override {} // curseurs internes : pas de contenu effaçable
     bool interactive() const override { return true; } // le carré d'aperçu reçoit le clic (les curseurs sont des enfants)
+    bool focusable() const override { return true; }   // Entrée et Espace ouvrent l'éditeur
     void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
+    void onKey(Ui &ui, int key) override;
     const Rect &swatchRect() const noexcept { return swatch_; }
 
   protected:
@@ -291,6 +294,7 @@ class ColorPicker : public Widget
     void drawContent(const Ui &ui, renderer::DrawList &list, const Style &style) const override;
 
   private:
+    void openEditor(Ui &ui);
     Binding<Color> value_;
     bool alpha_;
     Rect swatch_; // carré d'aperçu, posé par arrange
