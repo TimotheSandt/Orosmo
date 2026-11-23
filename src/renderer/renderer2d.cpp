@@ -302,6 +302,15 @@ void Renderer2D::polyline(std::span<const glm::vec2> points, float thickness, co
             const glm::vec2 inner = pts[v] + (leftTurn ? miter : -miter);
             s0.c[leftTurn ? 2 : 1] = inner;
             s1.c[leftTurn ? 3 : 0] = inner;
+            // Les deux fins de quadrilatère coupées en biais laissent deux triangles (inner, bord extérieur, sommet) : on les comble.
+            const glm::vec2 out0 = s0.c[leftTurn ? 1 : 2];
+            const glm::vec2 out1 = s1.c[leftTurn ? 0 : 3];
+            vertex(inner, color);
+            vertex(out0, color);
+            vertex(pts[v], color);
+            vertex(inner, color);
+            vertex(pts[v], color);
+            vertex(out1, color);
         }
         const glm::vec2 o0 = outer * n0;
         const glm::vec2 o1 = outer * n1;
