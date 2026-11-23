@@ -127,8 +127,11 @@ sont jamais écartées ; l'atlas est lié au groupe 1 des matériaux qui le lise
 elle s'exécute après `scene` et avant `upscale`, `frame-generation` et `history`, qui lisent la scène avec `readFinal` bien qu'elles
 soient déclarées avant les plugins. Pour écrire **après** la mise à l'échelle (interface, superpositions), une passe qui écrit
 `resources().output` : les écrivains de la sortie suivent leur ordre de déclaration, et les plugins sont déclarés après `upscale`.
-C'est ainsi que la démo branche l'interface (`CanvasRenderer`) et la présentation (`apps/demo/src/Game/Game.cpp`,
-`Game::OverlayFeature`, passes `ui` et `present`).
+C'est ainsi que la démo branche l'interface (`CanvasRenderer`) et la présentation (`apps/demo/src/Game/frame_overlay.hpp`,
+`demo::FrameOverlay`, passes `ui` et `present`). Perf M5 : la sortie donnée à `endFrame` peut être directement le backbuffer
+(`Device::beginFrame`) ; la démo le fait quand rien ne relit l'image composée (pas de capture à cette image) et que la vue a la taille
+et le format du backbuffer : la copie 1:1 `upscale` y écrit, l'interface s'y pose, sans cible intermédiaire ni passe `present` (une
+copie plein écran de moins par image). Sinon (capture : `ui.png` lit la cible `composed` ; vue étirée), le chemin d'avant.
 
 ### Sorties auxiliaires et modes de debug (M5 : REN-21, REN-41, REN-35)
 
