@@ -97,6 +97,7 @@ CullView CullView::fromMatrices(const glm::mat4 &view, const glm::mat4 &projecti
     CullView v;
     v.frustum = Frustum::fromMatrix(projection * view);
     v.eye = glm::vec3(glm::inverse(view)[3]);
+    v.forward = -glm::normalize(glm::vec3(view[0][2], view[1][2], view[2][2])); // ligne 2 de la vue : l'axe +Z de la caméra regarde vers l'arrière
     v.projectionScale = std::abs(projection[1][1]);
     v.orthographic = orthographic;
     v.viewportHeight = viewportHeight;
@@ -110,12 +111,12 @@ float projectedRadiusPixels(const Aabb &box, const CullView &view) noexcept
     {
         return radius * view.projectionScale * view.viewportHeight * 0.5f;
     }
-    const float distance = glm::length(box.center() - view.eye);
-    if (distance <= radius)
+    const float nearestDepth = glm::dot(box.center() - view.eye, view.forward) - radius;
+    if (!(nearestDepth > 0.0f))
     {
         return std::numeric_limits<float>::infinity();
     }
-    return radius / distance * view.projectionScale * view.viewportHeight * 0.5f;
+    return radius / nearestDepth * view.projectionScale * view.viewportHeight * 0.5f;
 }
 
 CullStats &CullStats::operator+=(const CullStats &o) noexcept

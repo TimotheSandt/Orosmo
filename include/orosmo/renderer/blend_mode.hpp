@@ -35,7 +35,7 @@ struct BlendModeState
     bool depthWrite = true;   // false pour tous les transparents : test de profondeur sans écriture
     bool alphaToCoverage = false; // le pipeline doit activer l'alpha-to-coverage (le RHI actuel n'a pas ce champ : voir applyBlendMode)
     bool discardInShader = false; // le shader rejette des pixels (kMask : seuil ; kDithered : trame)
-    bool needsSorting = false;    // tri arrière vers avant nécessaire (kBlend, kTransmission)
+    bool needsSorting = false;    // tri arrière vers avant nécessaire (kBlend, kPremultiplied, kTransmission)
     bool readsSceneColor = false; // lit la copie de la couleur de la scène opaque (kTransmission)
 };
 

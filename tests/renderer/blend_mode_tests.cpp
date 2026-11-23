@@ -43,6 +43,7 @@ TEST_SUITE("renderer/blend-mode")
         const auto pre = blendModeState(BlendMode::kPremultiplied);
         CHECK((pre.blend.srcColor == BlendFactor::kOne));
         CHECK((pre.blend.dstColor == BlendFactor::kOneMinusSrcAlpha));
+        CHECK(pre.needsSorting); // « over » prémultiplié ne commute pas
 
         const auto tr = blendModeState(BlendMode::kTransmission);
         CHECK(tr.blend.enabled);

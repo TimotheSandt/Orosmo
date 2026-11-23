@@ -133,9 +133,18 @@ TEST_SUITE("visibility/culling")
     {
         const rd::Camera camera = testCamera();
         rd::CullView view = viewOf(camera, 1000.0f);
-        // fov 90° : proj[1][1] = 1 ; une sphère de rayon r à la distance d a un rayon de r / d × 500 pixels.
+        // fov 90° : proj[1][1] = 1 ; borne prudente : r / (profondeur du centre - r) × 500 pixels (jamais sous la valeur exacte).
         const rd::Aabb box = unitBox({0.0f, 0.0f, -100.0f}, 1.0f);
-        CHECK(rd::projectedRadiusPixels(box, view) == doctest::Approx(box.radius() / 100.0f * 500.0f).epsilon(1e-4));
+        const float r = box.radius();
+        CHECK(rd::projectedRadiusPixels(box, view) == doctest::Approx(r / (100.0f - r) * 500.0f).epsilon(1e-4));
+        CHECK(rd::projectedRadiusPixels(box, view) >= r / 100.0f * 500.0f);
+        // Hors de l'axe : la profondeur (pas la distance à l'œil) donne la borne ; elle ne passe jamais sous l'estimation à distance.
+        const rd::Aabb side = unitBox({60.0f, 0.0f, -80.0f}, 1.0f);
+        const float exact = r / glm::length(side.center()) * 500.0f;
+        CHECK(rd::projectedRadiusPixels(side, view) >= exact);
+        CHECK(rd::projectedRadiusPixels(side, view) == doctest::Approx(r / (80.0f - r) * 500.0f).epsilon(1e-4));
+        // Une boîte qui touche le plan de l'œil (donc le plan proche) est toujours conservée.
+        CHECK(std::isinf(rd::projectedRadiusPixels(unitBox({0.0f, 0.0f, -1.5f}, 1.0f), view)));
         CHECK(std::isinf(rd::projectedRadiusPixels(unitBox({0.0f, 0.0f, 0.0f}), view))); // l'œil dans la sphère
         view.orthographic = true;
         view.projectionScale = 2.0f / 10.0f;

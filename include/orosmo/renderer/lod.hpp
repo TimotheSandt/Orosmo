@@ -1,7 +1,9 @@
 // REN-31 : choix du niveau de détail par distance, sans dépendance graphique. Autour de chaque distance de bascule, une bande de
 // transition où les deux niveaux voisins sont dessinés avec des masques de tramage COMPLÉMENTAIRES (mode `Dithered` de docs/03) :
-// chaque pixel est couvert par exactement un des deux, il n'y a ni trou ni double couverture pendant le fondu. Le dernier niveau
-// peut être un imposteur (n'importe quel maillage, par exemple un quad) ; sa génération automatique n'existe pas encore.
+// chaque pixel où les DEUX niveaux produisent un fragment est couvert par exactement un des deux : ni trou ni double couverture
+// pendant le fondu pour ces pixels seulement. Là où un seul niveau a de la géométrie (silhouettes différentes), il n'y a pas de
+// garantie ; c'est le cas d'un imposteur, dont la silhouette n'est pas celle du maillage. Le dernier niveau peut être un imposteur
+// (n'importe quel maillage, par exemple un quad) ; sa génération automatique n'existe pas encore.
 #pragma once
 
 #include <array>
