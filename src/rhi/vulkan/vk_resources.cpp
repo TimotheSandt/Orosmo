@@ -7,7 +7,10 @@
 #include <orosmo/core/log.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
+#include <numeric>
+#include <span>
 
 namespace orosmo::rhi::vk
 {
@@ -202,18 +205,31 @@ Result<> VulkanDevice::updateBuffer(BufferHandle handle, std::uint64_t offset, s
         return makeError(ErrorCode::kOutOfRange, "updateBuffer: range exceeds the buffer (" + buffer->desc.debugName + ")");
     if (data.empty())
         return {};
-    // Copie ordonnée avec les soumissions (comme glBufferSubData) : un lot de transfert, soumis avant le prochain travail.
-    auto staging = makeStaging(data.size());
-    if (!staging)
-        return std::unexpected(staging.error());
-    std::memcpy(staging->mapped, data.data(), data.size());
-    vmaFlushAllocation(allocator_, staging->allocation, 0, data.size());
-    auto commandBuffer = batch({*staging});
+    const bool upload = buffer->desc.memory == MemoryKind::kUpload && buffer->mapped != nullptr;
+    if (upload && buffer->gpuUse <= completedSerial())
+    {
+        // Tampon « écrit par le CPU, lu par le GPU » que plus aucun travail du GPU n'utilise (soumission finie, aucune copie en
+        // attente) : écriture directe dans sa mémoire mappée, sans transfert ni barrière (les écritures de l'hôte faites avant une
+        // soumission lui sont visibles). Encore utilisé : copie ordonnée ci-dessous, comme pour kGpuOnly (même résultat).
+        std::memcpy(static_cast<std::byte *>(buffer->mapped) + offset, data.data(), data.size());
+        vmaFlushAllocation(allocator_, buffer->allocation, offset, data.size());
+        ++counters_.directWrites;
+        return {};
+    }
+    // Copie ordonnée avec les soumissions (comme glBufferSubData) : place dans l'anneau de transfert, copie dans le lot joint à la
+    // prochaine soumission ; une barrière seulement si la plage recouvre une copie précédente du lot.
+    UploadSpace space;
+    auto commandBuffer = stageUpload(data, 16, space);
     if (!commandBuffer)
         return std::unexpected(commandBuffer.error());
-    const VkBufferCopy region{0, offset, data.size()};
-    vkCmdCopyBuffer(*commandBuffer, staging->buffer, buffer->buffer, 1, &region);
-    memoryBarrierAll(*commandBuffer);
+    batchCopyBarrier(buffer->buffer, offset, data.size());
+    const VkBufferCopy region{space.offset, offset, data.size()};
+    vkCmdCopyBuffer(*commandBuffer, space.buffer, buffer->buffer, 1, &region);
+    if (upload)
+    {
+        buffer->gpuUse = lastSubmitted_ + 1; // la copie part avec la prochaine soumission
+        ++counters_.orderedUploadWrites;
+    }
     if (batchBytes_ > kMaxBatchBytes)
         return flushPending();
     return {};
@@ -239,10 +255,10 @@ Result<std::vector<std::byte>> VulkanDevice::readBuffer(BufferHandle handle, std
     std::vector<std::byte> out(size);
     if (size == 0)
         return out;
-    if (auto r = flushPending(); !r)
-        return std::unexpected(r.error());
     if (buffer->mapped != nullptr)
     {
+        if (auto r = flushPending(); !r)
+            return std::unexpected(r.error());
         if (auto r = waitSerial(lastSubmitted_); !r)
             return std::unexpected(r.error());
         vmaInvalidateAllocation(allocator_, buffer->allocation, offset, size);
@@ -430,17 +446,14 @@ Result<> VulkanDevice::updateTexture(TextureHandle handle, const TextureCopy &co
     if (data.size() < needed)
         return makeError(ErrorCode::kInvalidArgument, "updateTexture: " + std::to_string(data.size()) + " bytes given, " + std::to_string(needed) +
                                                           " needed (" + texture->desc.debugName + ")");
-    auto staging = makeStaging(needed);
-    if (!staging)
-        return std::unexpected(staging.error());
-    std::memcpy(staging->mapped, data.data(), needed);
-    vmaFlushAllocation(allocator_, staging->allocation, 0, needed);
-    auto commandBuffer = batch({*staging});
+    // Décalage dans le tampon de transfert : multiple de la taille d'un texel et de 4 (vkCmdCopyBufferToImage).
+    UploadSpace space;
+    auto commandBuffer = stageUpload(data.first(needed), std::lcm<std::uint64_t>(std::max(bpt, 1u), 16), space);
     if (!commandBuffer)
         return std::unexpected(commandBuffer.error());
-    const VkBufferImageCopy imageCopy = bufferImageCopy(*texture, *region, 0, 0);
+    const VkBufferImageCopy imageCopy = bufferImageCopy(*texture, *region, space.offset, 0);
     transitionImage(*commandBuffer, texture->image, texture->aspect, texture->restLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    vkCmdCopyBufferToImage(*commandBuffer, staging->buffer, texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopy);
+    vkCmdCopyBufferToImage(*commandBuffer, space.buffer, texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopy);
     transitionImage(*commandBuffer, texture->image, texture->aspect, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, texture->restLayout);
     if (batchBytes_ > kMaxBatchBytes)
         return flushPending();
@@ -554,8 +567,16 @@ Result<bool> VulkanDevice::timestampsReady(QueryPoolHandle handle, std::uint32_t
         return makeError(ErrorCode::kOutOfRange, "timestampsReady: range exceeds the pool");
     if (count == 0)
         return true;
-    std::vector<std::uint64_t> data(static_cast<std::size_t>(count) * 2); // (valeur, disponibilité) par requête
-    const VkResult result = vkGetQueryPoolResults(device_, pool->pool, first, count, data.size() * sizeof(std::uint64_t), data.data(), 2 * sizeof(std::uint64_t),
+    // (valeur, disponibilité) par requête ; quelques requêtes (cas courant : début et fin d'une passe) sans allocation.
+    std::array<std::uint64_t, 16> small{};
+    std::vector<std::uint64_t> large;
+    std::span<std::uint64_t> data = std::span(small).first(std::min<std::size_t>(small.size(), static_cast<std::size_t>(count) * 2));
+    if (static_cast<std::size_t>(count) * 2 > small.size())
+    {
+        large.resize(static_cast<std::size_t>(count) * 2);
+        data = large;
+    }
+    const VkResult result = vkGetQueryPoolResults(device_, pool->pool, first, count, data.size_bytes(), data.data(), 2 * sizeof(std::uint64_t),
                                                   VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
     if (result != VK_SUCCESS && result != VK_NOT_READY)
         return std::unexpected(fromVk(result, "vkGetQueryPoolResults").error());
@@ -577,9 +598,8 @@ Result<std::vector<std::uint64_t>> VulkanDevice::readTimestamps(QueryPoolHandle 
     std::vector<std::uint64_t> values(count);
     if (count == 0)
         return values;
-    if (auto r = flushPending(); !r)
-        return std::unexpected(r.error());
-    // Attend les horodatages écrits : un horodatage jamais écrit ne se résoudra pas (kBusy, pas de blocage éternel).
+    // Attend les horodatages écrits : un horodatage jamais écrit ne se résoudra pas (kBusy, pas de blocage éternel). Seuls des
+    // encodeurs soumis écrivent des horodatages (jamais le lot de transferts) : déjà prêts, ils se lisent sans soumission ni attente.
     auto ready = timestampsReady(handle, first, count);
     if (!ready)
         return std::unexpected(ready.error());

@@ -416,13 +416,12 @@ Result<> VulkanDevice::present()
         Swapchain &sc = *swapchain_;
         TextureRes *source = textures_.get(backbuffer_);
         VkCommandBuffer cb = VK_NULL_HANDLE;
-        // Un tampon non soumis (échec, chaîne périmée) retourne à la réserve ; reset : il peut être resté en cours d'enregistrement.
+        // Un tampon non soumis (échec, chaîne périmée) retourne à sa réserve (remis à zéro avec elle, même en cours d'enregistrement).
         const auto giveBack = [&]
         {
             if (cb != VK_NULL_HANDLE)
             {
-                vkResetCommandBuffer(cb, 0);
-                freeCommandBuffers_.push_back(cb);
+                releaseUnsubmitted(cb);
                 cb = VK_NULL_HANDLE;
             }
         };
@@ -495,6 +494,7 @@ Result<> VulkanDevice::present()
             cb = VK_NULL_HANDLE;                                    // soumis : `submitRaw` l'a mis en retrait avec sa série
             frameSerials_[frame_ % kFramesInFlight] = *serial;
             ++frame_;
+            rotateCommandPool(); // une réserve de tampons de commandes par image en vol
 
             auto present = makeStruct<VkPresentInfoKHR>(VK_STRUCTURE_TYPE_PRESENT_INFO_KHR);
             present.waitSemaphoreCount = 1;
@@ -518,6 +518,7 @@ Result<> VulkanDevice::present()
         return r;
     frameSerials_[frame_ % kFramesInFlight] = lastSubmitted_;
     ++frame_;
+    rotateCommandPool(); // une réserve de tampons de commandes par image en vol
     return {};
 }
 

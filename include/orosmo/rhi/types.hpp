@@ -138,10 +138,15 @@ enum class BufferUsage : std::uint16_t
 };
 
 // docs/03 §3 règle 6.
+//
+// `kUpload` et Device::updateBuffer : le résultat est celui d'une copie ordonnée avec les soumissions (comme glBufferSubData),
+// mais le backend écrit directement la mémoire du tampon quand aucun travail du GPU encore en cours ne l'utilise (Vulkan : mémoire
+// mappée en permanence). Le suivi est PAR TAMPON (pas par plage) : pour obtenir ce chemin rapide, l'appelant n'écrit pas un tampon
+// que le GPU peut encore lire, par exemple un tampon par image en vol, réécrit après le `beginFrame` qui a attendu son image.
 enum class MemoryKind : std::uint8_t
 {
-    kGpuOnly,  // mis à jour par copie ou updateBuffer
-    kUpload,   // écrit par le CPU, lu par le GPU
+    kGpuOnly,  // mis à jour par copie ou updateBuffer (copie ordonnée avec les soumissions, comme glBufferSubData)
+    kUpload,   // écrit par le CPU, lu par le GPU ; updateBuffer écrit directement quand le GPU ne l'utilise plus (ci-dessus)
     kReadback, // écrit par le GPU, lu par le CPU
 };
 

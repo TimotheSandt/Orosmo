@@ -136,6 +136,8 @@ class Device
 
     // Mises à jour et lectures synchrones (chemin lent : chargement, captures, tests). Les copies asynchrones passent par
     // CommandEncoder::copy*.
+    // updateBuffer : appliqué avant la prochaine soumission (ordonné comme glBufferSubData) ; sur un tampon kUpload que le GPU
+    // n'utilise plus, écriture directe, sans copie (voir MemoryKind, types.hpp).
     virtual Result<> updateBuffer(BufferHandle buffer, std::uint64_t offset, std::span<const std::byte> data) = 0;
     virtual Result<> updateTexture(TextureHandle texture, const TextureCopy &region, std::span<const std::byte> data) = 0;
     virtual Result<std::vector<std::byte>> readBuffer(BufferHandle buffer, std::uint64_t offset, std::uint64_t size) = 0;

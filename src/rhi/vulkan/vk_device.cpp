@@ -195,11 +195,8 @@ Result<> VulkanDevice::init(const DeviceDesc &desc)
     if (auto r = fromVk(vkCreateSemaphore(device_, &semaphoreInfo, nullptr, &timeline_), "vkCreateSemaphore (timeline)"); !r)
         return r;
 
-    auto poolInfo = makeStruct<VkCommandPoolCreateInfo>(VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO);
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = queueFamily_;
-    if (auto r = fromVk(vkCreateCommandPool(device_, &poolInfo, nullptr, &commandPool_), "vkCreateCommandPool"); !r)
-        return r;
+    if (auto r = createCommandPool(); !r)
+        return std::unexpected(r.error());
 
     fillCapabilities();
     if (auto r = initPipelines(); !r)
@@ -626,151 +623,238 @@ void VulkanDevice::queueRelease(std::function<void()> release, bool waitFrames)
 
 void VulkanDevice::collectReleases(bool ignoreFrames)
 {
+    if (pending_.empty())
+        return;
     const Serial done = completedSerial();
-    // Les tampons de commandes soumis jusqu'à `done` sont réutilisables.
-    for (auto it = retiredCommandBuffers_.begin(); it != retiredCommandBuffers_.end();)
+    // Les libérations prêtes passent dans un tableau réutilisé (pas d'allocation par image) ; les autres sont compactées sur place,
+    // dans l'ordre de mise en file. Les libérations peuvent en provoquer d'autres (jamais de nouvelle soumission).
+    std::vector<Pending> ready = std::move(readyScratch_);
+    ready.clear();
+    std::size_t kept = 0;
+    for (std::size_t i = 0; i < pending_.size(); ++i)
     {
-        if (it->serial <= done)
+        Pending &p = pending_[i];
+        if (p.serial <= done && (ignoreFrames || !p.waitFrames || frame_ >= p.frame + kFramesInFlight))
         {
-            vkResetCommandBuffer(it->commandBuffer, 0);
-            freeCommandBuffers_.push_back(it->commandBuffer);
-            it = retiredCommandBuffers_.erase(it);
+            ready.push_back(std::move(p));
         }
         else
         {
-            ++it;
+            if (kept != i)
+                pending_[kept] = std::move(p);
+            ++kept;
         }
     }
-    // Les libérations peuvent en provoquer d'autres (jamais de nouvelle soumission) : on garde l'ordre de mise en file.
-    std::vector<Pending> ready;
-    for (auto it = pending_.begin(); it != pending_.end();)
-    {
-        if (it->serial <= done && (ignoreFrames || !it->waitFrames || frame_ >= it->frame + kFramesInFlight))
-        {
-            ready.push_back(std::move(*it));
-            it = pending_.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
-    }
+    pending_.erase(pending_.begin() + static_cast<std::ptrdiff_t>(kept), pending_.end());
     for (Pending &p : ready)
         p.release();
+    ready.clear();
+    readyScratch_ = std::move(ready);
+}
+
+// ── Réserves de tampons de commandes ───────────────────────────────────────
+
+Result<std::size_t> VulkanDevice::createCommandPool()
+{
+    auto poolInfo = makeStruct<VkCommandPoolCreateInfo>(VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO);
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT; // remise à zéro en bloc seulement (vkResetCommandPool)
+    poolInfo.queueFamilyIndex = queueFamily_;
+    CommandPoolSlot slot;
+    if (auto r = fromVk(vkCreateCommandPool(device_, &poolInfo, nullptr, &slot.pool), "vkCreateCommandPool"); !r)
+        return std::unexpected(r.error());
+    commandPools_.push_back(std::move(slot));
+    ++counters_.commandPools;
+    return commandPools_.size() - 1;
+}
+
+VulkanDevice::CommandPoolSlot *VulkanDevice::poolOf(VkCommandBuffer commandBuffer) noexcept
+{
+    // La réserve courante d'abord (cas courant), puis les autres : quelques réserves de quelques dizaines de tampons.
+    const std::size_t count = commandPools_.size();
+    for (std::size_t k = 0; k < count; ++k)
+    {
+        CommandPoolSlot &slot = commandPools_[(currentPool_ + count - k) % count];
+        if (std::find(slot.buffers.begin(), slot.buffers.begin() + slot.next, commandBuffer) != slot.buffers.begin() + slot.next)
+            return &slot;
+    }
+    return nullptr;
+}
+
+void VulkanDevice::rotateCommandPool()
+{
+    if (commandPools_.empty() || commandPools_[currentPool_].next == 0)
+        return; // la réserve courante n'a encore rien donné
+    const Serial done = completedSerial();
+    // Une réserve dont tous les tampons sont rendus et finis par le GPU est remise à zéro en bloc et devient courante ; les
+    // autres réserves d'abord (dans l'ordre de l'anneau), la courante en dernier.
+    const std::size_t count = commandPools_.size();
+    for (std::size_t k = 1; k <= count; ++k)
+    {
+        const std::size_t i = (currentPool_ + k) % count;
+        CommandPoolSlot &slot = commandPools_[i];
+        if (slot.outstanding != 0 || slot.lastSerial > done)
+            continue;
+        if (slot.next != 0)
+        {
+            if (vkResetCommandPool(device_, slot.pool, 0) != VK_SUCCESS)
+                continue; // erreur de mémoire : la réserve reste telle quelle
+            ++counters_.commandPoolResets;
+            slot.next = 0;
+        }
+        currentPool_ = i;
+        return;
+    }
+    if (auto created = createCommandPool(); created)
+        currentPool_ = *created;
+    // Sinon (mémoire) : la réserve courante continue d'allouer.
 }
 
 Result<VkCommandBuffer> VulkanDevice::acquireCommandBuffer()
 {
     collectReleases();
+    if (commandPools_[currentPool_].next >= kCommandBuffersPerPool)
+        rotateCommandPool();
+    CommandPoolSlot &slot = commandPools_[currentPool_];
     VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-    if (!freeCommandBuffers_.empty())
+    if (slot.next < slot.buffers.size())
     {
-        commandBuffer = freeCommandBuffers_.back();
-        freeCommandBuffers_.pop_back();
+        commandBuffer = slot.buffers[slot.next]; // remis à zéro avec la réserve : état initial
     }
     else
     {
         auto info = makeStruct<VkCommandBufferAllocateInfo>(VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO);
-        info.commandPool = commandPool_;
+        info.commandPool = slot.pool;
         info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         info.commandBufferCount = 1;
         if (auto r = fromVk(vkAllocateCommandBuffers(device_, &info, &commandBuffer), "vkAllocateCommandBuffers"); !r)
             return std::unexpected(r.error());
+        slot.buffers.push_back(commandBuffer);
+        ++counters_.commandBuffersAllocated;
     }
+    ++slot.next;
     auto begin = makeStruct<VkCommandBufferBeginInfo>(VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO);
     begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (auto r = fromVk(vkBeginCommandBuffer(commandBuffer, &begin), "vkBeginCommandBuffer"); !r)
-    {
-        freeCommandBuffers_.push_back(commandBuffer);
-        return std::unexpected(r.error());
-    }
+        return std::unexpected(r.error()); // donné mais jamais rendu en usage : `outstanding` n'a pas bougé
+    ++slot.outstanding;
     return commandBuffer;
 }
 
-void VulkanDevice::retireCommandBuffer(VkCommandBuffer commandBuffer, Serial serial) { retiredCommandBuffers_.push_back({commandBuffer, serial}); }
+void VulkanDevice::retireCommandBuffer(VkCommandBuffer commandBuffer, Serial serial)
+{
+    if (CommandPoolSlot *slot = poolOf(commandBuffer); slot != nullptr)
+    {
+        --slot->outstanding;
+        slot->lastSerial = std::max(slot->lastSerial, serial);
+    }
+}
+
+void VulkanDevice::releaseUnsubmitted(VkCommandBuffer commandBuffer)
+{
+    if (CommandPoolSlot *slot = poolOf(commandBuffer); slot != nullptr)
+        --slot->outstanding; // jamais soumis : rien à attendre du GPU ; remis à zéro avec la réserve
+}
+
+void VulkanDevice::destroyCommandPools() noexcept
+{
+    for (CommandPoolSlot &slot : commandPools_)
+        vkDestroyCommandPool(device_, slot.pool, nullptr); // libère aussi tous ses tampons de commandes
+    commandPools_.clear();
+    currentPool_ = 0;
+}
+
+// ── Soumission ──────────────────────────────────────────────────────────
 
 Result<Serial> VulkanDevice::submitCommandBuffers(std::span<const VkCommandBuffer> commandBuffers, const SubmitSync &sync)
 {
-    if (auto r = flushPending(); !r)
-        return std::unexpected(r.error());
-    if (auto r = submitRaw(commandBuffers, sync); !r)
+    if (auto r = submitWithBatch(commandBuffers, sync); !r)
         return std::unexpected(r.error());
     return lastSubmitted_;
 }
 
 Result<> VulkanDevice::submitRaw(std::span<const VkCommandBuffer> commandBuffers, const SubmitSync &sync)
 {
-    std::vector<VkCommandBufferSubmitInfo> cbInfos;
+    submitInfos_.clear();
     for (VkCommandBuffer cb : commandBuffers)
     {
         auto info = makeStruct<VkCommandBufferSubmitInfo>(VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO);
         info.commandBuffer = cb;
-        cbInfos.push_back(info);
+        submitInfos_.push_back(info);
     }
-    std::vector<VkSemaphoreSubmitInfo> waits;
+    submitWaits_.clear();
     for (const auto &[semaphore, stage] : sync.waits)
     {
         auto info = makeStruct<VkSemaphoreSubmitInfo>(VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO);
         info.semaphore = semaphore;
         info.stageMask = stage;
-        waits.push_back(info);
+        submitWaits_.push_back(info);
     }
-    std::vector<VkSemaphoreSubmitInfo> signals;
+    submitSignals_.clear();
     auto timelineSignal = makeStruct<VkSemaphoreSubmitInfo>(VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO);
     timelineSignal.semaphore = timeline_;
     timelineSignal.value = lastSubmitted_ + 1;
     timelineSignal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    signals.push_back(timelineSignal);
+    submitSignals_.push_back(timelineSignal);
     for (VkSemaphore semaphore : sync.signals)
     {
         auto info = makeStruct<VkSemaphoreSubmitInfo>(VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO);
         info.semaphore = semaphore;
         info.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        signals.push_back(info);
+        submitSignals_.push_back(info);
     }
     auto submit = makeStruct<VkSubmitInfo2>(VK_STRUCTURE_TYPE_SUBMIT_INFO_2);
-    submit.waitSemaphoreInfoCount = static_cast<std::uint32_t>(waits.size());
-    submit.pWaitSemaphoreInfos = waits.data();
-    submit.commandBufferInfoCount = static_cast<std::uint32_t>(cbInfos.size());
-    submit.pCommandBufferInfos = cbInfos.data();
-    submit.signalSemaphoreInfoCount = static_cast<std::uint32_t>(signals.size());
-    submit.pSignalSemaphoreInfos = signals.data();
+    submit.waitSemaphoreInfoCount = static_cast<std::uint32_t>(submitWaits_.size());
+    submit.pWaitSemaphoreInfos = submitWaits_.data();
+    submit.commandBufferInfoCount = static_cast<std::uint32_t>(submitInfos_.size());
+    submit.pCommandBufferInfos = submitInfos_.data();
+    submit.signalSemaphoreInfoCount = static_cast<std::uint32_t>(submitSignals_.size());
+    submit.pSignalSemaphoreInfos = submitSignals_.data();
     if (auto r = fromVk(vkQueueSubmit2(queue_, 1, &submit, VK_NULL_HANDLE), "vkQueueSubmit2"); !r)
         return r;
     ++lastSubmitted_;
+    ++counters_.submits;
     for (VkCommandBuffer cb : commandBuffers)
         retireCommandBuffer(cb, lastSubmitted_);
     return {};
 }
 
-// Un refus récupérable (mémoire) garantit que le tampon n'est pas parti : il retourne à la réserve (sinon chaque essai en alloue un).
-void VulkanDevice::recycleUnsubmitted(VkCommandBuffer commandBuffer, const core::Error &error)
+Result<> VulkanDevice::submitWithBatch(std::span<const VkCommandBuffer> commandBuffers, const SubmitSync &sync)
 {
-    if (error.code == ErrorCode::kDeviceLost)
-        return; // l'état est indéfini : il disparaîtra avec la réserve
-    vkResetCommandBuffer(commandBuffer, 0);
-    freeCommandBuffers_.push_back(commandBuffer);
+    auto closed = closeBatch();
+    if (!closed)
+        return std::unexpected(closed.error());
+    if (closed->commandBuffer == VK_NULL_HANDLE)
+        return submitRaw(commandBuffers, sync);
+    // Le lot passe en tête de la MÊME soumission : ses barrières (fin du lot) ordonnent ses copies avant les commandes qui suivent.
+    submitList_.clear();
+    submitList_.push_back(closed->commandBuffer);
+    submitList_.insert(submitList_.end(), commandBuffers.begin(), commandBuffers.end());
+    if (auto r = submitRaw(submitList_, sync); !r)
+    {
+        batchRejected(*closed);
+        return r;
+    }
+    batchSubmitted(*closed);
+    return {};
 }
 
 Result<> VulkanDevice::immediate(const std::function<void(VkCommandBuffer)> &record, bool *accepted)
 {
     if (accepted != nullptr)
         *accepted = false;
-    if (auto r = flushPending(); !r)
-        return r;
     auto commandBuffer = acquireCommandBuffer();
     if (!commandBuffer)
         return std::unexpected(commandBuffer.error());
     record(*commandBuffer);
     if (auto r = fromVk(vkEndCommandBuffer(*commandBuffer), "vkEndCommandBuffer"); !r)
     {
-        freeCommandBuffers_.push_back(*commandBuffer);
+        releaseUnsubmitted(*commandBuffer);
         return r;
     }
     const VkCommandBuffer cbs[] = {*commandBuffer};
-    if (auto r = submitRaw(cbs, {}); !r)
+    if (auto r = submitWithBatch(cbs, {}); !r)
     {
-        recycleUnsubmitted(*commandBuffer, r.error());
+        releaseUnsubmitted(*commandBuffer);
         return r;
     }
     if (accepted != nullptr)
@@ -783,6 +867,8 @@ void VulkanDevice::markPendingInitialization(TextureHandle texture) { pendingIni
 // Fait passer en disposition de repos les textures neuves (UNDEFINED) : leur première commande les suppose au repos.
 void VulkanDevice::drainPendingInit(VkCommandBuffer commandBuffer)
 {
+    if (pendingInitialization_.empty())
+        return;
     for (TextureHandle handle : pendingInitialization_)
     {
         TextureRes *texture = textures_.get(handle);
@@ -822,6 +908,7 @@ Result<VkCommandBuffer> VulkanDevice::batch(std::vector<Staging> staging)
             return std::unexpected(commandBuffer.error());
         }
         batch_ = *commandBuffer;
+        batchDirty_.clear();
         memoryBarrierAll(batch_); // tout ce qui a été soumis avant est fini avant nos écritures
     }
     for (Staging &s : staging)
@@ -833,41 +920,85 @@ Result<VkCommandBuffer> VulkanDevice::batch(std::vector<Staging> staging)
     return batch_;
 }
 
-Result<> VulkanDevice::flushPending()
+void VulkanDevice::batchCopyBarrier(VkBuffer buffer, std::uint64_t offset, std::uint64_t size)
 {
+    // Deux copies du même lot vers des plages disjointes n'ont pas d'ordre à garder ; une plage qui en recouvre une autre doit
+    // être écrite après elle (la dernière mise à jour gagne, comme glBufferSubData) : une barrière, puis on repart de zéro.
+    const std::uint64_t end = offset + size;
+    for (const DirtyRange &d : batchDirty_)
+    {
+        if (d.buffer == buffer && offset < d.end && d.begin < end)
+        {
+            memoryBarrierAll(batch_);
+            ++counters_.copyBarriers;
+            batchDirty_.clear();
+            break;
+        }
+    }
+    batchDirty_.push_back({buffer, offset, end});
+}
+
+Result<VulkanDevice::ClosedBatch> VulkanDevice::closeBatch()
+{
+    ClosedBatch closed;
     if (batch_ == VK_NULL_HANDLE && pendingInitialization_.empty())
-        return {};
+        return closed;
     auto commandBuffer = batch();
     if (!commandBuffer)
         return std::unexpected(commandBuffer.error());
-    const VkCommandBuffer cb = *commandBuffer;
-    memoryBarrierAll(cb); // nos écritures sont visibles pour tout ce qui sera soumis après
+    closed.commandBuffer = *commandBuffer;
+    memoryBarrierAll(closed.commandBuffer); // les écritures du lot sont visibles pour tout ce qui suit (même soumission comprise)
     batch_ = VK_NULL_HANDLE;
-    std::vector<Staging> staging = std::move(batchStaging_);
+    batchDirty_.clear();
+    closed.staging = std::move(batchStaging_);
     batchStaging_.clear();
     batchBytes_ = 0;
-    if (auto r = fromVk(vkEndCommandBuffer(cb), "vkEndCommandBuffer"); !r)
+    if (auto r = fromVk(vkEndCommandBuffer(closed.commandBuffer), "vkEndCommandBuffer"); !r)
     {
-        freeCommandBuffers_.push_back(cb);
-        for (const Staging &s : staging)
-            destroyStaging(s);
-        abandonBatchInit();
-        return r;
+        batchRejected(closed);
+        return std::unexpected(r.error());
     }
-    const VkCommandBuffer cbs[] = {cb};
+    return closed;
+}
+
+void VulkanDevice::batchSubmitted(ClosedBatch &closed)
+{
+    batchInitialized_.clear();
+    if (!closed.staging.empty())
+        queueRelease([this, staging = std::move(closed.staging)]() { for (const Staging &s : staging) destroyStaging(s); }, false);
+}
+
+// Le lot n'est pas parti : son tampon retourne à sa réserve, ses tampons dédiés sont libérés, ses textures neuves redeviennent
+// UNDEFINED. Les places prises dans l'anneau seront recyclées avec la série suivante.
+void VulkanDevice::batchRejected(ClosedBatch &closed)
+{
+    if (closed.commandBuffer != VK_NULL_HANDLE)
+        releaseUnsubmitted(closed.commandBuffer);
+    closed.commandBuffer = VK_NULL_HANDLE;
+    for (const Staging &s : closed.staging)
+        destroyStaging(s);
+    closed.staging.clear();
+    abandonBatchInit();
+}
+
+Result<> VulkanDevice::flushPending()
+{
+    auto closed = closeBatch();
+    if (!closed)
+        return std::unexpected(closed.error());
+    if (closed->commandBuffer == VK_NULL_HANDLE)
+        return {};
+    const VkCommandBuffer cbs[] = {closed->commandBuffer};
     if (auto r = submitRaw(cbs, {}); !r)
     {
-        recycleUnsubmitted(cb, r.error());
-        for (const Staging &s : staging)
-            destroyStaging(s);
-        abandonBatchInit();
+        batchRejected(*closed);
         return r;
     }
-    batchInitialized_.clear();
-    if (!staging.empty())
-        queueRelease([this, staging = std::move(staging)]() { for (const Staging &s : staging) destroyStaging(s); }, false);
+    batchSubmitted(*closed);
     return {};
 }
+
+// ── Transferts ──────────────────────────────────────────────────────────
 
 Result<VulkanDevice::Staging> VulkanDevice::makeStaging(std::uint64_t size, bool readback)
 {
@@ -891,6 +1022,103 @@ void VulkanDevice::destroyStaging(const Staging &staging) noexcept
 {
     if (staging.buffer != VK_NULL_HANDLE)
         vmaDestroyBuffer(allocator_, staging.buffer, staging.allocation);
+}
+
+Result<VulkanDevice::UploadSpace> VulkanDevice::ringAllocate(std::uint64_t size, std::uint64_t alignment)
+{
+    const auto alignUp = [alignment](std::uint64_t v) { return (v + alignment - 1) / alignment * alignment; };
+    if (stagingBlocks_.empty() || alignUp(stagingBlocks_[currentBlock_].used) + size > stagingBlocks_[currentBlock_].staging.size)
+    {
+        // Bloc courant plein : le premier bloc que le GPU a fini de lire (dans l'ordre de l'anneau, le courant en dernier) repart de
+        // son début ; sinon un bloc neuf.
+        const Serial done = completedSerial();
+        const std::size_t count = stagingBlocks_.size();
+        std::size_t chosen = count;
+        for (std::size_t k = 1; k <= count; ++k)
+        {
+            const std::size_t i = (currentBlock_ + k) % count;
+            if (stagingBlocks_[i].serial <= done)
+            {
+                chosen = i;
+                break;
+            }
+        }
+        if (chosen == count)
+        {
+            auto staging = makeStaging(kStagingBlockSize);
+            if (!staging)
+                return std::unexpected(staging.error());
+            setObjectName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(staging->buffer), "rhi staging ring");
+            stagingBlocks_.push_back({*staging, 0, 0});
+            ++counters_.stagingBlocks;
+        }
+        else if (count > kStagingRetainedBlocks)
+        {
+            // Après un pic : les blocs libres en trop sont détruits (le choisi reste).
+            for (std::size_t i = count; i-- > 0 && stagingBlocks_.size() > kStagingRetainedBlocks;)
+            {
+                if (i == chosen || stagingBlocks_[i].serial > done)
+                    continue;
+                destroyStaging(stagingBlocks_[i].staging);
+                stagingBlocks_.erase(stagingBlocks_.begin() + static_cast<std::ptrdiff_t>(i));
+                if (chosen > i)
+                    --chosen;
+            }
+        }
+        currentBlock_ = chosen;
+        stagingBlocks_[currentBlock_].used = 0;
+    }
+    StagingBlock &block = stagingBlocks_[currentBlock_];
+    UploadSpace space;
+    space.buffer = block.staging.buffer;
+    space.offset = alignUp(block.used);
+    space.mapped = static_cast<std::byte *>(block.staging.mapped) + space.offset;
+    space.allocation = block.staging.allocation;
+    space.allocationOffset = space.offset;
+    block.used = space.offset + size;
+    // Le lot ouvert (ou celui qui va s'ouvrir) part avec la prochaine soumission : le bloc est lu jusqu'à cette série.
+    block.serial = lastSubmitted_ + 1;
+    ++counters_.ringUploads;
+    return space;
+}
+
+Result<VkCommandBuffer> VulkanDevice::stageUpload(std::span<const std::byte> data, std::uint64_t alignment, UploadSpace &space)
+{
+    const std::uint64_t size = data.size();
+    if (size > kStagingDedicatedThreshold)
+    {
+        auto staging = makeStaging(size);
+        if (!staging)
+            return std::unexpected(staging.error());
+        ++counters_.dedicatedStaging;
+        space = {};
+        space.buffer = staging->buffer;
+        space.mapped = static_cast<std::byte *>(staging->mapped);
+        space.allocation = staging->allocation;
+        space.dedicated = true;
+        space.staging = *staging;
+    }
+    else
+    {
+        auto ring = ringAllocate(size, alignment);
+        if (!ring)
+            return std::unexpected(ring.error());
+        space = *ring;
+    }
+    std::memcpy(space.mapped, data.data(), size);
+    vmaFlushAllocation(allocator_, space.allocation, space.allocationOffset, size);
+    if (space.dedicated)
+        return batch({space.staging}); // libéré avec le lot (ou tout de suite si le lot ne s'ouvre pas)
+    batchBytes_ += size;
+    return batch();
+}
+
+void VulkanDevice::destroyStagingRing() noexcept
+{
+    for (const StagingBlock &block : stagingBlocks_)
+        destroyStaging(block.staging);
+    stagingBlocks_.clear();
+    currentBlock_ = 0;
 }
 
 // ── Destruction ──────────────────────────────────────────────────────────
@@ -1058,8 +1286,8 @@ void VulkanDevice::shutdown() noexcept
         for (VkDescriptorPool pool : descriptorPools_)
             vkDestroyDescriptorPool(device_, pool, nullptr);
         descriptorPools_.clear();
-        if (commandPool_ != VK_NULL_HANDLE)
-            vkDestroyCommandPool(device_, commandPool_, nullptr); // libère aussi tous ses tampons de commandes
+        destroyStagingRing();
+        destroyCommandPools();
         if (timeline_ != VK_NULL_HANDLE)
             vkDestroySemaphore(device_, timeline_, nullptr);
     }

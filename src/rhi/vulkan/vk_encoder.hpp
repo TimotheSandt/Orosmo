@@ -50,9 +50,12 @@ class VkEncoder final : public CommandEncoder
     // est renvoyée, le tampon de commandes rendu au périphérique et rien n'est soumis. Sinon renvoie les tampons prêts à soumettre,
     // dans l'ordre : le prologue (remises à zéro de requêtes écrites dans une passe) s'il existe, puis les commandes.
     Result<std::vector<VkCommandBuffer>> finish();
+    // Tampons kUpload utilisés par l'encodeur (VulkanDevice::submit leur donne la série de la soumission).
+    const std::vector<BufferHandle> &uploadBuffers() const noexcept { return uploadBuffers_; }
 
   private:
     bool check(bool condition, core::ErrorCode code, const std::string &message);
+    void noteBuffer(BufferHandle handle, const BufferRes *buffer);
     bool recording() const noexcept { return commandBuffer_ != VK_NULL_HANDLE; }
     // Liaisons au moment du dessin ou du dispatch : jeux de descripteurs (décalages dynamiques), push constants.
     bool bindResources(const PipelineRes &pipeline, VkPipelineBindPoint bindPoint, const char *what);
@@ -67,6 +70,7 @@ class VkEncoder final : public CommandEncoder
     VkCommandBuffer commandBuffer_ = VK_NULL_HANDLE;
     VkCommandBuffer prologue_ = VK_NULL_HANDLE; // remises à zéro de requêtes demandées dans une passe
     std::optional<Error> error_;
+    std::vector<BufferHandle> uploadBuffers_;
 
     // Passe
     struct PassAttachment
