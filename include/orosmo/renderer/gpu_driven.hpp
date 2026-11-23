@@ -11,7 +11,8 @@
 // de sommets, un d'index) ; une commande = (maillage, matériau), rangée par (matériau, pool) pour que chaque groupe soit UN appel.
 // Mêmes matériaux, programmes, push constants et format d'instance (GpuInstance) qu'InstanceRenderer : même image.
 //
-// Capacités (règle 11) : compute, dessin indirect et 7 emplacements de tampons de stockage ; sinon `supports` est faux et
+// Capacités (règle 11) : compute, dessin indirect (avec firstInstance non nul : `Capabilities::drawIndirectFirstInstance`) et 7
+// emplacements de tampons de stockage ; sinon `supports` est faux et
 // `enableGpuDriven` refuse (kUnsupported) : l'application garde le culling CPU (ObjectSet::prepare + InstanceRenderer::draw).
 // Sans `Capabilities::multiDrawIndirect`, le RHI joue les commandes une par une (même résultat).
 #pragma once
@@ -90,7 +91,7 @@ struct GpuCullStats
 inline constexpr std::uint32_t kGpuVisibleAlive = 1u;
 inline constexpr std::uint32_t kGpuVisibleFrustum = 2u;   // a passé pyramide, distance et taille
 inline constexpr std::uint32_t kGpuVisibleOcclusion = 4u; // a aussi passé l'occlusion
-inline constexpr std::uint32_t kGpuVisibleDrawn = 8u;     // au moins une instance (LOD non rejeté)
+inline constexpr std::uint32_t kGpuVisibleDrawn = 8u;     // au moins une instance écrite (LOD non rejeté, maillage et matériau connus)
 
 struct GpuCommandCount
 {
@@ -223,7 +224,7 @@ class GpuDrivenFeature final : public RenderFeature
     bool pending_ = false;
     bool cullWithHiz_ = false;
     std::uint32_t slotCount_ = 0;
-    std::uint64_t lastDrawFrame_ = 0;
+    std::uint64_t lastDrawFrame_ = 0; // SceneRenderer::frameSerial de l'image ouverte qui a déposé les dessins
     glm::mat4 frameViewProj_{1.0f};
 };
 

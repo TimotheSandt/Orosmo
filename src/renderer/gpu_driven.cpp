@@ -25,9 +25,10 @@ struct GpuCullParams
     glm::vec4 origin;
     glm::vec4 view;
     glm::vec4 hiz;
+    glm::vec4 forward;
     std::uint32_t counts[4];
 };
-static_assert(sizeof(GpuCullParams) == 240, "CullBlock std140 : 6 vec4, un mat4, 5 vec4");
+static_assert(sizeof(GpuCullParams) == 256, "CullBlock std140 : 6 vec4, un mat4, 6 vec4");
 
 constexpr std::uint32_t kStatsWords = 16; // en-tête du tampon des compteurs (stats[16] de gpu_cull.comp)
 constexpr std::uint32_t kCounterCount = 12;
@@ -77,7 +78,8 @@ GpuDrivenView GpuDrivenView::fromMatrices(const glm::mat4 &view, const glm::mat4
 
 bool GpuDrivenFeature::supportedBy(const rhi::Capabilities &caps) noexcept
 {
-    return caps.compute && caps.indirectDraw && caps.maxStorageBufferBindings >= kGpuCullStorageBindings &&
+    // firstInstance : chaque commande lit sa plage du tampon d'instances (commandes indirectes à firstInstance non nul).
+    return caps.compute && caps.indirectDraw && caps.drawIndirectFirstInstance && caps.maxStorageBufferBindings >= kGpuCullStorageBindings &&
            caps.maxComputeWorkGroupSize[0] >= kGpuCullWorkgroupSize && caps.maxComputeInvocations >= kGpuCullWorkgroupSize;
 }
 
@@ -172,9 +174,11 @@ core::Result<> GpuDrivenFeature::ensurePools()
     {
         return {};
     }
-    pools_.clear();
-    meshSlots_.assign(meshCount, MeshSlot{});
-    pendingCopies_.clear();
+    // Tout est construit dans des temporaires et publié seulement si toutes les allocations réussissent : un échec laisse l'état
+    // précédent cohérent (et l'appel suivant retente la reconstruction).
+    std::vector<Pool> pools;
+    std::vector<MeshSlot> slots(meshCount);
+    std::vector<PendingCopy> copies;
     for (std::uint32_t id = 0; id < meshCount; ++id)
     {
         const Mesh *mesh = meshes_.mesh(id);
@@ -182,17 +186,17 @@ core::Result<> GpuDrivenFeature::ensurePools()
         {
             return makeError(ErrorCode::kNotFound, "GpuDrivenFeature: mesh " + std::to_string(id) + " of the InstanceRenderer was released");
         }
-        auto pool = std::ranges::find_if(pools_, [&](const Pool &p) { return sameLayout(*p.layout, *mesh); });
-        if (pool == pools_.end())
+        auto pool = std::ranges::find_if(pools, [&](const Pool &p) { return sameLayout(*p.layout, *mesh); });
+        if (pool == pools.end())
         {
-            pools_.push_back({mesh, {}, {}, {}});
-            pool = pools_.end() - 1;
+            pools.push_back({mesh, {}, {}, {}});
+            pool = pools.end() - 1;
         }
         pool->meshes.push_back(id);
-        meshSlots_[id].pool = static_cast<std::uint32_t>(pool - pools_.begin());
+        slots[id].pool = static_cast<std::uint32_t>(pool - pools.begin());
     }
     std::uint32_t rank = 0;
-    for (Pool &pool : pools_)
+    for (Pool &pool : pools)
     {
         const std::uint32_t stride = pool.layout->vertexBuffers()[0].stride;
         std::uint64_t vertexBytes = 0;
@@ -200,7 +204,11 @@ core::Result<> GpuDrivenFeature::ensurePools()
         for (const std::uint32_t id : pool.meshes)
         {
             const Mesh &mesh = *meshes_.mesh(id);
-            MeshSlot &slot = meshSlots_[id];
+            MeshSlot &slot = slots[id];
+            if (vertexBytes / stride > 0x7FFFFFFFull || indexCount > 0xFFFFFFFFull)
+            {
+                return makeError(ErrorCode::kOutOfRange, "GpuDrivenFeature: geometry pool exceeds the indirect command offsets");
+            }
             slot.rank = rank++;
             slot.vertexOffset = static_cast<std::int32_t>(vertexBytes / stride);
             slot.firstIndex = static_cast<std::uint32_t>(indexCount);
@@ -233,14 +241,17 @@ core::Result<> GpuDrivenFeature::ensurePools()
         for (const std::uint32_t meshId : pool.meshes)
         {
             const Mesh &mesh = *meshes_.mesh(meshId);
-            const MeshSlot &slot = meshSlots_[meshId];
-            pendingCopies_.push_back({mesh.vertexBuffer(), pool.vertices.handle(),
-                                      {.srcOffset = 0, .dstOffset = std::uint64_t(slot.vertexOffset) * stride, .size = mesh.vertexBufferSize()}});
-            pendingCopies_.push_back({mesh.indexBuffer(), pool.indices.handle(),
-                                      {.srcOffset = 0, .dstOffset = std::uint64_t{slot.firstIndex} * sizeof(std::uint32_t),
-                                       .size = std::uint64_t{mesh.indexCount()} * sizeof(std::uint32_t)}});
+            const MeshSlot &slot = slots[meshId];
+            copies.push_back({mesh.vertexBuffer(), pool.vertices.handle(),
+                              {.srcOffset = 0, .dstOffset = std::uint64_t(slot.vertexOffset) * stride, .size = mesh.vertexBufferSize()}});
+            copies.push_back({mesh.indexBuffer(), pool.indices.handle(),
+                              {.srcOffset = 0, .dstOffset = std::uint64_t{slot.firstIndex} * sizeof(std::uint32_t),
+                               .size = std::uint64_t{mesh.indexCount()} * sizeof(std::uint32_t)}});
         }
     }
+    pools_ = std::move(pools);
+    meshSlots_ = std::move(slots);
+    pendingCopies_ = std::move(copies);
     meshCount_ = meshCount;
     tablesDirty_ = true;
     return {};
@@ -253,8 +264,16 @@ core::Result<> GpuDrivenFeature::ensureTables()
     {
         return {};
     }
+    // Invalide le cache AVANT toute opération qui peut échouer : un échec reconstruit les tables à l'appel suivant.
+    tablesDirty_ = true;
+    // Commandes (matériau × maillages) et table combinée (rangs + capacités) : indices 32 bits dans gpu_cull.comp.
+    const std::uint64_t commandCount = std::uint64_t{materialCount} * meshCount_;
+    if (commandCount > 0xFFFFFFFFull - meshCount_ || commandCount > 0xFFFFFFFFull / kCommandStride)
+    {
+        return makeError(ErrorCode::kOutOfRange, "GpuDrivenFeature: too many (mesh, material) commands (" + std::to_string(commandCount) + ")");
+    }
     materialCount_ = materialCount;
-    commandCount_ = materialCount_ * meshCount_;
+    commandCount_ = static_cast<std::uint32_t>(commandCount);
     commandKeys_.assign(commandCount_, InstanceKey{});
     commandCapacity_.assign(commandCount_, 0);
     std::vector<std::uint32_t> meshByRank(meshCount_);
@@ -273,6 +292,10 @@ core::Result<> GpuDrivenFeature::ensureTables()
         const InstanceKey key{mesh, material};
         const auto it = refs.find(key);
         const std::uint32_t capacity = it != refs.end() ? it->second : 0;
+        if (firstInstance + capacity > 0xFFFFFFFFull / sizeof(GpuInstance))
+        {
+            return makeError(ErrorCode::kOutOfRange, "GpuDrivenFeature: too many instances for one buffer");
+        }
         commandKeys_[command] = key;
         commandCapacity_[command] = capacity;
         commands[command] = {meshes_.mesh(mesh)->indexCount(), 0, meshSlots_[mesh].firstIndex, meshSlots_[mesh].vertexOffset,
@@ -283,10 +306,6 @@ core::Result<> GpuDrivenFeature::ensureTables()
     for (std::uint32_t id = 0; id < meshCount_; ++id)
     {
         tables[id] = meshSlots_[id].rank;
-    }
-    if (firstInstance > 0xFFFFFFFFull / sizeof(GpuInstance))
-    {
-        return makeError(ErrorCode::kOutOfRange, "GpuDrivenFeature: too many instances for one buffer");
     }
     const std::uint64_t commandBytes = std::uint64_t{std::max<std::uint32_t>(commandCount_, 1)} * kCommandStride;
     if (auto r = ensureBuffer(tables_, std::uint64_t{std::max<std::size_t>(tables.size(), 1)} * sizeof(std::uint32_t),
@@ -413,12 +432,17 @@ core::Result<> GpuDrivenFeature::ensureHiz(rhi::Extent2D size)
         return std::unexpected(texture.error());
     }
     hiz_ = *texture;
+    // hizSize_ n'est mémorisée qu'une fois tous les groupes créés : un échec libère l'état partiel (l'appel suivant reconstruit).
+    auto fail = [this](const core::Error &error) -> core::Result<>
+    {
+        releaseHiz();
+        return std::unexpected(error);
+    };
     auto real = device_.textureDesc(hiz_);
     if (!real)
     {
-        return std::unexpected(real.error());
+        return fail(real.error());
     }
-    hizSize_ = size;
     hizLevels_ = real->mipLevels;
     rhi::BindGroupDesc sample;
     sample.debugName = "gpudriven.hiz.sample";
@@ -426,7 +450,7 @@ core::Result<> GpuDrivenFeature::ensureHiz(rhi::Extent2D size)
     auto sampleGroup = device_.createBindGroup(sample);
     if (!sampleGroup)
     {
-        return std::unexpected(sampleGroup.error());
+        return fail(sampleGroup.error());
     }
     hizSampleGroup_ = *sampleGroup;
     hizLevelGroups_.assign(hizLevels_, rhi::BindGroupHandle{});
@@ -439,10 +463,11 @@ core::Result<> GpuDrivenFeature::ensureHiz(rhi::Extent2D size)
         auto group = device_.createBindGroup(reduce);
         if (!group)
         {
-            return std::unexpected(group.error());
+            return fail(group.error());
         }
         hizLevelGroups_[level] = *group;
     }
+    hizSize_ = size;
     return {};
 }
 
@@ -507,7 +532,7 @@ core::Result<GpuDrawStats> GpuDrivenFeature::draw(SceneRenderer &scene, const Ob
     {
         return std::unexpected(info.error());
     }
-    if (pending_ && lastDrawFrame_ == scene.frameIndex())
+    if (pending_ && lastDrawFrame_ == scene.frameSerial())
     {
         return makeError(ErrorCode::kInvalidArgument, "GpuDrivenFeature::draw: already called for this frame (the command buffers are reused)");
     }
@@ -556,7 +581,8 @@ core::Result<GpuDrawStats> GpuDrivenFeature::draw(SceneRenderer &scene, const Ob
         return std::unexpected(r.error());
     }
 
-    cullWithHiz_ = occlusion_ && hizValid_ && !hiz_.isNull();
+    // Sans culling (frustumCulling faux : tout est visible), pas d'occlusion non plus.
+    cullWithHiz_ = occlusion_ && options.frustumCulling && hizValid_ && !hiz_.isNull();
     GpuCullParams params{};
     const auto planes = view.cull.frustum.planes();
     for (std::size_t i = 0; i < planes.size(); ++i)
@@ -567,6 +593,7 @@ core::Result<GpuDrawStats> GpuDrivenFeature::draw(SceneRenderer &scene, const Ob
     params.eye = glm::vec4(view.cull.eye, static_cast<float>(planes.size()));
     params.origin = glm::vec4(info->cameraOrigin, 0.0f);
     params.view = glm::vec4(view.cull.projectionScale, view.cull.viewportHeight, view.cull.minScreenRadius, view.cull.maxDistance);
+    params.forward = glm::vec4(view.cull.forward, 0.0f);
     params.hiz = glm::vec4(static_cast<float>(hizSize_.width), static_cast<float>(hizSize_.height), static_cast<float>(hizLevels_), 0.0f);
     params.counts[0] = slots;
     params.counts[1] = meshCount_;
@@ -660,7 +687,7 @@ core::Result<GpuDrawStats> GpuDrivenFeature::draw(SceneRenderer &scene, const Ob
         }
     }
     pending_ = true;
-    lastDrawFrame_ = scene.frameIndex();
+    lastDrawFrame_ = scene.frameSerial();
     slotCount_ = slots;
     return stats;
 }
@@ -705,11 +732,12 @@ core::Result<> GpuDrivenFeature::declarePasses(RenderGraphBuilder &builder)
                      }
                      pendingCopies_.clear();
                      e.copyBuffer(zeros_.handle(), stats_.handle(), {.srcOffset = 0, .dstOffset = 0, .size = kStatsWords * sizeof(std::uint32_t)});
-                     if (commands == 0)
+                     if (commands > 0)
                      {
-                         return {};
+                         e.copyBuffer(template_.handle(), args_.handle(), {.srcOffset = 0, .dstOffset = 0, .size = std::uint64_t{commands} * kCommandStride});
                      }
-                     e.copyBuffer(template_.handle(), args_.handle(), {.srcOffset = 0, .dstOffset = 0, .size = std::uint64_t{commands} * kCommandStride});
+                     // Sans commande (aucun maillage ou matériau), le culling tourne quand même : il écrit les drapeaux de visibilité
+                     // lus par readVisibility ; emit vérifie la clé avant tout accès aux tables (instance comptée invalide).
                      if (slots == 0)
                      {
                          return {};

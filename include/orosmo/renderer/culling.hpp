@@ -61,6 +61,9 @@ struct CullView
 {
     Frustum frustum;
     glm::vec3 eye{0.0f};
+    // Direction de visée (unitaire) : la taille à l'écran se mesure à la profondeur de vue, plus prudente que la distance pour un
+    // objet hors de l'axe. Nulle (vue construite à la main) : distance euclidienne.
+    glm::vec3 forward{0.0f};
     // |proj[1][1]| : 1 / tan(fov / 2) en perspective, 2 / hauteur visible en orthographique.
     float projectionScale = 1.0f;
     bool orthographic = false;
@@ -73,7 +76,8 @@ struct CullView
     static CullView fromMatrices(const glm::mat4 &view, const glm::mat4 &projection, float viewportHeight, bool orthographic = false);
 };
 
-// Rayon projeté à l'écran (pixels) de la sphère englobant `box`, vue depuis `view`. Infini si l'œil est dans la sphère.
+// Rayon projeté à l'écran (pixels) de la sphère englobant `box`, vue depuis `view`, à la profondeur de vue de son centre (borne
+// prudente : jamais plus petite que le rayon apparent à la distance euclidienne). Infini si la sphère touche le plan de l'œil.
 float projectedRadiusPixels(const Aabb &box, const CullView &view) noexcept;
 
 struct CullStats

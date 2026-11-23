@@ -17,9 +17,11 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <cstring>
 #include <filesystem>
 #include <map>
 #include <set>
+#include <type_traits>
 
 namespace fs = std::filesystem;
 namespace rd = orosmo::renderer;
@@ -80,7 +82,7 @@ struct GpuDrivenScene
     std::array<rd::Mesh, 2> meshes;
     std::uint32_t size;
 
-    GpuDrivenScene(Backend backend, std::uint32_t side) : gpu(backend, {side, side}), size(side)
+    GpuDrivenScene(Backend backend, std::uint32_t side, std::uint32_t materials = 2) : gpu(backend, {side, side}), size(side)
     {
         if (!gpu.device)
         {
@@ -101,8 +103,10 @@ struct GpuDrivenScene
             meshes[i] = std::move(*mesh);
             REQUIRE(instances->addMesh(meshes[i]).has_value());
         }
-        instances->addMaterial({});
-        instances->addMaterial({});
+        for (std::uint32_t m = 0; m < materials; ++m)
+        {
+            instances->addMaterial({});
+        }
         auto enabled = rd::enableGpuDriven(*renderer, *gpu.device, *library, *pipelines, shaderDir(), *instances);
         INFO((enabled ? std::string() : enabled.error().message));
         REQUIRE(enabled.has_value());
@@ -139,7 +143,7 @@ struct GpuDrivenScene
     }
 
     // Une image dessinée par le GPU (gpu = vrai) ou par le culling CPU + InstanceRenderer.
-    void render(TextureHandle out, rd::ObjectSet &objects, bool gpuDriven, float minScreenRadius = 0.0f)
+    void render(TextureHandle out, rd::ObjectSet &objects, bool gpuDriven, float minScreenRadius = 0.0f, const rd::GpuDrivenOptions &options = {})
     {
         gpu.run(
             [&](CommandEncoder &e)
@@ -148,7 +152,7 @@ struct GpuDrivenScene
                 REQUIRE(renderer->setCamera(camera).has_value());
                 if (gpuDriven)
                 {
-                    auto drawn = feature->draw(*renderer, objects, view(minScreenRadius));
+                    auto drawn = feature->draw(*renderer, objects, view(minScreenRadius), options);
                     INFO((drawn ? std::string() : drawn.error().message));
                     REQUIRE(drawn.has_value());
                 }
@@ -237,11 +241,72 @@ TEST_SUITE("renderer/gpu-driven")
         CHECK(scene.liveObjects() == 1);
     }
 
+    TEST_CASE("GpuScene: a collect before sync loses no change, an ObjectSet cannot be reassigned in place (REN-29)")
+    {
+        // Réaffecter un ObjectSet à la même adresse échapperait au suivi des miroirs (adresse + compteur de changements).
+        static_assert(std::is_copy_constructible_v<rd::ObjectSet>);
+        static_assert(!std::is_copy_assignable_v<rd::ObjectSet> && !std::is_move_assignable_v<rd::ObjectSet>);
+
+        rd::ObjectSet objects;
+        std::vector<rd::ObjectId> ids;
+        for (int i = 0; i < 40; ++i)
+        {
+            auto id = objects.add(cubeDesc(at(static_cast<float>(i), 0, 0)));
+            REQUIRE(id.has_value());
+            ids.push_back(*id);
+        }
+        rd::GpuScene scene;
+        scene.collect(objects);
+        REQUIRE(scene.unsentRanges().size() == 1);
+        CHECK(scene.unsentRanges()[0] == rd::GpuSceneRange{0, 40});
+        // Un second collect (rien de changé) ne fait pas oublier le premier envoi, jamais fait.
+        rd::GpuSceneSyncStats s = scene.collect(objects);
+        CHECK(s.changedObjects == 0);
+        CHECK(scene.pendingRanges().empty());
+        REQUIRE(scene.unsentRanges().size() == 1);
+        CHECK(scene.unsentRanges()[0] == rd::GpuSceneRange{0, 40});
+
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend, {16, 16});
+            REQUIRE(gpu.device);
+            rd::GpuScene mirror;
+            auto first = mirror.sync(*gpu.device, objects);
+            REQUIRE(first.has_value());
+            CHECK(first->uploadedObjects == 40);
+            CHECK(mirror.unsentRanges().empty());
+            // Couleur changée, puis un collect avant le sync : le sync l'envoie quand même (une plage, un objet).
+            REQUIRE(objects.setColor(ids[7], {0, 1, 0, 1}).has_value());
+            REQUIRE(objects.setColor(ids[30], {0, 0, 1, 1}).has_value());
+            mirror.collect(objects);
+            REQUIRE(objects.setColor(ids[31], {1, 0, 0, 1}).has_value());
+            auto second = mirror.sync(*gpu.device, objects);
+            REQUIRE(second.has_value());
+            CHECK(second->changedObjects == 1);
+            CHECK(second->uploadRanges == 2);
+            CHECK(second->uploadedObjects == 3);
+            CHECK(mirror.unsentRanges().empty());
+            auto bytes = gpu.device->readBuffer(mirror.objectBuffer(), 7 * sizeof(rd::GpuSceneObject), sizeof(rd::GpuSceneObject));
+            REQUIRE(bytes.has_value());
+            rd::GpuSceneObject record{};
+            std::memcpy(&record, bytes->data(), sizeof record);
+            CHECK(record.color.g == doctest::Approx(1.0f));
+            CHECK(record.color.r == doctest::Approx(0.0f));
+            // Sans collect préalable : seules les plages nécessaires.
+            REQUIRE(objects.setColor(ids[20], {1, 1, 0, 1}).has_value());
+            auto third = mirror.sync(*gpu.device, objects);
+            REQUIRE(third.has_value());
+            CHECK(third->uploadedObjects == 1);
+            gpu.expectNoValidationErrors();
+        }
+    }
+
     TEST_CASE("GpuDrivenFeature: refused without compute or indirect draws (rule 11, CPU culling kept)")
     {
         orosmo::rhi::Capabilities caps;
         caps.compute = true;
         caps.indirectDraw = true;
+        caps.drawIndirectFirstInstance = true;
         caps.maxStorageBufferBindings = 8;
         caps.maxComputeWorkGroupSize = {1024, 1024, 64};
         caps.maxComputeInvocations = 1024;
@@ -252,6 +317,9 @@ TEST_SUITE("renderer/gpu-driven")
         caps.indirectDraw = false;
         CHECK_FALSE(rd::GpuDrivenFeature::supportedBy(caps));
         caps.indirectDraw = true;
+        caps.drawIndirectFirstInstance = false; // Vulkan sans drawIndirectFirstInstance : chaque commande lit sa propre plage
+        CHECK_FALSE(rd::GpuDrivenFeature::supportedBy(caps));
+        caps.drawIndirectFirstInstance = true;
         caps.maxStorageBufferBindings = 6;
         CHECK_FALSE(rd::GpuDrivenFeature::supportedBy(caps));
     }
@@ -441,6 +509,14 @@ TEST_SUITE("renderer/gpu-driven")
                 CHECK((((*flags)[slot] & rd::kGpuVisibleOcclusion) == 0) == hidden.contains(slot));
             }
 
+            // Sans culling (frustumCulling faux : tout est visible), la Hi-Z, pourtant valide, ne rejette rien.
+            CHECK(scene.feature->hizValid());
+            scene.render(out, objects, true, 0.0f, {.frustumCulling = false});
+            auto noCulling = scene.feature->readStats();
+            REQUIRE(noCulling.has_value());
+            CHECK(noCulling->occlusionCulled == 0);
+            CHECK(noCulling->visible == 9);
+
             // Sans occlusion : tout redevient visible ; après une coupure de caméra (resetOcclusion), l'image suivante n'en a pas.
             scene.feature->setOcclusion(false);
             scene.render(out, objects, true);
@@ -459,6 +535,56 @@ TEST_SUITE("renderer/gpu-driven")
             REQUIRE(again.has_value());
             CHECK(again->occlusionCulled == 5);
             scene.gpu.expectNoValidationErrors();
+        }
+    }
+    TEST_CASE("GpuDrivenFeature: visibility flags are written without commands and the drawn bit means an instance was written (REN-29)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            // Aucun matériau : aucune commande indirecte, mais le culling écrit quand même les drapeaux de visibilité.
+            {
+                GpuDrivenScene scene(backend, 32, 0);
+                REQUIRE(scene.gpu.device);
+                rd::ObjectSet objects;
+                REQUIRE(objects.add(cubeDesc(at(0, 0, -5))).has_value());
+                REQUIRE(objects.add(cubeDesc(at(0, 0, 5))).has_value()); // derrière la caméra
+                const TextureHandle out = scene.gpu.target(Format::kRGBA8Unorm, {32, 32}, "out");
+                scene.render(out, objects, true);
+                auto stats = scene.feature->readStats();
+                REQUIRE(stats.has_value());
+                CHECK(stats->objects == 2);
+                CHECK(stats->frustumCulled == 1);
+                CHECK(stats->invalid == 1);
+                CHECK(stats->instances == 0);
+                auto flags = scene.feature->readVisibility();
+                REQUIRE(flags.has_value());
+                REQUIRE(flags->size() == 2);
+                CHECK((*flags)[0] == (rd::kGpuVisibleAlive | rd::kGpuVisibleFrustum | rd::kGpuVisibleOcclusion));
+                CHECK((*flags)[1] == rd::kGpuVisibleAlive);
+                scene.gpu.expectNoValidationErrors();
+            }
+            // Maillage inconnu : visible, compté invalide, mais pas « dessiné » ; un maillage connu l'est.
+            {
+                GpuDrivenScene scene(backend, 32);
+                REQUIRE(scene.gpu.device);
+                rd::ObjectSet objects;
+                REQUIRE(objects.add(cubeDesc(at(-1, 0, -5), {7})).has_value());
+                REQUIRE(objects.add(cubeDesc(at(1, 0, -5), {0})).has_value());
+                const TextureHandle out = scene.gpu.target(Format::kRGBA8Unorm, {32, 32}, "out");
+                scene.render(out, objects, true);
+                auto stats = scene.feature->readStats();
+                REQUIRE(stats.has_value());
+                CHECK(stats->visible == 2);
+                CHECK(stats->invalid == 1);
+                CHECK(stats->instances == 1);
+                auto flags = scene.feature->readVisibility();
+                REQUIRE(flags.has_value());
+                REQUIRE(flags->size() == 2);
+                CHECK(((*flags)[0] & rd::kGpuVisibleOcclusion) != 0);
+                CHECK(((*flags)[0] & rd::kGpuVisibleDrawn) == 0);
+                CHECK(((*flags)[1] & rd::kGpuVisibleDrawn) != 0);
+                scene.gpu.expectNoValidationErrors();
+            }
         }
     }
 }

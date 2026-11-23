@@ -69,6 +69,12 @@ class ObjectSet
 {
   public:
     ObjectSet();
+    // Copiable (nouvel ensemble, nouvelle adresse : un miroir le voit comme un autre ensemble), mais pas réaffectable : remplacer le
+    // contenu à la même adresse échapperait au suivi des changements des miroirs (GpuScene, ShadowFeature), qui identifient
+    // l'ensemble par son adresse et son compteur. Pour vider : `clear` ; pour un autre contenu : un autre ObjectSet.
+    ObjectSet(const ObjectSet &) = default;
+    ObjectSet &operator=(const ObjectSet &) = delete;
+    ObjectSet &operator=(ObjectSet &&) = delete;
 
     // Réglages de LOD partagés par plusieurs objets ; l'identifiant 0 (un seul niveau) existe toujours.
     std::uint32_t addLodSettings(LodSettings settings);

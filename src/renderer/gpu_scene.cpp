@@ -9,6 +9,27 @@ namespace orosmo::renderer
 
 namespace
 {
+// Ajoute `ranges` (triées) à `into` : trié, chevauchements et trous d'au plus `gap` emplacements réunis.
+void mergeRanges(std::vector<GpuSceneRange> &into, std::span<const GpuSceneRange> ranges, std::uint32_t gap)
+{
+    into.insert(into.end(), ranges.begin(), ranges.end());
+    std::ranges::sort(into, {}, &GpuSceneRange::first);
+    std::vector<GpuSceneRange> merged;
+    for (const GpuSceneRange &range : into)
+    {
+        const std::uint32_t end = range.first + range.count;
+        if (!merged.empty() && range.first <= merged.back().first + merged.back().count + gap)
+        {
+            merged.back().count = std::max(merged.back().first + merged.back().count, end) - merged.back().first;
+        }
+        else
+        {
+            merged.push_back(range);
+        }
+    }
+    into = std::move(merged);
+}
+
 GpuLodSettings toGpu(const LodSettings &settings)
 {
     GpuLodSettings out{};
@@ -130,6 +151,7 @@ GpuSceneSyncStats GpuScene::collect(const ObjectSet &objects)
         stats.changedObjects = slots;
         stats.fullUpload = true;
         fullPending_ = false; // sync le remet si l'envoi échoue
+        unsent_.clear();
         if (slots > 0)
         {
             pending_.push_back({0, slots});
@@ -156,6 +178,8 @@ GpuSceneSyncStats GpuScene::collect(const ObjectSet &objects)
         }
     }
     syncedCounter_ = objects.changeCounter();
+    // Les plages de ce `collect` s'ajoutent à celles qui n'ont pas encore été envoyées (un `collect` sans `sync` n'en perd aucune).
+    mergeRanges(unsent_, pending_, kMergeGap);
     for (const GpuSceneRange &range : pending_)
     {
         stats.uploadedObjects += range.count;
@@ -191,7 +215,9 @@ core::Result<GpuSceneSyncStats> GpuScene::sync(rhi::Device &device, const Object
         }
         objectBuffer_ = std::move(*buffer);
     }
-    for (const GpuSceneRange &range : pending_)
+    // Envoi de tout ce qui n'a pas encore été envoyé (plages de ce `collect` et des `collect` précédents sans `sync`).
+    stats.uploadedObjects = 0;
+    for (const GpuSceneRange &range : unsent_)
     {
         const auto bytes = std::as_bytes(std::span(records_).subspan(range.first, range.count));
         if (auto r = objectBuffer_.update(std::uint64_t{range.first} * sizeof(GpuSceneObject), bytes); !r)
@@ -199,9 +225,13 @@ core::Result<GpuSceneSyncStats> GpuScene::sync(rhi::Device &device, const Object
             fullPending_ = true; // l'état du tampon est inconnu : tout renvoyer la prochaine fois
             return std::unexpected(r.error());
         }
+        stats.uploadedObjects += range.count;
     }
+    stats.uploadRanges = static_cast<std::uint32_t>(unsent_.size());
+    stats.uploadedBytes = std::uint64_t{stats.uploadedObjects} * sizeof(GpuSceneObject);
     fullPending_ = false;
     pending_.clear();
+    unsent_.clear();
 
     if (lodPending_)
     {
@@ -239,6 +269,7 @@ void GpuScene::release() noexcept
     records_.clear();
     lodSettings_.clear();
     pending_.clear();
+    unsent_.clear();
     keyRefs_.clear();
     live_ = 0;
     syncedCounter_ = 0;

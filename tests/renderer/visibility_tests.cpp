@@ -137,6 +137,15 @@ TEST_SUITE("visibility/culling")
         const rd::Aabb box = unitBox({0.0f, 0.0f, -100.0f}, 1.0f);
         CHECK(rd::projectedRadiusPixels(box, view) == doctest::Approx(box.radius() / 100.0f * 500.0f).epsilon(1e-4));
         CHECK(std::isinf(rd::projectedRadiusPixels(unitBox({0.0f, 0.0f, 0.0f}), view))); // l'œil dans la sphère
+        // Hors de l'axe (45°, distance 100 √2) : mesuré à la profondeur de vue (100), pas à la distance ; jamais plus petit.
+        const rd::Aabb offAxis = unitBox({100.0f, 0.0f, -100.0f}, 1.0f);
+        CHECK(rd::projectedRadiusPixels(offAxis, view) == doctest::Approx(offAxis.radius() / 100.0f * 500.0f).epsilon(1e-4));
+        // Une sphère qui touche le plan de l'œil (profondeur ≤ rayon), même loin sur le côté : jamais rejetée.
+        CHECK(std::isinf(rd::projectedRadiusPixels(unitBox({50.0f, 0.0f, -0.5f}, 1.0f), view)));
+        // Vue construite à la main (sans direction de visée) : distance euclidienne.
+        rd::CullView manual = view;
+        manual.forward = glm::vec3(0.0f);
+        CHECK(rd::projectedRadiusPixels(offAxis, manual) == doctest::Approx(offAxis.radius() / (100.0f * std::sqrt(2.0f)) * 500.0f).epsilon(1e-4));
         view.orthographic = true;
         view.projectionScale = 2.0f / 10.0f;
         CHECK(rd::projectedRadiusPixels(box, view) == doctest::Approx(box.radius() * 0.2f * 500.0f));

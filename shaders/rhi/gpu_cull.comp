@@ -48,6 +48,7 @@ layout(set = 0, binding = 0, std140) uniform CullBlock // GpuCullParams (gpu_dri
     vec4 origin;            // xyz : origine du rendu relatif à la caméra (retranchée des translations)
     vec4 view;              // échelle de projection, hauteur du viewport, rayon minimal (pixels), distance maximale
     vec4 hiz;               // largeur, hauteur (niveau 0), nombre de niveaux, réservé
+    vec4 forward;           // xyz : direction de visée (unitaire ; nulle : distance euclidienne)
     uvec4 counts;           // emplacements, maillages, matériaux, drapeaux (1 : orthographique, 2 : pyramide, 4 : LOD)
 } cull;
 
@@ -94,7 +95,12 @@ float projectedRadius(vec3 center, vec3 extents)
     {
         return radius * cull.view.x * cull.view.y * 0.5;
     }
-    float distance = length(center - cull.eye.xyz);
+    vec3 toCenter = center - cull.eye.xyz;
+    float distance = length(toCenter);
+    if (dot(cull.forward.xyz, cull.forward.xyz) > 0.0)
+    {
+        distance = min(distance, dot(toCenter, cull.forward.xyz)); // profondeur de vue (≤ distance)
+    }
     if (distance <= radius)
     {
         return 3.0e38;
@@ -137,7 +143,10 @@ bool occluded(vec3 lo, vec3 hi)
     float extent = max(p1.x - p0.x, p1.y - p0.y);
     int levels = int(cull.hiz.z);
     int level = clamp(int(ceil(log2(max(extent, 1.0)))), 0, levels - 1);
-    ivec2 levelSize = textureSize(hizTexture, level);
+    // Taille du niveau calculée (chaîne complète : max(taille >> niveau, 1)) plutôt que textureSize(hizTexture, level) : avec un
+    // `level` différent d'un fil à l'autre, llvmpipe/lavapipe (Mesa 25.2) rend pour tout le groupe SIMD la taille du niveau d'UN fil
+    // (fenêtre réduite à 1 ou 2 texels, occlusion jamais prouvée).
+    ivec2 levelSize = max(ivec2(cull.hiz.xy) >> level, ivec2(1));
     float scale = exp2(-float(level));
     ivec2 t0 = clamp(ivec2(floor(max(p0, vec2(0.0)) * scale)), ivec2(0), levelSize - 1);
     ivec2 t1 = clamp(ivec2(floor(max(p1, vec2(0.0)) * scale)), ivec2(0), levelSize - 1);
@@ -155,7 +164,8 @@ bool occluded(vec3 lo, vec3 hi)
 
 float switchAt(LodSettings s, int j) { return s.switches[j >> 2][j & 3]; }
 
-void emit(SceneObject o, uint level, float dither)
+// Vrai si l'instance a été écrite (faux : maillage ou matériau inconnu, ou plage pleine) : seul un objet écrit est « dessiné ».
+bool emit(SceneObject o, uint level, float dither)
 {
     uint mesh = o.lods[level >> 2u][level & 3u];
     uint material = o.info.w;
@@ -163,7 +173,7 @@ void emit(SceneObject o, uint level, float dither)
     if (mesh >= meshCount || material >= cull.counts.z)
     {
         count(kInvalid);
-        return;
+        return false;
     }
     uint command = material * meshCount + tables[mesh];
     uint capacity = tables[meshCount + command];
@@ -172,7 +182,7 @@ void emit(SceneObject o, uint level, float dither)
     {
         atomicAdd(commands[command].instanceCount, 0xFFFFFFFFu); // annule l'ajout : la commande ne déborde jamais de sa plage
         count(kOverflow);
-        return;
+        return false;
     }
     Instance instance;
     instance.model[0] = o.model[0];
@@ -185,6 +195,7 @@ void emit(SceneObject o, uint level, float dither)
     instance.color = o.color;
     instances[commands[command].firstInstance + index] = instance;
     count(kInstances);
+    return true;
 }
 
 uint cullObject(uint slot)
@@ -245,8 +256,7 @@ uint cullObject(uint slot)
     uint levelCount = max(o.info.y, 1u);
     if ((cull.counts.w & 4u) == 0u)
     {
-        emit(o, 0u, 0.0);
-        return flags | 8u;
+        return emit(o, 0u, 0.0) ? flags | 8u : flags;
     }
     LodSettings s = lodSettings[o.info.z];
     float distance = length(center - cull.eye.xyz);
@@ -288,19 +298,17 @@ uint cullObject(uint slot)
         if (width > 0.0 && d > cullDistance - halfWidth)
         {
             float t = (d - (cullDistance - halfWidth)) / width;
-            emit(o, uint(crossing ? level + 1 : level), t);
-            return flags | 8u;
+            return emit(o, uint(crossing ? level + 1 : level), t) ? flags | 8u : flags;
         }
     }
     if (crossing)
     {
         count(kCrossFades);
-        emit(o, uint(level), crossT);
-        emit(o, uint(level + 1), -crossT);
-        return flags | 8u;
+        bool drawnNear = emit(o, uint(level), crossT);
+        bool drawnFar = emit(o, uint(level + 1), -crossT); // toujours émise, même si la première a échoué
+        return drawnNear || drawnFar ? flags | 8u : flags;
     }
-    emit(o, uint(level), 0.0);
-    return flags | 8u;
+    return emit(o, uint(level), 0.0) ? flags | 8u : flags;
 }
 
 void main()

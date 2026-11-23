@@ -409,6 +409,7 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
     debugVertices_.clear();
     encoder_ = &encoder;
     frameOpen_ = true;
+    ++frameSerial_;
     return {};
 }
 

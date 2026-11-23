@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 
 #include <compare>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -23,6 +24,8 @@ struct GpuInstance
     glm::vec4 color;
 };
 static_assert(sizeof(GpuInstance) == 128, "GpuInstance : 8 vec4 sans remplissage");
+static_assert(offsetof(GpuInstance, model) == 0 && offsetof(GpuInstance, normal) == 64 && offsetof(GpuInstance, color) == 112,
+              "GpuInstance : offsets lus par mesh_instanced.vert et écrits par gpu_cull.comp");
 
 // Emplacements des attributs d'instance : après ceux du maillage (8 au plus), jusqu'au minimum garanti de 16 (GL et Vulkan).
 inline constexpr std::uint32_t kInstanceFirstLocation = 8;

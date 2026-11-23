@@ -294,7 +294,7 @@ désactive l'early-Z des fragments concernés. Le culling GPU et l'occlusion Hi-
 | En-tête | Rôle |
 | --- | --- |
 | `object_set.hpp` | ajout : suivi des changements par emplacement (`changeCounter`, `slotChange`, `objectAtSlot`, `slotCount`) pour les miroirs |
-| `gpu_scene.hpp` | `GpuScene` : **scène GPU persistante**, miroir d'un `ObjectSet` (un `GpuSceneObject` de 208 octets par emplacement : modèle, matrice des normales, couleur, boîte monde, LOD, matériau). `collect` (CPU, testable sans GPU) ne relit que les emplacements modifiés depuis la synchronisation précédente et les regroupe en plages (écart ≤ `kMergeGap`) ; `sync` envoie ces plages seulement (tout au premier envoi, sur croissance du tampon ou autre ensemble). `keyReferences` : nombre maximal d'instances par clé (maillage, matériau) |
+| `gpu_scene.hpp` | `GpuScene` : **scène GPU persistante**, miroir d'un `ObjectSet` (un `GpuSceneObject` de 208 octets par emplacement : modèle, matrice des normales, couleur, boîte monde, LOD, matériau). `collect` (CPU, testable sans GPU) ne relit que les emplacements modifiés depuis la synchronisation précédente et les regroupe en plages (écart ≤ `kMergeGap`), gardées (`unsentRanges`) jusqu'à un envoi réussi ; `sync` envoie ces plages seulement (tout au premier envoi, sur croissance du tampon ou autre ensemble). `keyReferences` : nombre maximal d'instances par clé (maillage, matériau) |
 | `gpu_driven.hpp` | `GpuDrivenFeature` (plugin « gpu-driven ») : `draw(scene, objects, GpuDrivenView, options)` synchronise la scène GPU et enregistre les dessins indirects ; `setOcclusion` / `resetOcclusion` ; lectures `readStats` (`GpuCullStats`), `readVisibility` (drapeaux par emplacement), `readCommandCounts`, `readHiz`. `enableGpuDriven` / `disableGpuDriven` |
 | `shaders/rhi/gpu_cull.comp` | un fil par emplacement : pyramide, distance, taille à l'écran (mêmes formules que `culling.cpp`), PUIS occlusion Hi-Z (variante `OROSMO_HIZ`), puis `selectLod` (même code que `lod.cpp`) ; ajout atomique à la commande de la clé, instance écrite au format `GpuInstance` dans la plage de la commande ; compteurs en mémoire partagée |
 | `shaders/rhi/hiz_build.comp` | Hi-Z R32F, chaîne de mips complète : niveau 0 = profondeur de la scène (`OROSMO_HIZ_FROM_DEPTH`), niveau i = minimum (le plus loin en reverse-Z) des texels couverts du niveau i - 1, bords impairs compris |
@@ -306,7 +306,8 @@ qu'`InstanceRenderer`, donc même image) -> `gpudriven.hiz` (compute, lit la pro
 matériau), indice `matériau × maillages + rang du maillage` ; les maillages de même disposition sont copiés (copie GPU) dans un pool
 commun, rangés par pool. La plage de chaque commande vaut `keyReferences` : elle ne déborde jamais (`overflow` compté et annulé sinon).
 
-**Capacités** (règle 11) : `Capabilities::compute`, `indirectDraw`, 7 emplacements de stockage ; sinon `enableGpuDriven` renvoie
+**Capacités** (règle 11) : `Capabilities::compute`, `indirectDraw`, `drawIndirectFirstInstance` (chaque commande lit sa plage du
+tampon d'instances), 7 emplacements de stockage ; sinon `enableGpuDriven` renvoie
 `kUnsupported` et la démo garde le culling CPU (`ObjectSet::prepare` + `InstanceRenderer::draw`). Sans `multiDrawIndirect`, le RHI
 rejoue les commandes une par une.
 
@@ -328,12 +329,11 @@ passe « two-phase ») ; pas d'occlusion à la première image, après un redime
 caméra ou une boîte hors de l'image précédente n'est jamais rejeté. Les occulteurs sont tout ce qui écrit la profondeur de la scène (les
 dessins `drawMesh` et les instances GPU elles-mêmes). Plus de `kGpuSceneMaxLevels` (8) LOD : objet ignoré par le GPU ; ≤ 65 535 × 64
 emplacements par dispatch ; une seule `draw` par image ; les pools sont copiés à l'enregistrement (`Mesh::updateVertices` ensuite n'est
-pas vu). Le RHI n'a pas de `drawIndexedIndirectCount` (compte lu sur le GPU) : toutes les commandes (même vides) sont jouées ; Vulkan
-exige `drawIndirectFirstInstance` (G145), non exposé dans `Capabilities`. Les ombres (`ShadowFeature::addObjectCasters`) gardent le
+pas vu). Le RHI n'a pas de `drawIndexedIndirectCount` (compte lu sur le GPU) : toutes les commandes (même vides) sont jouées. Les ombres (`ShadowFeature::addObjectCasters`) gardent le
 culling CPU.
 **AOV et debug (REN-21, REN-35)** : comme `InstanceRenderer`, les dessins GPU n'écrivent que la couleur (masque d'écriture nul
-sur les autres attachements : les AOV gardent leur valeur d'effacement) ; `--debug-view lod` n'a pas de couleurs de LOD sur le
-chemin GPU ; `--freeze-frustum` gèle aussi la vue du culling GPU (la Hi-Z garde la vue réelle de la caméra). Anticrénelage (REN-19) : le TAA lit
+sur les autres attachements : les AOV gardent leur valeur d'effacement) ; `--debug-view lod` repasse sur le culling CPU (seul à produire les
+couleurs de LOD ; la Hi-Z est oubliée au retour) ; `--debug-view wireframe` ajoute le fil de fer aux instances (CPU et GPU) ; `--freeze-frustum` gèle aussi la vue du culling GPU (la Hi-Z garde la vue réelle de la caméra). Anticrénelage (REN-19) : le TAA lit
 le mouvement et la profondeur ; les objets GPU écrivent la profondeur mais pas l'AOV de mouvement (valeur d'effacement : mouvement
 nul, comme `InstanceRenderer`), donc leur reprojection suppose des objets fixes ; un objet déplacé par `setTransform` peut laisser une
 traînée pendant le TAA.

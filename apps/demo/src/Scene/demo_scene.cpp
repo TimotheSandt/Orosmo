@@ -738,7 +738,10 @@ orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRendere
         frustumFreeze_.freeze(view, camera.projectionMatrix() * camera.viewMatrix());
     }
     view = frustumFreeze_.apply(view);
-    if (gpuDriven_ != nullptr)
+    // Fil de fer : raccourci de la caméra ou vue de débogage (SceneRenderer l'applique à ses maillages, pas aux dessins personnalisés).
+    const bool wireframe = camera.wireframe() || debugView_ == rd::DebugView::kWireframe;
+    // REN-35 : les couleurs de LOD ne sont produites que par le culling CPU (VisibilityOptions::lodColors) : la vue kLod le garde.
+    if (gpuDriven_ != nullptr && debugView_ != rd::DebugView::kLod)
     {
         // Journal (image 2 puis toutes les 600) : compteurs GPU de l'image précédente, comparés au culling CPU de la même vue.
         const bool log = instanceFrames_ == 2 || (instanceFrames_ > 0 && instanceFrames_ % 600 == 0);
@@ -758,7 +761,7 @@ orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRendere
         gpuView.cull = view;
         gpuView.viewProjection = camera.projectionMatrix() * camera.viewMatrix();
         rd::GpuDrivenOptions options;
-        options.wireframe = camera.wireframe();
+        options.wireframe = wireframe;
         auto drawn = gpuDriven_->draw(renderer, instanceObjects_, gpuView, options);
         if (!drawn)
         {
@@ -767,11 +770,15 @@ orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRendere
         ++instanceFrames_;
         return {};
     }
+    if (gpuDriven_ != nullptr)
+    {
+        gpuDriven_->resetOcclusion(); // Hi-Z non reconstruite pendant le culling CPU : périmée au retour sur le GPU
+    }
     rd::VisibilityOptions visibility;
     visibility.lodColors = debugView_ == rd::DebugView::kLod;
     instanceVisibility_ = instanceObjects_.prepare(view, instanceBatches_, visibility);
 
-    auto drawn = instanceRenderer_->draw(renderer, instanceBatches_, camera.wireframe());
+    auto drawn = instanceRenderer_->draw(renderer, instanceBatches_, wireframe);
     if (!drawn)
     {
         return std::unexpected(drawn.error());
