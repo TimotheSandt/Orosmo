@@ -11,6 +11,8 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <unordered_set>
 #include <vector>
 
 struct GLFWwindow;
@@ -181,6 +183,9 @@ class GlDevice final : public Device
     };
     Result<VertexArrayBindings> inspectVertexArray(PipelineHandle pipeline);
     void onValidationMessage(bool isError) noexcept;
+    // Vrai la première fois qu'un message de debug non bloquant (performance, portabilité...) d'identifiant `id` arrive : le pilote
+    // le répète à chaque appel concerné, il n'est journalisé qu'une fois.
+    bool firstInformationalMessage(GLuint id);
 
   private:
     GlDevice() = default;
@@ -204,6 +209,8 @@ class GlDevice final : public Device
     TextureHandle backbuffer_;
     std::uint64_t frame_ = 0;
     std::atomic<std::uint64_t> validationErrors_{0};
+    std::mutex informationalMutex_;
+    std::unordered_set<GLuint> informationalSeen_;
 
     HandlePool<BufferTag, BufferRes> buffers_;
     HandlePool<TextureTag, TextureRes> textures_;
