@@ -167,7 +167,43 @@ orosmo::core::Result<> Game::createGraphics()
 
     this->gpuTimers = std::make_unique<rd::ProfilerGpuTimerFactory>(*this->device);
     Profiler::SetGpuTimerFactory(this->gpuTimers.get());
+    this->keyRender = Profiler::MakeKey("Render");
+    this->keyUpdate = Profiler::MakeKey("CPU/Update");
+    this->keyRecordScene = Profiler::MakeKey("RecordScene");
+    this->keyGraph = Profiler::MakeKey("CPU/Graph");
+    this->keySubmit = Profiler::MakeKey("CPU/Submit");
+    this->keySwapBuffers = Profiler::MakeKey("SwapBuffers");
+    if (!this->headless)
+    {
+        // Cadence reliée à la fenêtre et au périphérique : vsync du périphérique, limiteur d'images de la fenêtre.
+        this->pacer.bind([this](bool enabled) { this->device->setVSync(enabled); }, [this](int maxFps) { this->window.setMaxFPS(maxFps); });
+    }
     return {};
+}
+
+void Game::setFramePacing(rd::FramePacing pacing)
+{
+    this->pacer.setMode(pacing);
+    const rd::FramePacing &now = this->pacer.current();
+    this->uiState.pacingMode = static_cast<int>(now.mode);
+    this->uiState.fpsLimit = now.fpsLimit;
+}
+
+void Game::setGpuTimings(demo::GpuTimingsMode mode)
+{
+    this->gpuTimingsMode = mode;
+    this->uiState.gpuTimings = static_cast<int>(mode);
+    this->applyGpuTimings();
+}
+
+// Minuteries GPU : seulement si le panneau de performances affiche des temps GPU (ou si elles sont forcées).
+void Game::applyGpuTimings()
+{
+    const bool wanted = demo::gpuTimingsWanted(this->gpuTimingsMode, this->uiMode, this->performance.level);
+    if (wanted != Profiler::GpuTimingsEnabled())
+    {
+        Profiler::SetGpuTimingsEnabled(wanted);
+    }
 }
 
 Game::~Game() { this->stop(); }
@@ -472,6 +508,7 @@ void Game::stop()
         this->device->waitIdle();
     }
     Profiler::SetGpuTimerFactory(nullptr);
+    Profiler::SetGpuTimingsEnabled(true); // état par défaut du Profiler pour la suite du processus (tests)
     Profiler::ClearGpuQueries(); // les minuteurs en attente référencent le périphérique
     if (this->mixed)
     {
@@ -562,7 +599,7 @@ void Game::run()
         for (std::uint32_t frame = 0; frame < totalFrames; ++frame)
         {
             const auto frameStart = std::chrono::steady_clock::now();
-            Profiler::Profile("CPU/Update", [&]() { this->update(); });
+            Profiler::Profile(this->keyUpdate, [&]() { this->update(); });
             if (this->headlessFrameFailed || this->captureFailed)
             {
                 return;
@@ -573,7 +610,7 @@ void Game::run()
                 this->headlessFrameFailed = true;
                 return;
             }
-            Profiler::ProfileGPU("Render", &Game::render, this);
+            Profiler::ProfileGPU(this->keyRender, &Game::render, this);
             this->endFrame();
             this->recordFrameTime(frameStart);
             if (this->headlessFrameFailed || this->captureFailed)
@@ -591,7 +628,7 @@ void Game::run()
         }
 
         const auto frameStart = std::chrono::steady_clock::now();
-        Profiler::Profile("CPU/Update", [&]() { this->update(); });
+        Profiler::Profile(this->keyUpdate, [&]() { this->update(); });
         if (this->window.shouldClose())
         {
             break;
@@ -600,7 +637,7 @@ void Game::run()
         {
             continue;
         }
-        Profiler::ProfileGPU("Render", &Game::render, this);
+        Profiler::ProfileGPU(this->keyRender, &Game::render, this);
         this->endFrame();
         this->recordFrameTime(frameStart);
     }
@@ -617,7 +654,7 @@ void Game::recordFrameTime(std::chrono::steady_clock::time_point frameStart)
     const float intervalMs = this->lastFrameStart ? std::chrono::duration<float, std::milli>(frameStart - *this->lastFrameStart).count() : 0.0f;
     this->lastFrameStart = frameStart;
     // GPU : dernière mesure résolue de « Render » (requêtes de temps, quelques images de retard) ; 0 sans requêtes de temps.
-    const float gpuMs = this->device->capabilities().timestampQueries
+    const float gpuMs = this->device->capabilities().timestampQueries && Profiler::GpuTimingsEnabled()
                             ? static_cast<float>(static_cast<double>(Profiler::GetLastTime("Render").count()) * 1e-6)
                             : 0.0f;
     this->performance.pushFrame(cpuMs, gpuMs, intervalMs);
@@ -637,7 +674,7 @@ PerformanceSample Game::samplePerformance() const
     this->performance.fpsFromHistory(s);
     s.frameCpuMs = this->performance.averageCpuMs();
     s.windowFps = this->window.getAverageFPS();
-    if (this->device->capabilities().timestampQueries)
+    if (this->device->capabilities().timestampQueries && Profiler::GpuTimingsEnabled())
     {
         s.gpuMs = Profiler::GetAverageTimeMs("Render");
         for (const std::string &pass : this->sceneRenderer->renderGraph().executionOrder())
@@ -677,7 +714,11 @@ PerformanceSample Game::samplePerformance() const
     s.renderWidth = static_cast<std::uint32_t>(std::max(this->sceneRenderer->frameWidth(), 0));
     s.renderHeight = static_cast<std::uint32_t>(std::max(this->sceneRenderer->frameHeight(), 0));
     s.renderScale = this->sceneRenderer->renderScale();
-    s.vsync = this->vsyncEnabled && !this->headless;
+    // Cadence : sans fenêtre, ni vsync ni limiteur.
+    const rd::FramePacing &pacing = this->pacer.current();
+    s.pacing = this->headless || pacing.mode == rd::FramePacingMode::kVSync
+                   ? (this->headless ? "off" : "on")
+                   : (pacing.mode == rd::FramePacingMode::kLimited ? "off, limit " + std::to_string(pacing.fpsLimit) + " FPS" : "off, no limit");
     s.modes = std::string("AA ") + std::string(rd::toString(this->antiAliasingMode)) + "   post " + std::string(demo::postModeName(this->postMode)) +
               "   shadows " + (this->shadowFeature != nullptr ? "on" : "off") + "   lighting " + (this->forwardPlusActive ? "forward+" : "forward");
     s.residentMiB = processResidentMiB();
@@ -753,12 +794,8 @@ void Game::update()
 
     if (this->watcher)
     {
-        this->watchClock += static_cast<double>(deltaTime);
-        if (this->watchClock > 0.5)
-        {
-            this->watchClock = 0.0;
-            this->watcher->poll();
-        }
+        // Cadence réelle (2 Hz, réglée à la création) : interrogé à chaque image sans coût, quelle que soit la vitesse de la boucle.
+        this->watcher->poll();
     }
 
     const bool wasFullUi = this->uiMode == demo::UiMode::kFull;
@@ -792,6 +829,7 @@ void Game::update()
         }
     }
 
+    this->applyGpuTimings();
     this->scene->update(deltaTime, this->uiState.scene);
     this->performance.tick(deltaTime, [&]() { return this->samplePerformance(); });
 
@@ -841,6 +879,18 @@ void Game::update()
             this->uiState.themeRequested = false;
             (void)this->loadFullUiTheme(false);
             this->fullUi->layout(viewport);
+        }
+        if (this->uiState.pacingRequested)
+        {
+            this->uiState.pacingRequested = false;
+            this->setFramePacing({static_cast<rd::FramePacingMode>(std::clamp(this->uiState.pacingMode, 0, 2)), this->uiState.fpsLimit});
+            LOG_INFO("Frame pacing: ", rd::describeFramePacing(this->pacer.current()));
+        }
+        if (this->uiState.gpuTimingsRequested)
+        {
+            this->uiState.gpuTimingsRequested = false;
+            this->setGpuTimings(static_cast<demo::GpuTimingsMode>(std::clamp(this->uiState.gpuTimings, 0, 2)));
+            LOG_INFO("GPU timings: ", demo::gpuTimingsModeName(this->gpuTimingsMode));
         }
         if (this->uiState.resetCameraRequested)
         {
@@ -934,6 +984,8 @@ orosmo::core::Result<> Game::createUi()
 
     // Full UI showcase
     this->watcher = std::make_unique<orosmo::core::FileWatcher>();
+    this->watcher->setPollInterval(std::chrono::milliseconds(500)); // horloge réelle : 2 Hz, pas le temps simulé de la mise à jour
+    this->watcher->setFullScanEvery(4);                             // dossiers parcourus en entier un poll sur 4, fichiers suivis sinon
     this->fullUi = std::make_unique<ui::Ui>(*this->font);
     if (!this->headless)
     {
@@ -1085,12 +1137,12 @@ void Game::render()
     this->overlay->presented = false;
     keep(this->sceneRenderer->beginFrame(encoder, {.clearColor = {clear.r, clear.g, clear.b, clear.a}}), "beginFrame");
     keep(this->sceneRenderer->setCamera(this->camera), "setCamera");
-    Profiler::Profile("RecordScene", [&]() { keep(this->scene->render(*this->sceneRenderer, this->camera, this->uiState.scene), "scene"); });
+    Profiler::Profile(this->keyRecordScene, [&]() { keep(this->scene->render(*this->sceneRenderer, this->camera, this->uiState.scene), "scene"); });
     if (this->mixed)
     {
         keep(this->mixed->render(*this->sceneRenderer, this->camera, static_cast<float>(this->renderedFrames) / 60.0f), "mixed scene");
     }
-    Profiler::Profile("CPU/Graph",
+    Profiler::Profile(this->keyGraph,
                       [&]() { keep(this->sceneRenderer->endFrame({this->composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame"); });
 
     // Graphe interrompu (scène refusée) : l'interface et la présentation sont encodées quand même, comme avant le graphe.
@@ -1114,7 +1166,7 @@ void Game::present(rhi::CommandEncoder &encoder, const rhi::TextureHandle &compo
 void Game::endFrame()
 {
     this->gpuTimers->setEncoder(nullptr);
-    const auto result = Profiler::Profile("CPU/Submit", [&]() { return this->device->submit(std::move(this->frameEncoder)); });
+    const auto result = Profiler::Profile(this->keySubmit, [&]() { return this->device->submit(std::move(this->frameEncoder)); });
     if (!result)
     {
         LOG_ERROR(1, "Frame: ", result.error().message);
@@ -1135,7 +1187,7 @@ void Game::endFrame()
             this->captureFailed = true;
             this->window.requestClose();
         }
-        Profiler::Profile("SwapBuffers", [&]() { (void)this->device->present(); });
+        Profiler::Profile(this->keySwapBuffers, [&]() { (void)this->device->present(); });
         return;
     }
 
@@ -1198,5 +1250,5 @@ void Game::endFrame()
     }
     this->captureTime = std::chrono::steady_clock::now() - captureStart;
 
-    Profiler::Profile("SwapBuffers", [&]() { (void)this->device->present(); });
+    Profiler::Profile(this->keySwapBuffers, [&]() { (void)this->device->present(); });
 }

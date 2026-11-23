@@ -5,6 +5,7 @@
 #include <orosmo/core/error.hpp>
 #include <orosmo/renderer/antialiasing.hpp>
 #include <orosmo/renderer/debug_view.hpp>
+#include <orosmo/renderer/frame_pacing.hpp>
 #include <orosmo/renderer/transparent_shadow.hpp>
 #include <orosmo/rhi/types.hpp>
 
@@ -57,6 +58,15 @@ enum class PostMode : std::uint8_t
     kFull,  // kBloom + exposition automatique, étalonnage par LUT, vignettage
 };
 
+// --gpu-timings auto|on|off : minuteries GPU du Profiler. auto (défaut) : actives seulement quand un panneau de performances affiche
+// des temps GPU (niveaux full et graph du HUD) ; on / off : forcées.
+enum class GpuTimingsMode : std::uint8_t
+{
+    kAuto,
+    kOn,
+    kOff,
+};
+
 struct LaunchOptions
 {
     orosmo::rhi::Backend api = orosmo::rhi::Backend::kVulkan; // défaut : Vulkan, repli sur OpenGL s'il ne démarre pas
@@ -72,8 +82,14 @@ struct LaunchOptions
     // --headless (PLAT-04) : aucune fenêtre (périphérique hors écran, vue fixe, pas de temps fixe, aucune entrée). La démo
     // rend --capture-frames N images (10 par défaut), enregistre les images si --capture est donné, puis quitte.
     bool headless = false;
-    // --vsync : présentation synchronisée sur le rafraîchissement de l'écran (désactivée par défaut ; sans effet en headless).
-    bool vsync = false;
+    // --vsync [on|off] : présentation synchronisée sur le rafraîchissement de l'écran (activée par défaut ; « --vsync » seul = on ;
+    // sans effet en headless). --fps-limit N (10 à 1000) : limite à N images par seconde, vsync coupée ; 0 : pas de limite.
+    // --vsync on avec --fps-limit est refusé (deux cadences contradictoires).
+    bool vsync = true;
+    bool vsyncExplicit = false;
+    std::uint32_t fpsLimit = 0;
+    // --gpu-timings auto|on|off (défaut : auto).
+    GpuTimingsMode gpuTimings = GpuTimingsMode::kAuto;
     // --ui off|hud|full (défaut : hud).
     UiMode uiMode = UiMode::kHud;
     // --hud off|fps|full|graph (défaut : full, le panneau complet comme avant ; Ctrl+F fait défiler les niveaux).
@@ -125,6 +141,14 @@ std::optional<HudLevel> parseHudLevel(std::string_view value) noexcept;
 // Niveau suivant de Ctrl+F : off -> fps -> full -> graph -> off.
 HudLevel nextHudLevel(HudLevel level) noexcept;
 std::string_view hudLevelName(HudLevel level) noexcept;
+// « auto », « on », « off » (casse indifférente).
+std::optional<GpuTimingsMode> parseGpuTimingsMode(std::string_view value) noexcept;
+std::string_view gpuTimingsModeName(GpuTimingsMode mode) noexcept;
+// Minuteries GPU voulues : forcées par on / off ; en auto, seulement si le panneau de performances (HUD ou interface complète)
+// affiche des temps GPU, c'est-à-dire pour les niveaux full et graph. Pure, testable sans GPU.
+bool gpuTimingsWanted(GpuTimingsMode mode, UiMode uiMode, HudLevel level) noexcept;
+// Cadence demandée par la ligne de commande : vsync (défaut), limite --fps-limit, ou sans limite (--vsync off).
+orosmo::renderer::FramePacing framePacingFor(const LaunchOptions &options) noexcept;
 // « none », « hdr », « bloom », « full » (casse indifférente).
 std::optional<PostMode> parsePostMode(std::string_view value) noexcept;
 std::string_view postModeName(PostMode mode) noexcept;

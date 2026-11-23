@@ -207,6 +207,51 @@ std::optional<PostMode> parsePostMode(std::string_view value) noexcept
     return std::nullopt;
 }
 
+std::optional<GpuTimingsMode> parseGpuTimingsMode(std::string_view value) noexcept
+{
+    for (const GpuTimingsMode mode : {GpuTimingsMode::kAuto, GpuTimingsMode::kOn, GpuTimingsMode::kOff})
+    {
+        if (equalsIgnoreCase(value, gpuTimingsModeName(mode)))
+        {
+            return mode;
+        }
+    }
+    return std::nullopt;
+}
+
+std::string_view gpuTimingsModeName(GpuTimingsMode mode) noexcept
+{
+    switch (mode)
+    {
+    case GpuTimingsMode::kAuto:
+        return "auto";
+    case GpuTimingsMode::kOn:
+        return "on";
+    case GpuTimingsMode::kOff:
+        return "off";
+    }
+    return "auto";
+}
+
+bool gpuTimingsWanted(GpuTimingsMode mode, UiMode uiMode, HudLevel level) noexcept
+{
+    if (mode != GpuTimingsMode::kAuto)
+    {
+        return mode == GpuTimingsMode::kOn;
+    }
+    return uiMode != UiMode::kOff && (level == HudLevel::kFull || level == HudLevel::kGraph);
+}
+
+orosmo::renderer::FramePacing framePacingFor(const LaunchOptions &options) noexcept
+{
+    using orosmo::renderer::FramePacingMode;
+    if (options.fpsLimit > 0)
+    {
+        return {FramePacingMode::kLimited, static_cast<int>(options.fpsLimit)};
+    }
+    return {options.vsync ? FramePacingMode::kVSync : FramePacingMode::kUnlimited, 60};
+}
+
 orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv)
 {
     LaunchOptions options;
@@ -246,9 +291,50 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
         {
             options.listApis = true;
         }
-        else if (argument == "--vsync")
+        else if (argument == "--vsync" || argument.starts_with("--vsync="))
         {
-            options.vsync = true;
+            // « --vsync » seul = on ; « --vsync on|off » ou « --vsync=on|off ».
+            std::optional<std::string> state;
+            if (argument.size() > 7)
+            {
+                state = argument.substr(8);
+            }
+            else if (index + 1 < argc && (equalsIgnoreCase(argv[index + 1], "on") || equalsIgnoreCase(argv[index + 1], "off")))
+            {
+                state = std::string(argv[++index]);
+            }
+            options.vsync = !state || !equalsIgnoreCase(*state, "off");
+            if (state && !equalsIgnoreCase(*state, "on") && !equalsIgnoreCase(*state, "off"))
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --vsync (expected on|off): " + *state);
+            }
+            options.vsyncExplicit = true;
+        }
+        else if (matchOption("--fps-limit", value))
+        {
+            if (!value)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after --fps-limit");
+            }
+            const auto limit = parseUnsigned(*value, 1000U);
+            if (!limit || (*limit != 0 && *limit < 10))
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --fps-limit (0 for no limit, or 10 to 1000): " + *value);
+            }
+            options.fpsLimit = *limit;
+        }
+        else if (matchOption("--gpu-timings", value))
+        {
+            if (!value)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after --gpu-timings");
+            }
+            const auto mode = parseGpuTimingsMode(*value);
+            if (!mode)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Unknown --gpu-timings value (expected auto|on|off): " + *value);
+            }
+            options.gpuTimings = *mode;
         }
         else if (argument == "--headless")
         {
@@ -500,6 +586,15 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
         return makeError(ErrorCode::kInvalidArgument, "--hover requires --capture-frames 2 or more");
     }
 
+    if (options.fpsLimit > 0 && options.vsyncExplicit && options.vsync)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "--fps-limit turns the vertical synchronization off: it cannot be combined with --vsync on");
+    }
+    if (options.fpsLimit > 0)
+    {
+        options.vsync = false;
+    }
+
     return options;
 }
 
@@ -511,7 +606,7 @@ void printUsage(std::ostream &out)
         << "              [--instances N] [--gpu-driven off|on] [--debug-view none|normals|albedo|overdraw|lod|wireframe|motion] [--freeze-frustum]\n"
         << "              [--shadows off|on] [--transparent-shadow none|full|masked|dithered] [--scene default|mixed] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
         << "              [--aa none|fxaa|smaa|taa]\n"
-        << "              [--headless] [--vsync]\n"
+        << "              [--headless] [--vsync [on|off]] [--fps-limit N] [--gpu-timings auto|on|off]\n"
         << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : Vulkan by default; --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
@@ -521,6 +616,10 @@ void printUsage(std::ostream &out)
     out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames, --hover >= 2).\n";
     out << "Headless: --headless creates no window (offscreen device, fixed time step), renders N frames and exits;\n";
     out << "          combine it with --capture <dir> to save the images.\n";
+    out << "Pacing  : vertical synchronization is on by default; --vsync off removes it (no limit), --fps-limit N (10 to 1000) caps\n";
+    out << "          the frame rate at N FPS instead (vsync off). No effect with --headless. The Esc UI changes the mode live.\n";
+    out << "GPU timers: --gpu-timings auto (default) only measures GPU times while the HUD shows them (levels full and graph);\n";
+    out << "          on / off force them (tools that read the 'Perf: RenderGraph/...' lines use on).\n";
     out << "HUD     : --hud sets the performance panel shown with --ui hud: off (nothing), fps (FPS only), full (default: every\n";
     out << "          measurement), graph (full + CPU/GPU frame time history in the bottom right corner). Ctrl+F cycles the levels.\n";
     out << "Debug   : --debug-view shows normals, albedo, overdraw, LOD colors (needs --instances), wireframe or motion vectors;\n";

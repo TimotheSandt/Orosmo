@@ -51,7 +51,7 @@ struct PerformanceSample
     std::uint32_t renderWidth = 0;
     std::uint32_t renderHeight = 0;
     float renderScale = 1.0f;
-    bool vsync = false;
+    std::string pacing = "off"; // cadence : « on » (vsync), « off », « off, limit N FPS », « off, no limit »
     std::string modes; // anticrénelage, post-traitements, ombres, éclairage
     std::optional<double> residentMiB;  // mémoire résidente du processus
     std::optional<double> gpuMemoryMiB; // le RHI ne l'expose pas encore : toujours absente

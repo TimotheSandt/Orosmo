@@ -31,7 +31,7 @@ METRICS = ["frameCpuMs", "frameMedian", "firstFrame", "frameMax", "Render", "Ren
 
 
 def run_once(binary, api, mode, frames, ui, scratch):
-    cmd = [str(binary), "--api", api, "--strict-backend", "--ui", ui, "--capture", str(scratch), "--capture-frames", str(frames)]
+    cmd = [str(binary), "--api", api, "--strict-backend", "--ui", ui, "--gpu-timings", "on", "--capture", str(scratch), "--capture-frames", str(frames)]
     if mode == "headless":
         cmd.append("--headless")
     proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=600)

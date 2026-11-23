@@ -32,6 +32,12 @@ struct DemoUiState
     bool resetCameraRequested = false;
     bool captureRequested = false;
     bool themeRequested = false;
+    // Cadence d'images et minuteries GPU (contrôles de la barre latérale ; Game applique les demandes, voir FramePacer).
+    bool pacingRequested = false;
+    int pacingMode = 0; // 0=vsync, 1=limit, 2=unlimited (ordre de orosmo::renderer::FramePacingMode)
+    int fpsLimit = 60;
+    bool gpuTimingsRequested = false;
+    int gpuTimings = 0; // 0=auto, 1=on, 2=off (ordre de demo::GpuTimingsMode)
     int theme = 0; // 0=dark, 1=light, 2=framed
     int tab = 0;   // 0=scene, 1=widgets, 2=controls, 3=color, 4=windows, 5=layout, 6=themes
     float cameraYawRadians = 0.0f;
@@ -91,6 +97,8 @@ struct DemoUiState
     void hovered(const orosmo::ui::Event &e);
     void focused(const orosmo::ui::Event &e);
     void applyTheme() { themeRequested = true; }
+    void applyPacing() { pacingRequested = true; }
+    void applyGpuTimings() { gpuTimingsRequested = true; }
     void clearLog() { log.clear(); }
     void openDialog() { dialogOpen = true; }
     void closeDialog() { dialogOpen = false; }
@@ -105,6 +113,9 @@ struct DemoUiState
     std::string logLine(int i) const;
     std::string summary() const;
     std::string controlsSummary() const;
+    static std::vector<std::string> pacingModes() { return {"vsync", "limit", "unlimited"}; }
+    static std::vector<std::string> gpuTimingsModes() { return {"auto", "on", "off"}; }
+    bool fpsLimitEditable() const { return pacingMode == 1; }
     bool canSubmit() const { return enabled && !name.empty(); }
 
     // ── Frame update & event log ──

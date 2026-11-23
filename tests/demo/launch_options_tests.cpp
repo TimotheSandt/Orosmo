@@ -442,12 +442,75 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(1, none)->headless, "a window is the default");
     }
 
-    TEST_CASE("launch options parse --vsync")
+    TEST_CASE("launch options: vsync is on by default, --vsync alone is on, --vsync off turns it off")
     {
-        const char *argv[] = {"Orosmo", "--vsync"};
-        Assert(demo::parseLaunchOptions(2, argv)->vsync, "--vsync should be parsed");
         const char *none[] = {"Orosmo"};
-        Assert(!demo::parseLaunchOptions(1, none)->vsync, "vsync is off by default, as before");
+        const auto defaults = demo::parseLaunchOptions(1, none);
+        Assert(defaults->vsync, "vsync is on by default");
+        Assert(demo::framePacingFor(*defaults).mode == orosmo::renderer::FramePacingMode::kVSync, "default pacing is vsync");
+
+        const char *alone[] = {"Orosmo", "--vsync"};
+        Assert(demo::parseLaunchOptions(2, alone)->vsync, "--vsync alone is on");
+        const char *aloneThenOption[] = {"Orosmo", "--vsync", "--headless"};
+        const auto followed = demo::parseLaunchOptions(3, aloneThenOption);
+        Assert(followed->vsync && followed->headless, "--vsync does not eat the next option");
+        const char *on[] = {"Orosmo", "--vsync", "on"};
+        Assert(demo::parseLaunchOptions(3, on)->vsync, "--vsync on");
+        const char *off[] = {"Orosmo", "--vsync", "off"};
+        const auto unlimited = demo::parseLaunchOptions(3, off);
+        Assert(!unlimited->vsync, "--vsync off");
+        Assert(demo::framePacingFor(*unlimited).mode == orosmo::renderer::FramePacingMode::kUnlimited, "vsync off is unlimited");
+        const char *equals[] = {"Orosmo", "--vsync=off"};
+        Assert(!demo::parseLaunchOptions(2, equals)->vsync, "--vsync=off");
+        const char *bad[] = {"Orosmo", "--vsync=maybe"};
+        Assert(!demo::parseLaunchOptions(2, bad).has_value(), "--vsync=maybe is refused");
+    }
+
+    TEST_CASE("launch options: --fps-limit selects the limited mode")
+    {
+        const char *limit[] = {"Orosmo", "--fps-limit", "120"};
+        const auto options = demo::parseLaunchOptions(3, limit);
+        Assert(options.has_value() && options->fpsLimit == 120 && !options->vsync, "--fps-limit 120 turns vsync off");
+        const auto pacing = demo::framePacingFor(*options);
+        Assert(pacing.mode == orosmo::renderer::FramePacingMode::kLimited && pacing.fpsLimit == 120, "limited at 120 FPS");
+
+        const char *withOff[] = {"Orosmo", "--vsync", "off", "--fps-limit=30"};
+        Assert(demo::parseLaunchOptions(4, withOff)->fpsLimit == 30, "--vsync off with --fps-limit is accepted");
+        const char *zero[] = {"Orosmo", "--fps-limit", "0"};
+        Assert(demo::parseLaunchOptions(3, zero)->fpsLimit == 0, "0 means no limit");
+        const char *conflict[] = {"Orosmo", "--vsync", "on", "--fps-limit", "60"};
+        Assert(!demo::parseLaunchOptions(5, conflict).has_value(), "--vsync on and --fps-limit contradict each other");
+        for (const char *value : {"5", "1001", "abc", "-1"})
+        {
+            const char *invalid[] = {"Orosmo", "--fps-limit", value};
+            Assert(!demo::parseLaunchOptions(3, invalid).has_value(), "invalid --fps-limit value is refused");
+        }
+        const char *missing[] = {"Orosmo", "--fps-limit"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--fps-limit needs a value");
+    }
+
+    TEST_CASE("launch options: --gpu-timings and the automatic decision")
+    {
+        using demo::GpuTimingsMode;
+        using demo::HudLevel;
+        const char *none[] = {"Orosmo"};
+        Assert(demo::parseLaunchOptions(1, none)->gpuTimings == GpuTimingsMode::kAuto, "auto by default");
+        for (const auto &[text, mode] : {std::pair<const char *, GpuTimingsMode>{"auto", GpuTimingsMode::kAuto}, {"ON", GpuTimingsMode::kOn}, {"off", GpuTimingsMode::kOff}})
+        {
+            const char *argv[] = {"Orosmo", "--gpu-timings", text};
+            Assert(demo::parseLaunchOptions(3, argv)->gpuTimings == mode, "--gpu-timings value parsed");
+        }
+        const char *bad[] = {"Orosmo", "--gpu-timings", "maybe"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "unknown --gpu-timings value is refused");
+
+        // auto : seulement quand un panneau affiche des temps GPU (HUD full / graph).
+        Assert(demo::gpuTimingsWanted(GpuTimingsMode::kAuto, UiMode::kHud, HudLevel::kFull), "hud full shows GPU times");
+        Assert(demo::gpuTimingsWanted(GpuTimingsMode::kAuto, UiMode::kHud, HudLevel::kGraph), "hud graph shows GPU times");
+        Assert(!demo::gpuTimingsWanted(GpuTimingsMode::kAuto, UiMode::kHud, HudLevel::kFps), "hud fps shows none");
+        Assert(!demo::gpuTimingsWanted(GpuTimingsMode::kAuto, UiMode::kHud, HudLevel::kOff), "hud off shows none");
+        Assert(!demo::gpuTimingsWanted(GpuTimingsMode::kAuto, UiMode::kOff, HudLevel::kFull), "no UI, no panel");
+        Assert(demo::gpuTimingsWanted(GpuTimingsMode::kOn, UiMode::kOff, HudLevel::kOff), "on forces the timers");
+        Assert(!demo::gpuTimingsWanted(GpuTimingsMode::kOff, UiMode::kHud, HudLevel::kGraph), "off forces them off");
     }
 
     TEST_CASE("launch options reject invalid capture arguments")

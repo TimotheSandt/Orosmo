@@ -34,7 +34,7 @@ static void reportPerformance(std::chrono::steady_clock::duration elapsed, const
         LOG_INFO("Perf: frameMedianMs=", *middle);
         LOG_INFO("Perf: firstFrameMs=", frameMs.front());
         LOG_INFO("Perf: frameMaxMs=", *std::max_element(frameMs.begin(), frameMs.end()));
-        LOG_INFO("Perf: frames=", frameMs.size(), " median CPU frame ", *middle, " ms (~", *middle > 0.0f ? 1000.0f / *middle : 0.0f, " FPS without vsync)");
+        LOG_INFO("Perf: frames=", frameMs.size(), " median CPU frame ", *middle, " ms (~", *middle > 0.0f ? 1000.0f / *middle : 0.0f, " FPS without frame pacing)");
     }
     for (const char *name : {"Render", "RenderGraph/depth-prepass", "RenderGraph/forwardplus.clusters", "RenderGraph/gpudriven.cull",
                              "RenderGraph/gpudriven.hiz", "RenderGraph/scene", "RenderGraph/upscale",
@@ -167,7 +167,8 @@ int main(int argc, char **argv)
             game.setInitialTheme(launchOptions.theme);
             game.setInitialTab(launchOptions.tab);
             game.setCaptureInteraction(launchOptions.hoverId, launchOptions.clickId);
-            game.setVSync(launchOptions.vsync);
+            game.setFramePacing(demo::framePacingFor(launchOptions));
+            game.setGpuTimings(launchOptions.gpuTimings);
             game.setInstanceCount(launchOptions.instances);
             game.setGpuDriven(launchOptions.gpuDriven);
             game.setDebugView(launchOptions.debugView, launchOptions.freezeFrustum);

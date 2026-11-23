@@ -17,7 +17,7 @@ son avantage structurel (moins de surcharge du pilote sur de grandes scènes), i
 - Modes : `headless` (appareil hors écran, pas de présentation) et `windowed` (fenêtre réelle, chaîne d'échange, sans synchronisation verticale).
 - Interface : `--ui off` (scène seule) et `--ui full` (interface complète, onglet scène, thème sombre).
 - **Frame CPU** = durée de `Game::run()` / 600 (horloge `steady_clock`, journalisée par `apps/demo/src/main.cpp` : `Perf: loopMs=`). Elle inclut l'attente de l'image précédente (contre-pression du GPU) ; ce n'est pas un temps CPU pur.
-- **Temps GPU par passe** : moyennes du `Profiler` (`Render`, `RenderScene`, `Upscale`, `UIUpscale`) mesurées par les requêtes de temps du RHI (`ProfilerGpuTimerFactory`) ; `SwapBuffers` est une mesure CPU. Les valeurs sont celles du journal `Perf: <nom> avgMs=`.
+- **Temps GPU par passe** : moyennes du `Profiler` (`Render`, `RenderScene`, `Upscale`, `UIUpscale`) mesurées par les requêtes de temps du RHI (`ProfilerGpuTimerFactory`) ; `SwapBuffers` est une mesure CPU. Les valeurs sont celles du journal `Perf: <nom> avgMs=`. Les minuteries GPU ne tournent que si la démo les demande (`--gpu-timings auto|on|off`, `auto` = seulement quand le panneau de performances affiche des temps GPU) : `tools/perf_compare.py` passe `--gpu-timings on`, à faire de même pour toute mesure à la main (sinon `Render` et `RenderGraph/...` sont des temps CPU).
 - Résultats bruts : `docs/BASELINE/perf-opengl-vs-vulkan-ui-off.json` et `...-ui-full.json`.
 
 Reproduire (affichage requis pour le mode `windowed`) :
