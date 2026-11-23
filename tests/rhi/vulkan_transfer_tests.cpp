@@ -352,4 +352,38 @@ TEST_SUITE("rhi/vulkan/transfer")
         gpu->waitIdle();
         gpu.expectNoValidationErrors();
     }
+
+    TEST_CASE("a query pool destroyed while the frame that writes it is still recording is released only after that frame")
+    {
+        // Avant : beginFrame libérait les ressources détruites AVANT d'attendre l'image qui réutilise son emplacement ; un pool
+        // détruit pendant l'enregistrement de l'image N (minuteries GPU coupées) pouvait être libéré pendant que N s'exécutait.
+        if (skipWithoutVulkan())
+            return;
+        Gpu gpu(Backend::kVulkan, {8, 8});
+        REQUIRE(gpu.device);
+        const ShaderHandle vs = gpu.shader(ShaderStage::kVertex, kFullscreenVsGlsl450);
+        const ShaderHandle fs = gpu.shader(ShaderStage::kFragment, R"(#version 450
+layout(location = 0) out vec4 outColor;
+void main() { vec4 c = vec4(0.0); for (int i = 0; i < 400; ++i) c += sin(gl_FragCoord.xyxy * float(i)); outColor = c; })");
+        const PipelineHandle pipeline = gpu.pipeline(vs, fs);
+        const TextureHandle target = gpu.target(Format::kRGBA8Unorm, {1024, 1024});
+        for (int frame = 0; frame < 20; ++frame)
+        {
+            REQUIRE(gpu->beginFrame().has_value());
+            auto pool = gpu->createQueryPool(2, "timer");
+            REQUIRE(pool.has_value());
+            auto encoder = gpu->createCommandEncoder();
+            encoder->writeTimestamp(*pool, 0);
+            encoder->beginRenderPass(passOn(target));
+            encoder->setPipeline(pipeline);
+            encoder->draw(3);
+            encoder->endRenderPass();
+            encoder->writeTimestamp(*pool, 1);
+            gpu->destroy(*pool); // encore référencé par l'encodeur, pas encore soumis
+            REQUIRE(gpu->submit(std::move(encoder)).has_value());
+            REQUIRE(gpu->present().has_value());
+        }
+        gpu->waitIdle();
+        gpu.expectNoValidationErrors();
+    }
 }
