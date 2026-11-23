@@ -7,6 +7,7 @@
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -207,6 +208,15 @@ Result<> GlDevice::init(const DeviceDesc &desc)
                                                   "upper-left origin and a [0, 1] depth range");
     }
     glClipControl(GL_UPPER_LEFT, GL_ZERO_TO_ONE);
+    // Tampons kUpload mappés en permanence (cœur 4.4, ou GL_ARB_buffer_storage sur un pilote 4.3) : `updateBuffer` y devient une
+    // copie mémoire. Sans la fonction, repli sur glBufferData + glBufferSubData (le comportement d'avant). ENGINE_GL_BUFFER_STORAGE=0
+    // force le repli (tests, comparaison de mesures).
+    if (glad_glBufferStorage == nullptr && hasExtension("GL_ARB_buffer_storage"))
+    {
+        glad_glBufferStorage = reinterpret_cast<PFNGLBUFFERSTORAGEPROC>(glfwGetProcAddress("glBufferStorage"));
+    }
+    const char *storageOverride = std::getenv("ENGINE_GL_BUFFER_STORAGE");
+    bufferStorage_ = glad_glBufferStorage != nullptr && (storageOverride == nullptr || std::strcmp(storageOverride, "0") != 0);
     glReady_ = true;
 
     if (desc.validation)
@@ -332,6 +342,11 @@ GlDevice::~GlDevice()
         glDeleteSync(f.sync);
     }
     fences_.clear();
+    for (const UseFence &f : useFences_)
+    {
+        glDeleteSync(f.sync);
+    }
+    useFences_.clear();
     if (!ownsWindow_ && debugCallbackInstalled_)
     {
         // Le contexte retourne à son créateur : le rappel que CE périphérique a posé retient `this`, il ne doit pas lui survivre.
@@ -436,6 +451,46 @@ void GlDevice::flushReleases(bool all)
                   });
 }
 
+bool GlDevice::useCompleted(std::uint64_t serial)
+{
+    if (serial <= completedUse_)
+    {
+        return true;
+    }
+    if (serial >= useSerial_)
+    {
+        return false; // lot en cours : ses commandes sont déjà dans le flux GL, sans clôture
+    }
+    // Clôtures dans l'ordre des lots : la première non franchie arrête la recherche (les suivantes ne peuvent pas l'être).
+    while (!useFences_.empty())
+    {
+        const UseFence &f = useFences_.front();
+        const GLenum status = glClientWaitSync(f.sync, GL_SYNC_FLUSH_COMMANDS_BIT, 0);
+        if (status != GL_ALREADY_SIGNALED && status != GL_CONDITION_SATISFIED)
+        {
+            break; // GL_TIMEOUT_EXPIRED, ou GL_WAIT_FAILED : considéré comme non fini (le repli glBufferSubData reste juste)
+        }
+        completedUse_ = std::max(completedUse_, f.serial);
+        glDeleteSync(f.sync);
+        useFences_.pop_front();
+        if (completedUse_ >= serial)
+        {
+            return true;
+        }
+    }
+    // File vide : toutes les clôtures posées sont franchies. Un lot soumis sans clôture n'a utilisé aucun tampon mappé (ou glFinish
+    // l'a déjà terminé, voir submit) : `serial` est fini.
+    return useFences_.empty();
+}
+
+void GlDevice::pollUseFences()
+{
+    if (!useFences_.empty())
+    {
+        (void)useCompleted(useFences_.back().serial);
+    }
+}
+
 void GlDevice::bindScratchTexture(GLenum target, GLuint id)
 {
     glActiveTexture(GL_TEXTURE0 + kScratchTextureUnit);
@@ -510,11 +565,27 @@ Result<BufferHandle> GlDevice::createBuffer(const BufferDesc &desc, std::span<co
     const GLenum hint = desc.memory == MemoryKind::kReadback ? GL_STREAM_READ
                         : (desc.memory == MemoryKind::kUpload || rewritable) ? GL_DYNAMIC_DRAW
                                                                               : GL_STATIC_DRAW;
+    // kUpload : stockage immuable mappé une fois pour toutes (persistant, cohérent : pas de vidage explicite) ; GL_DYNAMIC_STORAGE_BIT
+    // garde glBufferSubData pour une écriture pendant que le GPU lit encore le tampon (voir updateBuffer).
+    const bool persistent = bufferStorage_ && desc.memory == MemoryKind::kUpload;
+    constexpr GLbitfield kMapFlags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+    void *mapped = nullptr;
     if (id != 0 && !glFailed())
     {
-        glBufferData(GL_COPY_WRITE_BUFFER, static_cast<GLsizeiptr>(desc.size), nullptr, hint);
+        if (persistent)
+        {
+            glBufferStorage(GL_COPY_WRITE_BUFFER, static_cast<GLsizeiptr>(desc.size), nullptr, kMapFlags | GL_DYNAMIC_STORAGE_BIT);
+            if (!glFailed())
+            {
+                mapped = glMapBufferRange(GL_COPY_WRITE_BUFFER, 0, static_cast<GLsizeiptr>(desc.size), kMapFlags);
+            }
+        }
+        else
+        {
+            glBufferData(GL_COPY_WRITE_BUFFER, static_cast<GLsizeiptr>(desc.size), nullptr, hint);
+        }
     }
-    if (id == 0 || glFailed())
+    if (id == 0 || glFailed() || (persistent && mapped == nullptr))
     {
         glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
         glDeleteBuffers(1, &id);
@@ -523,10 +594,19 @@ Result<BufferHandle> GlDevice::createBuffer(const BufferDesc &desc, std::span<co
     }
     if (!initial.empty())
     {
-        glBufferSubData(GL_COPY_WRITE_BUFFER, 0, static_cast<GLsizeiptr>(initial.size()), initial.data());
+        if (mapped != nullptr)
+        {
+            std::memcpy(mapped, initial.data(), initial.size()); // aucun GPU ne l'utilise encore
+        }
+        else
+        {
+            glBufferSubData(GL_COPY_WRITE_BUFFER, 0, static_cast<GLsizeiptr>(initial.size()), initial.data());
+        }
     }
     label(GL_BUFFER, id, desc.debugName);
-    return buffers_.add({id, desc});
+    BufferRes res{id, desc};
+    res.mapped = static_cast<std::byte *>(mapped);
+    return buffers_.add(std::move(res));
 }
 
 Result<TextureDesc> GlDevice::textureDesc(TextureHandle handle) const
@@ -554,6 +634,25 @@ Result<> GlDevice::updateBuffer(BufferHandle handle, std::uint64_t offset, std::
     {
         return makeError(ErrorCode::kInvalidArgument, "updateBuffer: a Readback buffer is not writable by the CPU");
     }
+    if (data.empty())
+    {
+        return {};
+    }
+    if (buffer->mapped != nullptr)
+    {
+        // Chemin rapide : plus aucun lot non terminé ne lit ce tampon (cas d'un anneau par image en vol) -> copie directe, visible
+        // du GPU sans autre appel (cohérent). Sinon glBufferSubData, ordonné dans le flux GL comme avant : le résultat est le même,
+        // seul le coût change.
+        if (useCompleted(buffer->lastUse))
+        {
+            std::memcpy(buffer->mapped + offset, data.data(), data.size());
+            ++mappedWrites_;
+            return {};
+        }
+        buffer->lastUse = useSerial_; // l'écriture ordonnée est elle-même une opération du flux GL
+        batchUsesMapped_ = true;
+    }
+    ++orderedWrites_;
     glBindBuffer(GL_COPY_WRITE_BUFFER, buffer->id);
     glBufferSubData(GL_COPY_WRITE_BUFFER, static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(data.size()), data.data());
     return {};
@@ -1361,6 +1460,7 @@ Result<> GlDevice::present()
     }
     ++frame_;
     flushReleases(false);
+    pollUseFences(); // libère les clôtures de lots franchies, même si aucune écriture mappée ne les interroge
     return {};
 }
 

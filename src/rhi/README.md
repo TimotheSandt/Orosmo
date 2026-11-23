@@ -51,6 +51,13 @@ auto done = (*device)->submit(std::move(encoder));   // renvoie la première err
   `dispatch` et à la fin d'une passe qui a lié ou utilisé du stockage ; dans une passe, une barrière de stockage précède chaque
   dessin dont le programme accède au stockage (SSBO ou image, lu à l'édition de liens) quand un dessin précédent de la passe y
   accédait aussi — que la liaison ait été faite avant ou pendant la passe. Les passes sans stockage (interface) n'en paient rien.
+- **Mémoire `kUpload`** (perf M5) : avec `glBufferStorage` (cœur 4.4, ou `GL_ARB_buffer_storage` sur un pilote 4.3 ; lu à la création
+  du périphérique, `ENGINE_GL_BUFFER_STORAGE=0` force le repli), stockage immuable mappé en permanence (persistant + cohérent).
+  `updateBuffer` y est une **copie mémoire** quand plus aucun lot non terminé ne lit le tampon ; sinon (lié par l'encodeur en cours,
+  ou par un lot soumis dont la clôture n'est pas franchie) c'est `glBufferSubData`, ordonné dans le flux GL comme avant : le résultat ne
+  change jamais, seul le coût. Chaque `submit` qui a utilisé un tampon mappé pose une clôture (`glFenceSync`), interrogée sans attente.
+  Le chemin rapide suppose donc des tampons distincts par image en vol (anneaux du renderer : `FrameRing`, `BatchArena`). Sans
+  `glBufferStorage` : `glBufferData` + `glBufferSubData` (comportement d'avant). Les autres mémoires ne changent pas.
 - **Noms de debug** : `glObjectLabel` sur chaque objet, `glPushDebugGroup` par passe nommée et par `beginDebugGroup`.
 - **Validation** : contexte de debug (`GL_KHR_debug`) ; `Device::validationErrorCount()` compte les messages d'erreur, les tests
   exigent 0.
