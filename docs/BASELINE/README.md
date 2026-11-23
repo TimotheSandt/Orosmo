@@ -145,3 +145,13 @@ passés par toute la chaîne de post-traitement), vérifiée par `make demo-capt
 `reference/scene-opengl-mixed-shadow-dithered-1280x720.png` (REN-39) : `--ui off --scene mixed --shadows on --transparent-shadow dithered`
 (5 images, OpenGL), vérifiée par `make demo-capture`. Sans `--transparent-shadow`, les images par défaut (`--shadows on`, `--scene mixed`)
 sont identiques au pixel près à celles de milestone/M5 sur OpenGL et Vulkan.
+
+## Mise à jour du 2026-11-22 : panneau de performances à quatre niveaux (`--ui hud`)
+
+Le panneau compact (`apps/demo/src/UI/Views/PerformanceView.cui`, `res/themes/hud.json`) a quatre niveaux (`--hud off|fps|full|graph`,
+`Ctrl+F` en fenêtre). Le niveau par défaut, `full`, affiche plus de mesures qu'avant (FPS moyen / 1 % bas / min / max, temps CPU
+par image et son découpage, GPU `Render` et passes actives du graphe, dessins, objets, lumières, backend et pilote, résolutions,
+vsync, modes, mémoire) : **les captures `--ui hud` changent, de façon assumée** (panneau plus large et plus haut). Elles n'ont pas
+d'image de référence à tolérance 0 (les valeurs mesurées changent d'une exécution à l'autre) ; `make demo-vulkan-check` les compare
+toujours entre OpenGL et Vulkan avec sa tolérance. `--ui off` et `--ui full` ne montrent pas ce panneau et ne changent pas, sauf la
+ligne de statistiques de l'onglet Scene, qui affiche les mêmes valeurs qu'avant (FPS de la fenêtre, `Render`, passes `scene` et `ui`).
