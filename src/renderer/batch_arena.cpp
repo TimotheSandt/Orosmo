@@ -5,12 +5,12 @@
 namespace orosmo::renderer
 {
 
-core::Result<BatchArena::Range> BatchArena::upload(rhi::Device &device, const void *encoder, std::span<const std::byte> data, const char *debugName)
+core::Result<BatchArena::Range> BatchArena::upload(rhi::Device &device, std::uint64_t encoderId, std::span<const std::byte> data, const char *debugName)
 {
     constexpr std::uint64_t kAlign = 256;
-    if (encoder != encoder_)
+    if (encoderId != encoderId_)
     {
-        encoder_ = encoder;
+        encoderId_ = encoderId;
         cursor_ = 0;
         retired_.clear();
     }

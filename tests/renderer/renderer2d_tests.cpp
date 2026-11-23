@@ -6,6 +6,7 @@
 #include "renderer/repo_paths.hpp"
 #include "rhi/gpu_fixture.hpp"
 
+#include <orosmo/renderer/batch_arena.hpp>
 #include <orosmo/renderer/canvas_renderer.hpp>
 #include <orosmo/renderer/renderer2d.hpp>
 
@@ -387,6 +388,36 @@ TEST_SUITE("renderer/renderer2d")
             CHECK(s.px(3, 8) == kRed);
             CHECK(s.px(12, 8) == kBlue);
             s.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("R2D-01: the batch arena starts over with each new encoder, even one allocated at the address of the previous one")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            rd::BatchArena arena;
+            const std::vector<std::byte> data(1000, std::byte{7});
+            std::uint64_t firstCapacity = 0;
+            std::uint64_t previousId = 0;
+            for (int frame = 0; frame < 300; ++frame) // 300 images x 3 envois de 1 Ko : 900 Ko sans remise à zéro
+            {
+                auto encoder = gpu->createCommandEncoder();
+                CHECK(encoder->id() != previousId); // identifiant jamais réutilisé, même si l'adresse l'est
+                previousId = encoder->id();
+                for (int call = 0; call < 3; ++call)
+                {
+                    auto range = arena.upload(*gpu.device, encoder->id(), data, "test.arena");
+                    REQUIRE(range.has_value());
+                    CHECK(range->offset == static_cast<std::uint64_t>(call) * 1024U); // plages distinctes dans un encodeur
+                }
+                REQUIRE(gpu->submit(std::move(encoder)).has_value());
+                if (frame == 0)
+                    firstCapacity = arena.capacity();
+            }
+            CHECK(arena.capacity() == firstCapacity); // le tampon ne grandit pas d'image en image
+            gpu.expectNoValidationErrors();
         }
     }
 
