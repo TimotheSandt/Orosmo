@@ -114,6 +114,23 @@ TEST_SUITE("Logger")
         CHECK(text.find("after-clear") != std::string::npos);
     }
 
+    TEST_CASE("memory is bounded: past kMaxKeptLogs messages the oldest are written to the file, then forgotten")
+    {
+        LoggerFile f("bounded");
+        const LogLevel previous = Logger::GetMinimumLevel();
+        Logger::SetMinimumLevel(L_WARNING); // gardés et écrits dans le fichier, pas affichés
+        const std::size_t total = Logger::kMaxKeptLogs + 1000;
+        for (std::size_t i = 0; i < total; ++i)
+            LOG_INFO("bounded message ", i);
+        CHECK(Logger::KeptLogCount() <= Logger::kMaxKeptLogs);
+        Logger::FlushToFile();
+        Logger::SetMinimumLevel(previous);
+        const std::string text = slurp(f.path);
+        CHECK(countOf(text, "bounded message ") == total); // rien de perdu pour le fichier
+        CHECK(text.find("bounded message 0\n") != std::string::npos);
+        CHECK(text.find("bounded message " + std::to_string(total - 1)) != std::string::npos);
+    }
+
     TEST_CASE("concurrent logging from several threads loses nothing")
     {
         LoggerFile f("threads");

@@ -70,7 +70,13 @@ class Logger
     };
 
   public:
+    // Messages gardés en mémoire au plus (au-delà, les plus anciens sont écrits dans le fichier puis oubliés) et profondeur de la
+    // recherche d'un doublon (messages identiques regroupés).
+    static constexpr size_t kMaxKeptLogs = 8192;
+    static constexpr size_t kDuplicateSearchDepth = 64;
+
     static void Initialize(const std::string &filename = "");
+    static size_t KeptLogCount();
     static void Clear();
     static void Print();
     static void SetMinimumLevel(LogLevel level);
@@ -94,7 +100,9 @@ class Logger
   private:
     static void AddLog(LogMessage &&msg);
     static size_t CalculateLogLength(const LogMessage &log);
-    static size_t CalculateNumberOfLines(const LogMessage &log);
+    static size_t CalculateNumberOfLines(const LogMessage &log, size_t terminalWidth);
+    static void FlushLocked(bool announce);
+    static void TrimLocked();
     static std::string FormatTimestamp(const std::chrono::time_point<std::chrono::system_clock> &time);
     static void PrintLog(const LogMessage &log);
     static std::string LevelToString(LogLevel level);
