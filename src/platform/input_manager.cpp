@@ -1,4 +1,5 @@
 #include <orosmo/platform/input_manager.hpp>
+#include <orosmo/platform/window.hpp>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -183,13 +184,12 @@ void InputManager::update()
                                                                                                               : InputState::kRelease);
     }
 
-    // Mouse Position
+    // Mouse Position : celle que garde la Window (rappel de GLFW, sans aller-retour X11) ; relue chez GLFW pour une fenêtre
+    // native sans Window (tests).
     glm::vec2 lastMousePos = this->mouseMoveData.position;
     // GLFW écrit des double : lus dans des double puis convertis (écrire un double dans un float débordait sur le champ suivant).
-    double cursorX = 0.0;
-    double cursorY = 0.0;
-    glfwGetCursorPos(native(window), &cursorX, &cursorY);
-    this->mouseMoveData.position = glm::vec2(static_cast<float>(cursorX), static_cast<float>(cursorY));
+    const glm::dvec2 cursor = cursorPositionOf(window);
+    this->mouseMoveData.position = glm::vec2(static_cast<float>(cursor.x), static_cast<float>(cursor.y));
 
     // Mouse delta
     this->mouseMoveData.delta = this->mouseMoveData.position - lastMousePos;

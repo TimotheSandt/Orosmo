@@ -5,6 +5,7 @@
 #include "vk_translate.hpp"
 
 #include <orosmo/core/log.hpp>
+#include <orosmo/platform/window.hpp>
 
 #include <GLFW/glfw3.h>
 
@@ -62,9 +63,10 @@ namespace
 
 Extent2D framebufferSizeOf(void *window)
 {
+    // Taille gardée par la Window (platform) : pas d'aller-retour avec le serveur d'affichage à chaque image.
     int w = 0;
     int h = 0;
-    glfwGetFramebufferSize(static_cast<GLFWwindow *>(window), &w, &h);
+    platform::framebufferSizeOf(window, w, h);
     return {static_cast<std::uint32_t>(std::max(w, 0)), static_cast<std::uint32_t>(std::max(h, 0))};
 }
 

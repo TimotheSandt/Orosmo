@@ -8,6 +8,8 @@
 #include <orosmo/core/log.hpp>
 #include <orosmo/core/paths.hpp>
 
+#include <unordered_map>
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -32,6 +34,14 @@ namespace orosmo::platform
 namespace
 {
 GLFWwindow *native(void *handle) { return static_cast<GLFWwindow *>(handle); }
+
+// Fenêtres natives créées par une Window (framebufferSizeOf, cursorPositionOf) : le pointeur utilisateur de GLFW pourrait
+// appartenir à un autre code, cette table ne contient que les nôtres. Fil principal seulement (comme GLFW).
+std::unordered_map<void *, Window *> &owners()
+{
+    static std::unordered_map<void *, Window *> table;
+    return table;
+}
 // Initialise GLFW une fois : rappel d'erreur journalisé (reprend celui de l'ancien backend OpenGL).
 bool initializeGlfw()
 {
@@ -123,6 +133,21 @@ void Window::swap(Window &other) noexcept
     std::swap(this->inputManager, other.inputManager);
     std::swap(this->fpsCounter, other.fpsCounter);
     std::swap(this->lastTime, other.lastTime);
+    std::swap(this->framebufferWidth, other.framebufferWidth);
+    std::swap(this->framebufferHeight, other.framebufferHeight);
+    std::swap(this->cursorPosition, other.cursorPosition);
+    std::swap(this->cursorModeValue, other.cursorModeValue);
+    // Les rappels de GLFW retrouvent l'objet par le pointeur utilisateur : il suit la fenêtre native.
+    if (this->window)
+    {
+        glfwSetWindowUserPointer(native(this->window), this);
+        owners()[this->window] = this;
+    }
+    if (other.window)
+    {
+        glfwSetWindowUserPointer(native(other.window), &other);
+        owners()[other.window] = &other;
+    }
 }
 
 int Window::init(const std::function<void()> &beforeCreate)
@@ -156,7 +181,9 @@ int Window::init(const std::function<void()> &beforeCreate)
     glfwSetWindowUserPointer(native(this->window), this);
     WINDOW_CHECK_ERRORS("glfwSetWindowUserPointer");
 
+    owners()[this->window] = this;
     this->setupCallbacks();
+    this->refreshCachedState();
 
     this->changeWindowState(this->parameters.windowState);
     this->inputManager = &InputManager::getInstance(this->window);
@@ -172,6 +199,7 @@ void Window::close()
     }
 
     this->clearCallbacks();
+    owners().erase(this->window);
 
     InputManager::removeInstance(this->window);
     this->inputManager = nullptr;
@@ -198,12 +226,18 @@ void Window::requestClose()
 
 void Window::getFramebufferSize(int &width, int &height) const
 {
-    width = this->parameters.width;
-    height = this->parameters.height;
-    if (this->window)
+    width = this->window ? this->framebufferWidth : this->parameters.width;
+    height = this->window ? this->framebufferHeight : this->parameters.height;
+}
+
+void Window::refreshCachedState()
+{
+    if (!this->window)
     {
-        glfwGetFramebufferSize(native(this->window), &width, &height);
+        return;
     }
+    glfwGetFramebufferSize(native(this->window), &this->framebufferWidth, &this->framebufferHeight);
+    glfwGetCursorPos(native(this->window), &this->cursorPosition.x, &this->cursorPosition.y);
 }
 
 glm::vec2 Window::getContentScale() const
@@ -224,7 +258,14 @@ void Window::setCursorMode(CursorMode mode)
         return;
     }
     const int value = mode == CursorMode::kHidden ? GLFW_CURSOR_HIDDEN : mode == CursorMode::kDisabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL;
+    if (value == this->cursorModeValue)
+    {
+        return; // appelé à chaque image par les contrôleurs : rien à faire
+    }
     glfwSetInputMode(native(this->window), GLFW_CURSOR, value);
+    this->cursorModeValue = value;
+    // Entrer dans le mode « désactivé » ou en sortir déplace le curseur sans rappel : la position est relue.
+    glfwGetCursorPos(native(this->window), &this->cursorPosition.x, &this->cursorPosition.y);
 }
 
 std::string Window::getClipboardText() const
@@ -241,21 +282,14 @@ void Window::setClipboardText(const std::string &text) const
         glfwSetClipboardString(native(this->window), text.c_str());
 }
 
-glm::dvec2 Window::getCursorPosition() const
-{
-    glm::dvec2 position{0.0, 0.0};
-    if (this->window)
-    {
-        glfwGetCursorPos(native(this->window), &position.x, &position.y);
-    }
-    return position;
-}
+glm::dvec2 Window::getCursorPosition() const { return this->window ? this->cursorPosition : glm::dvec2{0.0, 0.0}; }
 
 void Window::setCursorPosition(glm::dvec2 position)
 {
     if (this->window)
     {
         glfwSetCursorPos(native(this->window), position.x, position.y);
+        this->cursorPosition = position; // GLFW ne rappelle pas pour un déplacement demandé par le programme
     }
 }
 
@@ -534,6 +568,25 @@ void Window::setupCallbacks()
                                   }
                               });
 
+    // Taille du tampon d'image et curseur : gardés ici, lus sans aller-retour avec le serveur d'affichage.
+    glfwSetFramebufferSizeCallback(native(this->window),
+                                   [](GLFWwindow *window, int width, int height)
+                                   {
+                                       if (Window *windowObj = static_cast<Window *>(glfwGetWindowUserPointer(window)))
+                                       {
+                                           windowObj->framebufferWidth = width;
+                                           windowObj->framebufferHeight = height;
+                                       }
+                                   });
+    glfwSetCursorPosCallback(native(this->window),
+                             [](GLFWwindow *window, double x, double y)
+                             {
+                                 if (Window *windowObj = static_cast<Window *>(glfwGetWindowUserPointer(window)))
+                                 {
+                                     windowObj->cursorPosition = {x, y};
+                                 }
+                             });
+
     glfwSetWindowPosCallback(native(this->window),
                              [](GLFWwindow *window, int x, int y)
                              {
@@ -590,6 +643,7 @@ void Window::clearCallbacks()
     glfwSetWindowPosCallback(native(this->window), nullptr);
     glfwSetKeyCallback(native(this->window), nullptr);
     glfwSetFramebufferSizeCallback(native(this->window), nullptr);
+    glfwSetCursorPosCallback(native(this->window), nullptr);
     glfwSetWindowIconifyCallback(native(this->window), nullptr);
     glfwSetWindowMaximizeCallback(native(this->window), nullptr);
     glfwSetWindowCloseCallback(native(this->window), nullptr);
@@ -604,6 +658,37 @@ bool Window::isWindowHealthy() const
     }
 
     return true;
+}
+
+void framebufferSizeOf(void *nativeWindow, int &width, int &height)
+{
+    width = 0;
+    height = 0;
+    if (nativeWindow == nullptr)
+    {
+        return;
+    }
+    if (const auto found = owners().find(nativeWindow); found != owners().end())
+    {
+        found->second->getFramebufferSize(width, height);
+        return;
+    }
+    glfwGetFramebufferSize(native(nativeWindow), &width, &height);
+}
+
+glm::dvec2 cursorPositionOf(void *nativeWindow)
+{
+    glm::dvec2 position{0.0, 0.0};
+    if (nativeWindow == nullptr)
+    {
+        return position;
+    }
+    if (const auto found = owners().find(nativeWindow); found != owners().end())
+    {
+        return found->second->getCursorPosition();
+    }
+    glfwGetCursorPos(native(nativeWindow), &position.x, &position.y);
+    return position;
 }
 
 } // namespace orosmo::platform
