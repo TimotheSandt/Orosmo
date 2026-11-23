@@ -320,6 +320,28 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(2, missing).has_value(), "Missing --ui value should be rejected");
     }
 
+    TEST_CASE("launch options parse --hud level (default full, the previous complete panel)")
+    {
+        const char *none[] = {"Orosmo"};
+        const char *fps[] = {"Orosmo", "--hud", "fps"};
+        const char *graph[] = {"Orosmo", "--hud=GRAPH"};
+        const char *off[] = {"Orosmo", "--hud", "off"};
+        Assert(demo::parseLaunchOptions(1, none)->hudLevel == demo::HudLevel::kFull, "--hud defaults to full");
+        Assert(demo::parseLaunchOptions(3, fps)->hudLevel == demo::HudLevel::kFps, "--hud fps should parse to kFps");
+        Assert(demo::parseLaunchOptions(2, graph)->hudLevel == demo::HudLevel::kGraph, "--hud=GRAPH should parse to kGraph");
+        Assert(demo::parseLaunchOptions(3, off)->hudLevel == demo::HudLevel::kOff, "--hud off should parse to kOff");
+
+        const char *invalid[] = {"Orosmo", "--hud", "all"};
+        const char *missing[] = {"Orosmo", "--hud"};
+        Assert(!demo::parseLaunchOptions(3, invalid).has_value(), "Unknown --hud level should be rejected");
+        Assert(demo::parseLaunchOptions(3, invalid).error().code == orosmo::core::ErrorCode::kInvalidArgument, "Invalid --hud returns kInvalidArgument");
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "Missing --hud value should be rejected");
+        std::ostringstream usage;
+        demo::printUsage(usage);
+        Assert(usage.str().find("--hud off|fps|full|graph") != std::string::npos, "--help documents --hud");
+        Assert(usage.str().find("Ctrl+F") != std::string::npos, "--help documents Ctrl+F");
+    }
+
     TEST_CASE("launch options parse --theme")
     {
         const char *dark[] = {"Orosmo", "--theme", "dark"};
@@ -483,6 +505,23 @@ TEST_SUITE("Demo launch options")
         Assert(demo::isBackendAvailable(Backend::kOpenGL), "OpenGL is the RHI backend");
         Assert(!demo::isBackendAvailable(Backend::kMetal), "Metal is not built (M9)");
         Assert(!demo::backendAvailabilityMessage(Backend::kMetal).empty(), "refusing Metal should say why");
+    }
+
+    TEST_CASE("--aa taa with --instances is refused: TAA disabled, with a reason (the instances write no motion vectors)")
+    {
+        using orosmo::renderer::AntiAliasingMode;
+        const demo::AntiAliasingDecision refused = demo::resolveAntiAliasing(AntiAliasingMode::kTaa, 100);
+        CHECK((refused.mode == AntiAliasingMode::kNone));
+        CHECK(refused.message.find("--instances") != std::string::npos);
+        for (const AntiAliasingMode mode : {AntiAliasingMode::kNone, AntiAliasingMode::kFxaa, AntiAliasingMode::kSmaa})
+        {
+            const demo::AntiAliasingDecision kept = demo::resolveAntiAliasing(mode, 100);
+            CHECK((kept.mode == mode));
+            CHECK(kept.message.empty());
+        }
+        const demo::AntiAliasingDecision taa = demo::resolveAntiAliasing(AntiAliasingMode::kTaa, 0);
+        CHECK((taa.mode == AntiAliasingMode::kTaa));
+        CHECK(taa.message.empty());
     }
 
     TEST_CASE("other backend messages are non-empty")

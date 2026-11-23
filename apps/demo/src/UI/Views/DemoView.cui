@@ -88,7 +88,7 @@ view DemoView {
                     Page("Scene") {
                         VBox {
                             Label("Engine: \(state.deviceInfo)").variant("caption").id("deviceInfo")
-                            Label("FPS: \(stats.shown.fps) | Render: \(stats.shown.renderMs) ms | Scene: \(stats.shown.renderSceneMs) ms | UI: \(stats.shown.uiUpscaleMs) ms")
+                            Label(stats.text.summary)
                                 .variant("caption").id("sceneStats")
                             HBox {
                                 Button("Reset camera").onClick(state.requestResetCamera).id("resetCamera")

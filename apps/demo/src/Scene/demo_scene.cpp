@@ -984,24 +984,29 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
         }
         ++shadowFrames_;
     }
+    meshDraws_ = 0;
     if (auto r = renderer.drawMesh(groundMesh_, camera); !r)
     {
         return r;
     }
+    ++meshDraws_;
     if (auto r = renderer.drawMesh(structureMesh_, camera); !r)
     {
         return r;
     }
+    ++meshDraws_;
     if (auto r = renderer.drawMesh(heroMesh_, camera); !r)
     {
         return r;
     }
+    ++meshDraws_;
     for (auto &orbit : orbitMeshes_)
     {
         if (auto r = renderer.drawMesh(orbit, camera); !r)
         {
             return r;
         }
+        ++meshDraws_;
     }
 
     if (instanceRenderer_)

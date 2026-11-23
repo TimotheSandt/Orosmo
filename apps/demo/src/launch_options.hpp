@@ -39,6 +39,15 @@ enum class UiMode : std::uint8_t
     kFull,
 };
 
+// --hud off|fps|full|graph : niveau du panneau de performances (mode d'interface « hud ») ; Ctrl+F passe au suivant.
+enum class HudLevel : std::uint8_t
+{
+    kOff,   // rien d'affiché
+    kFps,   // les FPS seulement
+    kFull,  // toutes les mesures (défaut : le contenu du panneau d'avant, complété)
+    kGraph, // toutes les mesures + l'historique des temps d'image, en bas à droite
+};
+
 // --post none|hdr|bloom|full (REN-17/18) : post-traitements de la scène.
 enum class PostMode : std::uint8_t
 {
@@ -67,6 +76,8 @@ struct LaunchOptions
     bool vsync = false;
     // --ui off|hud|full (défaut : hud).
     UiMode uiMode = UiMode::kHud;
+    // --hud off|fps|full|graph (défaut : full, le panneau complet comme avant ; Ctrl+F fait défiler les niveaux).
+    HudLevel hudLevel = HudLevel::kFull;
     // --theme dark|light|framed (défaut : dark).
     std::string theme = "dark";
     // --tab scene|widgets|controls|color|windows|layout|themes (défaut : scene).
@@ -109,8 +120,14 @@ std::string_view backendDisplayName(orosmo::rhi::Backend api) noexcept;
 std::optional<orosmo::rhi::Backend> parseBackend(std::string_view value) noexcept;
 // « off », « hud », « full » (casse indifférente).
 std::optional<UiMode> parseUiMode(std::string_view value) noexcept;
+// « off », « fps », « full », « graph » (casse indifférente).
+std::optional<HudLevel> parseHudLevel(std::string_view value) noexcept;
+// Niveau suivant de Ctrl+F : off -> fps -> full -> graph -> off.
+HudLevel nextHudLevel(HudLevel level) noexcept;
+std::string_view hudLevelName(HudLevel level) noexcept;
 // « none », « hdr », « bloom », « full » (casse indifférente).
 std::optional<PostMode> parsePostMode(std::string_view value) noexcept;
+std::string_view postModeName(PostMode mode) noexcept;
 // « forward », « forwardplus » / « forward+ » (casse indifférente).
 std::optional<LightingMode> parseLightingMode(std::string_view value) noexcept;
 
@@ -138,5 +155,15 @@ struct BackendDecision
 // si la création a déjà échoué (vide avant la tentative). Seul Vulkan retombe sur OpenGL, sauf `strict` ; Metal et OpenGL
 // indisponibles sont refusés.
 BackendDecision resolveBackend(orosmo::rhi::Backend requested, bool strict, BackendAvailability availability, std::string_view failureReason = {});
+
+// --aa taa avec --instances N : les objets instanciés (InstanceRenderer, culling GPU) n'écrivent pas l'AOV de mouvement que le TAA
+// lit ; leur historique serait reprojeté avec un mouvement nul (traînées). Combinaison refusée : le TAA est désactivé (aucun
+// anticrénelage) et `message` dit pourquoi. Pure, testable sans GPU.
+struct AntiAliasingDecision
+{
+    orosmo::renderer::AntiAliasingMode mode = orosmo::renderer::AntiAliasingMode::kNone;
+    std::string message; // vide si la demande est acceptée telle quelle
+};
+AntiAliasingDecision resolveAntiAliasing(orosmo::renderer::AntiAliasingMode requested, std::uint32_t instances);
 
 } // namespace demo

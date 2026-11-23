@@ -100,6 +100,10 @@ class DemoScene
     // Statistiques du dernier dessin instancié (zéros sans --instances).
     const orosmo::renderer::VisibilityStats &instanceVisibility() const noexcept { return instanceVisibility_; }
     const orosmo::renderer::InstanceDrawStats &instanceDrawStats() const noexcept { return instanceDrawStats_; }
+    // Maillages dessinés par le dernier render (un drawMesh chacun) et lumières de la scène (soleil compris).
+    std::uint32_t meshDraws() const noexcept { return meshDraws_; }
+    std::uint32_t lightCount() const noexcept { return static_cast<std::uint32_t>(lights_.lights().size()); }
+    bool gpuDrivenActive() const noexcept { return gpuDriven_ != nullptr; }
 
   private:
     orosmo::core::Result<> renderInstances(orosmo::renderer::SceneRenderer &renderer, const orosmo::renderer::Camera &camera);
@@ -128,6 +132,7 @@ class DemoScene
     orosmo::renderer::InstanceBatchBuilder instanceBatches_;
     orosmo::renderer::VisibilityStats instanceVisibility_;
     orosmo::renderer::InstanceDrawStats instanceDrawStats_;
+    std::uint32_t meshDraws_ = 0;
     std::uint64_t instanceFrames_ = 0;
     orosmo::renderer::GpuDrivenFeature *gpuDriven_ = nullptr; // possédé par le SceneRenderer
     orosmo::renderer::SceneRenderer *gpuDrivenRenderer_ = nullptr;

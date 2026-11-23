@@ -1,9 +1,11 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "CameraController.h"
 #include "Scene/demo_scene.hpp"
@@ -75,6 +77,8 @@ class Game
     // REN-39 : ombre des vitres de la scène mêlée (sans valeur : elles ne projettent rien).
     void setTransparentShadow(std::optional<orosmo::renderer::TransparentShadowMode> mode) noexcept { transparentShadow = mode; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
+    // --hud (niveau du panneau de performances ; Ctrl+F le change ensuite).
+    void setHudLevel(demo::HudLevel level) noexcept { performance.level = level; }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
     void setCaptureInteraction(std::string hover, std::string click)
@@ -84,6 +88,7 @@ class Game
     }
     void setVSync(bool enabled)
     {
+        vsyncEnabled = enabled;
         if (device)
         {
             device->setVSync(enabled);
@@ -93,6 +98,8 @@ class Game
     bool captureSucceeded() const noexcept { return !captureFailed && (captureDirectory.empty() || captureDone); }
     // Sans fenêtre : faux si une image n'a pas pu être commencée ou a été refusée (submit ou scène), avec ou sans capture.
     bool headlessSucceeded() const noexcept { return !headlessFrameFailed; }
+    // Temps CPU de chaque image rendue par run() (ms), dans l'ordre : bilan de fin (médiane, première image, maximum).
+    const std::vector<float> &frameTimes() const noexcept { return frameTimesMs; }
 
   private:
     Game(bool headless, int width, int height, orosmo::rhi::Backend backend);
@@ -106,6 +113,10 @@ class Game
     void applySceneParams();
     void resetCamera();
     orosmo::core::Result<> createUi();
+    void warmUp();
+    void recordFrameTime(std::chrono::steady_clock::time_point frameStart);
+    // Mesures du panneau de performances (4 fois par seconde) : tout ce qui est affiché vient d'ici.
+    PerformanceSample samplePerformance() const;
     orosmo::core::Result<> createPostEffects();
     bool loadFullUiTheme(bool reportAsError);
     bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
@@ -181,4 +192,10 @@ class Game
     std::optional<orosmo::core::Error> sceneError;
     bool uiFailed = false;
     bool headless = false;
+    std::vector<float> frameTimesMs;
+    std::chrono::steady_clock::duration captureTime{}; // écriture des PNG de l'image en cours (exclue de son temps)
+    std::optional<std::chrono::steady_clock::time_point> lastFrameStart; // intervalle entre images (FPS du panneau)
+    bool vsyncEnabled = false;
+    bool forwardPlusActive = false;
+    orosmo::renderer::ShadowFeature *shadowFeature = nullptr; // possédé par sceneRenderer (--shadows on)
 };

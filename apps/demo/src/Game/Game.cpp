@@ -1,6 +1,7 @@
 #include "Game.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -10,6 +11,7 @@
 #include "UI/Views/PerformanceView.gen.h"
 #include <orosmo/core/log.hpp>
 #include <orosmo/core/paths.hpp>
+#include <orosmo/core/system.hpp>
 #include <orosmo/renderer/draw_list.hpp>
 #include <orosmo/renderer/forward_plus.hpp>
 #include <orosmo/renderer/image.hpp>
@@ -134,7 +136,14 @@ orosmo::core::Result<> Game::createGraphics()
         this->uiState.deviceInfo = std::string(demo::backendDisplayName(this->selectedBackend));
     }
 
-    this->shaders = std::make_unique<rd::ShaderLibrary>(*this->device);
+    // Cache SPIR-V sur disque (à côté du cache de pipelines Vulkan, Orosmo/pipeline_cache) : les lancements suivants ne
+    // recompilent plus le GLSL (shaderc). Clé = source prétraitée et étage : un shader modifié est recompilé.
+    rd::ShaderLibraryConfig shaderConfig;
+    if (const std::filesystem::path data = orosmo::core::system::userDataDirectory(); !data.empty())
+    {
+        shaderConfig.cacheDirectory = data / "Orosmo" / "shader_cache";
+    }
+    this->shaders = std::make_unique<rd::ShaderLibrary>(*this->device, std::move(shaderConfig));
     this->pipelines = std::make_unique<rd::PipelineCache>(*this->device);
     auto createdSceneRenderer = rd::SceneRenderer::create(*this->device, *this->shaders, *this->pipelines, {.shaderDirectory = kShaderDirectory});
     if (!createdSceneRenderer)
@@ -285,6 +294,14 @@ orosmo::core::Result<> Game::init()
     {
         return orosmo::core::makeError(set.error().code, "Failed to set the debug view: " + set.error().message);
     }
+    // Le TAA lit l'AOV de mouvement, que les objets instanciés n'écrivent pas : combinaison refusée (TAA désactivé), avant
+    // la déclaration des AOV et DemoScene::initInstances.
+    if (const demo::AntiAliasingDecision aa = demo::resolveAntiAliasing(this->antiAliasingMode, this->instanceCount); !aa.message.empty())
+    {
+        LOG_WARNING(aa.message);
+        std::cerr << aa.message << '\n';
+        this->antiAliasingMode = aa.mode;
+    }
     // REN-19 : le TAA lit le mouvement et la profondeur linéaire ; demandés ici pour que le programme de maillage les écrive (le
     // plugin, enregistré plus tard après les plugins de la scène, les exige aussi).
     if (this->antiAliasingMode == rd::AntiAliasingMode::kTaa)
@@ -305,6 +322,7 @@ orosmo::core::Result<> Game::init()
         if (enabled)
         {
             forwardPlus = true;
+            this->forwardPlusActive = true;
             LOG_INFO("Lighting: clustered forward+ (", (*enabled)->settings().gridX, "x", (*enabled)->settings().gridY, "x",
                      (*enabled)->settings().gridZ, " clusters, ", (*enabled)->settings().maxLightsPerCluster, " lights per cluster)");
         }
@@ -328,6 +346,7 @@ orosmo::core::Result<> Game::init()
             return std::unexpected(added.error());
         }
         shadowFeature = static_cast<rd::ShadowFeature *>(*added);
+        this->shadowFeature = shadowFeature;
         this->scene->setShadows(shadowFeature);
     }
     this->scene->setDebugOptions(this->debugView, this->freezeFrustum);
@@ -382,9 +401,62 @@ orosmo::core::Result<> Game::init()
     {
         return created;
     }
+    this->warmUp();
 
     LOG_INFO("Game initialized");
     return {};
+}
+
+// Préchauffe (fenêtre seulement) : le premier dessin de la scène, du HUD et de l'onglet courant de l'interface complète compile
+// les shaders, crée les pipelines, construit les atlas de glyphes (un par taille de police) et téléverse les textures. Fait dans
+// la boucle, ce travail figeait la première image de chaque mode (jusqu'à 2 s à la première ouverture de l'interface complète).
+// Ici, avant la boucle : une image par mode, encodée et soumise mais jamais présentée (le backbuffer est réécrit par la première
+// vraie image). Sautée sans fenêtre : les captures et les tests n'en ont pas besoin et leurs images n'en dépendent pas.
+void Game::warmUp()
+{
+    if (this->headless)
+    {
+        return;
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const demo::UiMode savedMode = this->uiMode;
+    this->refreshViewSize();
+    const glm::vec2 viewport{static_cast<float>(this->viewWidth), static_cast<float>(this->viewHeight)};
+    ui::InputFrame idle;
+    idle.deltaTime = 0.0f; // aucune entrée, aucune animation : l'état de l'interface ne bouge pas
+
+    // L'onglet ouvert par Échap seulement : chaque onglet peut demander d'autres tailles de police (0,3 à 1,5 s d'atlas chacun),
+    // tous les préparer ajouterait plusieurs secondes au démarrage.
+    int frames = 0;
+    for (const demo::UiMode mode : {demo::UiMode::kOff, demo::UiMode::kHud, demo::UiMode::kFull})
+    {
+        this->uiMode = mode;
+        if (mode == demo::UiMode::kFull && this->fullUi)
+        {
+            this->fullUi->update(idle, viewport);
+        }
+        else if (mode == demo::UiMode::kHud && this->hudUi)
+        {
+            this->hudUi->update(idle, viewport);
+        }
+        this->uiState.refreshLiveImages(mode == demo::UiMode::kFull && this->fullUi != nullptr);
+        if (!this->beginFrame())
+        {
+            break;
+        }
+        this->render();
+        this->gpuTimers->setEncoder(nullptr);
+        if (auto submitted = this->device->submit(std::move(this->frameEncoder)); !submitted)
+        {
+            LOG_WARNING("Warm-up: frame refused: ", submitted.error().message);
+        }
+        this->sceneError.reset();
+        this->uiFailed = false;
+        ++frames;
+    }
+    this->device->waitIdle();
+    this->uiMode = savedMode;
+    LOG_INFO("Warm-up: ", frames, " frames in ", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count(), " ms");
 }
 
 void Game::stop()
@@ -489,7 +561,8 @@ void Game::run()
         const std::uint32_t totalFrames = std::max(this->captureFrames, 1u);
         for (std::uint32_t frame = 0; frame < totalFrames; ++frame)
         {
-            this->update();
+            const auto frameStart = std::chrono::steady_clock::now();
+            Profiler::Profile("CPU/Update", [&]() { this->update(); });
             if (this->headlessFrameFailed || this->captureFailed)
             {
                 return;
@@ -502,6 +575,7 @@ void Game::run()
             }
             Profiler::ProfileGPU("Render", &Game::render, this);
             this->endFrame();
+            this->recordFrameTime(frameStart);
             if (this->headlessFrameFailed || this->captureFailed)
             {
                 return;
@@ -516,7 +590,8 @@ void Game::run()
             continue;
         }
 
-        this->update();
+        const auto frameStart = std::chrono::steady_clock::now();
+        Profiler::Profile("CPU/Update", [&]() { this->update(); });
         if (this->window.shouldClose())
         {
             break;
@@ -527,7 +602,78 @@ void Game::run()
         }
         Profiler::ProfileGPU("Render", &Game::render, this);
         this->endFrame();
+        this->recordFrameTime(frameStart);
     }
+}
+
+// Temps CPU d'une image : de la mise à jour à la fin de la présentation (sans l'attente du limiteur de Window::newFrame ni
+// l'écriture des captures PNG).
+void Game::recordFrameTime(std::chrono::steady_clock::time_point frameStart)
+{
+    const auto elapsed = std::chrono::steady_clock::now() - frameStart - this->captureTime;
+    this->captureTime = {};
+    const float cpuMs = std::chrono::duration<float, std::milli>(elapsed).count();
+    this->frameTimesMs.push_back(cpuMs);
+    const float intervalMs = this->lastFrameStart ? std::chrono::duration<float, std::milli>(frameStart - *this->lastFrameStart).count() : 0.0f;
+    this->lastFrameStart = frameStart;
+    // GPU : dernière mesure résolue de « Render » (requêtes de temps, quelques images de retard) ; 0 sans requêtes de temps.
+    const float gpuMs = this->device->capabilities().timestampQueries
+                            ? static_cast<float>(static_cast<double>(Profiler::GetLastTime("Render").count()) * 1e-6)
+                            : 0.0f;
+    this->performance.pushFrame(cpuMs, gpuMs, intervalMs);
+}
+
+PerformanceSample Game::samplePerformance() const
+{
+    PerformanceSample s;
+    this->performance.fpsFromHistory(s);
+    s.frameCpuMs = this->performance.averageCpuMs();
+    s.windowFps = this->window.getAverageFPS();
+    if (this->device->capabilities().timestampQueries)
+    {
+        s.gpuMs = Profiler::GetAverageTimeMs("Render");
+        for (const std::string &pass : this->sceneRenderer->renderGraph().executionOrder())
+        {
+            s.gpuPasses.emplace_back(pass, Profiler::GetAverageTimeMs(this->sceneRenderer->renderGraph().profilePrefix() + pass));
+        }
+    }
+    s.updateMs = Profiler::GetAverageTimeMs("CPU/Update");
+    s.recordMs = Profiler::GetAverageTimeMs("RecordScene");
+    s.graphMs = Profiler::GetAverageTimeMs("CPU/Graph");
+    s.submitMs = Profiler::GetAverageTimeMs("CPU/Submit");
+    s.presentMs = Profiler::GetAverageTimeMs("SwapBuffers");
+    if (this->scene)
+    {
+        s.sceneMeshes = this->scene->meshDraws();
+        s.lights = this->scene->lightCount();
+        if (this->instanceCount > 0 && !this->scene->gpuDrivenActive())
+        {
+            s.instancedDraws = this->scene->instanceDrawStats().drawCalls;
+            s.instances = this->scene->instanceDrawStats().instances;
+            s.visibleObjects = this->scene->instanceVisibility().cull.visible;
+            s.objects = this->scene->instanceVisibility().objects;
+        }
+    }
+    if (this->shadowFeature != nullptr)
+    {
+        s.shadowDraws = this->shadowFeature->stats().drawCalls;
+    }
+    if (this->uiMode != demo::UiMode::kOff && this->canvas)
+    {
+        s.uiDraws = this->canvas->stats().drawCalls;
+    }
+    s.backend = std::string(demo::backendDisplayName(this->selectedBackend));
+    s.device = this->uiState.deviceInfo;
+    s.outputWidth = static_cast<std::uint32_t>(std::max(this->pixelWidth, 0));
+    s.outputHeight = static_cast<std::uint32_t>(std::max(this->pixelHeight, 0));
+    s.renderWidth = static_cast<std::uint32_t>(std::max(this->sceneRenderer->frameWidth(), 0));
+    s.renderHeight = static_cast<std::uint32_t>(std::max(this->sceneRenderer->frameHeight(), 0));
+    s.renderScale = this->sceneRenderer->renderScale();
+    s.vsync = this->vsyncEnabled && !this->headless;
+    s.modes = std::string("AA ") + std::string(rd::toString(this->antiAliasingMode)) + "   post " + std::string(demo::postModeName(this->postMode)) +
+              "   shadows " + (this->shadowFeature != nullptr ? "on" : "off") + "   lighting " + (this->forwardPlusActive ? "forward+" : "forward");
+    s.residentMiB = processResidentMiB();
+    return s;
 }
 
 void Game::processInput(bool toggleUiJustPressed)
@@ -618,6 +764,17 @@ void Game::update()
             deltaTime = fps > 0.0 ? static_cast<float>(1.0 / fps) : kFixedStep;
             platform::InputManager &inputManager = platform::InputManager::getInstance(this->window.getWindow());
             escapeJustPressed = inputManager.isKeyJustPressed(platform::KeyButton::kEscape);
+            // Ctrl+F : niveau suivant du panneau de performances, sauf si un champ de l'interface complète a le clavier.
+            const bool ctrl = inputManager.isKeyPressed(platform::KeyButton::kLeftControl) || inputManager.isKeyPressed(platform::KeyButton::kRightControl) ||
+                              inputManager.isKeyJustPressed(platform::KeyButton::kLeftControl) ||
+                              inputManager.isKeyJustPressed(platform::KeyButton::kRightControl);
+            const bool uiHasKeyboard = this->uiMode == demo::UiMode::kFull && this->fullUi && this->fullUi->wantsKeyboard();
+            if (ctrl && !uiHasKeyboard && inputManager.isKeyJustPressed(platform::KeyButton::kF))
+            {
+                this->performance.cycleLevel();
+                this->performance.sinceRefresh = PerformanceStats::kRefreshSeconds; // textes du nouveau niveau dès cette image
+                LOG_INFO("HUD level: ", demo::hudLevelName(this->performance.level));
+            }
             f1JustPressed = inputManager.isKeyJustPressed(platform::KeyButton::kF1);
             this->processInput(escapeJustPressed || f1JustPressed);
             if (this->uiMode != demo::UiMode::kFull)
@@ -628,7 +785,7 @@ void Game::update()
     }
 
     this->scene->update(deltaTime, this->uiState.scene);
-    this->performance.tick(deltaTime, [&]() { return samplePerformance(this->window.getAverageFPS()); });
+    this->performance.tick(deltaTime, [&]() { return this->samplePerformance(); });
 
     const glm::vec3 forward = this->camera.orientation();
     this->uiState.cameraYawRadians = std::atan2(forward.x, -forward.z);
@@ -712,6 +869,8 @@ void Game::update()
         hudInput.deltaTime = deltaTime;
         this->hudUi->update(hudInput, viewport);
     }
+    // Après la mise à jour de l'interface (onglet et réglages de cette image), avant son dessin par render().
+    this->uiState.refreshLiveImages(this->uiMode == demo::UiMode::kFull && this->fullUi != nullptr);
 }
 
 bool Game::loadFullUiTheme(bool reportAsError)
@@ -923,7 +1082,8 @@ void Game::render()
     {
         keep(this->mixed->render(*this->sceneRenderer, this->camera, static_cast<float>(this->renderedFrames) / 60.0f), "mixed scene");
     }
-    keep(this->sceneRenderer->endFrame({this->composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame");
+    Profiler::Profile("CPU/Graph",
+                      [&]() { keep(this->sceneRenderer->endFrame({this->composed.color(0), rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame"); });
 
     // Graphe interrompu (scène refusée) : l'interface et la présentation sont encodées quand même, comme avant le graphe.
     if (!this->overlay->uiDone)
@@ -946,7 +1106,7 @@ void Game::present(rhi::CommandEncoder &encoder, const rhi::TextureHandle &compo
 void Game::endFrame()
 {
     this->gpuTimers->setEncoder(nullptr);
-    const auto result = this->device->submit(std::move(this->frameEncoder));
+    const auto result = Profiler::Profile("CPU/Submit", [&]() { return this->device->submit(std::move(this->frameEncoder)); });
     if (!result)
     {
         LOG_ERROR(1, "Frame: ", result.error().message);
@@ -973,6 +1133,8 @@ void Game::endFrame()
 
     ++this->renderedFrames;
 
+    // Les enregistrements PNG (lecture GPU, encodage) ne comptent pas dans le temps de l'image (recordFrameTime).
+    const auto captureStart = std::chrono::steady_clock::now();
     if (this->manualCapturePending)
     {
         this->manualCapturePending = false;
@@ -1026,6 +1188,7 @@ void Game::endFrame()
         }
         this->window.requestClose();
     }
+    this->captureTime = std::chrono::steady_clock::now() - captureStart;
 
     Profiler::Profile("SwapBuffers", [&]() { (void)this->device->present(); });
 }
