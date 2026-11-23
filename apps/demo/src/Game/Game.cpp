@@ -621,6 +621,14 @@ void Game::recordFrameTime(std::chrono::steady_clock::time_point frameStart)
                             ? static_cast<float>(static_cast<double>(Profiler::GetLastTime("Render").count()) * 1e-6)
                             : 0.0f;
     this->performance.pushFrame(cpuMs, gpuMs, intervalMs);
+    // Diagnostic des gels : une image en fenêtre au-delà de kFrameSpikeMs est journalisée avec la part de la mise à jour (le
+    // reste est le rendu, l'encodage et la présentation). Les premières images (préparation) ne comptent pas.
+    constexpr float kFrameSpikeMs = 200.0f;
+    if (!this->headless && this->frameTimesMs.size() > 10 && cpuMs > kFrameSpikeMs)
+    {
+        LOG_WARNING("Frame spike: ", cpuMs, " ms (update ", static_cast<double>(Profiler::GetLastTime("CPU/Update").count()) * 1e-6,
+                    " ms, interval ", intervalMs, " ms, ", this->pixelWidth, "x", this->pixelHeight, ")");
+    }
 }
 
 PerformanceSample Game::samplePerformance() const
