@@ -54,27 +54,14 @@ core::Result<std::unique_ptr<SceneRenderer>> SceneRenderer::create(rhi::Device &
     }
     renderer->meshProgram_ = *program;
     renderer->shaderDirectory_ = config.shaderDirectory;
-    rhi::BufferDesc cb;
-    cb.size = sizeof(CameraData);
-    cb.usage = rhi::BufferUsage::kUniform | rhi::BufferUsage::kCopyDst;
-    cb.debugName = "camera";
-    auto camera = GpuBuffer::create(device, cb);
-    if (!camera)
-    {
-        return std::unexpected(camera.error());
-    }
-    renderer->cameraBuffer_ = std::move(*camera);
-    rhi::BufferDesc fb;
-    fb.size = sizeof(FrameData);
-    fb.usage = rhi::BufferUsage::kUniform | rhi::BufferUsage::kCopyDst;
-    fb.debugName = "frame.data";
-    auto frameBuffer = GpuBuffer::create(device, fb);
-    if (!frameBuffer)
-    {
-        return std::unexpected(frameBuffer.error());
-    }
-    renderer->frameBuffer_ = std::move(*frameBuffer);
-    renderer->frameResources_.buffer = renderer->frameBuffer_.handle();
+    // Anneau des données par image : FrameData à 0 (FrameResources::buffer la lit là), la caméra et les tranches du modèle après,
+    // chacune alignée pour un tampon uniforme (décalages dynamiques du groupe 2).
+    const std::uint64_t alignment = std::max<std::uint64_t>(device.capabilities().minUniformAlignment, 1);
+    renderer->ring_ = FrameRing(rhi::BufferUsage::kUniform | rhi::BufferUsage::kVertex, "scene.frame-ring", std::max(config.framesInFlight, 1u));
+    renderer->cameraOffset_ = alignUp(sizeof(FrameData), alignment);
+    renderer->modelBase_ = alignUp(renderer->cameraOffset_ + sizeof(CameraData), alignment);
+    renderer->modelSliceStride_ = alignUp(Mesh::kModelBlockSize, alignment);
+    renderer->slotGroups_.resize(renderer->ring_.framesInFlight());
     renderer->frameResources_.data = &renderer->frameData_;
     renderer->graph_.setFrameResources(&renderer->frameResources_);
     auto lights = LightManager::create(device, 1);
@@ -104,8 +91,11 @@ SceneRenderer::~SceneRenderer()
     }
     graph_.reset(); // les passes retiennent des pointeurs vers ce renderer et ses plugins
     features_.clear();
-    device_.destroy(frameGroup_);
-    device_.destroy(modelSliceGroup_);
+    for (SlotGroups &groups : slotGroups_)
+    {
+        device_.destroy(groups.frame);
+        device_.destroy(groups.model);
+    }
 }
 
 core::Result<RenderFeature *> SceneRenderer::addFeature(std::unique_ptr<RenderFeature> feature)
@@ -309,28 +299,34 @@ bool sameEntries(const std::vector<rhi::BindGroupEntry> &a, const std::vector<rh
 
 core::Result<> SceneRenderer::rebuildFrameGroup(LightManager &lights)
 {
-    if (!frameGroup_.isNull() && groupCamera_ == cameraBuffer_.handle() && groupLights_ == lights.buffer().handle() &&
-        sameEntries(groupFeatureBindings_, featureFrameBindings_))
+    // Un groupe 0 par zone de l'anneau (son tampon change d'une zone à l'autre), refait seulement si une de ses liaisons change.
+    SlotGroups &slot = slotGroups_[ring_.slot()];
+    const rhi::BufferHandle buffer = ring_.buffer();
+    if (!slot.frame.isNull() && slot.buffer == buffer && slot.lights == lights.buffer().handle() && sameEntries(slot.features, featureFrameBindings_))
     {
+        frameGroup_ = slot.frame;
+        frameResources_.group = frameGroup_;
         return {};
     }
     rhi::BindGroupDesc desc;
-    desc.entries.push_back({.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = cameraBuffer_.handle(), .size = sizeof(CameraData)});
+    desc.entries.push_back(
+        {.binding = 0, .type = rhi::BindingType::kUniformBuffer, .buffer = buffer, .offset = cameraOffset_, .size = sizeof(CameraData)});
     desc.entries.push_back({.binding = 1, .type = rhi::BindingType::kStorageBuffer, .buffer = lights.buffer().handle()});
-    desc.entries.push_back({.binding = kFrameDataBinding, .type = rhi::BindingType::kUniformBuffer, .buffer = frameBuffer_.handle(), .size = sizeof(FrameData)});
+    desc.entries.push_back({.binding = kFrameDataBinding, .type = rhi::BindingType::kUniformBuffer, .buffer = buffer, .offset = 0, .size = sizeof(FrameData)});
     desc.entries.insert(desc.entries.end(), featureFrameBindings_.begin(), featureFrameBindings_.end());
-    desc.debugName = "scene.frame";
+    desc.debugName = "scene.frame[" + std::to_string(ring_.slot()) + "]";
     auto group = device_.createBindGroup(desc);
     if (!group)
     {
         return std::unexpected(group.error());
     }
-    device_.destroy(frameGroup_);
-    frameGroup_ = *group;
+    device_.destroy(slot.frame); // destruction différée par le RHI : une image en vol a pu le lier
+    slot.frame = *group;
+    slot.buffer = buffer;
+    slot.lights = lights.buffer().handle();
+    slot.features = featureFrameBindings_;
+    frameGroup_ = slot.frame;
     frameResources_.group = frameGroup_;
-    groupCamera_ = cameraBuffer_.handle();
-    groupLights_ = lights.buffer().handle();
-    groupFeatureBindings_ = featureFrameBindings_;
     return {};
 }
 
@@ -408,6 +404,12 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
             }
         }
     }
+    // Zone de l'anneau de CETTE image (frameSerial_ après incrément) : son tampon existe avant les dessins (groupe 0 complet).
+    ring_.beginFrame(frameSerial_ + 1);
+    if (auto r = ring_.reserve(device_, modelBase_); !r)
+    {
+        return std::unexpected(r.error());
+    }
     if (auto r = rebuildFrameGroup(activeLights()); !r)
     {
         return r;
@@ -416,7 +418,7 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
     prepassThisFrame_ = depthPrepass_;
     draws_.clear();
     debugVertices_.clear();
-    modelSliceBytes_.clear();
+    ringBytes_.assign(modelBase_, std::byte{0}); // en-tête (FrameData, caméra), rempli à endFrame
     encoder_ = &encoder;
     frameOpen_ = true;
     ++frameSerial_;
@@ -425,7 +427,7 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
 
 core::Result<> SceneRenderer::setCamera(Camera &camera)
 {
-    if (!cameraBuffer_.valid())
+    if (blit_ == nullptr)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::setCamera: not created");
     }
@@ -435,8 +437,8 @@ core::Result<> SceneRenderer::setCamera(Camera &camera)
     cameraView_ = cameraRelative_ ? camera.relativeViewMatrix() : camera.viewMatrix();
     cameraProjection_ = camera.projectionMatrix();
     cameraWorld_ = glm::dvec3(camera.position());
-    const CameraData data = camera.data(cameraRelative_);
-    return cameraBuffer_.update(0, std::as_bytes(std::span(&data, 1)));
+    cameraData_ = camera.data(cameraRelative_); // envoyée avec les données de l'image (endFrame), dans sa zone de l'anneau
+    return {};
 }
 
 core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t modelOffset)
@@ -536,7 +538,9 @@ core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
     const TransformHistory history = aovActive_.has(Aov::kMotion)
                                                ? TransformHistory{frameIndex_ + 1, hasPreviousFrame_ ? previousCameraOrigin_ : cameraOrigin_}
                                                : TransformHistory{};
-    if (auto r = mesh.uploadTransform(cameraOrigin_, history); !r)
+    // Bloc calculé côté CPU seulement : la tranche de l'image (anneau) le porte au GPU ; le tampon propre du maillage n'est plus
+    // réécrit à chaque image (Mesh::uploadTransform le met à jour pour qui le lit lui-même).
+    if (auto r = mesh.prepareTransform(cameraOrigin_, history); !r)
     {
         return r;
     }
@@ -559,58 +563,61 @@ core::Result<std::uint32_t> SceneRenderer::recordModelSlice(const Mesh &mesh)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::recordModelSlice: no frame is open");
     }
-    if (modelSliceStride_ == 0)
-    {
-        const std::uint64_t alignment = std::max<std::uint64_t>(device_.capabilities().minUniformAlignment, 1);
-        modelSliceStride_ = (Mesh::kModelBlockSize + alignment - 1) / alignment * alignment;
-    }
-    const std::size_t offset = modelSliceBytes_.size();
+    // Décalage dans la zone de l'anneau de l'image (après l'en-tête FrameData + caméra) : c'est directement le décalage dynamique
+    // du groupe 2.
+    const std::size_t offset = ringBytes_.size();
     if (offset + modelSliceStride_ > std::numeric_limits<std::uint32_t>::max())
     {
         return makeError(ErrorCode::kOutOfRange, "SceneRenderer::recordModelSlice: too many draws in one frame");
     }
-    modelSliceBytes_.resize(offset + modelSliceStride_, std::byte{0});
+    ringBytes_.resize(offset + modelSliceStride_, std::byte{0});
     const std::span<const std::byte> block = mesh.modelBlock();
-    std::memcpy(modelSliceBytes_.data() + offset, block.data(), block.size());
+    std::memcpy(ringBytes_.data() + offset, block.data(), block.size());
     return static_cast<std::uint32_t>(offset);
 }
 
-core::Result<> SceneRenderer::uploadModelSlices()
+core::Result<> SceneRenderer::uploadFrameRing()
 {
-    if (modelSliceBytes_.empty())
+    // En-tête : FrameData (calculé par updateFrameData) et la dernière caméra donnée.
+    std::memcpy(ringBytes_.data(), &frameData_, sizeof(FrameData));
+    std::memcpy(ringBytes_.data() + cameraOffset_, &cameraData_, sizeof(CameraData));
+    // Lignes de debug de l'image, à la suite (sommets : même tampon, usage kVertex).
+    debugBase_ = alignUp(ringBytes_.size(), 256);
+    if (!debugVertices_.empty())
     {
-        return {};
+        const std::span<const std::byte> lines = std::as_bytes(std::span(debugVertices_));
+        ringBytes_.resize(debugBase_ + lines.size(), std::byte{0});
+        std::memcpy(ringBytes_.data() + debugBase_, lines.data(), lines.size());
     }
-    const std::uint64_t bytes = modelSliceBytes_.size();
-    if (!modelSlices_.valid() || modelSlices_.size() < bytes)
+    if (auto r = ring_.reserve(device_, ringBytes_.size()); !r)
     {
-        rhi::BufferDesc desc;
-        desc.size = std::max<std::uint64_t>(bytes * 2, 16 * modelSliceStride_); // croissance géométrique : rarement recréé
-        desc.usage = rhi::BufferUsage::kUniform | rhi::BufferUsage::kCopyDst;
-        desc.debugName = "scene.model-slices";
-        auto buffer = GpuBuffer::create(device_, desc);
-        if (!buffer)
-        {
-            return std::unexpected(buffer.error());
-        }
+        return std::unexpected(r.error());
+    }
+    // Groupe 2 (tranches du modèle) de la zone : refait seulement quand son tampon change (création, croissance).
+    SlotGroups &slot = slotGroups_[ring_.slot()];
+    if (slot.model.isNull() || slot.modelBuffer != ring_.buffer())
+    {
         rhi::BindGroupDesc group;
         group.entries.push_back({.binding = 0,
                                  .type = rhi::BindingType::kUniformBuffer,
-                                 .buffer = buffer->handle(),
+                                 .buffer = ring_.buffer(),
                                  .size = Mesh::kModelBlockSize,
                                  .dynamicOffset = true});
-        group.debugName = "scene.model-slices";
+        group.debugName = "scene.model-slices[" + std::to_string(ring_.slot()) + "]";
         auto created = device_.createBindGroup(group);
         if (!created)
         {
             return std::unexpected(created.error());
         }
-        device_.destroy(modelSliceGroup_); // destruction différée par le RHI : l'image précédente a pu le lier
-        modelSliceGroup_ = *created;
-        modelSlices_ = std::move(*buffer);
-        frameResources_.modelGroup = modelSliceGroup_;
+        device_.destroy(slot.model); // destruction différée par le RHI : une image en vol a pu le lier
+        slot.model = *created;
+        slot.modelBuffer = ring_.buffer();
     }
-    return modelSlices_.update(0, std::span<const std::byte>(modelSliceBytes_));
+    modelSliceGroup_ = slot.model;
+    frameResources_.modelGroup = modelSliceGroup_;
+    frameResources_.buffer = ring_.buffer();
+    // Une seule écriture pour toute l'image, dans une zone que plus aucune image en vol ne lit.
+    return ring_.write(0, std::span<const std::byte>(ringBytes_));
 }
 
 core::Result<SceneDrawInfo> SceneRenderer::sceneDrawInfo() const
@@ -699,29 +706,6 @@ core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
     return {};
 }
 
-core::Result<> SceneRenderer::uploadDebugLines()
-{
-    if (debugVertices_.empty())
-    {
-        return {};
-    }
-    const std::uint64_t bytes = debugVertices_.size() * sizeof(float);
-    if (!debugBuffer_.valid() || debugBuffer_.size() < bytes)
-    {
-        rhi::BufferDesc desc;
-        desc.size = std::max<std::uint64_t>(bytes, 64 * 1024);
-        desc.usage = rhi::BufferUsage::kVertex | rhi::BufferUsage::kCopyDst;
-        desc.debugName = "debug.lines";
-        auto buffer = GpuBuffer::create(device_, desc);
-        if (!buffer)
-        {
-            return std::unexpected(buffer.error());
-        }
-        debugBuffer_ = std::move(*buffer);
-    }
-    return debugBuffer_.update(0, std::as_bytes(std::span(debugVertices_)));
-}
-
 core::Result<> SceneRenderer::playDraws(rhi::CommandEncoder &e, bool prepass)
 {
     for (const SceneDraw &draw : draws_)
@@ -747,7 +731,7 @@ core::Result<> SceneRenderer::playDraws(rhi::CommandEncoder &e, bool prepass)
         e.setBindGroup(0, frameGroup_);
         if (draw.debugLines)
         {
-            e.setVertexBuffer(0, debugBuffer_.handle(), draw.vertexOffset);
+            e.setVertexBuffer(0, ring_.buffer(), debugBase_ + draw.vertexOffset);
             e.draw(draw.count);
             continue;
         }
@@ -825,7 +809,7 @@ core::Result<> SceneRenderer::updateFrameData()
     previousJitter_ = currentJitter_;
     hasPreviousFrame_ = true;
     ++frameIndex_;
-    return frameBuffer_.update(0, std::as_bytes(std::span(&frameData_, 1)));
+    return {}; // envoyé avec le reste de l'image par uploadFrameRing
 }
 
 core::Result<> SceneRenderer::ensureHistory(RenderTarget &target, bool &fresh)
@@ -1130,7 +1114,7 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
         {
             self.draws_.clear();
             self.debugVertices_.clear();
-            self.modelSliceBytes_.clear();
+            self.ringBytes_.clear();
             for (const auto &feature : self.features_)
             {
                 feature->frameEnded();
@@ -1139,19 +1123,15 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
         }
     } endOfFrame{*this};
 
-    if (auto r = rebuildFrameGroup(activeLights()); !r)
-    {
-        return r;
-    }
-    if (auto r = uploadDebugLines(); !r)
-    {
-        return r;
-    }
-    if (auto r = uploadModelSlices(); !r)
-    {
-        return r;
-    }
     if (auto r = updateFrameData(); !r)
+    {
+        return r;
+    }
+    if (auto r = uploadFrameRing(); !r)
+    {
+        return r;
+    }
+    if (auto r = rebuildFrameGroup(activeLights()); !r) // le tampon de la zone a pu grandir
     {
         return r;
     }
