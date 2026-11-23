@@ -198,9 +198,12 @@ Result<> recreateBackbuffer(VulkanDevice &device, TextureHandle handle, Extent2D
 
 Result<TextureHandle> VulkanDevice::beginFrame()
 {
-    collectReleases();
+    // Attendre d'abord l'image qui occupait cet emplacement, puis libérer : une ressource détruite pendant l'enregistrement de
+    // cette image (encodeur pas encore soumis, donc pas couverte par la série notée à la destruction) n'est libérée qu'une
+    // fois l'image terminée (sinon : VUID-vkDestroyQueryPool-queryPool-00793 quand les minuteries GPU sont coupées).
     if (auto r = waitSerial(frameSerials_[frame_ % kFramesInFlight]); !r)
         return std::unexpected(r.error());
+    collectReleases();
     if (windowed_)
     {
         const Extent2D size = framebufferSizeOf(swapchain_->window);
