@@ -464,7 +464,7 @@ Constatés pendant M5 (`docs/releases/M5.md`) ; chaque ligne a été vérifiée 
 | G170 | REN-35 : modes de debug | Modes cascades et clusters absents de la démo (clusters : seulement l'API `readClusterLightCounts`) ; les objets instanciés ignorent `albedo`, `overdraw` et `normals` | M6 |
 | G171 | REN-37 : modes de fusion | `kMaskA2C` rend comme `kMask` (le RHI n'a ni alpha-to-coverage ni nombre d'échantillons) ; `kTransmission` rend comme `kBlend`, sans réfraction (REN-38, module M13) | M8 |
 
-## Revue de la PR #12 (G172 à G178)
+## Revue de la PR #12 (G172 à G181)
 
 Remarques de CodeRabbit et de la CI sur la PR #12 (M5) vérifiées dans le code et reportées : correctif hors de portée du jalon ou décision de l'auteur. Les remarques corrigées sont dans les branches `fix/M5-review-*` fusionnées dans `dev`.
 
@@ -477,4 +477,7 @@ Remarques de CodeRabbit et de la CI sur la PR #12 (M5) vérifiées dans le code 
 | G176 | Panneau de performances de la démo | Mémoire GPU toujours « n/d » (le RHI ne l'expose pas) ; RSS « n/d » hors Linux ; les dessins de `--scene mixed` ne sont pas comptés ; « dessins de la scène » compte les maillages (`drawMesh`), pas les appels de dessin du RHI (il faudrait une statistique dans l'encodeur) ; en fenêtre, la préchauffe (`Game::warmUp`) fait avancer l'historique du TAA avant la première vraie image | M6 |
 | G177 | Premier affichage des onglets de la démo | La préchauffe ne couvre que l'onglet courant : les autres onglets restent paresseux (0,3 à 1,5 s au premier affichage, environ 4 s pour l'atlas étendu de l'onglet Themes). La génération MSDF ajoute 1,3 à 1,5 s au démarrage. Proposition : cache disque des atlas (A58) | M6 |
 | G178 | Tests de post-traitement | La remarque 20 de la revue (post) n'a pas de test dédié : il faudrait séparer `declare` de l'exécution dans le harnais de test | M6 |
+| G179 | R2D-01 : budget de fusion du canvas | Le budget de 512 comparaisons par commande (`canvas_renderer.cpp`) est fixe, non réglable et sans test dédié | M6 |
+| G180 | R2D-03 : polyligne translucide | Quand un segment est plus court que le décalage du coude, `Renderer2D::polyline` garde les quadrilatères d'origine : léger recouvrement possible avec une couleur translucide | M6 |
+| G181 | Tests de superposition 2D et texte | Le test de superposition des passes 2D n'utilise pas une vraie commande de glyphes avec un atlas déterministe ; à ajouter avec une aide de test d'atlas partagée. Les nouveaux tests GPU de la revue (deux `render` par encodeur, polyligne) n'ont été lancés que sur le GPU matériel ; la CI les lance sur rasteriseurs logiciels | M6 |
 
