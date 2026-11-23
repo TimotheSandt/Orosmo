@@ -156,15 +156,19 @@ ShadowViewFit fitCascade(const CameraShape &camera, float nearDistance, float fa
     // Repère de la lumière : rotation seule (origine du monde), regard dans le sens de propagation (-toLight).
     const glm::mat4 rotation = glm::lookAtRH(glm::vec3(0.0f), -lightDir, stableUp(lightDir));
     glm::vec3 c = glm::vec3(rotation * glm::vec4(center, 1.0f));
-    const float texel = 2.0f * radius / static_cast<float>(resolution);
+    // Marge d'un texel de chaque côté : l'ancrage (floor) décale le centre de moins d'un texel, la sphère reste couverte. La grille
+    // reste stable : le texel dépend du rayon et de la résolution seulement, jamais de la position de la caméra ou de la lumière.
+    const float usable = std::max(static_cast<float>(resolution) - 2.0f, 1.0f);
+    const float texel = 2.0f * radius / usable;
+    const float half = 0.5f * texel * static_cast<float>(resolution); // demi-côté de la projection : rayon + 1 texel
     // Ancrage sur la grille de texels (x, y) et de profondeur (z) du repère de la lumière.
     c.x = std::floor(c.x / texel) * texel;
     c.y = std::floor(c.y / texel) * texel;
     c.z = std::floor(c.z / texel) * texel;
-    const float nearPlane = -c.z - radius - std::max(depthExtension, 0.0f); // le repère regarde vers -z
-    const float farPlane = -c.z + radius;
+    const float nearPlane = -c.z - radius - texel - std::max(depthExtension, 0.0f); // le repère regarde vers -z
+    const float farPlane = -c.z + radius + texel;
     fit.view = rotation;
-    fit.projection = glm::orthoRH_ZO(c.x - radius, c.x + radius, c.y - radius, c.y + radius, nearPlane, farPlane);
+    fit.projection = glm::orthoRH_ZO(c.x - half, c.x + half, c.y - half, c.y + half, nearPlane, farPlane);
     fit.viewProjection = fit.projection * fit.view;
     fit.center = center;
     fit.radius = radius;
@@ -178,12 +182,38 @@ ShadowViewFit fitSpot(const glm::vec3 &position, const glm::vec3 &direction, flo
 {
     ShadowViewFit fit;
     const glm::vec3 dir = glm::length(direction) > 0.0f ? glm::normalize(direction) : glm::vec3(0.0f, -1.0f, 0.0f);
-    halfAngle = std::clamp(halfAngle, glm::radians(1.0f), glm::radians(85.0f));
+    // Le cône complet doit se projeter : au-delà de 85 degrés la vue est refusée plutôt que tronquée ; en deçà de 1 degré elle est élargie.
+    if (!(halfAngle <= kMaxSpotShadowHalfAngle))
+    {
+        fit.valid = false;
+        return fit;
+    }
+    halfAngle = std::max(halfAngle, glm::radians(1.0f));
     nearPlane = std::max(nearPlane, 1e-3f);
     farPlane = std::max(farPlane, nearPlane * 2.0f);
-    fit.view = glm::lookAtRH(position, position + dir, stableUp(dir));
+    // Base de la vue construite depuis `dir` (jamais position + dir en simple précision) ; translation calculée en double précision.
+    const glm::vec3 up = stableUp(dir);
+    const glm::vec3 side = glm::normalize(glm::cross(dir, up));
+    const glm::vec3 realUp = glm::cross(side, dir);
+    const glm::dvec3 p(position);
+    glm::mat4 view(1.0f);
+    view[0][0] = side.x;
+    view[1][0] = side.y;
+    view[2][0] = side.z;
+    view[0][1] = realUp.x;
+    view[1][1] = realUp.y;
+    view[2][1] = realUp.z;
+    view[0][2] = -dir.x;
+    view[1][2] = -dir.y;
+    view[2][2] = -dir.z;
+    view[3][0] = static_cast<float>(-glm::dot(glm::dvec3(side), p));
+    view[3][1] = static_cast<float>(-glm::dot(glm::dvec3(realUp), p));
+    view[3][2] = static_cast<float>(glm::dot(glm::dvec3(dir), p));
+    fit.view = view;
     fit.projection = glm::perspectiveRH_ZO(2.0f * halfAngle, 1.0f, nearPlane, farPlane);
     fit.viewProjection = fit.projection * fit.view;
+    fit.nearPlane = nearPlane;
+    fit.farPlane = farPlane;
     fit.center = position;
     fit.radius = farPlane;
     fit.texelWorld = 2.0f * std::tan(halfAngle) / static_cast<float>(std::max(resolution, 1u));
@@ -202,7 +232,34 @@ glm::mat4 atlasTileMatrix(const AtlasTile &tile, std::uint32_t atlasSize) noexce
     return m;
 }
 
-std::uint32_t nextPowerOfTwo(std::uint32_t value) noexcept { return value <= 1 ? 1u : std::bit_ceil(value); }
+std::uint32_t nextPowerOfTwo(std::uint32_t value) noexcept
+{
+    constexpr std::uint32_t kLargest = 1u << 31;
+    return value <= 1 ? 1u : (value > kLargest ? kLargest : std::bit_ceil(value));
+}
+
+bool shadowServiceBefore(const ShadowServiceKey &a, const ShadowServiceKey &b, std::uint64_t deadlineFrames) noexcept
+{
+    if (a.rendered != b.rendered)
+    {
+        return !a.rendered;
+    }
+    const bool overdueA = a.rendered && a.age >= deadlineFrames;
+    const bool overdueB = b.rendered && b.age >= deadlineFrames;
+    if (overdueA != overdueB)
+    {
+        return overdueA;
+    }
+    if (overdueA && a.age != b.age)
+    {
+        return a.age > b.age; // en retard : la plus ancienne d'abord
+    }
+    if (a.priority != b.priority)
+    {
+        return a.priority > b.priority;
+    }
+    return a.age > b.age;
+}
 
 ShadowAtlasAllocator::ShadowAtlasAllocator(std::uint32_t atlasSize, std::uint32_t minTile) { reset(atlasSize, minTile); }
 
@@ -230,6 +287,10 @@ void insertSorted(std::vector<AtlasTile> &list, const AtlasTile &tile)
 
 std::optional<AtlasTile> ShadowAtlasAllocator::allocate(std::uint32_t size)
 {
+    if (size > atlasSize_)
+    {
+        return std::nullopt; // refusé avant l'arrondi (qui ne serait pas représentable au-delà de 2^31)
+    }
     const std::uint32_t s = std::max(nextPowerOfTwo(std::max(size, 1u)), minTile_);
     if (s > atlasSize_)
     {

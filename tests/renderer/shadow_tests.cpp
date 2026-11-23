@@ -52,7 +52,8 @@ rd::CameraShape perspectiveShape()
 
 } // namespace
 
-TEST_SUITE("renderer/shadows")
+// Suite CPU hors du filtre `renderer/*` (GPU_TEST_SUITES du Makefile) : elle tourne dans `make demo-test-unit`.
+TEST_SUITE("shadows")
 {
     TEST_CASE("resolveShadowBehavior: documented behavior of every (mobility, shadow mode) combination (REN-06)")
     {
@@ -152,7 +153,7 @@ TEST_SUITE("renderer/shadows")
         const std::uint32_t resolution = 1024;
         rd::CameraShape camera = perspectiveShape();
         const rd::ShadowViewFit fit = rd::fitCascade(camera, 2.0f, 15.0f, toLight, resolution, 20.0f);
-        CHECK(fit.texelWorld == doctest::Approx(2.0f * fit.radius / resolution));
+        CHECK(fit.texelWorld == doctest::Approx(2.0f * fit.radius / (resolution - 2.0f))); // marge d'un texel de chaque côté
         for (const glm::vec3 &corner : rd::sliceCorners(camera, 2.0f, 15.0f))
         {
             const glm::vec4 clip = fit.viewProjection * glm::vec4(corner, 1.0f);
@@ -203,6 +204,103 @@ TEST_SUITE("renderer/shadows")
             CHECK(std::abs(clip.y) <= 1.0f);
             CHECK(std::isfinite(clip.z));
         }
+    }
+
+    TEST_CASE("fitCascade: the quantized center never uncovers the bounding sphere, whatever the sub-texel camera offset (REN-07)")
+    {
+        const glm::vec3 toLight = glm::normalize(glm::vec3(0.4f, 1.0f, 0.3f));
+        const std::uint32_t resolution = 256;
+        const rd::CameraShape camera = perspectiveShape();
+        for (int step = 0; step < 200; ++step)
+        {
+            rd::CameraShape moved = camera;
+            moved.position += glm::vec3(0.0371f * static_cast<float>(step), -0.0219f * static_cast<float>(step), 0.0113f * static_cast<float>(step));
+            const rd::ShadowViewFit fit = rd::fitCascade(moved, 2.0f, 15.0f, toLight, resolution, 0.0f);
+            const glm::vec3 axes[3] = {glm::vec3(fit.view[0][0], fit.view[1][0], fit.view[2][0]), glm::vec3(fit.view[0][1], fit.view[1][1], fit.view[2][1]),
+                                       glm::vec3(-fit.view[0][2], -fit.view[1][2], -fit.view[2][2])};
+            for (const glm::vec3 &axis : axes)
+            {
+                for (const float sign : {-1.0f, 1.0f})
+                {
+                    const glm::vec4 clip = fit.viewProjection * glm::vec4(fit.center + axis * (sign * fit.radius), 1.0f);
+                    INFO("step ", step);
+                    CHECK(std::abs(clip.x) <= 1.0f);
+                    CHECK(std::abs(clip.y) <= 1.0f);
+                    CHECK(clip.z >= 0.0f);
+                    CHECK(clip.z <= 1.0f);
+                }
+            }
+        }
+    }
+
+    TEST_CASE("fitSpot: view built without position + direction (far from the origin), full cone kept or refused, near/far stored (REN-08)")
+    {
+        // Loin de l'origine, position + dir ne change pas en simple précision : la vue reste pourtant valide (centre du cône projeté au milieu).
+        const glm::vec3 far(3.0e7f, 12.0f, -2.0e7f);
+        const rd::ShadowViewFit spot = rd::fitSpot(far, {0.0f, 0.0f, -1.0f}, glm::radians(30.0f), 0.5f, 20.0f, 512);
+        REQUIRE(spot.valid);
+        const glm::vec4 onAxis = spot.viewProjection * glm::vec4(far + glm::vec3(0.0f, 0.0f, -8.0f), 1.0f);
+        CHECK(onAxis.w == doctest::Approx(8.0f).epsilon(1e-3));
+        CHECK(onAxis.x / onAxis.w == doctest::Approx(0.0f).epsilon(1e-3));
+        CHECK(onAxis.y / onAxis.w == doctest::Approx(0.0f).epsilon(1e-3));
+        // Base droite et identique à lookAtRH près de l'origine.
+        const rd::ShadowViewFit near = rd::fitSpot({1, 8, 2}, {0.3f, -1, 0.2f}, glm::radians(40.0f), 0.5f, 20.0f, 512);
+        const glm::mat4 reference = glm::lookAtRH(glm::vec3(1, 8, 2), glm::vec3(1, 8, 2) + glm::normalize(glm::vec3(0.3f, -1, 0.2f)), glm::vec3(0, 1, 0));
+        for (int c = 0; c < 4; ++c)
+        {
+            for (int r = 0; r < 4; ++r)
+            {
+                CHECK(near.view[c][r] == doctest::Approx(reference[c][r]).epsilon(1e-4).scale(1.0));
+            }
+        }
+        CHECK(near.nearPlane == doctest::Approx(0.5f));
+        CHECK(near.farPlane == doctest::Approx(20.0f));
+        // Plans bornés : proche 0 -> 1e-3, lointain < 2 x proche -> 2 x proche ; la vue décrit ces valeurs.
+        const rd::ShadowViewFit clamped = rd::fitSpot({0, 5, 0}, {0, -1, 0}, glm::radians(30.0f), 0.0f, 0.0f, 256);
+        CHECK(clamped.nearPlane == doctest::Approx(1e-3f));
+        CHECK(clamped.farPlane == doctest::Approx(2e-3f));
+        // Cône de 80 degrés : projeté entier (coin du cône sur le bord de la vue).
+        const rd::ShadowViewFit wide = rd::fitSpot({0, 5, 0}, {0, -1, 0}, glm::radians(80.0f), 0.5f, 20.0f, 256);
+        REQUIRE(wide.valid);
+        const glm::vec4 edge = wide.viewProjection * glm::vec4(5.0f * std::tan(glm::radians(80.0f)) * 0.999f, 0.0f, 0.0f, 1.0f);
+        CHECK(std::abs(edge.x / edge.w) < 1.0f);
+        // Au-delà de 85 degrés : refusé, jamais tronqué en silence.
+        CHECK_FALSE(rd::fitSpot({0, 5, 0}, {0, -1, 0}, glm::radians(100.0f), 0.5f, 20.0f, 256).valid);
+        CHECK_FALSE(rd::fitSpot({0, 5, 0}, {0, -1, 0}, glm::radians(89.0f), 0.5f, 20.0f, 256).valid);
+    }
+
+    TEST_CASE("nextPowerOfTwo and the atlas allocator: saturation instead of overflow, oversized requests refused (REN-08)")
+    {
+        CHECK(rd::nextPowerOfTwo(0) == 1);
+        CHECK(rd::nextPowerOfTwo(1000) == 1024);
+        CHECK(rd::nextPowerOfTwo(1024) == 1024);
+        CHECK(rd::nextPowerOfTwo(0x80000000u) == 0x80000000u);
+        CHECK(rd::nextPowerOfTwo(0x80000001u) == 0x80000000u); // saturé : jamais de bit_ceil non représentable
+        CHECK(rd::nextPowerOfTwo(0xFFFFFFFFu) == 0x80000000u);
+        rd::ShadowAtlasAllocator atlas(1024, 64);
+        CHECK_FALSE(atlas.allocate(0xFFFFFFFFu).has_value());
+        CHECK_FALSE(atlas.allocate(2048).has_value());
+        CHECK_FALSE(atlas.allocate(1025).has_value());
+        const auto tile = atlas.allocate(1000); // 1000 -> 1024 : admissible
+        REQUIRE(tile.has_value());
+        CHECK(tile->size == 1024);
+        rd::ShadowAtlasAllocator huge(0xFFFFFFFFu, 64); // réglage démesuré : borné, sans comportement indéfini
+        CHECK_FALSE(huge.allocate(0xFFFFFFFFu).has_value());
+    }
+
+    TEST_CASE("shadowServiceBefore: priority wins until a view is overdue, then age wins (no starvation) (REN-07)")
+    {
+        const rd::ShadowServiceKey fresh{false, 0, 0};
+        const rd::ShadowServiceKey highRecent{true, 10, 2};
+        const rd::ShadowServiceKey lowRecent{true, 0, 5};
+        const rd::ShadowServiceKey lowOverdue{true, 0, rd::kShadowServiceDeadlineFrames + 1};
+        const rd::ShadowServiceKey highOverdue{true, 10, rd::kShadowServiceDeadlineFrames + 40};
+        CHECK(rd::shadowServiceBefore(fresh, highRecent));          // jamais dessinée : d'abord
+        CHECK(rd::shadowServiceBefore(highRecent, lowRecent));      // avant l'échéance : la priorité
+        CHECK_FALSE(rd::shadowServiceBefore(lowRecent, highRecent));
+        CHECK(rd::shadowServiceBefore(lowOverdue, highRecent));     // après l'échéance : le retard passe devant
+        CHECK(rd::shadowServiceBefore(highOverdue, lowOverdue));    // en retard toutes deux : la plus ancienne
+        CHECK_FALSE(rd::shadowServiceBefore(lowOverdue, lowOverdue));
     }
 
     TEST_CASE("fitSpot and atlasTileMatrix: receiver depth formula, tile mapping with v = 0 at the top (REN-08)")
@@ -693,12 +791,14 @@ void main()
                 INFO("forward+ ", forwardPlus);
                 if (forwardPlus)
                 {
-                    auto fp = rd::enableForwardPlus(*scene.renderer, *scene.gpu.device, *scene.library, *scene.pipelines, shaderDir());
-                    if (!fp)
+                    if (!rd::ForwardPlusLighting::supportedBy(scene.gpu.device->capabilities()))
                     {
-                        MESSAGE("forward+ unavailable: ", fp.error().message);
+                        MESSAGE("forward+ unsupported by this device: skipped");
                         break;
                     }
+                    auto fp = rd::enableForwardPlus(*scene.renderer, *scene.gpu.device, *scene.library, *scene.pipelines, shaderDir());
+                    INFO((fp ? std::string() : fp.error().message));
+                    REQUIRE(fp.has_value()); // périphérique compatible : un échec d'activation est un défaut
                 }
                 auto program = scene.shadows->receiverProgramWith(forwardPlus ? rd::forwardPlusDefines() : std::vector<rd::Define>{});
                 INFO((program ? std::string() : program.error().message));
@@ -755,6 +855,92 @@ void main()
             CHECK(scene.red(-4.0f, -5.0f) > kLit);
             scene.gpu.expectNoValidationErrors();
             scene.renderer.reset(); // le plugin référence les objets et les maillages : détruit avant eux
+        }
+    }
+
+    TEST_CASE("ShadowFeature: a light that changes type at the same index is redrawn at once, even when its view update is amortized (REN-08)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            rd::ShadowSettings settings = ShadowScene::smallSettings();
+            settings.cascadeUpdateInterval = {50, 50, 50, 50}; // une cascade reportée 49 images sur 50
+            ShadowScene scene(backend, settings);
+            REQUIRE(scene.gpu.device);
+            REQUIRE(scene.shadows->addMeshCaster(scene.caster, {{-6, 2, -2}, {-2, 2, 2}}, rd::CasterMobility::kStatic).has_value());
+            rd::Light spot = rd::spotLight({-4, 8, 0}, {0, -1, 0}, {1, 1, 1}, 1.0f, std::cos(glm::radians(30.0f)), std::cos(glm::radians(25.0f)), 0.0f, 0.0f);
+            spot.shadowMode = rd::ShadowMode::kDynamic;
+            scene.lights.addLight(spot);
+            REQUIRE(scene.lights.upload().has_value());
+            scene.shadows->setLightParams(0, {.maxResolution = 256, .spotNear = 0.5f, .spotRange = 20.0f});
+            scene.frame();
+            CHECK(scene.shadows->gpuData().atlas.z == 1.0f); // un projecteur publié
+            // Même index, autre type : la vue (même clé) ne doit pas publier la tuile du projecteur ni attendre son échéance.
+            scene.sun(rd::LightMobility::kDynamic, rd::ShadowMode::kDynamic);
+            const rd::ShadowStats s = scene.frame();
+            CHECK(s.viewsUpdated == 2);
+            CHECK(s.deferred == 0);
+            CHECK(scene.shadows->gpuData().atlas.z == 0.0f);
+            CHECK(near(static_cast<std::uint8_t>(scene.red(-4.0f, 0.0f)), 26, 2));
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("ShadowFeature: spot view uses the tile size actually allocated and publishes its real near/far planes (REN-08)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            rd::ShadowSettings settings = ShadowScene::smallSettings();
+            settings.spotResolution = 512; // ne tient pas : les cascades prennent la moitié de l'atlas, le projecteur est réduit à 256
+            ShadowScene scene(backend, settings);
+            REQUIRE(scene.gpu.device);
+            scene.sun(rd::LightMobility::kDynamic, rd::ShadowMode::kDynamic);
+            rd::Light spot = rd::spotLight({-4, 8, 0}, {0, -1, 0}, {1, 1, 1}, 1.0f, std::cos(glm::radians(30.0f)), std::cos(glm::radians(25.0f)), 0.0f, 0.0f);
+            spot.shadowMode = rd::ShadowMode::kDynamic;
+            scene.lights.addLight(spot);
+            REQUIRE(scene.lights.upload().has_value());
+            scene.shadows->setLightParams(1, {.spotNear = 0.0f, .spotRange = 20.0f}); // proche 0 : borné à 1e-3 par la vue
+            scene.frame();
+            const rd::ShadowGpuData &g = scene.shadows->gpuData();
+            REQUIRE(g.atlas.z == 1.0f);
+            CHECK(g.spotParams[0].y == doctest::Approx(1e-3f)); // plans de la vue dessinée, pas ceux des réglages
+            CHECK(g.spotParams[0].z == doctest::Approx(20.0f));
+            CHECK(g.spotParams[0].w == doctest::Approx(2.0f * std::tan(glm::radians(30.0f)) / 256.0f).epsilon(1e-3)); // tuile de 256, pas 512
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("ShadowFeature: only the instances of the retained draws are uploaded (budget) (REN-07, REN-28)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            rd::ShadowSettings settings = ShadowScene::smallSettings();
+            settings.maxViewUpdatesPerFrame = 1;
+            ShadowScene scene(backend, settings);
+            REQUIRE(scene.gpu.device);
+            auto instances = rd::InstanceRenderer::create(*scene.gpu.device, *scene.library, *scene.pipelines, shaderDir());
+            REQUIRE(instances.has_value());
+            auto unit = rd::Mesh::create(*scene.gpu.device, quadData(-1, -1, 1, 1, 0.0f, 1.0f, "unit"));
+            REQUIRE(unit.has_value());
+            auto meshId = (*instances)->addMesh(*unit);
+            REQUIRE(meshId.has_value());
+            rd::ObjectSet objects;
+            for (const glm::vec3 at : {glm::vec3(-4, 2, 0), glm::vec3(-4, 2, 5)})
+            {
+                rd::ObjectDesc desc;
+                desc.lodMeshes = {*meshId};
+                desc.localBounds = {{-1, 0, -1}, {1, 0, 1}};
+                desc.transform = glm::translate(glm::mat4(1.0f), at);
+                REQUIRE(objects.add(desc).has_value());
+            }
+            scene.shadows->addObjectCasters(objects, **instances, rd::CasterMobility::kMovable);
+            scene.sun(rd::LightMobility::kDynamic, rd::ShadowMode::kDynamic);
+            const rd::ShadowStats s = scene.frame();
+            CHECK(s.viewsUpdated == 1);
+            CHECK(s.deferred == 1);
+            CHECK(s.casterInstances == 2);
+            CHECK(s.uploadedInstances == 2); // la cascade reportée (budget) n'envoie rien
+            scene.gpu.expectNoValidationErrors();
+            scene.renderer.reset();
         }
     }
 }

@@ -455,7 +455,7 @@ Limites : les casters d'un `ObjectSet` (instanciés) sont toujours en ombre plei
 une seule opacité par caster (pas de texture d'alpha par texel : le seuil et l'opacité sont par objet, comme dans `TransparentFeature`) ;
 pas de couleur d'ombre (verre teinté : REN-38).
 Démo : `--scene mixed --shadows on --transparent-shadow none|full|masked|dithered` (sans l'option : les vitres ne projettent rien,
-captures de référence inchangées). Tests : `tests/renderer/transparent_shadow_tests.cpp` (suite `renderer/transparent-shadow`, CPU puis
+captures de référence inchangées). Tests : `tests/renderer/transparent_shadow_tests.cpp` (suites `transparent-shadow` (CPU, `make demo-test-unit`) puis `renderer/transparent-shadow` (GPU),
 OpenGL et Vulkan : aucune = éclairé, pleine = sombre, masquée au-dessus / au-dessous du seuil, tramée à 0,25 / 0,5 / 0,75, stabilité
 image à image, invalidation du cache, validation à 0).
 

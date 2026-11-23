@@ -115,6 +115,7 @@ struct ShadowStats
     std::uint32_t renderPasses = 0;   // passes de rendu GPU enregistrées (0 à 2)
     std::uint32_t drawCalls = 0;
     std::uint32_t casterInstances = 0;
+    std::uint32_t uploadedInstances = 0;  // instances envoyées au GPU cette image (seulement celles des dessins retenus)
     std::uint32_t mobilityViolations = 0; // lumières Static/Stationary déplacées (cumul depuis la création)
 };
 
@@ -239,6 +240,13 @@ class ShadowFeature : public RenderFeature
         ShadowViewFit fit;
         ShadowBehavior behavior;
         std::uint32_t interval = 1;
+        // De quoi recalculer `fit` à la résolution réellement allouée (la tuile peut être plus petite que `size`).
+        CameraShape camera;
+        Light light;
+        float sliceNear = 0.0f;
+        float sliceFar = 0.0f;
+        float halfAngle = 0.0f;
+        LightShadowParams lightParams;
     };
     struct PlannedView
     {
@@ -250,12 +258,15 @@ class ShadowFeature : public RenderFeature
     };
 
     ShadowFeature(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines) : device_(device), library_(library), pipelines_(pipelines) {}
-    core::Result<> createAtlases();
+    core::Result<> createAtlases(const ShadowSettings &settings);
+    void appendReceiverBindings(rhi::BindGroupDesc &desc, rhi::TextureHandle atlas) const;
     void destroyAtlases() noexcept;
     LightShadowParams paramsFor(std::size_t light) const;
     void collectRequests(const FrameData &frame, std::vector<Request> &requests);
     void allocateTiles(std::vector<Request> &requests);
     std::uint64_t gatherCasters(const ShadowViewFit &fit, const glm::vec3 &eye, CasterMobility mobility, std::vector<CasterDraw> &draws);
+    ShadowViewFit fitFor(const Request &request, std::uint32_t resolution) const;
+    void invalidatePending() noexcept;
     core::Result<> uploadFrame();
     core::Result<> recordStatic(RenderPassContext &ctx);
     core::Result<> recordAtlas(RenderPassContext &ctx);
@@ -294,6 +305,7 @@ class ShadowFeature : public RenderFeature
 
     ShadowAtlasAllocator allocator_;
     std::map<ViewKey, ViewState> views_;
+    std::vector<ViewKey> pending_; // vues mises à jour cette image, pas encore validées (enregistrement de la passe de l'atlas réussi)
     std::vector<Caster> casters_;
     CasterId nextCaster_ = 1;
     std::vector<PlannedView> planned_;

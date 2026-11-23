@@ -167,7 +167,9 @@ struct ShadowScene
 using TS = rd::TransparentShadowMode;
 
 // Part moyenne d'ombre sous le caster (pixels intérieurs), normalisée par les images entièrement éclairée et entièrement sombre.
-double shadowShare(ShadowScene &scene, const std::vector<int> &lit, const std::vector<int> &dark)
+// `current`, `lit` et `dark` : images rouges complètes (kSize x kSize) lues d'un coup. La part d'ombre n'a de sens que si chaque pixel
+// mesuré a un contraste exploitable (clair strictement supérieur au sombre) : sinon la mesure échoue.
+double shadowShare(const std::vector<int> &current, const std::vector<int> &lit, const std::vector<int> &dark)
 {
     double sum = 0.0;
     int n = 0;
@@ -175,32 +177,33 @@ double shadowShare(ShadowScene &scene, const std::vector<int> &lit, const std::v
     {
         for (int px = 7; px < 25; ++px)
         {
-            const int r = rgba(scene.gpu.pixel(scene.out, static_cast<std::uint32_t>(px), static_cast<std::uint32_t>(py)))[0];
             const std::size_t i = static_cast<std::size_t>(py) * kSize + static_cast<std::size_t>(px);
-            const double span = std::max(1, lit[i] - dark[i]);
-            sum += std::clamp(1.0 - (r - dark[i]) / span, 0.0, 1.0);
+            REQUIRE_MESSAGE(lit[i] > dark[i], "no usable contrast at pixel (", px, ", ", py, ")");
+            sum += std::clamp(1.0 - static_cast<double>(current[i] - dark[i]) / (lit[i] - dark[i]), 0.0, 1.0);
             ++n;
         }
     }
     return sum / n;
 }
 
+// Lecture RHI de toute la cible en une fois (RGBA8) ; canal rouge.
 std::vector<int> redImage(ShadowScene &scene)
 {
+    auto raw = scene.gpu.device->readTexture(scene.out);
+    REQUIRE(raw.has_value());
+    REQUIRE(raw->size() == static_cast<std::size_t>(kSize) * kSize * 4);
     std::vector<int> v(kSize * kSize);
-    for (std::uint32_t y = 0; y < kSize; ++y)
+    for (std::size_t i = 0; i < v.size(); ++i)
     {
-        for (std::uint32_t x = 0; x < kSize; ++x)
-        {
-            v[y * kSize + x] = rgba(scene.gpu.pixel(scene.out, x, y))[0];
-        }
+        v[i] = std::to_integer<int>((*raw)[i * 4]);
     }
     return v;
 }
 
 } // namespace
 
-TEST_SUITE("renderer/transparent-shadow")
+// Suite CPU hors du filtre `renderer/*` (GPU_TEST_SUITES du Makefile) : elle tourne dans `make demo-test-unit`.
+TEST_SUITE("transparent-shadow")
 {
     TEST_CASE("TransparentShadow: CPU decision, Bayer pattern, coverage and advised mode (REN-39)")
     {
@@ -247,7 +250,10 @@ TEST_SUITE("renderer/transparent-shadow")
         }
         CHECK_FALSE(rd::transparentShadowModeFromName("partial").has_value());
     }
+}
 
+TEST_SUITE("renderer/transparent-shadow")
+{
     TEST_CASE("ShadowFeature: shadow under a transparent caster: none = lit, full = dark, masked = dark above the cutoff, dithered ~ opacity (REN-39)")
     {
         FOR_EACH_BACKEND(backend)
@@ -276,23 +282,23 @@ TEST_SUITE("renderer/transparent-shadow")
 
             set(TS::kMasked, 0.6f, 0.5f); // au-dessus du seuil : sombre
             CHECK(near(static_cast<std::uint8_t>(scene.red(0.0f, 0.0f)), 26, 2));
-            CHECK(shadowShare(scene, lit, dark) > 0.97);
+            CHECK(shadowShare(redImage(scene), lit, dark) > 0.97);
             set(TS::kMasked, 0.4f, 0.5f); // sous le seuil : éclairé
             CHECK(scene.red(0.0f, 0.0f) > kLit);
-            CHECK(shadowShare(scene, lit, dark) < 0.03);
+            CHECK(shadowShare(redImage(scene), lit, dark) < 0.03);
 
             // Tramé : part d'ombre ~ opacité, tolérance 0.12 (quantification 1/16 de la trame + lissage PCF + bords).
             for (const float alpha : {0.25f, 0.5f, 0.75f})
             {
                 set(TS::kDithered, alpha);
-                const double share = shadowShare(scene, lit, dark);
+                const double share = shadowShare(redImage(scene), lit, dark);
                 INFO("alpha = " << alpha << ", share = " << share);
                 CHECK(std::abs(share - static_cast<double>(alpha)) < 0.12);
             }
             set(TS::kDithered, 1.0f);
-            CHECK(shadowShare(scene, lit, dark) > 0.97);
+            CHECK(shadowShare(redImage(scene), lit, dark) > 0.97);
             set(TS::kDithered, 0.0f);
-            CHECK(shadowShare(scene, lit, dark) < 0.03);
+            CHECK(shadowShare(redImage(scene), lit, dark) < 0.03);
             // Stable dans le temps : deux images identiques, même résultat au pixel près.
             set(TS::kDithered, 0.5f);
             const std::vector<int> first = redImage(scene);

@@ -94,6 +94,9 @@ struct ShadowViewFit
     float radius = 0.0f;
     float texelWorld = 0.0f; // côté d'un texel (m)
     float depthRange = 1.0f; // distance couverte par la profondeur [0, 1] (m)
+    float nearPlane = 0.0f;  // projecteur : plans proche et lointain réellement utilisés par la projection (après bornage)
+    float farPlane = 0.0f;
+    bool valid = true;       // faux : la vue ne peut pas couvrir la zone demandée (projecteur plus large que ce que la perspective représente)
 };
 // Cascade de la tranche [nearDistance, farDistance] pour une lumière directionnelle (`toLight` : vers la lumière, comme
 // `Light::direction`). Stabilité : le rayon ne dépend que de la tranche et du champ (pas de l'orientation), le centre et la
@@ -103,7 +106,9 @@ struct ShadowViewFit
 ShadowViewFit fitCascade(const CameraShape &camera, float nearDistance, float farDistance, const glm::vec3 &toLight, std::uint32_t resolution,
                          float depthExtension) noexcept;
 // Projecteur : perspective depuis `position` le long de `direction`, demi-angle `halfAngle` (radians), profondeur classique [0, 1].
-// `texelWorld` est la taille d'un texel à 1 m (à multiplier par la distance).
+// `texelWorld` est la taille d'un texel à 1 m (à multiplier par la distance). Un cône de demi-angle au-delà de `kMaxSpotShadowHalfAngle`
+// ne se projette pas sans être tronqué : la vue est alors refusée (`valid == false`) au lieu de réduire le cône.
+inline constexpr float kMaxSpotShadowHalfAngle = 1.4835299f; // 85 degrés
 ShadowViewFit fitSpot(const glm::vec3 &position, const glm::vec3 &direction, float halfAngle, float nearPlane, float farPlane,
                       std::uint32_t resolution) noexcept;
 
@@ -141,7 +146,20 @@ class ShadowAtlasAllocator
     std::vector<std::vector<AtlasTile>> free_; // par niveau (0 : l'atlas entier), triés (y, x)
 };
 
+// Puissance de deux supérieure ou égale ; saturée à 2^31 (le plus grand arrondi représentable) au lieu de déborder.
 std::uint32_t nextPowerOfTwo(std::uint32_t value) noexcept;
+
+// Ordre de service des vues à mettre à jour sous budget : jamais dessinée d'abord ; puis une vue en retard (âgée d'au moins
+// `deadlineFrames` images) passe devant, la plus ancienne d'abord ; sinon priorité de la lumière, puis la plus ancienne. L'ancienneté
+// ne supplante donc la priorité qu'après l'échéance : une vue dynamique de basse priorité ne reste pas indéfiniment sans mise à jour.
+struct ShadowServiceKey
+{
+    bool rendered = false;
+    int priority = 0;
+    std::uint64_t age = 0; // images depuis la dernière mise à jour
+};
+inline constexpr std::uint64_t kShadowServiceDeadlineFrames = 32;
+bool shadowServiceBefore(const ShadowServiceKey &a, const ShadowServiceKey &b, std::uint64_t deadlineFrames = kShadowServiceDeadlineFrames) noexcept;
 
 // Hachage FNV-1a 64 bits (listes de casters et matrices : le cache compare les hachages d'une image à l'autre).
 class ShadowHash
