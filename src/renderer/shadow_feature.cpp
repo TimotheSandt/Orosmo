@@ -147,66 +147,85 @@ core::Result<> ShadowFeature::setSettings(const ShadowSettings &settings)
         interval = std::max(interval, 1u);
     }
     const bool recreate = atlas_.isNull() || s.atlasSize != settings_.atlasSize || s.minTileSize != settings_.minTileSize;
-    settings_ = s;
     if (recreate)
     {
-        destroyAtlases();
-        if (auto r = createAtlases(); !r)
+        // Remplaçants construits d'abord ; en cas d'échec, réglages, atlas, cache et groupes actifs restent intacts.
+        if (auto r = createAtlases(s); !r)
         {
             return r;
         }
     }
+    settings_ = s;
     invalidate();
     return {};
 }
 
-core::Result<> ShadowFeature::createAtlases()
+core::Result<> ShadowFeature::createAtlases(const ShadowSettings &settings)
 {
-    for (auto [texture, name] : {std::pair{&atlas_, "shadow.atlas"}, std::pair{&cache_, "shadow.cache"}})
+    rhi::TextureHandle atlas;
+    rhi::TextureHandle cache;
+    rhi::BindGroupHandle receiverGroup;
+    rhi::BindGroupHandle copyGroup;
+    const auto discard = [&]
+    {
+        device_.destroy(receiverGroup);
+        device_.destroy(copyGroup);
+        device_.destroy(atlas);
+        device_.destroy(cache);
+    };
+    for (auto [texture, name] : {std::pair{&atlas, "shadow.atlas"}, std::pair{&cache, "shadow.cache"}})
     {
         rhi::TextureDesc desc;
         desc.format = kShadowFormat;
-        desc.size = {settings_.atlasSize, settings_.atlasSize, 1};
+        desc.size = {settings.atlasSize, settings.atlasSize, 1};
         desc.usage = rhi::TextureUsage::kRenderTarget | rhi::TextureUsage::kSampled;
         desc.debugName = name;
         auto created = device_.createTexture(desc);
         if (!created)
         {
-            destroyAtlases();
+            discard();
             return std::unexpected(created.error());
         }
         *texture = *created;
     }
     rhi::BindGroupDesc receiver;
-    appendReceiverBindings(receiver);
+    appendReceiverBindings(receiver, atlas);
     receiver.debugName = "shadow.receiver";
     auto group = device_.createBindGroup(receiver);
     if (!group)
     {
-        destroyAtlases();
+        discard();
         return std::unexpected(group.error());
     }
-    receiverGroup_ = *group;
+    receiverGroup = *group;
     rhi::BindGroupDesc copy;
-    copy.entries.push_back({.binding = 0, .type = rhi::BindingType::kSampledTexture, .texture = cache_, .sampler = pointSampler_});
+    copy.entries.push_back({.binding = 0, .type = rhi::BindingType::kSampledTexture, .texture = cache, .sampler = pointSampler_});
     copy.debugName = "shadow.copy";
-    auto copyGroup = device_.createBindGroup(copy);
-    if (!copyGroup)
+    auto copyCreated = device_.createBindGroup(copy);
+    if (!copyCreated)
     {
-        destroyAtlases();
-        return std::unexpected(copyGroup.error());
+        discard();
+        return std::unexpected(copyCreated.error());
     }
-    copyGroup_ = *copyGroup;
-    allocator_.reset(settings_.atlasSize, settings_.minTileSize);
+    copyGroup = *copyCreated;
+    // Succès : les anciens sont détruits, les remplaçants publiés (le groupe récepteur change : à relire par les matériaux).
+    destroyAtlases();
+    atlas_ = atlas;
+    cache_ = cache;
+    receiverGroup_ = receiverGroup;
+    copyGroup_ = copyGroup;
+    allocator_.reset(settings.atlasSize, settings.minTileSize);
     views_.clear();
     atlasFresh_ = true;
     cacheFresh_ = true;
     return {};
 }
 
-void ShadowFeature::appendReceiverBindings(rhi::BindGroupDesc &desc) const
+void ShadowFeature::appendReceiverBindings(rhi::BindGroupDesc &desc) const { appendReceiverBindings(desc, atlas_); }
+
+void ShadowFeature::appendReceiverBindings(rhi::BindGroupDesc &desc, rhi::TextureHandle atlas) const
 {
-    desc.entries.push_back({.binding = kShadowAtlasBinding, .type = rhi::BindingType::kSampledTexture, .texture = atlas_, .sampler = compareSampler_});
+    desc.entries.push_back({.binding = kShadowAtlasBinding, .type = rhi::BindingType::kSampledTexture, .texture = atlas, .sampler = compareSampler_});
     desc.entries.push_back({.binding = kShadowDataBinding, .type = rhi::BindingType::kUniformBuffer, .buffer = dataBuffer_.handle(), .size = sizeof(ShadowGpuData)});
 }
 
@@ -299,6 +318,30 @@ void ShadowFeature::removeCaster(CasterId id)
 
 // ── Préparation de l'image (CPU) ───────────────────────────────────────────────────────────────────────────────────
 
+ShadowViewFit ShadowFeature::fitFor(const Request &request, std::uint32_t resolution) const
+{
+    if (request.spot)
+    {
+        return fitSpot(request.light.position, request.light.direction, request.halfAngle, request.lightParams.spotNear, request.lightParams.spotRange,
+                       resolution);
+    }
+    return fitCascade(request.camera, request.sliceNear, request.sliceFar, request.light.direction, resolution, settings_.depthExtension);
+}
+
+void ShadowFeature::invalidatePending() noexcept
+{
+    for (const ViewKey &key : pending_)
+    {
+        const auto it = views_.find(key);
+        if (it != views_.end())
+        {
+            it->second.rendered = false;
+            it->second.cacheValid = false;
+        }
+    }
+    pending_.clear();
+}
+
 void ShadowFeature::collectRequests(const FrameData &frame, std::vector<Request> &requests)
 {
     const glm::dvec3 world = glm::dvec3(frame.cameraWorldHigh) + glm::dvec3(frame.cameraWorldLow);
@@ -337,7 +380,11 @@ void ShadowFeature::collectRequests(const FrameData &frame, std::vector<Request>
                 r.size = resolution;
                 r.priority = params.priority;
                 r.distance = static_cast<float>(c);
-                r.fit = fitCascade(camera, previous, splits[c], light.direction, resolution, settings_.depthExtension);
+                r.camera = camera;
+                r.light = light;
+                r.sliceNear = previous;
+                r.sliceFar = splits[c];
+                r.fit = fitFor(r, resolution);
                 r.behavior = behavior;
                 r.interval = settings_.cascadeUpdateInterval[c];
                 requests.push_back(r);
@@ -360,14 +407,22 @@ void ShadowFeature::collectRequests(const FrameData &frame, std::vector<Request>
                 resolution /= 2;
             }
             // `outerCone` : cosinus du demi-angle extérieur (convention de spotLight) ; hors de (0, 1) : 45°.
-            const float halfAngle = light.outerCone > 0.0f && light.outerCone < 1.0f ? std::acos(light.outerCone) : glm::radians(45.0f);
+            const float halfAngle = light.outerCone > -1.0f && light.outerCone < 1.0f ? std::acos(light.outerCone) : glm::radians(45.0f);
             Request r;
             r.key = {i, 0};
             r.size = resolution;
             r.priority = params.priority;
             r.spot = true;
             r.distance = distance;
-            r.fit = fitSpot(light.position, light.direction, halfAngle, params.spotNear, params.spotRange, resolution);
+            r.light = light;
+            r.halfAngle = halfAngle;
+            r.lightParams = params;
+            r.fit = fitFor(r, resolution);
+            if (!r.fit.valid)
+            {
+                statuses_[i] = ShadowStatus::kUnsupportedType; // cône trop large pour une seule perspective : refusé, jamais tronqué
+                continue;
+            }
             r.behavior = behavior;
             spots.push_back(r);
         }
@@ -571,6 +626,7 @@ core::Result<> ShadowFeature::prepare(const FrameData &frame)
 {
     ++frame_;
     stats_ = {};
+    invalidatePending(); // l'image précédente n'a pas validé ses mises à jour (échec avant la fin de l'enregistrement) : à redessiner
     planned_.clear();
     frameInstances_.clear();
     const glm::dvec3 world = glm::dvec3(frame.cameraWorldHigh) + glm::dvec3(frame.cameraWorldLow);
@@ -598,7 +654,20 @@ core::Result<> ShadowFeature::prepare(const FrameData &frame)
                 LOG_WARNING("ShadowFeature: light ", i, " is ", now.mobility == LightMobility::kStatic ? "Static" : "Stationary",
                             " but changed; its shadows are redrawn (use LightMobility::kDynamic for lights that move)");
             }
-            if (moved)
+            if (now.type != before.type)
+            {
+                // Autre type de lumière au même index (setLight) : la tuile publiée appartient à l'ancien type, même si la mise à jour
+                // est reportée (amortissement) ; la vue est redessinée tout de suite.
+                for (auto &[key, state] : views_)
+                {
+                    if (key.light == i)
+                    {
+                        state.rendered = false;
+                        state.cacheValid = false;
+                    }
+                }
+            }
+            else if (moved)
             {
                 for (auto &[key, state] : views_)
                 {
@@ -619,6 +688,7 @@ core::Result<> ShadowFeature::prepare(const FrameData &frame)
     struct Candidate
     {
         const Request *request = nullptr;
+        ShadowViewFit fit; // à la résolution de la tuile réellement allouée
         Action action = Action::kNone;
         std::vector<CasterDraw> staticDraws;
         std::vector<CasterDraw> movableDraws;
@@ -636,14 +706,16 @@ core::Result<> ShadowFeature::prepare(const FrameData &frame)
         }
         Candidate c;
         c.request = &r;
+        // Vue recalculée à la taille de la tuile quand elle a été réduite faute de place (texels, biais et ancrage réels).
+        c.fit = state.tile->size == r.size ? r.fit : fitFor(r, state.tile->size);
         const std::size_t mark = frameInstances_.size();
         ShadowHash staticHash;
-        staticHash.value(r.fit.viewProjection);
+        staticHash.value(c.fit.viewProjection);
         staticHash.value(*state.tile);
-        staticHash.value(gatherCasters(r.fit, eye, CasterMobility::kStatic, c.staticDraws));
+        staticHash.value(gatherCasters(c.fit, eye, CasterMobility::kStatic, c.staticDraws));
         c.staticHash = staticHash.digest();
-        c.movableHash = gatherCasters(r.fit, eye, CasterMobility::kMovable, c.movableDraws);
-        const bool matrixChanged = !state.rendered || r.fit.viewProjection != state.renderedFit.viewProjection;
+        c.movableHash = gatherCasters(c.fit, eye, CasterMobility::kMovable, c.movableDraws);
+        const bool matrixChanged = !state.rendered || c.fit.viewProjection != state.renderedFit.viewProjection;
         if (!r.behavior.cacheStatic)
         {
             c.action = Action::kFull; // Dynamic : redessinée à chaque mise à jour
@@ -670,21 +742,13 @@ core::Result<> ShadowFeature::prepare(const FrameData &frame)
         }
         candidates.push_back(std::move(c));
     }
+    const auto serviceKey = [&](const Candidate &c)
+    {
+        const ViewState &state = views_[c.request->key];
+        return ShadowServiceKey{state.rendered, c.request->priority, frame_ - state.lastUpdate};
+    };
     std::stable_sort(candidates.begin(), candidates.end(),
-                     [&](const Candidate &a, const Candidate &b)
-                     {
-                         const ViewState &sa = views_[a.request->key];
-                         const ViewState &sb = views_[b.request->key];
-                         if (sa.rendered != sb.rendered)
-                         {
-                             return !sa.rendered;
-                         }
-                         if (a.request->priority != b.request->priority)
-                         {
-                             return a.request->priority > b.request->priority;
-                         }
-                         return sa.lastUpdate < sb.lastUpdate;
-                     });
+                     [&](const Candidate &a, const Candidate &b) { return shadowServiceBefore(serviceKey(a), serviceKey(b)); });
     std::uint32_t budget = settings_.maxViewUpdatesPerFrame;
     for (Candidate &c : candidates)
     {
@@ -722,15 +786,37 @@ core::Result<> ShadowFeature::prepare(const FrameData &frame)
         }
         ++stats_.viewsUpdated;
         planned_.push_back(std::move(planned));
+        // Provisoire : validé à la fin de l'enregistrement de la passe de l'atlas (recordAtlas), invalidé sinon (invalidatePending).
+        pending_.push_back(r.key);
         state.rendered = true;
         state.cacheValid = r.behavior.cacheStatic;
-        state.renderedFit = r.fit;
+        state.renderedFit = c.fit;
         state.staticHash = c.staticHash;
         state.movableHash = c.movableHash;
         state.lastUpdate = frame_;
         state.spot = r.spot;
         state.params = paramsFor(r.key.light);
     }
+    // Seules les instances des dessins retenus sont envoyées (budget, amortissement, instances fixes des vues recopiées exclus).
+    std::vector<GpuInstance> compact;
+    for (PlannedView &view : planned_)
+    {
+        for (std::vector<CasterDraw> *draws : {&view.staticDraws, &view.movableDraws})
+        {
+            for (CasterDraw &d : *draws)
+            {
+                if (!d.instanced)
+                {
+                    continue;
+                }
+                const auto first = static_cast<std::uint32_t>(compact.size());
+                compact.insert(compact.end(), frameInstances_.begin() + d.firstInstance, frameInstances_.begin() + d.firstInstance + d.instanceCount);
+                d.firstInstance = first;
+            }
+        }
+    }
+    frameInstances_ = std::move(compact);
+    stats_.uploadedInstances = static_cast<std::uint32_t>(frameInstances_.size());
     stats_.mobilityViolations = mobilityViolations_;
     writeGpuData(origin);
     return uploadFrame();
@@ -770,7 +856,7 @@ void ShadowFeature::writeGpuData(const glm::vec3 &origin)
             const glm::vec3 direction = -glm::normalize(glm::vec3(inverseView[2]));
             g.spotMatrix[spots] = toAtlas * fit.viewProjection * toWorld;
             g.spotRect[spots] = rect;
-            g.spotParams[spots] = {static_cast<float>(key.light), state.params.spotNear, state.params.spotRange, fit.texelWorld};
+            g.spotParams[spots] = {static_cast<float>(key.light), fit.nearPlane, fit.farPlane, fit.texelWorld}; // plans de la vue réellement dessinée
             g.spotPosition[spots] = glm::vec4(position - origin, state.params.fadeStart);
             g.spotDirection[spots] = glm::vec4(direction, state.params.fadeEnd);
             ++spots;
@@ -976,6 +1062,7 @@ core::Result<> ShadowFeature::recordStatic(RenderPassContext &ctx)
         if (auto r = drawCasters(e, view.staticDraws); !r)
         {
             e.endRenderPass();
+            invalidatePending();
             return r;
         }
     }
@@ -1020,11 +1107,13 @@ core::Result<> ShadowFeature::recordAtlas(RenderPassContext &ctx)
         if (auto r = drawCasters(e, draws); !r)
         {
             e.endRenderPass();
+            invalidatePending();
             return r;
         }
     }
     e.endRenderPass();
     atlasFresh_ = false;
+    pending_.clear(); // mises à jour enregistrées : le cache et les empreintes de ces vues sont maintenant valides
     return {};
 }
 
