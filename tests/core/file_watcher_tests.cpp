@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 using namespace orosmo::core;
 namespace fs = std::filesystem;
@@ -146,4 +147,48 @@ TEST_SUITE("core/file_watcher")
         }
     }
 #endif
+
+    TEST_CASE("a poll interval skips calls made too soon, on the real clock")
+    {
+        TempDir t("interval");
+        write(t.path / "a.json", "1", -100);
+        FileWatcher w;
+        w.setPollInterval(std::chrono::milliseconds(150));
+        int events = 0;
+        w.watch(t.path, [&](const FileEvent &) { ++events; });
+        CHECK(w.poll() == 0); // première interrogation : exécutée
+        write(t.path / "a.json", "22", 10);
+        for (int i = 0; i < 1000; ++i)
+            CHECK(w.poll() == 0); // appelé à chaque image : ignoré, le disque n'est pas touché
+        CHECK(w.stats().polls == 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        CHECK(w.poll() == 1);
+        CHECK(events == 1);
+        CHECK(w.stats().polls == 2);
+    }
+
+    TEST_CASE("between full scans only the tracked files are checked")
+    {
+        TempDir t("tracked");
+        write(t.path / "a.json", "1", -100);
+        FileWatcher w;
+        w.setFullScanEvery(3);
+        std::vector<FileEvent> events;
+        w.watch(t.path, [&](const FileEvent &e) { events.push_back(e); });
+
+        write(t.path / "a.json", "22", 10);
+        CHECK(w.poll() == 1); // modification vue sans parcours du dossier
+        CHECK(w.stats().trackedScans == 1);
+        CHECK(w.stats().fullScans == 0);
+
+        write(t.path / "b.json", "x");
+        CHECK(w.poll() == 0); // un fichier créé n'est vu qu'au parcours complet
+        CHECK(w.poll() == 1); // troisième interrogation : parcours complet
+        CHECK(w.stats().fullScans == 1);
+        CHECK((events.back().change == FileChange::kCreated));
+
+        fs::remove(t.path / "a.json");
+        CHECK(w.poll() == 1); // la suppression d'un fichier suivi est vue sans parcours
+        CHECK((events.back().change == FileChange::kRemoved));
+    }
 }
