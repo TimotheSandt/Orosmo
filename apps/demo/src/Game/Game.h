@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "CameraController.h"
+#include "Game/frame_overlay.hpp"
 #include "Scene/demo_scene.hpp"
 #include "Scene/mixed_scene.hpp"
 #include "UI/demo_ui_state.hpp"
@@ -120,7 +121,9 @@ class Game
     bool loadFullUiTheme(bool reportAsError);
     bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
     void present(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
-    class OverlayFeature; // plugin de rendu : passes « ui » et « present » du graphe de l'image (Game.cpp)
+    orosmo::ui::Ui *activeUi() const noexcept; // interface affichée (HUD ou complète), nulle avec --ui off
+    bool captureAfterThisFrame() const noexcept;
+    orosmo::core::Result<> registerOverlay(); // plugin de rendu : passes « ui » et « present » du graphe de l'image (frame_overlay.hpp)
 
   private:
     orosmo::platform::Window window;
@@ -130,9 +133,12 @@ class Game
     std::unique_ptr<orosmo::renderer::PipelineCache> pipelines;
     std::unique_ptr<orosmo::renderer::SceneRenderer> sceneRenderer;
     std::unique_ptr<orosmo::renderer::CanvasRenderer> canvas;
-    OverlayFeature *overlay = nullptr; // possédé par sceneRenderer
+    demo::FrameOverlay *overlay = nullptr; // possédé par sceneRenderer
     std::unique_ptr<orosmo::renderer::ProfilerGpuTimerFactory> gpuTimers;
-    orosmo::renderer::RenderTarget composed; // image finale (scène puis interface), à la taille de la vue
+    // Image finale (scène puis interface) à la taille de la vue, quand elle ne se compose pas dans le backbuffer (captures, vue
+    // étirée) : créée à la première image qui la demande.
+    orosmo::renderer::RenderTarget composed;
+    demo::FrameComposition composition = demo::FrameComposition::kComposedTarget; // choisie par beginFrame
     orosmo::renderer::RenderTarget uiTarget; // interface à échelle réduite (touches de debug 5 à 8)
     std::unique_ptr<orosmo::rhi::CommandEncoder> frameEncoder;
     orosmo::rhi::TextureHandle backbuffer;
