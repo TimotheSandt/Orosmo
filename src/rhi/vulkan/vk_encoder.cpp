@@ -91,6 +91,13 @@ void VkEncoder::releaseCommandBuffers() noexcept
     }
 }
 
+void VkEncoder::noteBuffer(BufferHandle handle, const BufferRes *buffer)
+{
+    // Seuls les tampons kUpload comptent (écriture directe de `updateBuffer`) ; doublons consécutifs évités.
+    if (buffer != nullptr && buffer->desc.memory == MemoryKind::kUpload && (uploadBuffers_.empty() || uploadBuffers_.back() != handle))
+        uploadBuffers_.push_back(handle);
+}
+
 bool VkEncoder::check(bool condition, ErrorCode code, const std::string &message)
 {
     if (!condition)
@@ -141,6 +148,15 @@ Result<> VulkanDevice::submit(std::unique_ptr<CommandEncoder> encoder)
     if (!commandBuffers)
         return std::unexpected(commandBuffers.error());
     auto serial = submitCommandBuffers(*commandBuffers);
+    if (serial)
+    {
+        // Tampons kUpload lus ou écrits par ce travail : pas d'écriture directe tant que cette série n'est pas finie.
+        for (BufferHandle h : vkEncoder->uploadBuffers())
+        {
+            if (BufferRes *b = buffers_.get(h); b != nullptr)
+                b->gpuUse = std::max(b->gpuUse, *serial);
+        }
+    }
     if (!serial)
     {
         // Rien n'a été soumis : les tampons reviennent à leur réserve.
@@ -373,6 +389,7 @@ void VkEncoder::setBindGroup(std::uint32_t slot, BindGroupHandle handle, std::sp
             case BindingType::kStorageBuffer:
             {
                 const BufferRes *b = device_.get(e.buffer);
+                noteBuffer(e.buffer, b);
                 if (!check(b != nullptr, ErrorCode::kNotFound, "setBindGroup: a buffer of the group was destroyed"))
                     return;
                 const std::uint32_t extra = e.dynamicOffset ? dynamicOffsets[dyn++] : 0;
@@ -415,6 +432,7 @@ void VkEncoder::setBindGroup(std::uint32_t slot, BindGroupHandle handle, std::sp
 void VkEncoder::setVertexBuffer(std::uint32_t slot, BufferHandle handle, std::uint64_t offset)
 {
     const BufferRes *b = device_.get(handle);
+    noteBuffer(handle, b);
     if (check(slot < vertexBuffers_.size(), ErrorCode::kOutOfRange, "setVertexBuffer: slot >= 16") &&
         check(b != nullptr, ErrorCode::kNotFound, "setVertexBuffer: stale or null buffer") &&
         check(hasFlag(b->desc.usage, BufferUsage::kVertex), ErrorCode::kInvalidArgument, "setVertexBuffer: buffer lacks the Vertex usage") &&
@@ -425,6 +443,7 @@ void VkEncoder::setVertexBuffer(std::uint32_t slot, BufferHandle handle, std::ui
 void VkEncoder::setIndexBuffer(BufferHandle handle, IndexType type, std::uint64_t offset)
 {
     const BufferRes *b = device_.get(handle);
+    noteBuffer(handle, b);
     if (check(b != nullptr, ErrorCode::kNotFound, "setIndexBuffer: stale or null buffer") &&
         check(hasFlag(b->desc.usage, BufferUsage::kIndex), ErrorCode::kInvalidArgument, "setIndexBuffer: buffer lacks the Index usage") &&
         check(offset < b->desc.size, ErrorCode::kOutOfRange, "setIndexBuffer: offset must be inside the buffer") &&
@@ -559,6 +578,7 @@ void VkEncoder::drawIndexed(std::uint32_t indexCount, std::uint32_t instanceCoun
 void VkEncoder::drawIndirect(BufferHandle args, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t stride)
 {
     const BufferRes *b = device_.get(args);
+    noteBuffer(args, b);
     const std::uint64_t step = stride != 0 ? stride : sizeof(DrawIndirectCommand);
     if (!check(b != nullptr && hasFlag(b->desc.usage, BufferUsage::kIndirect), ErrorCode::kInvalidArgument,
                "drawIndirect: args buffer is stale or lacks the Indirect usage") ||
@@ -585,6 +605,7 @@ void VkEncoder::drawIndirect(BufferHandle args, std::uint64_t offset, std::uint3
 void VkEncoder::drawIndexedIndirect(BufferHandle args, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t stride)
 {
     const BufferRes *b = device_.get(args);
+    noteBuffer(args, b);
     const std::uint64_t step = stride != 0 ? stride : sizeof(DrawIndexedIndirectCommand);
     if (!check(b != nullptr && hasFlag(b->desc.usage, BufferUsage::kIndirect), ErrorCode::kInvalidArgument,
                "drawIndexedIndirect: args buffer is stale or lacks the Indirect usage") ||
@@ -640,6 +661,7 @@ void VkEncoder::dispatch(std::uint32_t x, std::uint32_t y, std::uint32_t z)
 void VkEncoder::dispatchIndirect(BufferHandle args, std::uint64_t offset)
 {
     const BufferRes *b = device_.get(args);
+    noteBuffer(args, b);
     const PipelineRes *p = device_.get(computePipeline_);
     if (!check(recording(), ErrorCode::kUnknown, "dispatchIndirect: the encoder has no command buffer") ||
         !check(!inPass_, ErrorCode::kInvalidArgument, "dispatchIndirect: inside a render pass") ||
@@ -663,7 +685,9 @@ void VkEncoder::dispatchIndirect(BufferHandle args, std::uint64_t offset)
 void VkEncoder::copyBuffer(BufferHandle src, BufferHandle dst, const BufferCopy &r)
 {
     const BufferRes *s = device_.get(src);
+    noteBuffer(src, s);
     const BufferRes *d = device_.get(dst);
+    noteBuffer(dst, d);
     if (check(recording(), ErrorCode::kUnknown, "copyBuffer: the encoder has no command buffer") &&
         check(!inPass_, ErrorCode::kInvalidArgument, "copyBuffer: inside a render pass") &&
         check(s != nullptr && d != nullptr, ErrorCode::kNotFound, "copyBuffer: stale or null buffer") &&
@@ -684,6 +708,7 @@ void VkEncoder::copyBuffer(BufferHandle src, BufferHandle dst, const BufferCopy 
 void VkEncoder::copyBufferToTexture(BufferHandle src, TextureHandle dst, const TextureCopy &copy)
 {
     const BufferRes *b = device_.get(src);
+    noteBuffer(src, b);
     const TextureRes *t = device_.get(dst);
     if (!check(recording(), ErrorCode::kUnknown, "copyBufferToTexture: the encoder has no command buffer") ||
         !check(!inPass_, ErrorCode::kInvalidArgument, "copyBufferToTexture: inside a render pass") ||
@@ -714,6 +739,7 @@ void VkEncoder::copyTextureToBuffer(TextureHandle src, BufferHandle dst, const T
 {
     const TextureRes *t = device_.get(src);
     const BufferRes *b = device_.get(dst);
+    noteBuffer(dst, b);
     if (!check(recording(), ErrorCode::kUnknown, "copyTextureToBuffer: the encoder has no command buffer") ||
         !check(!inPass_, ErrorCode::kInvalidArgument, "copyTextureToBuffer: inside a render pass") ||
         !check(b != nullptr && t != nullptr, ErrorCode::kNotFound, "copyTextureToBuffer: stale or null buffer/texture") ||

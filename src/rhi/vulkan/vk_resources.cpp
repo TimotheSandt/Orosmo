@@ -205,11 +205,12 @@ Result<> VulkanDevice::updateBuffer(BufferHandle handle, std::uint64_t offset, s
         return makeError(ErrorCode::kOutOfRange, "updateBuffer: range exceeds the buffer (" + buffer->desc.debugName + ")");
     if (data.empty())
         return {};
-    if (buffer->desc.memory == MemoryKind::kUpload && buffer->mapped != nullptr)
+    const bool upload = buffer->desc.memory == MemoryKind::kUpload && buffer->mapped != nullptr;
+    if (upload && buffer->gpuUse <= completedSerial())
     {
-        // Tampon « écrit par le CPU, lu par le GPU » : écriture directe dans sa mémoire mappée, sans transfert ni barrière (les
-        // écritures de l'hôte faites avant une soumission lui sont visibles). Contrat (types.hpp, MemoryKind::kUpload) : l'appelant
-        // ne réécrit pas une plage que le GPU peut encore lire.
+        // Tampon « écrit par le CPU, lu par le GPU » que plus aucun travail du GPU n'utilise (soumission finie, aucune copie en
+        // attente) : écriture directe dans sa mémoire mappée, sans transfert ni barrière (les écritures de l'hôte faites avant une
+        // soumission lui sont visibles). Encore utilisé : copie ordonnée ci-dessous, comme pour kGpuOnly (même résultat).
         std::memcpy(static_cast<std::byte *>(buffer->mapped) + offset, data.data(), data.size());
         vmaFlushAllocation(allocator_, buffer->allocation, offset, data.size());
         ++counters_.directWrites;
@@ -224,6 +225,11 @@ Result<> VulkanDevice::updateBuffer(BufferHandle handle, std::uint64_t offset, s
     batchCopyBarrier(buffer->buffer, offset, data.size());
     const VkBufferCopy region{space.offset, offset, data.size()};
     vkCmdCopyBuffer(*commandBuffer, space.buffer, buffer->buffer, 1, &region);
+    if (upload)
+    {
+        buffer->gpuUse = lastSubmitted_ + 1; // la copie part avec la prochaine soumission
+        ++counters_.orderedUploadWrites;
+    }
     if (batchBytes_ > kMaxBatchBytes)
         return flushPending();
     return {};

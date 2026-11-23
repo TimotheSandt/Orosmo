@@ -58,6 +58,7 @@ struct TransferCounters
     std::uint64_t stagingBlocks = 0;           // blocs de l'anneau de transfert créés
     std::uint64_t ringUploads = 0;             // envois servis par l'anneau
     std::uint64_t directWrites = 0;            // `updateBuffer` écrits directement dans un tampon kUpload (sans transfert)
+    std::uint64_t orderedUploadWrites = 0;     // `updateBuffer` sur un tampon kUpload encore utilisé par le GPU : copie ordonnée
     std::uint64_t copyBarriers = 0;            // barrières placées entre deux copies d'un lot (plages qui se recouvrent)
     std::uint64_t commandPools = 0;            // réserves de tampons de commandes créées
     std::uint64_t commandPoolResets = 0;       // vkResetCommandPool
@@ -72,6 +73,9 @@ struct BufferRes
     VmaAllocation allocation = nullptr;
     BufferDesc desc;
     void *mapped = nullptr; // non nul pour kUpload et kReadback (mémoire visible par le CPU, mappée en permanence)
+    // Dernière série qui lit ou écrit le tampon (soumission d'un encodeur qui l'utilise, lot qui le copie). `updateBuffer` n'écrit
+    // directement un tampon kUpload que si cette série est finie ; sinon, copie ordonnée (résultat identique à l'ancien chemin).
+    Serial gpuUse = 0;
 };
 
 // Vue d'image : plage de niveaux et de couches, et type. Les vues sont créées à la demande et gardées par la texture.
