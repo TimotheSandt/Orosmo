@@ -172,6 +172,12 @@ void Widget::layout(Ui &ui, const Rect &rect)
     glm::vec2 hi = rect.end() + glm::vec2(shadow, shadow + s.shadowOffset);
     lo.y = std::min(lo.y, rect.position.y);
     hi.y = std::max(hi.y, rect.end().y);
+    if (overflow != Overflow::kHidden)
+    {
+        const Rect own = contentExtent(ui, s); // texte qui dépasse le rectangle : visible, donc jamais éliminé à tort
+        lo = glm::min(lo, own.position);
+        hi = glm::max(hi, own.end());
+    }
     if (overflow != Overflow::kHidden && !clipsChildren())
     {
         for (const auto &child : children_)
@@ -215,6 +221,10 @@ void Widget::draw(const Ui &ui, renderer::DrawList &list) const
         const Rect clip = clipOf();
         const glm::vec2 lo = glm::max(clip.position, glm::vec2(0.0f));
         const glm::vec2 hi = glm::min(clip.end(), ui.viewport());
+        if (hi.x <= lo.x || hi.y <= lo.y) // zone de découpage vide (viewport défilé réduit à rien) : rien n'est visible
+        {
+            return;
+        }
         if (bounds_.position.x >= hi.x || bounds_.position.y >= hi.y || bounds_.end().x <= lo.x || bounds_.end().y <= lo.y)
         {
             return;
@@ -233,6 +243,8 @@ void Widget::draw(const Ui &ui, renderer::DrawList &list) const
 }
 
 void Widget::drawBackground(const Ui &, renderer::DrawList &list, const Style &style) const { drawBox(list, rect_, style); }
+
+Rect Widget::contentExtent(Ui &, const Style &) const { return rect_; }
 
 glm::vec2 Widget::measureContent(Ui &ui, glm::vec2 available, const Style &)
 {

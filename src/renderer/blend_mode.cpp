@@ -39,6 +39,7 @@ BlendModeState blendModeState(BlendMode mode) noexcept
     case BlendMode::kPremultiplied:
         blend(BlendFactor::kOne, BlendFactor::kOneMinusSrcAlpha);
         s.depthWrite = false;
+        s.needsSorting = true; // « over » prémultiplié ne commute pas : arrière vers avant
         break;
     case BlendMode::kTransmission:
         blend(BlendFactor::kSrcAlpha, BlendFactor::kOneMinusSrcAlpha);

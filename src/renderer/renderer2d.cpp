@@ -1,6 +1,7 @@
 #include "orosmo/renderer/renderer2d.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <numbers>
@@ -185,7 +186,12 @@ std::uint32_t Renderer2D::segmentsFor(float radius, std::uint32_t requested) con
         return 8;
     }
     const float step = 2.0f * std::acos(1.0f - 0.25f / radiusPx);
-    return std::clamp<std::uint32_t>(static_cast<std::uint32_t>(std::ceil(2.0f * std::numbers::pi_v<float> / step)), 8, 256);
+    if (!(step > 0.0f)) // angle nul (rayon énorme, arrondi) ou NaN : le maximum, sans division par zéro
+    {
+        return 256;
+    }
+    const float count = std::ceil(2.0f * std::numbers::pi_v<float> / step);
+    return static_cast<std::uint32_t>(std::clamp(count, 8.0f, 256.0f)); // borné en flottant avant la conversion
 }
 
 void Renderer2D::line(const glm::vec2 &a, const glm::vec2 &b, float thickness, const glm::vec4 &color, float z)
@@ -208,34 +214,121 @@ void Renderer2D::polyline(std::span<const glm::vec2> points, float thickness, co
     {
         return;
     }
-    const auto first = static_cast<std::uint32_t>(shapeData_.size() / kShapeVertexFloats);
-    const std::size_t segments = closed ? points.size() : points.size() - 1;
-    for (std::size_t i = 0; i < segments; ++i)
+    // Points distincts et finis ; un contour fermé qui revient à son départ perd le doublon.
+    std::vector<glm::vec2> pts;
+    pts.reserve(points.size());
+    for (const glm::vec2 &p : points)
     {
-        const glm::vec2 &a = points[i];
-        const glm::vec2 &b = points[(i + 1) % points.size()];
-        const glm::vec2 d = b - a;
-        const float length = glm::length(d);
-        if (length > 0.0f && std::isfinite(length))
+        if (std::isfinite(p.x) && std::isfinite(p.y) && (pts.empty() || p != pts.back()))
         {
-            const glm::vec2 n = perp(d / length) * (thickness * 0.5f);
-            quad(a - n, b - n, b + n, a + n, color);
+            pts.push_back(p);
         }
     }
-    // Jonctions arrondies (disques aux sommets intérieurs) : pas de trou au coude ; une couleur translucide y est mélangée deux fois.
-    const std::uint32_t n = segmentsFor(thickness * 0.5f, 0);
-    for (std::size_t i = closed ? 0 : 1; i + (closed ? 0 : 1) < points.size(); ++i)
+    while (pts.size() > 1 && pts.front() == pts.back())
     {
-        const glm::vec2 &c = points[i];
-        for (std::uint32_t k = 0; k < n; ++k)
+        pts.pop_back();
+    }
+    if (pts.size() < 2)
+    {
+        return;
+    }
+    closed = closed && pts.size() >= 3;
+    const std::size_t count = pts.size();
+    const std::size_t segments = closed ? count : count - 1;
+    const float h = thickness * 0.5f;
+
+    // Une quadrilatère par segment (droite de a, droite de b, gauche de b, gauche de a). Aux coudes, le côté intérieur des deux
+    // segments est ramené à leur intersection (pas de recouvrement) et le côté extérieur reçoit un éventail arrondi : chaque pixel
+    // n'est couvert qu'une fois, une couleur translucide n'y est pas mélangée deux fois. Des points alignés n'ajoutent rien.
+    struct Seg
+    {
+        glm::vec2 d;
+        float length;
+        std::array<glm::vec2, 4> c; // aR, bR, bL, aL
+    };
+    std::vector<Seg> segs(segments);
+    for (std::size_t i = 0; i < segments; ++i)
+    {
+        const glm::vec2 &a = pts[i];
+        const glm::vec2 &b = pts[(i + 1) % count];
+        const float length = glm::length(b - a);
+        const glm::vec2 d = (b - a) / length;
+        const glm::vec2 n = perp(d) * h;
+        segs[i] = {d, length, {a - n, b - n, b + n, a + n}};
+    }
+    const std::uint32_t arcSegments = segmentsFor(h, 0);
+    const float twoPi = 2.0f * std::numbers::pi_v<float>;
+    auto fan = [&](const glm::vec2 &center, float from, float to)
+    {
+        if (to < from)
         {
-            const float a0 = 2.0f * std::numbers::pi_v<float> * static_cast<float>(k) / static_cast<float>(n);
-            const float a1 = 2.0f * std::numbers::pi_v<float> * static_cast<float>(k + 1) / static_cast<float>(n);
-            const float r = thickness * 0.5f;
-            vertex(c, color);
-            vertex(c + r * glm::vec2(std::cos(a0), std::sin(a0)), color);
-            vertex(c + r * glm::vec2(std::cos(a1), std::sin(a1)), color);
+            std::swap(from, to); // sens antihoraire
         }
+        const auto steps = std::max<std::uint32_t>(1, static_cast<std::uint32_t>(std::ceil((to - from) / twoPi * static_cast<float>(arcSegments))));
+        for (std::uint32_t k = 0; k < steps; ++k)
+        {
+            const float a0 = from + (to - from) * static_cast<float>(k) / static_cast<float>(steps);
+            const float a1 = from + (to - from) * static_cast<float>(k + 1) / static_cast<float>(steps);
+            vertex(center, color);
+            vertex(center + h * glm::vec2(std::cos(a0), std::sin(a0)), color);
+            vertex(center + h * glm::vec2(std::cos(a1), std::sin(a1)), color);
+        }
+    };
+    const auto first = static_cast<std::uint32_t>(shapeData_.size() / kShapeVertexFloats);
+    for (std::size_t v = closed ? 0 : 1; v + (closed ? 0 : 1) < count; ++v)
+    {
+        const std::size_t prev = (v + segments - 1) % segments; // segment qui arrive en v
+        const std::size_t next = v % segments;                  // segment qui part de v
+        Seg &s0 = segs[prev];
+        Seg &s1 = segs[next];
+        const float cross = s0.d.x * s1.d.y - s0.d.y * s1.d.x;
+        const float dotp = glm::dot(s0.d, s1.d);
+        if (std::abs(cross) < 1e-6f && dotp > 0.0f)
+        {
+            continue; // alignés : les deux rectangles se touchent sans se recouvrir
+        }
+        if (dotp < -0.9999f)
+        {
+            fan(pts[v], 0.0f, twoPi); // demi-tour : disque (les deux segments se recouvrent déjà)
+            continue;
+        }
+        const bool leftTurn = cross > 0.0f;
+        const float outer = leftTurn ? -1.0f : 1.0f; // côté extérieur du coude (signe de la normale)
+        const glm::vec2 n0 = perp(s0.d) * h;
+        const glm::vec2 n1 = perp(s1.d) * h;
+        const glm::vec2 miter = (n0 + n1) / (1.0f + dotp);
+        if (std::abs(glm::dot(miter, s0.d)) <= s0.length && std::abs(glm::dot(miter, s1.d)) <= s1.length)
+        {
+            const glm::vec2 inner = pts[v] + (leftTurn ? miter : -miter);
+            s0.c[leftTurn ? 2 : 1] = inner;
+            s1.c[leftTurn ? 3 : 0] = inner;
+            // Les deux fins de quadrilatère coupées en biais laissent deux triangles (inner, bord extérieur, sommet) : on les comble.
+            const glm::vec2 out0 = s0.c[leftTurn ? 1 : 2];
+            const glm::vec2 out1 = s1.c[leftTurn ? 0 : 3];
+            vertex(inner, color);
+            vertex(out0, color);
+            vertex(pts[v], color);
+            vertex(inner, color);
+            vertex(pts[v], color);
+            vertex(out1, color);
+        }
+        const glm::vec2 o0 = outer * n0;
+        const glm::vec2 o1 = outer * n1;
+        const float a0 = std::atan2(o0.y, o0.x);
+        float a1 = std::atan2(o1.y, o1.x);
+        if (a1 - a0 > std::numbers::pi_v<float>)
+        {
+            a1 -= twoPi;
+        }
+        else if (a1 - a0 < -std::numbers::pi_v<float>)
+        {
+            a1 += twoPi;
+        }
+        fan(pts[v], a0, a1);
+    }
+    for (const Seg &s : segs)
+    {
+        quad(s.c[0], s.c[1], s.c[2], s.c[3], color);
     }
     addShape(z, first);
 }
@@ -450,7 +543,14 @@ core::Result<> Renderer2D::render(rhi::CommandEncoder &encoder, rhi::TextureHand
     // Tri stable : z, puis type, puis matériau ; l'ordre de dépôt départage le reste.
     std::ranges::sort(items_, [](const Item &a, const Item &b)
                       {
-                          if (a.z != b.z)
+                          // NaN dans une catégorie à part (en dernier) : ordre strict faible, valeurs finies inchangées.
+                          const bool nanA = std::isnan(a.z);
+                          const bool nanB = std::isnan(b.z);
+                          if (nanA != nanB)
+                          {
+                              return nanB;
+                          }
+                          if (!nanA && a.z != b.z)
                           {
                               return a.z < b.z;
                           }
@@ -509,27 +609,25 @@ core::Result<> Renderer2D::render(rhi::CommandEncoder &encoder, rhi::TextureHand
         runs.back().count += item.count;
     }
 
+    // Un matériau effacé (clearMaterials) depuis le dépôt : refus propre, avant toute écriture ou passe de rendu.
+    for (const Run &run : runs)
+    {
+        if (run.kind == Kind::kSprite && !materials_.contains(run.material))
+        {
+            return makeError(ErrorCode::kInvalidArgument, "Renderer2D::render: a sprite references a material that no longer exists");
+        }
+    }
+
+    BatchArena::Range batch{};
     if (!data.empty())
     {
-        const std::uint64_t needed = data.size() * sizeof(float);
-        if (!buffer_.valid() || buffer_.size() < needed)
+        auto uploaded = arena_.upload(device_, &encoder, std::as_bytes(std::span(data)), "renderer2d.batch");
+        if (!uploaded)
         {
-            rhi::BufferDesc bd;
-            bd.size = std::max<std::uint64_t>(needed, 64 * 1024);
-            bd.usage = rhi::BufferUsage::kVertex | rhi::BufferUsage::kCopyDst;
-            bd.debugName = "renderer2d.batch";
-            auto created = GpuBuffer::create(device_, bd);
-            if (!created)
-            {
-                return std::unexpected(created.error());
-            }
-            buffer_ = std::move(*created);
+            return std::unexpected(uploaded.error());
         }
-        if (auto r = buffer_.update(0, std::as_bytes(std::span(data))); !r)
-        {
-            return r;
-        }
-        stats_.bufferBytes = needed;
+        batch = *uploaded;
+        stats_.bufferBytes = data.size() * sizeof(float);
     }
 
     Push push{};
@@ -564,7 +662,7 @@ core::Result<> Renderer2D::render(rhi::CommandEncoder &encoder, rhi::TextureHand
             const Material &m = materials_.at(run.material);
             encoder.setBindGroup(1, (pixelPerfect || m.forceNearest) ? m.nearest : m.linear);
         }
-        encoder.setVertexBuffer(0, buffer_.handle(), run.byteOffset);
+        encoder.setVertexBuffer(0, batch.buffer, batch.offset + run.byteOffset);
         if (sprite)
         {
             encoder.draw(6, run.count);

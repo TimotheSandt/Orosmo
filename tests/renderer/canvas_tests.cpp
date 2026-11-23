@@ -136,6 +136,26 @@ TEST_SUITE("renderer/canvas")
         }
     }
 
+    TEST_CASE("two render() calls on one encoder before submit keep the instances of both")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Canvas c(backend);
+            REQUIRE(c.gpu.device);
+            rd::DrawList first = listOf();
+            first.rect({0, 0}, {8, 16}, {1, 0, 0, 1});
+            rd::DrawList second = listOf();
+            second.rect({8, 0}, {8, 16}, {0, 0, 1, 1});
+            auto encoder = c.gpu->createCommandEncoder();
+            REQUIRE(c.canvas->render(*encoder, first, c.canvasTarget(), false).has_value());
+            REQUIRE(c.canvas->render(*encoder, second, c.canvasTarget(), true).has_value());
+            REQUIRE(c.gpu->submit(std::move(encoder)).has_value());
+            CHECK(c.px(3, 8) == Px{255, 0, 0, 255});
+            CHECK(c.px(12, 8) == Px{0, 0, 255, 255});
+            c.gpu.expectNoValidationErrors();
+        }
+    }
+
     TEST_CASE("UI-07: rounded corners, inner border and soft edge (shadow); a plain rectangle stays exact")
     {
         FOR_EACH_BACKEND(backend)
@@ -383,9 +403,11 @@ TEST_SUITE("renderer/canvas")
             rd::DrawList other = listOf();
             other.glyphs(squareRun(a, 0, 8, 4, 12, {1, 0, 0}));
             other.glyphs(squareRun(b, 8, 8, 12, 12, {0, 0, 1})); // autre atlas : nouveau lot
-            REQUIRE(c.render(other).has_value());
+            REQUIRE(c.render(other, false).has_value()); // cible remise à zéro : aucun pixel résiduel ne masque une erreur
             CHECK(c.canvas->stats().drawCalls == 2);
+            CHECK(c.px(2, 10) == Px{255, 0, 0, 255});
             CHECK(c.px(10, 10) == Px{0, 0, 255, 255});
+            CHECK(c.px(14, 2) == Px{0, 0, 0, 0});
             c.gpu.expectNoValidationErrors();
         }
     }
@@ -402,7 +424,7 @@ TEST_SUITE("renderer/canvas")
             l.rect({0, 0}, {8, 8}, {1, 0, 0, 1});
             l.glyphs(squareRun(atlas, 4, 4, 12, 12, {0, 0, 1}));
             l.rect({6, 6}, {8, 8}, {0, 1, 0, 1});
-            REQUIRE(c.render(l).has_value());
+            REQUIRE(c.render(l, false).has_value());
             CHECK(c.canvas->stats().drawCalls == 3);
             CHECK(c.px(2, 2) == Px{255, 0, 0, 255});
             CHECK(c.px(5, 5) == Px{0, 0, 255, 255}); // le bleu est au-dessus du rouge
@@ -414,8 +436,9 @@ TEST_SUITE("renderer/canvas")
             apart.rect({0, 0}, {2, 2}, {1, 0, 0, 1});
             apart.glyphs(squareRun(atlas, 4, 4, 8, 8, {0, 0, 1}));
             apart.rect({12, 12}, {2, 2}, {0, 1, 0, 1});
-            REQUIRE(c.render(apart).has_value());
+            REQUIRE(c.render(apart, false).has_value());
             CHECK(c.canvas->stats().drawCalls == 2);
+            CHECK(c.px(14, 2) == Px{0, 0, 0, 0});
             CHECK(c.px(1, 1) == Px{255, 0, 0, 255});
             CHECK(c.px(6, 6) == Px{0, 0, 255, 255});
             CHECK(c.px(13, 13) == Px{0, 255, 0, 255});

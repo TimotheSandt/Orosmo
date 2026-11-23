@@ -134,4 +134,52 @@ TEST_SUITE("ui/lean")
         off.draw(h.ui, l);
         CHECK(l.size() == 0);
     }
+
+    TEST_CASE("a Label whose left-aligned text overflows its rectangle into the window is not culled")
+    {
+        UiHarness h;
+        auto root = std::make_unique<ui::Overlay>();
+        auto label = std::make_unique<ui::Label>("WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW");
+        label->setAlign(ui::Align::kStart, ui::Align::kStart);
+        label->setWidth(ui::SizeSpec::fixed(20));
+        label->margin.left = -30.0f; // le rectangle finit à x = -10 : hors de la fenêtre ; le texte commence à x = -30 et la traverse
+        auto &text = root->add(std::move(label));
+        h.ui.setRoot(std::move(root));
+        h.frame();
+        REQUIRE(text.rect().end().x < 0.0f);
+        rd::DrawList l;
+        text.draw(h.ui, l);
+        CHECK(l.size() > 0);
+
+        // Texte contenu dans un conteneur qui découpe : rien d'étendu, le rejet reste actif.
+        UiHarness h2;
+        auto box = std::make_unique<ui::VBox>("panel");
+        box->setWidth(ui::SizeSpec::fixed(20)).setHeight(ui::SizeSpec::fixed(20));
+        box->overflow = ui::Overflow::kHidden;
+        auto &inner = box->emplace<ui::Label>("WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW");
+        rootChild(h2, std::move(box));
+        rd::DrawList clipped;
+        inner.draw(h2.ui, clipped);
+        CHECK(clipped.size() > 0); // visible dans le rectangle découpé
+    }
+
+    TEST_CASE("an empty clip area (zero width or height) draws nothing; a non-empty one still draws")
+    {
+        for (const float width : {0.0f, 20.0f})
+        {
+            UiHarness h;
+            auto box = std::make_unique<ui::VBox>("panel");
+            box->setWidth(ui::SizeSpec::fixed(width)).setHeight(ui::SizeSpec::fixed(20));
+            box->overflow = ui::Overflow::kHidden;
+            box->margin.left = 5.0f;
+            auto &child = box->emplace<ui::Button>("content wider than the box");
+            rootChild(h, std::move(box));
+            rd::DrawList l;
+            child.draw(h.ui, l);
+            if (width == 0.0f)
+                CHECK(l.size() == 0);
+            else
+                CHECK(l.size() > 0);
+        }
+    }
 }

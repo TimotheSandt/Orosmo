@@ -9,6 +9,7 @@
 
 #include "orosmo/core/error.hpp"
 #include "orosmo/renderer/camera2d.hpp"
+#include "orosmo/renderer/batch_arena.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/shader_library.hpp"
@@ -149,7 +150,7 @@ class Renderer2D
     std::shared_ptr<ShaderProgram> shapeProgram_;
     rhi::SamplerHandle linearSampler_;
     rhi::SamplerHandle nearestSampler_;
-    GpuBuffer buffer_;
+    BatchArena arena_; // une plage par appel de render() sur un même encodeur
     std::map<std::uint32_t, Material> materials_;
     std::uint32_t nextMaterial_ = 1;
 

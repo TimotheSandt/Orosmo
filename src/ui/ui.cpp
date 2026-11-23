@@ -888,7 +888,9 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
             // Échap : un champ de saisie le prend (perte du focus) ; sinon il remonte à la fenêtre modale ouverte.
             Widget *before = focused_;
             focused_->onKey(*this, key);
-            if (key == kKeyEscape && focused_ == before && !modals_.empty())
+            if (key == kKeyEscape && focused_ == before && !popups_.empty() && inAnyPopup(focused_))
+                closePopupsFrom(popups_.size() - 1); // secours : un curseur ou un bouton de la fenêtre n'a pas pris Échap
+            else if (key == kKeyEscape && focused_ == before && !modals_.empty())
                 modals_.back().owner->onKey(*this, kKeyEscape);
         }
         else if (key == kKeyEscape && !modals_.empty())
