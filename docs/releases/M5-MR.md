@@ -2,7 +2,7 @@
 
 ## Résumé
 
-Jalon M5, version **`v0.5.0`**. Le moteur a un **cœur de rendu moderne** construit sur le RHI, **sans modifier le RHI ni les backends** : un **graphe de passes** avec **plugins** (`RenderFeature`), le bloc de **données par image** `FrameData` partagé C++/GLSL, l'éclairage **forward+ clusterisé**, les **ombres en cascade avec cache**, le **HDR** et les post-traitements (exposition automatique, bloom, tonemapping, LUT, vignettage), l'**anticrénelage** (FXAA, SMAA 1x, TAA), les **sorties auxiliaires** (AOV) à la demande, l'**instancing** avec **culling** CPU et **GPU** (Hi-Z, multi-draw indirect) et LOD, les **transparents triés** et les modes de fusion, le **batch 2D** et le mélange 2D/3D. L'interface passe par le batch 2D (de 143 à 18 draw calls), n'émet rien pour ce qui est caché ou hors découpage, et le carré d'un `ColorPicker` ouvre la roue de couleur. **Les images par défaut sont identiques à la tolérance 0** avant et après chaque branche, sur OpenGL et Vulkan ; chaque fonction s'active par une option de la démo. Détail : `docs/releases/M5.md`.
+Jalon M5, version **`v0.5.0`**. Le moteur a un **cœur de rendu moderne** construit sur le RHI, **presque sans toucher au RHI** (un seul ajout : `Capabilities::drawIndirectFirstInstance`) : un **graphe de passes** avec **plugins** (`RenderFeature`), le bloc de **données par image** `FrameData` partagé C++/GLSL, l'éclairage **forward+ clusterisé**, les **ombres en cascade avec cache**, le **HDR** et les post-traitements (exposition automatique, bloom, tonemapping, LUT, vignettage), l'**anticrénelage** (FXAA, SMAA 1x, TAA), les **sorties auxiliaires** (AOV) à la demande, l'**instancing** avec **culling** CPU et **GPU** (Hi-Z, multi-draw indirect) et LOD, les **transparents triés** et les modes de fusion, le **batch 2D** et le mélange 2D/3D. L'interface passe par le batch 2D (de 143 à 18 draw calls), n'émet rien pour ce qui est caché ou hors découpage, et le carré d'un `ColorPicker` ouvre la roue de couleur. **Les images par défaut sont identiques à la tolérance 0** avant et après chaque branche, sur OpenGL et Vulkan ; chaque fonction s'active par une option de la démo. Détail : `docs/releases/M5.md`.
 
 ## Identifiants
 
@@ -13,11 +13,11 @@ Jalon M5, version **`v0.5.0`**. Le moteur a un **cœur de rendu moderne** constr
 - `SceneRenderer::drawMesh` enregistre ; les dessins sont joués à `endFrame` (les tampons doivent rester valides jusque-là) ; image construite par le graphe de passes.
 - Groupe 0 : `FrameData` en liaison 2, liaisons 3 à 7 réservées aux plugins ; `ModelBlock` de 128 à 208 octets ; convention de push constants de `mesh.frag` (pré-passe) ; jitter de la perspective de signe corrigé.
 - Les ponctuelles et projecteurs sont maintenant rendus ; `shaders/include/` est une nouvelle racine d'inclusion.
-- Aucun changement du RHI ni du paquet de release.
+- RHI : seul ajout `Capabilities::drawIndirectFirstInstance` ; aucun changement du paquet de release.
 
 ## Décisions
 
-- Propositions **à confirmer par l'auteur** : A44 à A56 (`docs/QUESTIONS.md`) ; en particulier **A54** (reporter le cache par couche de l'interface à M6), **A50** (ajouts au RHI : alpha-to-coverage et MSAA, `drawIndexedIndirectCount`, `depthBias`, copie texture à texture, libération différée), A55 (jalon livré en une seule merge request).
+- Propositions **à confirmer par l'auteur** : A44 à A60 (`docs/QUESTIONS.md`) ; en particulier **A54** (reporter le cache par couche de l'interface à M6), **A50** (ajouts au RHI : alpha-to-coverage et MSAA, `drawIndexedIndirectCount`, `depthBias`, copie texture à texture, libération différée), A55 (jalon livré en une seule merge request) ; revue : A57 (ajouts d'API), A59 (ombre des transparents), A60 (budget `hud` de `demo-vulkan-check`).
 - Version : M5 `v0.5.0` ; les fichiers de version restent à mettre à jour par l'auteur.
 
 ## Commande de démo
@@ -34,8 +34,14 @@ Linux x64, g++ 13.3, Mesa, Intel Arc, sur `milestone/M5` : `make demo-test` **54
 
 Mesures : interface 143 → 18 draw calls ; 10 000 instances en 2 draw calls ; 100 000 objets avec culling GPU, passe `scene` 9,2 → 5,2 ms (OpenGL) et 6,0 → 4,7 ms (Vulkan) ; forward+ avec 1000 lumières, passe `scene` 93,6 → 5,7 ms (OpenGL) et 37,5 → 2,9 ms (Vulkan) (debug -O1, Intel) ; cache d'ombres : 0 redessin de la géométrie fixe après la première image.
 
+## Revue de la PR #12
+
+102 remarques de CodeRabbit et 2 échecs de CI vérifiés en six groupes (`fix/M5-review-*`) : 95 corrigées (dont 2 en partie ou dans le test), 2 rejetées avec leur raison, 5 reportées (`docs/GAPS.md`, `docs/QUESTIONS.md`). Échecs de CI corrigés : test Hi-Z sur Mesa 25.2.8 (llvmpipe, reproduit avec les paquets de la CI) et capture de lambda inutile pour clang macOS. Bug Vulkan confirmé par un test et corrigé : deux `render` 2D sur un même encodeur. En plus : démo limitée par le CPU et gel au premier affichage corrigés (`fix/M5-ui-perf` : 4,8 → 1,07 ms par image sans interface, 9,5 → 2,45 ms interface complète, OpenGL en fenêtre), panneau de performances `--hud` / Ctrl+F.
+
+Vérification de `dev` après la revue (`9423484`) : `make demo-test` **582 / 582** ; Vulkan, GPU exigé **244 / 244** ; suites GPU sur rasteriseurs logiciels **244 / 244** ; `make check`, `make demo-capture`, `make demo-vulkan-check` (validation silencieuse), tests Python : verts. ASan et clone propre non relancés après la revue (la CI lance ASan).
+
 ## Non prouvé
 
-Windows, macOS et Linux arm64 (la CI le dira) ; un seul GPU (Intel Arc, Mesa) ;  écart d'un pixel entre forward et forward+ ; libération de ressources pendant l'enregistrement (`FullscreenBlit`, `Mesh::setTextures`) ; limites du rendu piloté par GPU, des ombres, du HDR, de l'anticrénelage et du batch 2D ; `clang-format` non installé (`docs/GAPS.md`, G151 à G171).
+Windows, macOS et Linux arm64 (la CI le dira) ; un seul GPU (Intel Arc, Mesa) ;  écart d'un pixel entre forward et forward+ ; libération de ressources pendant l'enregistrement (`FullscreenBlit`, `Mesh::setTextures`) ; limites du rendu piloté par GPU, des ombres, du HDR, de l'anticrénelage et du batch 2D ; `clang-format` non installé (`docs/GAPS.md`, G151 à G181).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
