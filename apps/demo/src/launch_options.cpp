@@ -514,7 +514,7 @@ void printUsage(std::ostream &out)
         << "              [--headless] [--vsync]\n"
         << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
-    out << "Backend : --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
+    out << "Backend : Vulkan by default; --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
     out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
     out << "Example: Orosmo --api opengl --ui full --theme dark --tab scene\n";
     out << "Capture : renders N frames (default 10) at WxH (default 1280x720, min 640x400), writes <dir>/scene.png and\n";
@@ -549,7 +549,7 @@ bool promptForBackend(std::istream &input, std::ostream &output, Backend &select
     {
         output << "  " << (index + 1) << ". " << backendDisplayName(kAllBackends[index]) << " - " << backendAvailabilityMessage(kAllBackends[index]) << '\n';
     }
-    output << "Press Enter for " << backendDisplayName(Backend::kOpenGL) << ".\n";
+    output << "Press Enter for " << backendDisplayName(Backend::kVulkan) << ".\n";
     output << "> ";
 
     std::string choice;
@@ -559,7 +559,7 @@ bool promptForBackend(std::istream &input, std::ostream &output, Backend &select
     }
     if (choice.empty())
     {
-        selected = Backend::kOpenGL;
+        selected = Backend::kVulkan;
         return true;
     }
     for (std::size_t index = 0; index < kAllBackends.size(); ++index)

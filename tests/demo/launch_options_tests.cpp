@@ -36,7 +36,7 @@ TEST_SUITE("Demo launch options")
     {
         const char *argv[] = {"Orosmo"};
         const demo::LaunchOptions options = *demo::parseLaunchOptions(1, argv);
-        Assert(options.api == Backend::kOpenGL, "Default graphics API should stay OpenGL");
+        Assert(options.api == Backend::kVulkan, "Default graphics API is Vulkan (OpenGL is the fallback)");
         Assert(!options.chooseApiInteractively, "Interactive selection should be disabled by default");
         Assert(!options.apiExplicitlyRequested, "Default launch should not mark the API as explicit");
         Assert(options.uiMode == UiMode::kHud, "Default UI mode should be hud");
@@ -478,7 +478,7 @@ TEST_SUITE("Demo launch options")
         Backend selectedApi = Backend::kMetal;
 
         Assert(demo::promptForBackend(input, output, selectedApi), "Empty selection should accept the default");
-        Assert(selectedApi == Backend::kOpenGL, "Empty selection should default to OpenGL");
+        Assert(selectedApi == Backend::kVulkan, "Empty selection should default to Vulkan");
     }
 
     TEST_CASE("interactive selection rejects invalid entries")
