@@ -772,3 +772,43 @@ TEST_SUITE("renderer/gpu_timer/profiler")
         }
     }
 }
+
+TEST_SUITE("renderer/gpu-timer-recycling")
+{
+    TEST_CASE("a finished profiler timer is recycled: the next measure reuses its query pool")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            if (!gpu->capabilities().timestampQueries)
+            {
+                MESSAGE("Skipped: no timestamp queries on ", tests::backendName(backend));
+                continue;
+            }
+            rd::ProfilerGpuTimerFactory factory(*gpu.device);
+            const auto poolsBefore = gpu->stats().queryPools;
+            for (int frame = 0; frame < 5; ++frame)
+            {
+                auto timer = factory.CreateTimer("frame");
+                REQUIRE(timer != nullptr);
+                auto encoder = gpu->createCommandEncoder();
+                factory.setEncoder(encoder.get());
+                timer->Begin();
+                timer->End();
+                factory.setEncoder(nullptr);
+                REQUIRE(gpu->submit(std::move(encoder)).has_value());
+                gpu->waitIdle();
+                REQUIRE(timer->IsReady());
+            } // chaque minuterie terminée retourne au fournisseur
+            CHECK(factory.recycledCount() == 1);
+            CHECK(gpu->stats().queryPools == poolsBefore + 1); // une seule pool pour les cinq mesures
+
+            auto abandoned = factory.CreateTimer("never ended"); // reprend la minuterie recyclée
+            CHECK(factory.recycledCount() == 0);
+            abandoned.reset(); // jamais mesurée : détruite, pas recyclée
+            CHECK(factory.recycledCount() == 0);
+            gpu.expectNoValidationErrors();
+        }
+    }
+}
