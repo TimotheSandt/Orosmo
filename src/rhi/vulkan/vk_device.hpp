@@ -40,6 +40,30 @@ inline constexpr std::uint32_t kFramesInFlight = 2;
 // Série de soumission : valeur du sémaphore à chronologie du périphérique. Chaque `submit` la fait croître de 1.
 using Serial = std::uint64_t;
 
+// Anneau de transfert (README.md, « Transferts ») : blocs de cette taille, mappés en permanence, sous-alloués par les envois.
+inline constexpr std::uint64_t kStagingBlockSize = 4ull * 1024 * 1024;
+// Au-delà, un envoi prend un tampon de transfert dédié (créé puis libéré) au lieu de l'anneau.
+inline constexpr std::uint64_t kStagingDedicatedThreshold = 1ull * 1024 * 1024;
+// Blocs gardés quand ils sont libres (les autres, créés lors d'un pic, sont détruits à leur recyclage).
+inline constexpr std::size_t kStagingRetainedBlocks = 4;
+// Tampons de commandes tirés d'une même réserve avant d'en changer (en plus du changement à chaque `present`).
+inline constexpr std::uint32_t kCommandBuffersPerPool = 32;
+
+// Compteurs internes des transferts et soumissions (diagnostic et tests : tests/rhi/vulkan_transfer_tests.cpp). Cumulés depuis
+// la création du périphérique.
+struct TransferCounters
+{
+    std::uint64_t submits = 0;                 // vkQueueSubmit2 acceptés
+    std::uint64_t dedicatedStaging = 0;        // tampons de transfert dédiés créés (gros envois, lectures)
+    std::uint64_t stagingBlocks = 0;           // blocs de l'anneau de transfert créés
+    std::uint64_t ringUploads = 0;             // envois servis par l'anneau
+    std::uint64_t directWrites = 0;            // `updateBuffer` écrits directement dans un tampon kUpload (sans transfert)
+    std::uint64_t copyBarriers = 0;            // barrières placées entre deux copies d'un lot (plages qui se recouvrent)
+    std::uint64_t commandPools = 0;            // réserves de tampons de commandes créées
+    std::uint64_t commandPoolResets = 0;       // vkResetCommandPool
+    std::uint64_t commandBuffersAllocated = 0; // vkAllocateCommandBuffers
+};
+
 // ── Ressources ────────────────────────────────────────────────────────────────
 
 struct BufferRes
@@ -75,7 +99,7 @@ struct TextureRes
     // Disposition « de repos » (README.md) : celle où la texture se trouve entre deux commandes. Toute commande qui en exige une
     // autre (cible de rendu, copie, mips) y entre, puis REVIENT à la disposition de repos avant de finir.
     VkImageLayout restLayout = VK_IMAGE_LAYOUT_GENERAL;
-    bool layoutInitialized = false; // faux : encore UNDEFINED ; `flushPending` la fait passer en repos avant la prochaine soumission
+    bool layoutInitialized = false; // faux : encore UNDEFINED ; le lot de transferts la fait passer en repos (prochaine soumission)
     std::vector<std::pair<ImageViewKey, VkImageView>> views;
 };
 
@@ -273,13 +297,17 @@ class VulkanDevice final : public Device
     void queueRelease(std::function<void()> release, bool waitFrames = true);
     void collectReleases(bool ignoreFrames = false);
 
-    // Tampon de commandes primaire prêt à enregistrer (recyclé quand la série de sa dernière soumission est terminée).
-    // `retireCommandBuffer` le rend au recyclage une fois soumis avec la série `serial`.
+    // Tampon de commandes primaire prêt à enregistrer, tiré de la réserve courante (README.md, « Tampons de commandes »).
+    // `retireCommandBuffer` : soumis avec la série `serial`. `releaseUnsubmitted` : jamais soumis (abandon, refus), quel que soit
+    // son état. Une réserve est remise à zéro en bloc quand tous ses tampons sont rendus et que le GPU les a finis.
     Result<VkCommandBuffer> acquireCommandBuffer();
     void retireCommandBuffer(VkCommandBuffer commandBuffer, Serial serial);
+    void releaseUnsubmitted(VkCommandBuffer commandBuffer);
+    // Change de réserve courante (appelé à chaque image, et quand la réserve courante a donné kCommandBuffersPerPool tampons).
+    void rotateCommandPool();
 
-    // Soumet des tampons de commandes dans l'ordre, après `flushPending`. Renvoie la série qui les marque. `waits` / `signals` :
-    // sémaphores binaires supplémentaires (présentation).
+    // Soumet des tampons de commandes dans l'ordre, précédés du lot de transferts en attente DANS LA MÊME soumission (un seul
+    // vkQueueSubmit2). Renvoie la série qui les marque. `waits` / `signals` : sémaphores binaires supplémentaires (présentation).
     struct SubmitSync
     {
         std::vector<std::pair<VkSemaphore, VkPipelineStageFlags2>> waits;
@@ -287,15 +315,16 @@ class VulkanDevice final : public Device
     };
     Result<Serial> submitCommandBuffers(std::span<const VkCommandBuffer> commandBuffers, const SubmitSync &sync = {});
 
-    // Enregistre `record` dans un tampon à usage unique, le soumet et ATTEND qu'il soit fini (chemin lent : envois, lectures,
-    // création de tampons avec données initiales). Passe d'abord par `flushPending`.
+    // Enregistre `record` dans un tampon à usage unique, le soumet (après le lot en attente, même soumission) et ATTEND qu'il soit
+    // fini (chemin lent : lectures, copies bloquantes).
     // `accepted` (facultatif) dit si la soumission a été acceptée : après un échec d'attente, la copie peut encore être en vol et
     // les tampons qu'elle touche doivent attendre la série acceptée (`queueRelease`) au lieu d'être détruits.
     Result<> immediate(const std::function<void(VkCommandBuffer)> &record, bool *accepted = nullptr);
 
-    // Dispositions de texture en attente : les textures neuves sont UNDEFINED ; `flushPending` (appelé avant toute soumission et
-    // tout `immediate`) les fait passer en disposition de repos, ce qui garde correct un encodeur jamais soumis.
+    // Dispositions de texture en attente : les textures neuves sont UNDEFINED ; le lot de transferts (joint en tête de toute
+    // soumission) les fait passer en disposition de repos, ce qui garde correct un encodeur jamais soumis.
     void markPendingInitialization(TextureHandle texture);
+    // Soumet seul le lot en attente (rien à faire sans lot) : quand aucune autre soumission ne part (present, waitIdle, lecture).
     Result<> flushPending();
 
     // ── Usage interne : descripteurs et vues (vk_pipelines.cpp, vk_resources.cpp) ─────
@@ -323,10 +352,32 @@ class VulkanDevice final : public Device
     Result<Staging> makeStaging(std::uint64_t size, bool readback = false);
     void destroyStaging(const Staging &staging) noexcept;
 
+    // Place de transfert pour un envoi de `size` octets, à un décalage multiple de `alignment` : dans l'anneau (pas de création),
+    // ou dans un tampon dédié au-delà de kStagingDedicatedThreshold (alors libéré avec le lot).
+    struct UploadSpace
+    {
+        VkBuffer buffer = VK_NULL_HANDLE;
+        std::uint64_t offset = 0;
+        std::byte *mapped = nullptr; // adresse de `offset`
+        VmaAllocation allocation = nullptr;
+        std::uint64_t allocationOffset = 0; // décalage de `offset` dans `allocation` (vmaFlushAllocation)
+        bool dedicated = false;
+        Staging staging; // si `dedicated`
+    };
+    // Copie `data` dans une place de transfert, la rend visible au GPU et ouvre le lot (qui prend le tampon dédié éventuel). Le
+    // lot renvoyé reçoit ensuite la copie depuis `space`.
+    Result<VkCommandBuffer> stageUpload(std::span<const std::byte> data, std::uint64_t alignment, UploadSpace &space);
+
     // Lot de commandes de transfert en attente (envois asynchrones ordonnés avec les soumissions : mises à jour de tampons et de
-    // textures, initialisation des dispositions). Ouvert à la demande, soumis par `flushPending` avant toute autre soumission.
+    // textures, initialisation des dispositions). Ouvert à la demande, joint à la prochaine soumission (avant ses commandes).
     // `staging` : tampons à libérer une fois le lot terminé.
     Result<VkCommandBuffer> batch(std::vector<Staging> staging = {});
+    // Barrière groupée : à appeler avant une copie vers `[offset, offset + size)` de `buffer` dans le lot. Une barrière n'est
+    // posée que si la plage recouvre une copie du lot depuis la dernière barrière (ordre des écritures, comme glBufferSubData).
+    // Les transitions de texture ne comptent pas : une barrière d'image ne couvre pas la mémoire des tampons.
+    void batchCopyBarrier(VkBuffer buffer, std::uint64_t offset, std::uint64_t size);
+
+    const TransferCounters &transferCounters() const noexcept { return counters_; }
 
     // Usage de l'encodeur et des aides synchrones.
     Result<> fromVk(VkResult result, const char *what) const;
@@ -360,8 +411,23 @@ class VulkanDevice final : public Device
     void releaseReadback(const Staging &staging, bool immediateRelease);
     Result<> checkDepthCopy(const TextureRes &texture, const char *what) const;
     void abandonBatchInit(); // le lot n'est pas parti : ses textures neuves redeviennent UNDEFINED
-    void recycleUnsubmitted(VkCommandBuffer commandBuffer, const core::Error &error);
     void destroyTextureNow(TextureRes &texture) noexcept;
+    // Lot fermé (vkEndCommandBuffer fait), prêt à partir en tête d'une soumission.
+    struct ClosedBatch
+    {
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        std::vector<Staging> staging;
+    };
+    Result<ClosedBatch> closeBatch();
+    void batchSubmitted(ClosedBatch &closed);
+    void batchRejected(ClosedBatch &closed);
+    // Soumet le lot en attente (s'il y en a un) suivi de `commandBuffers`, en un seul vkQueueSubmit2. En cas d'échec, rien n'est
+    // parti : le lot est abandonné ici, les tampons de `commandBuffers` restent à l'appelant.
+    Result<> submitWithBatch(std::span<const VkCommandBuffer> commandBuffers, const SubmitSync &sync);
+    // Anneau de transfert : sous-alloue `size` octets (bloc recyclé ou neuf).
+    Result<UploadSpace> ringAllocate(std::uint64_t size, std::uint64_t alignment);
+    void destroyStagingRing() noexcept;
+    void destroyCommandPools() noexcept;
 
     VkInstance instance_ = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT messenger_ = VK_NULL_HANDLE;
@@ -380,14 +446,21 @@ class VulkanDevice final : public Device
 
     VkSemaphore timeline_ = VK_NULL_HANDLE;
     Serial lastSubmitted_ = 0;
-    VkCommandPool commandPool_ = VK_NULL_HANDLE;
-    struct RetiredCommandBuffer
+    // Réserves de tampons de commandes (README.md, « Tampons de commandes ») : une réserve courante donne ses tampons dans
+    // l'ordre ; elle est remise à zéro EN BLOC (vkResetCommandPool) quand elle n'est plus courante, que tous ses tampons sont
+    // rendus (`outstanding` nul) et que le GPU a fini la plus grande série de ses soumissions (`lastSerial`).
+    struct CommandPoolSlot
     {
-        VkCommandBuffer commandBuffer;
-        Serial serial;
+        VkCommandPool pool = VK_NULL_HANDLE;
+        std::vector<VkCommandBuffer> buffers; // alloués (réutilisés dans l'ordre après une remise à zéro)
+        std::uint32_t next = 0;               // prochain tampon à donner
+        std::uint32_t outstanding = 0;        // donnés, ni soumis ni rendus
+        Serial lastSerial = 0;
     };
-    std::vector<VkCommandBuffer> freeCommandBuffers_;
-    std::vector<RetiredCommandBuffer> retiredCommandBuffers_;
+    std::vector<CommandPoolSlot> commandPools_;
+    std::size_t currentPool_ = 0;
+    CommandPoolSlot *poolOf(VkCommandBuffer commandBuffer) noexcept;
+    Result<std::size_t> createCommandPool();
 
     struct Pending
     {
@@ -397,11 +470,39 @@ class VulkanDevice final : public Device
         std::function<void()> release;
     };
     std::vector<Pending> pending_;
+    std::vector<Pending> readyScratch_; // réutilisé par `collectReleases` (pas d'allocation par image)
     std::vector<TextureHandle> pendingInitialization_;
     std::vector<TextureHandle> batchInitialized_; // textures initialisées par le lot ouvert (rétablies si le lot est abandonné)
     VkCommandBuffer batch_ = VK_NULL_HANDLE;
     std::vector<Staging> batchStaging_;
     std::uint64_t batchBytes_ = 0;
+    // Destinations des copies du lot depuis la dernière barrière (barrières groupées : `batchCopyBarrier`).
+    struct DirtyRange
+    {
+        VkBuffer buffer;
+        std::uint64_t begin;
+        std::uint64_t end;
+    };
+    std::vector<DirtyRange> batchDirty_;
+
+    // Anneau de transfert : blocs mappés en permanence. Le bloc courant est rempli linéairement ; un bloc n'est réécrit depuis
+    // son début que quand le GPU a fini la dernière série qui l'a lu (`serial`).
+    struct StagingBlock
+    {
+        Staging staging;
+        std::uint64_t used = 0;
+        Serial serial = 0;
+    };
+    std::vector<StagingBlock> stagingBlocks_;
+    std::size_t currentBlock_ = 0;
+
+    // Tableaux de soumission réutilisés (submitRaw).
+    std::vector<VkCommandBuffer> submitList_;
+    std::vector<VkCommandBufferSubmitInfo> submitInfos_;
+    std::vector<VkSemaphoreSubmitInfo> submitWaits_;
+    std::vector<VkSemaphoreSubmitInfo> submitSignals_;
+
+    TransferCounters counters_;
 
     std::vector<VkDescriptorPool> descriptorPools_;
     std::vector<std::unique_ptr<SetLayout>> setLayouts_;

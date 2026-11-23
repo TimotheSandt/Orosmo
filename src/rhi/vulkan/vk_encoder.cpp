@@ -77,16 +77,15 @@ VkEncoder::VkEncoder(VulkanDevice &device) : device_(device)
 
 VkEncoder::~VkEncoder() { releaseCommandBuffers(); }
 
-// Un encodeur abandonné (erreur, jamais soumis) rend ses tampons : remis à zéro (même en cours d'enregistrement, la réserve le
-// permet), ils retournent au recyclage sans avoir été soumis.
+// Un encodeur abandonné (erreur, jamais soumis) rend ses tampons à leur réserve, quel que soit leur état (même en cours
+// d'enregistrement) : ils seront remis à zéro avec elle.
 void VkEncoder::releaseCommandBuffers() noexcept
 {
     for (VkCommandBuffer *cb : {&commandBuffer_, &prologue_})
     {
         if (*cb != VK_NULL_HANDLE)
         {
-            vkResetCommandBuffer(*cb, 0);
-            device_.freeCommandBuffers_.push_back(*cb);
+            device_.releaseUnsubmitted(*cb);
             *cb = VK_NULL_HANDLE;
         }
     }
@@ -144,12 +143,9 @@ Result<> VulkanDevice::submit(std::unique_ptr<CommandEncoder> encoder)
     auto serial = submitCommandBuffers(*commandBuffers);
     if (!serial)
     {
-        // Rien n'a été soumis : les tampons reviennent au recyclage.
+        // Rien n'a été soumis : les tampons reviennent à leur réserve.
         for (VkCommandBuffer cb : *commandBuffers)
-        {
-            vkResetCommandBuffer(cb, 0);
-            freeCommandBuffers_.push_back(cb);
-        }
+            releaseUnsubmitted(cb);
         return std::unexpected(serial.error());
     }
     return {};
