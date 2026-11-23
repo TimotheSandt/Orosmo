@@ -11,6 +11,7 @@
 #include "orosmo/renderer/debug_view.hpp"
 #include "orosmo/renderer/debug_draw.hpp"
 #include "orosmo/renderer/frame_data.hpp"
+#include "orosmo/renderer/frame_ring.hpp"
 #include "orosmo/renderer/fullscreen_blit.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/light.hpp"
@@ -37,6 +38,9 @@ struct SceneRendererConfig
 {
     // Dossier des shaders du moteur : `mesh.vert`, `mesh.frag`, `blit.vert`, `blit.frag` (shaders/rhi/).
     std::filesystem::path shaderDirectory;
+    // Images en vol (perf M5) : profondeur de l'anneau des données par image (FrameData, caméra, tranches de modèle, lignes de
+    // debug). Au moins celle du RHI (2) ; 3 si le périphérique en garde 3 d'avance.
+    std::uint32_t framesInFlight = kDefaultFramesInFlight;
 };
 
 // Dessin externe joué dans la passe « scene » (REN-28, `SceneRenderer::drawCustom`) : la cible et l'origine du rendu relatif à la
@@ -171,12 +175,17 @@ class SceneRenderer
     // Nombre de `beginFrame` réussis : identifie l'image ouverte, même quand l'image précédente a échoué dans `endFrame` (avant que
     // frameIndex n'avance).
     std::uint64_t frameSerial() const noexcept { return frameSerial_; }
+    // Anneau des données par image : l'image `frameSerial()` écrit la zone `frameSerial() % framesInFlight()` (un tampon kUpload par
+    // zone, une seule écriture par image, à endFrame). `frameRingBuffer()` : tampon de l'image ouverte ou de la dernière exécutée.
+    std::uint32_t framesInFlight() const noexcept { return ring_.framesInFlight(); }
+    rhi::BufferHandle frameRingBuffer() const noexcept { return ring_.buffer(); }
 
     // ── Image ───────────────────────────────────────────────────────────────────────────────────────────────────────
     // Prépare l'image : cible de la scène (taille de rendu = sortie × échelle), jitter. `encoder` reçoit toutes les commandes de
     // l'image, enregistrées par `endFrame` ; il doit vivre jusque-là.
     core::Result<> beginFrame(rhi::CommandEncoder &encoder, const FrameOptions &options = {});
-    // Applique le jitter courant à la caméra, envoie ses données au GPU.
+    // Applique le jitter courant à la caméra et garde ses données : elles partent au GPU avec celles de l'image, à `endFrame` (la
+    // dernière caméra donnée sert aux images suivantes tant qu'aucune autre ne la remplace).
     core::Result<> setCamera(Camera &camera);
     // Enregistre le dessin (pipeline, constantes et transformation sont résolus ici ; les tampons du maillage doivent rester
     // valides jusqu'à `endFrame`).
@@ -188,7 +197,7 @@ class SceneRenderer
     // setCamera ; `info` donne les formats de la cible (pipelines) et l'origine du rendu relatif à la caméra.
     core::Result<SceneDrawInfo> sceneDrawInfo() const;
     core::Result<> drawCustom(SceneDrawCallback draw);
-    // Copie le bloc du modèle de `mesh` (celui de son dernier `uploadTransform`) dans une tranche propre à un dessin de l'image et
+    // Copie le bloc du modèle de `mesh` (celui de son dernier `prepareTransform` / `uploadTransform`) dans une tranche propre à un dessin de l'image et
     // rend son décalage dynamique dans `FrameResources::modelGroup` (groupe 2). Chaque dessin garde ainsi SA transformation jusqu'à
     // sa lecture par le GPU, même si le maillage est redessiné ailleurs dans l'image. Entre beginFrame et endFrame.
     core::Result<std::uint32_t> recordModelSlice(const Mesh &mesh);
@@ -220,7 +229,7 @@ class SceneRenderer
         rhi::BufferHandle indexBuffer;
         std::uint32_t count = 0; // index (maillage) ou sommets (lignes de debug)
         std::uint32_t instanceCount = 1;
-        std::uint64_t vertexOffset = 0; // octets, dans le tampon des lignes de debug
+        std::uint64_t vertexOffset = 0; // octets, depuis le début des lignes de debug de l'image (dans l'anneau)
         bool debugLines = false;
         SceneDrawCallback custom; // dessin externe (drawCustom) : tout le reste est ignoré
     };
@@ -236,11 +245,11 @@ class SceneRenderer
     LightManager &activeLights() noexcept { return lights_ != nullptr ? *lights_ : defaultLights_; }
     core::Result<> rebuildFrameGroup(LightManager &lights);
     core::Result<> record(Mesh &mesh, bool lines, std::uint32_t modelOffset);
-    core::Result<> uploadModelSlices();
+    // Écrit les données de l'image dans sa zone de l'anneau (FrameData, caméra, tranches, lignes de debug) : un seul updateBuffer.
+    core::Result<> uploadFrameRing();
     // Format de la couleur de la cible de l'image en cours (celui de beginFrame, même si setSceneColorFormat a changé depuis).
     rhi::Format frameColorFormat() const noexcept { return sceneTarget_.valid() ? sceneTarget_.info().colorFormats[0] : sceneColorFormat_; }
     core::Result<> playDraws(rhi::CommandEncoder &encoder, bool prepass = false);
-    core::Result<> uploadDebugLines();
     core::Result<> updateFrameData();
     core::Result<> ensureHistory(RenderTarget &target, bool &fresh);
     core::Result<> buildGraph(const UpscaleTarget &output, bool hadHistory);
@@ -257,19 +266,30 @@ class SceneRenderer
     std::unique_ptr<FullscreenBlit> blit_;
     std::shared_ptr<ShaderProgram> meshProgram_;
     std::shared_ptr<ShaderProgram> debugProgram_;
-    GpuBuffer debugBuffer_;
     std::vector<float> debugVertices_; // segments de debug de l'image (envoyés une fois, à endFrame)
     std::filesystem::path shaderDirectory_;
-    GpuBuffer cameraBuffer_;
-    GpuBuffer frameBuffer_; // FrameData (REN-03)
+    // Anneau des données par image (perf M5) : zone = [FrameData à 0][CameraData à cameraOffset_][tranches de modèle à modelBase_]
+    // [lignes de debug à debugBase_]. Un groupe 0 et un groupe 2 par zone (le tampon change d'une zone à l'autre).
+    FrameRing ring_;
+    std::uint64_t cameraOffset_ = 0;
+    std::uint64_t modelBase_ = 0;
+    std::uint64_t debugBase_ = 0;
+    CameraData cameraData_{};
+    struct SlotGroups
+    {
+        rhi::BindGroupHandle frame; // groupe 0
+        rhi::BufferHandle buffer;   // tampon de la zone visé par `frame`
+        rhi::BufferHandle lights;
+        std::vector<rhi::BindGroupEntry> features;
+        rhi::BindGroupHandle model; // groupe 2 (tranches, décalage dynamique)
+        rhi::BufferHandle modelBuffer;
+    };
+    std::vector<SlotGroups> slotGroups_;
     LightManager defaultLights_;
     LightManager *lights_ = nullptr;
-    rhi::BindGroupHandle frameGroup_;
-    rhi::BufferHandle groupCamera_;
-    rhi::BufferHandle groupLights_;
-    // Liaisons du groupe 0 ajoutées par les plugins (RenderGraphBuilder::addFrameBinding) pour cette image, et celles du groupe actuel.
+    rhi::BindGroupHandle frameGroup_; // groupe 0 de la zone courante
+    // Liaisons du groupe 0 ajoutées par les plugins (RenderGraphBuilder::addFrameBinding) pour cette image.
     std::vector<rhi::BindGroupEntry> featureFrameBindings_;
-    std::vector<rhi::BindGroupEntry> groupFeatureBindings_;
     FrameResources frameResources_;
 
     RenderGraph graph_;
@@ -285,10 +305,10 @@ class SceneRenderer
     rhi::CommandEncoder *encoder_ = nullptr;
     bool frameOpen_ = false;  // entre beginFrame et endFrame : enregistrement des dessins
     bool executing_ = false;  // pendant endFrame (graphe, playDraws) : beginFrame refusé jusqu'au nettoyage de l'image
-    // Tranches du modèle (groupe 2, REN-01) : une par dessin enregistré, copiées à l'enregistrement, envoyées une fois à endFrame.
-    std::vector<std::byte> modelSliceBytes_;
-    GpuBuffer modelSlices_;
-    rhi::BindGroupHandle modelSliceGroup_;
+    // Contenu de la zone de l'image (en-tête FrameData + caméra, puis tranches du modèle (groupe 2, REN-01) : une par dessin
+    // enregistré, copiée à l'enregistrement), envoyé une fois à endFrame.
+    std::vector<std::byte> ringBytes_;
+    rhi::BindGroupHandle modelSliceGroup_; // groupe 2 de la zone courante
     std::uint64_t modelSliceStride_ = 0;
 
     FrameData frameData_;

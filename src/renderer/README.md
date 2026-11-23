@@ -11,7 +11,8 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | En-tête | Rôle |
 | --- | --- |
 | `gpu_buffer.hpp` | `GpuBuffer` : tampon RAII (`create`, `update`, `read`, `resize`) |
-| `batch_arena.hpp` | `BatchArena` : tampon de sommets partagé ; une plage distincte par envoi tant que l'encodeur est le même (deux `render` avant `submit` gardent chacun leurs données sur Vulkan) |
+| `batch_arena.hpp` | `BatchArena` : tampon de sommets partagé ; une plage distincte par envoi tant que l'encodeur est le même (deux `render` avant `submit` gardent chacun leurs données sur Vulkan) ; une zone `kUpload` par image en vol (un nouvel encodeur passe à la zone suivante : celle de l'image précédente n'est jamais réécrite) |
+| `frame_ring.hpp` | `FrameRing` : anneau de tampons `kUpload`, un par image en vol (`kDefaultFramesInFlight` = 2, paramètre) ; l'image `n` écrit la zone `n % framesInFlight` ; `alignUp` |
 | `texture.hpp` | `Texture` : texture 2D RAII + échantillonneur, mips selon `FilterMode`, `upload`, `resize`, `readback`, `fromFile` (stb, RGBA8, retournée comme l'ancien chargeur ; le retournement est fait ici, le réglage global de stb n'est jamais modifié) |
 | `render_target.hpp` | `RenderTarget` : cibles couleur (MRT) + profondeur (lisible ou non), `passDesc` (description de passe), `resize`/`reconfigure` (sans fuite, la cible reste valide si la recréation échoue), `readPixelUInt` / `readPixelRgba8` (origine en haut à gauche) ; un format de profondeur parmi les formats couleur est refusé |
 | `shader_library.hpp` | `ShaderLibrary` (explicite, pas de singleton) et `ShaderProgram` : GLSL 450 depuis des fichiers ou des sources, réflexion fusionnée des étages, cache SPIR-V disque, **rechargement à chaud** (`pollHotReload`) : les étages modifiés d'un programme dans un même poll sont validés puis installés ensemble, et si l'un ne compile pas aucun n'est installé (après un échec, la modification suivante recompile tous les étages depuis leurs fichiers) ; un échec reste dans `lastError()` même si un autre programme se recharge dans le même poll ; les fichiers d'un programme libéré (ou d'un chargement en échec) ne sont plus surveillés (`watchedStageCount`). Identifiant de programme unique dans le processus |
@@ -91,6 +92,24 @@ pipeline et la transformation sont résolus à `drawMesh`, les segments de debug
 est copiée dans sa propre **tranche** (`recordModelSlice` : bloc `ModelBlock` de 208 octets, pas `minUniformAlignment`, un tampon
 envoyé une fois par image, groupe 2 lié avec un décalage dynamique, `FrameResources::modelGroup`) : un maillage dessiné (ou déposé
 dans `TransparentFeature`) plusieurs fois dans l'image garde chaque pose.
+
+**Données par image : anneau par image en vol (perf M5, option B).** `FrameData`, la caméra, les tranches du modèle et les lignes de
+debug de l'image partent dans **une seule** écriture (`updateBuffer`), à `endFrame`, dans la zone `frameSerial() % framesInFlight()`
+d'un `FrameRing` (tampons `rhi::MemoryKind::kUpload`, usage uniforme + sommets) : `[FrameData à 0][CameraData][tranches][lignes]`.
+La zone réécrite a été lue `framesInFlight` images plus tôt : le RHI (`beginFrame` / `present`) a attendu cette image, aucune plage
+lue par une image en vol n'est réécrite. `SceneRendererConfig::framesInFlight` (défaut 2, celui des deux backends) règle la
+profondeur ; un groupe 0 et un groupe 2 par zone (le tampon change d'une zone à l'autre). `setCamera` ne fait plus que garder les
+données (envoyées à `endFrame` ; la dernière caméra sert aux images suivantes). `FrameResources::buffer` est le tampon de la zone
+de l'image (FrameData à l'offset 0) : il change d'une image à l'autre. Mesures et compteurs : rapport perf M5 ; tests
+`tests/renderer/frame_ring_tests.cpp` (suite `renderer/frame-ring`).
+
+**Règle pour `Mesh::uploadTransform`** (API publique, gardée). `drawMesh` et `TransparentFeature::submit` appellent
+`Mesh::prepareTransform` : le bloc du modèle est calculé côté CPU (`modelBlock()`) et copié dans la tranche de l'image ; le tampon
+propre du maillage (`modelGroup()`) n'est **plus réécrit à chaque dessin**. Un appelant qui lie lui-même `modelGroup()` (groupe 2
+sans décalage) doit appeler `uploadTransform` (qui fait `prepareTransform` puis écrit le tampon seulement si le bloc a changé depuis
+le dernier envoi) avant de dessiner, comme avant ; mais cette écriture vise un tampon qu'une image en vol peut lire (copie ordonnée :
+`glBufferSubData` en OpenGL, transfert en Vulkan). Le chemin rapide est la tranche : `SceneRenderer::recordModelSlice` + le groupe
+`FrameResources::modelGroup` avec le décalage rendu.
 
 Cycle de vie : `beginFrame` (enregistrement) → `endFrame` (exécution : `beginFrame` y est refusé, par exemple depuis un `drawCustom`)
 → disponible, après le nettoyage, que l'image réussisse ou non : dessins et tranches vidés, `RenderFeature::frameEnded` de chaque

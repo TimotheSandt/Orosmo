@@ -9,6 +9,7 @@
 #include <string>
 #include <cstdint>
 #include <atomic>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -38,6 +39,11 @@ struct BufferRes
 {
     GLuint id = 0;
     BufferDesc desc;
+    // kUpload avec GL_ARB_buffer_storage (cœur 4.4) : stockage immuable mappé en permanence (persistant + cohérent). Nul sinon.
+    std::byte *mapped = nullptr;
+    // Lot de soumission (GlDevice::useSerial_) qui a lié ce tampon (ou l'a réécrit par glBufferSubData) en dernier : tant que la
+    // clôture de ce lot n'est pas franchie, le GPU peut encore le lire et `updateBuffer` ne l'écrit pas par le pointeur mappé.
+    std::uint64_t lastUse = 0;
 };
 
 struct TextureRes
@@ -156,7 +162,18 @@ class GlDevice final : public Device
     DeviceStats stats() const noexcept override;
 
     // ── Usage interne (GlEncoder) ────────────────────────────────────────────────────────────────────────────────
-    BufferRes *get(BufferHandle h) { return buffers_.get(h); }
+    // Un tampon mappé obtenu ici par l'encodeur est « utilisé » par le lot en cours (voir BufferRes::lastUse) : marquage prudent,
+    // toute lecture de l'encodeur passe par cette fonction.
+    BufferRes *get(BufferHandle h)
+    {
+        BufferRes *b = buffers_.get(h);
+        if (b != nullptr && b->mapped != nullptr)
+        {
+            b->lastUse = useSerial_;
+            batchUsesMapped_ = true;
+        }
+        return b;
+    }
     TextureRes *get(TextureHandle h) { return textures_.get(h); }
     SamplerRes *get(SamplerHandle h) { return samplers_.get(h); }
     PipelineRes *get(PipelineHandle h) { return pipelines_.get(h); }
@@ -187,12 +204,27 @@ class GlDevice final : public Device
     // le répète à chaque appel concerné, il n'est journalisé qu'une fois.
     bool firstInformationalMessage(GLuint id);
 
+    // Tests du backend : chemin des écritures `updateBuffer` sur les tampons kUpload. `persistent` : stockage mappé disponible
+    // (GL 4.4 ou GL_ARB_buffer_storage, et ENGINE_GL_BUFFER_STORAGE différent de 0). `mappedWrites` : copies directes par le
+    // pointeur mappé ; `orderedWrites` : glBufferSubData (tampon non mappé, ou encore lu par un lot dont la clôture n'est pas
+    // franchie).
+    struct UploadStats
+    {
+        bool persistent = false;
+        std::uint64_t mappedWrites = 0;
+        std::uint64_t orderedWrites = 0;
+    };
+    UploadStats uploadStats() const noexcept { return {bufferStorage_, mappedWrites_, orderedWrites_}; }
+
   private:
     GlDevice() = default;
 
     Result<> init(const DeviceDesc &desc);
     void queueRelease(std::function<void()> release);
     void flushReleases(bool all);
+    // Vrai si le GPU a fini le lot `serial` (clôtures interrogées sans attente). Le lot en cours (non soumis) n'est jamais fini.
+    bool useCompleted(std::uint64_t serial);
+    void pollUseFences();
     void eraseFramebuffersUsing(GLuint textureId);
     Result<TextureHandle> createTextureImpl(const TextureDesc &desc);
     void releaseTexture(const TextureRes &texture);
@@ -234,6 +266,19 @@ class GlDevice final : public Device
         GLsync sync;
     };
     std::vector<FrameFence> fences_;
+    // Lots de soumission (un par `submit`) pour les tampons kUpload mappés : une clôture par lot qui en a utilisé un.
+    bool bufferStorage_ = false;
+    std::uint64_t useSerial_ = 1;   // lot en cours d'enregistrement
+    std::uint64_t completedUse_ = 0; // dernier lot dont la clôture est franchie
+    bool batchUsesMapped_ = false;
+    struct UseFence
+    {
+        std::uint64_t serial;
+        GLsync sync;
+    };
+    std::deque<UseFence> useFences_;
+    std::uint64_t mappedWrites_ = 0;
+    std::uint64_t orderedWrites_ = 0;
     std::vector<std::pair<FboKey, GLuint>> framebuffers_;
     GLuint scratchFbo_ = 0;
     GLuint pushBuffer_ = 0;

@@ -74,4 +74,48 @@ void main() { color = imageLoad(img, ivec2(0)); })";
         CHECK(device.get(image)->usesStorage);
         gpu.expectNoValidationErrors();
     }
+
+    TEST_CASE("kUpload buffers are persistently mapped: a write the GPU no longer reads is a memcpy, one it may still read stays ordered (perf M5)")
+    {
+        Gpu gpu;
+        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        auto &device = static_cast<gl::GlDevice &>(*gpu);
+        if (!device.uploadStats().persistent)
+        {
+            MESSAGE("no GL_ARB_buffer_storage (or ENGINE_GL_BUFFER_STORAGE=0): kUpload falls back to glBufferSubData");
+            return;
+        }
+        const std::vector<float> zeros(4, 0.0f);
+        const BufferHandle upload = gpu.buffer(BufferUsage::kUniform | BufferUsage::kCopyDst, bytesOf(zeros), 0, "upload", MemoryKind::kUpload);
+        const auto before = device.uploadStats();
+        // Jamais lié : copie directe par le pointeur mappé.
+        const std::vector<float> a{1, 2, 3, 4};
+        REQUIRE(gpu->updateBuffer(upload, 0, bytesOf(a)).has_value());
+        CHECK(device.uploadStats().mappedWrites == before.mappedWrites + 1);
+        CHECK(device.uploadStats().orderedWrites == before.orderedWrites);
+
+        // Lié par un encodeur pas encore soumis : ses commandes sont déjà dans le flux GL, l'écriture reste ordonnée (glBufferSubData).
+        BindGroupDesc bg;
+        bg.entries.push_back({.binding = 0, .type = BindingType::kUniformBuffer, .buffer = upload, .size = 16});
+        auto group = gpu->createBindGroup(bg);
+        REQUIRE(group.has_value());
+        auto encoder = gpu->createCommandEncoder();
+        encoder->setBindGroup(0, *group);
+        const std::vector<float> b{5, 6, 7, 8};
+        REQUIRE(gpu->updateBuffer(upload, 0, bytesOf(b)).has_value());
+        CHECK(device.uploadStats().orderedWrites == before.orderedWrites + 1);
+        REQUIRE(gpu->submit(std::move(encoder)).has_value());
+
+        // Lot soumis et terminé (waitIdle) : de nouveau une copie directe.
+        gpu->waitIdle();
+        const std::vector<float> c{9, 10, 11, 12};
+        REQUIRE(gpu->updateBuffer(upload, 0, bytesOf(c)).has_value());
+        CHECK(device.uploadStats().mappedWrites == before.mappedWrites + 2);
+        auto read = gpu->readBuffer(upload, 0, 16);
+        REQUIRE(read.has_value());
+        CHECK(*read == toVec(bytesOf(c)));
+        gpu->destroy(*group);
+        gpu->destroy(upload);
+        gpu.expectNoValidationErrors();
+    }
 }

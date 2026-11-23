@@ -83,8 +83,14 @@ class Mesh
     const glm::vec3 &rotation() const noexcept { return rotation_; }
     const glm::vec3 &scale() const noexcept { return scale_; }
     glm::mat4 modelMatrix() const;
-    // Envoie la matrice au GPU si la transformation a changé.
-    // `origin` : rendu relatif à la caméra (REN-02) : la translation envoyée est position - origin (origin = position de la caméra).
+    // Calcule le bloc du modèle (`modelBlock()`) côté CPU seulement, sans écrire le tampon propre du maillage (perf M5) : c'est ce
+    // que font `SceneRenderer::drawMesh` et `TransparentFeature::submit`, qui copient ensuite le bloc dans la tranche de l'image
+    // (anneau par image en vol). Le tampon du maillage (`modelGroup()`) n'est alors plus à jour : `uploadTransform` le rattrape.
+    // `origin` : rendu relatif à la caméra (REN-02) : la translation est position - origin (origin = position de la caméra).
+    core::Result<> prepareTransform(const glm::vec3 &origin = glm::vec3(0.0f), const TransformHistory &history = {});
+    // `prepareTransform`, puis envoie le bloc dans le tampon propre du maillage (`modelGroup()`, groupe 2 sans décalage) s'il a
+    // changé depuis le dernier envoi. Pour un appelant qui lie lui-même `modelGroup()` ; écrire ce tampon pendant qu'une image en
+    // vol le lit encore coûte une copie ordonnée (OpenGL : glBufferSubData, Vulkan : transfert), d'où le passage par l'anneau.
     core::Result<> uploadTransform(const glm::vec3 &origin = glm::vec3(0.0f), const TransformHistory &history = {});
 
     // Identifiant écrit dans l'AOV `kObjectId` (REN-21) ; 0 = aucun objet (valeur d'effacement).
@@ -116,7 +122,7 @@ class Mesh
     rhi::BufferHandle instanceBuffer() const noexcept { return instanceBuffer_.handle(); }
     rhi::BufferHandle indexBuffer() const noexcept { return indexBuffer_.handle(); }
     rhi::BindGroupHandle modelGroup() const noexcept { return modelGroup_; }
-    // Bloc ModelBlock (std140, `kModelBlockSize` octets) envoyé par le dernier `uploadTransform` : copié par chaque dessin dans sa
+    // Bloc ModelBlock (std140, `kModelBlockSize` octets) du dernier `prepareTransform` / `uploadTransform` : copié par chaque dessin dans sa
     // propre tranche (`SceneRenderer::recordModelSlice`), pour qu'un maillage dessiné deux fois dans l'image garde les deux poses.
     static constexpr std::size_t kModelBlockSize = 208;
     std::span<const std::byte> modelBlock() const noexcept { return modelBlock_; }
@@ -145,6 +151,7 @@ class Mesh
     glm::vec3 rotation_{0.0f};
     glm::vec3 scale_{1.0f};
     bool transformDirty_ = true;
+    bool bufferStale_ = true; // modelBlock_ n'a pas encore été écrit dans modelBuffer_
     glm::vec3 uploadedOrigin_{0.0f};
     glm::mat4 uploadedPreviousWorld_{1.0f};
     glm::vec3 uploadedPreviousOrigin_{0.0f};

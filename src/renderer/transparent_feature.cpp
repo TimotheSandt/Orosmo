@@ -93,7 +93,7 @@ core::Result<std::uint32_t> TransparentFeature::submit(SceneRenderer &scene, Mes
     {
         return std::unexpected(info.error());
     }
-    if (auto r = mesh.uploadTransform(info->cameraOrigin); !r)
+    if (auto r = mesh.prepareTransform(info->cameraOrigin); !r) // la tranche de l'image porte le bloc au GPU (anneau)
     {
         return std::unexpected(r.error());
     }

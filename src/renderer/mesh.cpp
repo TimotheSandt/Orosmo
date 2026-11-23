@@ -179,6 +179,28 @@ core::Result<> Mesh::uploadTransform(const glm::vec3 &origin, const TransformHis
     {
         return makeError(ErrorCode::kInvalidArgument, "Mesh::uploadTransform: empty mesh");
     }
+    if (auto r = prepareTransform(origin, history); !r)
+    {
+        return r;
+    }
+    if (!bufferStale_)
+    {
+        return {};
+    }
+    if (auto r = modelBuffer_.update(0, std::span<const std::byte>(modelBlock_)); !r) // une vue sur tout le bloc, pas sur une matrice
+    {
+        return r;
+    }
+    bufferStale_ = false;
+    return {};
+}
+
+core::Result<> Mesh::prepareTransform(const glm::vec3 &origin, const TransformHistory &history)
+{
+    if (!valid())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "Mesh::prepareTransform: empty mesh");
+    }
     // REN-21 : modèle de l'image précédente (vecteurs de mouvement). Sans historique demandé, il égale le modèle courant et rien
     // ne change pour l'appelant : un maillage immobile n'est renvoyé que si l'origine ou la transformation change.
     bool tracked = false;
@@ -216,11 +238,8 @@ core::Result<> Mesh::uploadTransform(const glm::vec3 &origin, const TransformHis
     {
         block.normalMatrix = glm::mat4(glm::transpose(glm::inverse(linear)));
     }
-    if (auto r = modelBuffer_.update(0, std::as_bytes(std::span(&block, 1))); !r) // une vue sur tout le bloc, pas sur une matrice
-    {
-        return r;
-    }
     std::memcpy(modelBlock_.data(), &block, sizeof block);
+    bufferStale_ = true;
     transformDirty_ = false;
     uploadedOrigin_ = origin;
     uploadedPreviousWorld_ = history.frame != 0 ? previousWorld_ : world;
@@ -345,6 +364,7 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(rotation_, other.rotation_);
     std::swap(scale_, other.scale_);
     std::swap(transformDirty_, other.transformDirty_);
+    std::swap(bufferStale_, other.bufferStale_);
     std::swap(uploadedOrigin_, other.uploadedOrigin_); // va avec modelBuffer_ : l'origine des matrices déjà envoyées
     std::swap(uploadedPreviousWorld_, other.uploadedPreviousWorld_);
     std::swap(uploadedPreviousOrigin_, other.uploadedPreviousOrigin_);
