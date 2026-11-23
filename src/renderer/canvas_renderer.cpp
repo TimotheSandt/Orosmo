@@ -551,7 +551,7 @@ core::Result<> CanvasRenderer::render(rhi::CommandEncoder &encoder, const DrawLi
     BatchArena::Range batch{};
     if (!plan.data.empty())
     {
-        auto uploaded = arena_.upload(device_, &encoder, std::as_bytes(std::span(plan.data)), "ui.batch");
+        auto uploaded = arena_.upload(device_, encoder.id(), std::as_bytes(std::span(plan.data)), "ui.batch");
         if (!uploaded)
         {
             return std::unexpected(uploaded.error());

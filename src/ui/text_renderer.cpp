@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -491,6 +492,19 @@ bool TextRenderer::ensureFontLoaded(const std::string &fontName, unsigned int fo
 
 void TextRenderer::buildAtlas(FontData &fontData, bool extended)
 {
+    // Diagnostic : la génération MSDF bloque l'image qui la demande (0,3 à plusieurs secondes) ; le journal le dit.
+    const auto started = std::chrono::steady_clock::now();
+    struct AtlasTimer
+    {
+        const FontData &font;
+        bool extended;
+        std::chrono::steady_clock::time_point started;
+        ~AtlasTimer()
+        {
+            const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+            LOG_INFO("Text: glyph atlas ", font.fontSize, " px (", extended ? "extended" : "ASCII", ") built in ", ms, " ms");
+        }
+    } timer{fontData, extended, started};
     // L'ASCII d'abord, toujours au même endroit de l'atlas (l'atlas étendu ne fait que s'allonger vers le bas).
     std::vector<PreparedGlyph> prepared;
     prepared.reserve(extended ? 400 : 128);

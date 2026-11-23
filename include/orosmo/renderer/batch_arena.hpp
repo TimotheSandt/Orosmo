@@ -23,14 +23,15 @@ class BatchArena
         std::uint64_t offset = 0;
     };
 
-    // Écrit `data` dans une plage libre (alignée sur 256 octets) et la renvoie. `encoder` est l'identité de l'encodeur qui dessinera.
-    core::Result<Range> upload(rhi::Device &device, const void *encoder, std::span<const std::byte> data, const char *debugName);
+    // Écrit `data` dans une plage libre (alignée sur 256 octets) et la renvoie. `encoderId` est `CommandEncoder::id()` de l'encodeur
+    // qui dessinera : un nouvel encodeur fait repartir l'arène du début (ses plages précédentes ont été soumises).
+    core::Result<Range> upload(rhi::Device &device, std::uint64_t encoderId, std::span<const std::byte> data, const char *debugName);
     std::uint64_t capacity() const noexcept { return current_.size(); }
 
   private:
     GpuBuffer current_;
     std::vector<GpuBuffer> retired_; // remplacés par un tampon plus grand, encore référencés par l'encodeur en cours
-    const void *encoder_ = nullptr;
+    std::uint64_t encoderId_ = 0;
     std::uint64_t cursor_ = 0;
 };
 

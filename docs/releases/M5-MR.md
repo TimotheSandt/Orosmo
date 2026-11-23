@@ -2,7 +2,7 @@
 
 ## Résumé
 
-Jalon M5, version **`v0.5.0`**. Le moteur a un **cœur de rendu moderne** construit sur le RHI, **presque sans toucher au RHI** (un seul ajout : `Capabilities::drawIndirectFirstInstance`) : un **graphe de passes** avec **plugins** (`RenderFeature`), le bloc de **données par image** `FrameData` partagé C++/GLSL, l'éclairage **forward+ clusterisé**, les **ombres en cascade avec cache**, le **HDR** et les post-traitements (exposition automatique, bloom, tonemapping, LUT, vignettage), l'**anticrénelage** (FXAA, SMAA 1x, TAA), les **sorties auxiliaires** (AOV) à la demande, l'**instancing** avec **culling** CPU et **GPU** (Hi-Z, multi-draw indirect) et LOD, les **transparents triés** et les modes de fusion, le **batch 2D** et le mélange 2D/3D. L'interface passe par le batch 2D (de 143 à 18 draw calls), n'émet rien pour ce qui est caché ou hors découpage, et le carré d'un `ColorPicker` ouvre la roue de couleur. **Les images par défaut sont identiques à la tolérance 0** avant et après chaque branche, sur OpenGL et Vulkan ; chaque fonction s'active par une option de la démo. Détail : `docs/releases/M5.md`.
+Jalon M5, version **`v0.5.0`**. Le moteur a un **cœur de rendu moderne** construit sur le RHI, **presque sans toucher au RHI** (deux ajouts : `Capabilities::drawIndirectFirstInstance`, `CommandEncoder::id()`) : un **graphe de passes** avec **plugins** (`RenderFeature`), le bloc de **données par image** `FrameData` partagé C++/GLSL, l'éclairage **forward+ clusterisé**, les **ombres en cascade avec cache**, le **HDR** et les post-traitements (exposition automatique, bloom, tonemapping, LUT, vignettage), l'**anticrénelage** (FXAA, SMAA 1x, TAA), les **sorties auxiliaires** (AOV) à la demande, l'**instancing** avec **culling** CPU et **GPU** (Hi-Z, multi-draw indirect) et LOD, les **transparents triés** et les modes de fusion, le **batch 2D** et le mélange 2D/3D. L'interface passe par le batch 2D (de 143 à 18 draw calls), n'émet rien pour ce qui est caché ou hors découpage, et le carré d'un `ColorPicker` ouvre la roue de couleur. **Les images par défaut sont identiques à la tolérance 0** avant et après chaque branche, sur OpenGL et Vulkan ; chaque fonction s'active par une option de la démo. Détail : `docs/releases/M5.md`.
 
 ## Identifiants
 
@@ -13,7 +13,7 @@ Jalon M5, version **`v0.5.0`**. Le moteur a un **cœur de rendu moderne** constr
 - `SceneRenderer::drawMesh` enregistre ; les dessins sont joués à `endFrame` (les tampons doivent rester valides jusque-là) ; image construite par le graphe de passes.
 - Groupe 0 : `FrameData` en liaison 2, liaisons 3 à 7 réservées aux plugins ; `ModelBlock` de 128 à 208 octets ; convention de push constants de `mesh.frag` (pré-passe) ; jitter de la perspective de signe corrigé.
 - Les ponctuelles et projecteurs sont maintenant rendus ; `shaders/include/` est une nouvelle racine d'inclusion.
-- RHI : seul ajout `Capabilities::drawIndirectFirstInstance` ; aucun changement du paquet de release.
+- RHI : ajouts `Capabilities::drawIndirectFirstInstance` et `CommandEncoder::id()` ; aucun changement du paquet de release.
 
 ## Décisions
 

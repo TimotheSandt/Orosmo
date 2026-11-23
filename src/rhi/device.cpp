@@ -3,8 +3,17 @@
 #include "opengl/gl_device.hpp"
 #include "vulkan/vk_device.hpp"
 
+#include <atomic>
+
 namespace orosmo::rhi
 {
+
+namespace
+{
+std::atomic<std::uint64_t> nextEncoderId{1};
+} // namespace
+
+CommandEncoder::CommandEncoder() noexcept : id_(nextEncoderId.fetch_add(1, std::memory_order_relaxed)) {}
 
 bool isBackendCompiled(Backend backend) noexcept { return backend == Backend::kOpenGL || backend == Backend::kVulkan; }
 

@@ -23,7 +23,14 @@ using orosmo::core::Result;
 class CommandEncoder
 {
   public:
+    CommandEncoder() noexcept;
     virtual ~CommandEncoder() = default;
+    CommandEncoder(const CommandEncoder &) = delete;
+    CommandEncoder &operator=(const CommandEncoder &) = delete;
+
+    // Identifiant unique dans le processus, jamais réutilisé (contrairement à l'adresse de l'encodeur, que l'allocateur
+    // redonne souvent à l'encodeur de l'image suivante) : un cache par encodeur sait ainsi qu'il voit un encodeur neuf.
+    std::uint64_t id() const noexcept { return id_; }
 
     // Passes (RHI-08, RHI-15). Hors passe : copies, dispatch, minuteries. Dans une passe : état, liaisons, dessins.
     virtual void beginRenderPass(const RenderPassDesc &desc) = 0;
@@ -63,6 +70,9 @@ class CommandEncoder
     // Première erreur d'usage rencontrée pendant l'enregistrement (handle périmé, pipeline absent, hors passe...).
     // Vide si tout va bien. Les commandes invalides sont ignorées et journalisées ; `Device::submit` renvoie cette erreur.
     virtual const std::optional<Error> &error() const noexcept = 0;
+
+  private:
+    std::uint64_t id_;
 };
 
 struct SurfaceDesc

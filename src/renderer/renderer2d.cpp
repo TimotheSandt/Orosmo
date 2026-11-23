@@ -621,7 +621,7 @@ core::Result<> Renderer2D::render(rhi::CommandEncoder &encoder, rhi::TextureHand
     BatchArena::Range batch{};
     if (!data.empty())
     {
-        auto uploaded = arena_.upload(device_, &encoder, std::as_bytes(std::span(data)), "renderer2d.batch");
+        auto uploaded = arena_.upload(device_, encoder.id(), std::as_bytes(std::span(data)), "renderer2d.batch");
         if (!uploaded)
         {
             return std::unexpected(uploaded.error());

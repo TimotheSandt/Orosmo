@@ -76,7 +76,7 @@ GLint getIndexedInt(GLenum pname, GLuint index)
     return value;
 }
 
-void APIENTRY debugCallback(GLenum, GLenum type, GLuint, GLenum severity, GLsizei length, const GLchar *message, const void *user)
+void APIENTRY debugCallback(GLenum, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *user)
 {
     auto *device = static_cast<GlDevice *>(const_cast<void *>(user));
     const bool isError = type == GL_DEBUG_TYPE_ERROR || type == GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR ||
@@ -86,9 +86,10 @@ void APIENTRY debugCallback(GLenum, GLenum type, GLuint, GLenum severity, GLsize
         LOG_ERROR(1, "OpenGL validation: ", std::string(message, static_cast<std::size_t>(length)));
         device->onValidationMessage(true);
     }
-    else if (severity != GL_DEBUG_SEVERITY_NOTIFICATION)
+    else if (severity != GL_DEBUG_SEVERITY_NOTIFICATION && device->firstInformationalMessage(id))
     {
-        LOG_DEBUG("OpenGL: ", std::string(message, static_cast<std::size_t>(length)));
+        LOG_DEBUG("OpenGL: ", std::string(message, static_cast<std::size_t>(length)), " (message ", id,
+                  " : journalisé une seule fois)");
     }
 }
 
@@ -118,6 +119,12 @@ void GlDevice::onValidationMessage(bool isError) noexcept
     {
         validationErrors_.fetch_add(1);
     }
+}
+
+bool GlDevice::firstInformationalMessage(GLuint id)
+{
+    std::lock_guard<std::mutex> lock(informationalMutex_);
+    return informationalSeen_.insert(id).second;
 }
 
 // ── Création du périphérique ───────────────────────────────────────────────────────────────────────────────────────
@@ -496,7 +503,13 @@ Result<BufferHandle> GlDevice::createBuffer(const BufferDesc &desc, std::span<co
     clearGlErrors();
     glGenBuffers(1, &id);
     glBindBuffer(GL_COPY_WRITE_BUFFER, id);
-    const GLenum hint = desc.memory == MemoryKind::kReadback ? GL_STREAM_READ : (desc.memory == MemoryKind::kUpload ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
+    // Un tampon kGpuOnly qui peut être réécrit (kCopyDst : updateBuffer, copies) est souvent mis à jour à chaque image (données
+    // par image, sommets du batch 2D) : GL_DYNAMIC_DRAW. GL_STATIC_DRAW faisait émettre par le pilote un avertissement de
+    // performance à chaque glBufferSubData.
+    const bool rewritable = hasFlag(desc.usage, BufferUsage::kCopyDst);
+    const GLenum hint = desc.memory == MemoryKind::kReadback ? GL_STREAM_READ
+                        : (desc.memory == MemoryKind::kUpload || rewritable) ? GL_DYNAMIC_DRAW
+                                                                              : GL_STATIC_DRAW;
     if (id != 0 && !glFailed())
     {
         glBufferData(GL_COPY_WRITE_BUFFER, static_cast<GLsizeiptr>(desc.size), nullptr, hint);

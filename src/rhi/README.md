@@ -9,7 +9,7 @@ API publique : `include/orosmo/rhi/` (aucun type d'API graphique). Backends priv
 | `include/orosmo/rhi/handle.hpp` | `Handle<Tag>` (indice + génération) et `HandlePool<Tag, T>` : un handle périmé est refusé, jamais déréférencé |
 | `include/orosmo/rhi/types.hpp` | formats, usages, descriptions (buffer, texture, échantillonneur, shader, pipeline, groupe de liaison, passe) |
 | `include/orosmo/rhi/capabilities.hpp` | `Capabilities` : limites, fonctions, capacités optionnelles réservées (toutes `false`, RHI-18) |
-| `include/orosmo/rhi/device.hpp` | `Device`, `CommandEncoder`, `DeviceStats`, `createDevice` |
+| `include/orosmo/rhi/device.hpp` | `Device`, `CommandEncoder` (`id()` : identifiant unique dans le processus, jamais réutilisé, pour reconnaître un nouvel encodeur), `DeviceStats`, `createDevice` |
 | `src/rhi/format.cpp`, `src/rhi/device.cpp` | `formatInfo`, choix du backend |
 | `include/orosmo/rhi/shader_compiler.hpp`, `src/rhi/shader_compiler.cpp` | pipeline de shaders (RHI-12) : `compileGlsl`, `translateToGlsl430`, `ShaderCache`, `createShaderFromGlsl`, `ShaderHotReloader` |
 | `src/rhi/opengl/` | backend OpenGL 4.3 (`gl_device.cpp` ressources, `gl_encoder.cpp` commandes, `gl_translate.hpp` tables) |
