@@ -188,6 +188,10 @@ class SceneRenderer
     // setCamera ; `info` donne les formats de la cible (pipelines) et l'origine du rendu relatif à la caméra.
     core::Result<SceneDrawInfo> sceneDrawInfo() const;
     core::Result<> drawCustom(SceneDrawCallback draw);
+    // Copie le bloc du modèle de `mesh` (celui de son dernier `uploadTransform`) dans une tranche propre à un dessin de l'image et
+    // rend son décalage dynamique dans `FrameResources::modelGroup` (groupe 2). Chaque dessin garde ainsi SA transformation jusqu'à
+    // sa lecture par le GPU, même si le maillage est redessiné ailleurs dans l'image. Entre beginFrame et endFrame.
+    core::Result<std::uint32_t> recordModelSlice(const Mesh &mesh);
     // Construit et exécute le graphe de l'image : passe de scène (dessins enregistrés), post-traitements, mise à l'échelle vers
     // `output`, génération d'images, historique, puis les passes des plugins. Chaque passe est mesurée par le Profiler sous
     // « RenderGraph/<passe> » (scene, post.<nom>, upscale, frame-generation, history).
@@ -210,7 +214,7 @@ class SceneRenderer
         std::vector<std::byte> pushConstants;
         LightManager *lights = nullptr;
         rhi::BindGroupHandle textureGroup;
-        rhi::BindGroupHandle modelGroup;
+        std::uint32_t modelOffset = 0; // tranche du modèle de CE dessin (recordModelSlice), décalage dynamique du groupe 2
         rhi::BufferHandle vertexBuffer;
         rhi::BufferHandle instanceBuffer;
         rhi::BufferHandle indexBuffer;
@@ -231,12 +235,15 @@ class SceneRenderer
     bool needsHistory() const noexcept;
     LightManager &activeLights() noexcept { return lights_ != nullptr ? *lights_ : defaultLights_; }
     core::Result<> rebuildFrameGroup(LightManager &lights);
-    core::Result<> record(Mesh &mesh, bool lines);
+    core::Result<> record(Mesh &mesh, bool lines, std::uint32_t modelOffset);
+    core::Result<> uploadModelSlices();
+    // Format de la couleur de la cible de l'image en cours (celui de beginFrame, même si setSceneColorFormat a changé depuis).
+    rhi::Format frameColorFormat() const noexcept { return sceneTarget_.valid() ? sceneTarget_.info().colorFormats[0] : sceneColorFormat_; }
     core::Result<> playDraws(rhi::CommandEncoder &encoder, bool prepass = false);
     core::Result<> uploadDebugLines();
     core::Result<> updateFrameData();
     core::Result<> ensureHistory(RenderTarget &target, bool &fresh);
-    core::Result<> buildGraph(const UpscaleTarget &output);
+    core::Result<> buildGraph(const UpscaleTarget &output, bool hadHistory);
     // Mélange et profondeur du matériau (REN-41) puis effets du mode de debug, sur les cibles déjà préparées.
     void configureMaterialState(GraphicsState &state, BlendMode blend, bool lines) const;
     bool replacesMeshProgram() const noexcept
@@ -276,7 +283,13 @@ class SceneRenderer
     std::array<RenderTarget, 2> history_;
     std::uint32_t lastHistory_ = 0; // tampon écrit par la dernière image qui a réussi sa copie (si historyValid_)
     rhi::CommandEncoder *encoder_ = nullptr;
-    bool frameOpen_ = false;
+    bool frameOpen_ = false;  // entre beginFrame et endFrame : enregistrement des dessins
+    bool executing_ = false;  // pendant endFrame (graphe, playDraws) : beginFrame refusé jusqu'au nettoyage de l'image
+    // Tranches du modèle (groupe 2, REN-01) : une par dessin enregistré, copiées à l'enregistrement, envoyées une fois à endFrame.
+    std::vector<std::byte> modelSliceBytes_;
+    GpuBuffer modelSlices_;
+    rhi::BindGroupHandle modelSliceGroup_;
+    std::uint64_t modelSliceStride_ = 0;
 
     FrameData frameData_;
     FrameEnvironment environment_;
@@ -303,6 +316,7 @@ class SceneRenderer
     std::unique_ptr<IFrameGenerationMode> frameGenMode_;
     rhi::TextureHandle generatedFrame_;
     bool historyValid_ = false; // history_[lastHistory_] contient l'image précédente (écrite avec succès à l'image précédente)
+    bool historyWritten_ = false; // la passe « history » de l'image en cours a réussi (publié si le graphe entier réussit)
 
     // AOV (REN-21)
     AovSet aovDeclared_;
@@ -310,6 +324,7 @@ class SceneRenderer
     AovLayout aovLayout_;
     DebugView debugView_ = DebugView::kNone;
     std::shared_ptr<ShaderProgram> debugViewProgram_;
+    std::shared_ptr<ShaderProgram> debugViewTexturedProgram_; // même mode pour les maillages texturés (mesh_textured.vert, uv)
     glm::vec3 previousCameraOrigin_{0.0f};
 
     bool motionVectorsEnabled_ = false;

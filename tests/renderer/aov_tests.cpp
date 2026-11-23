@@ -14,12 +14,14 @@
 #include <orosmo/renderer/render_feature.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
 #include <orosmo/renderer/shadow_feature.hpp>
+#include <orosmo/renderer/texture.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <span>
 
 namespace fs = std::filesystem;
 namespace rd = orosmo::renderer;
@@ -259,6 +261,162 @@ TEST_SUITE("renderer/aov")
         }
     }
 
+    TEST_CASE("REN-21: the textured variant writes every AOV (motion, id, albedo from the texture); linear depth is right in orthographic")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            AovScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            for (const rd::Aov aov : {rd::Aov::kMotion, rd::Aov::kObjectId, rd::Aov::kLinearDepth, rd::Aov::kAlbedo})
+            {
+                REQUIRE(scene.renderer->declareAov(aov).has_value());
+            }
+            const rd::AovLayout layout(scene.renderer->activeAovs());
+            auto defines = scene.renderer->aovShaderDefines();
+            defines.emplace_back("OROSMO_TEXTURED", "1");
+            // Avant le correctif : `color` inconnu de mesh.frag (albédo) et sorties de mouvement / identifiant absentes du sommet.
+            auto program = scene.library->loadGraphics(shaderDir() / "mesh_textured.vert", shaderDir() / "mesh.frag", defines);
+            INFO((program ? std::string() : program.error().message));
+            REQUIRE(program.has_value());
+            const std::uint8_t texel[4] = {51, 102, 204, 255};
+            rd::TextureInfo info;
+            info.filter = rd::FilterMode::kNearest;
+            auto texture = rd::Texture::create(*scene.gpu.device, info, std::as_bytes(std::span(texel)));
+            REQUIRE(texture.has_value());
+            rd::MeshData d;
+            d.vertices = {-4, -4, 0, 0, 0, 1, 0, 1, 4, -4, 0, 0, 0, 1, 1, 1, 4, 4, 0, 0, 0, 1, 1, 0, -4, 4, 0, 0, 0, 1, 0, 0};
+            d.indices = {0, 1, 2, 0, 2, 3};
+            d.attributeSizes = {3, 3, 2};
+            d.name = "aov.textured";
+            auto mesh = rd::Mesh::create(*scene.gpu.device, d);
+            REQUIRE(mesh.has_value());
+            mesh->setProgram(*program);
+            mesh->setObjectId(11);
+            mesh->setPosition({0.0f, 0.0f, -5.0f});
+            const rd::TextureBinding binding[] = {{texture->handle(), texture->sampler()}};
+            REQUIRE(mesh->setTextures(binding).has_value());
+            rd::Camera camera;
+            camera.setAspect(8, 8);
+            camera.setNearPlane(0.1f);
+            camera.setFarPlane(100.0f);
+            camera.setOrthographic(8.0f);
+            scene.frame(*mesh, camera, scene.gpu.target(Format::kRGBA8Unorm, {8, 8}, "out"));
+            const rd::RenderTarget &target = scene.renderer->sceneTarget();
+            const auto id = target.readPixelUInt(*layout.index(rd::Aov::kObjectId), 4, 4);
+            REQUIRE(id.has_value());
+            CHECK(*id == 11);
+            const auto albedo = rgba(scene.gpu.pixel(target.color(*layout.index(rd::Aov::kAlbedo)), 4, 4));
+            CHECK(near(albedo[0], 51, 2));
+            CHECK(near(albedo[1], 102, 2));
+            CHECK(near(albedo[2], 204, 2));
+            // Orthographique : gl_FragCoord.w vaut 1 partout ; la distance le long de l'axe de la vue est 5.
+            const auto depth = scene.gpu.pixel(target.color(*layout.index(rd::Aov::kLinearDepth)), 4, 4);
+            float linear = 0.0f;
+            std::memcpy(&linear, depth.data(), 4);
+            CHECK(linear == doctest::Approx(5.0f).epsilon(0.01));
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("REN-35: the albedo view of a textured mesh shows its texture; a vertex-colored mesh keeps its colors")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            AovScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            const std::uint8_t texel[4] = {51, 102, 204, 255};
+            rd::TextureInfo info;
+            info.filter = rd::FilterMode::kNearest;
+            auto texture = rd::Texture::create(*scene.gpu.device, info, std::as_bytes(std::span(texel)));
+            REQUIRE(texture.has_value());
+            auto texturedProgram = scene.library->loadGraphics(shaderDir() / "mesh_textured.vert", shaderDir() / "mesh.frag", {{"OROSMO_TEXTURED", "1"}});
+            REQUIRE(texturedProgram.has_value());
+            rd::MeshData d;
+            // uv (0.9, 0.9) partout : sans la variante texturée, l'albédo serait (0.9, 0.9, 0) (les uv lus comme une couleur).
+            d.vertices = {-3, -3, -1, 0, 0, 1, 0.9f, 0.9f, 3, -3, -1, 0, 0, 1, 0.9f, 0.9f, 0, 3, -1, 0, 0, 1, 0.9f, 0.9f};
+            d.indices = {0, 1, 2};
+            d.attributeSizes = {3, 3, 2};
+            d.name = "aov.textured.albedo";
+            auto textured = rd::Mesh::create(*scene.gpu.device, d);
+            REQUIRE(textured.has_value());
+            textured->setProgram(*texturedProgram);
+            const rd::TextureBinding binding[] = {{texture->handle(), texture->sampler()}};
+            REQUIRE(textured->setTextures(binding).has_value());
+            REQUIRE(scene.renderer->setDebugView(rd::DebugView::kAlbedo).has_value());
+            rd::Camera camera;
+            camera.setAspect(8, 8);
+            const TextureHandle out = scene.gpu.target(Format::kRGBA8Unorm, {8, 8}, "out");
+            scene.frame(*textured, camera, out);
+            const auto px = rgba(scene.gpu.pixel(out, 4, 4));
+            CHECK(near(px[0], 51, 2));
+            CHECK(near(px[1], 102, 2));
+            CHECK(near(px[2], 204, 2));
+            // Le maillage à couleurs de sommets garde sa variante (couleur du sommet).
+            auto program = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag");
+            REQUIRE(program.has_value());
+            rd::MeshData colored = triangle();
+            for (std::size_t v = 0; v < 3; ++v)
+            {
+                colored.vertices[v * 9 + 6] = 0.8f;
+                colored.vertices[v * 9 + 7] = 0.4f;
+                colored.vertices[v * 9 + 8] = 0.2f;
+            }
+            auto plain = rd::Mesh::create(*scene.gpu.device, colored);
+            REQUIRE(plain.has_value());
+            plain->setProgram(*program);
+            scene.frame(*plain, camera, out);
+            const auto vc = rgba(scene.gpu.pixel(out, 4, 4));
+            CHECK(near(vc[0], 204, 2));
+            CHECK(near(vc[2], 51, 2));
+            REQUIRE(scene.renderer->setDebugView(rd::DebugView::kNone).has_value());
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("REN-21: after a gap in tracking (mesh not drawn), the previous model is the current one: no false motion")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            AovScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            REQUIRE(scene.renderer->declareAov(rd::Aov::kMotion).has_value());
+            const rd::AovLayout layout(scene.renderer->activeAovs());
+            auto program = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag", scene.renderer->aovShaderDefines());
+            REQUIRE(program.has_value());
+            auto mesh = rd::Mesh::create(*scene.gpu.device, triangle());
+            REQUIRE(mesh.has_value());
+            mesh->setProgram(*program);
+            rd::Camera camera;
+            camera.setAspect(8, 8);
+            const TextureHandle out = scene.gpu.target(Format::kRGBA8Unorm, {8, 8}, "out");
+            auto motion = [&]()
+            {
+                const auto m = scene.gpu.pixel(scene.renderer->sceneTarget().color(*layout.index(rd::Aov::kMotion)), 4, 4);
+                std::uint16_t mx = 0;
+                std::memcpy(&mx, m.data(), 2);
+                return halfToFloat(mx);
+            };
+            scene.frame(*mesh, camera, out); // suivi à l'image 1, en x = 0
+            for (int gap = 0; gap < 2; ++gap)  // deux images sans le maillage
+            {
+                scene.gpu.run(
+                    [&](CommandEncoder &e)
+                    {
+                        REQUIRE(scene.renderer->beginFrame(e).has_value());
+                        REQUIRE(scene.renderer->setCamera(camera).has_value());
+                        REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
+                    });
+            }
+            mesh->setPosition({0.3f, 0.0f, 0.0f}); // déplacé pendant l'interruption
+            scene.frame(*mesh, camera, out);
+            CHECK(std::abs(motion()) < 1e-4f); // pas de mouvement depuis la pose d'il y a trois images
+            mesh->setPosition({0.0f, 0.0f, 0.0f});
+            scene.frame(*mesh, camera, out); // images consécutives : le mouvement est mesuré
+            CHECK(motion() < -0.01f);
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
     TEST_CASE("REN-21: a feature that requires an AOV adds it to the scene pass")
     {
         FOR_EACH_BACKEND(backend)
@@ -375,12 +533,15 @@ TEST_SUITE("renderer/aov")
         {
             AovScene scene(backend);
             REQUIRE(scene.gpu.device);
-            auto fp = rd::enableForwardPlus(*scene.renderer, *scene.gpu.device, *scene.library, *scene.pipelines, shaderDir());
-            if (!fp)
+            // Même condition que ForwardPlusLighting::create : sans la capacité, on passe ; avec, l'activation doit réussir.
+            if (!rd::ForwardPlusLighting::supportedBy(scene.gpu->capabilities()))
             {
-                MESSAGE("forward+ unavailable on this backend: " << fp.error().message);
+                MESSAGE("forward+ unsupported on this backend (compute or storage buffer bindings missing)");
                 continue;
             }
+            auto fp = rd::enableForwardPlus(*scene.renderer, *scene.gpu.device, *scene.library, *scene.pipelines, shaderDir());
+            INFO((fp ? std::string() : fp.error().message));
+            REQUIRE(fp.has_value());
             REQUIRE(scene.renderer->declareAov(rd::Aov::kObjectId).has_value());
             REQUIRE(scene.renderer->declareAov(rd::Aov::kLinearDepth).has_value());
             const rd::AovLayout layout(scene.renderer->activeAovs());

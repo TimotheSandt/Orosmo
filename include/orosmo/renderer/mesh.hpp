@@ -10,6 +10,8 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
+#include <cstddef>
 #include <memory>
 #include <span>
 #include <string>
@@ -114,6 +116,10 @@ class Mesh
     rhi::BufferHandle instanceBuffer() const noexcept { return instanceBuffer_.handle(); }
     rhi::BufferHandle indexBuffer() const noexcept { return indexBuffer_.handle(); }
     rhi::BindGroupHandle modelGroup() const noexcept { return modelGroup_; }
+    // Bloc ModelBlock (std140, `kModelBlockSize` octets) envoyé par le dernier `uploadTransform` : copié par chaque dessin dans sa
+    // propre tranche (`SceneRenderer::recordModelSlice`), pour qu'un maillage dessiné deux fois dans l'image garde les deux poses.
+    static constexpr std::size_t kModelBlockSize = 208;
+    std::span<const std::byte> modelBlock() const noexcept { return modelBlock_; }
     rhi::BindGroupHandle textureGroup() const noexcept { return textureGroup_; }
     const std::vector<std::byte> &pushConstants() const noexcept { return pushConstants_; }
 
@@ -148,6 +154,7 @@ class Mesh
     std::uint64_t lastFrame_ = 0;
     std::uint32_t objectId_ = 0;
     AovMaterial aovMaterial_;
+    std::array<std::byte, kModelBlockSize> modelBlock_{};
 };
 
 } // namespace orosmo::renderer

@@ -1,7 +1,7 @@
 // REN-01 : plugins de rendu (docs/03 §11, « render features »). Un plugin ajoute ses passes au graphe de l'image sans modifier le
 // cœur du renderer : ombres, post-traitements, interface, et plus tard voxels ou ray tracing (règle 14). `SceneRenderer` appelle,
 // à chaque `endFrame`, `prepare` puis `declarePasses` de chaque plugin enregistré, APRÈS avoir déclaré ses propres passes (scène,
-// post-traitements, mise à l'échelle, génération d'images, historique).
+// mise à l'échelle, génération d'images, historique) et AVANT ses `IPostProcessPass`, puis `frameEnded` de chacun.
 #pragma once
 
 #include "orosmo/core/error.hpp"
@@ -129,6 +129,9 @@ class RenderFeature
     }
     // Ajoute ses passes et ses ressources au graphe de l'image.
     virtual core::Result<> declarePasses(RenderGraphBuilder &builder) = 0;
+    // Fin de chaque `SceneRenderer::endFrame`, réussi ou non (après l'exécution du graphe, ou après l'échec qui l'a empêchée) : le
+    // plugin oublie ce qui ne valait que pour cette image (dépôts, placements), pour que rien ne survive à l'image. Rien par défaut.
+    virtual void frameEnded() noexcept {}
 };
 
 } // namespace orosmo::renderer

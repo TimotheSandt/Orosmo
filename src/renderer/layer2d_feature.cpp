@@ -25,6 +25,9 @@ core::Result<std::unique_ptr<Layer2DFeature>> Layer2DFeature::create(std::string
 core::Result<> Layer2DFeature::prepare(const FrameData &frame)
 {
     viewProj_ = frame.viewProj;
+    // Rendu relatif à la caméra (REN-02) : `viewProj` attend des positions relatives à la caméra. Origine de l'espace des shaders
+    // en coordonnées monde : caméra en rendu relatif, 0 sinon (FrameData : cameraWorld - cameraRelativeOrigin).
+    shaderOrigin_ = glm::vec3(frame.cameraWorldHigh) + glm::vec3(frame.cameraWorldLow) - glm::vec3(frame.cameraRelativeOrigin);
     return {};
 }
 
@@ -70,7 +73,11 @@ core::Result<> Layer2DFeature::declarePasses(RenderGraphBuilder &builder)
                          options.loadExisting = true;
                          options.depth = ctx.texture(depth);
                          options.depthFormat = ctx.desc(depth).format;
-                         options.viewProjection = viewProj_ * plane_;
+                         // Le plan est ramené côté CPU dans le repère des maillages (translation - origine) : aucune coordonnée
+                         // monde absolue n'est envoyée au shader.
+                         glm::mat4 plane = plane_;
+                         plane[3] -= glm::vec4(shaderOrigin_, 0.0f);
+                         options.viewProjection = viewProj_ * plane;
                          ++passesRun_;
                          return renderer_->render(ctx.encoder(), ctx.texture(color), desc.format, desc.size, options);
                      })

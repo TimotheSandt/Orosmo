@@ -297,18 +297,24 @@ core::Result<> RenderGraph::compile()
     }
 
     // Arêtes, ressource par ressource, en suivant l'ordre de déclaration des passes qui y accèdent :
-    //   - écriture après écriture : chaque écrivain suit le précédent ;
+    //   - écriture après écriture : chaque écrivain suit le précédent ; il n'en DÉPEND (arête de données, qui garde le précédent)
+    //     que s'il consomme l'ancien contenu : attachement en `kLoad`, `write` générique (écriture partielle possible) ou lecture
+    //     dans la même passe. Un attachement effacé (`kClear`) ou ignoré (`kDontCare`) ne fait qu'ordonner ;
     //   - lecture après écriture : `read` suit le dernier écrivain déclaré avant lui (ou tous, s'il n'y en a pas), `readFinal`
     //     suit le dernier écrivain ;
     //   - écriture après lecture : un écrivain suit les lecteurs de la version précédente (ordre seulement : ces lecteurs ne
     //     sont pas gardés pour autant).
     // `predecessors` sert à l'ordre, `dataPredecessors` (sans les écritures après lecture) aux passes gardées.
+    // Une passe qui consomme une ressource TRANSITOIRE sans producteur (lecture sans écrivain, premier attachement en `kLoad`) est
+    // notée dans `unproduced` : refusée plus bas si elle est gardée (son contenu serait indéfini). Une ressource importée sans
+    // écrivain est lue telle quelle (contenu fourni par l'appelant).
     const std::size_t n = passes_.size();
     std::vector<std::vector<std::pair<std::uint32_t, std::string>>> successors(n); // (passe suivante, ressource)
     std::vector<std::vector<std::uint32_t>> predecessors(n);
     std::vector<std::vector<std::uint32_t>> dataPredecessors(n);
     std::set<std::pair<std::uint32_t, std::uint32_t>> edges;
     std::set<std::pair<std::uint32_t, std::uint32_t>> dataEdges;
+    std::vector<std::pair<std::uint32_t, std::string>> unproduced; // (passe, ressource transitoire lue sans producteur)
     const auto addEdge = [&](std::uint32_t from, std::uint32_t to, const std::string &resource, bool data)
     {
         if (from == to)
@@ -325,7 +331,7 @@ core::Result<> RenderGraph::compile()
             dataPredecessors[to].push_back(from);
         }
     };
-    const auto linkResource = [&](bool texture, std::uint32_t resource, const std::string &name)
+    const auto linkResource = [&](bool texture, std::uint32_t resource, const std::string &name, bool imported)
     {
         std::optional<std::uint32_t> lastWriter;
         std::vector<std::uint32_t> versionReaders; // lecteurs de la version de lastWriter
@@ -335,6 +341,8 @@ core::Result<> RenderGraph::compile()
             bool writes = false;
             bool reads = false;
             bool readsFinal = false;
+            bool loads = false;    // attachement en kLoad : lit l'ancien contenu
+            bool overwrites = false; // write générique : contenu précédent peut-être gardé en partie
             for (const ResourceUse &u : passes_[p].uses)
             {
                 if (u.texture != texture || u.resource != resource)
@@ -352,13 +360,26 @@ core::Result<> RenderGraph::compile()
                 else
                 {
                     writes = true;
+                    if (u.access == Access::kWrite)
+                    {
+                        overwrites = true;
+                    }
+                    else if (u.load == rhi::LoadOp::kLoad)
+                    {
+                        loads = true;
+                    }
                 }
             }
             if (writes)
             {
+                const bool consumes = loads || overwrites || reads || readsFinal;
                 if (lastWriter)
                 {
-                    addEdge(*lastWriter, p, name, true);
+                    addEdge(*lastWriter, p, name, consumes);
+                }
+                else if (!imported && (loads || reads || readsFinal))
+                {
+                    unproduced.push_back({p, name});
                 }
                 for (const std::uint32_t r : versionReaders)
                 {
@@ -384,14 +405,21 @@ core::Result<> RenderGraph::compile()
                 addEdge(*lastWriter, r, name, true);
             }
         }
+        else if (!imported)
+        {
+            for (const std::uint32_t r : finalReaders)
+            {
+                unproduced.push_back({r, name});
+            }
+        }
     };
     for (std::uint32_t t = 0; t < textures_.size(); ++t)
     {
-        linkResource(true, t, textures_[t].name);
+        linkResource(true, t, textures_[t].name, textures_[t].imported);
     }
     for (std::uint32_t b = 0; b < buffers_.size(); ++b)
     {
-        linkResource(false, b, buffers_[b].name);
+        linkResource(false, b, buffers_[b].name, buffers_[b].imported);
     }
 
     // Tri topologique stable (à égalité, l'ordre de déclaration).
@@ -504,6 +532,15 @@ core::Result<> RenderGraph::compile()
                 kept_[before] = true;
                 stack.push_back(before);
             }
+        }
+    }
+    for (const auto &[p, resource] : unproduced)
+    {
+        if (kept_[p])
+        {
+            kept_.assign(passes_.size(), false);
+            return makeError(ErrorCode::kInvalidArgument,
+                             "RenderGraph: pass '" + passes_[p].name + "' reads transient resource '" + resource + "' that no pass writes");
         }
     }
     for (const std::uint32_t p : sorted)
@@ -766,6 +803,7 @@ void RenderGraph::releaseTransients()
 core::Result<> RenderGraph::runPass(rhi::CommandEncoder &encoder, const Pass &pass)
 {
     RenderPassContext context(device_, encoder, *this, pass.name, frame_);
+    const bool encoderFailed = encoder.error().has_value(); // erreur antérieure : pas imputée à cette passe
     encoder.beginDebugGroup(pass.name.c_str());
     core::Result<> result;
     if (pass.type == PassType::kRaster)
@@ -802,7 +840,14 @@ core::Result<> RenderGraph::runPass(rhi::CommandEncoder &encoder, const Pass &pa
     encoder.endDebugGroup();
     if (!result)
     {
+        // L'erreur rendue par la passe elle-même prime sur celle de l'encodeur.
         return makeError(result.error().code, "pass '" + pass.name + "': " + result.error().message, result.error().where);
+    }
+    if (!encoderFailed && encoder.error())
+    {
+        // Commande refusée par l'encodeur pendant cette passe (ignorée par le RHI) : l'image est arrêtée comme pour une erreur.
+        const core::Error &error = *encoder.error();
+        return makeError(error.code, "pass '" + pass.name + "': rejected command: " + error.message, error.where);
     }
     return {};
 }

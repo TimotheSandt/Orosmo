@@ -167,13 +167,19 @@ void writeAovs()
     aovObjectId = objectId;
 #endif
 #ifdef OROSMO_AOV_LINEAR_DEPTH
-    aovLinearDepth = 1.0 / gl_FragCoord.w; // w de l'espace de découpe = distance le long de l'axe de la vue
+    // Distance le long de l'axe de la vue (aov.hpp) : -z de la position en espace de vue (la caméra regarde vers -z). Juste aussi
+    // en projection orthographique, où gl_FragCoord.w vaut 1. `frame.view` est dans le même repère que crntPos (relatif ou monde).
+    aovLinearDepth = -(frame.view * vec4(crntPos, 1.0)).z;
 #endif
 #ifdef OROSMO_AOV_EMISSION
     aovEmission = vec4(0.0); // aucune émission avant REN-09
 #endif
 #ifdef OROSMO_AOV_ALBEDO
+#ifdef OROSMO_TEXTURED
+    aovAlbedo = vec4(texture(albedo, uv).rgb, 1.0); // variante texturée : la couleur de base est le texel
+#else
     aovAlbedo = vec4(color, 1.0);
+#endif
 #endif
 }
 
