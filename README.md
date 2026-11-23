@@ -57,7 +57,7 @@ make all-debug
 | `make demo-test SANITIZE=address,undefined` | Idem sous ASan + UBSan (arbre propre : `make fclean` avant) |
 | `make demo-test-unit` / `make demo-test-gpu` | Seulement les tests sans GPU ni fenêtre / seulement l'intégration graphique (contexte OpenGL, fenêtre). `ENGINE_TEST_REQUIRE_GPU=1` : un test graphique sans pilote ni affichage échoue au lieu d'être ignoré |
 | `make check` | Dépôt, couches, isolation des API (y compris GLFW et `<windows.h>`), en-têtes autonomes : **bloquant** (échoue à la première violation, comme la CI) |
-| `main --api opengl --headless --capture <dossier>` | Rend 10 images à 1280x720 (options : `--ui off|hud|full`, `--hud off|fps|full|graph` (panneau de performances, défaut `full`), `--theme dark|light|framed`, `--tab scene|widgets|controls|color|windows|layout|themes`, `--size WxH`, `--capture-frames N`, `--hover <id>`, `--click <id>`) ; `--backend vulkan` (alias de `--api`) avec repli sur OpenGL si Vulkan ne démarre pas, `--strict-backend` pour l'interdire |
+| `main --api opengl --headless --capture <dossier>` | Rend 10 images à 1280x720 (options : `--ui off|hud|full`, `--hud off|fps|full|graph` (panneau de performances, défaut `full`), `--theme dark|light|framed`, `--tab scene|widgets|controls|color|windows|layout|themes`, `--size WxH`, `--capture-frames N`, `--hover <id>`, `--click <id>`) ; Vulkan par défaut, avec repli sur OpenGL s'il ne démarre pas ; `--backend` est un alias de `--api`, `--strict-backend` pour l'interdire |
 | `python3 tools/compare_png.py A.png B.png` | Compare deux images (tolérance, budget de pixels, image de différence) |
 | `python3 -m unittest discover -s tests/tools` | Tests des outils Python |
 | `make debug` / `make release` | Archives du moteur dans `lib/<type>/` |

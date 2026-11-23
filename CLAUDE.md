@@ -69,7 +69,7 @@ git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.
 
 # 2. Build et démo
 make all-debug                          # moteur (debug, -Wpedantic -Werror) -> apps/demo/orosmo -> démo unique
-make run                                # lance la démo unique (OpenGL par défaut ; Escape ouvre/ferme l'UI, Quit pour quitter ; --api vulkan disponible depuis M4, repli sur OpenGL)
+make run                                # lance la démo unique (Vulkan par défaut, repli sur OpenGL s'il ne démarre pas ; --api opengl pour forcer OpenGL ; Escape ouvre/ferme l'UI, Quit pour quitter)
 
 # 3. Tests et contrôles
 make demo-test                          # doctest : 413 cas (construit les archives release d'abord)

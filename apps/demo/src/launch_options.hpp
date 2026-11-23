@@ -59,7 +59,7 @@ enum class PostMode : std::uint8_t
 
 struct LaunchOptions
 {
-    orosmo::rhi::Backend api = orosmo::rhi::Backend::kOpenGL;
+    orosmo::rhi::Backend api = orosmo::rhi::Backend::kVulkan; // défaut : Vulkan, repli sur OpenGL s'il ne démarre pas
     bool showHelp = false;
     bool listApis = false;
     bool chooseApiInteractively = false;
