@@ -229,8 +229,7 @@ TEST_SUITE("rhi/vulkan/transfer")
         REQUIRE(gpu.device);
         auto &device = static_cast<vk::VulkanDevice &>(*gpu);
         const float black[4] = {0, 0, 0, 1};
-        // Anneau par image en vol côté appelant (contrat de MemoryKind::kUpload) : une plage par image, jamais réécrite tant que le
-        // GPU peut la lire. Ici, deux plages et une attente du GPU entre les images suffisent.
+        // Aucun travail du GPU n'utilise le tampon (rien de soumis depuis sa création) : écriture directe.
         const BufferHandle ubo = gpu.buffer(BufferUsage::kUniform, bytesOf(black), 0, "ubo", MemoryKind::kUpload);
         const UniformDraw drawing(gpu, ubo);
         REQUIRE(gpu->present().has_value());
@@ -247,6 +246,56 @@ TEST_SUITE("rhi/vulkan/transfer")
         auto read = gpu->readBuffer(ubo, 0, sizeof(green));
         REQUIRE(read.has_value());
         CHECK(std::memcmp(read->data(), green, sizeof(green)) == 0);
+        gpu.expectNoValidationErrors();
+    }
+
+    TEST_CASE("updateBuffer on a kUpload buffer still used by a submission in flight takes the ordered path, with the same result")
+    {
+        if (skipWithoutVulkan())
+            return;
+        Gpu gpu(Backend::kVulkan);
+        REQUIRE(gpu.device);
+        auto &device = static_cast<vk::VulkanDevice &>(*gpu);
+        const float red[4] = {1, 0, 0, 1};
+        const float green[4] = {0, 1, 0, 1};
+        const float blue[4] = {0, 0, 1, 1};
+        const BufferHandle ubo = gpu.buffer(BufferUsage::kUniform, bytesOf(red), 0, "ubo", MemoryKind::kUpload);
+        const UniformDraw drawing(gpu, ubo);
+        gpu->waitIdle();
+
+        // Déterministe : le tampon est marqué utilisé par une série pas encore finie (lot en vol) -> copie ordonnée, pas d'écriture
+        // directe ; la copie en attente marque à son tour le tampon, donc la mise à jour suivante est ordonnée elle aussi.
+        vk::BufferRes *res = device.get(ubo);
+        REQUIRE(res != nullptr);
+        res->gpuUse = device.lastSubmitted() + 1;
+        const vk::TransferCounters before = device.transferCounters();
+        REQUIRE(gpu->updateBuffer(ubo, 0, bytesOf(blue)).has_value());
+        REQUIRE(gpu->updateBuffer(ubo, 0, bytesOf(green)).has_value());
+        const vk::TransferCounters after = device.transferCounters();
+        CHECK(after.orderedUploadWrites == before.orderedUploadWrites + 2);
+        CHECK(after.directWrites == before.directWrites);
+        drawing.draw(gpu); // le lot (bleu puis vert) part en tête de cette soumission
+        CHECK(rgba(gpu.pixel(drawing.target, 0, 0)) == std::array<std::uint8_t, 4>{0, 255, 0, 255});
+        gpu->waitIdle();
+        REQUIRE(gpu->updateBuffer(ubo, 0, bytesOf(red)).has_value()); // GPU fini : écriture directe de nouveau
+        CHECK(device.transferCounters().directWrites == after.directWrites + 1);
+
+        // Réel : un dessin soumis (peut-être encore en vol) lit la couleur courante ; la réécrire juste après ne doit jamais changer
+        // ce qu'il dessine (ancien chemin : copie ordonnée avec les soumissions).
+        int ordered = 0;
+        for (int i = 0; i < 20; ++i)
+        {
+            const float *before = i % 2 == 0 ? red : blue;
+            const float *next = i % 2 == 0 ? blue : red;
+            REQUIRE(gpu->updateBuffer(ubo, 0, std::as_bytes(std::span(before, 4))).has_value());
+            drawing.draw(gpu);
+            const std::uint64_t orderedBefore = device.transferCounters().orderedUploadWrites;
+            REQUIRE(gpu->updateBuffer(ubo, 0, std::as_bytes(std::span(next, 4))).has_value());
+            ordered += device.transferCounters().orderedUploadWrites > orderedBefore ? 1 : 0;
+            const std::array<std::uint8_t, 4> drawn = rgba(gpu.pixel(drawing.target, 0, 0));
+            CHECK(drawn == (i % 2 == 0 ? std::array<std::uint8_t, 4>{255, 0, 0, 255} : std::array<std::uint8_t, 4>{0, 0, 255, 255}));
+        }
+        MESSAGE("updates of a kUpload buffer read by a submission still in flight: ", ordered, " / 20 took the ordered path");
         gpu.expectNoValidationErrors();
     }
 
