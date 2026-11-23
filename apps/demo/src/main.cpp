@@ -21,20 +21,36 @@ namespace platform = orosmo::platform;
 
 // Bilan lu par `tools/perf_compare.py` : durée totale de la boucle et moyennes du Profiler (le temps de "Render"
 // est mesuré par les requêtes de temps du GPU quand le backend les fournit, sinon par l'horloge du processeur).
-// `frameMs` : temps CPU de chaque image (Game::frameTimes) ; médiane, première image et maximum (pics : premier affichage).
-static void reportPerformance(std::chrono::steady_clock::duration elapsed, const std::vector<float> &frameMs)
+// `frameMs` : durée de chaque image (Game::frameTimes) ; médiane, première image et maximum (pics : premier affichage).
+// `waitMs` : part bloquée de chaque image (Game::frameWaitTimes : image précédente au GPU, vsync) ; travail = durée - attente.
+static float median(std::vector<float> values)
+{
+    const auto middle = values.begin() + static_cast<std::ptrdiff_t>(values.size() / 2);
+    std::nth_element(values.begin(), middle, values.end());
+    return *middle;
+}
+
+static void reportPerformance(std::chrono::steady_clock::duration elapsed, const std::vector<float> &frameMs, const std::vector<float> &waitMs)
 {
     using orosmo::core::Profiler;
     LOG_INFO("Perf: loopMs=", std::chrono::duration<double, std::milli>(elapsed).count());
     if (!frameMs.empty())
     {
-        std::vector<float> sorted = frameMs;
-        const auto middle = sorted.begin() + static_cast<std::ptrdiff_t>(sorted.size() / 2);
-        std::nth_element(sorted.begin(), middle, sorted.end());
-        LOG_INFO("Perf: frameMedianMs=", *middle);
+        const float frame = median(frameMs);
+        std::vector<float> workMs(frameMs.size());
+        for (std::size_t i = 0; i < frameMs.size(); ++i)
+        {
+            workMs[i] = frameMs[i] - (i < waitMs.size() ? waitMs[i] : 0.0f);
+        }
+        const float work = median(workMs);
+        const float wait = waitMs.empty() ? 0.0f : median(waitMs);
+        LOG_INFO("Perf: frameMedianMs=", frame);
+        LOG_INFO("Perf: workMedianMs=", work);
+        LOG_INFO("Perf: waitMedianMs=", wait);
         LOG_INFO("Perf: firstFrameMs=", frameMs.front());
         LOG_INFO("Perf: frameMaxMs=", *std::max_element(frameMs.begin(), frameMs.end()));
-        LOG_INFO("Perf: frames=", frameMs.size(), " median CPU frame ", *middle, " ms (~", *middle > 0.0f ? 1000.0f / *middle : 0.0f, " FPS without frame pacing)");
+        LOG_INFO("Perf: frames=", frameMs.size(), " median frame ", frame, " ms = CPU work ", work, " ms + waiting ", wait,
+                 " ms (GPU, vsync); ~", work > 0.0f ? 1000.0f / work : 0.0f, " FPS if the CPU were the only limit");
     }
     for (const char *name : {"Render", "RenderGraph/depth-prepass", "RenderGraph/forwardplus.clusters", "RenderGraph/gpudriven.cull",
                              "RenderGraph/gpudriven.hiz", "RenderGraph/scene", "RenderGraph/upscale",
@@ -190,7 +206,7 @@ int main(int argc, char **argv)
                 LOG_TRACE("Game initialized");
                 const auto runStart = std::chrono::steady_clock::now();
                 game.run();
-                reportPerformance(std::chrono::steady_clock::now() - runStart, game.frameTimes());
+                reportPerformance(std::chrono::steady_clock::now() - runStart, game.frameTimes(), game.frameWaitTimes());
                 LOG_INFO("Game stopped");
                 if (!game.headlessSucceeded())
                 {

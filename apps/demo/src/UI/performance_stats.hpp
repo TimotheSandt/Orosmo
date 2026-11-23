@@ -26,7 +26,10 @@ struct PerformanceSample
     double fpsMin = 0.0;
     double fpsMax = 0.0;
     double windowFps = 0.0;                                 // moyenne de la fenêtre (Window::getAverageFPS ; 0 sans fenêtre)
-    double frameCpuMs = 0.0;                                // temps CPU moyen d'une image (mise à jour -> présentation)
+    // Temps CPU moyen d'une image (mise à jour -> présentation), découpé en travail et en attente : `frameCpuMs` est le travail,
+    // `frameWaitMs` le temps bloqué dans Device::beginFrame (image en vol encore au GPU) et Device::present (vsync).
+    double frameCpuMs = 0.0;
+    double frameWaitMs = 0.0;
     std::optional<double> gpuMs;                            // « Render » (requêtes de temps GPU)
     std::vector<std::pair<std::string, double>> gpuPasses;  // passes actives du graphe (RenderGraph/<passe>), ms GPU
     // Découpage CPU (moyennes du Profiler, ms).
@@ -98,16 +101,18 @@ struct PerformanceStats
     bool tick(float deltaSeconds, const std::function<PerformanceSample()> &sample);
     void cycleLevel() { level = demo::nextHudLevel(level); }
 
-    // Une image : temps CPU, temps GPU (0 : inconnu) et intervalle depuis le début de la précédente (0 pour la première), en ms.
-    void pushFrame(float cpuMs, float gpuMs, float intervalMs);
+    // Une image : temps CPU de travail (attente exclue), temps GPU (0 : inconnu), intervalle depuis le début de la précédente
+    // (0 pour la première) et attente (GPU, vsync), en ms.
+    void pushFrame(float cpuMs, float gpuMs, float intervalMs, float waitMs = 0.0f);
     std::size_t historySize() const noexcept { return count_; }
     // Historique de la plus ancienne à la plus récente (lu par les graphes à chaque image : copie de kHistorySize flottants).
     std::vector<float> cpuHistory() const { return ordered(cpu_); }
     std::vector<float> gpuHistory() const { return ordered(gpu_); }
     // FPS de l'historique (intervalles) : moyenne, 1 % bas, min, max ; zéros sans intervalle.
     void fpsFromHistory(PerformanceSample &sample) const;
-    // Temps CPU moyen de l'historique (ms).
+    // Temps CPU de travail et attente moyens de l'historique (ms).
     double averageCpuMs() const;
+    double averageWaitMs() const;
 
     // Lus par la vue (règle 12 : la vue ne décide pas, elle demande).
     bool showFps() const noexcept { return level != demo::HudLevel::kOff; }
@@ -121,6 +126,7 @@ struct PerformanceStats
     std::array<float, kHistorySize> cpu_{};
     std::array<float, kHistorySize> gpu_{};
     std::array<float, kHistorySize> interval_{};
+    std::array<float, kHistorySize> wait_{};
     std::size_t next_ = 0;
     std::size_t count_ = 0;
 };

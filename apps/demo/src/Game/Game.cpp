@@ -611,20 +611,24 @@ void Game::run()
 }
 
 // Temps CPU d'une image : de la mise à jour à la fin de la présentation (sans l'attente du limiteur de Window::newFrame ni
-// l'écriture des captures PNG).
+// l'écriture des captures PNG). Le panneau sépare le travail de l'attente (beginFrame et present du périphérique : image
+// précédente encore au GPU, vsync) ; le bilan de fin donne les deux.
 void Game::recordFrameTime(std::chrono::steady_clock::time_point frameStart)
 {
     const auto elapsed = std::chrono::steady_clock::now() - frameStart - this->captureTime;
     this->captureTime = {};
     const float cpuMs = std::chrono::duration<float, std::milli>(elapsed).count();
+    const float waitMs = std::min(std::chrono::duration<float, std::milli>(this->frameWait).count(), cpuMs);
+    this->frameWait = {};
     this->frameTimesMs.push_back(cpuMs);
+    this->frameWaitMs.push_back(waitMs);
     const float intervalMs = this->lastFrameStart ? std::chrono::duration<float, std::milli>(frameStart - *this->lastFrameStart).count() : 0.0f;
     this->lastFrameStart = frameStart;
     // GPU : dernière mesure résolue de « Render » (requêtes de temps, quelques images de retard) ; 0 sans requêtes de temps.
     const float gpuMs = this->device->capabilities().timestampQueries && Profiler::GpuTimingsEnabled()
                             ? static_cast<float>(static_cast<double>(Profiler::GetLastTime("Render").count()) * 1e-6)
                             : 0.0f;
-    this->performance.pushFrame(cpuMs, gpuMs, intervalMs);
+    this->performance.pushFrame(cpuMs - waitMs, gpuMs, intervalMs, waitMs);
     // Diagnostic des gels : une image en fenêtre au-delà de kFrameSpikeMs est journalisée avec la part de la mise à jour (le
     // reste est le rendu, l'encodage et la présentation). Les premières images (préparation) ne comptent pas.
     constexpr float kFrameSpikeMs = 200.0f;
@@ -640,6 +644,7 @@ PerformanceSample Game::samplePerformance() const
     PerformanceSample s;
     this->performance.fpsFromHistory(s);
     s.frameCpuMs = this->performance.averageCpuMs();
+    s.frameWaitMs = this->performance.averageWaitMs();
     s.windowFps = this->window.getAverageFPS();
     if (this->device->capabilities().timestampQueries && Profiler::GpuTimingsEnabled())
     {
@@ -1052,7 +1057,9 @@ bool Game::renderUi(rhi::CommandEncoder &encoder, const rhi::TextureHandle &comp
 bool Game::beginFrame()
 {
     this->refreshViewSize();
+    const auto waitStart = std::chrono::steady_clock::now();
     auto frame = this->device->beginFrame();
+    this->frameWait += std::chrono::steady_clock::now() - waitStart;
     if (!frame)
     {
         return false; // fenêtre réduite
@@ -1157,6 +1164,13 @@ void Game::present(rhi::CommandEncoder &encoder, const rhi::TextureHandle &compo
                                            rhi::Format::kRGBA8Unorm, "present");
 }
 
+void Game::presentFrame()
+{
+    const auto waitStart = std::chrono::steady_clock::now();
+    Profiler::Profile(this->keySwapBuffers, [&]() { (void)this->device->present(); });
+    this->frameWait += std::chrono::steady_clock::now() - waitStart;
+}
+
 void Game::endFrame()
 {
     this->gpuTimers->setEncoder(nullptr);
@@ -1181,7 +1195,7 @@ void Game::endFrame()
             this->captureFailed = true;
             this->window.requestClose();
         }
-        Profiler::Profile(this->keySwapBuffers, [&]() { (void)this->device->present(); });
+        this->presentFrame();
         return;
     }
 
@@ -1244,5 +1258,5 @@ void Game::endFrame()
     }
     this->captureTime = std::chrono::steady_clock::now() - captureStart;
 
-    Profiler::Profile(this->keySwapBuffers, [&]() { (void)this->device->present(); });
+    this->presentFrame();
 }
