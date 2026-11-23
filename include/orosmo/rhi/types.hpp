@@ -138,10 +138,17 @@ enum class BufferUsage : std::uint16_t
 };
 
 // docs/03 §3 règle 6.
+//
+// Contrat de `kUpload` (Device::updateBuffer) : le backend peut écrire DIRECTEMENT dans la mémoire du tampon, au moment de l'appel,
+// sans copie ordonnée avec les soumissions (Vulkan : mémoire mappée en permanence ; OpenGL : glBufferSubData, qui reste ordonné).
+// L'appelant ne réécrit donc jamais une plage que le GPU peut encore lire : travail soumis mais pas forcément fini (images en vol),
+// ou encodeur déjà enregistré qui la lit. Usage type : un anneau par image en vol (une plage par image, réécrite seulement quand
+// l'image qui l'a lue est finie : `beginFrame` garantit au plus 2 images d'avance). Pour réécrire une plage en cours d'usage,
+// utiliser `kGpuOnly` (copie ordonnée).
 enum class MemoryKind : std::uint8_t
 {
-    kGpuOnly,  // mis à jour par copie ou updateBuffer
-    kUpload,   // écrit par le CPU, lu par le GPU
+    kGpuOnly,  // mis à jour par copie ou updateBuffer (copie ordonnée avec les soumissions, comme glBufferSubData)
+    kUpload,   // écrit par le CPU, lu par le GPU ; updateBuffer écrit directement (contrat ci-dessus)
     kReadback, // écrit par le GPU, lu par le CPU
 };
 
