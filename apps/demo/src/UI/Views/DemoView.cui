@@ -59,6 +59,16 @@ view DemoView {
                 Label("Theme").variant("caption")
                 Dropdown(options: state.themes(), selected: $state.theme).onChange(state.applyTheme).id("theme")
                     .tooltip("dark, light, or framed (nine-slice images). Themes reload live when edited.")
+                Label("Frame pacing / FPS limit").variant("caption")
+                HBox {
+                    Dropdown(options: state.pacingModes(), selected: $state.pacingMode).onChange(state.applyPacing).width(.fill).id("pacing")
+                        .tooltip("vsync (display refresh), limit (N FPS cap) or unlimited; applied live in a window")
+                    SpinBox($state.fpsLimit, min: 10, max: 1000).enabled(state.fpsLimitEditable()).onChange(state.applyPacing).width(110).id("fpsLimit")
+                        .tooltip("FPS cap, used by the 'limit' mode")
+                }
+                Label("GPU timings").variant("caption")
+                Dropdown(options: state.gpuTimingsModes(), selected: $state.gpuTimings).onChange(state.applyGpuTimings).id("gpuTimings")
+                    .tooltip("auto: measured only while the HUD shows GPU times (full, graph); on / off force them")
                 Label("Esc: toggle 3D / UI | Tab: focus").variant("caption")
                 Label("Right click slider: default | Hover: tooltip").variant("caption")
                 Label("Shortcuts: Ctrl+O, Ctrl+I, Ctrl+L, Ctrl+Q").variant("caption")

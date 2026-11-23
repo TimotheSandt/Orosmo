@@ -51,7 +51,7 @@ PerformanceText formatPerformance(const PerformanceSample &s)
     t.objects = "Objects visible: " + count(s.visibleObjects) + " / " + count(s.objects) + "   lights " + std::to_string(s.lights);
     t.device = s.backend + ": " + s.device;
     t.resolution = format("Output %ux%u   render %ux%u (x%.2f)   vsync %s", s.outputWidth, s.outputHeight, s.renderWidth, s.renderHeight,
-                          static_cast<double>(s.renderScale), s.vsync ? "on" : "off");
+                          static_cast<double>(s.renderScale), s.pacing.c_str());
     t.modes = s.modes;
     double scenePass = 0.0;
     double uiPass = 0.0;

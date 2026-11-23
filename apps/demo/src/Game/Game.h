@@ -86,14 +86,13 @@ class Game
         hoverId = std::move(hover);
         clickId = std::move(click);
     }
-    void setVSync(bool enabled)
-    {
-        vsyncEnabled = enabled;
-        if (device)
-        {
-            device->setVSync(enabled);
-        }
-    }
+    // Cadence d'images (vsync, limite à N FPS, sans limite), changeable à chaud (aussi depuis l'interface complète). Sans fenêtre
+    // (--headless) : mémorisée et affichée, sans effet (ni vsync ni limiteur).
+    void setFramePacing(orosmo::renderer::FramePacing pacing);
+    const orosmo::renderer::FramePacing &framePacing() const noexcept { return pacer.current(); }
+    // Minuteries GPU : auto (actives quand le panneau de performances affiche des temps GPU), on, off. Changeable à chaud.
+    void setGpuTimings(demo::GpuTimingsMode mode);
+    demo::GpuTimingsMode gpuTimings() const noexcept { return gpuTimingsMode; }
     // Faux si une capture était demandée et n'a pas été faite, ou si une image de la capture a été refusée par le périphérique.
     bool captureSucceeded() const noexcept { return !captureFailed && (captureDirectory.empty() || captureDone); }
     // Sans fenêtre : faux si une image n'a pas pu être commencée ou a été refusée (submit ou scène), avec ou sans capture.
@@ -184,7 +183,6 @@ class Game
     std::string captureDirectory;
     std::uint32_t captureFrames = 0;
     std::uint32_t renderedFrames = 0;
-    double watchClock = 0.0;
     bool captureDone = false;
     bool manualCapturePending = false;
     bool headlessFrameFailed = false;
@@ -195,7 +193,11 @@ class Game
     std::vector<float> frameTimesMs;
     std::chrono::steady_clock::duration captureTime{}; // écriture des PNG de l'image en cours (exclue de son temps)
     std::optional<std::chrono::steady_clock::time_point> lastFrameStart; // intervalle entre images (FPS du panneau)
-    bool vsyncEnabled = false;
+    orosmo::renderer::FramePacer pacer; // reliée à Device::setVSync et Window::setMaxFPS (fenêtre seulement)
+    demo::GpuTimingsMode gpuTimingsMode = demo::GpuTimingsMode::kAuto;
+    void applyGpuTimings();
+    // Clés du Profiler des mesures de la boucle, calculées une fois (createGraphics) : aucune chaîne ni recherche par image.
+    orosmo::core::Profiler::Key keyRender, keyUpdate, keyRecordScene, keyGraph, keySubmit, keySwapBuffers;
     bool forwardPlusActive = false;
     orosmo::renderer::ShadowFeature *shadowFeature = nullptr; // possédé par sceneRenderer (--shadows on)
 };

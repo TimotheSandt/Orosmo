@@ -261,11 +261,14 @@ void Window::setCursorPosition(glm::dvec2 position)
 
 bool Window::newFrame()
 {
-    orosmo::core::Profiler::Profile("PollEvents", &glfwPollEvents);
+    // Clés du Profiler calculées une fois (pas de std::string ni de recherche de table à chaque image).
+    static const orosmo::core::Profiler::Key pollEventsKey = orosmo::core::Profiler::MakeKey("PollEvents");
+    static const orosmo::core::Profiler::Key healthCheckKey = orosmo::core::Profiler::MakeKey("HealthCheck");
+    orosmo::core::Profiler::Profile(pollEventsKey, &glfwPollEvents);
     orosmo::core::Profiler::Process();
     this->inputManager->update();
 
-    if (!orosmo::core::Profiler::Profile("HealthCheck", &Window::isWindowHealthy, this))
+    if (!orosmo::core::Profiler::Profile(healthCheckKey, &Window::isWindowHealthy, this))
     {
         LOG_WARNING("Window is not healthy");
         return false;
