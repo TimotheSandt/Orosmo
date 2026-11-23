@@ -17,7 +17,7 @@ Jalon M5, version **`v0.5.0`**. Le moteur a un **cœur de rendu moderne** constr
 
 ## Décisions
 
-- Propositions **à confirmer par l'auteur** : A44 à A60 (`docs/QUESTIONS.md`) ; en particulier **A54** (reporter le cache par couche de l'interface à M6), **A50** (ajouts au RHI : alpha-to-coverage et MSAA, `drawIndexedIndirectCount`, `depthBias`, copie texture à texture, libération différée), A55 (jalon livré en une seule merge request) ; revue : A57 (ajouts d'API), A59 (ombre des transparents), A60 (budget `hud` de `demo-vulkan-check`).
+- Propositions **à confirmer par l'auteur** : A44 à A66 (`docs/QUESTIONS.md`) ; en particulier **A54** (reporter le cache par couche de l'interface à M6), **A50** (ajouts au RHI : alpha-to-coverage et MSAA, `drawIndexedIndirectCount`, `depthBias`, copie texture à texture, libération différée), A55 (jalon livré en une seule merge request) ; revue : A57 (ajouts d'API), A59 (ombre des transparents), A60 (budget `hud` de `demo-vulkan-check`).
 - Version : M5 `v0.5.0` ; les fichiers de version restent à mettre à jour par l'auteur.
 
 ## Commande de démo
@@ -40,8 +40,12 @@ Mesures : interface 143 → 18 draw calls ; 10 000 instances en 2 draw calls ; 1
 
 Vérification de `dev` après la revue (`9423484`) : `make demo-test` **582 / 582** ; Vulkan, GPU exigé **244 / 244** ; suites GPU sur rasteriseurs logiciels **244 / 244** ; `make check`, `make demo-capture`, `make demo-vulkan-check` (validation silencieuse), tests Python : verts. ASan et clone propre non relancés après la revue (la CI lance ASan).
 
+## Performances
+
+Décisions de l'auteur A61 : vsync par défaut (désactivable, changeable à chaud depuis l'interface), données par image en anneau `kUpload`, minuteries GPU à la demande, Vulkan par défaut. Vulkan : une soumission par image, plus de tampon de transfert par mise à jour ; une écriture par image au lieu de 9 ; une copie plein écran de moins. Release, sans fenêtre, médiane de 5 × 3000 images : Vulkan 0,488 → **0,258 ms** par image (`--ui off`), OpenGL 0,696 → **0,405 ms** CPU et 0,631 → **0,277 ms** GPU ; interface complète OpenGL 1,528 → 0,859 ms. Debug : 7,4 → 1,8 ms (logger). `dev` après toutes les fusions : `make demo-test` **611 / 611**, GPU Vulkan **265 / 265**, GPU logiciel **265 / 265**, `make check`, captures et parité verts.
+
 ## Non prouvé
 
-Windows, macOS et Linux arm64 (la CI le dira) ; un seul GPU (Intel Arc, Mesa) ;  écart d'un pixel entre forward et forward+ ; libération de ressources pendant l'enregistrement (`FullscreenBlit`, `Mesh::setTextures`) ; limites du rendu piloté par GPU, des ombres, du HDR, de l'anticrénelage et du batch 2D ; `clang-format` non installé (`docs/GAPS.md`, G151 à G181).
+Windows, macOS et Linux arm64 (la CI le dira) ; un seul GPU (Intel Arc, Mesa) ;  écart d'un pixel entre forward et forward+ ; libération de ressources pendant l'enregistrement (`FullscreenBlit`, `Mesh::setTextures`) ; limites du rendu piloté par GPU, des ombres, du HDR, de l'anticrénelage et du batch 2D ; `clang-format` non installé (`docs/GAPS.md`, G151 à G188).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

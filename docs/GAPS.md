@@ -481,3 +481,17 @@ Remarques de CodeRabbit et de la CI sur la PR #12 (M5) vérifiées dans le code 
 | G180 | R2D-03 : polyligne translucide | Quand un segment est plus court que le décalage du coude, `Renderer2D::polyline` garde les quadrilatères d'origine : léger recouvrement possible avec une couleur translucide | M6 |
 | G181 | Tests de superposition 2D et texte | Le test de superposition des passes 2D n'utilise pas une vraie commande de glyphes avec un atlas déterministe ; à ajouter avec une aide de test d'atlas partagée. Les nouveaux tests GPU de la revue (deux `render` par encodeur, polyligne) n'ont été lancés que sur le GPU matériel ; la CI les lance sur rasteriseurs logiciels | M6 |
 
+## Optimisations de performance de fin de M5 (G182 à G188)
+
+Constatés pendant les optimisations décidées en A61 (`docs/releases/M5.md`, section « Performances »).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G182 | Cadence d'images non testée en fenêtre | `FramePacer` (vsync, limite, sans limite) est testé sans fenêtre (états et appels) ; la vsync et le limiteur réels ne sont vérifiés qu'à la main, comme G74 | M6 |
+| G183 | Vulkan `kUpload` : suivi par tampon | L'écriture directe d'un tampon `kUpload` n'a lieu que si le dernier lot qui l'a utilisé est fini (`BufferRes::gpuUse`) ; le suivi est par tampon, pas par plage : un tampon unique découpé par image passe par la copie ordonnée (A65) | M8 |
+| G184 | Données par image hors de l'anneau | `ShadowFeature` (données et instances), les paramètres de `GpuDrivenFeature`, `InstanceRenderer` et `LightManager::upload` écrivent encore leurs tampons par `updateBuffer` ; inactifs dans la démo par défaut. Proposition : une allocation par image ouverte aux plugins dans l'anneau de `SceneRenderer` (A66) | M6 |
+| G185 | Vulkan : copie vers la chaîne d'échange | Le backbuffer Vulkan est une image hors écran recopiée vers l'image de la chaîne d'échange à `present` : une copie plein écran de plus dans le RHI ; la copie `upscale` 1:1 de la scène reste aussi (A63) | M8 |
+| G186 | Surveillance des thèmes | Un fichier créé dans un dossier surveillé n'est vu qu'au parcours complet suivant (jusqu'à 2 s dans la démo, `FileWatcher::setFullScanEvery`) | M6 |
+| G187 | Build : en-têtes de la démo introuvables | Une fois, `make demo-test` a échoué sur `orosmo/core/system.hpp` introuvable dans `apps/demo/orosmo/includes` pendant des compilations parallèles ; relancé sans changement, il passe. Même famille que G163 (`sync-demo`) | M6 |
+| G188 | Mesures de performance | Un seul GPU (Intel Arc, Mesa 26.1.6), machine chargée par d'autres processus pendant la plupart des mesures : les gains CPU de quelques pour cent sont dans le bruit ; seuls les comptages (soumissions, transferts, écritures, copies) sont exacts | M8 |
+
