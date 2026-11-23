@@ -22,6 +22,7 @@ inline constexpr std::size_t kProfilerMaxQueries = 12;
 inline constexpr std::size_t kProfilerBufferSize = 512;
 inline constexpr int kProfilerSaveHistoryEveryMs = 3000;
 inline constexpr int kProfilerQueryTimeoutMs = 10000;
+inline constexpr std::size_t kProfilerMaxHistory = 1024;
 
 class Profiler
 {
@@ -144,8 +145,8 @@ class Profiler
         for (auto &[name, profilerData] : getProfilerData())
         {
             auto now = std::chrono::high_resolution_clock::now();
-            if (profilerData.history.size() != 0 &&
-                (now - profilerData.history.back().time) > std::chrono::milliseconds(kProfilerSaveHistoryEveryMs))
+            // Minuterie sans nouvelle mesure depuis kProfilerSaveHistoryEveryMs (passe qui ne tourne plus) : moyenne périmée, vidée.
+            if (profilerData.hasSample && (now - profilerData.lastSample) > std::chrono::milliseconds(kProfilerSaveHistoryEveryMs))
             {
                 profilerData.buffer.Clear();
             }
@@ -195,10 +196,18 @@ class Profiler
         std::lock_guard<std::mutex> lock(getProfilerMutex());
         getTimer(name).Push(time);
         auto now = std::chrono::high_resolution_clock::now();
-        if (getProfilerData()[name].history.size() == 0 ||
-            (now - getProfilerData()[name].history.back().time).count() >= kProfilerSaveHistoryEveryMs)
+        ProfilerData &data = getProfilerData()[name];
+        data.lastSample = now;
+        data.hasSample = true;
+        // Un point d'historique toutes les kProfilerSaveHistoryEveryMs (durée comparée en millisecondes : la comparaison d'un
+        // nombre de nanosecondes ajoutait un point à chaque mesure, sans limite de mémoire), kProfilerMaxHistory points au plus.
+        if (data.history.empty() || (now - data.history.back().time) >= std::chrono::milliseconds(kProfilerSaveHistoryEveryMs))
         {
-            getProfilerData()[name].history.push_back({now, getTimer(name).GetAverage(), getTimer(name).GetMax(), getTimer(name).GetMin()});
+            if (data.history.size() >= kProfilerMaxHistory)
+            {
+                data.history.erase(data.history.begin(), data.history.begin() + static_cast<std::ptrdiff_t>(kProfilerMaxHistory / 2));
+            }
+            data.history.push_back({now, getTimer(name).GetAverage(), getTimer(name).GetMax(), getTimer(name).GetMin()});
         }
     }
 
@@ -232,6 +241,8 @@ class Profiler
     {
         RingBuffer<std::chrono::nanoseconds> buffer{kProfilerBufferSize};
         std::vector<TimerData> history;
+        std::chrono::high_resolution_clock::time_point lastSample{};
+        bool hasSample = false;
     };
 
     struct QueryData
