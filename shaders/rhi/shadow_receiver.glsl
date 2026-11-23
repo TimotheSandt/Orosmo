@@ -86,7 +86,7 @@ float orosmoLightShadow(int lightIndex, vec3 position, vec3 n, vec3 toLight, vec
         const vec3 axis = orosmoShadows.spotDirection[s].xyz;
         const float fade = orosmoFade(length(origin - eye), orosmoShadows.spotPosition[s].w, orosmoShadows.spotDirection[s].w);
         const float depth = dot(position - origin, axis);
-        if (fade <= 0.0 || depth <= params.y)
+        if (fade <= 0.0 || depth <= params.y || depth >= params.z) // hors de la portée de la vue : avant tout biais
         {
             return 1.0;
         }
