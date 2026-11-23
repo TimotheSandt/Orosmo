@@ -73,8 +73,11 @@ quand rien d'autre ne part (`present` sans encodeur après l'envoi, `waitIdle`, 
 - **Barrières groupées** : une barrière complète en début de lot (après le travail déjà soumis) et une en fin (avant ce qui suit) ;
   entre deux copies de tampon du lot, une barrière seulement si la plage recouvre une copie précédente (la dernière écriture gagne).
   Les transitions des envois de texture n'en tiennent pas lieu (une barrière d'image ne couvre pas la mémoire des tampons).
-- **Tampons `kUpload`** : `updateBuffer` écrit directement dans la mémoire mappée (`vmaFlushAllocation`), sans lot ni barrière ;
-  contrat de `MemoryKind::kUpload` (types.hpp) : l'appelant ne réécrit pas une plage que le GPU peut encore lire.
+- **Tampons `kUpload`** : `updateBuffer` écrit directement dans la mémoire mappée (`vmaFlushAllocation`), sans lot ni barrière,
+  **seulement si le GPU n'utilise plus le tampon** : `BufferRes::gpuUse` garde la dernière série qui le lit ou l'écrit (soumission
+  d'un encodeur qui le lie ou le copie, lot qui le copie). Sinon, copie ordonnée comme pour `kGpuOnly` : le résultat est toujours
+  celui de l'ancien chemin, seul le coût change. Suivi par tampon (pas par plage) : un tampon par image en vol côté appelant,
+  réécrit après le `beginFrame` qui a attendu son image, obtient l'écriture directe.
 - `readTimestamps` / `timestampsReady` ne soumettent rien : seuls des encodeurs déjà soumis écrivent des horodatages ; s'ils ne sont
   pas prêts, `readTimestamps` attend la dernière série soumise.
 - Compteurs internes `VulkanDevice::transferCounters()` (soumissions, blocs, tampons dédiés, barrières, réserves) : diagnostic et
