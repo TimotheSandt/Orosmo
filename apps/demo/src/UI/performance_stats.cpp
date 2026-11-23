@@ -31,7 +31,7 @@ PerformanceText formatPerformance(const PerformanceSample &s)
     PerformanceText t;
     t.fps = format("FPS: %.0f", s.fpsAverage);
     t.fpsDetail = format("1%% low %.0f   min %.0f   max %.0f", s.fpsLow1, s.fpsMin, s.fpsMax);
-    t.frame = format("Frame CPU: %.2f ms", s.frameCpuMs);
+    t.frame = format("Frame CPU: %.2f ms   waiting %.2f ms (vsync, GPU)", s.frameCpuMs, s.frameWaitMs);
     t.gpu = "GPU (Render): " + milliseconds(s.gpuMs);
     // Passes du graphe : trois par ligne au plus, trois lignes (les suivantes sont résumées par « ... »).
     constexpr std::size_t kPerLine = 3;
@@ -101,7 +101,7 @@ bool PerformanceStats::tick(float deltaSeconds, const std::function<PerformanceS
     {
         const std::vector<float> cpu = cpuHistory();
         const std::vector<float> gpu = gpuHistory();
-        text.cpuGraph = format("CPU frame (ms): last %.2f  max %.2f", static_cast<double>(cpu.back()),
+        text.cpuGraph = format("CPU work (ms): last %.2f  max %.2f", static_cast<double>(cpu.back()),
                                static_cast<double>(*std::max_element(cpu.begin(), cpu.end())));
         const float gpuMax = *std::max_element(gpu.begin(), gpu.end());
         text.gpuGraph = gpuMax > 0.0f ? format("GPU frame (ms): last %.2f  max %.2f", static_cast<double>(gpu.back()), static_cast<double>(gpuMax))
@@ -110,9 +110,10 @@ bool PerformanceStats::tick(float deltaSeconds, const std::function<PerformanceS
     return true;
 }
 
-void PerformanceStats::pushFrame(float cpuMs, float gpuMs, float intervalMs)
+void PerformanceStats::pushFrame(float cpuMs, float gpuMs, float intervalMs, float waitMs)
 {
     cpu_[next_] = cpuMs;
+    wait_[next_] = waitMs;
     gpu_[next_] = gpuMs;
     interval_[next_] = intervalMs;
     next_ = (next_ + 1) % kHistorySize;
@@ -160,16 +161,23 @@ void PerformanceStats::fpsFromHistory(PerformanceSample &sample) const
     sample.fpsMax = 1000.0 / static_cast<double>(intervals.front());
 }
 
-double PerformanceStats::averageCpuMs() const
+namespace
 {
-    if (count_ == 0)
+double average(const std::vector<float> &values)
+{
+    if (values.empty())
     {
         return 0.0;
     }
     double sum = 0.0;
-    for (const float v : ordered(cpu_))
+    for (const float v : values)
     {
         sum += static_cast<double>(v);
     }
-    return sum / static_cast<double>(count_);
+    return sum / static_cast<double>(values.size());
 }
+} // namespace
+
+double PerformanceStats::averageCpuMs() const { return average(ordered(cpu_)); }
+
+double PerformanceStats::averageWaitMs() const { return average(ordered(wait_)); }

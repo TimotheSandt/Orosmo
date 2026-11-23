@@ -25,6 +25,7 @@ PerformanceSample sample(double base)
     s.fpsMin = base - 20.0;
     s.fpsMax = base + 20.0;
     s.frameCpuMs = 1.5;
+    s.frameWaitMs = 0.25;
     s.gpuMs = 0.75;
     s.gpuPasses = {{"scene", 0.25}, {"upscale", 0.125}, {"ui", 0.0625}, {"present", 0.5}};
     s.updateMs = 0.1;
@@ -131,7 +132,7 @@ TEST_SUITE("apps/demo")
         CHECK_FALSE(shown(h, "passes2")); // 4 passes : deux lignes
         CHECK_FALSE(shown(h, "cpuGraph"));
         CHECK(labelText(h, "fpsDetail") == "1% low 240   min 230   max 270");
-        CHECK(labelText(h, "frame") == "Frame CPU: 1.50 ms");
+        CHECK(labelText(h, "frame") == "Frame CPU: 1.50 ms   waiting 0.25 ms (vsync, GPU)");
         CHECK(labelText(h, "gpu") == "GPU (Render): 0.75 ms");
         CHECK(labelText(h, "passes0") == "  scene 0.25   upscale 0.12   ui 0.06");
         CHECK(labelText(h, "passes1") == "  present 0.50");
@@ -148,7 +149,7 @@ TEST_SUITE("apps/demo")
         CHECK(shown(h, "memory"));
         CHECK(shown(h, "cpuGraph"));
         CHECK(shown(h, "gpuGraph"));
-        CHECK(labelText(h, "cpuGraphLabel") == "CPU frame (ms): last 11.00  max 11.00");
+        CHECK(labelText(h, "cpuGraphLabel") == "CPU work (ms): last 11.00  max 11.00");
         ui::Widget *graph = h.ui.root()->find("hudGraph");
         REQUIRE(graph != nullptr);
         // En bas à droite de la vue.
@@ -177,6 +178,19 @@ TEST_SUITE("apps/demo")
         CHECK(s.fpsMin == doctest::Approx(50.0));
         CHECK(s.fpsLow1 == doctest::Approx(50.0)); // 4 intervalles lents sur 240 (1,7 %) : le 99e centile est lent
         CHECK(s.fpsAverage == doctest::Approx(1000.0 * 240.0 / (236.0 * 10.0 + 4.0 * 20.0)));
+        CHECK(stats.averageWaitMs() == doctest::Approx(0.0)); // attente non donnée : nulle
+    }
+
+    TEST_CASE("the CPU work and the wait (vsync, GPU) are averaged separately")
+    {
+        PerformanceStats stats;
+        CHECK(stats.averageCpuMs() == doctest::Approx(0.0));
+        CHECK(stats.averageWaitMs() == doctest::Approx(0.0));
+        stats.pushFrame(1.0f, 0.0f, 16.0f, 15.0f);
+        stats.pushFrame(3.0f, 0.0f, 16.0f, 13.0f);
+        CHECK(stats.averageCpuMs() == doctest::Approx(2.0));
+        CHECK(stats.averageWaitMs() == doctest::Approx(14.0));
+        CHECK(stats.cpuHistory().back() == doctest::Approx(3.0f)); // le graphe CPU montre le travail
     }
 
     TEST_CASE("the HUD texts change about four times per second, not every frame")

@@ -3,6 +3,7 @@
 #include "gl_translate.hpp"
 
 #include <orosmo/core/log.hpp>
+#include <orosmo/platform/window.hpp>
 
 #include <GLFW/glfw3.h>
 
@@ -1419,7 +1420,7 @@ void GlDevice::destroy(QueryPoolHandle handle)
 Result<> GlDevice::refreshWindowBackbuffer()
 {
     int w = 0, h = 0;
-    glfwGetFramebufferSize(window_, &w, &h);
+    platform::framebufferSizeOf(window_, w, h); // gardée par la Window : pas d'aller-retour avec le serveur d'affichage
     if (w <= 0 || h <= 0)
     {
         return makeError(ErrorCode::kBusy, "the window has an empty framebuffer (minimized): skip the frame");

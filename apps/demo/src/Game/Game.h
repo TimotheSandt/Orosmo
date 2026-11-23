@@ -99,7 +99,10 @@ class Game
     // Sans fenêtre : faux si une image n'a pas pu être commencée ou a été refusée (submit ou scène), avec ou sans capture.
     bool headlessSucceeded() const noexcept { return !headlessFrameFailed; }
     // Temps CPU de chaque image rendue par run() (ms), dans l'ordre : bilan de fin (médiane, première image, maximum).
+    // Durée complète de l'image ; `frameWaitTimes` en est la part bloquée dans Device::beginFrame et Device::present (image
+    // précédente encore au GPU, vsync). Le travail du processeur est la différence.
     const std::vector<float> &frameTimes() const noexcept { return frameTimesMs; }
+    const std::vector<float> &frameWaitTimes() const noexcept { return frameWaitMs; }
 
   private:
     Game(bool headless, int width, int height, orosmo::rhi::Backend backend);
@@ -109,6 +112,7 @@ class Game
     bool beginFrame();
     void render();
     void endFrame();
+    void presentFrame(); // Device::present, compté dans l'attente de l'image (vsync)
     void refreshViewSize();
     void applySceneParams();
     void resetCamera();
@@ -197,6 +201,8 @@ class Game
     bool uiFailed = false;
     bool headless = false;
     std::vector<float> frameTimesMs;
+    std::vector<float> frameWaitMs;
+    std::chrono::steady_clock::duration frameWait{}; // attente de l'image en cours (beginFrame + present du périphérique)
     std::chrono::steady_clock::duration captureTime{}; // écriture des PNG de l'image en cours (exclue de son temps)
     std::optional<std::chrono::steady_clock::time_point> lastFrameStart; // intervalle entre images (FPS du panneau)
     orosmo::renderer::FramePacer pacer; // reliée à Device::setVSync et Window::setMaxFPS (fenêtre seulement)
