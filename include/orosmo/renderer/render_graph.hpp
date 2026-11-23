@@ -19,6 +19,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/core/profiler.hpp"
 #include "orosmo/rhi/device.hpp"
 
 #include <array>
@@ -169,7 +170,11 @@ class RenderGraph
     // Groupe 0 et données par image transmis aux passes (pointeur non possédé ; nul : aucune).
     void setFrameResources(const FrameResources *frame) noexcept { frame_ = frame; }
     // Préfixe des noms du Profiler : une mesure par passe exécutée, « <préfixe><nom de la passe> ».
-    void setProfilePrefix(std::string prefix) { profilePrefix_ = std::move(prefix); }
+    void setProfilePrefix(std::string prefix)
+    {
+        profilePrefix_ = std::move(prefix);
+        passKeys_.clear();
+    }
     const std::string &profilePrefix() const noexcept { return profilePrefix_; }
 
     // ── Compilation et exécution ───────────────────────────────────────────────────────────────────────────────────
@@ -270,6 +275,14 @@ class RenderGraph
     std::vector<BufferResource> buffers_;
     const FrameResources *frame_ = nullptr;
     std::string profilePrefix_ = "RenderGraph/";
+    // Clés du Profiler des passes, par indice de passe : le graphe est reconstruit chaque image avec les mêmes passes, la clé
+    // (prefixe + nom) est donc calculée une fois et retrouvée par comparaison du nom, sans concaténation ni recherche de table.
+    struct PassKey
+    {
+        std::string name;
+        core::Profiler::Key key;
+    };
+    std::vector<PassKey> passKeys_;
 
     bool compiled_ = false;
     std::vector<std::uint32_t> order_; // passes gardées, dans l'ordre d'exécution

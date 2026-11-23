@@ -869,7 +869,17 @@ core::Result<> RenderGraph::execute(rhi::CommandEncoder &encoder)
     {
         const Pass &pass = passes_[p];
         // Une mesure par passe : minuterie GPU si le Profiler a un fournisseur (horodatages hors de toute passe de rendu), sinon CPU.
-        auto result = core::Profiler::ProfileGPU(profilePrefix_ + pass.name, [&]() { return runPass(encoder, pass); });
+        if (p >= passKeys_.size())
+        {
+            passKeys_.resize(p + 1);
+        }
+        PassKey &passKey = passKeys_[p];
+        if (!passKey.key.valid() || passKey.name != pass.name)
+        {
+            passKey.name = pass.name;
+            passKey.key = core::Profiler::MakeKey(profilePrefix_ + pass.name);
+        }
+        auto result = core::Profiler::ProfileGPU(passKey.key, [&]() { return runPass(encoder, pass); });
         if (!result)
         {
             return result;

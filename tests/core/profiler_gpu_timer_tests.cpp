@@ -87,4 +87,45 @@ TEST_SUITE("ProfilerGpuTimer")
         CHECK(factory.created == 1);
         CHECK(factory.begins == 0); // aucun minuteur GPU n'a été utilisé
     }
+
+    TEST_CASE("disabled GPU timings ask the provider for no timer at all and measure on the CPU")
+    {
+        FactoryGuard guard;
+        FakeFactory factory;
+        Profiler::SetGpuTimerFactory(&factory);
+        struct EnabledGuard
+        {
+            ~EnabledGuard() { Profiler::SetGpuTimingsEnabled(true); }
+        } enabledGuard;
+
+        CHECK(Profiler::GpuTimingsEnabled()); // actives par défaut
+        Profiler::SetGpuTimingsEnabled(false);
+        int calls = 0;
+        const Profiler::Key key = Profiler::MakeKey("pacing-gpu-off");
+        for (int i = 0; i < 5; ++i)
+        {
+            Profiler::ProfileGPU(key, [&] { ++calls; });
+        }
+        CHECK(calls == 5);
+        CHECK(factory.created == 0); // aucune minuterie, donc aucune pool de requêtes côté GPU
+        CHECK(factory.begins == 0);
+
+        Profiler::SetGpuTimingsEnabled(true);
+        Profiler::ProfileGPU(key, [&] { ++calls; });
+        CHECK(factory.created == 1);
+    }
+
+    TEST_CASE("a precomputed key measures like the name, under the same displayed name")
+    {
+        const Profiler::Key key = Profiler::MakeKey("pacing-key");
+        CHECK(key.name() == "pacing-key");
+        CHECK(Profiler::MakeKey("pacing-key").name() == "pacing-key");
+        int calls = 0;
+        Profiler::Profile(key, [&] { ++calls; });
+        const int value = Profiler::Profile(key, [](int a) { return a + 1; }, 41);
+        Profiler::Profile("pacing-key", [&] { ++calls; }); // la surcharge par nom alimente la même mesure
+        CHECK(calls == 2);
+        CHECK(value == 42);
+        CHECK(Profiler::GetAverageTime("pacing-key").count() >= 0);
+    }
 }
