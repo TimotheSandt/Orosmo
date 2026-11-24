@@ -110,7 +110,7 @@ else()
         set(_OROSMO_STACKTRACE_LIB stdc++exp)
     endif()
     set(_OROSMO_PLATFORM_LIBS
-        volk glfw glad GL msdfgen-core ${_OROSMO_STACKTRACE_LIB}
+        volk glfw3 glad GL msdfgen-core ${_OROSMO_STACKTRACE_LIB}
         freetype png16 z bz2 brotlidec brotlicommon
         shaderc shaderc_util glslang
         spirv-cross-reflect spirv-cross-glsl spirv-cross-core
