@@ -5,6 +5,11 @@
 // Perf M5 : une zone (un tampon `rhi::MemoryKind::kUpload`) par image en vol. Un nouvel encodeur passe à la zone suivante et repart
 // de son début : la zone qu'il réécrit a été lue par l'encodeur d'il y a `framesInFlight` encodeurs, que le GPU a fini (une image =
 // un encodeur, le RHI limite l'avance du CPU). La zone de l'image précédente, que le GPU lit peut-être encore, n'est jamais réécrite.
+//
+// Contrat (revue CodeRabbit PR #12) : une zone appartient à son encodeur jusqu'à ce qu'un nouvel encodeur la reprenne ; un encodeur
+// qui revient (E1 -> E2 -> E1) continue dans sa zone, sans réécrire ses plages. Au plus `framesInFlight` encodeurs distincts
+// peuvent utiliser l'arène entre deux fins d'image (non soumis ou encore lus par le GPU) : l'arène ne voit pas les soumissions.
+// Un encodeur dont la zone a déjà été reprise (plus ancien que les `framesInFlight` derniers) reçoit `kBusy`.
 #pragma once
 
 #include "orosmo/core/error.hpp"
@@ -34,20 +39,22 @@ class BatchArena
     // `CommandEncoder::id()` de l'encodeur qui dessinera : un nouvel encodeur passe à la zone suivante et repart de son début.
     core::Result<Range> upload(rhi::Device &device, std::uint64_t encoderId, std::span<const std::byte> data, const char *debugName);
     // Capacité de la zone courante.
-    std::uint64_t capacity() const noexcept { return slots_[slot_].current.size(); }
+    std::uint64_t capacity() const noexcept { return slots_[active_].current.size(); }
     std::uint32_t framesInFlight() const noexcept { return static_cast<std::uint32_t>(slots_.size()); }
-    std::uint32_t slot() const noexcept { return slot_; }
+    std::uint32_t slot() const noexcept { return active_; }
 
   private:
     struct Slot
     {
         GpuBuffer current;
         std::vector<GpuBuffer> retired; // remplacés par un tampon plus grand, encore référencés par l'encodeur de la zone
+        std::uint64_t owner = 0;        // CommandEncoder::id() propriétaire (0 : aucun)
+        std::uint64_t cursor = 0;       // prochaine plage libre de la zone
     };
     std::vector<Slot> slots_;
-    std::uint32_t slot_ = 0;
-    std::uint64_t encoderId_ = 0;
-    std::uint64_t cursor_ = 0;
+    std::uint32_t next_ = 0;   // dernière zone donnée à un nouvel encodeur
+    std::uint32_t active_ = 0; // zone du dernier envoi
+    std::uint64_t newest_ = 0; // plus grand identifiant d'encodeur vu (les identifiants croissent)
 };
 
 } // namespace orosmo::renderer

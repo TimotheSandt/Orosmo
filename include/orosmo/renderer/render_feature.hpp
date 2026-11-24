@@ -120,6 +120,10 @@ class RenderFeature
     // REN-19 : vrai si ce plugin veut une caméra décalée d'un sous-pixel à chaque image (suite de Halton du renderer, en mode
     // `JitterMode::kAuto`), comme un mode de mise à l'échelle temporel. Lu à `beginFrame` ; faux par défaut (aucun décalage).
     virtual bool wantsJitter() const noexcept { return false; }
+    // A63 : vrai si ce plugin, à cette image, modifie ou échantillonne la couleur de scène après la passe de scène (effets de
+    // post-traitement). La scène n'est alors pas dessinée droit dans la sortie : l'effet garde sa place avant la superposition
+    // (interface) et la couleur qu'il lit reste échantillonnable. Faux par défaut.
+    virtual bool postProcessesScene() const noexcept { return false; }
     // Données de l'image (caméra, temps, lumière principale), avant `declarePasses`. Un plugin peut y lire ce qu'il prépare
     // côté CPU (culling, mises à jour de tampons).
     virtual core::Result<> prepare(const FrameData &frame)

@@ -152,6 +152,9 @@ std::uint32_t nextPowerOfTwo(std::uint32_t value) noexcept;
 // Ordre de service des vues à mettre à jour sous budget : jamais dessinée d'abord ; puis une vue en retard (âgée d'au moins
 // `deadlineFrames` images) passe devant, la plus ancienne d'abord ; sinon priorité de la lumière, puis la plus ancienne. L'ancienneté
 // ne supplante donc la priorité qu'après l'échéance : une vue dynamique de basse priorité ne reste pas indéfiniment sans mise à jour.
+// Limite : l'échéance ne départage que des vues déjà dessinées. Une vue effacée (sortie de portée, `allocateTiles`) qui revient compte
+// comme jamais dessinée et passe devant ; des projecteurs qui entrent et sortent tour à tour de leur fondu peuvent donc, avec un budget
+// d'une vue, prendre toutes les mises à jour (G196).
 struct ShadowServiceKey
 {
     bool rendered = false;

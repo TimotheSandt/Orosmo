@@ -7,6 +7,7 @@
 
 #include <orosmo/core/log.hpp>
 
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
@@ -406,8 +407,11 @@ void ShadowFeature::collectRequests(const FrameData &frame, std::vector<Request>
             {
                 resolution /= 2;
             }
-            // `outerCone` : cosinus du demi-angle extérieur (convention de spotLight) ; hors de (0, 1) : 45°.
-            const float halfAngle = light.outerCone > -1.0f && light.outerCone < 1.0f ? std::acos(light.outerCone) : glm::radians(45.0f);
+            // `outerCone` : cosinus du demi-angle extérieur (convention de spotLight) ; -1 : 180° (refusé par fitSpot, REN-08) ;
+            // autres valeurs hors de (-1, 1) : 45°.
+            const float halfAngle = light.outerCone == -1.0f ? glm::pi<float>()
+                                    : light.outerCone > -1.0f && light.outerCone < 1.0f ? std::acos(light.outerCone)
+                                                                                         : glm::radians(45.0f);
             Request r;
             r.key = {i, 0};
             r.size = resolution;

@@ -155,7 +155,7 @@ jusqu'où va l'énumération des API).
   `-lvolk -lglfw3 -lglad -lGL ...` sous Linux ; blocs Windows et Darwin séparés, ce dernier avec `-framework OpenGL ...`). Ajoute ici les
   bibliothèques ou frameworks du nouveau backend (pour Metal : `-framework Metal -framework QuartzCore`, **à vérifier**). Pour garder
   la liaison optionnelle sur une plateforme, protège avec le bloc de plateforme existant.
-- **vcpkg** : dépendances déclarées dans `vcpkg.json` (`glad`, `spirv-cross`, `volk`, `vulkan-memory-allocator` ; `shaderc`, `glfw3`,
+- **vcpkg** : dépendances déclarées dans `vcpkg.json` (`glad`, `spirv-cross`, `volk`, `vulkan-memory-allocator`, `glfw3` ; `shaderc`,
   `doctest`... sous `"platform": "!linux"` car Linux les prend en paquets système, `tools/setup-linux-deps.sh`). Ajoute la bibliothèque
   du backend dans `vcpkg.json`, puis `vcpkg install` à la racine ; documente la commande exacte (règle d'environnement de `CLAUDE.md`).
 - Vulkan se charge à l'exécution par **volk** : le moteur ne se lie pas au chargeur. Préfère ce modèle (chargement dynamique et

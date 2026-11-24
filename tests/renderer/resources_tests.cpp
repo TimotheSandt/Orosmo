@@ -771,9 +771,10 @@ TEST_SUITE("renderer/gpu_timer")
         }
     }
 
-    TEST_CASE("G192: a GpuTimer around a heavy draw measures most of the GPU time the CPU waits for")
+    TEST_CASE("G192: a GpuTimer grows with the GPU work it brackets")
     {
         // Avant : en Vulkan, les horodatages encadrant une passe donnaient presque zéro (0,0003 ms) quelle que soit la charge.
+        // Sans horloge murale (tests déterministes) : 4 dessins lourds mesurent nettement plus qu'un seul.
         FOR_EACH_BACKEND(backend)
         {
             Gpu gpu(backend);
@@ -783,36 +784,37 @@ TEST_SUITE("renderer/gpu_timer")
                 MESSAGE("Skipped: no timestamp queries on ", tests::backendName(backend));
                 continue;
             }
-            const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {1024, 1024});
+            const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {512, 512});
             const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVsGlsl450), gpu.shader(ShaderStage::kFragment, R"(#version 450
 layout(location = 0) out vec4 outColor;
 void main() { vec4 c = vec4(0.0); for (int i = 0; i < 2000; ++i) c += sin(gl_FragCoord.xyxy * float(i) * 0.001); outColor = c * 1e-4; })"));
-            rd::GpuTimer timer(*gpu.device, "heavy");
-            gpu->waitIdle();
-            const auto start = std::chrono::steady_clock::now();
-            gpu.run(
-                [&](CommandEncoder &e)
-                {
-                    timer.begin(e);
-                    e.beginRenderPass(passOn(color));
-                    e.setPipeline(pipe);
-                    e.draw(3);
-                    e.endRenderPass();
-                    timer.end(e);
-                });
-            gpu->waitIdle();
-            const double wallMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-            const std::optional<std::chrono::nanoseconds> elapsed = timer.elapsed();
-            REQUIRE(elapsed.has_value());
-            const double gpuMs = static_cast<double>(elapsed->count()) * 1e-6;
-            MESSAGE(std::string(tests::backendName(backend)), ": GPU timer ", gpuMs, " ms, CPU submit + wait ", wallMs, " ms");
-            // Un rendu de plusieurs millisecondes : la minuterie en voit au moins le quart (marge pour la soumission, la mise en
-            // route et l'horloge du GPU), et jamais plus que l'attente du CPU (+ 1 ms de tolérance).
-            if (wallMs > 4.0)
+            auto measure = [&](int draws) -> double
             {
-                CHECK(gpuMs > wallMs * 0.25);
-            }
-            CHECK(gpuMs < wallMs + 1.0);
+                rd::GpuTimer timer(*gpu.device, "heavy");
+                gpu.run(
+                    [&](CommandEncoder &e)
+                    {
+                        timer.begin(e);
+                        e.beginRenderPass(passOn(color));
+                        e.setPipeline(pipe);
+                        for (int i = 0; i < draws; ++i)
+                        {
+                            e.draw(3);
+                        }
+                        e.endRenderPass();
+                        timer.end(e);
+                    });
+                gpu->waitIdle();
+                const std::optional<std::chrono::nanoseconds> elapsed = timer.elapsed();
+                REQUIRE(elapsed.has_value());
+                return static_cast<double>(elapsed->count()) * 1e-6;
+            };
+            (void)measure(1); // mise en route (compilation du pipeline par le pilote, horloges)
+            const double one = measure(1);
+            const double four = measure(4);
+            MESSAGE(std::string(tests::backendName(backend)), ": GPU timer 1 draw ", one, " ms, 4 draws ", four, " ms");
+            CHECK(one > 0.0);
+            CHECK(four > one * 2.0); // linéaire en théorie (x4) ; marge pour les horloges du GPU
             gpu.expectNoValidationErrors();
         }
     }

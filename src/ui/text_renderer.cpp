@@ -540,6 +540,16 @@ void TextRenderer::buildAtlas(FontData &fontData, bool extended)
     glyphs.reserve(prepared.size());
     for (PreparedGlyph &p : prepared)
     {
+        // Une tâche en échec (exception journalisée par le TaskSystem, p. ex. bad_alloc) laisse des pixels manquants : le glyphe
+        // est vidé (rien n'est copié dans l'atlas) au lieu d'une lecture hors limites (revue CodeRabbit PR #12).
+        const std::size_t expected = static_cast<std::size_t>(std::max(p.glyph.width, 0)) * static_cast<std::size_t>(std::max(p.glyph.height, 0)) * 4U;
+        if (expected != 0 && p.glyph.pixels.size() != expected)
+        {
+            LOG_ERROR(1, "Text: glyph U+", static_cast<unsigned>(p.glyph.character), " could not be generated; left empty in the atlas");
+            p.glyph.width = 0;
+            p.glyph.height = 0;
+            p.glyph.pixels.clear();
+        }
         glyphs.push_back(std::move(p.glyph));
     }
     fontData.characters.clear();

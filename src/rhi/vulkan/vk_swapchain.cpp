@@ -304,7 +304,10 @@ void VulkanDevice::releaseDirectImages() noexcept
 Result<> VulkanDevice::rebuildSwapchain()
 {
     Swapchain &sc = *swapchain_;
-    waitIdle(); // les vues des images de la chaîne ne servent plus
+    // Les vues des images de la chaîne ne sont libérées qu'une fois le GPU confirmé inactif (docs/03 §3.2) ; sinon l'erreur remonte
+    // et elles restent en place.
+    if (auto idle = waitIdleChecked(); !idle)
+        return idle;
     releaseDirectImages();
     if (auto r = buildSwapchain(*this, sc, vsync_, directAllowed_); !r)
         return r;

@@ -37,7 +37,7 @@ en cours, restants et à jour (sautés), puis un résumé ; les avertissements, 
 `make V=1 …` montre les commandes complètes ; `ORS_NO_PROGRESS=1 make …` garde l'affichage habituel. Hors terminal (CI,
 redirection vers un fichier), rien ne change. Il faut Python 3 (sinon, affichage habituel).
 
-`vcpkg.json` marque `glfw3`, `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad`, `msdfgen`, `nlohmann-json` et `spirv-cross` (sans options par défaut : noyau seulement, sans skia). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
+`vcpkg.json` marque `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad`, `msdfgen` (sans options par défaut : noyau seulement, sans skia), `nlohmann-json`, `spirv-cross`, `volk`, `vulkan-memory-allocator` et `glfw3` (avec la fonctionnalité `wayland`, A67). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
 
 `make clean-all` supprime `vcpkg_installed/` : relance ensuite `~/vcpkg/vcpkg install` (12 s, les archives sont en cache), `make` relie le reste.
 

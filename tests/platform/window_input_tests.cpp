@@ -141,9 +141,13 @@ TEST_SUITE("platform/window")
         input.update();
         CHECK(input.getMousePosition() == glm::vec2(12.5f, 7.0f));
 
-        // Un déplacement demandé par le programme ne déclenche pas de rappel : la valeur gardée suit quand même.
+        // Un déplacement demandé par le programme ne déclenche pas de rappel : la valeur gardée suit quand même, et c'est la position
+        // réellement appliquée (GLFW ignore la demande sans le focus, comme ici avec une fenêtre cachée : revue CodeRabbit PR #12).
         window.setCursorPosition({20.0, 30.0});
-        CHECK(window.getCursorPosition() == glm::dvec2(20.0, 30.0));
+        glm::dvec2 applied{};
+        glfwGetCursorPos(handle, &applied.x, &applied.y);
+        CHECK(window.getCursorPosition() == applied);
+        CHECK(platform::cursorPositionOf(window.getWindow()) == applied);
     }
 
     TEST_CASE("PLAT-01 a moved Window keeps receiving the callbacks of its native window")

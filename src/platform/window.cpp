@@ -72,6 +72,13 @@ bool initializeGlfw()
 }
 } // namespace
 
+void preferX11Platform() noexcept
+{
+#if defined(__linux__) && (GLFW_VERSION_MAJOR > 3 || (GLFW_VERSION_MAJOR == 3 && GLFW_VERSION_MINOR >= 4))
+    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+#endif
+}
+
 Window::Window()
 {
     this->window = nullptr;
@@ -184,6 +191,7 @@ int Window::init(const std::function<void()> &beforeCreate)
         LOG_ERROR(1, "Failed to create GLFW window");
         return -1;
     }
+    this->cursorModeValue = -1; // nouvelle fenêtre : le premier setCursorMode la configure
 
     if (platformHasWindowPosition())
     {
@@ -302,7 +310,9 @@ void Window::setCursorPosition(glm::dvec2 position)
     if (this->window)
     {
         glfwSetCursorPos(native(this->window), position.x, position.y);
-        this->cursorPosition = position; // GLFW ne rappelle pas pour un déplacement demandé par le programme
+        // GLFW ne rappelle pas pour un déplacement demandé par le programme, et l'ignore sans erreur sans le focus : la position
+        // réellement appliquée est relue.
+        glfwGetCursorPos(native(this->window), &this->cursorPosition.x, &this->cursorPosition.y);
     }
 }
 

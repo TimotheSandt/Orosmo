@@ -6,6 +6,8 @@
 
 #include <orosmo/rhi/device.hpp>
 
+#include "../../src/rhi/vulkan/vk_device.hpp"
+
 #include <GLFW/glfw3.h>
 
 #include <chrono>
@@ -153,6 +155,8 @@ TEST_SUITE("rhi/vulkan/window")
         SKIP_TEST_IF_NULL(window.handle, "window able to host a Vulkan surface");
         auto device = window.device(false);
         SKIP_TEST_IF_NULL(device.get(), "windowed Vulkan 1.3 device");
+        const auto &counters = static_cast<orosmo::rhi::vk::VulkanDevice &>(*device).transferCounters();
+        std::uint64_t directSeen = 0;
         for (int round = 0; round < 4; ++round)
         {
             const bool direct = round % 2 == 1;
@@ -172,9 +176,22 @@ TEST_SUITE("rhi/vulkan/window")
             REQUIRE(pixel->size() == 4);
             CHECK(static_cast<int>((*pixel)[1]) == 255);
             REQUIRE(device->present().has_value());
+            // Le chemin réellement pris par les images suivantes (revue CodeRabbit) : compteurs du périphérique.
+            const std::uint64_t directBefore = counters.directPresents;
+            const std::uint64_t copiedBefore = counters.copiedPresents;
             for (int i = 0; i < 3; ++i)
                 CHECK(renderAndPresent(*device));
+            const std::uint64_t directDelta = counters.directPresents - directBefore;
+            const std::uint64_t copiedDelta = counters.copiedPresents - copiedBefore;
+            CHECK(directDelta + copiedDelta == 3);
+            if (!direct)
+                CHECK(directDelta == 0); // coupé : toujours la copie
+            directSeen += direct ? directDelta : 0;
         }
+        if (directSeen == 0)
+            MESSAGE("Surface without direct presentation (BGRA or X11): only the copy path was verified");
+        else
+            CHECK(directSeen == 6); // surface éligible : les deux tours « direct » dessinent dans l'image de la chaîne
         CHECK(device->validationErrorCount() == 0);
     }
 }

@@ -224,9 +224,9 @@ void Renderer2D::polyline(std::span<const glm::vec2> points, float thickness, co
             pts.push_back(p);
         }
     }
-    while (pts.size() > 1 && pts.front() == pts.back())
+    while (closed && pts.size() > 1 && pts.front() == pts.back())
     {
-        pts.pop_back();
+        pts.pop_back(); // ouvert : [A, B, C, A] garde son dernier segment C -> A
     }
     if (pts.size() < 2)
     {

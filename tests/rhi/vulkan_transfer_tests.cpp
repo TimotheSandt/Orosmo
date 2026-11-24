@@ -84,8 +84,9 @@ TEST_SUITE("rhi/vulkan/transfer")
         Gpu gpu(Backend::kVulkan);
         REQUIRE(gpu.device);
         auto &device = static_cast<vk::VulkanDevice &>(*gpu);
-        const BufferHandle buffer = gpu.buffer(BufferUsage::kStorage | BufferUsage::kCopySrc, {}, 64 * 1024, "target");
         std::vector<std::byte> expected(64 * 1024);
+        // Initialisé : seuls [0, 64 000) sont réécrits ensuite, la comparaison porte sur les 64 Kio.
+        const BufferHandle buffer = gpu.buffer(BufferUsage::kStorage | BufferUsage::kCopySrc, expected, 64 * 1024, "target");
         const vk::TransferCounters before = device.transferCounters();
         constexpr int kFrames = 300;
         for (int frame = 0; frame < kFrames; ++frame)
@@ -367,6 +368,11 @@ layout(location = 0) out vec4 outColor;
 void main() { vec4 c = vec4(0.0); for (int i = 0; i < 400; ++i) c += sin(gl_FragCoord.xyxy * float(i)); outColor = c; })");
         const PipelineHandle pipeline = gpu.pipeline(vs, fs);
         const TextureHandle target = gpu.target(Format::kRGBA8Unorm, {1024, 1024});
+        if (!gpu->capabilities().timestampQueries)
+        {
+            MESSAGE("Skipped: no timestamp queries");
+            return;
+        }
         for (int frame = 0; frame < 20; ++frame)
         {
             REQUIRE(gpu->beginFrame().has_value());

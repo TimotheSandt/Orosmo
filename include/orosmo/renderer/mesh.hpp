@@ -153,6 +153,7 @@ class Mesh
     bool transformDirty_ = true;
     bool bufferStale_ = true; // modelBlock_ n'a pas encore été écrit dans modelBuffer_
     glm::vec3 uploadedOrigin_{0.0f};
+    bool uploadedWithHistory_ = false; // mode d'historique du bloc écrit (prevModel distinct de model ou non)
     glm::mat4 uploadedPreviousWorld_{1.0f};
     glm::vec3 uploadedPreviousOrigin_{0.0f};
     glm::mat4 previousWorld_{1.0f}; // modèle (monde) de l'image précédente
