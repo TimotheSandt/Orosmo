@@ -88,6 +88,9 @@ struct LaunchOptions
     bool vsync = true;
     bool vsyncExplicit = false;
     std::uint32_t fpsLimit = 0;
+    // --direct-present on|off (défaut : on) : Vulkan dessine directement dans l'image de la fenêtre (G185) au lieu de copier une
+    // image hors écran ; peut scintiller à très haute cadence sans vsync (docs/GAPS.md). Sans effet sur OpenGL et en headless.
+    bool directPresentation = true;
     // --gpu-timings auto|on|off (défaut : auto).
     GpuTimingsMode gpuTimings = GpuTimingsMode::kAuto;
     // --ui off|hud|full (défaut : hud).

@@ -263,6 +263,7 @@ class VulkanDevice final : public Device
     Result<> present() override;                                                                                       // vk_swapchain.cpp
     Result<> resize(Extent2D size) override;                                                                           // vk_swapchain.cpp
     void setVSync(bool enabled) override;                                                                              // vk_swapchain.cpp
+    void setDirectPresentation(bool enabled) override;                                                                 // vk_swapchain.cpp
     void waitIdle() override;
     // Attend le GPU et dit si l'inactivité est CONFIRMÉE (vkDeviceWaitIdle réussi, ou périphérique perdu : plus aucun travail ne
     // tourne). Sur une erreur récupérable (mémoire), rien n'est libéré : l'appelant ne doit rien détruire de ce que le GPU peut lire.
@@ -534,9 +535,11 @@ class VulkanDevice final : public Device
 
     std::unique_ptr<Swapchain> swapchain_;
     // G185 : les images de la chaîne servent directement d'image de fond quand la surface accepte RGBA8 UNORM avec les usages de
-    // l'image de fond (sinon, ou ENGINE_VK_DIRECT_SWAPCHAIN=0 : copie de l'image hors écran à `present`). Entre beginFrame et
-    // present, l'emplacement de `backbuffer_` contient l'image acquise ; l'image hors écran attend dans `directImages_`.
+    // l'image de fond et que le dessin direct est demandé (DeviceDesc::directPresentation, setDirectPresentation ; sinon, ou
+    // ENGINE_VK_DIRECT_SWAPCHAIN=0 : copie de l'image hors écran à `present`). Entre beginFrame et present, l'emplacement de
+    // `backbuffer_` contient l'image acquise ; l'image hors écran attend dans `directImages_`.
     bool directAllowed_ = true;
+    bool directForcedOff_ = false; // ENGINE_VK_DIRECT_SWAPCHAIN=0 : l'emporte sur setDirectPresentation
     std::vector<TextureRes> directImages_;
     std::optional<std::uint32_t> acquiredImage_;
     VkSemaphore acquireWait_ = VK_NULL_HANDLE; // attendu par la prochaine soumission (premier usage de l'image acquise)

@@ -156,6 +156,7 @@ class GlDevice final : public Device
     Result<> present() override;
     Result<> resize(Extent2D size) override;
     void setVSync(bool enabled) override;
+    void setDirectPresentation(bool /*enabled*/) override {} // le framebuffer de la fenêtre est déjà l'image présentée
     void waitIdle() override;
 
     std::uint64_t validationErrorCount() const noexcept override { return validationErrors_.load(); }

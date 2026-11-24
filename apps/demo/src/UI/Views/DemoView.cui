@@ -66,6 +66,8 @@ view DemoView {
                     SpinBox($state.fpsLimit, min: 10, max: 1000).enabled(state.fpsLimitEditable()).onChange(state.applyPacing).width(110).id("fpsLimit")
                         .tooltip("FPS cap, used by the 'limit' mode")
                 }
+                Checkbox("Direct present (Vulkan)", checked: $state.directPresentation).onChange(state.applyDirectPresentation).id("directPresent")
+                    .tooltip("Draws straight into the window image (one copy less). May flicker at very high FPS without vsync (UI missing, black areas): turn it off then")
                 Label("GPU timings").variant("caption")
                 Dropdown(options: state.gpuTimingsModes(), selected: $state.gpuTimings).onChange(state.applyGpuTimings).id("gpuTimings")
                     .tooltip("auto: measured only while the HUD shows GPU times (full, graph); on / off force them")

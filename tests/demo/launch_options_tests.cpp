@@ -466,6 +466,22 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(2, bad).has_value(), "--vsync=maybe is refused");
     }
 
+    TEST_CASE("launch options: --direct-present is on by default, off turns it off, other values are refused")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(demo::parseLaunchOptions(1, none)->directPresentation, "direct presentation is on by default");
+        const char *off[] = {"Orosmo", "--direct-present", "off"};
+        const auto copied = demo::parseLaunchOptions(3, off);
+        Assert(copied.has_value() && !copied->directPresentation, "--direct-present off");
+        const char *on[] = {"Orosmo", "--direct-present=on"};
+        const auto direct = demo::parseLaunchOptions(2, on);
+        Assert(direct.has_value() && direct->directPresentation, "--direct-present=on");
+        const char *bad[] = {"Orosmo", "--direct-present", "maybe"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "--direct-present maybe is refused");
+        const char *missing[] = {"Orosmo", "--direct-present"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--direct-present needs a value");
+    }
+
     TEST_CASE("launch options: --fps-limit selects the limited mode")
     {
         const char *limit[] = {"Orosmo", "--fps-limit", "120"};

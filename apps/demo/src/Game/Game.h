@@ -93,6 +93,8 @@ class Game
     const orosmo::renderer::FramePacing &framePacing() const noexcept { return pacer.current(); }
     // Minuteries GPU : auto (actives quand le panneau de performances affiche des temps GPU), on, off. Changeable à chaud.
     void setGpuTimings(demo::GpuTimingsMode mode);
+    // Dessin direct dans l'image de la fenêtre (Vulkan, G185) ; voir rhi::DeviceDesc::directPresentation.
+    void setDirectPresentation(bool enabled);
     demo::GpuTimingsMode gpuTimings() const noexcept { return gpuTimingsMode; }
     // Faux si une capture était demandée et n'a pas été faite, ou si une image de la capture a été refusée par le périphérique.
     bool captureSucceeded() const noexcept { return !captureFailed && (captureDirectory.empty() || captureDone); }

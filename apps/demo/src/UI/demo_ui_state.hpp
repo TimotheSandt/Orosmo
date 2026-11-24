@@ -36,6 +36,8 @@ struct DemoUiState
     bool pacingRequested = false;
     int pacingMode = 0; // 0=vsync, 1=limit, 2=unlimited (ordre de orosmo::renderer::FramePacingMode)
     int fpsLimit = 60;
+    bool directPresentationRequested = false;
+    bool directPresentation = true; // Vulkan : dessin direct dans l'image de la fenêtre (G185)
     bool gpuTimingsRequested = false;
     int gpuTimings = 0; // 0=auto, 1=on, 2=off (ordre de demo::GpuTimingsMode)
     int theme = 0; // 0=dark, 1=light, 2=framed
@@ -99,6 +101,7 @@ struct DemoUiState
     void applyTheme() { themeRequested = true; }
     void applyPacing() { pacingRequested = true; }
     void applyGpuTimings() { gpuTimingsRequested = true; }
+    void applyDirectPresentation() { directPresentationRequested = true; }
     void clearLog() { log.clear(); }
     void openDialog() { dialogOpen = true; }
     void closeDialog() { dialogOpen = false; }
