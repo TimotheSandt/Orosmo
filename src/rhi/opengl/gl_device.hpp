@@ -182,6 +182,7 @@ class GlDevice final : public Device
     QueryPoolRes *get(QueryPoolHandle h) { return queryPools_.get(h); }
 
     // Transferts de texels. `source`/`destination` : adresse mémoire, ou décalage dans le tampon PIXEL_UNPACK/PACK lié.
+    void uploadCompressedRegion(const TextureRes &texture, const SliceRegion &region, std::span<const std::byte> data);
     void uploadRegion(const TextureRes &texture, const SliceRegion &region, std::uint32_t rowLength, std::uintptr_t source);
     Result<> readRegion(const TextureRes &texture, const SliceRegion &region, std::uint32_t rowLength, std::uintptr_t destination);
 

@@ -719,7 +719,9 @@ void VkEncoder::copyBufferToTexture(BufferHandle src, TextureHandle dst, const T
     const BufferRes *b = device_.get(src);
     noteBuffer(src, b);
     const TextureRes *t = device_.get(dst);
-    if (!check(recording(), ErrorCode::kUnknown, "copyBufferToTexture: the encoder has no command buffer") ||
+    if (!check(t == nullptr || !formatInfo(t->desc.format).compressed(), ErrorCode::kUnsupported,
+               "copyBufferToTexture: compressed textures are written by Device::updateTexture only") ||
+        !check(recording(), ErrorCode::kUnknown, "copyBufferToTexture: the encoder has no command buffer") ||
         !check(!inPass_, ErrorCode::kInvalidArgument, "copyBufferToTexture: inside a render pass") ||
         !check(b != nullptr && t != nullptr, ErrorCode::kNotFound, "copyBufferToTexture: stale or null buffer/texture") ||
         !check(hasFlag(b->desc.usage, BufferUsage::kCopySrc) && hasFlag(t->desc.usage, TextureUsage::kCopyDst), ErrorCode::kInvalidArgument,
@@ -749,7 +751,9 @@ void VkEncoder::copyTextureToBuffer(TextureHandle src, BufferHandle dst, const T
     const TextureRes *t = device_.get(src);
     const BufferRes *b = device_.get(dst);
     noteBuffer(dst, b);
-    if (!check(recording(), ErrorCode::kUnknown, "copyTextureToBuffer: the encoder has no command buffer") ||
+    if (!check(t == nullptr || !formatInfo(t->desc.format).compressed(), ErrorCode::kUnsupported,
+               "copyTextureToBuffer: compressed textures cannot be copied to a buffer") ||
+        !check(recording(), ErrorCode::kUnknown, "copyTextureToBuffer: the encoder has no command buffer") ||
         !check(!inPass_, ErrorCode::kInvalidArgument, "copyTextureToBuffer: inside a render pass") ||
         !check(b != nullptr && t != nullptr, ErrorCode::kNotFound, "copyTextureToBuffer: stale or null buffer/texture") ||
         !check(hasFlag(b->desc.usage, BufferUsage::kCopyDst) && hasFlag(t->desc.usage, TextureUsage::kCopySrc), ErrorCode::kInvalidArgument,
@@ -781,7 +785,8 @@ void VkEncoder::generateMips(TextureHandle handle)
         !check(!inPass_, ErrorCode::kInvalidArgument, "generateMips: inside a render pass") ||
         !check(t != nullptr, ErrorCode::kNotFound, "generateMips: stale or null texture") ||
         !check(!formatInfo(t->desc.format).isDepth() && formatInfo(t->desc.format).kind != FormatKind::kUint, ErrorCode::kInvalidArgument,
-               "generateMips: depth and integer formats have no mip generation"))
+               "generateMips: depth and integer formats have no mip generation") ||
+        !check(!formatInfo(t->desc.format).compressed(), ErrorCode::kInvalidArgument, "generateMips: compressed formats carry their own mips"))
         return;
     VkFormatProperties props{};
     vkGetPhysicalDeviceFormatProperties(device_.physicalDevice(), t->format, &props);
