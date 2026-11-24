@@ -225,6 +225,10 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
             data.indices = prim.indices;
             data.attributeSizes.assign(renderer::kPbrVertexAttributeSizes.begin(), renderer::kPbrVertexAttributeSizes.end());
             data.name = options.sourceKey + "." + model.meshes[m].name + "." + std::to_string(p);
+            if (options.skinnable && !prim.joints.empty())
+            {
+                data.extraVertexUsage = rhi::BufferUsage::kStorage; // écrit par le skinning GPU (ANIM-01)
+            }
             auto mesh = renderer::Mesh::create(device, data);
             if (!mesh)
             {
@@ -241,6 +245,7 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
             mesh->setAovMaterial({material->blend(), {}});
             mesh->setCullMode(material->doubleSided() ? rhi::CullMode::kNone : rhi::CullMode::kBack);
             meshPrimitives[m].push_back(out.meshes_.size());
+            out.sources_.push_back({m, p});
             out.meshes_.push_back(std::make_unique<renderer::Mesh>(std::move(*mesh)));
         }
     }

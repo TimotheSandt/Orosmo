@@ -1,0 +1,50 @@
+#version 450
+// ANIM-01 : skinning GPU (anim::SkinnedModel). Un fil par sommet : palette pondérée par les 4 influences, appliquée à la position,
+// à la normale et à la tangente des sommets au repos ; uv et couleur recopiés. Sommets PBR entrelacés (16 flottants : position 3,
+// normale 3, uv 2, tangente 4, couleur 4 ; renderer::kPbrVertexAttributeSizes). Même calcul que anim::skinVertices (CPU).
+
+layout(local_size_x = 64) in;
+
+struct Influence
+{
+    uvec4 joints;
+    vec4 weights;
+};
+
+layout(set = 0, binding = 0, std430) readonly buffer RestVertices { float rest[]; };
+layout(set = 0, binding = 1, std430) readonly buffer Influences { Influence influences[]; };
+layout(set = 0, binding = 2, std430) readonly buffer Palette { mat4 palette[]; };
+layout(set = 0, binding = 3, std430) writeonly buffer SkinnedVertices { float skinned[]; };
+
+vec3 safeNormalize(vec3 v) { float l = length(v); return l > 1e-12 ? v / l : v; }
+
+void main()
+{
+    uint v = gl_GlobalInvocationID.x;
+    if (v >= uint(influences.length()))
+    {
+        return;
+    }
+    Influence inf = influences[v];
+    mat4 m = palette[inf.joints.x] * inf.weights.x + palette[inf.joints.y] * inf.weights.y + palette[inf.joints.z] * inf.weights.z +
+             palette[inf.joints.w] * inf.weights.w;
+    uint b = v * 16u;
+    vec3 p = (m * vec4(rest[b], rest[b + 1u], rest[b + 2u], 1.0)).xyz;
+    vec3 n = safeNormalize(mat3(m) * vec3(rest[b + 3u], rest[b + 4u], rest[b + 5u]));
+    vec3 t = safeNormalize(mat3(m) * vec3(rest[b + 8u], rest[b + 9u], rest[b + 10u]));
+    skinned[b] = p.x;
+    skinned[b + 1u] = p.y;
+    skinned[b + 2u] = p.z;
+    skinned[b + 3u] = n.x;
+    skinned[b + 4u] = n.y;
+    skinned[b + 5u] = n.z;
+    skinned[b + 6u] = rest[b + 6u];
+    skinned[b + 7u] = rest[b + 7u];
+    skinned[b + 8u] = t.x;
+    skinned[b + 9u] = t.y;
+    skinned[b + 10u] = t.z;
+    for (uint i = 11u; i < 16u; ++i)
+    {
+        skinned[b + i] = rest[b + i];
+    }
+}

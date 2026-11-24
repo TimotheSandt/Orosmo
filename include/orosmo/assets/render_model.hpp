@@ -37,6 +37,9 @@ struct RenderModelOptions
     std::vector<renderer::Define> extraDefines;        // ex. aovShaderDefines, forwardPlusDefines
     std::string sourceKey = "model";                   // nom du modèle dans le cache de textures et les noms de debug
     int scene = -1;                                    // -1 : scène par défaut (toutes les racines si le fichier n'en a pas)
+    // ANIM-01 : les primitives qui ont des articulations reçoivent un tampon de sommets inscriptible par un compute (skinning GPU,
+    // `anim::SkinnedModel`). Sans effet sur les autres primitives.
+    bool skinnable = false;
 };
 
 class RenderModel
@@ -57,15 +60,27 @@ class RenderModel
     const std::vector<std::shared_ptr<renderer::PbrMaterial>> &materials() const noexcept { return materials_; }
     renderer::Mesh &mesh(std::size_t i) { return *meshes_[i]; }
 
-  private:
+    // Un dessin : le nœud qui le porte et le maillage GPU (indice de `mesh`).
     struct Item
     {
         int node = -1;
         std::size_t mesh = 0; // dans meshes_
     };
+    // Origine d'un maillage GPU dans le `Model` : (maillage, primitive).
+    struct MeshSource
+    {
+        std::size_t mesh = 0;
+        std::size_t primitive = 0;
+    };
+    const std::vector<Item> &items() const noexcept { return items_; }
+    const MeshSource &meshSource(std::size_t i) const noexcept { return sources_[i]; }
+    const std::vector<glm::mat4> &nodeMatrices() const noexcept { return world_; }
+
+  private:
     std::vector<std::unique_ptr<renderer::Mesh>> meshes_; // une par primitive (unique_ptr : un Mesh déplacé garde ses tampons)
     std::vector<std::shared_ptr<renderer::PbrMaterial>> materials_;
     std::vector<Item> items_;
+    std::vector<MeshSource> sources_; // un par maillage GPU
     std::vector<glm::mat4> world_;
     glm::mat4 root_{1.0f};
 };
