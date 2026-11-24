@@ -1,7 +1,7 @@
 #version 450
 // Matériau PBR métal/rugosité (REN-10) : BRDF GGX / Smith / Schlick de pbr.glsl, lumières de lights.glsl (mêmes types et même
 // atténuation que mesh.frag), cartes optionnelles (OROSMO_PBR_*_MAP), alpha masqué ou mélangé, double face, sans éclairage
-// (KHR_materials_unlit). Groupe 1 : material.hpp. Unités : une lumière de force 1 éclaire une surface blanche mate de face à 1
+// (KHR_materials_unlit), éclairage par l'environnement et sondes (OROSMO_IBL, ibl.glsl, REN-13). Groupe 1 : material.hpp. Unités : une lumière de force 1 éclaire une surface blanche mate de face à 1
 // (radiance × π × BRDF), comme le diffus de mesh.frag.
 // Push constants : premier entier = fil de fer (1) ou pré-passe (2), convention de SceneRenderer.
 
@@ -12,6 +12,9 @@
 #include "light_block.glsl"
 #ifdef OROSMO_FORWARD_PLUS
 #include "clusters.glsl"
+#endif
+#ifdef OROSMO_IBL
+#include "ibl.glsl"
 #endif
 #include "aov.glsl"
 #ifdef OROSMO_AOV_NORMALS
@@ -203,9 +206,13 @@ void main()
     s.albedo = base.rgb;
     s.metallic = metallic;
     s.roughness = roughness;
-    // Ambiante : diffuse seulement, sans réflexion (l'IBL du lot D la remplace) ; un métal pur n'y renvoie rien.
+    // Ambiante : diffuse seulement, sans réflexion (l'IBL l'ajoute) ; un métal pur n'y renvoie rien.
     s.ambientResponse = base.rgb * (1.0 - metallic) * occlusion;
     vec3 color = lights.AmbientLightColor.rgb * lights.AmbientLightStrength * s.ambientResponse;
+#ifdef OROSMO_IBL
+    vec3 worldPos = crntPos + (frame.cameraWorldHigh.xyz + frame.cameraWorldLow.xyz) - frame.cameraRelativeOrigin.xyz;
+    color += iblShade(worldPos, s.n, s.v, s.albedo, s.metallic, s.roughness, occlusion);
+#endif
 #ifdef OROSMO_FORWARD_PLUS
     const uint cluster = clusterIndexAt(crntPos);
     const uint count = clusterLightCount(cluster);
