@@ -165,6 +165,10 @@ core::Result<Mesh> Mesh::create(rhi::Device &device, const MeshData &data)
 
 glm::mat4 Mesh::modelMatrix() const
 {
+    if (hasMatrix_)
+    {
+        return matrix_;
+    }
     glm::mat4 model(1.0f);
     model = glm::translate(model, position_);
     model = glm::rotate(model, glm::radians(rotation_.x), glm::vec3(1.0f, 0.0f, 0.0f));
@@ -365,6 +369,9 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(position_, other.position_);
     std::swap(rotation_, other.rotation_);
     std::swap(scale_, other.scale_);
+    std::swap(matrix_, other.matrix_);
+    std::swap(hasMatrix_, other.hasMatrix_);
+    std::swap(cull_, other.cull_);
     std::swap(transformDirty_, other.transformDirty_);
     std::swap(bufferStale_, other.bufferStale_);
     std::swap(uploadedOrigin_, other.uploadedOrigin_); // va avec modelBuffer_ : l'origine des matrices déjà envoyées
