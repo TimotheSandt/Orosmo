@@ -30,3 +30,5 @@ render.draw(scene, camera);
 Limites : pas de cibles de forme, d'IK ni de mouvement de racine (ANIM-05, P2) ; un maillage GPU dessiné par plusieurs nœuds
 skinnés est déformé pour le premier seulement ; normales et tangentes déformées par mat3(palette) (exact sans échelle non uniforme
 dans les os) ; pendant un fondu de la machine à états, aucune autre transition n'est évaluée. Foules : pas de culling par agent ni d'ombres (G199). Voir `docs/GAPS.md` (G198, G199).
+
+Démo : `apps/demo --scene anim` (`apps/demo/src/Scene/anim_scene.cpp`) joue un personnage glTF généré avec `StateMachine` + `SkinnedModel` et une foule de 1000 agents ; coût mesuré dans `docs/PERF_OPENGL_VS_VULKAN.md` (« M6 : skinning et foules »).
