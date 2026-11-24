@@ -15,6 +15,8 @@
     ["src/renderer/*", "renderer"],
     ["include/orosmo/assets/*", "assets"],
     ["src/assets/*", "assets"],
+    ["include/orosmo/anim/*", "anim"],
+    ["src/anim/*", "anim"],
     ["include/orosmo/ui/*", "ui"],
     ["src/ui/*", "ui"],
     ["src/ThirdParty/*", "core"],

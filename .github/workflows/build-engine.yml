@@ -346,8 +346,8 @@ jobs:
             cd myproject && ./orosmo update
             ```
 
-            **Engine package** — generic engine public headers (`include/orosmo/{core,platform,rhi,renderer,assets,ui}`), pre-built static
-            libraries (debug + release: `libcore`, `libplatform`, `librhi`, `librenderer`, `libassets`, `libui`, `libthirdparty`), `engine.mk`,
+            **Engine package** — generic engine public headers (`include/orosmo/{core,platform,rhi,renderer,assets,anim,ui}`), pre-built static
+            libraries (debug + release: `libcore`, `libplatform`, `librhi`, `librenderer`, `libassets`, `libanim`, `libui`, `libthirdparty`), `engine.mk`,
             the interface language compiler `cui`, the generic RHI shaders (`shaders/rhi`), the default font and themes (`res/`),
             a minimal example buildable from the package (`examples/minimal`) and `vcpkg.json`.
             Downloaded automatically by `orosmo init` / `orosmo update`, or used offline: `orosmo init --package orosmo-pkg-<platform>.zip myproject`.

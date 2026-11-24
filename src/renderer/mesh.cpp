@@ -117,7 +117,7 @@ core::Result<Mesh> Mesh::create(rhi::Device &device, const MeshData &data)
         d.debugName = data.name + suffix;
         return GpuBuffer::create(device, d, bytes);
     };
-    auto vb = makeBuffer(rhi::BufferUsage::kVertex, std::as_bytes(std::span(data.vertices)), ".vertices");
+    auto vb = makeBuffer(rhi::BufferUsage::kVertex | data.extraVertexUsage, std::as_bytes(std::span(data.vertices)), ".vertices");
     auto ib = makeBuffer(rhi::BufferUsage::kIndex, std::as_bytes(std::span(data.indices)), ".indices");
     if (!vb || !ib)
     {

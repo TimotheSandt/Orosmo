@@ -30,6 +30,8 @@ struct MeshData
     std::vector<float> instances;
     std::vector<std::uint32_t> instanceAttributeSizes;
     std::string name = "mesh";
+    // Usages en plus du tampon de sommets (ex. kStorage : écrit par un compute, skinning ANIM-01).
+    rhi::BufferUsage extraVertexUsage = rhi::BufferUsage::kNone;
 };
 
 // Texture liée au groupe 1 du maillage : handles non possédés (leur propriétaire doit les garder vivants).
