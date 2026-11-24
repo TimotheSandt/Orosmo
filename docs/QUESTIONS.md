@@ -322,3 +322,13 @@ Choix faits pendant le jalon M5 (`docs/releases/M5.md`). Aucun n'est une décisi
   5. **À trancher au début de M14** : choix de l'hébergement et du registre en fonction des prix, mode de déploiement serveur (manuel vs automatique), et décision + spécifications sur le déploiement de **staging sur sous-domaine de test** à l'ouverture d'une PR (`WEB-05`).
 
   6. **Transparence (auteur, 2026-11-21)** : le site explique honnêtement que le moteur a été commencé par l'auteur avec OpenGL, puis que l'auteur a utilisé l'IA dès son apparition mais mal (sans plan ni structure, par demandes ponctuelles, en codant aussi lui-même), d'où une pause puis un arrêt du projet, repris récemment avec Claude, utilisé correctement (WEB-02) ; la même mention figure dans le `README.md` du dépôt.
+
+## Propositions de M14 (à confirmer par l'auteur)
+
+- **A73. M14 : spécifications d'hébergement (2026-11-24, proposé, appliqué par défaut, à confirmer).** Réponse au point 5 de A43, choisie pour un coût nul et sans infrastructure à maintenir :
+  1. **Registre : GitHub Container Registry (GHCR)**, `ghcr.io/<propriétaire>/orosmo-site`, gratuit pour un dépôt public (stockage et transfert des paquets publics non facturés) ; authentification de la CI par `GITHUB_TOKEN` (`permissions: packages: write`), aucun secret à créer.
+  2. **Image** : site statique Astro (Starlight pour le wiki) construit dans une étape `node:<version>-alpine`, servi par `nginx:<version>-alpine` (`site/Dockerfile`, versions épinglées), port 80, sans état ni base de données.
+  3. **Déploiement serveur : manuel et documenté** (`docker pull` puis `docker run -d -p 80:80 …`, `docs/DEPLOIEMENT_SITE.md`) ; le serveur et le nom de domaine, s'il y en a, sont choisis et payés par l'auteur. Pas de déploiement automatique (il demanderait une clé SSH ou un accès au serveur dans les secrets de la CI).
+  4. **Pas de staging sur PR (WEB-05) pour l'instant** : optionnel (P2) ; il demande un hébergement de prévisualisation (sous-domaine, serveur ou service tiers) et donc un coût ou un compte. La CI des PR construit le site et l'image Docker **sans les publier** ; à rouvrir si l'auteur le souhaite.
+  5. **Publication déclenchée par un tag `v*`** poussé (les tags de release sont posés sur `main` par l'auteur), plus un lancement manuel (`workflow_dispatch`) ; étiquettes de l'image : la version du tag et `latest`. Le contenu est mis à jour à chaque jalon (`docs/DEPLOIEMENT_SITE.md`, « Mise à jour par jalon »).
+  Appliqué dans `site/`, `.github/workflows/site.yml` et `docs/DEPLOIEMENT_SITE.md` en attendant la confirmation de l'auteur ; rien n'a été publié.
