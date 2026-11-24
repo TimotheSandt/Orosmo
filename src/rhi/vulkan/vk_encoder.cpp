@@ -156,6 +156,15 @@ Result<> VulkanDevice::submit(std::unique_ptr<CommandEncoder> encoder)
             if (BufferRes *b = buffers_.get(h); b != nullptr)
                 b->gpuUse = std::max(b->gpuUse, *serial);
         }
+        // Horodatages : prêts seulement quand cette série est terminée (G192).
+        for (QueryPoolHandle h : vkEncoder->queryPools())
+        {
+            if (QueryPoolRes *q = queryPools_.get(h); q != nullptr)
+            {
+                q->lastWrite = std::max(q->lastWrite, *serial);
+                q->unsubmitted = false;
+            }
+        }
     }
     if (!serial)
     {
@@ -831,7 +840,7 @@ void VkEncoder::endDebugGroup()
 
 void VkEncoder::writeTimestamp(QueryPoolHandle handle, std::uint32_t index)
 {
-    const QueryPoolRes *pool = device_.get(handle);
+    QueryPoolRes *pool = device_.get(handle);
     if (!check(recording(), ErrorCode::kUnknown, "writeTimestamp: the encoder has no command buffer") ||
         !check(pool != nullptr, ErrorCode::kNotFound, "writeTimestamp: stale or null query pool") ||
         !check(index < pool->count, ErrorCode::kOutOfRange, "writeTimestamp: index exceeds the pool"))
@@ -862,6 +871,9 @@ void VkEncoder::writeTimestamp(QueryPoolHandle handle, std::uint32_t index)
     vkCmdWriteTimestamp2(commandBuffer_, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, pool->pool, index);
     if (!already)
         writtenQueries_.push_back(query);
+    pool->unsubmitted = true; // pas prête avant la fin de la soumission de cet encodeur (G192)
+    if (std::find(queryPools_.begin(), queryPools_.end(), handle) == queryPools_.end())
+        queryPools_.push_back(handle);
 }
 
 } // namespace orosmo::rhi::vk

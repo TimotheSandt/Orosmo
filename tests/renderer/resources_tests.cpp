@@ -729,6 +729,93 @@ TEST_SUITE("renderer/gpu_timer")
             gpu.expectNoValidationErrors();
         }
     }
+
+    TEST_CASE("G192: a reused GpuTimer is not ready again until its new measurement is done by the GPU")
+    {
+        // Avant (Vulkan) : la disponibilité des requêtes restait celle de la mesure précédente jusqu'à l'exécution de la remise à
+        // zéro par le GPU ; la minuterie réutilisée se disait prête aussitôt réenregistrée et rendait d'anciennes valeurs.
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            if (!gpu->capabilities().timestampQueries)
+            {
+                MESSAGE("Skipped: no timestamp queries on ", tests::backendName(backend));
+                continue;
+            }
+            const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {64, 64});
+            const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVsGlsl450), gpu.shader(ShaderStage::kFragment, kRedFsGlsl450));
+            rd::GpuTimer timer(*gpu.device, "reused");
+            auto record = [&](CommandEncoder &e)
+            {
+                timer.begin(e);
+                e.beginRenderPass(passOn(color));
+                e.setPipeline(pipe);
+                e.draw(3);
+                e.endRenderPass();
+                timer.end(e);
+            };
+            gpu.run(record);
+            gpu->waitIdle();
+            REQUIRE(timer.isReady());
+
+            timer.reset();
+            auto encoder = gpu->createCommandEncoder();
+            record(*encoder);
+            CHECK_FALSE(timer.isReady()); // enregistrée, pas soumise
+            REQUIRE(gpu->submit(std::move(encoder)).has_value());
+            gpu->waitIdle();
+            CHECK(timer.isReady());
+            CHECK(timer.elapsed().has_value());
+            gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("G192: a GpuTimer around a heavy draw measures most of the GPU time the CPU waits for")
+    {
+        // Avant : en Vulkan, les horodatages encadrant une passe donnaient presque zéro (0,0003 ms) quelle que soit la charge.
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            if (!gpu->capabilities().timestampQueries)
+            {
+                MESSAGE("Skipped: no timestamp queries on ", tests::backendName(backend));
+                continue;
+            }
+            const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {1024, 1024});
+            const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVsGlsl450), gpu.shader(ShaderStage::kFragment, R"(#version 450
+layout(location = 0) out vec4 outColor;
+void main() { vec4 c = vec4(0.0); for (int i = 0; i < 2000; ++i) c += sin(gl_FragCoord.xyxy * float(i) * 0.001); outColor = c * 1e-4; })"));
+            rd::GpuTimer timer(*gpu.device, "heavy");
+            gpu->waitIdle();
+            const auto start = std::chrono::steady_clock::now();
+            gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    timer.begin(e);
+                    e.beginRenderPass(passOn(color));
+                    e.setPipeline(pipe);
+                    e.draw(3);
+                    e.endRenderPass();
+                    timer.end(e);
+                });
+            gpu->waitIdle();
+            const double wallMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            const std::optional<std::chrono::nanoseconds> elapsed = timer.elapsed();
+            REQUIRE(elapsed.has_value());
+            const double gpuMs = static_cast<double>(elapsed->count()) * 1e-6;
+            MESSAGE(std::string(tests::backendName(backend)), ": GPU timer ", gpuMs, " ms, CPU submit + wait ", wallMs, " ms");
+            // Un rendu de plusieurs millisecondes : la minuterie en voit au moins le quart (marge pour la soumission, la mise en
+            // route et l'horloge du GPU), et jamais plus que l'attente du CPU (+ 1 ms de tolérance).
+            if (wallMs > 4.0)
+            {
+                CHECK(gpuMs > wallMs * 0.25);
+            }
+            CHECK(gpuMs < wallMs + 1.0);
+            gpu.expectNoValidationErrors();
+        }
+    }
 }
 
 TEST_SUITE("renderer/gpu_timer/profiler")
