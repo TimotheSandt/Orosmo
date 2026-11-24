@@ -111,7 +111,7 @@ else ifeq ($(ENGINE_OS),Linux)
     # <stacktrace> : GCC 13 -> -lstdc++_libbacktrace, GCC 14+ -> -lstdc++exp
     _ENG_GCC_MAJOR       := $(shell $(CXX) -dumpversion 2>/dev/null | cut -d. -f1)
     _ENG_STACKTRACE_LIB  := $(if $(filter 13,$(_ENG_GCC_MAJOR)),-lstdc++_libbacktrace,-lstdc++exp)
-    _ENG_VCPKG_LIBS      := -lvolk -lglfw -lglad -lGL -lmsdfgen-core $(_ENG_STACKTRACE_LIB) \
+    _ENG_VCPKG_LIBS      := -lvolk -lglfw3 -lglad -lGL -lmsdfgen-core $(_ENG_STACKTRACE_LIB) \
                             -lfreetype -lpng16 -lz -lbz2 -lbrotlidec -lbrotlicommon \
                             -lshaderc -lshaderc_util -lglslang \
                             -lspirv-cross-reflect -lspirv-cross-glsl -lspirv-cross-core \

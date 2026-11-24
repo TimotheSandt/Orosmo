@@ -7,6 +7,9 @@
 
 #include <orosmo/core/log.hpp>
 
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+
 #if defined(__SANITIZE_ADDRESS__)
 // libshaderc 2023.8 (Ubuntu 24.04, apt) alloue ses options avec `operator new` et les libère avec `free` : ASan signale un
 // alloc-dealloc-mismatch qui ne vient pas de notre code. On désactive CE contrôle seulement, pour les tests (docs/GAPS.md G76).
@@ -47,6 +50,16 @@ DOCTEST_REGISTER_LISTENER("trace", 1, TraceListener);
 int main(int argc, char **argv)
 {
     orosmo::core::Logger::SetMinimumLevel(orosmo::core::L_FATAL);
+
+#if defined(__linux__) && (GLFW_VERSION_MAJOR > 3 || (GLFW_VERSION_MAJOR == 3 && GLFW_VERSION_MINOR >= 4))
+    // Les tests créent des fenêtres cachées. Sous Wayland, une fenêtre jamais affichée ne reçoit pas de rappel d'image : une
+    // présentation avec vsync (FIFO) y attend sans fin (G191). Sous une session Wayland qui a aussi X11 (XWayland), les tests
+    // passent donc par X11, comme la CI (xvfb). ENGINE_TEST_WAYLAND=1 garde Wayland (cas sans fenêtre cachée seulement).
+    if (std::getenv("WAYLAND_DISPLAY") != nullptr && std::getenv("DISPLAY") != nullptr && std::getenv("ENGINE_TEST_WAYLAND") == nullptr)
+    {
+        glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+    }
+#endif
 
     doctest::Context context;
     context.applyCommandLine(argc, argv);

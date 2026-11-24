@@ -15,15 +15,17 @@
 
 ## Compiler
 
-### Linux (apt d'abord, vcpkg pour glad, msdfgen et nlohmann-json)
+### Linux (apt d'abord, vcpkg pour glad, msdfgen, nlohmann-json et GLFW)
 
 ```bash
 sudo apt install build-essential cmake cargo python3 \
-    libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev libfreetype-dev \
+    libglm-dev libstb-dev libshaderc-dev glslc doctest-dev libfreetype-dev \
     libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
-    autoconf autoconf-archive automake libtool
+    autoconf autoconf-archive automake libtool \
+    pkg-config libwayland-dev libxkbcommon-dev wayland-protocols libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
 
-# glad (v1), msdfgen et nlohmann-json (JSON) ne sont pas pris dans apt : vcpkg, en UNE commande qui lit vcpkg.json (12 s)
+# glad (v1), msdfgen, nlohmann-json (JSON) et GLFW (3.4 et plus : Wayland natif, X11 sinon ; le paquet apt d'Ubuntu 24.04
+# est en 3.3, X11 seulement, donc XWayland sous Wayland) viennent de vcpkg, en UNE commande qui lit vcpkg.json
 git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
 ~/vcpkg/vcpkg install                    # à la racine du dépôt
 
