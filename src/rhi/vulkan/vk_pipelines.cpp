@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -788,8 +789,14 @@ Result<VkDescriptorSet> VulkanDevice::descriptorSetFor(BindGroupHandle handle, c
     if (group == nullptr)
         return makeError(ErrorCode::kNotFound, "bind group: stale or null handle");
     // Un jeu en cache référence des vues et des tampons : si une ressource du groupe a été détruite depuis, il est périmé.
+    std::uint64_t imageStamp = 0xcbf29ce484222325ull;
     for (const BindGroupEntry &e : group->entries)
     {
+        if (e.type == BindingType::kSampledTexture || e.type == BindingType::kStorageImage)
+        {
+            if (const TextureRes *t = textures_.get(e.texture); t != nullptr)
+                imageStamp = (imageStamp ^ std::hash<VkImage>{}(t->image)) * 0x100000001b3ull;
+        }
         bool alive = true;
         switch (e.type)
         {
@@ -804,7 +811,7 @@ Result<VkDescriptorSet> VulkanDevice::descriptorSetFor(BindGroupHandle handle, c
     }
     for (const auto &cached : group->sets)
     {
-        if (cached.layoutId == layout.id)
+        if (cached.layoutId == layout.id && cached.imageStamp == imageStamp)
             return cached.set;
     }
 
@@ -907,7 +914,7 @@ Result<VkDescriptorSet> VulkanDevice::descriptorSetFor(BindGroupHandle handle, c
         vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(vkWrites.size()), vkWrites.data(), 0, nullptr);
     group = bindGroups_.get(handle); // aucune adresse gardée d'avant les appels qui ont pu toucher les tables
     setObjectName(VK_OBJECT_TYPE_DESCRIPTOR_SET, reinterpret_cast<std::uint64_t>(allocated->first), group->debugName);
-    group->sets.push_back({layout.id, allocated->first, allocated->second});
+    group->sets.push_back({layout.id, imageStamp, allocated->first, allocated->second});
     return allocated->first;
 }
 

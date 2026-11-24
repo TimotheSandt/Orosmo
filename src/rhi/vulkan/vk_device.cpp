@@ -1034,8 +1034,11 @@ void VulkanDevice::destroyStaging(const Staging &staging) noexcept
         vmaDestroyBuffer(allocator_, staging.buffer, staging.allocation);
 }
 
-Result<VulkanDevice::UploadSpace> VulkanDevice::ringAllocate(std::uint64_t size, std::uint64_t alignment)
+Result<VulkanDevice::UploadSpace> VulkanDevice::ringAllocate(std::uint64_t size, std::uint64_t requested)
 {
+    // Chaque envoi commence sur un atome non cohérent (puissances de deux : le max est le PPCM) : le vidage d'un envoi ne touche
+    // jamais l'atome d'un envoi précédent que le GPU lit peut-être encore (mémoire non HOST_COHERENT, revue CodeRabbit PR #12).
+    const std::uint64_t alignment = std::max<std::uint64_t>({requested, properties_.limits.nonCoherentAtomSize, 1});
     const auto alignUp = [alignment](std::uint64_t v) { return (v + alignment - 1) / alignment * alignment; };
     if (stagingBlocks_.empty() || alignUp(stagingBlocks_[currentBlock_].used) + size > stagingBlocks_[currentBlock_].staging.size)
     {

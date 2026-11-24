@@ -672,7 +672,7 @@ PerformanceSample Game::samplePerformance() const
     {
         s.sceneMeshes = this->scene->meshDraws();
         s.lights = this->scene->lightCount();
-        if (this->instanceCount > 0 && !this->scene->gpuDrivenActive())
+        if (this->instanceCount > 0 && !this->scene->lastInstancesGpuDriven())
         {
             s.instancedDraws = this->scene->instanceDrawStats().drawCalls;
             s.instances = this->scene->instanceDrawStats().instances;
@@ -1072,6 +1072,7 @@ bool Game::renderUi(rhi::CommandEncoder &encoder, const rhi::TextureHandle &comp
 bool Game::beginFrame()
 {
     this->refreshViewSize();
+    this->frameWait = {}; // une tentative refusée (fenêtre réduite) ne reporte pas son attente sur l'image suivante
     const auto waitStart = std::chrono::steady_clock::now();
     auto frame = this->device->beginFrame();
     this->frameWait += std::chrono::steady_clock::now() - waitStart;

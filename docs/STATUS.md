@@ -27,7 +27,7 @@ Mis à jour pour le jalon M5 (`v0.5.0`, 2026-11-22), après la `v0.4.1` (2026-11
 
 ## Identifiants de `docs/02` touchés par M5
 
-Preuves sous Linux (g++ 13.3, Mesa, Intel Arc ; la CI exécute aussi sous llvmpipe + xvfb), mesurées sur `milestone/M5` (`docs/releases/M5.md`). Windows, macOS et arm64 : non vérifiés pour le code de M5 (G164). Chaque « Partiel » écrit son manque dans la cellule de `docs/02`.
+Preuves sous Linux (g++ 13.3, Mesa, Intel Arc ; la CI exécute aussi sous llvmpipe + xvfb), mesurées sur `milestone/M5` (`docs/releases/M5.md`). Windows, macOS et arm64 : non vérifiés pour le code de M5 (G164). Chaque « Partiel » écrit son manque dans la cellule de `docs/02`. **Résultat des tests de chaque ligne « Fait »** : les fichiers de test cités font partie de `make demo-test` (dernier passage complet sur `dev` : voir la ligne M5 du tableau des jalons, tous les cas verts, 0 échec) ; les suites GPU passent aussi en Vulkan et sur rasteriseurs logiciels (CI).
 
 | ID | Avant | Après | Preuve |
 | --- | --- | --- | --- |
@@ -59,7 +59,6 @@ Preuves sous Linux (g++ 13.3, Mesa, Intel Arc ; la CI exécute aussi sous llvmpi
 | R2D-06 | Absent | **Fait** | `mixed_2d3d_tests.cpp` « several views place their own cameras in zones of the output; a view shows in the interface » ; exercé par les tests seulement, pas dans la démo |
 | UI-13 | Partiel | Partiel | cachés et hors découpage éliminés (`tests/ui/lean_render_tests.cpp`, 4 cas) ; **manque** : cache par couche (A54, G165) |
 | UI-03 | Fait | Fait | le carré d'un `ColorPicker` ouvre la roue `ColorEditor` (`tests/ui/widgets_tests.cpp` « ColorPicker: clicking the swatch opens a ColorEditor popup… ») |
-| REN-02 | Fait | Fait | inchangé (M3) |
 
 Totaux de `docs/02` (167 lignes comptées : 162 de M5 + WEB-01 à WEB-05 de M14, A43) : **Fait 42, Partiel 40, Absent 66, Archivé 11, Hors moteur 7, Incompatible 1.** Avant M5 : Fait 25, Partiel 41, Absent 77 (le fichier compte une ligne Partiel de plus que l'annonce de M4, 161 identifiants avec Partiel 40 : écart non identifié). Variation : Fait +17 (11 d'Absent, 6 de Partiel), Partiel −1 (+5 venus d'Absent, −6 passés à Fait), Absent −16.
 

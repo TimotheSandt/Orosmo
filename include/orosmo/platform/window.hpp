@@ -178,4 +178,8 @@ class Window
 void framebufferSizeOf(void *nativeWindow, int &width, int &height);
 glm::dvec2 cursorPositionOf(void *nativeWindow);
 
+// Linux, GLFW 3.4+ : la prochaine initialisation de GLFW prend X11 (XWayland) plutôt que Wayland. Sert aux tests, qui créent des
+// fenêtres cachées : sous Wayland, une fenêtre jamais affichée n'est pas présentée avec la vsync (G191). Ailleurs : sans effet.
+void preferX11Platform() noexcept;
+
 } // namespace orosmo::platform

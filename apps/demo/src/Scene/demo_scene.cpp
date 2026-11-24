@@ -741,7 +741,8 @@ orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRendere
     // Fil de fer : raccourci de la caméra ou vue de débogage (SceneRenderer l'applique à ses maillages, pas aux dessins personnalisés).
     const bool wireframe = camera.wireframe() || debugView_ == rd::DebugView::kWireframe;
     // REN-35 : les couleurs de LOD ne sont produites que par le culling CPU (VisibilityOptions::lodColors) : la vue kLod le garde.
-    if (gpuDriven_ != nullptr && debugView_ != rd::DebugView::kLod)
+    lastInstancesGpuDriven_ = gpuDriven_ != nullptr && debugView_ != rd::DebugView::kLod;
+    if (lastInstancesGpuDriven_)
     {
         // Journal (image 2 puis toutes les 600) : compteurs GPU de l'image précédente, comparés au culling CPU de la même vue.
         const bool log = instanceFrames_ == 2 || (instanceFrames_ > 0 && instanceFrames_ % 600 == 0);

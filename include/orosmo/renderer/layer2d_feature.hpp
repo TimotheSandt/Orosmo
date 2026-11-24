@@ -81,7 +81,7 @@ class Layer2DFeature final : public RenderFeature
     std::unique_ptr<Renderer2D> renderer_;
     glm::mat4 plane_{1.0f};
     glm::mat4 viewProj_{1.0f};
-    glm::vec3 shaderOrigin_{0.0f}; // origine de l'espace des shaders en coordonnées monde (caméra en rendu relatif)
+    glm::dvec3 shaderOrigin_{0.0}; // origine de l'espace des shaders en coordonnées monde (caméra en rendu relatif)
     glm::vec4 clear_{0.0f};
     RenderTarget target_;
     std::uint32_t passesRun_ = 0;

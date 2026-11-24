@@ -879,7 +879,9 @@ core::Result<> RenderGraph::execute(rhi::CommandEncoder &encoder)
             passKey.name = pass.name;
             passKey.key = core::Profiler::MakeKey(profilePrefix_ + pass.name);
         }
-        auto result = core::Profiler::ProfileGPU(passKey.key, [&]() { return runPass(encoder, pass); });
+        // Copie : un callback qui appelle setProfilePrefix vide passKeys_ pendant la mesure.
+        const core::Profiler::Key key = passKey.key;
+        auto result = core::Profiler::ProfileGPU(key, [&]() { return runPass(encoder, pass); });
         if (!result)
         {
             return result;

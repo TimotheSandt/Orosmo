@@ -87,7 +87,8 @@ class SceneRenderer
     // A63 : dessiner la scène directement dans la sortie d'endFrame (désactivé par défaut). Appliqué seulement aux images où la copie
     // 1:1 « upscale » serait la seule passe entre la scène et la sortie : pas de mise à l'échelle ni de mode actif, pas
     // d'historique, de génération d'images, de post-traitement (IPostProcessPass) ni d'AOV, sortie de même format et de même taille
-    // que la couleur de scène. Ces images-là, la couleur de scène vue par les plugins EST la sortie (même ressource du graphe) et
+    // que la couleur de scène, aucun plugin qui post-traite la scène (`RenderFeature::postProcessesScene`), sortie échantillonnable
+    // (`kSampled`). Ces images-là, la couleur de scène vue par les plugins EST la sortie (même ressource du graphe) et
     // la cible de scène (`sceneTarget`, `saveColorPng`) n'est pas écrite. La sortie doit pouvoir servir de cible avec la
     // profondeur de la scène : pas le framebuffer de fenêtre OpenGL (refusé par le backend).
     void setRenderIntoOutput(bool enabled) noexcept { renderIntoOutput_ = enabled; }
@@ -254,7 +255,8 @@ class SceneRenderer
     bool needsJitter() const noexcept;
     bool needsHistory() const noexcept;
     LightManager &activeLights() noexcept { return lights_ != nullptr ? *lights_ : defaultLights_; }
-    core::Result<> rebuildFrameGroup(LightManager &lights);
+    core::Result<> rebuildFrameGroup(LightManager &lights, bool featuresDeclared);
+    bool outputSampled(rhi::TextureHandle texture) const;
     core::Result<> record(Mesh &mesh, bool lines, std::uint32_t modelOffset);
     // Écrit les données de l'image dans sa zone de l'anneau (FrameData, caméra, tranches, lignes de debug) : un seul updateBuffer.
     core::Result<> uploadFrameRing();

@@ -72,6 +72,7 @@ class PostEffect : public RenderFeature
     void setEnabled(bool enabled) noexcept { enabled_ = enabled; }
     // Vrai : l'effet a besoin d'une scène en virgule flottante (voir PostEffects::sync).
     virtual bool needsHdr() const noexcept { return true; }
+    bool postProcessesScene() const noexcept override { return enabled_; }
     core::Result<> declarePasses(RenderGraphBuilder &builder) final;
 
   protected:

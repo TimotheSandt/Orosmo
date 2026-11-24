@@ -104,6 +104,8 @@ class DemoScene
     std::uint32_t meshDraws() const noexcept { return meshDraws_; }
     std::uint32_t lightCount() const noexcept { return static_cast<std::uint32_t>(lights_.lights().size()); }
     bool gpuDrivenActive() const noexcept { return gpuDriven_ != nullptr; }
+    // Vrai si le dernier dessin instancié est passé par le chemin GPU (la vue LOD garde le chemin CPU et ses compteurs).
+    bool lastInstancesGpuDriven() const noexcept { return lastInstancesGpuDriven_; }
 
   private:
     orosmo::core::Result<> renderInstances(orosmo::renderer::SceneRenderer &renderer, const orosmo::renderer::Camera &camera);
@@ -135,6 +137,7 @@ class DemoScene
     std::uint32_t meshDraws_ = 0;
     std::uint64_t instanceFrames_ = 0;
     orosmo::renderer::GpuDrivenFeature *gpuDriven_ = nullptr; // possédé par le SceneRenderer
+    bool lastInstancesGpuDriven_ = false;
     orosmo::renderer::SceneRenderer *gpuDrivenRenderer_ = nullptr;
     orosmo::renderer::DebugView debugView_ = orosmo::renderer::DebugView::kNone;
     bool freezeFrustum_ = false;

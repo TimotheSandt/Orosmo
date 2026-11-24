@@ -297,12 +297,15 @@ bool sameEntries(const std::vector<rhi::BindGroupEntry> &a, const std::vector<rh
 }
 } // namespace
 
-core::Result<> SceneRenderer::rebuildFrameGroup(LightManager &lights)
+core::Result<> SceneRenderer::rebuildFrameGroup(LightManager &lights, bool featuresDeclared)
 {
     // Un groupe 0 par zone de l'anneau (son tampon change d'une zone à l'autre), refait seulement si une de ses liaisons change.
+    // Avant la déclaration des plugins (beginFrame), leurs liaisons ne sont pas encore connues : le groupe de la zone est gardé tel
+    // quel (endFrame le refait si elles ont changé avant tout dessin).
     SlotGroups &slot = slotGroups_[ring_.slot()];
     const rhi::BufferHandle buffer = ring_.buffer();
-    if (!slot.frame.isNull() && slot.buffer == buffer && slot.lights == lights.buffer().handle() && sameEntries(slot.features, featureFrameBindings_))
+    if (!slot.frame.isNull() && slot.buffer == buffer && slot.lights == lights.buffer().handle() &&
+        (!featuresDeclared || sameEntries(slot.features, featureFrameBindings_)))
     {
         frameGroup_ = slot.frame;
         frameResources_.group = frameGroup_;
@@ -410,7 +413,7 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
     {
         return std::unexpected(r.error());
     }
-    if (auto r = rebuildFrameGroup(activeLights()); !r)
+    if (auto r = rebuildFrameGroup(activeLights(), false); !r)
     {
         return r;
     }
@@ -715,7 +718,7 @@ core::Result<> SceneRenderer::playDraws(rhi::CommandEncoder &e, bool prepass)
             continue; // dessin externe, lignes, fil de fer : seulement dans la passe de scène
         }
         // Les lumières ont pu changer pendant l'image (setLights après beginFrame) : le groupe suit avant chaque dessin.
-        if (auto r = rebuildFrameGroup(*draw.lights); !r)
+        if (auto r = rebuildFrameGroup(*draw.lights, true); !r)
         {
             return r;
         }
@@ -843,6 +846,13 @@ core::Result<> SceneRenderer::ensureHistory(RenderTarget &target, bool &fresh)
     return {};
 }
 
+bool SceneRenderer::outputSampled(rhi::TextureHandle texture) const
+{
+    // A63 : un plugin peut échantillonner la couleur de scène ; quand c'est la sortie, elle doit l'accepter (revue CodeRabbit PR #12).
+    const auto desc = device_.textureDesc(texture);
+    return desc && rhi::hasFlag(desc->usage, rhi::TextureUsage::kSampled);
+}
+
 core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHistory)
 {
     graph_.reset();
@@ -854,7 +864,8 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
     // La couleur de scène et la sortie sont alors UNE ressource du graphe : l'ordre des passes qui écrivent la sortie est gardé.
     const bool intoOutput = renderIntoOutput_ && !output.texture.isNull() && !scaled() && !modeRuns() && !needsHistory() && frameGenMode_ == nullptr &&
                             postProcessPasses_.empty() && aovLayout_.set().list().empty() && output.format == sceneTarget_.info().colorFormats[0] &&
-                            output.size.width == renderSize.width && output.size.height == renderSize.height;
+                            output.size.width == renderSize.width && output.size.height == renderSize.height &&
+                            std::ranges::none_of(features_, [](const auto &f) { return f->postProcessesScene(); }) && outputSampled(output.texture);
     renderedIntoOutput_ = intoOutput;
     if (intoOutput)
     {
@@ -1133,6 +1144,9 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
             {
                 feature->frameEnded();
             }
+            // Un plugin a pu détruire dans frameEnded un tampon qu'il liait : ses liaisons ne servent pas à l'image suivante, qui
+            // les redéclare (revue CodeRabbit PR #12).
+            self.featureFrameBindings_.clear();
             self.executing_ = false;
         }
     } endOfFrame{*this};
@@ -1145,7 +1159,7 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
     {
         return r;
     }
-    if (auto r = rebuildFrameGroup(activeLights()); !r) // le tampon de la zone a pu grandir
+    if (auto r = rebuildFrameGroup(activeLights(), false); !r) // le tampon de la zone a pu grandir
     {
         return r;
     }
@@ -1154,7 +1168,7 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
         return r;
     }
     // Les plugins ont pu ajouter des liaisons au groupe 0 (addFrameBinding) : le groupe les suit avant l'exécution.
-    if (auto r = rebuildFrameGroup(activeLights()); !r)
+    if (auto r = rebuildFrameGroup(activeLights(), true); !r)
     {
         return r;
     }

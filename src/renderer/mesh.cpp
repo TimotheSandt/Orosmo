@@ -219,7 +219,8 @@ core::Result<> Mesh::prepareTransform(const glm::vec3 &origin, const TransformHi
         hasLastWorld_ = true;
         tracked = tracked || previousWorld_ != uploadedPreviousWorld_ || history.previousOrigin != uploadedPreviousOrigin_;
     }
-    if (!transformDirty_ && origin == uploadedOrigin_ && !tracked)
+    const bool withHistory = history.frame != 0; // le bloc écrit avec historique a un prevModel distinct : à réécrire sans
+    if (!transformDirty_ && origin == uploadedOrigin_ && !tracked && withHistory == uploadedWithHistory_)
     {
         return {};
     }
@@ -242,6 +243,7 @@ core::Result<> Mesh::prepareTransform(const glm::vec3 &origin, const TransformHi
     bufferStale_ = true;
     transformDirty_ = false;
     uploadedOrigin_ = origin;
+    uploadedWithHistory_ = withHistory;
     uploadedPreviousWorld_ = history.frame != 0 ? previousWorld_ : world;
     uploadedPreviousOrigin_ = history.previousOrigin;
     return {};
@@ -366,6 +368,7 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(transformDirty_, other.transformDirty_);
     std::swap(bufferStale_, other.bufferStale_);
     std::swap(uploadedOrigin_, other.uploadedOrigin_); // va avec modelBuffer_ : l'origine des matrices déjà envoyées
+    std::swap(uploadedWithHistory_, other.uploadedWithHistory_);
     std::swap(uploadedPreviousWorld_, other.uploadedPreviousWorld_);
     std::swap(uploadedPreviousOrigin_, other.uploadedPreviousOrigin_);
     std::swap(previousWorld_, other.previousWorld_);

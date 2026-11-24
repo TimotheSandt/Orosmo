@@ -179,6 +179,38 @@ TEST_SUITE("renderer/frame-ring")
         }
     }
 
+    TEST_CASE("BatchArena: an encoder that comes back keeps its zone; one whose zone was taken gets kBusy")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            rd::BatchArena arena(2);
+            const std::vector<float> data(64, 1.0f);
+            auto a = arena.upload(*gpu.device, 21, bytesOf(data), "test.batch"); // E1
+            auto b = arena.upload(*gpu.device, 22, bytesOf(data), "test.batch"); // E2
+            auto c = arena.upload(*gpu.device, 21, bytesOf(data), "test.batch"); // E1 revient
+            REQUIRE(a.has_value());
+            REQUIRE(b.has_value());
+            REQUIRE(c.has_value());
+            CHECK(c->buffer == a->buffer);
+            CHECK(c->offset >= a->offset + data.size() * sizeof(float)); // A n'est pas réécrit
+            CHECK_FALSE(b->buffer == a->buffer);
+            // N zones, N changements d'encodeur : E3 reprend la zone de E1, qui ne peut plus écrire.
+            auto d = arena.upload(*gpu.device, 23, bytesOf(data), "test.batch");
+            REQUIRE(d.has_value());
+            CHECK(d->buffer == a->buffer);
+            CHECK(d->offset == 0);
+            auto late = arena.upload(*gpu.device, 21, bytesOf(data), "test.batch");
+            REQUIRE_FALSE(late.has_value());
+            CHECK((late.error().code == orosmo::core::ErrorCode::kBusy));
+            auto e2 = arena.upload(*gpu.device, 22, bytesOf(data), "test.batch"); // E2 garde la sienne
+            REQUIRE(e2.has_value());
+            CHECK(e2->buffer == b->buffer);
+            CHECK(e2->offset > b->offset);
+        }
+    }
+
     TEST_CASE("Mesh: prepareTransform writes nothing; uploadTransform writes the mesh's own block only when it is stale")
     {
         FOR_EACH_BACKEND(backend)

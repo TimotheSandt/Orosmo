@@ -61,9 +61,13 @@ Rect Label::contentExtent(Ui &ui, const Style &style) const
     const glm::vec2 size = ui.font().measure(t, style.fontSize, style.font.get());
     float x = r.position.x;
     if (textAlign_ == Align::kCenter)
+    {
         x += (r.size.x - size.x) * 0.5f;
+    }
     else if (textAlign_ == Align::kEnd)
+    {
         x += r.size.x - size.x;
+    }
     const float y = r.position.y + (r.size.y - size.y) * 0.5f;
     return {{std::round(x), std::round(y)}, size};
 }

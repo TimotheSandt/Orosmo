@@ -199,6 +199,9 @@ struct BindGroupRes
     struct CachedSet
     {
         std::uint64_t layoutId = 0;
+        // Images des textures du groupe à l'écriture du jeu : une poignée peut changer d'image (image de fond directe, G185) ; un
+        // autre jeu est alors écrit, l'ancien reste intact pour les soumissions qui le lisent.
+        std::uint64_t imageStamp = 0;
         VkDescriptorSet set = VK_NULL_HANDLE;
         VkDescriptorPool pool = VK_NULL_HANDLE;
     };

@@ -53,14 +53,16 @@ PerformanceText formatPerformance(const PerformanceSample &s)
     t.resolution = format("Output %ux%u   render %ux%u (x%.2f)   vsync %s", s.outputWidth, s.outputHeight, s.renderWidth, s.renderHeight,
                           static_cast<double>(s.renderScale), s.pacing.c_str());
     t.modes = s.modes;
-    double scenePass = 0.0;
-    double uiPass = 0.0;
+    // Mesure absente (minuteries GPU coupées, passe introuvable) : « n/d », pas 0.
+    std::optional<double> scenePass;
+    std::optional<double> uiPass;
     for (const auto &[name, ms] : s.gpuPasses)
     {
-        scenePass = name == "scene" ? ms : scenePass;
-        uiPass = name == "ui" ? ms : uiPass;
+        scenePass = name == "scene" ? std::optional<double>(ms) : scenePass;
+        uiPass = name == "ui" ? std::optional<double>(ms) : uiPass;
     }
-    t.summary = orosmo::ui::text("FPS: ", s.windowFps, " | Render: ", s.gpuMs.value_or(0.0), " ms | Scene: ", scenePass, " ms | UI: ", uiPass, " ms");
+    t.summary = "FPS: " + orosmo::ui::text(s.windowFps) + " | Render: " + milliseconds(s.gpuMs) + " | Scene: " + milliseconds(scenePass) +
+                " | UI: " + milliseconds(uiPass);
     t.memory = "Memory: RSS " + (s.residentMiB ? format("%.0f MiB", *s.residentMiB) : std::string(kMissing)) + "   GPU " +
                (s.gpuMemoryMiB ? format("%.0f MiB", *s.gpuMemoryMiB) : std::string(kMissing));
     return t;
