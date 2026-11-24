@@ -33,25 +33,26 @@ enum class WindowState : std::uint8_t
 
 struct WindowParameters
 {
+    // Valeurs initiales identiques à celles de Window::Window() (G201 : `taskbarVisible` était lu sans avoir été écrit, UBSan).
     // Window
-    std::string title;
-    WindowState windowState;
-    int width, height;
-    int posX, posY;
+    std::string title = "Window";
+    WindowState windowState = WindowState::kWindowed;
+    int width = 800, height = 600;
+    int posX = 100, posY = 100;
 
     // Timing
-    int maxFPS;
-    bool vsync;
+    int maxFPS = 0;
+    bool vsync = false;
 
     // Color
-    glm::vec4 clearColor;
-    double trueEveryms;
+    glm::vec4 clearColor{0.07f, 0.13f, 0.17f, 1.0f};
+    double trueEveryms = 500;
 
     // Windowed
-    int windowedWidth, windowedHeight;
-    int windowedPosX, windowedPosY;
+    int windowedWidth = 800, windowedHeight = 600;
+    int windowedPosX = 100, windowedPosY = 100;
 
-    bool taskbarVisible; // TODO
+    bool taskbarVisible = true; // TODO
 };
 
 class Window
