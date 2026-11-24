@@ -428,7 +428,7 @@ struct BindGroupEntry
     // textures
     TextureHandle texture{};
     SamplerHandle sampler{}; // kSampledTexture
-    std::uint32_t mipLevel = 0; // kStorageImage ; tableaux, cubes et 3D sont liés en entier (toutes les couches)
+    std::uint32_t mipLevel = 0; // kStorageImage ; tableaux, cubes et 3D sont liés en entier (toutes les couches) ; un cube se lit en imageCube
 };
 
 struct BindGroupDesc
