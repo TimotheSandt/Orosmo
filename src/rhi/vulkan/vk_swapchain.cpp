@@ -10,6 +10,8 @@
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <string_view>
 
 namespace orosmo::rhi::vk
 {
@@ -104,8 +106,8 @@ Result<> checkSurfaceCapabilities(const VkSurfaceCapabilitiesKHR &caps)
 }
 
 // Format de la surface : seuls ceux qui acceptent le blit en destination ; UNORM RGBA/BGRA d'abord (la copie de l'image de fond ne
-// doit rien convertir en sRGB), espace de couleur sRGB ensuite.
-Result<VkSurfaceFormatKHR> chooseSurfaceFormat(VulkanDevice &device, VkSurfaceKHR surface)
+// doit rien convertir en sRGB), espace de couleur sRGB ensuite. `preferRgba` : RGBA8 UNORM avant tout (image de fond directe, G185).
+Result<VkSurfaceFormatKHR> chooseSurfaceFormat(VulkanDevice &device, VkSurfaceKHR surface, bool preferRgba = false)
 {
     auto formats = enumerateWsi<VkSurfaceFormatKHR>(
         device, [&](std::uint32_t *count, VkSurfaceFormatKHR *out) { return vkGetPhysicalDeviceSurfaceFormatsKHR(device.physicalDevice(), surface, count, out); },
@@ -125,6 +127,8 @@ Result<VkSurfaceFormatKHR> chooseSurfaceFormat(VulkanDevice &device, VkSurfaceKH
             score += 10;
         if (f.format == VK_FORMAT_R8G8B8A8_UNORM || f.format == VK_FORMAT_B8G8R8A8_UNORM)
             score += 100;
+        if (preferRgba && f.format == VK_FORMAT_R8G8B8A8_UNORM)
+            score += 1000;
         if (score > best)
         {
             best = score;
@@ -142,6 +146,9 @@ Result<VkSurfaceFormatKHR> chooseSurfaceFormat(VulkanDevice &device, VkSurfaceKH
 
 Result<> VulkanDevice::initSwapchain(const DeviceDesc &desc)
 {
+    // ENGINE_VK_DIRECT_SWAPCHAIN=0 : toujours la copie de l'image hors écran (comparaison, contournement d'un pilote).
+    if (const char *direct = std::getenv("ENGINE_VK_DIRECT_SWAPCHAIN"); direct != nullptr && std::string_view(direct) == "0")
+        directAllowed_ = false;
     if (windowed_)
     {
         // Une surface qui ne sait pas recevoir la copie est refusée ici (le démarrage échoue, la démo peut basculer), pas au
@@ -196,6 +203,12 @@ Result<> recreateBackbuffer(VulkanDevice &device, TextureHandle handle, Extent2D
 
 } // namespace
 
+// Usages de l'image de fond (initSwapchain) exigés des images de la chaîne pour qu'elles la remplacent (G185).
+constexpr VkImageUsageFlags kDirectUsage =
+    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+static Result<> buildSwapchain(VulkanDevice &device, Swapchain &sc, bool vsync, bool directAllowed);
+
 Result<TextureHandle> VulkanDevice::beginFrame()
 {
     // Attendre d'abord l'image qui occupait cet emplacement, puis libérer : une ressource détruite pendant l'enregistrement de
@@ -204,6 +217,10 @@ Result<TextureHandle> VulkanDevice::beginFrame()
     if (auto r = waitSerial(frameSerials_[frame_ % kFramesInFlight]); !r)
         return std::unexpected(r.error());
     collectReleases();
+    // Image de la chaîne déjà acquise par un beginFrame sans present (image sautée par l'application) : c'est encore l'image
+    // courante (une seconde acquisition épuiserait la chaîne) ; un changement de taille attendra la présentation.
+    if (windowed_ && acquiredImage_)
+        return backbuffer_;
     if (windowed_)
     {
         const Extent2D size = framebufferSizeOf(swapchain_->window);
@@ -217,8 +234,99 @@ Result<TextureHandle> VulkanDevice::beginFrame()
             backbufferSize_ = size;
             swapchain_->dirty = true; // Wayland : `currentExtent` ne suit pas la fenêtre, la chaîne doit être refaite à la nouvelle taille
         }
+        if (directAllowed_)
+        {
+            if (auto r = acquireDirect(); !r)
+                return std::unexpected(r.error());
+        }
     }
     return backbuffer_;
+}
+
+Result<> VulkanDevice::acquireDirect()
+{
+    Swapchain &sc = *swapchain_;
+    for (int attempt = 0; attempt < 2; ++attempt)
+    {
+        if (sc.dirty || sc.handle == VK_NULL_HANDLE)
+        {
+            if (auto r = rebuildSwapchain(); !r)
+                return r.error().code == ErrorCode::kBusy ? Result<>{} : r; // surface vide : present() s'en occupe (copie)
+        }
+        // Chaîne sans images utilisables, ou d'une autre taille que la fenêtre (X11 : `currentExtent` en retard d'un événement) :
+        // cette image passe par la copie (`present`).
+        if (!sc.direct || sc.extent.width != backbufferSize_.width || sc.extent.height != backbufferSize_.height)
+            return {};
+        VkSemaphore acquired = sc.acquired[sc.acquireCursor++ % sc.acquired.size()];
+        std::uint32_t imageIndex = 0;
+        const VkResult acquire = vkAcquireNextImageKHR(device_, sc.handle, UINT64_MAX, acquired, VK_NULL_HANDLE, &imageIndex);
+        if (acquire == VK_ERROR_OUT_OF_DATE_KHR)
+        {
+            sc.dirty = true;
+            continue;
+        }
+        if (acquire != VK_SUCCESS && acquire != VK_SUBOPTIMAL_KHR)
+            return fromVk(acquire, "vkAcquireNextImageKHR");
+        if (acquire == VK_SUBOPTIMAL_KHR)
+            sc.dirty = true; // utilisable cette fois, reconstruite à la suivante
+        // L'image acquise prend la place de l'image de fond (même poignée) ; son contenu est indéfini : UNDEFINED -> repos à la
+        // prochaine soumission, qui attend aussi l'acquisition (submitRaw).
+        TextureRes *slot = textures_.get(backbuffer_);
+        std::swap(*slot, directImages_[imageIndex]);
+        slot->layoutInitialized = false;
+        markPendingInitialization(backbuffer_);
+        acquiredImage_ = imageIndex;
+        acquireWait_ = acquired;
+        return {};
+    }
+    return {}; // toujours périmée : copie à `present`
+}
+
+// Remet l'image hors écran dans l'emplacement de l'image de fond (après la présentation, ou à l'arrêt avec une image acquise).
+void VulkanDevice::restoreOffscreenBackbuffer() noexcept
+{
+    if (!acquiredImage_)
+        return;
+    TextureRes *slot = textures_.get(backbuffer_);
+    std::swap(*slot, directImages_[*acquiredImage_]);
+    directImages_[*acquiredImage_].layoutInitialized = false;
+    acquiredImage_.reset();
+}
+
+void VulkanDevice::releaseDirectImages() noexcept
+{
+    for (TextureRes &image : directImages_)
+        destroyTextureNow(image); // vues seulement : l'image appartient à la chaîne (allocation nulle)
+    directImages_.clear();
+}
+
+Result<> VulkanDevice::rebuildSwapchain()
+{
+    Swapchain &sc = *swapchain_;
+    waitIdle(); // les vues des images de la chaîne ne servent plus
+    releaseDirectImages();
+    if (auto r = buildSwapchain(*this, sc, vsync_, directAllowed_); !r)
+        return r;
+    if (sc.direct)
+    {
+        const TextureRes *offscreen = textures_.get(backbuffer_);
+        for (VkImage image : sc.images)
+        {
+            TextureRes res;
+            res.image = image;
+            res.allocation = nullptr; // appartient à la chaîne
+            res.desc = offscreen->desc;
+            res.desc.size = {sc.extent.width, sc.extent.height, 1};
+            res.format = VK_FORMAT_R8G8B8A8_UNORM;
+            res.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+            res.levels = 1;
+            res.layers = 1;
+            res.restLayout = offscreen->restLayout;
+            res.layoutInitialized = false;
+            directImages_.push_back(std::move(res));
+        }
+    }
+    return {};
 }
 
 Result<> VulkanDevice::resize(Extent2D size)
@@ -286,7 +394,7 @@ void destroySwapchainObjects(VulkanDevice &device, Swapchain &sc, bool keepHandl
 } // namespace
 
 // Reconstruit la chaîne pour la taille courante du framebuffer. Renvoie kBusy si la fenêtre est réduite.
-static Result<> buildSwapchain(VulkanDevice &device, Swapchain &sc, bool vsync)
+static Result<> buildSwapchain(VulkanDevice &device, Swapchain &sc, bool vsync, bool directAllowed)
 {
     VkSurfaceCapabilitiesKHR caps{};
     if (auto r = device.fromVk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device.physicalDevice(), sc.surface, &caps), "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"); !r)
@@ -303,9 +411,10 @@ static Result<> buildSwapchain(VulkanDevice &device, Swapchain &sc, bool vsync)
     if (auto r = checkSurfaceCapabilities(caps); !r)
         return r;
 
-    auto chosen = chooseSurfaceFormat(device, sc.surface);
+    auto chosen = chooseSurfaceFormat(device, sc.surface, directAllowed);
     if (!chosen)
         return std::unexpected(chosen.error());
+    const bool direct = directAllowed && chosen->format == VK_FORMAT_R8G8B8A8_UNORM && (caps.supportedUsageFlags & kDirectUsage) == kDirectUsage;
 
     auto modes = enumerateWsi<VkPresentModeKHR>(
         device, [&](std::uint32_t *count, VkPresentModeKHR *out) { return vkGetPhysicalDeviceSurfacePresentModesKHR(device.physicalDevice(), sc.surface, count, out); },
@@ -351,7 +460,7 @@ static Result<> buildSwapchain(VulkanDevice &device, Swapchain &sc, bool vsync)
     info.imageColorSpace = chosen->colorSpace;
     info.imageExtent = extent;
     info.imageArrayLayers = 1;
-    info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    info.imageUsage = direct ? kDirectUsage : static_cast<VkImageUsageFlags>(VK_IMAGE_USAGE_TRANSFER_DST_BIT);
     info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     info.preTransform = caps.currentTransform;
     info.compositeAlpha = alpha;
@@ -410,12 +519,15 @@ static Result<> buildSwapchain(VulkanDevice &device, Swapchain &sc, bool vsync)
     sc.renderDone = std::move(renderDone);
     sc.acquired = std::move(acquired);
     sc.dirty = false;
+    sc.direct = direct;
     return {};
 }
 
 Result<> VulkanDevice::present()
 {
     collectReleases();
+    if (windowed_ && acquiredImage_)
+        return presentDirect();
     if (windowed_)
     {
         Swapchain &sc = *swapchain_;
@@ -442,7 +554,7 @@ Result<> VulkanDevice::present()
         {
             if (sc.dirty || sc.handle == VK_NULL_HANDLE)
             {
-                if (auto r = buildSwapchain(*this, sc, vsync_); !r)
+                if (auto r = rebuildSwapchain(); !r)
                 {
                     giveBack();
                     ++frame_;
@@ -497,6 +609,7 @@ Result<> VulkanDevice::present()
             if (!serial)
                 return abandonChain(std::unexpected(serial.error())); // non soumis : le tampon retourne à la réserve
             cb = VK_NULL_HANDLE;                                    // soumis : `submitRaw` l'a mis en retrait avec sa série
+            ++counters_.copiedPresents;
             frameSerials_[frame_ % kFramesInFlight] = *serial;
             ++frame_;
             rotateCommandPool(); // une réserve de tampons de commandes par image en vol
@@ -527,10 +640,73 @@ Result<> VulkanDevice::present()
     return {};
 }
 
+// Image de fond = image acquise (G185) : passage en disposition de présentation, soumission (qui attend l'acquisition si aucune
+// soumission de l'image ne l'a déjà fait), présentation, puis l'image hors écran reprend sa place.
+Result<> VulkanDevice::presentDirect()
+{
+    Swapchain &sc = *swapchain_;
+    const std::uint32_t imageIndex = *acquiredImage_;
+    // Après la soumission ou son échec, l'image hors écran reprend sa place ; un échec laisse une image acquise et jamais
+    // présentée : la chaîne est retirée (reconstruite à la prochaine image).
+    const auto abandonChain = [&](Result<> error) -> Result<>
+    {
+        restoreOffscreenBackbuffer();
+        acquireWait_ = VK_NULL_HANDLE;
+        sc.dirty = true;
+        return error;
+    };
+    auto commandBuffer = acquireCommandBuffer();
+    if (!commandBuffer)
+        return abandonChain(std::unexpected(commandBuffer.error()));
+    const VkCommandBuffer cb = *commandBuffer;
+    TextureRes *image = textures_.get(backbuffer_);
+    const VkImageLayout from = image->layoutInitialized ? image->restLayout : VK_IMAGE_LAYOUT_UNDEFINED;
+    transitionImage(cb, image->image, image->aspect, from, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    if (auto r = fromVk(vkEndCommandBuffer(cb), "vkEndCommandBuffer"); !r)
+    {
+        releaseUnsubmitted(cb);
+        return abandonChain(r);
+    }
+    SubmitSync sync; // l'attente de l'acquisition est ajoutée par submitRaw si elle n'a pas encore été consommée
+    sync.signals.push_back(sc.renderDone[imageIndex]);
+    const VkCommandBuffer cbs[] = {cb};
+    auto serial = submitCommandBuffers(cbs, sync);
+    if (!serial)
+    {
+        releaseUnsubmitted(cb);
+        return abandonChain(std::unexpected(serial.error()));
+    }
+    restoreOffscreenBackbuffer();
+    ++counters_.directPresents;
+    frameSerials_[frame_ % kFramesInFlight] = *serial;
+    ++frame_;
+    rotateCommandPool(); // une réserve de tampons de commandes par image en vol
+
+    auto present = makeStruct<VkPresentInfoKHR>(VK_STRUCTURE_TYPE_PRESENT_INFO_KHR);
+    present.waitSemaphoreCount = 1;
+    present.pWaitSemaphores = &sc.renderDone[imageIndex];
+    present.swapchainCount = 1;
+    present.pSwapchains = &sc.handle;
+    present.pImageIndices = &imageIndex;
+    const VkResult shown = vkQueuePresentKHR(queue_, &present);
+    if (shown == VK_ERROR_OUT_OF_DATE_KHR || shown == VK_SUBOPTIMAL_KHR)
+        sc.dirty = true;
+    else if (shown != VK_SUCCESS)
+    {
+        sc.dirty = true;
+        return fromVk(shown, "vkQueuePresentKHR");
+    }
+    else if (!sc.retired.empty() && ++sc.retiredPresents >= sc.images.size() + kFramesInFlight)
+        destroySemaphores(*this, sc.retired);
+    return {};
+}
+
 void VulkanDevice::shutdownSwapchain() noexcept
 {
     if (swapchain_)
     {
+        restoreOffscreenBackbuffer();
+        releaseDirectImages();
         destroySwapchainObjects(*this, *swapchain_, false);
         if (swapchain_->surface != VK_NULL_HANDLE)
             vkDestroySurfaceKHR(instance_, swapchain_->surface, nullptr);

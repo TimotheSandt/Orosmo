@@ -789,6 +789,15 @@ Result<> VulkanDevice::submitRaw(std::span<const VkCommandBuffer> commandBuffers
         info.stageMask = stage;
         submitWaits_.push_back(info);
     }
+    // Image de la chaîne acquise par beginFrame (G185) : la première soumission qui suit attend l'acquisition, quelle qu'elle soit
+    // (lot de transferts, encodeur de l'image, présentation).
+    if (acquireWait_ != VK_NULL_HANDLE)
+    {
+        auto info = makeStruct<VkSemaphoreSubmitInfo>(VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO);
+        info.semaphore = acquireWait_;
+        info.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        submitWaits_.push_back(info);
+    }
     submitSignals_.clear();
     auto timelineSignal = makeStruct<VkSemaphoreSubmitInfo>(VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO);
     timelineSignal.semaphore = timeline_;
@@ -813,6 +822,7 @@ Result<> VulkanDevice::submitRaw(std::span<const VkCommandBuffer> commandBuffers
         return r;
     ++lastSubmitted_;
     ++counters_.submits;
+    acquireWait_ = VK_NULL_HANDLE; // attente consommée
     for (VkCommandBuffer cb : commandBuffers)
         retireCommandBuffer(cb, lastSubmitted_);
     return {};
@@ -1295,6 +1305,9 @@ void VulkanDevice::shutdown() noexcept
         vmaDestroyAllocator(allocator_);
     if (device_ != VK_NULL_HANDLE)
         vkDestroyDevice(device_, nullptr);
+    if (windowed_ && counters_.directPresents + counters_.copiedPresents > 0)
+        LOG_INFO("Vulkan present: ", counters_.directPresents, " frame(s) drawn into the swapchain image, ", counters_.copiedPresents,
+                 " copied from the offscreen backbuffer");
     if (instance_ != VK_NULL_HANDLE)
     {
         if (messenger_ != VK_NULL_HANDLE)

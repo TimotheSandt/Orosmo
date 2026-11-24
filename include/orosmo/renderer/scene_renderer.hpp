@@ -84,6 +84,16 @@ class SceneRenderer
     // Mise à l'échelle désactivée : le mode actif n'est pas exécuté, la scène est copiée 1:1 sur la destination.
     void setUpscalingEnabled(bool enabled) noexcept { upscalingEnabled_ = enabled; }
     bool upscalingEnabled() const noexcept { return upscalingEnabled_; }
+    // A63 : dessiner la scène directement dans la sortie d'endFrame (désactivé par défaut). Appliqué seulement aux images où la copie
+    // 1:1 « upscale » serait la seule passe entre la scène et la sortie : pas de mise à l'échelle ni de mode actif, pas
+    // d'historique, de génération d'images, de post-traitement (IPostProcessPass) ni d'AOV, sortie de même format et de même taille
+    // que la couleur de scène. Ces images-là, la couleur de scène vue par les plugins EST la sortie (même ressource du graphe) et
+    // la cible de scène (`sceneTarget`, `saveColorPng`) n'est pas écrite. La sortie doit pouvoir servir de cible avec la
+    // profondeur de la scène : pas le framebuffer de fenêtre OpenGL (refusé par le backend).
+    void setRenderIntoOutput(bool enabled) noexcept { renderIntoOutput_ = enabled; }
+    bool renderIntoOutput() const noexcept { return renderIntoOutput_; }
+    // Vrai si la dernière image construite par endFrame a dessiné la scène dans la sortie (sans copie).
+    bool renderedIntoOutput() const noexcept { return renderedIntoOutput_; }
 
     void registerUpscaleMode(std::unique_ptr<IUpscaleMode> mode); // les modes enregistrés vivent autant que le renderer
     // Active un mode enregistré : il doit être supporté (`supports`) et s'initialiser (`initialize`), sinon faux et l'ancien mode
@@ -211,7 +221,8 @@ class SceneRenderer
     int frameWidth() const noexcept { return frameWidth_; }
     int frameHeight() const noexcept { return frameHeight_; }
     const RenderTarget &sceneTarget() const noexcept { return sceneTarget_; }
-    // Enregistre la couleur 0 de la cible de scène (résolution de rendu, avant mise à l'échelle) ; valable après endFrame.
+    // Enregistre la couleur 0 de la cible de scène (résolution de rendu, avant mise à l'échelle) ; valable après endFrame. Refusé
+    // si la dernière image a été dessinée dans la sortie (renderedIntoOutput : la cible de scène n'a pas été écrite).
     core::Result<> saveColorPng(const std::filesystem::path &path) const;
 
   private:
@@ -327,6 +338,8 @@ class SceneRenderer
     int outputHeight_ = 0;
     float renderScale_ = 1.0f;
     bool upscalingEnabled_ = false;
+    bool renderIntoOutput_ = false;   // A63
+    bool renderedIntoOutput_ = false; // dernière image : scène dessinée dans la sortie
     int frameWidth_ = 0;
     int frameHeight_ = 0;
 

@@ -132,6 +132,11 @@ C'est ainsi que la démo branche l'interface (`CanvasRenderer`) et la présentat
 (`Device::beginFrame`) ; la démo le fait quand rien ne relit l'image composée (pas de capture à cette image) et que la vue a la taille
 et le format du backbuffer : la copie 1:1 `upscale` y écrit, l'interface s'y pose, sans cible intermédiaire ni passe `present` (une
 copie plein écran de moins par image). Sinon (capture : `ui.png` lit la cible `composed` ; vue étirée), le chemin d'avant.
+A63 : `setRenderIntoOutput(true)` (désactivé par défaut) supprime aussi la copie `upscale` 1:1 — la passe `scene` dessine dans la
+sortie, qui devient la couleur de scène du graphe — quand rien d'autre n'a besoin de la cible de scène (pas de mise à l'échelle ni
+de mode, d'historique, de génération d'images, de post-traitement ni d'AOV, sortie de même format et taille) ; `renderedIntoOutput()`
+dit si la dernière image l'a fait. Pas sur le framebuffer de fenêtre OpenGL (il refuse la profondeur de la scène). La démo l'active
+en Vulkan et sans fenêtre, hors capture.
 
 ### Sorties auxiliaires et modes de debug (M5 : REN-21, REN-41, REN-35)
 

@@ -1127,6 +1127,10 @@ void Game::render()
     // démo) est exécuté par endFrame ; chaque passe est mesurée par le Profiler sous « RenderGraph/<passe> ».
     const bool toBackbuffer = this->composition == demo::FrameComposition::kBackbuffer;
     const rhi::TextureHandle finalImage = toBackbuffer ? this->backbuffer : this->composed.color(0);
+    // A63 : la scène est dessinée droit dans le backbuffer (pas de copie « upscale » 1:1) quand l'image s'y compose, hors capture
+    // (scene.png lit la cible de scène) ; pas sur le framebuffer de fenêtre OpenGL, qui ne prend pas la profondeur de la scène.
+    this->sceneRenderer->setRenderIntoOutput(toBackbuffer && !this->captureAfterThisFrame() &&
+                                             (this->selectedBackend == rhi::Backend::kVulkan || this->headless));
     this->overlay->beginFrame(this->backbuffer, this->composition, this->activeUi() != nullptr);
     keep(this->sceneRenderer->beginFrame(encoder, {.clearColor = {clear.r, clear.g, clear.b, clear.a}}), "beginFrame");
     keep(this->sceneRenderer->setCamera(this->camera), "setCamera");

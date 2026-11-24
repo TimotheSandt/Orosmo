@@ -26,6 +26,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <optional>
 #include <vector>
 
 namespace orosmo::rhi::vk
@@ -63,6 +64,8 @@ struct TransferCounters
     std::uint64_t commandPools = 0;            // réserves de tampons de commandes créées
     std::uint64_t commandPoolResets = 0;       // vkResetCommandPool
     std::uint64_t commandBuffersAllocated = 0; // vkAllocateCommandBuffers
+    std::uint64_t directPresents = 0;          // images présentées en dessinant directement dans l'image de la chaîne (G185)
+    std::uint64_t copiedPresents = 0;          // images présentées par une copie de l'image de fond hors écran
 };
 
 // ── Ressources ────────────────────────────────────────────────────────────────
@@ -416,6 +419,13 @@ class VulkanDevice final : public Device
     Result<> createSurface(const DeviceDesc &desc); // avant le choix du GPU (il doit pouvoir présenter)
     Result<> initSwapchain(const DeviceDesc &desc); // après la création du périphérique : image de fond, chaîne d'échange
     void shutdownSwapchain() noexcept;
+    // Image de fond = image de la chaîne (G185, vk_swapchain.cpp) : reconstruction de la chaîne et de ses textures, acquisition
+    // au début de l'image, retour de l'image hors écran dans l'emplacement de l'image de fond.
+    Result<> rebuildSwapchain();
+    Result<> acquireDirect();
+    Result<> presentDirect();
+    void releaseDirectImages() noexcept;
+    void restoreOffscreenBackbuffer() noexcept;
     void drainPendingInit(VkCommandBuffer commandBuffer);
     void releaseReadback(const Staging &staging, bool immediateRelease);
     Result<> checkDepthCopy(const TextureRes &texture, const char *what) const;
@@ -523,6 +533,13 @@ class VulkanDevice final : public Device
     std::size_t pipelineCacheLoadedBytes_ = 0;
 
     std::unique_ptr<Swapchain> swapchain_;
+    // G185 : les images de la chaîne servent directement d'image de fond quand la surface accepte RGBA8 UNORM avec les usages de
+    // l'image de fond (sinon, ou ENGINE_VK_DIRECT_SWAPCHAIN=0 : copie de l'image hors écran à `present`). Entre beginFrame et
+    // present, l'emplacement de `backbuffer_` contient l'image acquise ; l'image hors écran attend dans `directImages_`.
+    bool directAllowed_ = true;
+    std::vector<TextureRes> directImages_;
+    std::optional<std::uint32_t> acquiredImage_;
+    VkSemaphore acquireWait_ = VK_NULL_HANDLE; // attendu par la prochaine soumission (premier usage de l'image acquise)
     TextureHandle backbuffer_;
     Extent2D backbufferSize_{1, 1};
     std::uint64_t frame_ = 0;
