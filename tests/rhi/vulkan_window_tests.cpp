@@ -107,4 +107,41 @@ TEST_SUITE("rhi/vulkan/window")
             CHECK(renderAndPresent(*device));
         CHECK(device->validationErrorCount() == 0);
     }
+
+    TEST_CASE("G185: beginFrame twice without present keeps the same image; the backbuffer reads back what was drawn")
+    {
+        // Image de fond directe (image de la chaîne, surfaces RGBA8 : Wayland) ou copiée (X11) : même contrat. Avec une image
+        // acquise, un second beginFrame ne doit pas en acquérir une autre (la chaîne s'épuiserait) ; la lecture de l'image de fond
+        // avant present rend le dessin.
+        VulkanWindow window;
+        SKIP_TEST_IF_NULL(window.handle, "window able to host a Vulkan surface");
+        auto device = window.device(false);
+        SKIP_TEST_IF_NULL(device.get(), "windowed Vulkan 1.3 device");
+        for (int i = 0; i < 5; ++i)
+        {
+            auto first = device->beginFrame();
+            REQUIRE(first.has_value());
+            auto again = device->beginFrame(); // image sautée par l'application : toujours la même
+            REQUIRE(again.has_value());
+            CHECK(*again == *first);
+            auto encoder = device->createCommandEncoder();
+            RenderPassDesc pass;
+            pass.colors = {{.texture = *again, .clearColor = {1.0f, 0.0f, 0.0f, 1.0f}}};
+            encoder->beginRenderPass(pass);
+            encoder->endRenderPass();
+            REQUIRE(device->submit(std::move(encoder)).has_value());
+            auto desc = device->textureDesc(*again);
+            REQUIRE(desc.has_value());
+            TextureCopy corner;
+            corner.size = {1, 1, 1};
+            auto pixel = device->readTexture(*again, corner);
+            REQUIRE(pixel.has_value());
+            REQUIRE(pixel->size() == 4);
+            CHECK(static_cast<int>((*pixel)[0]) == 255);
+            CHECK(static_cast<int>((*pixel)[1]) == 0);
+            CHECK((desc->format == Format::kRGBA8Unorm));
+            CHECK(device->present().has_value());
+        }
+        CHECK(device->validationErrorCount() == 0);
+    }
 }

@@ -150,10 +150,18 @@ nativement. `readTexture` : première ligne = haut.
 
 ## Présentation
 
-L'image de fond du RHI est une **texture RGBA8 du périphérique** (comme hors écran). Avec une fenêtre, `present()` la copie (blit,
-mise à l'échelle si la taille a changé) dans l'image acquise de la chaîne d'échange puis présente : le format de la chaîne (BGRA ou
-RGBA, UNORM) ne regarde pas le moteur. `beginFrame` renvoie `kBusy` pour un framebuffer de taille nulle. Fenêtre créée APRÈS
-`prepareWindowHints` (`GLFW_NO_API`).
+Deux chemins, même contrat (`beginFrame` renvoie l'image de fond RGBA8 UNORM à la taille du framebuffer, `kBusy` pour un
+framebuffer de taille nulle ; fenêtre créée APRÈS `prepareWindowHints`, `GLFW_NO_API`) :
+
+- **Image de la chaîne directe (G185)** : quand la surface propose `R8G8B8A8_UNORM` avec les usages de l'image de fond (cible,
+  échantillonnée, source et destination de copie) — Wayland chez Mesa —, `beginFrame` acquiert l'image de la chaîne et la met dans
+  l'emplacement de l'image de fond (même poignée). La première soumission qui suit attend l'acquisition ; `present` la passe en
+  disposition de présentation et la présente, sans copie. Son contenu ne survit pas d'une image à l'autre (il faut redessiner
+  toute l'image, ce que fait le moteur). Un second `beginFrame` sans `present` rend la même image.
+- **Copie** (surface sans RGBA8, comme X11 chez Mesa, ou `ENGINE_VK_DIRECT_SWAPCHAIN=0`) : l'image de fond est une texture RGBA8
+  du périphérique ; `present()` la copie (blit, mise à l'échelle si la taille a changé) dans l'image acquise puis présente.
+
+`transferCounters()` compte les deux (`directPresents`, `copiedPresents`) ; la démo les journalise à l'arrêt.
 
 ## Limites connues (voir `docs/GAPS.md`)
 
