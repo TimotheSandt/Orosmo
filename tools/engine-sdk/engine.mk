@@ -202,6 +202,7 @@ ENGINE_LIBS := \
     $(_ENG_LIB_DIR)/libplatform.a \
     $(_ENG_LIB_DIR)/librhi.a \
     $(_ENG_LIB_DIR)/librenderer.a \
+    $(_ENG_LIB_DIR)/libassets.a \
     $(_ENG_LIB_DIR)/libthirdparty.a \
     $(foreach m,$(ENGINE_EXTRA_MODULES),$(_ENG_LIB_DIR)/lib$(m).a)
 

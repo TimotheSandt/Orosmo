@@ -53,7 +53,7 @@ else()
 endif()
 
 # ── Imported subsystem static libraries ──────────────────────────────────────
-set(_OROSMO_COMPONENTS ui core platform rhi renderer thirdparty)
+set(_OROSMO_COMPONENTS ui core platform rhi renderer assets thirdparty)
 set(_OROSMO_IMPORTED_TARGETS "")
 
 foreach(_comp IN LISTS _OROSMO_COMPONENTS)

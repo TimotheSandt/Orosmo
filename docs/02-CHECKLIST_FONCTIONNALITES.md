@@ -125,7 +125,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
 | ASSET-01 | Import glTF 2.0 | P0 | Maillages, matériaux, nœuds, caméras, lumières (KHR_lights_punctual), squelettes, animations. | Absent |
-| ASSET-02 | Textures | P0 | PNG/JPG avec génération de mips ; espace colorimétrique correct (sRGB/linéaire). | Partiel |
+| ASSET-02 | Textures | P0 | PNG/JPG avec génération de mips ; espace colorimétrique correct (sRGB/linéaire). | Fait — preuve : `include/orosmo/assets/image_loader.hpp` (`decodeImage`, `loadImage`, `TextureRole` → `textureFormatFor` : couleur en `kRGBA8Srgb`, données et normales en `kRGBA8Unorm`), `texture_cache.hpp` (`createTexture`, `TextureCache`) ; `tests/assets/texture_loading_tests.cpp` sur OpenGL et Vulkan (mips d'une texture sRGB moyennés en linéaire : 188, contre 128 en linéaire ; cache partagé par chemin et usage). Limite : 8 bits par canal. |
 | ASSET-03 | Textures compressées | P1 | KTX2 (BC7 sur PC, ASTC sur Mac/ARM). | Absent |
 | ASSET-04 | Outil de cuisson | P1 | Convertit les assets en format binaire du moteur : optimisation des sommets (meshoptimizer), quantification, génération de LOD. | Absent |
 | ASSET-05 | Rechargement à chaud des assets | P1 | Modification d'un fichier → mise à jour en direct sans redémarrer. | Absent |
