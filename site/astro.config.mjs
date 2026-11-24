@@ -7,7 +7,7 @@ const repo = 'https://github.com/TimotheSandt/Orosmo';
 
 export default defineConfig({
   // Adresse publique : à remplacer par le domaine choisi par l'auteur (SITE_URL au build, sinon une valeur locale).
-  site: process.env.SITE_URL ?? 'http://localhost:8080',
+  site: process.env.SITE_URL || 'http://localhost:8080',
   telemetry: false,
   integrations: [
     starlight({
