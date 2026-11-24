@@ -76,9 +76,15 @@ class Mesh
     // Octets du bloc push_constant du programme (le premier entier est réservé au drapeau fil de fer, voir mesh.frag).
     void setPushConstants(std::span<const std::byte> bytes) { pushConstants_.assign(bytes.begin(), bytes.end()); }
 
-    void setPosition(const glm::vec3 &position) { position_ = position; transformDirty_ = true; }
-    void setRotation(const glm::vec3 &degrees) { rotation_ = degrees; transformDirty_ = true; }
-    void setScale(const glm::vec3 &scale) { scale_ = scale; transformDirty_ = true; }
+    // Position, rotation (degrés, X puis Y puis Z) et échelle ; chacune retire une matrice donnée par `setModelMatrix`.
+    void setPosition(const glm::vec3 &position) { position_ = position; hasMatrix_ = false; transformDirty_ = true; }
+    void setRotation(const glm::vec3 &degrees) { rotation_ = degrees; hasMatrix_ = false; transformDirty_ = true; }
+    void setScale(const glm::vec3 &scale) { scale_ = scale; hasMatrix_ = false; transformDirty_ = true; }
+    // Matrice du modèle donnée telle quelle (nœud glTF, os, quaternion…), à la place de position, rotation et échelle.
+    void setModelMatrix(const glm::mat4 &matrix) { matrix_ = matrix; hasMatrix_ = true; transformDirty_ = true; }
+    // Faces éliminées (défaut kNone : les deux faces sont dessinées, comme avant M6). Le sens direct est anti-horaire (glTF).
+    void setCullMode(rhi::CullMode cull) noexcept { cull_ = cull; }
+    rhi::CullMode cullMode() const noexcept { return cull_; }
     const glm::vec3 &position() const noexcept { return position_; }
     const glm::vec3 &rotation() const noexcept { return rotation_; }
     const glm::vec3 &scale() const noexcept { return scale_; }
@@ -150,6 +156,9 @@ class Mesh
     glm::vec3 position_{0.0f};
     glm::vec3 rotation_{0.0f};
     glm::vec3 scale_{1.0f};
+    glm::mat4 matrix_{1.0f};
+    bool hasMatrix_ = false;
+    rhi::CullMode cull_ = rhi::CullMode::kNone;
     bool transformDirty_ = true;
     bool bufferStale_ = true; // modelBlock_ n'a pas encore été écrit dans modelBuffer_
     glm::vec3 uploadedOrigin_{0.0f};

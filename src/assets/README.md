@@ -8,6 +8,7 @@ Couche 4 de `docs/03` §1 : import et préparation des contenus (images, glTF, c
 | --- | --- |
 | `image_loader.hpp` | `decodeImage` (octets en mémoire) et `loadImage` (fichier) : PNG, JPG, TGA, BMP décodés par stb en RGBA8, première ligne = haut (A26) ; `TextureRole` (`kColor`, `kData`, `kNormal`) → `colorSpaceOf`, `textureFormatFor` (couleur en `kRGBA8Srgb`, données en `kRGBA8Unorm`) |
 | `model.hpp` | `Model` : données CPU d'un glTF 2.0 (maillages et primitives avec positions, normales, tangentes, UV 0 et 1, couleurs, articulations et poids ; matériaux métal/rugosité avec modes alpha, double face, `KHR_materials_unlit`, `KHR_materials_emissive_strength` ; textures, échantillonneurs, images incluses ou externes ; nœuds TRS ; caméras ; lumières `KHR_lights_punctual` ; peaux ; animations ; scènes), `worldMatrices`, `stats`, `validate` ; `loadGltf` / `parseGltf` (cgltf : `.gltf`, `.glb`, data URI ; bandes et éventails convertis en listes ; matrices de nœud décomposées en TRS) ; `saveGltf` (`.glb` ou `.gltf` + `.bin`) |
+| `render_model.hpp` | `RenderModel` : un `Model` prêt à dessiner (une `renderer::Mesh` aux sommets PBR par primitive, un `PbrMaterial` par matériau, plus le matériau par défaut de glTF ; un dessin par nœud et primitive de la scène ; `setRootTransform`, `setNodeMatrices`, `draw`) ; `pbrMaterialDesc`, `pbrVertices` (normales et tangentes calculées si absentes), `blendModeForAlpha` |
 | `texture_cache.hpp` | `createTexture` (image décodée → `renderer::Texture` au format de l'usage, mips générés sur le GPU) ; `TextureCache` : une texture partagée par (chemin normalisé, usage, filtre, adressage), `loadFromMemory` pour les images incluses dans un fichier, `purgeUnused` |
 
 Exemple :
@@ -22,6 +23,8 @@ Mips : générés par le backend (`CommandEncoder::generateMips`) ; une texture 
 OpenGL et Vulkan : `tests/assets/texture_loading_tests.cpp`, damier noir et blanc → mip 188 en sRGB, 128 en linéaire).
 
 Limites de l'import glTF : pas de cibles de forme (morph targets, ANIM-05), pas de Draco ni de meshopt (refusés en `kUnsupported` quand ils sont requis), `KHR_texture_transform` ignoré, au plus 4 influences d'os par sommet (`JOINTS_1` ignoré avec un avertissement), primitives de points et de lignes ignorées avec un avertissement. Les images externes ne sont pas lues à l'import (chemin absolu dans `ImageData::path`).
+
+Limites du rendu (`RenderModel`) : un seul jeu d'UV (une carte qui demande `TEXCOORD_1` est lue avec `TEXCOORD_0`, avec un avertissement) ; un seul mode d'adressage par texture (celui de `wrapS`) ; tangentes calculées par triangle (pas MikkTSpace) ; un nœud à échelle négative inverse le sens des faces (la face avant devient arrière) ; les primitives transparentes (`BLEND`) sont dessinées dans l'ordre du fichier, sans tri.
 
 Limites des textures : images 8 bits par canal seulement (les PNG 16 bits sont réduits à 8 bits par stb) ; pas de HDR ici (IBL, lot D) ni de
 KTX2 (lot G).
