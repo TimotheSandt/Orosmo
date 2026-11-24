@@ -10,6 +10,7 @@ aucun aléa ; le temps vient de l'appelant.
 | `clip.hpp` | `Clip` : animation glTF (translation, rotation, échelle ; STEP, LINEAR avec slerp, CUBICSPLINE de glTF), `sample` dans une pose, événements nommés (`addEvent`, `collectEvents` avec bouclage) ; `advanceClipTime` (`LoopMode::kOnce` / `kLoop`) — ANIM-02 |
 | `state_machine.hpp` | `StateMachine` : états (clip, boucle, vitesse), transitions par booléen, déclencheur consommé et/ou fin de clip, fondu enchaîné, événements (`takeEvents`) — ANIM-02 |
 | `curves.hpp` | `Curve<T>` (float, vec2, vec3, vec4 ; palier, linéaire, Hermite cubique) ; `PropertyAnimation` : courbes nommées liées à des fonctions qui posent la valeur (caméra, lumière, matériau, transformation) — ANIM-03 |
+| `crowd.hpp` | `CrowdRenderer` : foules instanciées, skinning dans le vertex shader (`shaders/rhi/mesh_pbr_crowd.vert`) avec une palette par agent, un draw call par primitive skinnée pour tous les agents ; `setAgents` (matrices + poses) ou `setAgentPalettes` (palettes déjà calculées) — ANIM-04 |
 | `skinning.hpp` | `SkinnedModel` : skinning GPU en compute (`shaders/rhi/skin.comp`, 4 os par sommet, palette en tampon de stockage) qui écrit le tampon de sommets d'un `assets::RenderModel` créé avec `skinnable` ; `jointPalette`, `skinVertices` (référence CPU) — ANIM-01 |
 
 Exemple :
@@ -28,5 +29,4 @@ render.draw(scene, camera);
 
 Limites : pas de cibles de forme, d'IK ni de mouvement de racine (ANIM-05, P2) ; un maillage GPU dessiné par plusieurs nœuds
 skinnés est déformé pour le premier seulement ; normales et tangentes déformées par mat3(palette) (exact sans échelle non uniforme
-dans les os) ; pendant un fondu de la machine à états, aucune autre transition n'est évaluée. Les foules (une palette par instance,
-ANIM-04) viennent au lot F. Voir `docs/GAPS.md` (G198).
+dans les os) ; pendant un fondu de la machine à états, aucune autre transition n'est évaluée. Foules : pas de culling par agent ni d'ombres (G199). Voir `docs/GAPS.md` (G198, G199).
