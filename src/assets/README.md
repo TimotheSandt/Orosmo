@@ -24,6 +24,9 @@ auto normal = textures.load("res/brick_n.png", {orosmo::assets::TextureRole::kNo
 Mips : générés par le backend (`CommandEncoder::generateMips`) ; une texture sRGB est filtrée dans l'espace linéaire (vérifié sur
 OpenGL et Vulkan : `tests/assets/texture_loading_tests.cpp`, damier noir et blanc → mip 188 en sRGB, 128 en linéaire).
 
+Formats pris en charge et limites, en un seul endroit : `docs/FORMATS.md`. Démo : `--scene anim` (personnage glTF généré, importé,
+skinné et animé, foule de 1000 agents, texture rechargée à chaud).
+
 Limites de l'import glTF : pas de cibles de forme (morph targets, ANIM-05), pas de Draco ni de meshopt (refusés en `kUnsupported` quand ils sont requis), `KHR_texture_transform` ignoré, au plus 4 influences d'os par sommet (`JOINTS_1` ignoré avec un avertissement), primitives de points et de lignes ignorées avec un avertissement. Les images externes ne sont pas lues à l'import (chemin absolu dans `ImageData::path`).
 
 Limites du rendu (`RenderModel`) : un seul jeu d'UV (une carte qui demande `TEXCOORD_1` est lue avec `TEXCOORD_0`, avec un avertissement) ; un seul mode d'adressage par texture (celui de `wrapS`) ; tangentes calculées par triangle (pas MikkTSpace) ; un nœud à échelle négative inverse le sens des faces (la face avant devient arrière) ; les primitives transparentes (`BLEND`) sont dessinées dans l'ordre du fichier, sans tri.
