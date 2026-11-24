@@ -59,6 +59,7 @@ class RenderModel
     std::size_t meshCount() const noexcept { return meshes_.size(); }
     const std::vector<std::shared_ptr<renderer::PbrMaterial>> &materials() const noexcept { return materials_; }
     renderer::Mesh &mesh(std::size_t i) { return *meshes_[i]; }
+    const renderer::Mesh &mesh(std::size_t i) const { return *meshes_[i]; }
 
     // Un dessin : le nœud qui le porte et le maillage GPU (indice de `mesh`).
     struct Item
