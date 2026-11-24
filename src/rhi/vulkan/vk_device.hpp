@@ -208,6 +208,11 @@ struct QueryPoolRes
     VkQueryPool pool = VK_NULL_HANDLE;
     std::uint32_t count = 0;
     std::string debugName;
+    // Dernière écriture (G192) : la disponibilité lue sur l'hôte reste celle de la mesure précédente tant que le GPU n'a pas
+    // exécuté la remise à zéro. Une écriture enregistrée mais pas soumise (`unsubmitted`), ou soumise dans une série pas encore
+    // terminée (`lastWrite`), rend la requête non prête.
+    Serial lastWrite = 0;
+    bool unsubmitted = false;
 };
 
 struct Swapchain; // vk_swapchain.hpp

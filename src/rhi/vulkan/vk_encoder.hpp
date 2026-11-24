@@ -52,6 +52,8 @@ class VkEncoder final : public CommandEncoder
     Result<std::vector<VkCommandBuffer>> finish();
     // Tampons kUpload utilisés par l'encodeur (VulkanDevice::submit leur donne la série de la soumission).
     const std::vector<BufferHandle> &uploadBuffers() const noexcept { return uploadBuffers_; }
+    // Pools de requêtes écrits par cet encodeur (VulkanDevice::submit y note la série de la soumission).
+    const std::vector<QueryPoolHandle> &queryPools() const noexcept { return queryPools_; }
 
   private:
     bool check(bool condition, core::ErrorCode code, const std::string &message);
@@ -71,6 +73,7 @@ class VkEncoder final : public CommandEncoder
     VkCommandBuffer prologue_ = VK_NULL_HANDLE; // remises à zéro de requêtes demandées dans une passe
     std::optional<Error> error_;
     std::vector<BufferHandle> uploadBuffers_;
+    std::vector<QueryPoolHandle> queryPools_;
 
     // Passe
     struct PassAttachment

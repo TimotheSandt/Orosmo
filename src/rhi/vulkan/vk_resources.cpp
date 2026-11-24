@@ -567,6 +567,10 @@ Result<bool> VulkanDevice::timestampsReady(QueryPoolHandle handle, std::uint32_t
         return makeError(ErrorCode::kOutOfRange, "timestampsReady: range exceeds the pool");
     if (count == 0)
         return true;
+    // Écriture enregistrée pas encore soumise, ou soumise pas encore terminée : la disponibilité lue serait celle de la mesure
+    // précédente (G192).
+    if (pool->unsubmitted || pool->lastWrite > completedSerial())
+        return false;
     // (valeur, disponibilité) par requête ; quelques requêtes (cas courant : début et fin d'une passe) sans allocation.
     std::array<std::uint64_t, 16> small{};
     std::vector<std::uint64_t> large;
