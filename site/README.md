@@ -47,5 +47,5 @@ docker build -t orosmo-site:test .   # image nginx (depuis ce dossier)
 
 ## Limites
 
-Rien n'est publié avant le premier tag `v*` posé sur `main` après M6 (G201) ; pas de serveur ni de domaine choisis (G202) ;
-pas de prévisualisation sur PR (WEB-05, G203) ; contenu à relire à chaque jalon (G204).
+Rien n'est publié avant le premier tag `v*` posé sur `main` après M6 (G202) ; pas de serveur ni de domaine choisis (G203) ;
+pas de prévisualisation sur PR (WEB-05, G204) ; contenu à relire à chaque jalon (G205).

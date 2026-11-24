@@ -36,10 +36,10 @@ Linux x64, Node 24.20.0, Docker 29.1.3, et depuis un clone propre de la branche 
 
 ## Non prouvé
 
-Workflow jamais exécuté sur GitHub, aucune image sur GHCR (G201) ; pas de serveur ni de domaine (G202) ; pas de staging (G203) ; contenu à mettre à jour à la fusion de M6 (G204) ; `ci.yml` sans filtre de chemins pour `site/` (G205).
+Workflow jamais exécuté sur GitHub, aucune image sur GHCR (G202) ; pas de serveur ni de domaine (G203) ; pas de staging (G204) ; contenu à mettre à jour à la fusion de M6 (G205) ; `ci.yml` sans filtre de chemins pour `site/` (G206).
 
 ## À décider
 
-A73 (hébergement) ; G205 (`paths-ignore` dans `ci.yml`).
+A73 (hébergement) ; G206 (`paths-ignore` dans `ci.yml`).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
