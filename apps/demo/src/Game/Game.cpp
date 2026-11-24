@@ -167,6 +167,15 @@ void Game::setGpuTimings(demo::GpuTimingsMode mode)
     this->applyGpuTimings();
 }
 
+void Game::setDirectPresentation(bool enabled)
+{
+    this->uiState.directPresentation = enabled;
+    if (this->device)
+    {
+        this->device->setDirectPresentation(enabled);
+    }
+}
+
 // Minuteries GPU : seulement si le panneau de performances affiche des temps GPU (ou si elles sont forcées).
 void Game::applyGpuTimings()
 {
@@ -857,6 +866,12 @@ void Game::update()
             this->uiState.pacingRequested = false;
             this->setFramePacing({static_cast<rd::FramePacingMode>(std::clamp(this->uiState.pacingMode, 0, 2)), this->uiState.fpsLimit});
             LOG_INFO("Frame pacing: ", rd::describeFramePacing(this->pacer.current()));
+        }
+        if (this->uiState.directPresentationRequested)
+        {
+            this->uiState.directPresentationRequested = false;
+            this->setDirectPresentation(this->uiState.directPresentation);
+            LOG_INFO("Direct presentation: ", this->uiState.directPresentation ? "on" : "off");
         }
         if (this->uiState.gpuTimingsRequested)
         {

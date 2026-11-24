@@ -323,6 +323,14 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.fpsLimit = *limit;
         }
+        else if (matchOption("--direct-present", value))
+        {
+            if (!value || (!equalsIgnoreCase(*value, "on") && !equalsIgnoreCase(*value, "off")))
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --direct-present (expected on|off): " + value.value_or(""));
+            }
+            options.directPresentation = equalsIgnoreCase(*value, "on");
+        }
         else if (matchOption("--gpu-timings", value))
         {
             if (!value)
@@ -606,7 +614,7 @@ void printUsage(std::ostream &out)
         << "              [--instances N] [--gpu-driven off|on] [--debug-view none|normals|albedo|overdraw|lod|wireframe|motion] [--freeze-frustum]\n"
         << "              [--shadows off|on] [--transparent-shadow none|full|masked|dithered] [--scene default|mixed] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
         << "              [--aa none|fxaa|smaa|taa]\n"
-        << "              [--headless] [--vsync [on|off]] [--fps-limit N] [--gpu-timings auto|on|off]\n"
+        << "              [--headless] [--vsync [on|off]] [--fps-limit N] [--direct-present on|off] [--gpu-timings auto|on|off]\n"
         << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : Vulkan by default; --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
@@ -618,6 +626,9 @@ void printUsage(std::ostream &out)
     out << "          combine it with --capture <dir> to save the images.\n";
     out << "Pacing  : vertical synchronization is on by default; --vsync off removes it (no limit), --fps-limit N (10 to 1000) caps\n";
     out << "          the frame rate at N FPS instead (vsync off). No effect with --headless. The Esc UI changes the mode live.\n";
+    out << "Present : --direct-present off makes Vulkan render into an offscreen image copied to the window at present (on by\n";
+    out << "          default: drawn straight into the window image, one copy less). On may flicker at very high frame rates\n";
+    out << "          without vsync on some compositors (UI missing, black areas). No effect with OpenGL or --headless.\n";
     out << "GPU timers: --gpu-timings auto (default) only measures GPU times while the HUD shows them (levels full and graph);\n";
     out << "          on / off force them (tools that read the 'Perf: RenderGraph/...' lines use on).\n";
     out << "HUD     : --hud sets the performance panel shown with --ui hud: off (nothing), fps (FPS only), full (default: every\n";

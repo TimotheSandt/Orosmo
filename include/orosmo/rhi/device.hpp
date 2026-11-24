@@ -89,6 +89,10 @@ struct DeviceDesc
     SurfaceDesc surface{};
     bool validation = true; // GL_KHR_debug / couches de validation Vulkan ; les messages d'erreur sont comptés
     bool vsync = false;
+    // Dessin direct dans l'image présentée (Vulkan, G185) au lieu d'une image hors écran copiée à la présentation : une copie
+    // en moins par image. Peut faire scintiller l'image (interface absente, zones noires) à très haute cadence sans vsync sur
+    // certains compositeurs (constaté : COSMIC + Mesa ANV à ~1000 FPS, docs/GAPS.md). Sans effet sur OpenGL et hors écran.
+    bool directPresentation = true;
     std::string appName = "engine";
 };
 
@@ -163,6 +167,8 @@ class Device
     virtual Result<> resize(Extent2D size) = 0;
     // Synchronisation verticale (RHI-08) ; sans effet hors écran.
     virtual void setVSync(bool enabled) = 0;
+    // Dessin direct dans l'image présentée (voir DeviceDesc::directPresentation) ; appliqué à l'image suivante.
+    virtual void setDirectPresentation(bool enabled) = 0;
     virtual void waitIdle() = 0;
 
     // Nombre de messages d'erreur ou d'avertissement reçus de la couche de validation depuis la création (GL_KHR_debug,

@@ -158,8 +158,13 @@ framebuffer de taille nulle ; fenêtre créée APRÈS `prepareWindowHints`, `GLF
   l'emplacement de l'image de fond (même poignée). La première soumission qui suit attend l'acquisition ; `present` la passe en
   disposition de présentation et la présente, sans copie. Son contenu ne survit pas d'une image à l'autre (il faut redessiner
   toute l'image, ce que fait le moteur). Un second `beginFrame` sans `present` rend la même image.
-- **Copie** (surface sans RGBA8, comme X11 chez Mesa, ou `ENGINE_VK_DIRECT_SWAPCHAIN=0`) : l'image de fond est une texture RGBA8
+- **Copie** (surface sans RGBA8, comme X11 chez Mesa, `DeviceDesc::directPresentation = false`, `setDirectPresentation(false)`
+  ou `ENGINE_VK_DIRECT_SWAPCHAIN=0`, qui l'emporte) : l'image de fond est une texture RGBA8
   du périphérique ; `present()` la copie (blit, mise à l'échelle si la taille a changé) dans l'image acquise puis présente.
+
+Le dessin direct se coupe et se rallume en cours de route (`setDirectPresentation`) : la chaîne est reconstruite à
+l'acquisition suivante. À très haute cadence sans vsync, il peut scintiller sur certains compositeurs (G193) : le coupant,
+on revient à la copie.
 
 `transferCounters()` compte les deux (`directPresents`, `copiedPresents`) ; la démo les journalise à l'arrêt.
 

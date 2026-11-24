@@ -93,6 +93,7 @@ class CountingDevice final : public orosmo::rhi::Device
     Result0 present() override { return inner_.present(); }
     Result0 resize(orosmo::rhi::Extent2D size) override { return inner_.resize(size); }
     void setVSync(bool enabled) override { inner_.setVSync(enabled); }
+    void setDirectPresentation(bool enabled) override { inner_.setDirectPresentation(enabled); }
     void waitIdle() override { inner_.waitIdle(); }
     std::uint64_t validationErrorCount() const noexcept override { return inner_.validationErrorCount(); }
     orosmo::rhi::DeviceStats stats() const noexcept override { return inner_.stats(); }

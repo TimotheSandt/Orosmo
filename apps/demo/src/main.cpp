@@ -185,6 +185,7 @@ int main(int argc, char **argv)
             game.setCaptureInteraction(launchOptions.hoverId, launchOptions.clickId);
             game.setFramePacing(demo::framePacingFor(launchOptions));
             game.setGpuTimings(launchOptions.gpuTimings);
+            game.setDirectPresentation(launchOptions.directPresentation);
             game.setInstanceCount(launchOptions.instances);
             game.setGpuDriven(launchOptions.gpuDriven);
             game.setDebugView(launchOptions.debugView, launchOptions.freezeFrustum);

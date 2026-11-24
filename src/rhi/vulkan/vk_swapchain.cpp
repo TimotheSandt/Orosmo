@@ -148,7 +148,8 @@ Result<> VulkanDevice::initSwapchain(const DeviceDesc &desc)
 {
     // ENGINE_VK_DIRECT_SWAPCHAIN=0 : toujours la copie de l'image hors écran (comparaison, contournement d'un pilote).
     if (const char *direct = std::getenv("ENGINE_VK_DIRECT_SWAPCHAIN"); direct != nullptr && std::string_view(direct) == "0")
-        directAllowed_ = false;
+        directForcedOff_ = true;
+    directAllowed_ = desc.directPresentation && !directForcedOff_;
     if (windowed_)
     {
         // Une surface qui ne sait pas recevoir la copie est refusée ici (le démarrage échoue, la démo peut basculer), pas au
@@ -351,6 +352,18 @@ void VulkanDevice::setVSync(bool enabled)
     vsync_ = enabled;
     if (swapchain_)
         swapchain_->dirty = true; // le mode de présentation change à la reconstruction
+}
+
+void VulkanDevice::setDirectPresentation(bool enabled)
+{
+    const bool allowed = enabled && !directForcedOff_;
+    if (directAllowed_ == allowed)
+        return;
+    directAllowed_ = allowed;
+    // Les usages des images de la chaîne changent à la reconstruction ; une image déjà acquise est d'abord présentée (`present`),
+    // la reconstruction n'a lieu qu'à l'acquisition suivante.
+    if (swapchain_)
+        swapchain_->dirty = true;
 }
 
 // ── Chaîne d'échange ────────────────────────────────────────────────────────

@@ -144,4 +144,37 @@ TEST_SUITE("rhi/vulkan/window")
         }
         CHECK(device->validationErrorCount() == 0);
     }
+
+    TEST_CASE("G185: direct presentation can be switched off and on live, even with an image already acquired")
+    {
+        // Paramètre de la démo (--direct-present, case de l'interface) : la chaîne est reconstruite à l'acquisition suivante ;
+        // une image acquise en dessin direct est d'abord dessinée et présentée normalement.
+        VulkanWindow window;
+        SKIP_TEST_IF_NULL(window.handle, "window able to host a Vulkan surface");
+        auto device = window.device(false);
+        SKIP_TEST_IF_NULL(device.get(), "windowed Vulkan 1.3 device");
+        for (int round = 0; round < 4; ++round)
+        {
+            const bool direct = round % 2 == 1;
+            auto frame = device->beginFrame();
+            REQUIRE(frame.has_value());
+            device->setDirectPresentation(direct); // image déjà acquise (ou non) : elle garde son mode jusqu'à present
+            auto encoder = device->createCommandEncoder();
+            RenderPassDesc pass;
+            pass.colors = {{.texture = *frame, .clearColor = {0.0f, 1.0f, 0.0f, 1.0f}}};
+            encoder->beginRenderPass(pass);
+            encoder->endRenderPass();
+            REQUIRE(device->submit(std::move(encoder)).has_value());
+            TextureCopy corner;
+            corner.size = {1, 1, 1};
+            auto pixel = device->readTexture(*frame, corner);
+            REQUIRE(pixel.has_value());
+            REQUIRE(pixel->size() == 4);
+            CHECK(static_cast<int>((*pixel)[1]) == 255);
+            REQUIRE(device->present().has_value());
+            for (int i = 0; i < 3; ++i)
+                CHECK(renderAndPresent(*device));
+        }
+        CHECK(device->validationErrorCount() == 0);
+    }
 }
