@@ -14,19 +14,27 @@ core::Result<BatchArena::Range> BatchArena::upload(rhi::Device &device, std::uin
     {
         active_ = static_cast<std::uint32_t>(owned - slots_.begin());
     }
-    else if (encoderId != 0 && encoderId < newest_)
+    else if (encoderId != 0 && std::ranges::find(evicted_, encoderId) != evicted_.end())
     {
-        // Encodeur plus ancien que les `framesInFlight` derniers : sa zone a été reprise, ses données ont pu être réécrites.
+        // Encodeur dont la zone a été reprise : ses données ont pu être réécrites. Un encodeur jamais vu, même d'identifiant plus
+        // petit qu'un autre déjà servi, reçoit au contraire une zone (l'ordre des premiers envois est libre).
         return core::makeError(core::ErrorCode::kBusy, "BatchArena: zone of this encoder already reused (more than framesInFlight encoders in flight)");
     }
     else
     {
         // Nouvel encodeur (nouvelle image) : zone suivante. Ses tampons remplacés ont été lus par un encodeur fini ; leur destruction
         // reste différée par le RHI.
-        newest_ = encoderId;
         next_ = (next_ + 1) % static_cast<std::uint32_t>(slots_.size());
         active_ = next_;
         Slot &fresh = slots_[active_];
+        if (fresh.owner != 0)
+        {
+            if (evicted_.size() >= kEvictedMemory)
+            {
+                evicted_.erase(evicted_.begin());
+            }
+            evicted_.push_back(fresh.owner);
+        }
         fresh.owner = encoderId;
         fresh.cursor = 0;
         fresh.retired.clear();

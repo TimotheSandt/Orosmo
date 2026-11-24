@@ -9,7 +9,8 @@
 // Contrat (revue CodeRabbit PR #12) : une zone appartient à son encodeur jusqu'à ce qu'un nouvel encodeur la reprenne ; un encodeur
 // qui revient (E1 -> E2 -> E1) continue dans sa zone, sans réécrire ses plages. Au plus `framesInFlight` encodeurs distincts
 // peuvent utiliser l'arène entre deux fins d'image (non soumis ou encore lus par le GPU) : l'arène ne voit pas les soumissions.
-// Un encodeur dont la zone a déjà été reprise (plus ancien que les `framesInFlight` derniers) reçoit `kBusy`.
+// Un encodeur dont la zone a déjà été reprise reçoit `kBusy` (les `kEvictedMemory` dernières reprises sont mémorisées) ; un encodeur
+// jamais vu reçoit une zone, quel que soit l'ordre de ses premiers envois par rapport aux autres encodeurs.
 #pragma once
 
 #include "orosmo/core/error.hpp"
@@ -17,6 +18,7 @@
 #include "orosmo/renderer/gpu_buffer.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -54,7 +56,8 @@ class BatchArena
     std::vector<Slot> slots_;
     std::uint32_t next_ = 0;   // dernière zone donnée à un nouvel encodeur
     std::uint32_t active_ = 0; // zone du dernier envoi
-    std::uint64_t newest_ = 0; // plus grand identifiant d'encodeur vu (les identifiants croissent)
+    static constexpr std::size_t kEvictedMemory = 64;
+    std::vector<std::uint64_t> evicted_; // derniers encodeurs dont la zone a été reprise (au plus kEvictedMemory)
 };
 
 } // namespace orosmo::renderer

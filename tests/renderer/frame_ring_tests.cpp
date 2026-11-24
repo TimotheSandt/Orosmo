@@ -211,6 +211,27 @@ TEST_SUITE("renderer/frame-ring")
         }
     }
 
+    TEST_CASE("BatchArena: the first upload of an older encoder after a newer one gets a zone, not kBusy")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            rd::BatchArena arena(2);
+            const std::vector<float> data(64, 1.0f);
+            auto newer = arena.upload(*gpu.device, 32, bytesOf(data), "test.batch");
+            auto older = arena.upload(*gpu.device, 31, bytesOf(data), "test.batch"); // jamais servi : pas de kBusy
+            REQUIRE(newer.has_value());
+            REQUIRE(older.has_value());
+            CHECK_FALSE(older->buffer == newer->buffer);
+            auto third = arena.upload(*gpu.device, 33, bytesOf(data), "test.batch"); // reprend la zone de 32
+            REQUIRE(third.has_value());
+            auto late = arena.upload(*gpu.device, 32, bytesOf(data), "test.batch");
+            REQUIRE_FALSE(late.has_value());
+            CHECK((late.error().code == orosmo::core::ErrorCode::kBusy));
+        }
+    }
+
     TEST_CASE("Mesh: prepareTransform writes nothing; uploadTransform writes the mesh's own block only when it is stale")
     {
         FOR_EACH_BACKEND(backend)
