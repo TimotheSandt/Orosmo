@@ -82,6 +82,16 @@ foreach(_comp IN LISTS _OROSMO_COMPONENTS)
     list(APPEND _OROSMO_IMPORTED_TARGETS "${_tgt}")
 endforeach()
 
+# Assets (M6 lot G) : KTX2 (ktx, qui dépend d'astcenc et de zstd) et meshoptimizer, comme tools/engine-sdk/engine.mk. Le nom
+# de l'archive astcenc dépend du jeu d'instructions choisi par vcpkg : on prend celle qui est installée.
+file(GLOB _OROSMO_ASTCENC "${_OROSMO_VCPKG_DIR}/lib/libastcenc-*-static.a")
+set(_OROSMO_ASSET_LIBS ktx)
+if(_OROSMO_ASTCENC)
+    list(GET _OROSMO_ASTCENC 0 _OROSMO_ASTCENC)
+    list(APPEND _OROSMO_ASSET_LIBS "${_OROSMO_ASTCENC}")
+endif()
+list(APPEND _OROSMO_ASSET_LIBS zstd meshoptimizer)
+
 # ── Platform third-party libraries (matches tools/engine-sdk/engine.mk) ──────
 if(WIN32)
     set(_OROSMO_PLATFORM_LIBS
@@ -149,7 +159,7 @@ if(NOT TARGET Orosmo::Orosmo)
     if(APPLE)
         target_link_libraries(Orosmo::Orosmo INTERFACE
             ${_OROSMO_IMPORTED_TARGETS}
-            ${_OROSMO_PLATFORM_LIBS}
+            ${_OROSMO_ASSET_LIBS} ${_OROSMO_PLATFORM_LIBS}
         )
         target_link_options(Orosmo::Orosmo INTERFACE
             "-Wl,-rpath,${_OROSMO_VCPKG_DIR}/lib"
@@ -159,7 +169,7 @@ if(NOT TARGET Orosmo::Orosmo)
             -Wl,--start-group
             ${_OROSMO_IMPORTED_TARGETS}
             -Wl,--end-group
-            ${_OROSMO_PLATFORM_LIBS}
+            ${_OROSMO_ASSET_LIBS} ${_OROSMO_PLATFORM_LIBS}
         )
     endif()
 endif()

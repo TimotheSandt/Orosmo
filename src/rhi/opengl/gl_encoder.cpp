@@ -830,7 +830,9 @@ void GlEncoder::copyBufferToTexture(BufferHandle src, TextureHandle dst, const T
 {
     const BufferRes *b = device_.get(src);
     const TextureRes *t = device_.get(dst);
-    if (!check(!inPass_, ErrorCode::kInvalidArgument, "copyBufferToTexture: inside a render pass") ||
+    if (!check(t == nullptr || !formatInfo(t->desc.format).compressed(), ErrorCode::kUnsupported,
+               "copyBufferToTexture: compressed textures are written by Device::updateTexture only") ||
+        !check(!inPass_, ErrorCode::kInvalidArgument, "copyBufferToTexture: inside a render pass") ||
         !check(b != nullptr && t != nullptr, ErrorCode::kNotFound, "copyBufferToTexture: stale or null buffer/texture") ||
         !check(hasFlag(b->desc.usage, BufferUsage::kCopySrc) && hasFlag(t->desc.usage, TextureUsage::kCopyDst), ErrorCode::kInvalidArgument,
                "copyBufferToTexture: buffer needs CopySrc and texture CopyDst"))
@@ -861,7 +863,9 @@ void GlEncoder::copyTextureToBuffer(TextureHandle src, BufferHandle dst, const T
 {
     const TextureRes *t = device_.get(src);
     const BufferRes *b = device_.get(dst);
-    if (!check(!inPass_, ErrorCode::kInvalidArgument, "copyTextureToBuffer: inside a render pass") ||
+    if (!check(t == nullptr || !formatInfo(t->desc.format).compressed(), ErrorCode::kUnsupported,
+               "copyTextureToBuffer: compressed textures cannot be copied to a buffer") ||
+        !check(!inPass_, ErrorCode::kInvalidArgument, "copyTextureToBuffer: inside a render pass") ||
         !check(b != nullptr && t != nullptr, ErrorCode::kNotFound, "copyTextureToBuffer: stale or null buffer/texture") ||
         !check(hasFlag(b->desc.usage, BufferUsage::kCopyDst) && hasFlag(t->desc.usage, TextureUsage::kCopySrc), ErrorCode::kInvalidArgument,
                "copyTextureToBuffer: texture needs CopySrc and buffer CopyDst"))
@@ -895,7 +899,8 @@ void GlEncoder::generateMips(TextureHandle handle)
         check(t != nullptr, ErrorCode::kNotFound, "generateMips: stale or null texture") &&
         check(!t->defaultFramebuffer, ErrorCode::kInvalidArgument, "generateMips: the window backbuffer has no mip chain") &&
         check(!formatInfo(t->desc.format).isDepth() && formatInfo(t->desc.format).kind != FormatKind::kUint, ErrorCode::kInvalidArgument,
-              "generateMips: depth and integer formats have no mip generation"))
+              "generateMips: depth and integer formats have no mip generation") &&
+        check(!formatInfo(t->desc.format).compressed(), ErrorCode::kInvalidArgument, "generateMips: compressed formats carry their own mips"))
     {
         GlDevice::bindScratchTexture(t->target, t->id); // n'écrase pas une texture liée par setBindGroup
         glGenerateMipmap(t->target);
