@@ -850,7 +850,21 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
     RenderGraphBuilder::Resources known;
     known.renderSize = renderSize;
     known.outputSize = output.size;
-    known.sceneColor = graph_.importTexture("scene.color", sceneTarget_.color(0), {.format = sceneTarget_.info().colorFormats[0], .size = renderSize});
+    // A63 : la scène va droit dans la sortie quand la copie 1:1 serait la seule chose entre les deux (voir setRenderIntoOutput).
+    // La couleur de scène et la sortie sont alors UNE ressource du graphe : l'ordre des passes qui écrivent la sortie est gardé.
+    const bool intoOutput = renderIntoOutput_ && !output.texture.isNull() && !scaled() && !modeRuns() && !needsHistory() && frameGenMode_ == nullptr &&
+                            postProcessPasses_.empty() && aovLayout_.set().list().empty() && output.format == sceneTarget_.info().colorFormats[0] &&
+                            output.size.width == renderSize.width && output.size.height == renderSize.height;
+    renderedIntoOutput_ = intoOutput;
+    if (intoOutput)
+    {
+        known.output = graph_.importTexture("output", output.texture, {.format = output.format, .size = output.size});
+        known.sceneColor = known.output;
+    }
+    else
+    {
+        known.sceneColor = graph_.importTexture("scene.color", sceneTarget_.color(0), {.format = sceneTarget_.info().colorFormats[0], .size = renderSize});
+    }
     for (const Aov aov : aovLayout_.set().list())
     {
         const AovInfo &info = aovInfo(aov);
@@ -866,7 +880,7 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
     {
         known.sceneDepth = graph_.importTexture("scene.depth", sceneTarget_.depth(), {.format = rhi::Format::kD32Float, .size = renderSize});
     }
-    if (!output.texture.isNull())
+    if (!output.texture.isNull() && !intoOutput)
     {
         known.output = graph_.importTexture("output", output.texture, {.format = output.format, .size = output.size});
     }
@@ -935,7 +949,7 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
     const rhi::TextureHandle previous = previousValid ? history_[lastHistory_].color(0) : rhi::TextureHandle{};
 
     // ── Mise à l'échelle (ou copie 1:1) vers la sortie ────────────────────────────────────────────────────────────────
-    if (modeRuns() || !scaled())
+    if (!intoOutput && (modeRuns() || !scaled()))
     {
         if (!known.output.valid())
         {
@@ -1171,6 +1185,11 @@ core::Result<> SceneRenderer::saveColorPng(const std::filesystem::path &path) co
     if (!sceneTarget_.valid())
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::saveColorPng: nothing was rendered yet");
+    }
+    if (renderedIntoOutput_)
+    {
+        return makeError(ErrorCode::kUnsupported, "SceneRenderer::saveColorPng: the last frame was drawn into the output (setRenderIntoOutput), "
+                                                  "the scene target was not written");
     }
     return savePng(device_, sceneTarget_.color(0), path);
 }

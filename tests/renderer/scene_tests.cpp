@@ -429,6 +429,70 @@ TEST_SUITE("renderer/scene")
         }
     }
 
+    TEST_CASE("A63: setRenderIntoOutput draws the scene straight into the output (no upscale pass, same pixels) only when nothing else needs the scene target")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Scene scene(backend);
+            REQUIRE(scene.gpu.device);
+            auto program = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag");
+            REQUIRE(program.has_value());
+            auto mesh = rd::Mesh::create(*scene.gpu.device, triangleData({0.5f, 0.25f, 1.0f}));
+            REQUIRE(mesh.has_value());
+            mesh->setProgram(*program);
+            auto lights = rd::LightManager::create(*scene.gpu.device);
+            REQUIRE(lights.has_value());
+            lights->setAmbientLight({1, 1, 1}, 1.0f);
+            REQUIRE(lights->upload().has_value());
+            scene.renderer->setLights(&*lights);
+            rd::Camera camera;
+            camera.setAspect(8, 8);
+            camera.setFarPlane(100.0f);
+            scene.renderer->setOutputResolution(8, 8);
+
+            auto frame = [&](TextureHandle out)
+            {
+                scene.gpu.run(
+                    [&](CommandEncoder &e)
+                    {
+                        REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                        REQUIRE(scene.renderer->setCamera(camera).has_value());
+                        REQUIRE(scene.renderer->drawMesh(*mesh, camera).has_value());
+                        REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
+                    });
+            };
+            auto order = [&]() { return scene.renderer->renderGraph().executionOrder(); };
+            auto has = [](const std::vector<std::string> &passes, const char *name) { return std::find(passes.begin(), passes.end(), name) != passes.end(); };
+
+            CHECK_FALSE(scene.renderer->renderIntoOutput()); // désactivé par défaut
+            const TextureHandle copied = scene.output(8, 8);
+            frame(copied);
+            CHECK_FALSE(scene.renderer->renderedIntoOutput());
+            CHECK(has(order(), "upscale"));
+
+            scene.renderer->setRenderIntoOutput(true);
+            const TextureHandle direct = scene.output(8, 8);
+            frame(direct);
+            CHECK(scene.renderer->renderedIntoOutput());
+            CHECK_FALSE(has(order(), "upscale"));
+            CHECK(has(order(), "scene"));
+            for (const auto &[x, y] : {std::pair{4, 4}, std::pair{0, 0}, std::pair{7, 7}, std::pair{2, 5}})
+            {
+                CHECK(scene.gpu.pixel(direct, x, y) == scene.gpu.pixel(copied, x, y));
+            }
+            CHECK((tests::errorOf(scene.renderer->saveColorPng("unused.png")) == ErrorCode::kUnsupported)); // cible de scène pas écrite
+
+            // Mise à l'échelle demandée : la copie revient (la scène est plus petite que la sortie).
+            scene.renderer->setUpscalingEnabled(true);
+            scene.renderer->setRenderScale(0.5f);
+            const TextureHandle scaled = scene.output(8, 8);
+            frame(scaled);
+            CHECK_FALSE(scene.renderer->renderedIntoOutput());
+            CHECK(has(order(), "upscale"));
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
     TEST_CASE("SceneRenderer: render scale shrinks the scene target and upscales into the full-size output; modes and passes are extension points")
     {
         FOR_EACH_BACKEND(backend)
