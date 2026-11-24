@@ -60,10 +60,11 @@ On suit `docs/03` §2 (arborescence `include/orosmo/<module>/*.hpp`, `src/<modul
 Linux (Ubuntu/Debian ; g++ 13.3 vérifié). Dépôt sur un disque monté sans bit exécutable : lancer les scripts avec `sh`.
 
 ```bash
-# 1. Dépendances (une fois). apt pour ce qu'il a ; UNE commande vcpkg (lit vcpkg.json) pour glad v1 et msdfgen.
-sudo apt install build-essential cmake cargo python3 libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc \
+# 1. Dépendances (une fois). apt pour ce qu'il a ; UNE commande vcpkg (lit vcpkg.json) pour glad v1, msdfgen et GLFW 3.4+ (Wayland natif).
+sudo apt install build-essential cmake cargo python3 libglm-dev libstb-dev libshaderc-dev glslc \
     doctest-dev libfreetype-dev libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
-    autoconf autoconf-archive automake libtool
+    autoconf autoconf-archive automake libtool pkg-config libwayland-dev libxkbcommon-dev wayland-protocols \
+    libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
 git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
 ~/vcpkg/vcpkg install                   # à la racine du dépôt ; make relie ensuite les paquets apt tout seul
 

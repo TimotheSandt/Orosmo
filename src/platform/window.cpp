@@ -42,6 +42,16 @@ std::unordered_map<void *, Window *> &owners()
     static std::unordered_map<void *, Window *> table;
     return table;
 }
+// Wayland ne donne ni ne laisse choisir la position d'une fenêtre (GLFW 3.4 et plus : erreur GLFW_FEATURE_UNAVAILABLE).
+bool platformHasWindowPosition()
+{
+#if GLFW_VERSION_MAJOR > 3 || (GLFW_VERSION_MAJOR == 3 && GLFW_VERSION_MINOR >= 4)
+    return glfwGetPlatform() != GLFW_PLATFORM_WAYLAND;
+#else
+    return true;
+#endif
+}
+
 // Initialise GLFW une fois : rappel d'erreur journalisé (reprend celui de l'ancien backend OpenGL).
 bool initializeGlfw()
 {
@@ -175,8 +185,11 @@ int Window::init(const std::function<void()> &beforeCreate)
         return -1;
     }
 
-    glfwGetWindowPos(native(this->window), &this->parameters.posX, &this->parameters.posY);
-    WINDOW_CHECK_ERRORS("glfwGetWindowPos");
+    if (platformHasWindowPosition())
+    {
+        glfwGetWindowPos(native(this->window), &this->parameters.posX, &this->parameters.posY);
+        WINDOW_CHECK_ERRORS("glfwGetWindowPos");
+    }
 
     glfwSetWindowUserPointer(native(this->window), this);
     WINDOW_CHECK_ERRORS("glfwSetWindowUserPointer");
@@ -516,13 +529,18 @@ void Window::saveWindowedParameters()
 
     glfwGetWindowSize(native(this->window), &this->parameters.windowedWidth, &this->parameters.windowedHeight);
     WINDOW_CHECK_ERRORS("glfwGetWindowSize");
-    glfwGetWindowPos(native(this->window), &this->parameters.windowedPosX, &this->parameters.windowedPosY);
-    WINDOW_CHECK_ERRORS("glfwGetWindowPos");
+    if (platformHasWindowPosition())
+    {
+        glfwGetWindowPos(native(this->window), &this->parameters.windowedPosX, &this->parameters.windowedPosY);
+        WINDOW_CHECK_ERRORS("glfwGetWindowPos");
+    }
 }
 
-void Window::postWindowStateChange() const
+void Window::postWindowStateChange()
 {
-    // Rien à reconfigurer côté graphique : le RHI relit la taille du framebuffer au début de chaque image.
+    // Rien à reconfigurer côté graphique : le RHI relit la taille gardée ici au début de chaque image. Elle est relue tout de
+    // suite (le rappel de GLFW peut n'arriver qu'au prochain glfwPollEvents).
+    this->refreshCachedState();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

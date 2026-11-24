@@ -14,7 +14,12 @@
     },
     {
       "name": "glfw3",
-      "platform": "!linux"
+      "features": [
+        {
+          "name": "wayland",
+          "platform": "linux"
+        }
+      ]
     },
     {
       "name": "glm",

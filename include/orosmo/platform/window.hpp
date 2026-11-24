@@ -136,7 +136,7 @@ class Window
 
     // Window state
     void saveWindowedParameters();
-    void postWindowStateChange() const;
+    void postWindowStateChange();
 
     void activateFullscreen();
     void activateWindowed();
