@@ -12,7 +12,7 @@
 #
 # ── Output ────────────────────────────────────────────────────────────────────
 #   lib/<build>/libui.a  lib/<build>/libcore.a  lib/<build>/libplatform.a
-#   lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libthirdparty.a
+#   lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libassets.a  lib/<build>/libthirdparty.a
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
 #   dist/pkg-<platform>/          — staging, zipped into dist/orosmo-pkg-<platform>.zip
@@ -153,11 +153,12 @@ LIB_CORE       := $(LIB_DIR)/$(BUILD_TYPE)/libcore.a
 LIB_PLATFORM   := $(LIB_DIR)/$(BUILD_TYPE)/libplatform.a
 LIB_RHI        := $(LIB_DIR)/$(BUILD_TYPE)/librhi.a
 LIB_RENDERER   := $(LIB_DIR)/$(BUILD_TYPE)/librenderer.a
+LIB_ASSETS     := $(LIB_DIR)/$(BUILD_TYPE)/libassets.a
 LIB_THIRDPARTY := $(LIB_DIR)/$(BUILD_TYPE)/libthirdparty.a
 
-ENGINE_LIB_NAMES := libui.a libcore.a libplatform.a librhi.a librenderer.a libthirdparty.a
+ENGINE_LIB_NAMES := libui.a libcore.a libplatform.a librhi.a librenderer.a libassets.a libthirdparty.a
 
-ENGINE_LIBS := $(LIB_UI) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_THIRDPARTY)
+ENGINE_LIBS := $(LIB_UI) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_ASSETS) $(LIB_THIRDPARTY)
 
 # ── Per-subsystem sources ─────────────────────────────────────────────────────
 UI_SRCS         := $(shell find $(LIBRARIES_SRC_DIR)/ui         -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
@@ -165,6 +166,7 @@ Core_SRCS       := $(shell find $(LIBRARIES_SRC_DIR)/core       -type f \( -name
 Platform_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/platform   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Rhi_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/rhi        -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Renderer_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/renderer   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+Assets_SRCS     := $(shell find $(LIBRARIES_SRC_DIR)/assets     -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 ThirdParty_SRCS := $(shell find $(LIBRARIES_SRC_DIR)/ThirdParty -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 
 obj_from_src = \
@@ -176,9 +178,10 @@ Core_OBJS       := $(call obj_from_src,$(Core_SRCS))
 Platform_OBJS   := $(call obj_from_src,$(Platform_SRCS))
 Rhi_OBJS        := $(call obj_from_src,$(Rhi_SRCS))
 Renderer_OBJS   := $(call obj_from_src,$(Renderer_SRCS))
+Assets_OBJS     := $(call obj_from_src,$(Assets_SRCS))
 ThirdParty_OBJS := $(call obj_from_src,$(ThirdParty_SRCS))
 
-ALL_ENGINE_OBJS := $(UI_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(ThirdParty_OBJS)
+ALL_ENGINE_OBJS := $(UI_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(Assets_OBJS) $(ThirdParty_OBJS)
 
 # ── Git remote detection ──────────────────────────────────────────────────────
 # Reads the 'origin' remote and extracts the host and owner/repo slug.
@@ -301,6 +304,14 @@ $(LIB_RENDERER): $(Renderer_OBJS) mk/engine.mk
 	$(ORS_Q)rm -f $@
 	$(call ors_link,AR [$(BUILD_TYPE)])
 	$(ORS_Q)$(AR) rcs $@ $(Renderer_OBJS)
+	$(ors_end)
+
+# Archive recréée (rm) : `ar rcs` garderait les objets de fichiers supprimés.
+$(LIB_ASSETS): $(Assets_OBJS) mk/engine.mk
+	@mkdir -p "$(dir $@)"
+	$(ORS_Q)rm -f $@
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $(Assets_OBJS)
 	$(ors_end)
 
 $(LIB_THIRDPARTY): $(ThirdParty_OBJS)
