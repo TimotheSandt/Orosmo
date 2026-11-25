@@ -6,6 +6,7 @@
 #include <bit>
 #include <cmath>
 #include <numbers>
+#include <utility>
 
 namespace orosmo::renderer
 {
@@ -320,16 +321,19 @@ core::Result<> IblFeature::createStaticResources(ShaderLibrary &library, const s
     equirectSampler.addressU = rhi::AddressMode::kRepeat;
     equirectSampler.addressV = equirectSampler.addressW = rhi::AddressMode::kClampToEdge;
     equirectSampler.debugName = "ibl.equirect";
-    auto cs = device_.createSampler(cubeSampler);
-    auto ls = device_.createSampler(lutSampler);
-    auto es = device_.createSampler(equirectSampler);
-    if (!cs || !ls || !es)
+    // Chaque échantillonneur est rangé dans son membre dès sa création : après un échec partiel, `release()` (destructeur, appelé
+    // quand `create` abandonne la feature) détruit ceux qui existent déjà.
+    const std::pair<const rhi::SamplerDesc *, rhi::SamplerHandle *> samplers[] = {
+        {&cubeSampler, &cubeSampler_}, {&lutSampler, &lutSampler_}, {&equirectSampler, &equirectSampler_}};
+    for (const auto &[desc, member] : samplers)
     {
-        return std::unexpected(!cs ? cs.error() : !ls ? ls.error() : es.error());
+        auto sampler = device_.createSampler(*desc);
+        if (!sampler)
+        {
+            return std::unexpected(sampler.error());
+        }
+        *member = *sampler;
     }
-    cubeSampler_ = *cs;
-    lutSampler_ = *ls;
-    equirectSampler_ = *es;
 
     // Table BRDF (RG16F).
     const std::uint32_t lutSize = settings_.brdfLutSize;

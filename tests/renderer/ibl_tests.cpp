@@ -3,6 +3,7 @@
 // et par une sonde (valeurs attendues tirées de la table BRDF du CPU).
 #include <doctest/doctest.h>
 
+#include "renderer/counting_device.hpp"
 #include "renderer/repo_paths.hpp"
 #include "rhi/gpu_fixture.hpp"
 
@@ -302,6 +303,35 @@ TEST_SUITE("renderer/ibl")
             frame.cameraRelativeOrigin = frame.cameraWorldHigh; // sans rendu relatif : origine 0, positions monde
             REQUIRE(ibl.prepare(frame).has_value());
             CHECK(ibl.gpuBlock().probePositions[0] == glm::vec4(16777216.0f, 2.0f, -1.5f, 0.25f));
+        }
+    }
+
+    TEST_CASE("IblFeature::create: a sampler that cannot be created leaves no sampler behind")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            for (int failing = 0; failing < 3; ++failing)
+            {
+                INFO("failing sampler ", failing);
+                tests::CountingDevice counting(*gpu.device);
+                counting.failSamplerAt = failing;
+                rd::ShaderLibrary library(counting);
+                rd::PipelineCache pipelines(counting);
+                auto created = rd::IblFeature::create(counting, library, pipelines, shaderDir(), smallSettings());
+                CHECK(!created.has_value());
+                CHECK(counting.liveSamplers == 0);
+            }
+            tests::CountingDevice counting(*gpu.device);
+            {
+                rd::ShaderLibrary library(counting);
+                rd::PipelineCache pipelines(counting);
+                auto created = rd::IblFeature::create(counting, library, pipelines, shaderDir(), smallSettings());
+                REQUIRE(created.has_value());
+                CHECK(counting.liveSamplers == 3);
+            }
+            CHECK(counting.liveSamplers == 0);
         }
     }
 
