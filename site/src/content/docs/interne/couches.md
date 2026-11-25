@@ -52,9 +52,9 @@ tools/                            compilateur .cui, outil orosmo, SDK, contrôle
 | --- | --- | --- |
 | `core` | `Result<T>` (= `std::expected`), logger, tâches, allocateurs, configuration, temps, événements, maths (positions en `double`), ressources, VFS, réflexion et sérialisation, surveillance de fichiers | `src/core/README.md` |
 | `platform` | `Window` (GLFW caché derrière une poignée opaque), `InputManager`, services du système déclarés par `core` | `src/platform/README.md` |
-| `rhi` | [interface graphique abstraite](/architecture/rhi/) et backends | `src/rhi/README.md` |
-| `renderer` | [graphe de passes, plugins, scène, 2D](/architecture/renderer/) | `src/renderer/README.md` |
-| `ui` | [widgets, mise en page, thèmes](/architecture/ui/) | `src/ui/README.md` |
+| `rhi` | [interface graphique abstraite](/interne/rhi/) et backends | `src/rhi/README.md` |
+| `renderer` | [graphe de passes, plugins, scène, 2D](/interne/renderer/) | `src/renderer/README.md` |
+| `ui` | [widgets, mise en page, thèmes](/interne/ui/) | `src/ui/README.md` |
 
 ## Conventions
 

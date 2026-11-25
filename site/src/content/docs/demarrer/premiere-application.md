@@ -2,7 +2,7 @@
 title: Exemples
 description: Le projet minimal du paquet, le projet de démarrage d'orosmo init et la démo unique du dépôt.
 sidebar:
-  order: 6
+  order: 3
 ---
 
 ## `examples/minimal` (paquet)
@@ -59,7 +59,7 @@ Résultat : `{"data":{"name":"minimal","sum":524800,"tasksCompleted":1024},"vers
 
 Source : `tools/engine-sdk/template/src/` (`main.cpp`, `hud_state.hpp`, `HudView.cui`). Une fenêtre, une scène 3D sur le
 RHI (`SceneRenderer`, `Mesh`, `LightManager`) et un panneau `.cui` lié à une structure d'état (voir
-[Le langage d'interface](/utiliser/langage-cui/)).
+[Le langage d'interface](/guides/interface/langage-cui/)).
 
 ## La démo unique du dépôt (`apps/demo`)
 

@@ -2,7 +2,7 @@
 title: Pipeline de shaders
 description: GLSL 450 source unique, compilation SPIR-V, réflexion, traduction pour OpenGL, cache et rechargement à chaud.
 sidebar:
-  order: 6
+  order: 4
 ---
 
 *(Sources : `docs/03` §5, `src/rhi/README.md` « Pipeline de shaders », `src/renderer/README.md`.)*

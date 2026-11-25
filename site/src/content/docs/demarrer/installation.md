@@ -6,7 +6,7 @@ sidebar:
 ---
 
 Cette page concerne le **dépôt du moteur** (travailler sur Orosmo lui-même). Pour écrire un programme avec une release,
-sans compiler le moteur, voir [Créer un projet](/utiliser/projet/).
+sans compiler le moteur, voir [Créer un projet](/demarrer/premier-projet/).
 *(Sources : `CLAUDE.md`, `README.md`.)*
 
 ## Prérequis

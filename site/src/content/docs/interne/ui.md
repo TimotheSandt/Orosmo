@@ -2,7 +2,7 @@
 title: Interface (orosmo::ui)
 description: Arbre de widgets, mise en page, liaisons, événements nommés, thèmes et listes de dessin.
 sidebar:
-  order: 4
+  order: 5
 ---
 
 `orosmo::ui` construit l'interface : arbre de widgets, mise en page, thèmes JSON, événements nommés. Il **produit des
@@ -34,10 +34,10 @@ par `useSystemClipboard(ui, window)`.
 
 ## Séparation des rôles
 
-- **Structure et liaisons** : décrites en [`.cui`](/utiliser/langage-cui/) (ou construites en C++).
+- **Structure et liaisons** : décrites en [`.cui`](/guides/interface/langage-cui/) (ou construites en C++).
 - **Logique** : en C++. Un événement nomme une fonction ; en développement, une action nommée est retrouvée par nom dans
   le registre au moment de l'appel.
-- **Apparence** : dans un [thème JSON](/utiliser/themes/), jamais en dur dans un widget sauf surcharge locale explicite.
+- **Apparence** : dans un [thème JSON](/guides/interface/themes/), jamais en dur dans un widget sauf surcharge locale explicite.
 - **Liaison de données** : typée, dans les deux sens, écriture visible à l'image suivante.
 
 ## Rendu économe

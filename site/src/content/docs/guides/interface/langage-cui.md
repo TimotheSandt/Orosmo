@@ -2,7 +2,7 @@
 title: Le langage d'interface .cui
 description: Décrire une interface en .cui, la compiler en C++, lier l'état et nommer les événements.
 sidebar:
-  order: 4
+  order: 3
 ---
 
 Une interface s'écrit dans le langage maison `.cui`. Le fichier est compilé en C++ par l'outil `cui`, puis par le
@@ -14,7 +14,7 @@ compilateur C++ avec le reste du programme : **aucun interprète à l'exécution
 Le langage **décrit** l'arbre de widgets, les liaisons et les événements ; il ne **décide** rien :
 
 - la **logique** est en C++ : un événement **nomme** une fonction C++, jamais une expression ;
-- l'**apparence** est dans un [thème JSON](/utiliser/themes/) : une surcharge locale nomme un jeton du thème ;
+- l'**apparence** est dans un [thème JSON](/guides/interface/themes/) : une surcharge locale nomme un jeton du thème ;
 - l'**état** vit en C++ et la vue le lie (`@Mutable`) ; il n'y a ni boucle, ni condition, ni état local dans le langage.
 
 ## Un exemple : le panneau du projet de démarrage

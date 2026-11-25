@@ -1,6 +1,8 @@
 ---
 title: État du moteur
 description: Jalons livrés, fonctions partielles ou absentes, et où trouver les preuves dans le dépôt.
+sidebar:
+  order: 1
 ---
 
 La référence est le dépôt : la checklist `docs/02-CHECKLIST_FONCTIONNALITES.md` (un identifiant par fonction, avec son

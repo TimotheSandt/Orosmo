@@ -2,7 +2,7 @@
 title: Thèmes JSON
 description: Jetons, styles par widget et par état, héritage, images en neuf parties, polices et rechargement à chaud.
 sidebar:
-  order: 5
+  order: 4
 ---
 
 L'apparence de l'interface vient de fichiers JSON (`res/themes/`) ; un widget ne contient pas de couleur ni de taille en

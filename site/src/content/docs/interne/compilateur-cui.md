@@ -2,7 +2,7 @@
 title: Le compilateur .cui (tools/cui-rs)
 description: Comment l'outil cui transforme une vue .cui en C++, ses diagnostics et ses tests.
 sidebar:
-  order: 5
+  order: 6
 ---
 
 Le compilateur du langage d'interface est un programme Rust : `tools/cui-rs/` (binaire `cui`). Il est appelé par le build,

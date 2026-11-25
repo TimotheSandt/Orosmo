@@ -1,6 +1,8 @@
 ---
 title: Histoire et méthode de développement
 description: D'où vient Orosmo, pourquoi le projet s'est arrêté, et comment il est développé aujourd'hui avec Claude sous la direction de l'auteur.
+sidebar:
+  order: 2
 ---
 
 Cette page dit honnêtement comment Orosmo a été écrit. Le même texte, plus court, figure dans le `README.md` du dépôt
