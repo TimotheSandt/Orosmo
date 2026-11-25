@@ -133,10 +133,11 @@ thread qui appelle `poll()`, donc sans verrou côté application.
 orosmo::core::FileWatcher watcher;
 watcher.setPollInterval(std::chrono::milliseconds(500));   // au plus 2 interrogations par seconde
 watcher.setFullScanEvery(4);                               // nouveaux fichiers cherchés un poll sur 4
-auto id = watcher.watch(GET_RESOURCE_PATH("config"), [&](const orosmo::core::FileEvent &e) {
+// Un fichier précis (et non le dossier) : loadFile remplace toute la couche fichier, un autre .json ne doit pas la déclencher.
+auto id = watcher.watch(GET_RESOURCE_PATH("config/game.json"), [&](const orosmo::core::FileEvent &e) {
     if (e.change == orosmo::core::FileChange::kModified)
         (void)config.loadFile(e.path);
-}, {".json"});
+});
 
 while (running)
 {
