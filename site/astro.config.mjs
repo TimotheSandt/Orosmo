@@ -15,7 +15,6 @@ export default defineConfig({
       description: 'Orosmo : moteur 3D et 2D générique en C++23, RHI Vulkan et OpenGL, interface en langage .cui.',
       defaultLocale: 'root',
       locales: { root: { label: 'Français', lang: 'fr' } },
-      logo: { src: './src/assets/logo.svg', alt: 'Orosmo' },
       favicon: '/favicon.svg',
       social: [{ icon: 'github', label: 'GitHub', href: repo }],
       editLink: { baseUrl: `${repo}/edit/dev/site/` },
