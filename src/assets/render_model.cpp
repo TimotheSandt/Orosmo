@@ -391,6 +391,16 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
             nodes.push_back(static_cast<int>(n));
         }
     }
+    // Maillages glTF dessinés aussi par un nœud statique : leur jeu de tampons de base reste au repos (le skinning n'y écrit pas).
+    std::vector<char> staticUse(model.meshes.size(), 0);
+    for (int n : nodes)
+    {
+        const NodeData &node = model.nodes[static_cast<std::size_t>(n)];
+        if (node.mesh >= 0 && node.skin < 0)
+        {
+            staticUse[static_cast<std::size_t>(node.mesh)] = 1;
+        }
+    }
     for (int n : nodes)
     {
         const int mesh = model.nodes[static_cast<std::size_t>(n)].mesh;
@@ -403,10 +413,11 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
         {
             std::size_t index = gpu.mesh;
             // ANIM-01 : chaque nœud skinné a sa propre sortie de skinning (sa pose) ; la géométrie au repos vient de la primitive.
-            // Les nœuds statiques gardent un seul jeu de tampons.
+            // Les nœuds statiques gardent un seul jeu de tampons, au repos : un nœud skinné ne prend le jeu de base que si aucun
+            // nœud statique ne le dessine.
             if (gpu.skinned && skinnedNode)
             {
-                if (gpu.claimed)
+                if (gpu.claimed || staticUse[static_cast<std::size_t>(mesh)] != 0)
                 {
                     auto copy = buildMesh(static_cast<std::size_t>(mesh), gpu.primitive, ".node" + std::to_string(n));
                     if (!copy)

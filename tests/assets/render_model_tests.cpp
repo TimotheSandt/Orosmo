@@ -276,7 +276,7 @@ TEST_SUITE("assets/render_model")
         }
     }
 
-    TEST_CASE("RenderModel: two skinned nodes on one primitive get their own GPU mesh; static nodes share theirs")
+    TEST_CASE("RenderModel: two skinned nodes on one primitive get their own GPU mesh; static nodes share theirs, at rest")
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -304,12 +304,19 @@ TEST_SUITE("assets/render_model")
             const auto &items = skinnable.items();
             CHECK(items[0].mesh != items[1].mesh); // une sortie de skinning par nœud skinné
             CHECK(items[2].mesh == items[3].mesh); // statiques : un seul jeu de tampons
-            CHECK(skinnable.meshCount() == 2);
+            CHECK(items[0].mesh != items[2].mesh); // ... au repos : aucun nœud skinné n'écrit dans le leur
+            CHECK(items[1].mesh != items[2].mesh);
+            CHECK(skinnable.meshCount() == 3);
             CHECK(skinnable.meshSource(items[1].mesh).mesh == 0);
             CHECK(skinnable.meshSource(items[1].mesh).primitive == 0);
 
             auto plain = scene.model(m, "plain", false); // sans skinning GPU : tout est partagé
             CHECK(plain.meshCount() == 1);
+
+            m.nodes[2].mesh = -1; // sans nœud statique, le premier nœud skinné prend le jeu de base
+            m.nodes[3].mesh = -1;
+            auto skinnedOnly = scene.model(m, "skinned-only", true);
+            CHECK(skinnedOnly.meshCount() == 2);
         }
     }
 
