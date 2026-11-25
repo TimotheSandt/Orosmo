@@ -325,7 +325,7 @@ Choix faits pendant le jalon M5 (`docs/releases/M5.md`). Aucun n'est une décisi
 
 ## Propositions de M14 (à confirmer par l'auteur)
 
-- **A73. M14 : spécifications d'hébergement (2026-11-24, proposé, appliqué par défaut, à confirmer).** Réponse au point 5 de A43, choisie pour un coût nul et sans infrastructure à maintenir :
+- **A74. M14 : spécifications d'hébergement (2026-11-24, proposé, appliqué par défaut, à confirmer).** Réponse au point 5 de A43, choisie pour un coût nul et sans infrastructure à maintenir :
   1. **Registre : GitHub Container Registry (GHCR)**, `ghcr.io/<propriétaire>/orosmo-site`, gratuit pour un dépôt public (stockage et transfert des paquets publics non facturés) ; authentification de la CI par `GITHUB_TOKEN` (`permissions: packages: write`), aucun secret à créer.
   2. **Image** : site statique Astro (Starlight pour le wiki) construit dans une étape `node:<version>-alpine`, servi par `nginx:<version>-alpine` (`site/Dockerfile`, versions épinglées), port 80, sans état ni base de données.
   3. **Déploiement serveur : manuel et documenté** (`docker pull` puis `docker run -d -p 80:80 …`, `docs/DEPLOIEMENT_SITE.md`) ; le serveur et le nom de domaine, s'il y en a, sont choisis et payés par l'auteur. Pas de déploiement automatique (il demanderait une clé SSH ou un accès au serveur dans les secrets de la CI).

@@ -1,6 +1,6 @@
 # Déploiement du site vitrine et du wiki (M14)
 
-Jalon M14 (`WEB-01` à `WEB-05`, `docs/05-PLAN_PAR_JALONS.md`). Spécifications d'hébergement : `docs/QUESTIONS.md`, **A73**
+Jalon M14 (`WEB-01` à `WEB-05`, `docs/05-PLAN_PAR_JALONS.md`). Spécifications d'hébergement : `docs/QUESTIONS.md`, **A74**
 (proposées, appliquées par défaut, à confirmer par l'auteur). Code : `site/` (voir `site/README.md`), CI :
 `.github/workflows/site.yml`.
 
@@ -19,14 +19,14 @@ serveur de l'auteur : docker pull + docker run (manuel)
   `astro build`, vérification des liens), `nginx:1.30.4-alpine` sert `dist/` sur le port 80 (`site/nginx.conf` ; environ
   100 Mo ; `HEALTHCHECK` intégré).
 - **Déploiement** : manuel (aucun accès au serveur dans les secrets de la CI).
-- **Staging sur PR (WEB-05)** : non retenu pour l'instant (A73 point 4, G204).
+- **Staging sur PR (WEB-05)** : non retenu pour l'instant (A74 point 4, G205).
 
 ## Coûts
 
 | Poste | Coût | Remarque |
 | --- | --- | --- |
 | GitHub Actions (CI « Site ») | 0 € | minutes gratuites des dépôts publics |
-| GHCR | 0 € | stockage et transfert gratuits pour un paquet **public** ; vérifier la visibilité du paquet après la première publication (G202) |
+| GHCR | 0 € | stockage et transfert gratuits pour un paquet **public** ; vérifier la visibilité du paquet après la première publication (G203) |
 | Serveur, nom de domaine, certificat | à la charge de l'auteur | n'importe quel hôte qui fait tourner Docker (une petite machine virtuelle suffit : site statique, aucun état) ; certificat gratuit possible (Let's Encrypt, par un proxy inverse) |
 
 ## Publier une version (CI)

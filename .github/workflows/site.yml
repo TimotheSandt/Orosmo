@@ -1,6 +1,6 @@
 name: Site
 
-# Site vitrine et wiki (M14, WEB-03 et WEB-04 ; hébergement : docs/QUESTIONS.md A73, procédure : docs/DEPLOIEMENT_SITE.md).
+# Site vitrine et wiki (M14, WEB-03 et WEB-04 ; hébergement : docs/QUESTIONS.md A74, procédure : docs/DEPLOIEMENT_SITE.md).
 # - pull request qui touche site/ : npm ci + build + liens, puis construction de l'image Docker, SANS publication ;
 # - tag v* (posé par l'auteur sur main) : construction et publication de l'image sur GHCR
 #   (ghcr.io/<propriétaire>/orosmo-site:<version> et :latest) ; refusé si le commit du tag n'est pas dans main ;
@@ -66,7 +66,7 @@ jobs:
         run: |
           git fetch --no-tags origin main
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::$GITHUB_REF ($GITHUB_SHA) n'est pas dans main : publication refusée (A73, tags posés sur main)."
+            echo "::error::$GITHUB_REF ($GITHUB_SHA) n'est pas dans main : publication refusée (A74, tags posés sur main)."
             exit 1
           fi
       - uses: docker/metadata-action@v5

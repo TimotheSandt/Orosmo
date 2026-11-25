@@ -5,7 +5,7 @@
 Jalon M14 (A43), commencé avant M6 : **aucun code C++ touché**. Le dépôt a maintenant un **site vitrine et un wiki** en
 français dans `site/` (Astro + Starlight), une **image Docker** nginx qui les sert, et un **workflow de CI** qui construit le
 site et l'image sur chaque PR qui touche `site/` (sans publier) et publie l'image sur **GHCR** au tag `v*` posé sur `main`.
-Rien n'a été publié : la mise en ligne suit M6 (A43). Spécifications d'hébergement proposées en **A73** (à confirmer).
+Rien n'a été publié : la mise en ligne suit M6 (A43). Spécifications d'hébergement proposées en **A74** (à confirmer).
 
 ## Contenu
 
@@ -16,7 +16,7 @@ Rien n'a été publié : la mise en ligne suit M6 (A43). Spécifications d'hébe
 
 ## Identifiants
 
-WEB-01 **Fait** ; WEB-02, WEB-03, WEB-04 **Partiel** (publication non faite) ; WEB-05 **Absent** (optionnel, A73). Totaux (167 lignes) : Fait 43, Partiel 43, Absent 62.
+WEB-01 **Fait** ; WEB-02, WEB-03, WEB-04 **Partiel** (publication non faite) ; WEB-05 **Absent** (optionnel, A74). Totaux (167 lignes) : Fait 43, Partiel 43, Absent 62.
 
 ## Changements incompatibles
 
@@ -36,10 +36,10 @@ Linux x64, Node 24.20.0, Docker 29.1.3, et depuis un clone propre de la branche 
 
 ## Non prouvé
 
-Workflow jamais exécuté sur GitHub, aucune image sur GHCR (G202) ; pas de serveur ni de domaine (G203) ; pas de staging (G204) ; contenu à mettre à jour à la fusion de M6 (G205) ; `ci.yml` sans filtre de chemins pour `site/` (G206).
+Workflow jamais exécuté sur GitHub, aucune image sur GHCR (G203) ; pas de serveur ni de domaine (G204) ; pas de staging (G205) ; contenu à mettre à jour à la fusion de M6 (G206) ; `ci.yml` sans filtre de chemins pour `site/` (G207).
 
 ## À décider
 
-A73 (hébergement) ; G206 (`paths-ignore` dans `ci.yml`).
+A74 (hébergement) ; G207 (`paths-ignore` dans `ci.yml`).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

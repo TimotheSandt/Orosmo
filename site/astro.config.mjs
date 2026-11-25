@@ -1,5 +1,5 @@
 // Site vitrine et wiki d'Orosmo (M14, WEB-01 et WEB-02). Site statique : `npm run build` écrit dist/,
-// servi par nginx dans l'image Docker (Dockerfile). Hébergement : docs/QUESTIONS.md A73, docs/DEPLOIEMENT_SITE.md.
+// servi par nginx dans l'image Docker (Dockerfile). Hébergement : docs/QUESTIONS.md A74, docs/DEPLOIEMENT_SITE.md.
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
