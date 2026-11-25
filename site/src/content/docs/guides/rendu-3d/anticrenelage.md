@@ -10,16 +10,16 @@ Trois techniques sont des plugins du graphe, comme les post-traitements : FXAA e
 affichée, le TAA accumule les images successives grâce à un léger décalage de la caméra (jitter) et aux vecteurs de
 mouvement. Une seule est active à la fois, choisie par `rd::AntiAliasing::select`.
 
-Dans le code : `namespace rd = orosmo::renderer;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `renderer`, `shaders`, `pipelines`, `shaderDir`, `lights`).
 
 ## Exemple minimal
 
 FXAA ou SMAA seuls :
 
 ```cpp
-auto context = rd::PostContext::create(**device, shaders, pipelines, shaderDir);
+auto context = rd::PostContext::create(device, shaders, pipelines, shaderDir);
 if (!context) { /* erreur */ }
-auto edge = rd::addEdgeAntiAliasing(**scene, *context);   // FXAA et SMAA enregistrés, désactivés
+auto edge = rd::addEdgeAntiAliasing(renderer, *context);   // FXAA et SMAA enregistrés, désactivés
 if (!edge) { /* erreur */ }
 rd::AntiAliasing aa = *edge;
 if (auto r = aa.select(rd::AntiAliasingMode::kSmaa); !r) { /* erreur */ }   // ou kFxaa, kNone
@@ -43,13 +43,13 @@ affichées, après. L'ordre des passes étant l'ordre d'enregistrement :
 5. superpositions (interface).
 
 ```cpp
-auto context = rd::PostContext::create(**device, shaders, pipelines, shaderDir);
+auto context = rd::PostContext::create(device, shaders, pipelines, shaderDir);
 if (!context) return std::unexpected(context.error());
-auto taa = rd::addTemporalAntiAliasing(**scene, *context);        // après les plugins de la scène
+auto taa = rd::addTemporalAntiAliasing(renderer, *context);        // après les plugins de la scène
 if (!taa) return std::unexpected(taa.error());
-auto fx = rd::addPostEffects(**scene, **device, shaders, pipelines, shaderDir);
+auto fx = rd::addPostEffects(renderer, device, shaders, pipelines, shaderDir);
 if (!fx) return std::unexpected(fx.error());
-auto edge = rd::addEdgeAntiAliasing(**scene, *context);
+auto edge = rd::addEdgeAntiAliasing(renderer, *context);
 if (!edge) return std::unexpected(edge.error());
 rd::AntiAliasing aa = *edge;
 aa.taa = *taa;
@@ -71,8 +71,8 @@ ces AOV connus du renderer. Deux façons :
 
 ```cpp
 for (const rd::Aov aov : rd::AovSet{rd::Aov::kMotion, rd::Aov::kLinearDepth}.list())
-    if (auto r = (*scene)->declareAov(aov); !r) { /* kUnsupported : pas assez de cibles */ }
-auto program = shaders.loadGraphics(shaderDir / "mesh.vert", shaderDir / "mesh.frag", (*scene)->aovShaderDefines());
+    if (auto r = renderer.declareAov(aov); !r) { /* kUnsupported : pas assez de cibles */ }
+auto program = shaders.loadGraphics(shaderDir / "mesh.vert", shaderDir / "mesh.frag", renderer.aovShaderDefines());
 ```
 
 :::caution
@@ -111,7 +111,7 @@ Chaque plugin expose `settings()` en référence : `aa.smaa->settings().threshol
 
 ## Échelle de rendu
 
-`(*scene)->setRenderScale(0.5f)` rend la scène à la moitié de la taille de sortie, puis l'agrandit par le mode de mise à
+`renderer.setRenderScale(0.5f)` rend la scène à la moitié de la taille de sortie, puis l'agrandit par le mode de mise à
 l'échelle actif. Le seul mode fourni est `rd::BilinearBlitUpscaleMode` (`"bilinear-blit"`, actif par défaut), une copie
 bilinéaire. Les effets et l'anticrénelage s'exécutent à la résolution de rendu, avant l'agrandissement.
 
@@ -120,13 +120,14 @@ bilinéaire. Les effets et l'anticrénelage s'exécutent à la résolution de re
 
 ## Limites
 
-- REN-19 (Partiel) : SMAA 1x sans diagonales, sans arrondi des coins ni seuil prédiqué par la profondeur ; MSAA absent (le
-  RHI n'a pas de nombre d'échantillons) ; résolution dynamique sans contrôleur (seulement `setRenderScale`).
-- G159 : TAA sans filtre Catmull-Rom ni dé-jitter de l'image courante ; traînées possibles sur les objets sans AOV de
-  mouvement.
-- REN-20 (Absent) : pas d'upscaling temporel type FSR.
+- Le SMAA est une version simplifiée : pas de détection des diagonales, pas d'arrondi des coins, pas de seuil guidé par la
+  profondeur.
+- Pas de MSAA : le RHI n'a pas encore de cibles multi-échantillons.
+- Le TAA n'utilise pas de filtre Catmull-Rom et ne retire pas le jitter de l'image courante ; les objets sans vecteurs de
+  mouvement peuvent laisser une traînée.
+- Pas de résolution dynamique automatique (seulement `setRenderScale`) ni de mise à l'échelle temporelle du type FSR.
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 

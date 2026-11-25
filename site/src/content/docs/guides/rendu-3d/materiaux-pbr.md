@@ -11,16 +11,16 @@ normales, occlusion et émission. Il possède son bloc de paramètres et son gro
 `rd::Mesh` aux sommets PBR et se dessine par `SceneRenderer::drawMesh`. Les modèles glTF créent leurs matériaux tout seuls
 (`assets::RenderModel`) ; cette page sert à les créer à la main ou à les modifier.
 
-Dans le code : `namespace rd = orosmo::renderer;`, `namespace as = orosmo::assets;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `renderer`, `shaders`, `pipelines`, `shaderDir`, `lights`), plus `namespace as = orosmo::assets;`.
 
 ## Exemple minimal
 
 ```cpp
-auto defaults = rd::PbrDefaults::create(**device);            // textures neutres, une fois pour tous les matériaux
-rd::PbrShaderCache pbrShaders(shaders, shaderDir);            // un programme par variante
-as::TextureCache textures(**device);
+auto defaults = rd::PbrDefaults::create(device);            // textures neutres, une fois pour tous les matériaux
+rd::PbrShaderCache pbr(shaders, shaderDir);            // un programme par variante
+as::TextureCache textures(device);
 
-auto albedo = textures.load("textures/brique.png", {.role = as::TextureRole::kColor}); // couleur : sRGB
+auto albedo = textures.load(GET_RESOURCE_PATH("textures/brique.png"), {.role = as::TextureRole::kColor}); // couleur : sRGB
 if (!defaults || !albedo) { /* erreur */ }
 
 rd::PbrMaterialDesc desc;
@@ -29,9 +29,9 @@ desc.params.metallic = 0.0f;
 desc.params.roughness = 0.8f;
 desc.maps[static_cast<std::size_t>(rd::PbrMap::kBaseColor)] = *albedo;
 
-auto material = rd::PbrMaterial::create(**device, desc, *defaults);
+auto material = rd::PbrMaterial::create(device, desc, *defaults);
 if (!material) { /* erreur */ }
-auto program = pbrShaders.program((*material)->features());   // variante : « carte de couleur présente »
+auto program = pbr.program((*material)->features());   // variante : « carte de couleur présente »
 if (!program) { /* erreur */ }
 
 // `mesh` : rd::MeshData avec attributeSizes = kPbrVertexAttributeSizes (16 flottants par sommet)
@@ -97,15 +97,35 @@ Les macros en plus viennent des autres systèmes, à assembler vous-même avant 
 
 ```cpp
 std::vector<rd::Define> extra = forwardPlusOn ? rd::forwardPlusDefines() : std::vector<rd::Define>{};
-const auto aov = (*scene)->aovShaderDefines();     // après avoir installé TAA, modes de debug, AOV
+const auto aov = renderer.aovShaderDefines();     // après avoir installé TAA, modes de debug, AOV
 extra.insert(extra.end(), aov.begin(), aov.end());
 const auto ibl = rd::iblDefines();                 // seulement si un IblFeature est installé
 extra.insert(extra.end(), ibl.begin(), ibl.end());
-auto program = pbrShaders.program((*material)->features(), extra);
+auto program = pbr.program((*material)->features(), extra);
 ```
 
-Pour qu'un matériau reçoive les ombres, passez le plugin à la création : `rd::PbrMaterial::create(**device, desc,
-*defaults, shadowFeature)` ajoute le bit `kPbrShadows` et les liaisons 6 et 7 (voir [Ombres](/guides/rendu-3d/ombres/)).
+Pour qu'un matériau reçoive les ombres, passez le plugin à la création : `rd::PbrMaterial::create(device, desc,
+*defaults, shadows)` ajoute le bit `kPbrShadows` et les liaisons 6 et 7 (voir [Ombres](/guides/rendu-3d/ombres/)).
+
+## Métal sans environnement
+
+Une lumière ambiante n'éclaire que la part diffuse : `couleur × (1 − métal) × occlusion`. Un métal pur (`metallic = 1`,
+la valeur par défaut de glTF) ne renvoie donc rien sous l'ambiante seule ; il n'a que les reflets des lumières
+directionnelles, ponctuelles et projecteurs, et paraît presque noir ailleurs (vérifié par `tests/assets/pbr_tests.cpp`).
+
+Pour qu'un métal ait des reflets partout, ajoutez un éclairage d'environnement, même uniforme, et compilez les matériaux
+avec `rd::iblDefines()` :
+
+```cpp
+auto created = rd::IblFeature::create(device, shaders, pipelines, shaderDir);   // demande le compute
+if (created) {
+    auto added = renderer.addFeature(std::move(*created));
+    auto *ibl = added ? static_cast<rd::IblFeature *>(*added) : nullptr;
+    if (ibl) (void)ibl->setEnvironment(rd::uniformEquirect(glm::vec3(0.3f)));       // ciel gris uniforme
+}
+```
+
+Voir [Éclairage d'environnement et sondes](/guides/rendu-3d/environnement-ibl/).
 
 ## Instances
 
@@ -123,7 +143,7 @@ params.baseColorFactor = {0.0f, 1.0f, 0.0f, 1.0f};
 ```
 
 Adapté de [`tests/assets/pbr_tests.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/tests/assets/pbr_tests.cpp)
-(cas « REN-11 instance »).
+(cas des instances).
 
 :::caution
 `PbrMaterial::rebuild(shadows)` (après un changement d'atlas d'ombres) détruit l'ancien groupe. Chaque maillage qui l'a
@@ -133,14 +153,13 @@ avant son prochain dessin. `RenderModel::rebuildMaterials` le fait pour un modè
 
 ## Limites
 
-- REN-11 (Partiel) : les variantes sont des macros de préprocesseur, pas des constantes de spécialisation (le RHI n'en a
-  pas, G196).
-- REN-12 (Absent) : pas d'extensions de matériaux (vernis, tissu, transmission, parallaxe).
-- G195 : les objets instanciés (`InstanceRenderer`, `ObjectSet`) et pilotés par GPU n'utilisent pas `PbrMaterial` ; un
-  seul jeu d'UV ; tangentes par triangle ; primitives `kBlend` d'un glTF non triées.
+- Les variantes sont des macros de préprocesseur compilées une par une : le RHI n'a pas de constantes de spécialisation.
+- Pas d'extensions de matériaux (vernis, tissu, transmission, parallaxe).
+- Les objets instanciés (`InstanceRenderer`, `ObjectSet`) et le rendu piloté par le GPU n'utilisent pas `PbrMaterial`.
+- Un seul jeu d'UV ; tangentes calculées par triangle ; les primitives glTF transparentes ne sont pas triées.
 - Le `Mesh` ne garde pas son matériau : détruire le matériau rend le dessin invalide sans erreur à l'appel.
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 

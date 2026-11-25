@@ -10,20 +10,21 @@ Les lumières vivent dans un `rd::LightManager`, qui les range dans un tampon de
 `SceneRenderer` le lit par un pointeur donné à `setLights`. Par défaut chaque fragment parcourt toutes les lumières
 (forward) ; avec beaucoup de lumières ponctuelles, le forward+ ne lui donne que celles de son cluster.
 
-Dans le code : `namespace rd = orosmo::renderer;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `renderer`, `shaders`, `pipelines`, `shaderDir`, `lights`).
 
 ## Exemple minimal
 
 ```cpp
-auto lights = rd::LightManager::create(**device);          // capacité initiale 16, le tampon grandit au besoin
-if (!lights) { /* erreur */ }
-lights->setAmbientLight({1.0f, 1.0f, 1.0f}, 0.35f);
-lights->addLight(rd::directionalLight({0.6f, 0.8f, 0.5f} /* VERS la lumière */, {1.0f, 0.96f, 0.9f}, 0.85f));
-lights->addLight(rd::pointLight({2.0f, 1.0f, 0.0f}, {1.0f, 0.5f, 0.2f}, 0.8f, 2.0f, 0.5f));
-lights->addLight(rd::spotLight({0.0f, 4.0f, 0.0f}, {0.0f, -1.0f, 0.0f} /* sens du faisceau */, {0.2f, 1.0f, 0.3f}, 1.0f,
+auto lightsResult = rd::LightManager::create(device);    // capacité initiale 16, le tampon grandit au besoin
+if (!lightsResult) { /* erreur */ }
+rd::LightManager &lights = *lightsResult;
+lights.setAmbientLight({1.0f, 1.0f, 1.0f}, 0.35f);
+lights.addLight(rd::directionalLight({0.6f, 0.8f, 0.5f} /* VERS la lumière */, {1.0f, 0.96f, 0.9f}, 0.85f));
+lights.addLight(rd::pointLight({2.0f, 1.0f, 0.0f}, {1.0f, 0.5f, 0.2f}, 0.8f, 2.0f, 0.5f));
+lights.addLight(rd::spotLight({0.0f, 4.0f, 0.0f}, {0.0f, -1.0f, 0.0f} /* sens du faisceau */, {0.2f, 1.0f, 0.3f}, 1.0f,
                                std::cos(glm::radians(25.0f)), std::cos(glm::radians(18.0f)), 0.1f, 0.1f));
-if (auto r = lights->upload(); !r) { /* erreur */ }       // sans upload, le GPU garde l'ancien contenu
-(*scene)->setLights(&*lights);                              // pointeur gardé : `lights` doit vivre plus longtemps
+if (auto r = lights.upload(); !r) { /* erreur */ }       // sans upload, le GPU garde l'ancien contenu
+renderer.setLights(&lights);                              // pointeur gardé : `lights` doit vivre plus longtemps
 ```
 
 La lumière directionnelle est celle du gabarit `orosmo init`
@@ -60,8 +61,8 @@ lecture seule : changer une copie ne change rien au GPU.
 
 ```cpp
 rd::Light sun = rd::directionalLight(sunDirection, sunColor, sunIntensity);
-if (auto r = lights->setLight(0, sun); !r) { /* kOutOfRange : index périmé */ }
-if (auto r = lights->upload(); !r) { /* erreur */ }
+if (auto r = lights.setLight(0, sun); !r) { /* kOutOfRange : index périmé */ }
+if (auto r = lights.upload(); !r) { /* erreur */ }
 ```
 
 Adapté de `DemoScene::syncLights` ([`apps/demo/src/Scene/demo_scene.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Scene/demo_scene.cpp)).
@@ -74,7 +75,7 @@ tranches de profondeur). Les maillages doivent être compilés avec `rd::forward
 
 ```cpp
 bool forwardPlus = false;
-auto enabled = rd::enableForwardPlus(**scene, **device, shaders, pipelines, shaderDir);
+auto enabled = rd::enableForwardPlus(renderer, device, shaders, pipelines, shaderDir);
 if (enabled) forwardPlus = true;                 // plugin enregistré, pré-passe activée
 else { /* kUnsupported : pas de compute ; on reste en forward */ }
 
@@ -85,7 +86,7 @@ auto program = shaders.loadGraphics(shaderDir / "mesh.vert", shaderDir / "mesh.f
 
 Adapté de `Game::init` ([`apps/demo/src/Game/Game.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Game/Game.cpp)).
 Pour les matériaux PBR, passez `rd::forwardPlusDefines()` en macros en plus de `PbrShaderCache::program`.
-`rd::disableForwardPlus(**scene)` retire le plugin et la pré-passe ; les maillages doivent alors reprendre le programme sans
+`rd::disableForwardPlus(renderer)` retire le plugin et la pré-passe ; les maillages doivent alors reprendre le programme sans
 ces macros. Le forward et le forward+ donnent la même image tant que les budgets ne sont pas dépassés.
 
 | Option (`ForwardPlusSettings`) | Type | Défaut | Effet |
@@ -114,13 +115,13 @@ apps/demo/bin/debug/main --lighting forwardplus --lights 1000
 
 ## Limites
 
-- REN-05 (Partiel) : pas de lumières de surface ; un projecteur est testé comme une sphère dans les clusters (G166).
-- REN-16 (Absent) : pas d'éclairage précalculé.
-- G153 : un seul `LightManager` par image en forward+ ; les dessins externes (`drawCustom`, objets instanciés) ne passent
-  pas par la pré-passe et lisent toutes les lumières.
-- G161 : un pixel d'écart entre forward et forward+ sur la démo.
+- Pas de lumières de surface ; dans les clusters, un projecteur est traité comme une sphère (plus large que son cône).
+- Pas d'éclairage précalculé (lightmaps).
+- En forward+ : un seul `LightManager` par image, et les dessins externes (`drawCustom`, objets instanciés) ne passent pas
+  par la pré-passe et lisent toutes les lumières.
+- Forward et forward+ peuvent différer d'un pixel sur la démo (effet de la pré-passe de profondeur).
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 

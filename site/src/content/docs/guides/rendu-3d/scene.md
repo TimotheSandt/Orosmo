@@ -3,35 +3,49 @@ title: "Dessiner une scène : caméra et maillages"
 description: "Afficher des maillages avec SceneRenderer, une caméra et une lumière, et comprendre l'ordre des appels d'une image."
 sidebar:
   order: 1
-  label: Scène, caméra, maillages
+  label: Scène
 ---
 
 `SceneRenderer` dessine la 3D : il possède la cible de la scène (couleur et profondeur), envoie au GPU la caméra, les
 lumières et les données de l'image (groupe 0 des shaders), et joue les dessins de maillages. Les fonctions en plus
 (ombres, forward+, post-traitement, transparents) s'y branchent comme plugins.
 
-Dans le code de cette page : `namespace rd = orosmo::renderer;` et `namespace rhi = orosmo::rhi;`.
+## Noms utilisés dans les exemples
+
+Les exemples du rendu 3D suivent les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples) :
+`device` (`rhi::Device &`), `renderer` (`rd::SceneRenderer &`), `lights` (`rd::LightManager &`), `shaders`, `pipelines`,
+`shaderDir`, `camera`, `encoder`. Pour les matériaux PBR s'y ajoutent, créés une fois :
+
+```cpp
+namespace as = orosmo::assets;
+as::TextureCache textures(device);                       // textures partagées entre les modèles
+rd::PbrShaderCache pbr(shaders, shaderDir);              // un programme par variante de matériau
+auto defaults = rd::PbrDefaults::create(device);         // Result<shared_ptr<PbrDefaults>> : textures neutres
+```
 
 ## Exemple minimal
 
-Le projet créé par `orosmo init` affiche un cube coloré. Voici sa mise en place, abrégée (gestion d'erreur réduite) :
+Le projet créé par `orosmo init` affiche un cube coloré. Voici sa mise en place, abrégée :
 
 ```cpp
 const std::filesystem::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
-rd::ShaderLibrary shaders(**device);       // partagés par tous les renderers,
-rd::PipelineCache pipelines(**device);     // à garder vivants jusqu'à la fin
+rd::ShaderLibrary shaders(device);       // partagés par tous les renderers,
+rd::PipelineCache pipelines(device);     // à garder vivants jusqu'à la fin
 
-auto scene = rd::SceneRenderer::create(**device, shaders, pipelines, {.shaderDirectory = shaderDir});
-auto program = shaders.loadGraphics(shaderDir / "mesh.vert", shaderDir / "mesh.frag");
-auto cube = rd::Mesh::create(**device, makeColoredCube());  // MeshData : position, normale, couleur
-if (!scene || !program || !cube) { /* erreur */ }
-cube->setProgram(*program);                                 // obligatoire : pas de programme par défaut
+auto sceneResult  = rd::SceneRenderer::create(device, shaders, pipelines, {.shaderDirectory = shaderDir});
+auto lightsResult = rd::LightManager::create(device);
+auto program      = shaders.loadGraphics(shaderDir / "mesh.vert", shaderDir / "mesh.frag");
+auto cubeResult   = rd::Mesh::create(device, makeColoredCube());   // MeshData : position, normale, couleur
+if (!sceneResult || !lightsResult || !program || !cubeResult) { /* afficher l'erreur, sortir */ }
+rd::SceneRenderer &renderer = **sceneResult;
+rd::LightManager  &lights   = *lightsResult;
+rd::Mesh          &cube     = *cubeResult;
+cube.setProgram(*program);                               // obligatoire : pas de programme par défaut
 
-auto lights = rd::LightManager::create(**device);
-lights->setAmbientLight({1.0f, 1.0f, 1.0f}, 0.35f);
-lights->addLight(rd::directionalLight({0.6f, 0.8f, 0.5f}, {1.0f, 0.96f, 0.90f}, 0.85f));
-(void)lights->upload();
-(*scene)->setLights(&*lights);                              // pointeur gardé : `lights` doit vivre plus longtemps
+lights.setAmbientLight({1.0f, 1.0f, 1.0f}, 0.35f);
+lights.addLight(rd::directionalLight({0.6f, 0.8f, 0.5f}, {1.0f, 0.96f, 0.90f}, 0.85f));
+if (auto r = lights.upload(); !r) { /* ... */ }
+renderer.setLights(&lights);                             // pointeur gardé : `lights` doit vivre plus longtemps
 
 rd::Camera camera;
 camera.setPosition({0.0f, 1.8f, 4.5f});
@@ -39,7 +53,6 @@ camera.setOrientation(glm::normalize(glm::vec3(0.0f, -0.35f, -1.0f))); // direct
 camera.setFovDegrees(60.0f);
 ```
 
-`device` est le `Result<std::unique_ptr<rhi::Device>>` rendu par `rhi::createDevice`, d'où `**device`.
 Source : [`tools/engine-sdk/template/src/main.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/tools/engine-sdk/template/src/main.cpp)
 (la fonction `makeColoredCube` y est en entier). Pour créer ce projet : [Créer un projet](/demarrer/premier-projet/).
 
@@ -47,33 +60,32 @@ Source : [`tools/engine-sdk/template/src/main.cpp`](https://github.com/TimotheSa
 
 Il y a deux `beginFrame` : celui du `rhi::Device`, qui donne l'image de la fenêtre, et celui du `SceneRenderer`, qui
 reçoit l'encodeur de commandes. `drawMesh` n'exécute rien : il enregistre le dessin. C'est `endFrame` qui construit le
-graphe de passes et l'écrit dans l'encodeur ; le GPU ne travaille qu'au `submit`.
+graphe de passes et l'écrit dans l'encodeur ; le GPU ne travaille qu'au `submit`. Dans l'ordre :
+
+| Étape | Appel | Ce qui se passe |
+|---|---|---|
+| 1 | `window.newFrame()` | événements, entrées |
+| 2 | `device.beginFrame()` | image de la fenêtre ; échoue (`kBusy`) si la fenêtre est réduite : sauter l'image |
+| 3 | `device.createCommandEncoder()` | un encodeur par image |
+| 4 | (compute : `skinned.dispatch(*encoder)`) | enregistré avant la scène |
+| 5 | `renderer.beginFrame(*encoder, options)` | prépare la cible de la scène |
+| 6 | `renderer.setCamera(camera)` | caméra de l'image |
+| 7 | `renderer.drawMesh(mesh, camera)`, `model.draw(renderer, camera)` | dessins enregistrés |
+| 8 | `renderer.endFrame(sortie)` | graphe construit : ombres, scène, plugins, copie vers la sortie |
+| 9 | interface (`canvas.render(..., true)`) | dessinée par-dessus, sur la même cible |
+| 10 | `device.submit(std::move(encoder))` | le GPU exécute tout |
+| 11 | `device.present()` | affichage ; toujours appelé si l'étape 2 a réussi, même après une erreur |
 
 ```cpp
-while (!window.shouldClose()) {
-    if (!window.newFrame()) continue;                      // entrées, FPS
-    auto backbuffer = (*device)->beginFrame();             // image de la fenêtre
-    if (!backbuffer) continue;                             // fenêtre réduite (kBusy) : sauter l'image, pas quitter
-    auto encoder = (*device)->createCommandEncoder();      // un encodeur par image
-    // (compute éventuel ici, avant scene->beginFrame : skinning)
-    camera.setAspect(size.width, size.height);
-    (*scene)->setOutputResolution(pixelW, pixelH);
-    auto ok = (*scene)->beginFrame(*encoder, {.clearColor = {0.10f, 0.13f, 0.18f, 1.0f}});
-    if (ok) ok = (*scene)->setCamera(camera);              // caméra de l'image
-    if (ok) ok = (*scene)->drawMesh(*cube, camera);        // enregistré, pas encore dessiné
-    if (ok) ok = (*scene)->endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, size}); // graphe construit ici
-    // interface : ui.draw(list) puis canvas->render(*encoder, list, {composed.color(0), rhi::Format::kRGBA8Unorm, size}, true)
-    if (ok) ok = (*scene)->blit().copy(*encoder, composed.color(0), (*scene)->blit().linearSampler(), *backbuffer,
-                                       rhi::Format::kRGBA8Unorm, "present");
-    auto submitted = (*device)->submit(std::move(encoder)); // le GPU exécute tout
-    (void)(*device)->present();                            // toujours, même si l'image a échoué
-}
-(*device)->waitIdle();
+auto ok = renderer.beginFrame(*encoder, {.clearColor = {0.10f, 0.13f, 0.18f, 1.0f}});
+if (ok) ok = renderer.setCamera(camera);
+if (ok) ok = renderer.drawMesh(cube, camera);                                      // enregistré
+if (ok) ok = renderer.endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, size}); // exécuté ici
 ```
 
-`composed` est une `rd::RenderTarget` sans profondeur, à la taille du framebuffer, que le gabarit crée et redimensionne
-lui-même. `endFrame` y copie la scène, l'interface est dessinée par-dessus (`loadExisting = true`), puis le tout est copié
-dans l'image de la fenêtre.
+`composed` est une `rd::RenderTarget` sans profondeur à la taille du framebuffer, où la scène puis l'interface sont
+dessinées avant la copie dans l'image de la fenêtre. Sa création et la boucle entière sont dans
+[Lire la boucle d'une application](/demarrer/premiere-application/#la-boucle-dune-image).
 
 Règles à retenir :
 
@@ -81,8 +93,6 @@ Règles à retenir :
 - `setCamera` vient après `beginFrame` et avant le premier `drawMesh` ;
 - le travail compute de l'image (skinning) est enregistré sur le même encodeur, avant `SceneRenderer::beginFrame` ;
 - `present()` est appelé à chaque tour où `Device::beginFrame()` a réussi, y compris quand on sort de la boucle.
-
-La boucle complète, avec les entrées et l'interface : [Lire la boucle d'une application](/demarrer/premiere-application/).
 
 ## Caméra
 
@@ -112,14 +122,16 @@ Ces tailles doivent correspondre aux entrées du shader : `{3, 3, 3}` (position,
 
 ```cpp
 rd::MeshData data;
-data.attributeSizes = {3, 3, 3};               // position, normale, couleur (shaders/rhi/mesh.vert)
+data.attributeSizes = {3, 3, 3};               // position, normale, couleur (entrées de mesh.vert)
 data.vertices = {/* x, y, z, nx, ny, nz, r, g, b, ... */};
 data.indices = {0, 1, 2, 0, 2, 3};
-auto mesh = rd::Mesh::create(**device, data);
-mesh->setProgram(*program);
-mesh->setPosition({0.0f, 1.0f, 0.0f});
-mesh->setRotation({0.0f, 90.0f, 0.0f});        // degrés, X puis Y puis Z
-mesh->setCullMode(rhi::CullMode::kBack);       // défaut kNone : les deux faces
+auto meshResult = rd::Mesh::create(device, data);
+if (!meshResult) { /* ... */ }
+rd::Mesh &mesh = *meshResult;                  // Result par valeur : une seule étoile
+mesh.setProgram(*program);
+mesh.setPosition({0.0f, 1.0f, 0.0f});
+mesh.setRotation({0.0f, 90.0f, 0.0f});         // degrés, X puis Y puis Z
+mesh.setCullMode(rhi::CullMode::kBack);        // défaut kNone : les deux faces
 ```
 
 | Option | Type | Défaut | Effet |
@@ -136,11 +148,14 @@ mesh->setCullMode(rhi::CullMode::kBack);       // défaut kNone : les deux faces
 Un modèle glTF se dessine avec `assets::RenderModel`, qui crée ces maillages pour vous :
 [Charger un glTF](/guides/contenus/gltf/).
 
+`drawMesh` enregistre un dessin par appel. Au-delà de quelques dizaines de copies d'un même maillage (arbres, rochers,
+foule), utilisez l'instancing : [Beaucoup d'objets](/guides/rendu-3d/instancing-culling/) donne le tableau de choix.
+
 ## Réglages du renderer
 
 | Option | Type | Défaut | Effet |
 |---|---|---|---|
-| `SceneRendererConfig::shaderDirectory` | chemin | vide | Dossier `shaders/rhi` (obligatoire). |
+| `SceneRendererConfig::shaderDirectory` | chemin | vide | Dossier des shaders du moteur, `GET_RESOURCE_PATH("shader/rhi")` (obligatoire). |
 | `SceneRendererConfig::framesInFlight` | `uint32_t` | `2` | Images en vol (anneau des données par image). |
 | `FrameOptions::clearColor` | `array<float, 4>` | `{0, 0, 0, 1}` | Couleur d'effacement de la scène. |
 | `FrameOptions::clearDepth` | `bool` | `true` | Efface la profondeur au `beginFrame`. |
@@ -166,9 +181,11 @@ Ombres, forward+, IBL, transparents, post-traitement et anticrénelage sont des 
 `addFeature` renvoie un pointeur non possédé vers le plugin, à convertir vers son type :
 
 ```cpp
-auto added = (*scene)->addFeature(std::move(*shadows));
+auto created = rd::ShadowFeature::create(device, shaders, pipelines, shaderDir);
+if (!created) { /* erreur */ }
+auto added = renderer.addFeature(std::move(*created));
 if (!added) { /* kUnsupported : capacité absente ; kAlreadyExists : nom déjà pris */ }
-auto *shadowFeature = static_cast<rd::ShadowFeature *>(*added);
+auto *shadows = static_cast<rd::ShadowFeature *>(*added);
 ```
 
 ## Limites
@@ -177,11 +194,12 @@ auto *shadowFeature = static_cast<rd::ShadowFeature *>(*added);
 - L'argument `camera` de `drawMesh` ne sert qu'au fil de fer : les matrices viennent de `setCamera`.
 - Il n'y a pas de programme de maillage par défaut, ni d'assemblage automatique des macros des plugins.
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 
 - [Lumières](/guides/rendu-3d/lumieres/)
 - [Matériaux PBR](/guides/rendu-3d/materiaux-pbr/)
+- [Beaucoup d'objets : instancing et culling](/guides/rendu-3d/instancing-culling/)
 - [Dessin et vues de debug](/guides/rendu-3d/debug-visuel/)
 - [Le renderer (interne)](/interne/renderer/)

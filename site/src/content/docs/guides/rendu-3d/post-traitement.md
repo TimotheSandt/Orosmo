@@ -10,19 +10,19 @@ Chaque effet de post-traitement est un plugin du graphe de passes (`rd::PostEffe
 `setEnabled`. Ils s'exécutent après les passes de la scène, à la résolution de rendu, avant la mise à l'échelle et
 l'interface. `rd::addPostEffects` les crée tous les cinq, dans l'ordre conseillé.
 
-Dans le code : `namespace rd = orosmo::renderer;`, `namespace rhi = orosmo::rhi;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `renderer`, `shaders`, `pipelines`, `shaderDir`, `lights`).
 
 ## Exemple minimal
 
 ```cpp
-auto fx = rd::addPostEffects(**scene, **device, shaders, pipelines, shaderDir); // cinq effets, tous désactivés
+auto fx = rd::addPostEffects(renderer, device, shaders, pipelines, shaderDir); // cinq effets, tous désactivés
 if (!fx) { /* erreur */ }
 fx->tonemap->setEnabled(true);
 fx->tonemap->settings().tonemapper = rd::Tonemapper::kAces;
 fx->bloom->setEnabled(true);
 fx->bloom->settings().threshold = 0.8f;
 fx->bloom->settings().intensity = 0.15f;
-if (auto r = fx->sync(**scene); !r) { /* erreur */ }  // scène en RGBA16F au prochain beginFrame
+if (auto r = fx->sync(renderer); !r) { /* erreur */ }  // scène en RGBA16F au prochain beginFrame
 ```
 
 Adapté de `Game::createPostEffects` ([`apps/demo/src/Game/Game.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Game/Game.cpp)).
@@ -59,17 +59,17 @@ Pour une image juste :
 Sans `addPostEffects`, le tonemapping seul s'installe ainsi :
 
 ```cpp
-(void)(*scene)->setSceneColorFormat(rhi::Format::kRGBA16Float);          // scène HDR
-auto post = rd::PostContext::create(**device, shaders, pipelines, shaderDir);
+(void)renderer.setSceneColorFormat(rhi::Format::kRGBA16Float);          // scène HDR
+auto post = rd::PostContext::create(device, shaders, pipelines, shaderDir);
 if (!post) { /* erreur */ }
 auto tonemap = rd::TonemapFeature::create(*post);                         // activé, encodeSrgb = true
 if (!tonemap) { /* erreur */ }
-(void)(*scene)->addFeature(std::move(*tonemap));                          // après les plugins de la scène, avant l'interface
+(void)renderer.addFeature(std::move(*tonemap));                          // après les plugins de la scène, avant l'interface
 ```
 
 :::note
 La démo écrit des couleurs de sommets pensées en sRGB et les traite comme linéaires : avec `--post`, son image est donc
-plus claire qu'en `--post none` (G158). Ce n'est pas le comportement à reproduire avec des matériaux PBR.
+plus claire qu'en `--post none`. Ce n'est pas le comportement à reproduire avec des matériaux PBR.
 :::
 
 Les couleurs de l'interface (thèmes JSON, `#rrggbb`) ne passent pas par ce chemin : elles sont écrites telles quelles.
@@ -85,7 +85,7 @@ Les couleurs de l'interface (thèmes JSON, `#rrggbb`) ne passent pas par ce chem
 | `useAutoExposure` | `bool` | `true` | Multiplie par l'exposition de `AutoExposureFeature` si elle est active. |
 
 `rd::parseTonemapper("aces")` accepte `clamp`, `aces`, `agx` et `reinhard`. L'exposition globale se règle aussi par
-`(*scene)->setFrameEnvironment(env)` avec `env.exposure`.
+`renderer.setFrameEnvironment(env)` avec `env.exposure`.
 
 ## Bloom
 
@@ -101,7 +101,7 @@ Les couleurs de l'interface (thèmes JSON, `#rrggbb`) ne passent pas par ce chem
 ## Exposition automatique
 
 Mesure un histogramme de luminance en compute. `fx->autoExposure` est nul si le périphérique n'a pas de compute ; les
-autres effets marchent sans lui. L'adaptation lit la durée de l'image donnée par `(*scene)->setDeltaTime(dt)` ; sans cet
+autres effets marchent sans lui. L'adaptation lit la durée de l'image donnée par `renderer.setDeltaTime(dt)` ; sans cet
 appel (durée 0), l'exposition saute directement à la valeur visée.
 
 | Option (`AutoExposureSettings`) | Type | Défaut | Effet |
@@ -117,7 +117,7 @@ appel (durée 0), l'exposition saute directement à la valeur visée.
 ## Étalonnage par LUT
 
 ```cpp
-std::string text = /* contenu d'un fichier .cube */;
+std::string text;                                  // contenu d'un fichier .cube, lu par votre code
 auto lut = rd::parseCubeLut(text);                 // LUT_3D_SIZE N, 2 à 256 ; LUT 1D refusée
 if (!lut) { /* kInvalidArgument ou kUnsupported */ }
 if (auto r = fx->colorGrading->setLut(*lut); !r) { /* valeurs hors [0, 1] : l'ancienne LUT reste */ }
@@ -146,11 +146,12 @@ réenregistre son plugin d'interface (`removeFeature`) pour qu'il reste le derni
 
 ## Limites
 
-- REN-20 (Absent) : pas de profondeur de champ, de flou de mouvement ni d'upscaling type FSR.
-- G158 : chaque effet qui relit la scène recopie son résultat (pas de ping-pong) ; exposition automatique sans
-  pondération centrale ; pas de sortie HDR vers l'écran (PQ, scRGB).
+- Pas de profondeur de champ, de flou de mouvement ni de mise à l'échelle du type FSR.
+- Chaque effet qui relit la scène recopie son résultat (une copie plein écran par effet).
+- L'exposition automatique mesure toute l'image, sans pondération au centre.
+- Pas de sortie HDR vers l'écran (PQ, scRGB).
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 

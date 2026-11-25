@@ -10,24 +10,24 @@ Un objet transparent se dessine après les opaques, sans écrire la profondeur, 
 de l'arrière vers l'avant. `rd::TransparentFeature` fait ce tri : on lui dépose les objets de l'image, il les dessine dans
 une passe `transparents` juste après la passe `scene`.
 
-Dans le code : `namespace rd = orosmo::renderer;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `renderer`, `shaders`, `pipelines`, `shaderDir`, `lights`).
 
 ## Exemple minimal
 
 ```cpp
 // Une fois : le plugin, après les ombres et avant les post-traitements
-auto created = rd::TransparentFeature::create(**device, shaders, pipelines, shaderDir);
+auto created = rd::TransparentFeature::create(device, shaders, pipelines, shaderDir);
 if (!created) { /* erreur */ }
-auto added = (*scene)->addFeature(std::move(*created));
+auto added = renderer.addFeature(std::move(*created));
 if (!added) { /* erreur */ }
 auto *transparents = static_cast<rd::TransparentFeature *>(*added);
 
 // À chaque image, entre setCamera et endFrame
 const rd::TransparentMaterial glass{.mode = rd::BlendMode::kBlend, .alpha = 0.45f};
 for (rd::Mesh &pane : panes) {
-    if (auto r = transparents->submit(**scene, pane, glass); !r) { /* erreur */ }
+    if (auto r = transparents->submit(renderer, pane, glass); !r) { /* erreur */ }
 }
-if (auto r = transparents->submit(**scene, glow, {.mode = rd::BlendMode::kAdditive, .alpha = 0.6f}); !r) { /* erreur */ }
+if (auto r = transparents->submit(renderer, glow, {.mode = rd::BlendMode::kAdditive, .alpha = 0.6f}); !r) { /* erreur */ }
 ```
 
 Adapté de `MixedScene` ([`apps/demo/src/Scene/mixed_scene.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Scene/mixed_scene.cpp)).
@@ -100,13 +100,13 @@ mesh.setAovMaterial({rd::BlendMode::kBlend, rd::AovSet{rd::Aov::kObjectId}});
 
 ## Limites
 
-- REN-37 (Partiel) : `kMaskA2C` se comporte comme `kMask` (le RHI n'a ni MSAA ni alpha-to-coverage) ; `kTransmission`
-  est composé comme `kBlend` (G171).
-- REN-38 (Absent) : pas de réfraction. REN-40 (Absent) : pas de transparence indépendante de l'ordre (OIT).
-- REN-41 (Partiel) : les objets instanciés n'ont pas d'AOV (G169).
-- L'opacité et le seuil sont par objet, pas par texel ; les primitives glTF `BLEND` ne sont pas triées (G195).
+- `kMaskA2C` se comporte comme `kMask` (le RHI n'a ni MSAA ni alpha-to-coverage) et `kTransmission` se compose comme
+  `kBlend`, sans réfraction.
+- Pas de transparence indépendante de l'ordre (OIT).
+- Les objets instanciés n'écrivent pas de sorties auxiliaires.
+- L'opacité et le seuil sont par objet, pas par texel ; les primitives glTF transparentes ne sont pas triées.
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 
