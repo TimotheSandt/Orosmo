@@ -129,18 +129,32 @@ core::Result<> Clip::sample(float time, Pose &pose) const
 
 void Clip::collectEvents(float from, float to, std::size_t laps, std::vector<AnimationEvent> &out) const
 {
-    for (const AnimationEvent &e : events_)
+    // events_ est trié par temps ; chaque intervalle est émis dans l'ordre du parcours.
+    if (laps == 0)
     {
-        std::size_t count = 0;
-        if (laps == 0)
+        for (const AnimationEvent &e : events_)
         {
-            count = (e.time > from && e.time <= to) ? 1 : 0;
+            if (e.time > from && e.time <= to)
+            {
+                out.push_back(e);
+            }
         }
-        else
+        return;
+    }
+    for (const AnimationEvent &e : events_) // (from, duration]
+    {
+        if (e.time > from)
         {
-            count = (e.time > from ? 1 : 0) + (laps - 1) + (e.time <= to ? 1 : 0);
+            out.push_back(e);
         }
-        for (std::size_t i = 0; i < count; ++i)
+    }
+    for (std::size_t lap = 1; lap < laps; ++lap) // passages complets
+    {
+        out.insert(out.end(), events_.begin(), events_.end());
+    }
+    for (const AnimationEvent &e : events_) // [0, to]
+    {
+        if (e.time <= to)
         {
             out.push_back(e);
         }
@@ -165,8 +179,14 @@ ClipTime advanceClipTime(float time, float delta, float duration, LoopMode mode)
     if (t >= duration || t < 0.0f)
     {
         out.wrapped = true;
-        out.laps = static_cast<std::size_t>(t < 0.0f ? std::ceil(-t / duration) : std::floor(t / duration));
-        out.laps = std::max<std::size_t>(out.laps, 1);
+        // Quotient contrôlé avant conversion : non fini ou énorme -> plafonné à kMaxLaps (borne aussi les événements émis).
+        const float quotient = std::floor(std::abs(t) / duration) + (t < 0.0f ? 1.0f : 0.0f);
+        out.laps = std::isfinite(quotient) ? static_cast<std::size_t>(std::clamp(quotient, 1.0f, static_cast<float>(kMaxLaps))) : kMaxLaps;
+        if (!std::isfinite(t))
+        {
+            out.time = 0.0f; // temps non fini : retombe au début du clip
+            return out;
+        }
         t = std::fmod(t, duration);
         if (t < 0.0f)
         {
