@@ -70,7 +70,9 @@ struct ShIrradiance
     glm::vec3 evaluate(const glm::vec3 &normal) const noexcept;
     static ShIrradiance uniform(const glm::vec3 &radiance) noexcept;
 };
-// Projection d'un environnement, pondérée par l'angle solide de chaque texel. kInvalidArgument pour une image vide.
+// Projection d'un environnement, pondérée par l'angle solide de chaque texel. kInvalidArgument pour une image vide, ET pour une
+// image non vide trop petite pour résoudre les neuf coefficients (ex. 1 × 1). Pour un
+// environnement uniforme, `uniformEquirect(radiance)` (8 × 4 par défaut) convient.
 core::Result<ShIrradiance> projectEquirect(const EquirectImage &image);
 
 // Table BRDF split-sum : `size` × `size` couples (A, B) ; colonne = n·v (de 0 à 1, centres de texels), ligne = rugosité
@@ -137,7 +139,9 @@ class IblFeature final : public RenderFeature
     bool supports(const rhi::Capabilities &capabilities) const noexcept override { return capabilities.compute; }
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
 
-    // Remplace l'environnement : envoi de l'image, préfiltrage en compute (soumis tout de suite), irradiance SH.
+    // Remplace l'environnement : envoi de l'image, préfiltrage en compute (soumis tout de suite), irradiance SH. kInvalidArgument
+    // (propagé de `projectEquirect`) pour une image vide ou trop petite pour les neuf coefficients SH (ex. 1 × 1) ; un
+    // environnement uniforme s'écrit `uniformEquirect(radiance)`.
     core::Result<> setEnvironment(const EquirectImage &image);
     // Intensités (appliquées à l'image suivante).
     void setIntensity(float diffuse, float specular) noexcept;

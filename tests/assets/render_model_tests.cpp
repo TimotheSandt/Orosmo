@@ -312,4 +312,38 @@ TEST_SUITE("assets/render_model")
             CHECK(plain.meshCount() == 1);
         }
     }
+
+    TEST_CASE("Mesh: each history slot keeps its own previous model matrix")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            rd::MeshData data;
+            data.vertices = {0, 0, 0, 1, 0, 0, 0, 1, 0};
+            data.indices = {0, 1, 2};
+            data.attributeSizes = {3};
+            auto mesh = rd::Mesh::create(*gpu.device, data);
+            REQUIRE(mesh.has_value());
+            auto previous = [&]
+            {
+                glm::mat4 m;
+                std::memcpy(&m, mesh->modelBlock().data() + 128, sizeof m);
+                return m;
+            };
+            const glm::mat4 a = glm::translate(glm::mat4(1.0f), {0, 0, 0});
+            const glm::mat4 b = glm::translate(glm::mat4(1.0f), {10, 0, 0});
+            for (std::uint64_t frame = 1; frame <= 3; ++frame)
+            {
+                mesh->setHistorySlot(0);
+                mesh->setModelMatrix(a);
+                REQUIRE(mesh->prepareTransform({}, {frame, {}}).has_value());
+                CHECK(previous() == a); // immobile : jamais la matrice de l'autre nœud
+                mesh->setHistorySlot(1);
+                mesh->setModelMatrix(b);
+                REQUIRE(mesh->prepareTransform({}, {frame, {}}).has_value());
+                CHECK(previous() == b);
+            }
+        }
+    }
 }

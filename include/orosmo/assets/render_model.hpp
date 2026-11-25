@@ -90,6 +90,7 @@ class RenderModel
     std::vector<std::unique_ptr<renderer::Mesh>> meshes_; // une par primitive (unique_ptr : un Mesh déplacé garde ses tampons)
     std::vector<std::shared_ptr<renderer::PbrMaterial>> materials_;
     std::vector<Item> items_;
+    std::vector<std::uint32_t> historySlots_; // par dessin : emplacement d'historique de mouvement de son maillage (Mesh::setHistorySlot)
     std::vector<MeshSource> sources_; // un par maillage GPU
     std::vector<glm::mat4> world_;
     glm::mat4 root_{1.0f};

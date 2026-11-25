@@ -418,6 +418,14 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
             out.items_.push_back({n, index});
         }
     }
+    // REN-21 : un emplacement d'historique de mouvement par dessin d'un même maillage GPU (rang du nœud parmi ceux qui le
+    // dessinent), pour que chaque nœud garde sa propre matrice précédente.
+    std::vector<std::uint32_t> drawsPerMesh(out.meshes_.size(), 0);
+    out.historySlots_.reserve(out.items_.size());
+    for (const Item &item : out.items_)
+    {
+        out.historySlots_.push_back(drawsPerMesh[item.mesh]++);
+    }
     out.world_ = model.worldMatrices();
     return out;
 }
@@ -434,10 +442,12 @@ core::Result<> RenderModel::setNodeMatrices(std::vector<glm::mat4> world)
 
 core::Result<> RenderModel::draw(renderer::SceneRenderer &scene, const renderer::Camera &camera)
 {
-    for (const Item &item : items_)
+    for (std::size_t i = 0; i < items_.size(); ++i)
     {
+        const Item &item = items_[i];
         renderer::Mesh &mesh = *meshes_[item.mesh];
         mesh.setModelMatrix(root_ * world_[static_cast<std::size_t>(item.node)]);
+        mesh.setHistorySlot(historySlots_[i]);
         if (auto r = scene.drawMesh(mesh, camera); !r)
         {
             return r;

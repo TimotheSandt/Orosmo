@@ -100,6 +100,11 @@ class Mesh
     // changé depuis le dernier envoi. Pour un appelant qui lie lui-même `modelGroup()` ; écrire ce tampon pendant qu'une image en
     // vol le lit encore coûte une copie ordonnée (OpenGL : glBufferSubData, Vulkan : transfert), d'où le passage par l'anneau.
     core::Result<> uploadTransform(const glm::vec3 &origin = glm::vec3(0.0f), const TransformHistory &history = {});
+    // REN-21 : emplacement d'historique de mouvement des prochains `prepareTransform`, pour un maillage dessiné plusieurs fois par
+    // image (ex. un nœud glTF par dessin, `assets::RenderModel`) : chaque emplacement garde SA matrice de l'image précédente, et
+    // un dessin immobile n'hérite pas de celle d'un autre. 0 par défaut (un seul dessin logique).
+    void setHistorySlot(std::uint32_t slot);
+    std::uint32_t historySlot() const noexcept { return historySlot_; }
 
     // Identifiant écrit dans l'AOV `kObjectId` (REN-21) ; 0 = aucun objet (valeur d'effacement).
     void setObjectId(std::uint32_t id) noexcept
@@ -167,10 +172,16 @@ class Mesh
     bool uploadedWithHistory_ = false; // mode d'historique du bloc écrit (prevModel distinct de model ou non)
     glm::mat4 uploadedPreviousWorld_{1.0f};
     glm::vec3 uploadedPreviousOrigin_{0.0f};
-    glm::mat4 previousWorld_{1.0f}; // modèle (monde) de l'image précédente
-    glm::mat4 lastWorld_{1.0f};     // modèle (monde) vu par le dernier uploadTransform
-    bool hasLastWorld_ = false;
-    std::uint64_t lastFrame_ = 0;
+    // Historique de mouvement d'un dessin logique (emplacement `setHistorySlot`).
+    struct MotionHistory
+    {
+        glm::mat4 previousWorld{1.0f}; // modèle (monde) de l'image précédente
+        glm::mat4 lastWorld{1.0f};     // modèle (monde) vu par le dernier prepareTransform de cet emplacement
+        bool hasLastWorld = false;
+        std::uint64_t lastFrame = 0;
+    };
+    std::vector<MotionHistory> history_ = std::vector<MotionHistory>(1);
+    std::uint32_t historySlot_ = 0;
     std::uint32_t objectId_ = 0;
     AovMaterial aovMaterial_;
     std::array<std::byte, kModelBlockSize> modelBlock_{};
