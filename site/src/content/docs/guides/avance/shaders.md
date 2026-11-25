@@ -106,7 +106,8 @@ if (shaders.lastError()) { /* la compilation a échoué : message du compilateur
 
 Cela ne vaut que si l'on **redemande** le pipeline : `PipelineCache::graphics` reconstruit à la demande, mais un `PipelineHandle`
 conservé (comme celui que reçoit `PulseFeature` dans [Écrire un plugin de rendu](/guides/avance/plugin-de-rendu/)) n'est pas mis
-à jour tout seul et continue d'utiliser l'ancien pipeline. Un plugin qui veut suivre le rechargement garde le `ShaderProgram`
+à jour tout seul. Il reste valide seulement jusqu'à ce que quelqu'un redemande le pipeline : la reconstruction
+réussie **détruit** l'ancien pipeline (`PipelineCache` le libère), et tout handle conservé devient invalide. Un plugin qui veut suivre le rechargement garde le `ShaderProgram`
 et l'état, puis rappelle `pipelines.graphics(*program, state)` quand `pollHotReload()` a rendu plus de 0 (ou à chaque image :
 le cache répond sans reconstruire tant que rien n'a changé) pour remplacer son handle.
 

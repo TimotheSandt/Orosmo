@@ -73,8 +73,9 @@ graphe de passes et l'écrit dans l'encodeur ; le GPU ne travaille qu'au `submit
 | 7 | `renderer.drawMesh(mesh, camera)`, `model.draw(renderer, camera)` | dessins enregistrés |
 | 8 | `renderer.endFrame(sortie)` | graphe construit : ombres, scène, plugins, copie vers la sortie |
 | 9 | interface (`canvas.render(..., true)`) | dessinée par-dessus, sur la même cible |
-| 10 | `device.submit(std::move(encoder))` | le GPU exécute tout |
-| 11 | `device.present()` | affichage ; toujours appelé si l'étape 2 a réussi, même après une erreur |
+| 10 | `renderer.blit().copy(*encoder, composed.color(0), renderer.blit().linearSampler(), *backbuffer, rhi::Format::kRGBA8Unorm, "present")` | copie de la cible (scène + interface) vers l'image de la fenêtre obtenue à l'étape 2 |
+| 11 | `device.submit(std::move(encoder))` | le GPU exécute tout |
+| 12 | `device.present()` | affichage ; toujours appelé si l'étape 2 a réussi, même après une erreur |
 
 ```cpp
 renderer.setOutputResolution(static_cast<int>(size.width), static_cast<int>(size.height));   // avant beginFrame

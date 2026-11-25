@@ -141,7 +141,8 @@ WorldPosition back = toWorld(camera, local);
 Le renderer soustrait aussi la position de la caméra à celle de chaque maillage quand `SceneRenderer::setCameraRelative(true)`
 est actif, mais **en `float`** : l'origine de la caméra et la matrice du maillage (`Mesh::setPosition`, `setModelMatrix`) sont
 en `float`, donc la fraction d'une position très éloignée est déjà perdue avant la soustraction. `toLocal` n'a d'effet sur le
-dessin que si vous l'appelez vous-même, en double, et que vous donnez ensuite la position locale au maillage.
+dessin que si vous l'appelez vous-même, en double, et que vous donnez ensuite les positions locales **au maillage et à la caméra** (les deux relatives à la même
+origine locale) : sinon le renderer soustrait une caméra lointaine d'un maillage proche de zéro.
 
 ## Limites
 

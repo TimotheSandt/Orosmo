@@ -93,7 +93,7 @@ Son option `--api` n'accepte que `opengl` : il crée toujours un périphérique 
 ## update
 
 ```bash
-../orosmo update                 # dans le dossier du projet mygame, avec l'outil téléchargé plus haut (ou : ./orosmo update mygame)
+../orosmo update                 # dans le dossier du projet mygame, avec l'outil téléchargé plus haut (ou, depuis le dossier parent : ./orosmo update mygame)
 ```
 
 `orosmo update` remplace `orosmo/` par la dernière release. `Makefile` et `.gitignore` sont réécrits s'ils n'ont pas été

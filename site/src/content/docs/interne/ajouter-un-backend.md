@@ -13,9 +13,12 @@ l'essentiel.
 
 ## La règle d'isolation
 
-Les appels et types d'une API graphique (`gl*`, `Vk*`, `MTL*`...) n'existent que dans `src/rhi/<backend>/`. Aucun type natif
+Les appels et types d'une API graphique (`gl*`, `Vk*`, `MTL*`...) n'existent que dans les backends (`src/rhi/<backend>/`) et
+dans `platform` (`src/platform/`, `include/orosmo/platform/`), qui crée la fenêtre et la surface (règle de
+[`docs/03`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/03-ARCHITECTURE_ET_PORTABILITE.md) §8.2). Aucun type natif
 dans `include/orosmo/rhi/` ni dans une couche supérieure. `make check-api` (`tools/check_api_isolation.py --strict`) le
-vérifie et bloque la CI. Un dossier `src/rhi/<backend>/` est déjà autorisé ; les motifs `MTL*` sont déjà surveillés. Un
+vérifie et bloque la CI : il parcourt `include/`, `src/` et `apps/`, et ignore les préfixes de `api_isolation.allowed` dans
+`tools/layers.json` (`src/rhi/`, `src/platform/`, `include/orosmo/platform/`), ainsi que le code généré (`Generated/`). Un dossier `src/rhi/<backend>/` est déjà autorisé ; les motifs `MTL*` sont déjà surveillés. Un
 préfixe nouveau (WebGPU : `wgpu*`, `WGPU*`) doit être ajouté à `PATTERNS` dans le script.
 
 `src/rhi/*` est au niveau 2 de `tools/layers.json` : un backend n'inclut que `core`, `platform` et `rhi`, jamais `renderer`
