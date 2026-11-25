@@ -126,6 +126,7 @@ class AnimScene
     std::optional<orosmo::anim::SkinnedModel> skinned_;
     std::unique_ptr<orosmo::anim::CrowdRenderer> crowd_;
     orosmo::rhi::TextureHandle albedoHandle_;
+    bool rebuildPending_ = false; // buildModels a échoué après un rechargement : à retenter à la prochaine modification
 
     std::vector<glm::mat4> agentWorlds_;
     std::vector<orosmo::anim::Pose> agentPoses_;

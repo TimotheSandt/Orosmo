@@ -54,7 +54,7 @@ core::Result<> StateMachine::start(const std::string &state)
     currentTime_ = 0.0f;
     previous_.reset();
     std::vector<AnimationEvent> first;
-    s->clip->collectEvents(-1.0f, 0.0f, false, first); // événements à t = 0
+    s->clip->collectEvents(-1.0f, 0.0f, 0, first); // événements à t = 0
     for (AnimationEvent &e : first)
     {
         events_.push_back({current_, std::move(e.name)});
@@ -97,7 +97,7 @@ core::Result<> StateMachine::update(float dt)
     // Temps de l'état courant (et de l'état quitté pendant un fondu) ; événements franchis.
     const ClipTime next = advanceClipTime(currentTime_, dt * cur->speed, cur->clip->duration(), cur->loop);
     std::vector<AnimationEvent> fired;
-    cur->clip->collectEvents(currentTime_, next.time, next.wrapped, fired);
+    cur->clip->collectEvents(currentTime_, next.time, next.laps, fired);
     for (AnimationEvent &e : fired)
     {
         events_.push_back({current_, std::move(e.name)});
@@ -136,7 +136,7 @@ core::Result<> StateMachine::update(float dt)
             currentTime_ = 0.0f;
             currentEnded_ = false;
             std::vector<AnimationEvent> first;
-            find(current_)->clip->collectEvents(-1.0f, 0.0f, false, first);
+            find(current_)->clip->collectEvents(-1.0f, 0.0f, 0, first);
             for (AnimationEvent &e : first)
             {
                 events_.push_back({current_, std::move(e.name)});

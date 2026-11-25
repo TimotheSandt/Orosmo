@@ -44,9 +44,11 @@ class Clip
     // kInvalidArgument si la pose n'a pas `nodeCount()` nœuds.
     core::Result<> sample(float time, Pose &pose) const;
 
-    // Ajoute à `out` les événements franchis en avançant de `from` (exclu) à `to` (inclus). `wrapped` : le temps a fait le tour
-    // (boucle) : (from, duration] puis [0, to]. Un `from` négatif inclut les événements à 0 (premier passage).
-    void collectEvents(float from, float to, bool wrapped, std::vector<AnimationEvent> &out) const;
+    // Ajoute à `out` les événements franchis en avançant de `from` (exclu) à `to` (inclus). `laps` : nombre de tours de boucle
+    // faits (0 : sans bouclage). Avec laps >= 1 : (from, duration], puis laps-1 passages complets, puis [0, to] ; un événement
+    // est donc restitué une fois par franchissement (2,25 s d'avance sur un clip d'1 s depuis 0,25 : le marqueur 0,75 sort 2 fois).
+    // Un `from` négatif inclut les événements à 0 (premier passage).
+    void collectEvents(float from, float to, std::size_t laps, std::vector<AnimationEvent> &out) const;
 
   private:
     assets::AnimationData data_;
@@ -54,12 +56,13 @@ class Clip
     std::vector<AnimationEvent> events_;
 };
 
-// Temps local d'un clip après avoir avancé : borné (kOnce) ou ramené dans [0, duration) (kLoop). `wrapped` dit si la boucle a
-// fait au moins un tour.
+// Temps local d'un clip après avoir avancé : borné (kOnce) ou ramené dans [0, duration) (kLoop). `laps` compte les tours de boucle
+// faits (`wrapped` : laps > 0).
 struct ClipTime
 {
     float time = 0.0f;
     bool wrapped = false;
+    std::size_t laps = 0;
     bool finished = false; // kOnce : la fin est atteinte
 };
 ClipTime advanceClipTime(float time, float delta, float duration, LoopMode mode);

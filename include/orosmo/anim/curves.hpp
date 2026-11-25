@@ -105,24 +105,47 @@ class PropertyAnimation
         {
             return core::makeError(core::ErrorCode::kInvalidArgument, "PropertyAnimation::bind: '" + name + "' has no setter");
         }
-        if (std::ranges::any_of(tracks_, [&](const Track &t) { return t.name == name; }))
+        if (has(name))
         {
             return core::makeError(core::ErrorCode::kAlreadyExists, "PropertyAnimation::bind: '" + name + "' is already bound");
         }
-        tracks_.push_back({std::move(name), Typed<T>{std::move(curve), std::move(setter)}});
+        Track track{std::move(name), Typed<T>{std::move(curve), std::move(setter)}};
+        (applying_ > 0 ? pendingBind_ : tracks_).push_back(std::move(track));
         return {};
     }
+    // Contrat de rappel : un setter peut appeler bind/unbind sur cette animation ; la modification prend effet à la fin de
+    // l'`apply` en cours (la passe courante parcourt les pistes telles qu'elles étaient au début). Hors `apply`, effet immédiat.
     void unbind(const std::string &name)
     {
+        if (applying_ > 0)
+        {
+            pendingUnbind_.push_back(name);
+            return;
+        }
         std::erase_if(tracks_, [&](const Track &t) { return t.name == name; });
     }
 
     // Pose la valeur de chaque piste au temps `time`, dans l'ordre d'ajout.
     void apply(float time) const
     {
-        for (const Track &t : tracks_)
+        ++applying_;
+        const std::size_t count = tracks_.size(); // tracks_ ne change pas pendant la passe (bind/unbind différés)
+        for (std::size_t i = 0; i < count; ++i)
         {
-            std::visit([time](const auto &typed) { typed.setter(typed.curve.evaluate(time)); }, t.typed);
+            std::visit([time](const auto &typed) { typed.setter(typed.curve.evaluate(time)); }, tracks_[i].typed);
+        }
+        if (--applying_ == 0 && (!pendingUnbind_.empty() || !pendingBind_.empty()))
+        {
+            for (const std::string &n : pendingUnbind_)
+            {
+                std::erase_if(tracks_, [&](const Track &t) { return t.name == n; });
+            }
+            pendingUnbind_.clear();
+            for (Track &t : pendingBind_)
+            {
+                tracks_.push_back(std::move(t));
+            }
+            pendingBind_.clear();
         }
     }
     // Plus grande durée des pistes.
@@ -148,7 +171,16 @@ class PropertyAnimation
         std::string name;
         std::variant<Typed<float>, Typed<core::Vec2>, Typed<core::Vec3>, Typed<core::Vec4>> typed;
     };
-    std::vector<Track> tracks_;
+    bool has(const std::string &name) const
+    {
+        const auto same = [&](const Track &t) { return t.name == name; };
+        return std::ranges::any_of(tracks_, same) || std::ranges::any_of(pendingBind_, same);
+    }
+    // mutable : apply() est const mais applique à sa fin les bind/unbind demandés par les setters.
+    mutable std::vector<Track> tracks_;
+    mutable std::vector<Track> pendingBind_;
+    mutable std::vector<std::string> pendingUnbind_;
+    mutable int applying_ = 0;
 };
 
 } // namespace orosmo::anim
