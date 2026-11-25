@@ -14,6 +14,7 @@
 #include "orosmo/renderer/scene_renderer.hpp"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,7 +30,14 @@ core::Result<renderer::PbrMaterialDesc> pbrMaterialDesc(const Model &model, cons
 
 // Sommets entrelacés de `renderer::kPbrVertexAttributeSizes` (16 flottants). Normales absentes : calculées par face et lissées
 // par sommet ; tangentes absentes : calculées depuis les UV (repli (1, 0, 0, 1) sans UV) ; couleur absente : blanc.
+// `RenderModel` lui passe la primitive de `flatShaded` quand NORMAL manque : les normales y sont alors plates.
 std::vector<float> pbrVertices(const MeshPrimitive &primitive);
+
+// glTF 2.0 (§3.7.2.1) : une primitive sans NORMAL est dessinée avec des normales plates, et ses tangentes sont ignorées. Rend
+// alors une copie où chaque triangle a ses propres sommets (tous les attributs recopiés, articulations et poids compris), sa
+// normale de face et des index 0, 1, 2… ; rend nullopt quand la primitive a ses normales (à dessiner telle quelle). Toute vue
+// des sommets GPU d'un `RenderModel` (skinning, foule) part de cette primitive.
+std::optional<MeshPrimitive> flatShaded(const MeshPrimitive &primitive);
 
 struct RenderModelOptions
 {

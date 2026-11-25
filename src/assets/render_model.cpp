@@ -141,6 +141,60 @@ core::Result<renderer::PbrMaterialDesc> pbrMaterialDesc(const Model &model, cons
     return desc;
 }
 
+std::optional<MeshPrimitive> flatShaded(const MeshPrimitive &p)
+{
+    if (!p.normals.empty() && p.normals.size() == p.positions.size())
+    {
+        return std::nullopt;
+    }
+    const std::size_t n = p.positions.size();
+    MeshPrimitive out;
+    out.material = p.material;
+    out.boundsMin = p.boundsMin;
+    out.boundsMax = p.boundsMax;
+    std::vector<std::uint32_t> corners; // sommets source des triangles gardés (un triangle hors bornes est ignoré)
+    corners.reserve(p.indices.size());
+    for (std::size_t t = 0; t + 2 < p.indices.size(); t += 3)
+    {
+        if (p.indices[t] < n && p.indices[t + 1] < n && p.indices[t + 2] < n)
+        {
+            corners.insert(corners.end(), {p.indices[t], p.indices[t + 1], p.indices[t + 2]});
+        }
+    }
+    const std::size_t count = corners.size();
+    auto copy = [&](const auto &from, auto &to)
+    {
+        if (from.size() == n)
+        {
+            to.reserve(count);
+            for (const std::uint32_t c : corners)
+            {
+                to.push_back(from[c]);
+            }
+        }
+    };
+    copy(p.positions, out.positions);
+    copy(p.uv0, out.uv0);
+    copy(p.uv1, out.uv1);
+    copy(p.colors, out.colors);
+    copy(p.joints, out.joints);
+    copy(p.weights, out.weights);
+    out.normals.reserve(count);
+    out.indices.reserve(count);
+    for (std::size_t t = 0; t < count; t += 3)
+    {
+        const core::Vec3 &a = out.positions[t];
+        const core::Vec3 face = glm::cross(out.positions[t + 1] - a, out.positions[t + 2] - a);
+        const core::Vec3 normal = glm::dot(face, face) > 0.0f ? glm::normalize(face) : core::Vec3(0.0f, 1.0f, 0.0f);
+        out.normals.insert(out.normals.end(), {normal, normal, normal});
+    }
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        out.indices.push_back(static_cast<std::uint32_t>(i));
+    }
+    return out;
+}
+
 std::vector<float> pbrVertices(const MeshPrimitive &p)
 {
     const std::size_t n = p.positions.size();
@@ -254,7 +308,8 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
     {
         for (std::size_t p = 0; p < model.meshes[m].primitives.size(); ++p)
         {
-            const MeshPrimitive &prim = model.meshes[m].primitives[p];
+            const std::optional<MeshPrimitive> flat = flatShaded(model.meshes[m].primitives[p]);
+            const MeshPrimitive &prim = flat ? *flat : model.meshes[m].primitives[p];
             if (prim.indices.empty())
             {
                 continue;

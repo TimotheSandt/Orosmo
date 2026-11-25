@@ -191,6 +191,57 @@ TEST_SUITE("assets/render_model")
         }
     }
 
+    TEST_CASE("flatShaded: without NORMAL every triangle gets its own vertices and face normal; other attributes follow")
+    {
+        const as::MeshPrimitive p = roof();
+        const auto flat = as::flatShaded(p);
+        REQUIRE(flat.has_value());
+        REQUIRE(flat->positions.size() == 6);
+        REQUIRE(flat->indices == std::vector<std::uint32_t>{0, 1, 2, 3, 4, 5});
+        REQUIRE(flat->normals.size() == 6);
+        CHECK(flat->tangents.empty()); // glTF : tangentes ignorées quand les normales manquent
+        const Vec3 first = glm::normalize(glm::cross(p.positions[1] - p.positions[0], p.positions[2] - p.positions[0]));
+        const Vec3 second = glm::normalize(glm::cross(p.positions[1] - p.positions[2], p.positions[3] - p.positions[2]));
+        for (std::size_t v = 0; v < 3; ++v)
+        {
+            CHECK(glm::length(flat->normals[v] - first) < 1e-6f);
+            CHECK(glm::length(flat->normals[3 + v] - second) < 1e-6f);
+        }
+        // L'arête partagée (sommets 1 et 2 du modèle) a deux normales différentes, une par face.
+        CHECK(glm::length(flat->normals[1] - flat->normals[4]) > 0.1f);
+        for (std::size_t v = 0; v < 6; ++v)
+        {
+            const std::uint32_t src = p.indices[v];
+            CHECK(flat->positions[v] == p.positions[src]);
+            CHECK(flat->uv0[v] == p.uv0[src]);
+            CHECK(flat->joints[v] == p.joints[src]);
+            CHECK(flat->weights[v] == p.weights[src]);
+        }
+        as::MeshPrimitive withNormals = p;
+        withNormals.normals.assign(4, Vec3(0, 0, 1));
+        CHECK(!as::flatShaded(withNormals).has_value()); // normales explicites gardées
+    }
+
+    TEST_CASE("RenderModel: GPU meshes of a primitive without NORMAL are flat-shaded")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            ModelScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            as::Model m;
+            as::MeshPrimitive p = roof();
+            p.joints.clear();
+            p.weights.clear();
+            m.meshes.push_back({"roof", {p}});
+            m.nodes.resize(1);
+            m.nodes[0].mesh = 0;
+            auto model = scene.model(m);
+            REQUIRE(model.meshCount() == 1);
+            CHECK(model.mesh(0).indexCount() == 6);
+            CHECK(model.mesh(0).vertexBufferSize() == 6 * rd::kPbrVertexFloats * sizeof(float));
+        }
+    }
+
     TEST_CASE("RenderModel: embedded images of two models in one cache do not collide; one image referenced twice is shared")
     {
         FOR_EACH_BACKEND(backend)
