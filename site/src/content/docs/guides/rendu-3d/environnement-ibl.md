@@ -11,7 +11,7 @@ reflets par un cube préfiltré (un niveau de mip par rugosité) et une table BR
 remplacent l'environnement près d'elles, pour les objets mobiles. Seuls les matériaux PBR compilés avec `rd::iblDefines()`
 le lisent.
 
-Dans le code : `namespace rd = orosmo::renderer;`, `namespace as = orosmo::assets;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `scene`, `shaders`, `pipelines`, `shaderDir`, `lights`), plus `namespace as = orosmo::assets;`.
 
 ## Exemple minimal
 
@@ -24,16 +24,16 @@ auto *ibl = static_cast<rd::IblFeature *>(*added);
 
 if (auto r = ibl->setEnvironment(rd::uniformEquirect(glm::vec3(0.5f), 32, 16)); !r) { /* erreur */ }
 
-// Matériaux : la variante IBL, en macros en plus
+// Matériaux : la variante IBL, en macros en plus (gltfModel : as::Model rendu par as::loadGltf)
 as::RenderModelOptions options;
 options.extraDefines = rd::iblDefines();
-auto model = as::RenderModel::create(**device, gltfModel, textures, pbrShaders, defaults, options);
+auto model = as::RenderModel::create(**device, gltfModel, textures, pbr, *defaults, options);
 ```
 
 Adapté de [`tests/renderer/ibl_tests.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/tests/renderer/ibl_tests.cpp).
 La démo n'utilise pas l'IBL : il n'y a pas de commande de démo pour cette page.
 
-Pour un matériau créé à la main : `pbrShaders.program(material->features(), rd::iblDefines())` (voir
+Pour un matériau créé à la main : `pbr.program(material->features(), rd::iblDefines())` (voir
 [Matériaux PBR](/guides/rendu-3d/materiaux-pbr/)).
 
 ## Fournir l'image d'environnement
@@ -90,13 +90,14 @@ Unités : une surface blanche mate dans un environnement uniforme de radiance L 
 
 ## Limites
 
-- G197 : les sondes ne sont pas capturées depuis la scène ; pas de ciel dessiné (skybox) ni de rotation de
-  l'environnement ; le préfiltrage est fait en une fois à chaque `setEnvironment`.
-- G195 : l'IBL n'atteint que les matériaux PBR dessinés par `drawMesh`, pas les objets instanciés ni `mesh.frag`.
+- Les sondes ne sont pas capturées depuis la scène : on les remplit à la main ou depuis une image.
+- Pas de ciel dessiné (skybox) ni de rotation de l'environnement ; le préfiltrage est fait en une fois à chaque
+  `setEnvironment`.
+- L'IBL n'atteint que les matériaux PBR dessinés par `drawMesh`, pas les objets instanciés ni `mesh.frag`.
 - Pas de chargement d'image HDR dans `assets` (images 8 bits seulement).
-- REN-14 (occlusion ambiante écran) et REN-15 (réflexions écran, GI) : absents.
+- Pas d'occlusion ambiante écran, de réflexions écran ni d'éclairage global.
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 

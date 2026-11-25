@@ -10,7 +10,7 @@ Les lumières vivent dans un `rd::LightManager`, qui les range dans un tampon de
 `SceneRenderer` le lit par un pointeur donné à `setLights`. Par défaut chaque fragment parcourt toutes les lumières
 (forward) ; avec beaucoup de lumières ponctuelles, le forward+ ne lui donne que celles de son cluster.
 
-Dans le code : `namespace rd = orosmo::renderer;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `scene`, `shaders`, `pipelines`, `shaderDir`, `lights`).
 
 ## Exemple minimal
 
@@ -114,13 +114,13 @@ apps/demo/bin/debug/main --lighting forwardplus --lights 1000
 
 ## Limites
 
-- REN-05 (Partiel) : pas de lumières de surface ; un projecteur est testé comme une sphère dans les clusters (G166).
-- REN-16 (Absent) : pas d'éclairage précalculé.
-- G153 : un seul `LightManager` par image en forward+ ; les dessins externes (`drawCustom`, objets instanciés) ne passent
-  pas par la pré-passe et lisent toutes les lumières.
-- G161 : un pixel d'écart entre forward et forward+ sur la démo.
+- Pas de lumières de surface ; dans les clusters, un projecteur est traité comme une sphère (plus large que son cône).
+- Pas d'éclairage précalculé (lightmaps).
+- En forward+ : un seul `LightManager` par image, et les dessins externes (`drawCustom`, objets instanciés) ne passent pas
+  par la pré-passe et lisent toutes les lumières.
+- Forward et forward+ peuvent différer d'un pixel sur la démo (effet de la pré-passe de profondeur).
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 

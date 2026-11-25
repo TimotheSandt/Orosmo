@@ -10,7 +10,7 @@ Un objet transparent se dessine après les opaques, sans écrire la profondeur, 
 de l'arrière vers l'avant. `rd::TransparentFeature` fait ce tri : on lui dépose les objets de l'image, il les dessine dans
 une passe `transparents` juste après la passe `scene`.
 
-Dans le code : `namespace rd = orosmo::renderer;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `scene`, `shaders`, `pipelines`, `shaderDir`, `lights`).
 
 ## Exemple minimal
 
@@ -100,13 +100,13 @@ mesh.setAovMaterial({rd::BlendMode::kBlend, rd::AovSet{rd::Aov::kObjectId}});
 
 ## Limites
 
-- REN-37 (Partiel) : `kMaskA2C` se comporte comme `kMask` (le RHI n'a ni MSAA ni alpha-to-coverage) ; `kTransmission`
-  est composé comme `kBlend` (G171).
-- REN-38 (Absent) : pas de réfraction. REN-40 (Absent) : pas de transparence indépendante de l'ordre (OIT).
-- REN-41 (Partiel) : les objets instanciés n'ont pas d'AOV (G169).
-- L'opacité et le seuil sont par objet, pas par texel ; les primitives glTF `BLEND` ne sont pas triées (G195).
+- `kMaskA2C` se comporte comme `kMask` (le RHI n'a ni MSAA ni alpha-to-coverage) et `kTransmission` se compose comme
+  `kBlend`, sans réfraction.
+- Pas de transparence indépendante de l'ordre (OIT).
+- Les objets instanciés n'écrivent pas de sorties auxiliaires.
+- L'opacité et le seuil sont par objet, pas par texel ; les primitives glTF transparentes ne sont pas triées.
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 

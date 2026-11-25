@@ -3,14 +3,30 @@ title: "Dessiner une scène : caméra et maillages"
 description: "Afficher des maillages avec SceneRenderer, une caméra et une lumière, et comprendre l'ordre des appels d'une image."
 sidebar:
   order: 1
-  label: Scène, caméra, maillages
+  label: Scène
 ---
 
 `SceneRenderer` dessine la 3D : il possède la cible de la scène (couleur et profondeur), envoie au GPU la caméra, les
 lumières et les données de l'image (groupe 0 des shaders), et joue les dessins de maillages. Les fonctions en plus
 (ombres, forward+, post-traitement, transparents) s'y branchent comme plugins.
 
-Dans le code de cette page : `namespace rd = orosmo::renderer;` et `namespace rhi = orosmo::rhi;`.
+## Noms utilisés dans les exemples
+
+Les pages du rendu 3D reprennent les noms du projet `orosmo init`
+([Lire la boucle d'une application](/demarrer/premiere-application/)) :
+
+| Nom | Type | D'où il vient |
+|---|---|---|
+| `rd`, `rhi` | alias | `namespace rd = orosmo::renderer;`, `namespace rhi = orosmo::rhi;` |
+| `device` | `core::Result<std::unique_ptr<rhi::Device>>` | `rhi::createDevice(desc)` ; `**device` est le `rhi::Device &` |
+| `shaders`, `pipelines` | `rd::ShaderLibrary`, `rd::PipelineCache` | créés une fois, gardés jusqu'à la fin |
+| `shaderDir` | `std::filesystem::path` | `GET_RESOURCE_PATH("shader/rhi")` |
+| `scene` | `core::Result<std::unique_ptr<rd::SceneRenderer>>` | `rd::SceneRenderer::create(...)` ; `(*scene)->` ou `**scene` |
+| `lights` | `core::Result<rd::LightManager>` | `rd::LightManager::create(**device)` ; `lights->`, `&*lights` |
+| `camera` | `rd::Camera` | objet simple |
+| `textures`, `pbr`, `defaults` | `as::TextureCache`, `rd::PbrShaderCache`, `Result<shared_ptr<rd::PbrDefaults>>` | pour les matériaux PBR, voir [Matériaux PBR](/guides/rendu-3d/materiaux-pbr/) |
+
+Une fabrique renvoie un `Result` : on teste `if (!x)` et on lit `x.error().message` avant de s'en servir.
 
 ## Exemple minimal
 
@@ -71,9 +87,21 @@ while (!window.shouldClose()) {
 (*device)->waitIdle();
 ```
 
-`composed` est une `rd::RenderTarget` sans profondeur, à la taille du framebuffer, que le gabarit crée et redimensionne
-lui-même. `endFrame` y copie la scène, l'interface est dessinée par-dessus (`loadExisting = true`), puis le tout est copié
-dans l'image de la fenêtre.
+`composed` est une cible intermédiaire sans profondeur, à la taille du framebuffer, créée à la première image puis
+redimensionnée :
+
+```cpp
+rd::RenderTarget composed;                                    // déclarée avant la boucle
+const rhi::Extent2D size{static_cast<std::uint32_t>(pixelW), static_cast<std::uint32_t>(pixelH)};
+if (!composed.valid()) {
+    auto target = rd::RenderTarget::create(**device, {.size = size, .depth = false, .debugName = "composed"});
+    if (!target) { /* erreur */ }
+    composed = std::move(*target);
+} else if (auto r = composed.resize(size.width, size.height); !r) { /* erreur */ }
+```
+
+`pixelW` et `pixelH` viennent de `window.getFramebufferSize(pixelW, pixelH)`. `endFrame` copie la scène dans `composed`,
+l'interface est dessinée par-dessus (`loadExisting = true`), puis le tout est copié dans l'image de la fenêtre.
 
 Règles à retenir :
 
@@ -112,7 +140,7 @@ Ces tailles doivent correspondre aux entrées du shader : `{3, 3, 3}` (position,
 
 ```cpp
 rd::MeshData data;
-data.attributeSizes = {3, 3, 3};               // position, normale, couleur (shaders/rhi/mesh.vert)
+data.attributeSizes = {3, 3, 3};               // position, normale, couleur (entrées de mesh.vert)
 data.vertices = {/* x, y, z, nx, ny, nz, r, g, b, ... */};
 data.indices = {0, 1, 2, 0, 2, 3};
 auto mesh = rd::Mesh::create(**device, data);
@@ -136,11 +164,14 @@ mesh->setCullMode(rhi::CullMode::kBack);       // défaut kNone : les deux faces
 Un modèle glTF se dessine avec `assets::RenderModel`, qui crée ces maillages pour vous :
 [Charger un glTF](/guides/contenus/gltf/).
 
+`drawMesh` enregistre un dessin par appel. Au-delà de quelques dizaines de copies d'un même maillage (arbres, rochers,
+foule), utilisez l'instancing : [Beaucoup d'objets](/guides/rendu-3d/instancing-culling/) donne le tableau de choix.
+
 ## Réglages du renderer
 
 | Option | Type | Défaut | Effet |
 |---|---|---|---|
-| `SceneRendererConfig::shaderDirectory` | chemin | vide | Dossier `shaders/rhi` (obligatoire). |
+| `SceneRendererConfig::shaderDirectory` | chemin | vide | Dossier des shaders du moteur, `GET_RESOURCE_PATH("shader/rhi")` (obligatoire). |
 | `SceneRendererConfig::framesInFlight` | `uint32_t` | `2` | Images en vol (anneau des données par image). |
 | `FrameOptions::clearColor` | `array<float, 4>` | `{0, 0, 0, 1}` | Couleur d'effacement de la scène. |
 | `FrameOptions::clearDepth` | `bool` | `true` | Efface la profondeur au `beginFrame`. |
@@ -166,9 +197,11 @@ Ombres, forward+, IBL, transparents, post-traitement et anticrénelage sont des 
 `addFeature` renvoie un pointeur non possédé vers le plugin, à convertir vers son type :
 
 ```cpp
-auto added = (*scene)->addFeature(std::move(*shadows));
+auto created = rd::ShadowFeature::create(**device, shaders, pipelines, shaderDir);
+if (!created) { /* erreur */ }
+auto added = (*scene)->addFeature(std::move(*created));
 if (!added) { /* kUnsupported : capacité absente ; kAlreadyExists : nom déjà pris */ }
-auto *shadowFeature = static_cast<rd::ShadowFeature *>(*added);
+auto *shadows = static_cast<rd::ShadowFeature *>(*added);
 ```
 
 ## Limites
@@ -177,11 +210,12 @@ auto *shadowFeature = static_cast<rd::ShadowFeature *>(*added);
 - L'argument `camera` de `drawMesh` ne sert qu'au fil de fer : les matrices viennent de `setCamera`.
 - Il n'y a pas de programme de maillage par défaut, ni d'assemblage automatique des macros des plugins.
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 
 - [Lumières](/guides/rendu-3d/lumieres/)
 - [Matériaux PBR](/guides/rendu-3d/materiaux-pbr/)
+- [Beaucoup d'objets : instancing et culling](/guides/rendu-3d/instancing-culling/)
 - [Dessin et vues de debug](/guides/rendu-3d/debug-visuel/)
 - [Le renderer (interne)](/interne/renderer/)

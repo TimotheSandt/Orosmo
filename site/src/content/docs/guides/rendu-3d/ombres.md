@@ -11,41 +11,55 @@ directionnelle ombrée et une vue par projecteur ombré. En mode `kCached`, la g
 cache ; quand rien ne bouge, rien n'est redessiné. Il faut trois choses : le plugin, des objets qui projettent (casters)
 et des matériaux qui reçoivent.
 
-Dans le code : `namespace rd = orosmo::renderer;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples)
+(`device`, `scene`, `shaders`, `pipelines`, `shaderDir`, `lights`), plus `namespace as = orosmo::assets;`.
 
-## Exemple minimal
+## Exemple minimal : un modèle glTF qui reçoit et projette
+
+Le cas le plus courant : des modèles glTF (matériaux PBR) éclairés par un soleil. L'ordre compte : le plugin d'ombres doit
+exister avant la création des modèles, car leurs matériaux reçoivent les liaisons de l'atlas à la création.
 
 ```cpp
-// 1. Le plugin, avant de compiler les programmes de maillage
-auto shadows = rd::ShadowFeature::create(**device, shaders, pipelines, shaderDir);
-if (!shadows) { /* erreur */ }
-auto added = (*scene)->addFeature(std::move(*shadows));
+// 1. Le plugin, avant les modèles et les programmes de maillage
+auto created = rd::ShadowFeature::create(**device, shaders, pipelines, shaderDir);
+if (!created) { /* created.error().message */ }
+auto added = (*scene)->addFeature(std::move(*created));
 if (!added) { /* erreur */ }
-auto *shadowFeature = static_cast<rd::ShadowFeature *>(*added);
+auto *shadows = static_cast<rd::ShadowFeature *>(*added);   // non possédé : le renderer le garde
 
-// 2. La lumière ombrée
-rd::Light sun = rd::directionalLight({0.4f, 0.8f, 0.3f}, {1.0f, 0.96f, 0.9f}, 1.0f);
-sun.mobility = rd::LightMobility::kDynamic;
-sun.shadowMode = rd::ShadowMode::kCached;      // défaut kNone : pas d'ombre
-lights.addLight(sun);
-(void)lights.upload();
-shadowFeature->setLights(&lights);             // non possédé
+// 2. Un soleil qui projette (défaut : kNone, aucune ombre)
+rd::Light sun = rd::directionalLight({0.4f, 0.8f, 0.3f} /* vers la lumière */, {1.0f, 0.96f, 0.9f}, 1.0f);
+sun.shadowMode = rd::ShadowMode::kCached;
+lights->addLight(sun);
+if (auto r = lights->upload(); !r) { /* erreur */ }
+shadows->setLights(&*lights);                                 // non possédé, comme pour SceneRenderer::setLights
 
-// 3. Les récepteurs : variante OROSMO_SHADOWS de mesh.frag et groupe 1 des ombres
-auto receiver = shadowFeature->receiverProgramWith(meshDefines);   // meshDefines : forward+, AOV...
-ground.setProgram(*receiver);
-ground.setMaterialGroup(shadowFeature->receiverGroup());
-structure.setProgram(*receiver);
-structure.setMaterialGroup(shadowFeature->receiverGroup());
+// 3. Les récepteurs : RenderModelOptions::shadows (aucune macro en plus n'est nécessaire)
+as::TextureCache textures(**device);
+rd::PbrShaderCache pbr(shaders, shaderDir);
+auto defaults = rd::PbrDefaults::create(**device);
+auto level = as::loadGltf(GET_RESOURCE_PATH("models/niveau.glb"));
+if (!defaults || !level) { /* erreur */ }
+as::RenderModelOptions options;
+options.shadows = shadows;                                    // matériaux récepteurs (bit kPbrShadows)
+auto levelRender = as::RenderModel::create(**device, *level, textures, pbr, *defaults, options);
+if (!levelRender) { /* erreur */ }
 
-// 4. Les casters : maillage, boîte locale (culling par vue d'ombre), mobilité
-auto id = shadowFeature->addMeshCaster(structure, structureBounds, rd::CasterMobility::kStatic);
-if (!id) { /* kUnsupported : maillage à données d'instance */ }
+// 4. Les casters : chaque maillage du modèle, fixe ici (gardé dans le cache)
+for (std::size_t i = 0; i < levelRender->meshCount(); ++i) {
+    auto id = shadows->addMeshCaster(levelRender->mesh(i), rd::Aabb::empty(), rd::CasterMobility::kStatic);
+    if (!id) { /* kUnsupported : maillage à données d'instance */ }
+}
 ```
 
-Adapté de `Game::init` et `DemoScene::init` ([`apps/demo/src/Game/Game.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Game/Game.cpp),
-[`apps/demo/src/Scene/demo_scene.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Scene/demo_scene.cpp)).
-Dans la démo :
+À chaque image, rien de plus : `levelRender->draw(**scene, camera)` entre `setCamera` et `endFrame`, comme sans ombres.
+`rd::Aabb::empty()` est une boîte invalide : le maillage est dessiné dans toutes les vues d'ombre, sans culling. Pour un
+grand niveau, passez la boîte locale du maillage (le culling par vue d'ombre en profite).
+
+Recevoir et projeter sont indépendants : un sol peut recevoir sans être caster, un objet peut projeter sans recevoir. Les
+casters ne sont pas possédés : appelez `shadows->removeCaster(id)` avant de détruire le modèle.
+
+Dans la démo (maillages écrits à la main, même plugin) :
 
 ```bash
 apps/demo/bin/debug/main --shadows on
@@ -55,22 +69,50 @@ apps/demo/bin/debug/main --shadows on
 
 Capture de la démo avec `--shadows on`.
 
-Un objet peut recevoir sans projeter (le sol de la démo) ou projeter sans recevoir. Les casters et la `LightManager` ne sont
-pas possédés : gardez-les vivants, et appelez `removeCaster(id)` avant de détruire un maillage enregistré.
+## Un modèle animé (skinning)
 
-## Matériaux PBR récepteurs
+Un modèle créé avec `RenderModelOptions::skinnable = true` et déformé par `anim::SkinnedModel` (voir
+[Animer un personnage](/guides/animation/squelettes/)) se déclare de la même façon : `options.shadows` pour recevoir,
+`addMeshCaster(render->mesh(i), …, rd::CasterMobility::kMovable)` pour projeter. Le caster lit le tampon de sommets du
+maillage, celui que le compute de skinning réécrit au début de l'image : l'ombre suit la pose.
 
-Pour un `PbrMaterial`, passez le plugin à la création : il ajoute les liaisons des ombres au groupe du matériau et le bit
-`kPbrShadows` à sa variante. Un modèle glTF le fait avec `RenderModelOptions::shadows`.
+:::caution
+En mode `kCached`, une ombre mobile n'est redessinée que si la matrice d'un caster change. Un personnage qui s'anime sur
+place (bras qui bougent, même position) garde alors l'ombre d'une ancienne pose. Pour un personnage animé, donnez au soleil
+`sun.shadowMode = rd::ShadowMode::kDynamic` : chaque vue due est redessinée à chaque image. Ce comportement est déduit du
+code du plugin ; ni les tests ni la démo (`--scene anim` n'active pas les ombres) ne le couvrent encore.
+:::
+
+## Un maillage écrit à la main
+
+Un `rd::Mesh` au format de `mesh.vert` (position, normale, couleur) reçoit par la variante `OROSMO_SHADOWS` de `mesh.frag`,
+que le plugin compile, et par le groupe 1 des ombres :
 
 ```cpp
-auto material = rd::PbrMaterial::create(**device, desc, *defaults, shadowFeature);
-mesh.setMaterialGroup((*material)->group());
-mesh.setProgram(*pbrShaders.program((*material)->features(), extraDefines));
+// Macros des autres plugins (forward+, sorties auxiliaires), ou vide
+std::vector<rd::Define> meshDefines = (*scene)->aovShaderDefines();
+auto receiver = shadows->receiverProgramWith(meshDefines);   // mesh.vert + mesh.frag avec OROSMO_SHADOWS
+if (!receiver) { /* erreur */ }
+ground->setProgram(*receiver);                                 // ground, structure : Result<rd::Mesh> de rd::Mesh::create
+ground->setMaterialGroup(shadows->receiverGroup());
+structure->setProgram(*receiver);
+structure->setMaterialGroup(shadows->receiverGroup());
+
+rd::Aabb bounds = rd::Aabb::empty();                           // boîte locale : positions des sommets
+for (std::size_t v = 0; v + 2 < structureData.vertices.size(); v += 9)   // 9 flottants par sommet
+    bounds.merge({{structureData.vertices[v], structureData.vertices[v + 1], structureData.vertices[v + 2]},
+                  {structureData.vertices[v], structureData.vertices[v + 1], structureData.vertices[v + 2]}});
+auto id = shadows->addMeshCaster(*structure, bounds, rd::CasterMobility::kStatic);
 ```
 
-Un matériau qui a ses propres textures (hors PBR) ajoute les liaisons 6 et 7 à son groupe par
-`appendReceiverBindings(desc)`.
+Adapté de `DemoScene::init` et `registerCaster`
+([`apps/demo/src/Scene/demo_scene.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Scene/demo_scene.cpp)).
+Un maillage qui avait déjà un programme le remplace simplement par `setProgram(*receiver)`.
+
+Pour un `PbrMaterial` créé à la main, passez le plugin à la création :
+`rd::PbrMaterial::create(**device, desc, *defaults, shadows)`, puis le programme de `material->features()`. Un matériau
+qui a ses propres textures (hors PBR) ajoute les liaisons 6 et 7 à son groupe par `shadows->appendReceiverBindings(desc)`.
+Un modèle glTF déjà créé sans ombres se met à jour par `levelRender->rebuildMaterials(shadows, pbr)`.
 
 ## Mobilité et mode d'ombre
 
@@ -117,7 +159,7 @@ Par lumière, `setLightParams(index, params)` règle `LightShadowParams` : `prio
 
 ## Statistiques
 
-`shadowFeature->stats()` rend un `ShadowStats` de la dernière image : `views`, `viewsUpdated`, `staticRedraws`,
+`shadows->stats()` rend un `ShadowStats` de la dernière image : `views`, `viewsUpdated`, `staticRedraws`,
 `movableRedraws`, `cacheCopies`, `cacheHits`, `deferred`, `dropped`, `renderPasses`, `drawCalls`… Sur une image où rien ne
 bouge en mode `kCached`, `viewsUpdated`, `renderPasses` et `drawCalls` valent 0. La démo les journalise.
 
@@ -139,15 +181,15 @@ seul. Un caster dont l'opacité s'anime doit être `kMovable`, sinon tout le cac
 
 ## Limites
 
-- REN-08 (Partiel) : pas d'ombres de contact ni de fondu entre cascades ; le cache d'une cascade est redessiné dès que la
-  caméra bouge d'un texel (G156).
-- REN-09 (Absent) : pas d'ombres des lumières ponctuelles (cubemaps) ni de pénombre variable ; une seule directionnelle
-  ombrée.
-- `kBaked` n'a pas de cuisson (REN-16) : repli temps réel.
-- G157 : opacité par objet, pas par texel ; les objets instanciés projettent une ombre pleine ; pas d'ombre colorée.
-- G199 : les foules (`CrowdRenderer`) ne projettent pas d'ombre.
+- Pas d'ombres de contact ni de fondu entre cascades ; le cache d'une cascade est redessiné dès que la caméra bouge d'un
+  texel.
+- Une seule lumière directionnelle ombrée ; pas d'ombres des lumières ponctuelles ni de pénombre variable.
+- Le mode `kBaked` n'a pas de cuisson : il retombe sur une ombre temps réel.
+- Ombre des transparents : opacité par objet (pas par texel), pas d'ombre colorée ; les objets instanciés projettent une
+  ombre pleine.
+- Les foules (`CrowdRenderer`) ne projettent pas d'ombre.
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 

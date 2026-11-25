@@ -10,7 +10,7 @@ Trois techniques sont des plugins du graphe, comme les post-traitements : FXAA e
 affichée, le TAA accumule les images successives grâce à un léger décalage de la caméra (jitter) et aux vecteurs de
 mouvement. Une seule est active à la fois, choisie par `rd::AntiAliasing::select`.
 
-Dans le code : `namespace rd = orosmo::renderer;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `scene`, `shaders`, `pipelines`, `shaderDir`, `lights`).
 
 ## Exemple minimal
 
@@ -120,13 +120,14 @@ bilinéaire. Les effets et l'anticrénelage s'exécutent à la résolution de re
 
 ## Limites
 
-- REN-19 (Partiel) : SMAA 1x sans diagonales, sans arrondi des coins ni seuil prédiqué par la profondeur ; MSAA absent (le
-  RHI n'a pas de nombre d'échantillons) ; résolution dynamique sans contrôleur (seulement `setRenderScale`).
-- G159 : TAA sans filtre Catmull-Rom ni dé-jitter de l'image courante ; traînées possibles sur les objets sans AOV de
-  mouvement.
-- REN-20 (Absent) : pas d'upscaling temporel type FSR.
+- Le SMAA est une version simplifiée : pas de détection des diagonales, pas d'arrondi des coins, pas de seuil guidé par la
+  profondeur.
+- Pas de MSAA : le RHI n'a pas encore de cibles multi-échantillons.
+- Le TAA n'utilise pas de filtre Catmull-Rom et ne retire pas le jitter de l'image courante ; les objets sans vecteurs de
+  mouvement peuvent laisser une traînée.
+- Pas de résolution dynamique automatique (seulement `setRenderScale`) ni de mise à l'échelle temporelle du type FSR.
 
-État détaillé : [État du projet](/projet/etat/).
+Détail et suivi : [État du projet](/projet/etat/).
 
 ## Voir aussi
 
