@@ -58,6 +58,8 @@ include $(ENGINE_DIR)/make/engine.mk
 SRCS := $(shell find src -name "*.cpp")
 OBJS := $(SRCS:src/%.cpp=obj/%.o) $(GEN_CPP_SOURCES:$(ENGINE_GEN_DIR)/%.gen.cpp=obj/gen/%.o)
 
+.DEFAULT_GOAL := bin/mygame$(ENGINE_EXE_EXT)   # sinon `make` choisit la première règle d'engine.mk (une archive .a)
+
 bin/mygame$(ENGINE_EXE_EXT): $(OBJS) $(ENGINE_LIBS)
 	@mkdir -p bin
 	$(CXX) $(ENGINE_CXXFLAGS) $(OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
