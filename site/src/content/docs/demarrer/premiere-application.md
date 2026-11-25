@@ -10,6 +10,9 @@ environ 400 lignes, dont 210 de mise en place et de boucle. Cette page le lit pi
 [`tools/engine-sdk/template/src/main.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/tools/engine-sdk/template/src/main.cpp).
 
 Il n'y a pas de couche « application » qui fait tout cela pour vous : chaque objet est créé à la main, et leur ordre compte.
+Lisez d'abord la section [Conventions des exemples](#conventions-des-exemples) : elle fixe les noms, les types et les
+chemins de ressources utilisés dans tout le wiki. Pour un programme complet qui assemble ces pièces, voir le
+[tutoriel du jeu 3D](/demarrer/tutoriel-jeu-3d/).
 
 ## Ce qui est créé, dans l'ordre
 
@@ -102,7 +105,7 @@ le texte ne s'affiche plus et un thème qui étend `dark.json` ne trouve plus so
 ## Fenêtre et périphérique
 
 ```cpp
-platform::Window window("monjeu", 1280, 720);
+platform::Window window("monjeu", 1280, 720, platform::WindowState::kWindowed);
 rhi::DeviceDesc desc;
 desc.backend = rhi::Backend::kOpenGL;
 desc.validation = true;                 // le starter le met à true en debug seulement
@@ -110,37 +113,45 @@ desc.validation = true;                 // le starter le met à true en debug se
 if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0) { /* pas d'affichage ? */ }
 desc.surface.nativeWindow = window.getWindow();
 
-auto device = rhi::createDevice(desc);  // Result<std::unique_ptr<Device>>
-if (!device) { std::cerr << device.error().message << '\n'; return EXIT_FAILURE; }
+auto created = rhi::createDevice(desc);  // core::Result<std::unique_ptr<rhi::Device>>
+if (!created) { std::cerr << created.error().message << '\n'; return EXIT_FAILURE; }
+rhi::Device &device = **created;
 ```
 
 `prepareWindowHints` pose les attributs de contexte du backend juste avant la création de la fenêtre : il faut donc
-l'appeler dans le rappel de `init`. `Window::init` renvoie `0` en cas de succès, pas un `Result`. Voir
+l'appeler dans le rappel de `init`. `Window::init` renvoie `0` en cas de succès, pas un `Result`. Le quatrième argument du
+constructeur (`kWindowed`) compte : sans lui, la fenêtre s'ouvre en plein écran dans un programme compilé sans `DEBUG`
+(le starter n'a pas cet argument ; voir [Fenêtre, clavier et souris](/guides/application/fenetre-entrees/)). Pour Vulkan,
+remplacez ce bloc par celui de
 [Choisir le backend graphique](/guides/application/peripherique/).
 
 ## Shaders, scène et lumières
 
 ```cpp
-const fs::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
-rd::ShaderLibrary shaders(**device);
-rd::PipelineCache pipelines(**device);
+const std::filesystem::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
+rd::ShaderLibrary shaders(device);
+rd::PipelineCache pipelines(device);
 
-auto scene  = rd::SceneRenderer::create(**device, shaders, pipelines, {.shaderDirectory = shaderDir});
-auto canvas = rd::CanvasRenderer::create(**device, shaders, pipelines, shaderDir);
-auto lights = rd::LightManager::create(**device);
-auto meshProgram = shaders.loadGraphics(shaderDir / "mesh.vert", shaderDir / "mesh.frag");
-auto cube = rd::Mesh::create(**device, makeColoredCube());   // MeshData : sommets, indices, attributeSizes
-cube->setProgram(*meshProgram);                              // un Mesh sans programme n'est pas dessiné
+auto sceneResult  = rd::SceneRenderer::create(device, shaders, pipelines, {.shaderDirectory = shaderDir});
+auto canvasResult = rd::CanvasRenderer::create(device, shaders, pipelines, shaderDir);
+auto lightsResult = rd::LightManager::create(device);
+auto meshProgram  = shaders.loadGraphics(shaderDir / "mesh.vert", shaderDir / "mesh.frag");
+auto cubeResult   = rd::Mesh::create(device, makeColoredCube());   // MeshData : sommets, indices, attributeSizes
+if (!sceneResult || !canvasResult || !lightsResult || !meshProgram || !cubeResult) { /* afficher l'erreur, sortir */ }
+rd::SceneRenderer  &renderer = **sceneResult;
+rd::CanvasRenderer &canvas   = **canvasResult;
+rd::LightManager   &lights   = *lightsResult;
+rd::Mesh           &cube     = *cubeResult;
+cube.setProgram(*meshProgram);                          // un Mesh sans programme n'est pas dessiné
 
-lights->setAmbientLight({1.0f, 1.0f, 1.0f}, 0.35f);
-lights->addLight(rd::directionalLight({0.6f, 0.8f, 0.5f}, {1.0f, 0.96f, 0.90f}, 0.85f));
-if (auto uploaded = lights->upload(); !uploaded) { /* ... */ }
-(*scene)->setLights(&*lights);       // pointeur gardé : `lights` doit vivre aussi longtemps que `scene`
+lights.setAmbientLight({1.0f, 1.0f, 1.0f}, 0.35f);
+lights.addLight(rd::directionalLight({0.6f, 0.8f, 0.5f}, {1.0f, 0.96f, 0.90f}, 0.85f));
+if (auto uploaded = lights.upload(); !uploaded) { /* ... */ }
+renderer.setLights(&lights);         // pointeur gardé : `lights` doit vivre aussi longtemps que `renderer`
 ```
 
-Chaque fabrique renvoie un `Result` : d'où les `**device` (un `Result` de `unique_ptr`) et les `(*scene)->`. Les shaders sont
-lus dans `shaders/rhi/`, que le `Makefile` copie dans `res/shader/rhi/` à côté de l'exécutable ; `GET_RESOURCE_PATH`
-ajoute `res/` en debug.
+Les shaders sont lus dans `res/shader/rhi/`, que le `Makefile` copie à côté de l'exécutable (voir
+[Chemins des ressources](#chemins-des-ressources)).
 
 ## Interface
 
@@ -161,33 +172,37 @@ relie la vue à `HudState`. Voir [Écrire une vue en .cui](/guides/interface/lan
 ## La boucle d'une image
 
 ```cpp
+rd::RenderTarget composed;     // cible couleur de la taille de la fenêtre, créée à la première image (voir plus bas)
+
 while (!window.shouldClose()) {
     if (!window.newFrame()) continue;                   // événements, entrées, compteur de FPS
 
-    ui::InputFrame input = ui::readWindowInput(window, dt);
+    ui::InputFrame input = ui::readWindowInput(window, dt);   // dt : durée de l'image précédente, en secondes
     interface.update(input, {viewW, viewH});
 
-    auto backbuffer = (*device)->beginFrame();          // image de la fenêtre ; erreur si la fenêtre est réduite
+    auto backbuffer = device.beginFrame();              // image de la fenêtre ; erreur si la fenêtre est réduite
     if (!backbuffer) continue;                          // sauter l'image, pas quitter
 
-    auto encoder = (*device)->createCommandEncoder();   // un encodeur par image
-    auto ok = (*scene)->beginFrame(*encoder, {.clearColor = {0.10f, 0.13f, 0.18f, 1.0f}});
-    if (ok) ok = (*scene)->setCamera(camera);
-    if (ok) ok = (*scene)->drawMesh(*cube, camera);     // enregistré, pas encore dessiné
-    if (ok) ok = (*scene)->endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, size});   // le graphe est exécuté ici
+    auto encoder = device.createCommandEncoder();       // un encodeur par image
+    auto ok = renderer.beginFrame(*encoder, {.clearColor = {0.10f, 0.13f, 0.18f, 1.0f}});
+    if (ok) ok = renderer.setCamera(camera);
+    if (ok) ok = renderer.drawMesh(cube, camera);       // enregistré, pas encore dessiné
+    if (ok) ok = renderer.endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, size});   // le graphe est exécuté ici
 
     rd::DrawList drawList;
     interface.draw(drawList);
-    if (ok) ok = (*canvas)->render(*encoder, drawList, {composed.color(0), rhi::Format::kRGBA8Unorm, size}, true);
-    if (ok) ok = (*scene)->blit().copy(*encoder, composed.color(0), (*scene)->blit().linearSampler(), *backbuffer,
-                                       rhi::Format::kRGBA8Unorm, "present");
-    auto submitted = (*device)->submit(std::move(encoder));
-    (void)(*device)->present();                         // toujours, même après une erreur
+    if (ok) ok = canvas.render(*encoder, drawList, {composed.color(0), rhi::Format::kRGBA8Unorm, size}, true);
+    if (ok) ok = renderer.blit().copy(*encoder, composed.color(0), renderer.blit().linearSampler(), *backbuffer,
+                                      rhi::Format::kRGBA8Unorm, "present");
+    auto submitted = device.submit(std::move(encoder));
+    (void)device.present();                             // toujours, même après une erreur
 }
-(*device)->waitIdle();
+device.waitIdle();
 ```
 
-(Extrait abrégé : le starter ajoute la gestion d'erreur, la capture et la taille de la cible `composed`.)
+(Extrait abrégé : `size` est un `rhi::Extent2D` en pixels du framebuffer. `composed` se crée par
+`rd::RenderTarget::create(device, {.size = size, .depth = false})` et se redimensionne par `composed.resize(w, h)` quand la
+fenêtre change de taille ; le starter ajoute aussi la gestion d'erreur et la capture.)
 
 Il y a deux `beginFrame` : celui du `Device` rend l'image de la fenêtre, celui du `SceneRenderer` prend l'encodeur. `drawMesh`
 **enregistre** un dessin ; `endFrame` construit le graphe de passes et l'exécute sur l'encodeur. L'interface est dessinée
@@ -197,7 +212,8 @@ travail compute (comme le skinning) doit être enregistré sur le même encodeur
 
 ## Erreurs
 
-Les fabriques renvoient `core::Result<T>` (`std::expected<T, Error>`) ; `error().message` est prêt à afficher. Deux
+Les règles pour déballer un `Result` sont dans les [conventions](#conventions-des-exemples). 
+`error().message` est prêt à afficher. Deux
 exceptions viennent de l'ancien code : `Window::init` renvoie un `int`, `TextRenderer::init` et `loadFont` un `bool`.
 
 ## Le projet sans GPU
@@ -207,6 +223,8 @@ dans le paquet. Il écrit `{"data":{"name":"minimal","sum":524800,"tasksComplete
 
 ## Limites
 
-- Pas de scène à entités (ECS-01 à ECS-03 Absents), pas de boucle de simulation (SIM-01 Absent), pas de logique de jeu
-  rechargeable (GAME-01 à GAME-07 Absents) : l'application tient elle-même ses objets.
-- Le starter ne gère qu'OpenGL (G209).
+- Pas de scène à entités, pas de boucle de simulation, pas de logique de jeu rechargeable : l'application tient elle-même
+  ses objets et sa boucle.
+- Le starter ne gère qu'OpenGL ; pour Vulkan, voir [Choisir le backend graphique](/guides/application/peripherique/).
+
+Détails : [État du moteur](/projet/etat/).

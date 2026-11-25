@@ -127,9 +127,18 @@ Le moteur lui-même ne se construit pas avec CMake : cette consommation est facu
 ## Ressources à l'exécution
 
 Un programme qui dessine charge les shaders du RHI (`shaders/rhi/` du paquet) ; une interface a besoin d'une police
-(`res/fonts/Roboto-Regular.ttf`) et d'un thème (`res/themes/dark.json`, `light.json`). Le `Makefile` d'un projet `orosmo init`
-copie `res/` dans `bin/<type>/res/` et les shaders dans `bin/<type>/res/shader/`. Avec CMake, copiez
-`OROSMO_SHADERS_DIR` et `OROSMO_RES_DIR` vous-même. Le chemin est ensuite donné au moteur :
-`SceneRenderer::create(…, {.shaderDirectory = …})`, `Ui::themes().load(…)`, `TextRenderer::loadFont(…)`. La macro
-`GET_RESOURCE_PATH("x")` vaut `"res/x"` sauf si `RELEASE` est défini, auquel cas `"x"`, et suppose que le dossier
-courant est celui de l'exécutable (`setWorkingDirectoryToExecutable()`).
+(`res/fonts/Roboto-Regular.ttf`) et d'un thème (`res/themes/dark.json`, qui étend `base.json`). Le `Makefile` d'un projet
+`orosmo init` les copie dans `bin/<type>/res/` à chaque compilation, avec la règle suivante :
+
+| Source | Destination | Choix |
+|---|---|---|
+| `RES_DIR` | `bin/<type>/res/` | `res/` du projet s'il existe, sinon `orosmo/res/` |
+| `SHADER_DIR` | `bin/<type>/res/shader/` | `orosmo/shaders/` |
+
+Un seul dossier de ressources est copié : dès que le projet a un `res/`, celui de `orosmo/res/` est ignoré. Pour ajouter vos
+assets, copiez d'abord `orosmo/res/` dans `res/` : voir les
+[conventions des exemples](/demarrer/premiere-application/#chemins-des-ressources). Vous pouvez aussi fixer `RES_DIR` dans
+`config.mk`. Avec CMake, copiez vous-même `OROSMO_SHADERS_DIR` et `OROSMO_RES_DIR` à côté de l'exécutable. Les chemins sont
+ensuite écrits avec `GET_RESOURCE_PATH("x")` (`orosmo/core/paths.hpp`) ; le moteur reçoit le dossier des shaders par
+`SceneRenderer::create(…, {.shaderDirectory = …})`, les thèmes par `Ui::themes().load(…)` et la police par
+`TextRenderer::loadFont(…)`.

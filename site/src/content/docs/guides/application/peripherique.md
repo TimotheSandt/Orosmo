@@ -52,12 +52,15 @@ machine renvoie `ErrorCode::kUnsupported` avec la raison.
 | `appName` | `std::string` | `"engine"` | nom de l'application transmis au backend |
 
 Le défaut de `backend` est OpenGL dans la structure ; la démo, elle, demande Vulkan d'abord. Le projet de démarrage
-d'`orosmo init` ne crée qu'un périphérique OpenGL (G209).
+d'`orosmo init` ne crée qu'un périphérique OpenGL : pour Vulkan avec repli, remplacez son bloc de création du
+périphérique par le code de la section suivante.
 
 ## Vulkan d'abord, OpenGL en repli
 
 La démo essaie Vulkan et retombe sur OpenGL si le périphérique ne se crée pas (pas de chargeur Vulkan, pas de GPU 1.3). Comme
 les attributs de fenêtre diffèrent, une nouvelle fenêtre est créée pour la deuxième tentative :
+
+Les noms suivent les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
 
 ```cpp
 auto tryBackend = [](rhi::Backend backend, platform::Window &window) -> core::Result<std::unique_ptr<rhi::Device>>
@@ -99,10 +102,43 @@ de commande : `--api vulkan|opengl`, `--list-apis`, `--choose-api`
 | `rayQuery`, `accelerationStructure`, `bindless`, `meshShader`, `bufferDeviceAddress`, `sparseResources` | réservés : toujours `false` |
 
 ```cpp
-const rhi::Capabilities &caps = (*device)->capabilities();
+const rhi::Capabilities &caps = device.capabilities();
 LOG_INFO("GPU : ", caps.deviceName, " (", caps.driverVersion, ")");
-if (!caps.compute) { /* le moteur retombe sur forward ; le skinning GPU n'est pas disponible */ }
+if (!caps.compute) { /* forward+ et skinning GPU ne sont pas disponibles */ }
 ```
+
+### Valeurs par backend
+
+Les deux backends donnent les mêmes valeurs sur un GPU récent, avec ces différences :
+
+| Capacité | OpenGL 4.3+ | Vulkan 1.3 |
+|---|---|---|
+| `compute`, `indirectDraw` | toujours vrai | toujours vrai |
+| `multiDrawIndirect`, `drawIndirectFirstInstance` | toujours vrai | selon le GPU |
+| `timestampQueries` | toujours vrai | selon la file et le GPU |
+| `anisotropy` | si l'extension de filtrage anisotrope est présente | selon le GPU |
+| `bc7Textures` | toujours vrai | selon le GPU |
+| `astcTextures` | si `GL_KHR_texture_compression_astc_ldr` est présente | selon le GPU |
+| `wireframe`, `shaderFloat64` | toujours vrai | selon le GPU |
+| `spirvShaders` | faux | vrai |
+
+### Quelle fonction demande quoi
+
+Chaque fonction ci-dessous a une méthode statique `supportedBy(caps)`, et sa fabrique renvoie `kUnsupported` sans les capacités :
+testez avant de créer.
+
+| Fonction | Capacités requises | Si elles manquent |
+|---|---|---|
+| `ForwardPlusLighting` (éclairage forward+) | `compute`, assez d'emplacements de tampons de stockage, groupes de 256 invocations | utiliser l'éclairage forward (la démo le fait) |
+| `GpuDrivenFeature` (culling GPU) | `compute`, `indirectDraw`, `drawIndirectFirstInstance`, tampons de stockage, groupes de 64 | culling sur le processeur (la démo le fait) |
+| `AutoExposureFeature` | `compute`, groupes de 256 invocations | `post_effects` ne l'ajoute pas : exposition fixe |
+| `SkinnedModel` (skinning) | `compute`, 4 emplacements de tampons de stockage | aucun repli automatique : `skinVertices` calcule la pose sur le processeur, ou affichez la pose de repos |
+| `CrowdRenderer` (foules) | assez d'emplacements de tampons de stockage | pas de foule |
+| `IblFeature` (environnement) | `compute` | pas d'éclairage par environnement |
+| textures KTX2 compressées | `bc7Textures` ou `astcTextures` | décodage en RGBA8 |
+
+Les capacités optionnelles du tableau précédent (ray tracing, bindless, shaders de maillage) sont toujours fausses : le
+moteur ne les utilise pas.
 
 ## Validation
 
@@ -119,7 +155,8 @@ passe en premier ; sans variable, le backend préfère un GPU discret, puis int�
 
 ## Limites
 
-- RHI-04 (choix à l'exécution) : Partiel ; Metal est reconnu mais refusé.
-- RHI-13 (backend Metal) : Absent.
-- Vulkan n'est vérifié que sous Linux (G142).
-- RHI-19 (transferts asynchrones) : Absent.
+- Metal est reconnu par `Backend::kMetal` mais refusé : il n'existe pas encore.
+- Vulkan n'est vérifié que sous Linux. Sous Windows et macOS (MoltenVK), il ne l'est pas.
+- Pas de transferts asynchrones (copies sur une file dédiée) : toutes les copies passent par la file principale.
+
+Voir [État du moteur](/projet/etat/).

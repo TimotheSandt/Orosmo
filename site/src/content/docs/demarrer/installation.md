@@ -1,12 +1,13 @@
 ---
-title: Installer et compiler le moteur
+title: Compiler le moteur
 description: Prérequis, dépendances et premier build du moteur depuis le dépôt, avec la démo. Linux est vérifié ; Windows et macOS ne le sont pas.
 sidebar:
-  order: 1
+  order: 2
+  label: Compiler le moteur
 ---
 
-Cette page sert à compiler le dépôt du moteur, par exemple pour lancer la démo ou modifier Orosmo. Pour écrire un programme
-avec une release, sans compiler le moteur, voir [Créer un projet](/demarrer/premier-projet/).
+Cette page sert à compiler le dépôt du moteur, pour lancer la démo ou modifier Orosmo. Pour écrire un jeu, commencez par
+[Créer un projet](/demarrer/premier-projet/) : il n'y a rien à compiler du moteur.
 
 ## Prérequis
 
@@ -62,8 +63,7 @@ make run           # lance la démo
 
 `make run` lance le dernier binaire construit (debug ou release, le plus récent) et reconstruit au besoin. La démo
 utilise Vulkan par défaut et retombe sur OpenGL si Vulkan ne démarre pas. Dans la démo, `Échap` ouvre et ferme l'interface
-(le bouton `Quit` quitte). `make run` ne transmet pas d'arguments : pour en passer, lancez le binaire directement, par
-exemple `apps/demo/bin/debug/main --api opengl`. Les options sont dans [Options de la démo](/reference/options-demo/).
+(le bouton `Quit` quitte). Pour passer des options, voir [Explorer la démo](/demarrer/demo/).
 
 Dans un terminal, `make` affiche une barre de progression à la place des commandes. `make V=1` montre les commandes
 complètes, `ORS_NO_PROGRESS=1 make …` garde l'affichage habituel, `WERROR=0` rend les avertissements non bloquants.
@@ -91,4 +91,4 @@ make cui-test                                # compilateur .cui
 
 ## Limites
 
-BLD-01 (construction multiplateforme) est Partiel : seul Linux est observé de bout en bout. Voir [État du moteur](/projet/etat/).
+Seul Linux est observé de bout en bout. Voir [État du moteur](/projet/etat/).

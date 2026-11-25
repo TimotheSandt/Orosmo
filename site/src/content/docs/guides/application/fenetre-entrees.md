@@ -61,10 +61,10 @@ Les constructeurs sans `WindowState` ouvrent la fenêtre en `kWindowed` si le pr
 | `posX`, `posY` | `int` | 100, 100 | position |
 | `maxFPS` | `int` | 0 | limite d'images par seconde (0 : aucune), voir `setMaxFPS` |
 | `clearColor` | `glm::vec4` | 0,07 0,13 0,17 1 | couleur de fond, lue par `getClearColor` |
-| `trueEveryms` | `double` | 500 | période de mise à jour des statistiques de FPS (0 : à chaque image) |
-| `vsync`, `taskbarVisible` | `bool` | `false`, `true` | non utilisés (`taskbarVisible` est marqué TODO) |
+| `trueEveryms` | `double` | 500 | période, en millisecondes, de recalcul des FPS moyen, minimal et maximal de `getAverageFPS`, `getMinFPS`, `getMaxFPS` (0 : à chaque image) |
 
-La vsync se règle sur le périphérique (`Device::setVSync`), pas ici : voir
+`WindowParameters` a d'autres champs (`vsync`, `taskbarVisible`, positions et tailles en mode fenêtre) qui ne servent pas
+à l'application. La vsync se règle sur le périphérique (`Device::setVSync`), pas ici : voir
 [Cadence d'images](/guides/application/cadence-captures/).
 
 ## Taille, DPI, plein écran
@@ -123,6 +123,66 @@ if (input.isActionActive("Camera::MoveForward")) camera.moveForward(distance);
 non liée journalise un avertissement et renvoie `false`. `unbindAction` et `isActionBound` complètent l'API. C'est ce que fait
 `apps/demo/src/Game/CameraController.cpp`.
 
+### Un contrôleur de caméra complet
+
+Vitesse en unités par seconde, multipliée par le temps de l'image `dt` (en secondes). `ui` est le `ui::Ui` de l'application ;
+s'il n'y en a pas, retirez les deux tests `wantsMouse` et `wantsKeyboard`.
+
+```cpp
+void bindCameraKeys()   // une fois, au démarrage
+{
+    using platform::InputManager; using platform::KeyButton; using platform::MouseButton;
+    InputManager::bindActionToInput("forward",  KeyButton::kW);   // la touche qui porte la lettre W
+    InputManager::bindActionToInput("back",     KeyButton::kS);
+    InputManager::bindActionToInput("left",     KeyButton::kA);
+    InputManager::bindActionToInput("right",    KeyButton::kD);
+    InputManager::bindActionToInput("up",       KeyButton::kSpace);
+    InputManager::bindActionToInput("down",     KeyButton::kLeftShift);
+    InputManager::bindActionToInput("look",     MouseButton::kRight);
+}
+
+void updateCamera(platform::Window &window, ui::Ui &ui, rd::Camera &camera, float dt)
+{
+    platform::InputManager &input = platform::InputManager::getInstance(window.getWindow());
+    const float distance = 6.0f * dt;                       // 6 unités par seconde
+    if (!ui.wantsKeyboard())
+    {
+        if (input.isActionActive("forward")) camera.moveForward(distance);
+        if (input.isActionActive("back"))    camera.moveForward(-distance);
+        if (input.isActionActive("right"))   camera.moveRight(distance);
+        if (input.isActionActive("left"))    camera.moveRight(-distance);
+        if (input.isActionActive("up"))      camera.moveUp(distance);
+        if (input.isActionActive("down"))    camera.moveUp(-distance);
+    }
+    static bool looking = false;                            // pas de saut à la première image capturée
+    static glm::dvec2 last{};
+    if (input.isActionActive("look") && !ui.wantsMouse())
+    {
+        window.setCursorMode(platform::CursorMode::kDisabled);
+        const glm::dvec2 mouse = window.getCursorPosition();
+        if (looking)
+        {
+            const glm::dvec2 delta = mouse - last;
+            camera.rotateYaw(-0.1f * static_cast<float>(delta.x));
+            camera.rotatePitch(-0.1f * static_cast<float>(delta.y));
+        }
+        last = mouse;
+        looking = true;
+    }
+    else
+    {
+        window.setCursorMode(platform::CursorMode::kNormal);
+        looking = false;
+    }
+}
+```
+
+Adapté de `apps/demo/src/Game/CameraController.cpp`. La démo lie `kZ`, `kQ`, `kS`, `kD` parce que son auteur a un clavier
+AZERTY : un `KeyButton` est la touche qui porte la lettre, donc sur un clavier QWERTY `kZ` est la touche du bas. L'exemple
+ci-dessus lie W, A, S, D, qui sont les lettres imprimées sur la touche quelle que soit la disposition. `rotateYaw` et
+`rotatePitch` prennent des degrés ; ajustez le facteur 0,1 (degrés par pixel) à votre goût. Les variables `static` sont là pour la brièveté :
+dans une application, rangez ces deux valeurs dans une classe.
+
 ### Disposition du clavier
 
 Les `KeyButton` sont des touches logiques : `kZ` est la touche qui porte la lettre Z dans la disposition active. La
@@ -138,9 +198,9 @@ presse-papiers du système.
 
 ## Limites
 
-- PLAT-01 (fenêtre), PLAT-02 (entrées) : Partiel. Le facteur d'échelle ×2 n'a pas été observé sur un vrai écran.
-- PLAT-03 (manettes) : Absent.
-- PLAT-05 (saisie de texte) : Partiel. Texte Unicode et presse-papiers marchent en mode fenêtré ; la composition IME
-  n'existe pas (G107).
+- Le facteur d'échelle ×2 (écrans « Retina ») est lu mais n'a pas été observé sur un vrai écran.
+- Pas de manettes.
+- Saisie de texte : Unicode et presse-papiers fonctionnent en mode fenêtré ; la composition (IME, saisie du chinois ou du
+  japonais) n'est pas gérée.
 
 Voir [État du moteur](/projet/etat/).

@@ -7,12 +7,12 @@ sidebar:
 
 La démo (`apps/demo/`) est la seule application du dépôt. Elle montre le moteur et la bibliothèque d'interface ; son code
 (`apps/demo/src/Game/Game.cpp`) est aussi la meilleure source d'exemples. Il faut d'abord
-[compiler le moteur](/demarrer/installation/).
+[compiler le moteur](/demarrer/installation/) ; la démo n'est pas dans le paquet d'une release.
 
 ## Lancer
 
 ```bash
-make run                                   # sans option
+make run                                   # sans option (`make run` ne transmet aucun argument)
 apps/demo/bin/debug/main --shadows on      # avec options : lancer le binaire
 ```
 
@@ -22,7 +22,7 @@ Par défaut la démo affiche la scène et le panneau de performances. Les touche
 |---|---|
 | `Échap` ou `F1` | ouvre l'interface complète ; la ferme si elle est ouverte. N'arrête jamais la démo (bouton `Quit`) |
 | `Ctrl+F` | niveau suivant du panneau de performances : off, fps, full, graph |
-| `Z` `Q` `S` `D`, `Espace`, `Maj gauche` | avance, gauche, recule, droite, monte, descend (touches logiques, selon votre disposition de clavier) |
+| `Z` `Q` `S` `D`, `Espace`, `Maj gauche` | avance, gauche, recule, droite, monte, descend. La démo suppose un clavier AZERTY : sur QWERTY, ce sont les touches W, A, S, D qui sont aux mêmes places que Z, Q, S, D de l'AZERTY, mais `kZ` désigne la touche qui porte la lettre Z (celle du bas à gauche). Pour lier W A S D, voir [Fenêtre, clavier et souris](/guides/application/fenetre-entrees/) |
 | clic droit maintenu | oriente la caméra (le curseur est capturé) |
 | `A` / `E` | caméra plus rapide / plus lente tant qu'elles sont tenues |
 | `F11` | plein écran sans bordure |

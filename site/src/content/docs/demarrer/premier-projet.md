@@ -2,28 +2,54 @@
 title: Créer un projet avec orosmo init
 description: Écrire un programme avec une release du moteur, sans compiler le moteur lui-même.
 sidebar:
-  order: 2
+  order: 1
 ---
+
+Cette page est le point de départ pour écrire un jeu ou une application : vous téléchargez une release, vous ne compilez
+pas le moteur. Pour compiler le dépôt du moteur lui-même (démo, tests, modifications), voir
+[Compiler le moteur](/demarrer/installation/). Ordre de lecture : cette page, puis
+[Lire la boucle d'une application](/demarrer/premiere-application/) (le code du projet créé, et les conventions des
+exemples du wiki), puis [Explorer la démo](/demarrer/demo/) pour voir chaque fonction, puis les guides.
 
 Une release contient, pour chaque plateforme (`linux-x64`, `linux-arm64`, `windows-x64`, `macos-arm64`, `macos-x64`),
 l'outil en ligne de commande `orosmo-<plateforme>` et le paquet `orosmo-pkg-<plateforme>.zip` : en-têtes, bibliothèques
 statiques debug et release, `make/engine.mk`, `cmake/OrosmoConfig.cmake`, compilateur `cui`, shaders du RHI, police,
-thèmes, exemples et `vcpkg.json`. Ni Rust ni Python ne sont nécessaires pour s'en servir. Téléchargement :
-[releases GitHub](https://github.com/TimotheSandt/Orosmo/releases).
+thèmes, exemples et `vcpkg.json`. Ni Rust ni Python ne sont nécessaires.
 
-## Exemple minimal
+## Exemple minimal, sous Linux (x64)
 
 ```bash
-./orosmo-linux-x64 doctor          # vérifie la toolchain
-./orosmo-linux-x64 init mygame     # crée le projet
+# 1. Paquets système (Ubuntu / Debian) : compilateur, make, bibliothèques de développement
+sudo apt install build-essential cmake python3 pkg-config autoconf autoconf-archive automake libtool \
+    libglm-dev libstb-dev libshaderc-dev glslc libfreetype-dev libvulkan-dev vulkan-validationlayers \
+    libgl-dev libx11-dev libwayland-dev libxkbcommon-dev wayland-protocols \
+    libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+
+# 2. vcpkg (une fois) : il installe glad, msdfgen, GLFW, cgltf, ktx, meshoptimizer…
+git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
+
+# 3. L'outil orosmo, depuis les releases (la dernière version de https://github.com/TimotheSandt/Orosmo/releases)
+curl -L -o orosmo https://github.com/TimotheSandt/Orosmo/releases/latest/download/orosmo-linux-x64
+chmod +x orosmo
+
+# 4. Vérifier, créer, compiler, lancer
+./orosmo doctor
+./orosmo init mygame           # télécharge le paquet de la dernière release (ou utilise celui de l'outil hors ligne)
 cd mygame
-make install                       # dépendances vcpkg du moteur, une fois
+make install VCPKG=~/vcpkg/vcpkg   # dépendances vcpkg du moteur, une fois
 make debug                         # compile -> bin/debug/main
 ./bin/debug/main                   # lance le projet de démarrage
 ```
 
-`make install` appelle `vcpkg` (variable `VCPKG`, par défaut `vcpkg` dans le `PATH`) ; avec un vcpkg cloné dans votre
-dossier personnel : `make install VCPKG=~/vcpkg/vcpkg`. Ce parcours est vérifié par `make e2e-init` en CI Linux.
+Les paquets de l'étape 1 sont ceux de [Compiler le moteur](/demarrer/installation/#linux), moins `cargo` (inutile avec une
+release) et `doctest-dev` (tests du moteur). Ce parcours est vérifié par `make e2e-init` en CI Linux. Sous Windows et
+macOS, remplacez les étapes 1 et 3 par les outils de votre système (voir [Compiler le moteur](/demarrer/installation/)) ;
+ces plateformes ne sont pas vérifiées.
+
+:::note
+`orosmo doctor` signale vcpkg comme facultatif, car `doctor` ne sert qu'à vérifier l'environnement, mais `make install` en a
+besoin : sans vcpkg, il n'y a pas de GLFW ni de glad à lier.
+:::
 
 ## doctor
 
@@ -59,12 +85,10 @@ un paquet déjà téléchargé.
 
 Cibles du `Makefile` du projet : `debug`, `dev`, `release`, `run`, `run-debug`, `run-release`, `install`, `test`, `benchmark`,
 `compile-commands` (écrit `compile_commands.json` pour clangd), `clean`, `fclean`. Le binaire debug est `bin/debug/main`,
-le binaire release `bin/release/<PROJECT_NAME>`. `make run` ne transmet pas d'arguments : lancez le binaire.
-
-Le projet de démarrage accepte `--headless`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et `--help`.
-Son option `--api` n'accepte que `opengl` et il crée toujours un périphérique OpenGL ; le message d'erreur pour Vulkan
-(« not available yet ») est faux, le backend Vulkan existe (G209). Voir
-[Lire la boucle d'une application](/demarrer/premiere-application/).
+le binaire release `bin/release/<PROJECT_NAME>`. 
+Pour lancer le binaire avec des options, appelez-le directement (voir [Explorer la démo](/demarrer/demo/)). Le projet de démarrage accepte `--headless`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et `--help`.
+Son option `--api` n'accepte que `opengl` : il crée toujours un périphérique OpenGL (pour Vulkan, voir
+[Choisir le backend graphique](/guides/application/peripherique/)).
 
 ## update
 
@@ -89,7 +113,9 @@ voir [Compiler avec Make ou CMake](/reference/construction/).
 
 ## Limites
 
-- Versions `0.MINEUR.CORRECTIF` : tant que la majeure vaut 0, un changement mineur peut casser l'API (liste dans
-  `docs/releases/`) ; un correctif ne la casse pas.
-- Linux est la seule plateforme vérifiée ; Windows et macOS sont construits par la CI mais pas observés.
-- Modules et addons (`orosmo addon …`, MOD-01 à MOD-09) : Absent.
+- Les versions sont `0.MINEUR.CORRECTIF` : tant que la majeure vaut 0, un changement mineur peut casser l'API (la liste est
+  dans `docs/releases/` du dépôt) ; un correctif ne la casse pas.
+- Seul Linux est vérifié ; Windows et macOS sont construits par la CI mais pas observés.
+- Pas de système de modules ni d'addons : `orosmo` n'a que `init`, `update` et `doctor`.
+
+Détails : [État du moteur](/projet/etat/).
