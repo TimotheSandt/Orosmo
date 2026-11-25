@@ -54,11 +54,17 @@ class Texture
     // `pixels` : lignes serrées, première ligne = bas (repère du RHI) ; vide = contenu indéfini. Les mips sont générés quand
     // le filtre en demande et que des texels ont été fournis.
     static core::Result<Texture> create(rhi::Device &device, const TextureInfo &info, std::span<const std::byte> pixels = {});
+    // Texture dont chaque niveau de mip est fourni (`levels[0]` = niveau 0, lignes serrées, première ligne = haut) : seul moyen de
+    // créer une texture compressée (BC7, ASTC), dont les mips ne peuvent pas être générés. `info.filter` kLinear active le filtrage
+    // trilinéaire dès qu'il y a plus d'un niveau.
+    static core::Result<Texture> createWithLevels(rhi::Device &device, const TextureInfo &info, std::span<const std::span<const std::byte>> levels);
     // Fichier image décodé par stb en RGBA8, retourné verticalement pour suivre le repère du RHI (comme l'ancien chargeur).
     static core::Result<Texture> fromFile(rhi::Device &device, const std::filesystem::path &file, FilterMode filter = FilterMode::kLinear,
                                           rhi::AddressMode address = rhi::AddressMode::kRepeat);
 
     core::Result<> upload(std::span<const std::byte> pixels); // tout le niveau 0 ; régénère les mips
+    // Remplace chaque niveau fourni (même nombre de niveaux, même taille) ; le handle ne change pas, les groupes de liaison restent bons.
+    core::Result<> uploadLevels(std::span<const std::span<const std::byte>> levels);
     core::Result<> resize(std::uint32_t width, std::uint32_t height); // nouveau stockage, contenu indéfini ; les handles changent
     core::Result<std::vector<std::byte>> readback() const;
 
@@ -74,7 +80,7 @@ class Texture
     std::size_t byteSize() const noexcept;
 
   private:
-    core::Result<> allocate();
+    core::Result<> allocate(std::uint32_t mipLevels = 0); // 0 : selon le filtre (chaîne complète ou un niveau)
     core::Result<> buildMips();
     void swap(Texture &other) noexcept
     {

@@ -1,0 +1,72 @@
+#version 450
+// REN-13 : préfiltrage spéculaire d'un environnement équirectangulaire dans un niveau de mip d'un cube (IblFeature). Un fil par
+// texel et par face (z = face). Rugosité 0 : copie de l'environnement ; sinon échantillonnage d'importance GGX (Hammersley,
+// déterministe) avec v = n = r, lu dans un niveau de mip de l'environnement choisi par l'angle solide de l'échantillon
+// (échantillonnage d'importance filtré : moins de bruit à nombre d'échantillons égal).
+
+#include "../include/orosmo/math.glsl"
+#include "../include/orosmo/pbr.glsl"
+#include "ibl_common.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D environment;
+layout(set = 0, binding = 1, rgba16f) uniform writeonly imageCube destination;
+layout(set = 0, binding = 2, std140) uniform PrefilterBlock
+{
+    vec4 params; // x : rugosité, y : côté du niveau, z : échantillons, w : angle solide moyen d'un texel de l'environnement
+} pf;
+
+vec2 hammersley(uint i, uint count) { return vec2((float(i) + 0.5) / float(count), float(bitfieldReverse(i)) * 2.3283064365386963e-10); }
+
+vec3 importanceSampleGGX(vec2 xi, vec3 n, float alpha)
+{
+    float phi = 2.0 * kPi * xi.x;
+    float cosTheta = sqrt((1.0 - xi.y) / (1.0 + (alpha * alpha - 1.0) * xi.y));
+    float sinTheta = sqrt(max(1.0 - cosTheta * cosTheta, 0.0));
+    vec3 up = abs(n.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tx = normalize(cross(up, n));
+    vec3 ty = cross(n, tx);
+    return normalize(tx * (sinTheta * cos(phi)) + ty * (sinTheta * sin(phi)) + n * cosTheta);
+}
+
+void main()
+{
+    const uint size = uint(pf.params.y);
+    const uvec3 id = gl_GlobalInvocationID;
+    if (id.x >= size || id.y >= size || id.z >= 6u)
+    {
+        return;
+    }
+    const vec3 n = iblCubeDirection(id, float(size));
+    const float roughness = pf.params.x;
+    vec3 color = vec3(0.0);
+    if (roughness <= 0.0)
+    {
+        color = textureLod(environment, iblEquirectUv(n), 0.0).rgb;
+    }
+    else
+    {
+        const float alpha = max(roughness * roughness, 0.002);
+        const uint count = uint(pf.params.z);
+        float weight = 0.0;
+        for (uint i = 0u; i < count; i++)
+        {
+            vec3 h = importanceSampleGGX(hammersley(i, count), n, alpha);
+            float nDotH = saturate(dot(n, h));
+            vec3 l = 2.0 * nDotH * h - n; // reflect(-v, h) avec v = n
+            float nDotL = dot(n, l);
+            if (nDotL > 0.0)
+            {
+                // pdf = D × n·h / (4 v·h) = D / 4 quand v = n.
+                float pdf = distributionGGX(nDotH, alpha) * 0.25;
+                float sampleSolidAngle = 1.0 / (float(count) * pdf + 1e-6);
+                float lod = max(0.5 * log2(sampleSolidAngle / pf.params.w) + 1.0, 0.0);
+                color += textureLod(environment, iblEquirectUv(l), lod).rgb * nDotL;
+                weight += nDotL;
+            }
+        }
+        color = weight > 0.0 ? color / weight : vec3(0.0);
+    }
+    imageStore(destination, ivec3(id), vec4(color, 1.0));
+}

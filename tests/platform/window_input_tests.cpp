@@ -34,6 +34,21 @@ bool open(platform::Window &window)
 
 TEST_SUITE("platform/window")
 {
+    TEST_CASE("G201 WindowParameters has a defined value for every member, the same as Window::Window()")
+    {
+        const platform::WindowParameters p{};
+        CHECK(p.title == "Window");
+        CHECK(p.width == 800);
+        CHECK(p.height == 600);
+        CHECK(p.windowedWidth == p.width);
+        CHECK(p.windowedPosX == p.posX);
+        CHECK_FALSE(p.vsync);
+        CHECK(p.taskbarVisible);
+        CHECK(p.trueEveryms == doctest::Approx(500.0));
+        const platform::WindowParameters copy = p; // la copie lisait un booléen non initialisé (UBSan)
+        CHECK(copy.taskbarVisible == p.taskbarVisible);
+    }
+
     TEST_CASE("PLAT-01 a window exposes an opaque native handle, its framebuffer size and its DPI scale")
     {
         platform::Window window("platform-test", 96, 64, platform::WindowState::kWindowed);

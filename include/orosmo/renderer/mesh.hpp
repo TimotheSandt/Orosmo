@@ -30,6 +30,8 @@ struct MeshData
     std::vector<float> instances;
     std::vector<std::uint32_t> instanceAttributeSizes;
     std::string name = "mesh";
+    // Usages en plus du tampon de sommets (ex. kStorage : écrit par un compute, skinning ANIM-01).
+    rhi::BufferUsage extraVertexUsage = rhi::BufferUsage::kNone;
 };
 
 // Texture liée au groupe 1 du maillage : handles non possédés (leur propriétaire doit les garder vivants).
@@ -76,9 +78,19 @@ class Mesh
     // Octets du bloc push_constant du programme (le premier entier est réservé au drapeau fil de fer, voir mesh.frag).
     void setPushConstants(std::span<const std::byte> bytes) { pushConstants_.assign(bytes.begin(), bytes.end()); }
 
-    void setPosition(const glm::vec3 &position) { position_ = position; transformDirty_ = true; }
-    void setRotation(const glm::vec3 &degrees) { rotation_ = degrees; transformDirty_ = true; }
-    void setScale(const glm::vec3 &scale) { scale_ = scale; transformDirty_ = true; }
+    // Position, rotation (degrés, X puis Y puis Z) et échelle ; chacune retire une matrice donnée par `setModelMatrix`.
+    void setPosition(const glm::vec3 &position) { position_ = position; hasMatrix_ = false; transformDirty_ = true; }
+    void setRotation(const glm::vec3 &degrees) { rotation_ = degrees; hasMatrix_ = false; transformDirty_ = true; }
+    void setScale(const glm::vec3 &scale) { scale_ = scale; hasMatrix_ = false; transformDirty_ = true; }
+    // Matrice du modèle donnée telle quelle (nœud glTF, os, quaternion…), à la place de position, rotation et échelle.
+    void setModelMatrix(const glm::mat4 &matrix) { matrix_ = matrix; hasMatrix_ = true; transformDirty_ = true; }
+    // Faces éliminées (défaut kNone : les deux faces sont dessinées, comme avant M6). Le sens direct est anti-horaire (glTF).
+    void setCullMode(rhi::CullMode cull) noexcept { cull_ = cull; }
+    rhi::CullMode cullMode() const noexcept { return cull_; }
+    // Sens direct du dernier `prepareTransform` : anti-horaire, ou horaire quand la matrice du modèle est un miroir (déterminant
+    // négatif, ex. échelle (-1, 1, 1)) qui retourne l'ordre des sommets à l'écran. Porté par le pipeline de CHAQUE dessin
+    // (`SceneRenderer::drawMesh`) : élimination des faces et `gl_FrontFacing` restent justes sous un miroir.
+    rhi::FrontFace frontFace() const noexcept { return mirrored_ ? rhi::FrontFace::kClockwise : rhi::FrontFace::kCounterClockwise; }
     const glm::vec3 &position() const noexcept { return position_; }
     const glm::vec3 &rotation() const noexcept { return rotation_; }
     const glm::vec3 &scale() const noexcept { return scale_; }
@@ -92,6 +104,11 @@ class Mesh
     // changé depuis le dernier envoi. Pour un appelant qui lie lui-même `modelGroup()` ; écrire ce tampon pendant qu'une image en
     // vol le lit encore coûte une copie ordonnée (OpenGL : glBufferSubData, Vulkan : transfert), d'où le passage par l'anneau.
     core::Result<> uploadTransform(const glm::vec3 &origin = glm::vec3(0.0f), const TransformHistory &history = {});
+    // REN-21 : emplacement d'historique de mouvement des prochains `prepareTransform`, pour un maillage dessiné plusieurs fois par
+    // image (ex. un nœud glTF par dessin, `assets::RenderModel`) : chaque emplacement garde SA matrice de l'image précédente, et
+    // un dessin immobile n'hérite pas de celle d'un autre. 0 par défaut (un seul dessin logique).
+    void setHistorySlot(std::uint32_t slot);
+    std::uint32_t historySlot() const noexcept { return historySlot_; }
 
     // Identifiant écrit dans l'AOV `kObjectId` (REN-21) ; 0 = aucun objet (valeur d'effacement).
     void setObjectId(std::uint32_t id) noexcept
@@ -150,16 +167,26 @@ class Mesh
     glm::vec3 position_{0.0f};
     glm::vec3 rotation_{0.0f};
     glm::vec3 scale_{1.0f};
+    glm::mat4 matrix_{1.0f};
+    bool hasMatrix_ = false;
+    rhi::CullMode cull_ = rhi::CullMode::kNone;
+    bool mirrored_ = false; // déterminant de la matrice du modèle négatif (dernier prepareTransform)
     bool transformDirty_ = true;
     bool bufferStale_ = true; // modelBlock_ n'a pas encore été écrit dans modelBuffer_
     glm::vec3 uploadedOrigin_{0.0f};
     bool uploadedWithHistory_ = false; // mode d'historique du bloc écrit (prevModel distinct de model ou non)
     glm::mat4 uploadedPreviousWorld_{1.0f};
     glm::vec3 uploadedPreviousOrigin_{0.0f};
-    glm::mat4 previousWorld_{1.0f}; // modèle (monde) de l'image précédente
-    glm::mat4 lastWorld_{1.0f};     // modèle (monde) vu par le dernier uploadTransform
-    bool hasLastWorld_ = false;
-    std::uint64_t lastFrame_ = 0;
+    // Historique de mouvement d'un dessin logique (emplacement `setHistorySlot`).
+    struct MotionHistory
+    {
+        glm::mat4 previousWorld{1.0f}; // modèle (monde) de l'image précédente
+        glm::mat4 lastWorld{1.0f};     // modèle (monde) vu par le dernier prepareTransform de cet emplacement
+        bool hasLastWorld = false;
+        std::uint64_t lastFrame = 0;
+    };
+    std::vector<MotionHistory> history_ = std::vector<MotionHistory>(1);
+    std::uint32_t historySlot_ = 0;
     std::uint32_t objectId_ = 0;
     AovMaterial aovMaterial_;
     std::array<std::byte, kModelBlockSize> modelBlock_{};

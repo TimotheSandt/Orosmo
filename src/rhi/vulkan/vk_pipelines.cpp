@@ -876,8 +876,10 @@ Result<VkDescriptorSet> VulkanDevice::descriptorSetFor(BindGroupHandle handle, c
                     switch (texture->desc.dimension)
                     {
                         case TextureDimension::k2D: key.type = VK_IMAGE_VIEW_TYPE_2D; break;
-                        case TextureDimension::k2DArray:
-                        case TextureDimension::kCube: key.type = VK_IMAGE_VIEW_TYPE_2D_ARRAY; break;
+                        case TextureDimension::k2DArray: key.type = VK_IMAGE_VIEW_TYPE_2D_ARRAY; break;
+                        // imageCube côté shader (comme une liaison « layered » d'OpenGL) : une vue 2D_ARRAY y est refusée
+                        // (VUID-vkCmdDispatch-viewType-07752).
+                        case TextureDimension::kCube: key.type = VK_IMAGE_VIEW_TYPE_CUBE; break;
                         case TextureDimension::k3D: key.type = VK_IMAGE_VIEW_TYPE_3D; break;
                     }
                     auto view = imageView(it->texture, key);

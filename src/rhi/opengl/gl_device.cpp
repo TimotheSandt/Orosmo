@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <string>
 
 namespace orosmo::rhi::gl
@@ -259,7 +260,8 @@ Result<> GlDevice::init(const DeviceDesc &desc)
     caps_.drawIndirectFirstInstance = true; // baseInstance des commandes indirectes : cœur depuis GL 4.2
     caps_.timestampQueries = true;
     caps_.anisotropy = hasExtension("GL_EXT_texture_filter_anisotropic") || hasExtension("GL_ARB_texture_filter_anisotropic");
-    caps_.bc7Textures = false; // aucun format compressé exposé par `Format` pour l'instant
+    caps_.bc7Textures = true; // BPTC : cœur d'OpenGL 4.2
+    caps_.astcTextures = hasExtension("GL_KHR_texture_compression_astc_ldr");
     caps_.wireframe = true;
     caps_.spirvShaders = false; // GL_ARB_gl_spirv : non utilisé avant le lot B
     caps_.shaderFloat64 = true;  // cœur de GL 4.0 (GL_ARB_gpu_shader_fp64)
@@ -704,6 +706,21 @@ Result<TextureHandle> GlDevice::createTextureImpl(const TextureDesc &requested)
     {
         return makeError(ErrorCode::kInvalidArgument, "createTexture: empty extent (" + desc.debugName + ")");
     }
+    if (formatInfo(desc.format).compressed())
+    {
+        const bool astc = desc.format == Format::kASTC4x4Unorm || desc.format == Format::kASTC4x4Srgb;
+        if (!(astc ? caps_.astcTextures : caps_.bc7Textures))
+        {
+            return makeError(ErrorCode::kUnsupported, std::string("createTexture: compressed format ") + toString(desc.format) +
+                                                          " is not supported by this device (" + desc.debugName + ")");
+        }
+        if (hasFlag(desc.usage, TextureUsage::kRenderTarget) || hasFlag(desc.usage, TextureUsage::kStorage) ||
+            desc.dimension == TextureDimension::k3D)
+        {
+            return makeError(ErrorCode::kInvalidArgument, std::string("createTexture: compressed format ") + toString(desc.format) +
+                                                              " is sampled only, 2D, array or cube (" + desc.debugName + ")");
+        }
+    }
     if (hasFlag(desc.usage, TextureUsage::kStorage) && !gf.imageCompatible)
     {
         return makeError(ErrorCode::kUnsupported,
@@ -861,13 +878,30 @@ Result<> GlDevice::updateTexture(TextureHandle handle, const TextureCopy &copy, 
     }
     // Depuis la mémoire du processeur, les lignes sont serrées : `bufferRowLength` et `bufferOffset` ne concernent que les
     // copies tampon <-> texture (contrat de TextureCopy).
-    const std::uint32_t bpt = formatInfo(texture->desc.format).bytesPerTexel;
-    const std::uint64_t required = static_cast<std::uint64_t>(region->size.width) * region->size.height * region->size.depth * bpt;
+    const Format format = texture->desc.format;
+    const std::uint64_t required = imageBytes(format, region->size.width, region->size.height, region->size.depth);
     if (data.size() < required)
     {
         return makeError(ErrorCode::kInvalidArgument, "updateTexture: not enough data for the region (" + texture->desc.debugName + ")");
     }
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    if (formatInfo(format).compressed())
+    {
+        if (!blockAligned(format, region->offset.x, region->offset.y, region->size.width, region->size.height,
+                          mipDim(texture->desc.size.width, region->mip), mipDim(texture->desc.size.height, region->mip)))
+        {
+            return makeError(ErrorCode::kInvalidArgument, "updateTexture: region is not aligned on 4x4 blocks (" + texture->desc.debugName + ")");
+        }
+        // Une couche par appel (uploadCompressedRegion) : sa taille doit tenir dans un GLsizei, sinon OpenGL refuserait l'envoi
+        // en silence (un tableau BC7 8192 × 8192 × 32 fait 2 Gio, une couche 64 Mio).
+        if (imageBytes(format, region->size.width, region->size.height) > static_cast<std::uint64_t>(std::numeric_limits<GLsizei>::max()))
+        {
+            return makeError(ErrorCode::kOutOfRange, "updateTexture: one layer of the region exceeds the GL transfer size limit (" +
+                                                         texture->desc.debugName + ")");
+        }
+        uploadCompressedRegion(*texture, *region, data.first(required));
+        return {};
+    }
     uploadRegion(*texture, *region, 0, reinterpret_cast<std::uintptr_t>(data.data()));
     return {};
 }
@@ -902,6 +936,37 @@ void GlDevice::uploadRegion(const TextureRes &texture, const SliceRegion &region
             break;
     }
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+}
+
+void GlDevice::uploadCompressedRegion(const TextureRes &texture, const SliceRegion &region, std::span<const std::byte> data)
+{
+    const GLenum internal = glFormatOf(texture.desc.format).internal;
+    bindScratchTexture(texture.target, texture.id); // n'écrase pas une texture liée par setBindGroup
+    const auto mip = static_cast<GLint>(region.mip);
+    const auto x = region.offset.x, y = region.offset.y;
+    const auto w = static_cast<GLsizei>(region.size.width), h = static_cast<GLsizei>(region.size.height);
+    const std::uint64_t slice = imageBytes(texture.desc.format, region.size.width, region.size.height);
+    switch (texture.desc.dimension)
+    {
+        case TextureDimension::k2D:
+            glCompressedTexSubImage2D(GL_TEXTURE_2D, mip, x, y, w, h, internal, static_cast<GLsizei>(slice), data.data());
+            break;
+        case TextureDimension::k2DArray:
+            for (std::uint32_t layer = 0; layer < region.size.depth; ++layer) // couche par couche : `slice` tient dans un GLsizei
+            {
+                glCompressedTexSubImage3D(GL_TEXTURE_2D_ARRAY, mip, x, y, static_cast<GLint>(region.layer + layer), w, h, 1, internal,
+                                          static_cast<GLsizei>(slice), data.data() + slice * layer);
+            }
+            break;
+        case TextureDimension::kCube:
+            for (std::uint32_t face = 0; face < region.size.depth; ++face)
+            {
+                glCompressedTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + region.layer + face, mip, x, y, w, h, internal,
+                                          static_cast<GLsizei>(slice), data.data() + slice * face);
+            }
+            break;
+        case TextureDimension::k3D: break; // refusé à la création
+    }
 }
 
 Result<> GlDevice::readRegion(const TextureRes &texture, const SliceRegion &region, std::uint32_t rowLength, std::uintptr_t destination)
@@ -978,6 +1043,10 @@ Result<std::vector<std::byte>> GlDevice::readTexture(TextureHandle handle, const
     if (texture == nullptr)
     {
         return makeError(ErrorCode::kNotFound, "readTexture: stale or null texture handle");
+    }
+    if (formatInfo(texture->desc.format).compressed())
+    {
+        return makeError(ErrorCode::kUnsupported, "readTexture: compressed textures cannot be read back (" + texture->desc.debugName + ")");
     }
     auto region = resolveRegion(*texture, copy);
     if (!region)
