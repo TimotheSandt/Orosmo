@@ -11,14 +11,14 @@ normales, occlusion et émission. Il possède son bloc de paramètres et son gro
 `rd::Mesh` aux sommets PBR et se dessine par `SceneRenderer::drawMesh`. Les modèles glTF créent leurs matériaux tout seuls
 (`assets::RenderModel`) ; cette page sert à les créer à la main ou à les modifier.
 
-Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `scene`, `shaders`, `pipelines`, `shaderDir`, `lights`), plus `namespace as = orosmo::assets;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `renderer`, `shaders`, `pipelines`, `shaderDir`, `lights`), plus `namespace as = orosmo::assets;`.
 
 ## Exemple minimal
 
 ```cpp
-auto defaults = rd::PbrDefaults::create(**device);            // textures neutres, une fois pour tous les matériaux
+auto defaults = rd::PbrDefaults::create(device);            // textures neutres, une fois pour tous les matériaux
 rd::PbrShaderCache pbr(shaders, shaderDir);            // un programme par variante
-as::TextureCache textures(**device);
+as::TextureCache textures(device);
 
 auto albedo = textures.load(GET_RESOURCE_PATH("textures/brique.png"), {.role = as::TextureRole::kColor}); // couleur : sRGB
 if (!defaults || !albedo) { /* erreur */ }
@@ -29,7 +29,7 @@ desc.params.metallic = 0.0f;
 desc.params.roughness = 0.8f;
 desc.maps[static_cast<std::size_t>(rd::PbrMap::kBaseColor)] = *albedo;
 
-auto material = rd::PbrMaterial::create(**device, desc, *defaults);
+auto material = rd::PbrMaterial::create(device, desc, *defaults);
 if (!material) { /* erreur */ }
 auto program = pbr.program((*material)->features());   // variante : « carte de couleur présente »
 if (!program) { /* erreur */ }
@@ -97,14 +97,14 @@ Les macros en plus viennent des autres systèmes, à assembler vous-même avant 
 
 ```cpp
 std::vector<rd::Define> extra = forwardPlusOn ? rd::forwardPlusDefines() : std::vector<rd::Define>{};
-const auto aov = (*scene)->aovShaderDefines();     // après avoir installé TAA, modes de debug, AOV
+const auto aov = renderer.aovShaderDefines();     // après avoir installé TAA, modes de debug, AOV
 extra.insert(extra.end(), aov.begin(), aov.end());
 const auto ibl = rd::iblDefines();                 // seulement si un IblFeature est installé
 extra.insert(extra.end(), ibl.begin(), ibl.end());
 auto program = pbr.program((*material)->features(), extra);
 ```
 
-Pour qu'un matériau reçoive les ombres, passez le plugin à la création : `rd::PbrMaterial::create(**device, desc,
+Pour qu'un matériau reçoive les ombres, passez le plugin à la création : `rd::PbrMaterial::create(device, desc,
 *defaults, shadows)` ajoute le bit `kPbrShadows` et les liaisons 6 et 7 (voir [Ombres](/guides/rendu-3d/ombres/)).
 
 ## Métal sans environnement
@@ -117,9 +117,9 @@ Pour qu'un métal ait des reflets partout, ajoutez un éclairage d'environnement
 avec `rd::iblDefines()` :
 
 ```cpp
-auto created = rd::IblFeature::create(**device, shaders, pipelines, shaderDir);   // demande le compute
+auto created = rd::IblFeature::create(device, shaders, pipelines, shaderDir);   // demande le compute
 if (created) {
-    auto added = (*scene)->addFeature(std::move(*created));
+    auto added = renderer.addFeature(std::move(*created));
     auto *ibl = added ? static_cast<rd::IblFeature *>(*added) : nullptr;
     if (ibl) (void)ibl->setEnvironment(rd::uniformEquirect(glm::vec3(0.3f)));       // ciel gris uniforme
 }

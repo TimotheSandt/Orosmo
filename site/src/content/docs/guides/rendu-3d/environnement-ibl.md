@@ -11,14 +11,14 @@ reflets par un cube préfiltré (un niveau de mip par rugosité) et une table BR
 remplacent l'environnement près d'elles, pour les objets mobiles. Seuls les matériaux PBR compilés avec `rd::iblDefines()`
 le lisent.
 
-Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `scene`, `shaders`, `pipelines`, `shaderDir`, `lights`), plus `namespace as = orosmo::assets;`.
+Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples) (`device`, `renderer`, `shaders`, `pipelines`, `shaderDir`, `lights`), plus `namespace as = orosmo::assets;`.
 
 ## Exemple minimal
 
 ```cpp
-auto created = rd::IblFeature::create(**device, shaders, pipelines, shaderDir);   // kUnsupported sans compute
+auto created = rd::IblFeature::create(device, shaders, pipelines, shaderDir);   // kUnsupported sans compute
 if (!created) { /* garder l'éclairage sans IBL */ }
-auto added = (*scene)->addFeature(std::move(*created));
+auto added = renderer.addFeature(std::move(*created));
 if (!added) { /* erreur */ }
 auto *ibl = static_cast<rd::IblFeature *>(*added);
 
@@ -27,7 +27,7 @@ if (auto r = ibl->setEnvironment(rd::uniformEquirect(glm::vec3(0.5f), 32, 16)); 
 // Matériaux : la variante IBL, en macros en plus (gltfModel : as::Model rendu par as::loadGltf)
 as::RenderModelOptions options;
 options.extraDefines = rd::iblDefines();
-auto model = as::RenderModel::create(**device, gltfModel, textures, pbr, *defaults, options);
+auto model = as::RenderModel::create(device, gltfModel, textures, pbr, *defaults, options);
 ```
 
 Adapté de [`tests/renderer/ibl_tests.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/tests/renderer/ibl_tests.cpp).

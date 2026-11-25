@@ -12,7 +12,7 @@ cache ; quand rien ne bouge, rien n'est redessiné. Il faut trois choses : le pl
 et des matériaux qui reçoivent.
 
 Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#noms-utilisés-dans-les-exemples)
-(`device`, `scene`, `shaders`, `pipelines`, `shaderDir`, `lights`), plus `namespace as = orosmo::assets;`.
+(`device`, `renderer`, `shaders`, `pipelines`, `shaderDir`, `lights`), plus `namespace as = orosmo::assets;`.
 
 ## Exemple minimal : un modèle glTF qui reçoit et projette
 
@@ -21,28 +21,28 @@ exister avant la création des modèles, car leurs matériaux reçoivent les lia
 
 ```cpp
 // 1. Le plugin, avant les modèles et les programmes de maillage
-auto created = rd::ShadowFeature::create(**device, shaders, pipelines, shaderDir);
+auto created = rd::ShadowFeature::create(device, shaders, pipelines, shaderDir);
 if (!created) { /* created.error().message */ }
-auto added = (*scene)->addFeature(std::move(*created));
+auto added = renderer.addFeature(std::move(*created));
 if (!added) { /* erreur */ }
 auto *shadows = static_cast<rd::ShadowFeature *>(*added);   // non possédé : le renderer le garde
 
 // 2. Un soleil qui projette (défaut : kNone, aucune ombre)
 rd::Light sun = rd::directionalLight({0.4f, 0.8f, 0.3f} /* vers la lumière */, {1.0f, 0.96f, 0.9f}, 1.0f);
 sun.shadowMode = rd::ShadowMode::kCached;
-lights->addLight(sun);
-if (auto r = lights->upload(); !r) { /* erreur */ }
-shadows->setLights(&*lights);                                 // non possédé, comme pour SceneRenderer::setLights
+lights.addLight(sun);
+if (auto r = lights.upload(); !r) { /* erreur */ }
+shadows->setLights(&lights);                                 // non possédé, comme pour SceneRenderer::setLights
 
 // 3. Les récepteurs : RenderModelOptions::shadows (aucune macro en plus n'est nécessaire)
-as::TextureCache textures(**device);
+as::TextureCache textures(device);
 rd::PbrShaderCache pbr(shaders, shaderDir);
-auto defaults = rd::PbrDefaults::create(**device);
+auto defaults = rd::PbrDefaults::create(device);
 auto level = as::loadGltf(GET_RESOURCE_PATH("models/niveau.glb"));
 if (!defaults || !level) { /* erreur */ }
 as::RenderModelOptions options;
 options.shadows = shadows;                                    // matériaux récepteurs (bit kPbrShadows)
-auto levelRender = as::RenderModel::create(**device, *level, textures, pbr, *defaults, options);
+auto levelRender = as::RenderModel::create(device, *level, textures, pbr, *defaults, options);
 if (!levelRender) { /* erreur */ }
 
 // 4. Les casters : chaque maillage du modèle, fixe ici (gardé dans le cache)
@@ -52,7 +52,7 @@ for (std::size_t i = 0; i < levelRender->meshCount(); ++i) {
 }
 ```
 
-À chaque image, rien de plus : `levelRender->draw(**scene, camera)` entre `setCamera` et `endFrame`, comme sans ombres.
+À chaque image, rien de plus : `levelRender->draw(renderer, camera)` entre `setCamera` et `endFrame`, comme sans ombres.
 `rd::Aabb::empty()` est une boîte invalide : le maillage est dessiné dans toutes les vues d'ombre, sans culling. Pour un
 grand niveau, passez la boîte locale du maillage (le culling par vue d'ombre en profite).
 
@@ -90,19 +90,19 @@ que le plugin compile, et par le groupe 1 des ombres :
 
 ```cpp
 // Macros des autres plugins (forward+, sorties auxiliaires), ou vide
-std::vector<rd::Define> meshDefines = (*scene)->aovShaderDefines();
+std::vector<rd::Define> meshDefines = renderer.aovShaderDefines();
 auto receiver = shadows->receiverProgramWith(meshDefines);   // mesh.vert + mesh.frag avec OROSMO_SHADOWS
 if (!receiver) { /* erreur */ }
-ground->setProgram(*receiver);                                 // ground, structure : Result<rd::Mesh> de rd::Mesh::create
-ground->setMaterialGroup(shadows->receiverGroup());
-structure->setProgram(*receiver);
-structure->setMaterialGroup(shadows->receiverGroup());
+ground.setProgram(*receiver);                                  // ground, structure : rd::Mesh &, créés depuis
+ground.setMaterialGroup(shadows->receiverGroup());              // groundData et structureData (rd::MeshData)
+structure.setProgram(*receiver);
+structure.setMaterialGroup(shadows->receiverGroup());
 
 rd::Aabb bounds = rd::Aabb::empty();                           // boîte locale : positions des sommets
 for (std::size_t v = 0; v + 2 < structureData.vertices.size(); v += 9)   // 9 flottants par sommet
     bounds.merge({{structureData.vertices[v], structureData.vertices[v + 1], structureData.vertices[v + 2]},
                   {structureData.vertices[v], structureData.vertices[v + 1], structureData.vertices[v + 2]}});
-auto id = shadows->addMeshCaster(*structure, bounds, rd::CasterMobility::kStatic);
+auto id = shadows->addMeshCaster(structure, bounds, rd::CasterMobility::kStatic);
 ```
 
 Adapté de `DemoScene::init` et `registerCaster`
@@ -110,7 +110,7 @@ Adapté de `DemoScene::init` et `registerCaster`
 Un maillage qui avait déjà un programme le remplace simplement par `setProgram(*receiver)`.
 
 Pour un `PbrMaterial` créé à la main, passez le plugin à la création :
-`rd::PbrMaterial::create(**device, desc, *defaults, shadows)`, puis le programme de `material->features()`. Un matériau
+`rd::PbrMaterial::create(device, desc, *defaults, shadows)`, puis le programme de `material->features()`. Un matériau
 qui a ses propres textures (hors PBR) ajoute les liaisons 6 et 7 à son groupe par `shadows->appendReceiverBindings(desc)`.
 Un modèle glTF déjà créé sans ombres se met à jour par `levelRender->rebuildMaterials(shadows, pbr)`.
 
