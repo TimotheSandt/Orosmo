@@ -124,18 +124,30 @@ TEST_SUITE("anim/clip")
         CHECK(clip.events().back().time == doctest::Approx(1.0f));
 
         std::vector<an::AnimationEvent> out;
-        clip.collectEvents(-1.0f, 0.0f, false, out);
+        clip.collectEvents(-1.0f, 0.0f, 0, out);
         REQUIRE(out.size() == 1);
         CHECK(out[0].name == "start");
         out.clear();
-        clip.collectEvents(0.25f, 0.5f, false, out);
+        clip.collectEvents(0.25f, 0.5f, 0, out);
         REQUIRE(out.size() == 1);
         CHECK(out[0].name == "step");
         out.clear();
-        clip.collectEvents(0.75f, 0.25f, true, out); // tour : end puis start
+        clip.collectEvents(0.75f, 0.25f, 1, out); // tour : end puis start
         REQUIRE(out.size() == 2);
         CHECK(out[0].name == "start");
         CHECK(out[1].name == "end");
+
+        // Plusieurs tours : un clip d'1 s depuis 0,25 avancé de 2,25 s franchit 0,75 deux fois.
+        const an::ClipTime many = an::advanceClipTime(0.25f, 2.25f, 1.0f, an::LoopMode::kLoop);
+        CHECK(many.laps == 2);
+        CHECK(many.time == doctest::Approx(0.5f));
+        out.clear();
+        an::Clip marked = moveX(0, 1, 1.0f);
+        marked.addEvent(0.75f, "m");
+        marked.collectEvents(0.25f, many.time, many.laps, out);
+        CHECK(out.size() == 2);
+        CHECK(an::advanceClipTime(0.25f, 0.25f, 1.0f, an::LoopMode::kLoop).laps == 0);
+        CHECK(an::advanceClipTime(0.75f, 0.5f, 1.0f, an::LoopMode::kLoop).laps == 1);
     }
 }
 
@@ -326,5 +338,25 @@ TEST_SUITE("anim/curves")
         CHECK(roughness == doctest::Approx(0.9f));
         anim.unbind("material.roughness");
         CHECK(anim.trackCount() == 2);
+    }
+
+    TEST_CASE("PropertyAnimation: a setter may unbind/bind during apply (deferred to the end of the pass)")
+    {
+        an::Curve<float> c;
+        c.addKey(0.0f, 1.0f);
+        int calledB = 0;
+        an::PropertyAnimation anim;
+        REQUIRE(anim.bind<float>("a", c, [&](const float &) {
+                    anim.unbind("b");
+                    anim.unbind("a");
+                    CHECK_FALSE(anim.bind<float>("b", c, [](const float &) {}).has_value()); // "b" encore présent
+                    CHECK(anim.bind<float>("c", c, [](const float &) {}).has_value());
+                }).has_value());
+        REQUIRE(anim.bind<float>("b", c, [&](const float &) { ++calledB; }).has_value());
+        anim.apply(0.0f);
+        CHECK(calledB == 1); // la piste suivante est évaluée dans la passe en cours
+        CHECK(anim.trackCount() == 1);
+        anim.unbind("c");
+        CHECK(anim.trackCount() == 0);
     }
 }

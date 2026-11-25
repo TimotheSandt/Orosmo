@@ -127,12 +127,20 @@ core::Result<> Clip::sample(float time, Pose &pose) const
     return {};
 }
 
-void Clip::collectEvents(float from, float to, bool wrapped, std::vector<AnimationEvent> &out) const
+void Clip::collectEvents(float from, float to, std::size_t laps, std::vector<AnimationEvent> &out) const
 {
     for (const AnimationEvent &e : events_)
     {
-        const bool hit = wrapped ? (e.time > from || e.time <= to) : (e.time > from && e.time <= to);
-        if (hit)
+        std::size_t count = 0;
+        if (laps == 0)
+        {
+            count = (e.time > from && e.time <= to) ? 1 : 0;
+        }
+        else
+        {
+            count = (e.time > from ? 1 : 0) + (laps - 1) + (e.time <= to ? 1 : 0);
+        }
+        for (std::size_t i = 0; i < count; ++i)
         {
             out.push_back(e);
         }
@@ -157,6 +165,8 @@ ClipTime advanceClipTime(float time, float delta, float duration, LoopMode mode)
     if (t >= duration || t < 0.0f)
     {
         out.wrapped = true;
+        out.laps = static_cast<std::size_t>(t < 0.0f ? std::ceil(-t / duration) : std::floor(t / duration));
+        out.laps = std::max<std::size_t>(out.laps, 1);
         t = std::fmod(t, duration);
         if (t < 0.0f)
         {
