@@ -9,21 +9,36 @@ sidebar:
 
 ## Exemple minimal
 
-Adapté de `apps/demo/src/Scene/anim_scene.cpp` (`buildModels`, `updateCrowd`, `render`). Il suppose un `model` (glTF avec une peau et des clips, voir [Importer un modèle glTF](/guides/contenus/gltf/)), le `TextureCache` `textures`, le `PbrShaderCache` `pbr`, les `PbrDefaults` `defaults`, et les clips `clips` de la page sur les squelettes.
+Adapté de `apps/demo/src/Scene/anim_scene.cpp` (`buildModels`, `updateCrowd`, `render`). Il suppose un `model` (glTF avec une peau et des clips, voir [Importer un modèle glTF](/guides/contenus/gltf/)) et les objets décrits dans les commentaires de l'extrait, avec les noms de [Lire la boucle d'une application](/demarrer/premiere-application/) (`device`, `shaders`, `pipelines`, `scene`, `shaderDir`).
 
 ```cpp
+#include <orosmo/anim/clip.hpp>
 #include <orosmo/anim/crowd.hpp>
+#include <orosmo/anim/pose.hpp>
+#include <orosmo/assets/render_model.hpp>
+#include <orosmo/assets/texture_cache.hpp>
+#include <orosmo/renderer/material.hpp>
+
+#include <cmath>
+#include <memory>
+#include <vector>
 
 namespace an = orosmo::anim;
 namespace as = orosmo::assets;
+namespace rd = orosmo::renderer;
+
+// Variables supposées (voir « Animer un personnage » pour les créer) :
+//   as::Model model;                       as::TextureCache textures(**device);
+//   rd::PbrShaderCache pbr(shaders, shaderDir);   std::shared_ptr<rd::PbrDefaults> defaults;
+//   std::vector<an::Clip> clips;           float time;   std::vector<float> speed, phase;   // un par agent
 
 // Mise en place (une fois). Un RenderModel DÉDIÉ à la foule : sans `skinnable`.
-auto render = as::RenderModel::create(*device, model, textures, pbr, defaults, {});
+auto render = as::RenderModel::create(**device, model, textures, pbr, defaults, {});
 if (!render) { /* ... */ }
 auto crowdModel = std::make_unique<as::RenderModel>(std::move(*render));
 
-if (!an::CrowdRenderer::supportedBy(device->capabilities())) { /* pas de foule sur ce périphérique */ }
-auto crowd = an::CrowdRenderer::create(*device, shaders, pipelines, shaderDir, model, *crowdModel);
+if (!an::CrowdRenderer::supportedBy((*device)->capabilities())) { /* pas de foule sur ce périphérique */ }
+auto crowd = an::CrowdRenderer::create(**device, shaders, pipelines, shaderDir, model, *crowdModel);
 if (!crowd) { /* crowd.error().message */ }
 
 constexpr std::size_t kAgents = 1000;
@@ -37,7 +52,7 @@ for (std::size_t i = 0; i < kAgents; ++i) {
 }
 (void)(*crowd)->setAgents(worlds, poses);              // calcule les palettes, envoie les tampons
 // ... scene.beginFrame, scene.setCamera ...
-auto stats = (*crowd)->draw(scene);                    // un draw call par lot
+auto stats = (*crowd)->draw(**scene);                    // un draw call par lot
 // ... scene.endFrame
 ```
 
@@ -96,14 +111,14 @@ Mesuré sur un GPU intégré Intel Arc, pour un personnage de 10 147 sommets et 
 
 ## Limites
 
-- ANIM-04 est Fait avec les limites de G199 :
+- Limites :
   - pas de culling par agent : tout le lot est dessiné ;
   - pas d'AOV ni de vecteurs de mouvement, donc pas de TAA ni de flou de mouvement sur la foule ;
   - la foule ne projette pas d'ombres ;
   - les palettes sont calculées sur le CPU à chaque `setAgents` (pas d'évaluation des clips sur le GPU).
 - Une normale est déformée par `mat3(modèle × palette)` : exact sans échelle non uniforme.
-- Le pipeline instancié ne suit pas la face avant d'une transformation miroir (G202).
-- Les lots de la foule gardent l'ancien groupe de matériau après `RenderModel::rebuildMaterials` (G202) : recréer le `CrowdRenderer` après un changement de texture ou d'ombres.
+- Le pipeline instancié ne suit pas la face avant d'une transformation miroir.
+- Les lots de la foule gardent l'ancien groupe de matériau après `RenderModel::rebuildMaterials` : recréer le `CrowdRenderer` après un changement de texture ou d'ombres.
 
 ## Voir aussi
 

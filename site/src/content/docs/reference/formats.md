@@ -22,20 +22,20 @@ Lecture : `assets::loadGltf` (`.gltf` avec tampons et images externes ou en data
 | Non pris en charge | Comportement |
 |---|---|
 | Extension inconnue listée dans `extensionsRequired` (dont Draco, `EXT_meshopt_compression`, `KHR_texture_basisu` requis) | Refus : `kUnsupported`. |
-| Cibles de forme (morph targets), pistes `weights` | Ignorées (ANIM-05, G198). Supprimées à l'export. |
+| Cibles de forme (morph targets), pistes `weights` | Ignorées (pas encore prévues). Supprimées à l'export. |
 | `KHR_texture_transform`, autres extensions de matériau (clearcoat, transmission, volume, sheen...) | Ignorées. |
 | Plus de 4 influences par sommet (`JOINTS_1`, `WEIGHTS_1`) | Ignorées, avec un avertissement. |
 | Primitives de points et de lignes | Ignorées, avec un avertissement. |
-| Rendu : `TEXCOORD_1` pour une carte | Lue avec `TEXCOORD_0`, avec un avertissement (un seul jeu d'UV, G195). |
-| Rendu : `wrapT` différent de `wrapS` | Un seul mode d'adressage par texture, celui de `wrapS` (G195). |
+| Rendu : `TEXCOORD_1` pour une carte | Lue avec `TEXCOORD_0`, avec un avertissement (un seul jeu d'UV). |
+| Rendu : `wrapT` différent de `wrapS` | Un seul mode d'adressage par texture, celui de `wrapS`. |
 | Rendu : tangentes absentes | Calculées par triangle (pas MikkTSpace). Les transparents `BLEND` ne sont pas triés. |
-| Rechargement à chaud d'un modèle | Non : seules les textures sont rechargées (G200). |
+| Rechargement à chaud d'un modèle | Non : seules les textures sont rechargées. |
 
 Les erreurs de lecture : `kIo` (fichier), `kParse` (contenu invalide), `kUnsupported` (extension requise inconnue).
 
 ## Images
 
-PNG, JPG, TGA et BMP sont décodés (stb) en RGBA8, première ligne en haut ; un PNG 16 bits est réduit à 8 bits. L'usage (`TextureRole`) décide du format : couleur en `kRGBA8Srgb`, données et normales en `kRGBA8Unorm`. Les mips sont générés sur le GPU. Pas d'image HDR ici (G197). Écriture : PNG par `renderer::savePng` (utilisé par les captures).
+PNG, JPG, TGA et BMP sont décodés (stb) en RGBA8, première ligne en haut ; un PNG 16 bits est réduit à 8 bits. L'usage (`TextureRole`) décide du format : couleur en `kRGBA8Srgb`, données et normales en `kRGBA8Unorm`. Les mips sont générés sur le GPU. Pas d'image HDR ici. Écriture : PNG par `renderer::savePng` (utilisé par les captures).
 
 ## KTX2
 
@@ -46,7 +46,7 @@ PNG, JPG, TGA et BMP sont décodés (stb) en RGBA8, première ligne en haut ; un
 | RGBA8 | Envoyé tel quel. |
 | Autres formats | `kUnsupported`. |
 
-Écriture : `assets::encodeKtx2` (UASTC niveau 0 à 4 ou RGBA8, supercompression zstd, mips filtrés sur le CPU), déterministe. Limites (G200) : KTX2 2D seulement (pas de tableaux, cubes ni 3D) ; replis ASTC et RGBA8 vérifiés sur CPU seulement ; textures compressées non relisibles et sans mips générés.
+Écriture : `assets::encodeKtx2` (UASTC niveau 0 à 4 ou RGBA8, supercompression zstd, mips filtrés sur le CPU), déterministe. Limites : KTX2 2D seulement (pas de tableaux, cubes ni 3D) ; replis ASTC et RGBA8 vérifiés sur CPU seulement ; textures compressées non relisibles et sans mips générés.
 
 ## .omesh
 
@@ -65,7 +65,7 @@ Format binaire du moteur, produit par `bakePrimitive` et `writeBakedMesh`, relu 
 | Couleurs | 4 x `unorm8` | 4 x `unorm8` |
 | Articulations, poids | 4 x `u16`, 4 x `unorm16` | idem |
 
-La lecture vérifie les bornes partout : `kParse` (tronqué, mauvaise signature, indices hors bornes), `kVersionMismatch` (version inconnue). Limites (G200) : bibliothèque seulement, pas d'exécutable de cuisson ; LOD guidés par les positions et partageant les sommets du LOD 0 ; peaux non reconstruites ; flottants IEEE supposés.
+La lecture vérifie les bornes partout : `kParse` (tronqué, mauvaise signature, indices hors bornes), `kVersionMismatch` (version inconnue). Limites : bibliothèque seulement, pas d'exécutable de cuisson ; LOD guidés par les positions et partageant les sommets du LOD 0 ; peaux non reconstruites ; flottants IEEE supposés.
 
 ## LUT .cube
 
@@ -77,7 +77,7 @@ La lecture vérifie les bornes partout : `kParse` (tronqué, mauvaise signature,
 |---|---|
 | Vues `.cui` | [Langage .cui](/reference/langage-cui/) |
 | Thèmes JSON | [Thèmes : jetons et propriétés](/reference/themes-json/) |
-| OBJ | Absent (ASSET-06). FBX : seulement par conversion externe, hors du moteur. |
+| OBJ | Absent. FBX : seulement par conversion externe, hors du moteur. |
 
 ## Voir aussi
 

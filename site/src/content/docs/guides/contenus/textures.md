@@ -14,12 +14,12 @@ sidebar:
 
 namespace as = orosmo::assets;
 
-as::TextureCache textures(*device);   // rhi::Device &
+as::TextureCache textures(**device);   // device : voir « Lire la boucle d'une application »
 
-auto albedo = textures.load("res/brick.png");   // couleur : sRGB, mips générés
+auto albedo = textures.load(GET_RESOURCE_PATH("textures/brick.png"));   // couleur : sRGB, mips générés
 if (!albedo) { /* albedo.error().message */ }
 
-auto normal = textures.load("res/brick_n.png", {.role = as::TextureRole::kNormal});   // linéaire
+auto normal = textures.load(GET_RESOURCE_PATH("textures/brick_n.png"), {.role = as::TextureRole::kNormal});   // linéaire
 ```
 
 `load` rend un `core::Result<std::shared_ptr<renderer::Texture>>`. Pour l'utiliser dans un matériau PBR, on la range dans `PbrMaterialDesc::maps` (voir [Matériaux PBR](/guides/rendu-3d/materiaux-pbr/)) ; un `RenderModel` le fait tout seul pour les textures d'un glTF.
@@ -38,7 +38,7 @@ Le troisième paramètre de `load` est un `TextureRequest`. Les trois champs fon
 
 ```cpp
 // Pixel art : plus proche voisin, pas de mips.
-auto sprite = textures.load("res/hero.png", {.role = as::TextureRole::kColor, .filter = orosmo::renderer::FilterMode::kNearest});
+auto sprite = textures.load(GET_RESOURCE_PATH("textures/hero.png"), {.role = as::TextureRole::kColor, .filter = orosmo::renderer::FilterMode::kNearest});
 ```
 
 Une couleur chargée avec `kData` (ou l'inverse) donne une image fausse sans message d'erreur (couleurs trop claires ou trop sombres).
@@ -81,12 +81,12 @@ Pour produire un fichier KTX2, `encodeKtx2(image, options)` encode une `DecodedI
 | `zstd` | `bool` | `true` | Supercompression Zstandard (niveau 18). |
 
 ```cpp
-auto image = as::loadImage("res/brick.png");
+auto image = as::loadImage(GET_RESOURCE_PATH("textures/brick.png"));
 if (!image) { /* ... */ }
 
 auto ktx = as::encodeKtx2(*image, {.role = as::TextureRole::kColor, .uastcLevel = 2});
 if (ktx) {
-    // ktx->data() : std::vector<std::byte>, à écrire dans res/brick.ktx2
+    // ktx->data() : std::vector<std::byte>, à écrire dans un fichier .ktx2
 }
 ```
 
@@ -118,11 +118,11 @@ Un fichier illisible garde l'ancienne texture et l'erreur est journalisée.
 
 ## Limites
 
-- ASSET-02 et ASSET-03 sont Fait ; ASSET-05 (rechargement) est Partiel : seules les textures sont rechargées, pas les modèles glTF, et la démo est le seul branchement existant (G200).
-- 8 bits par canal. Pas d'image HDR ici : les environnements de l'IBL viennent d'une autre fonction (G197, voir [Éclairage d'environnement](/guides/rendu-3d/environnement-ibl/)).
+- Seules les textures sont rechargées, pas les modèles glTF, et la démo est le seul code qui appelle `reloadChanged`.
+- 8 bits par canal. Pas d'image HDR ici : les environnements de l'IBL viennent d'une autre fonction (voir [Éclairage d'environnement](/guides/rendu-3d/environnement-ibl/)).
 - KTX2 2D seulement : pas de tableaux, cubes ni 3D.
 - Les replis ASTC et RGBA8 sont vérifiés sur le CPU seulement (la machine de test prend BC7). Une texture compressée n'est pas relisible (`readTexture` refusé) et n'a pas de mips générés : ceux du fichier sont utilisés.
-- Pas d'exécutable de cuisson de textures (G200).
+- Pas d'exécutable de cuisson de textures.
 
 ## Voir aussi
 

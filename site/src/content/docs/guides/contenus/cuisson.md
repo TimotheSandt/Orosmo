@@ -15,7 +15,7 @@ La cuisson transforme une primitive de maillage (`assets::MeshPrimitive`, celle 
 
 namespace as = orosmo::assets;
 
-auto model = as::loadGltf("res/rocher.glb");
+auto model = as::loadGltf(GET_RESOURCE_PATH("models/rocher.glb"));
 if (!model) { /* ... */ }
 
 std::vector<as::BakedPrimitive> baked;
@@ -29,7 +29,7 @@ for (const as::MeshData &mesh : model->meshes) {
 
 auto bytes = as::writeBakedMesh(baked);                 // std::vector<std::byte>
 if (!bytes) { /* ... */ }
-// écrire *bytes dans res/rocher.omesh avec std::ofstream
+// écrire *bytes dans un fichier .omesh avec std::ofstream
 ```
 
 Relire :
@@ -78,7 +78,7 @@ Les textures se cuisent avec `encodeKtx2`, pas avec `bake.hpp` : voir [Textures 
 
 ## Limites
 
-- ASSET-04 est Fait pour la bibliothèque. Pas d'exécutable de cuisson (G200).
+- La cuisson est une bibliothèque : pas d'exécutable de cuisson.
 - Les LOD sont guidés par les positions seules : les coutures d'UV ou de normales ne sont pas protégées. Ils partagent les sommets du LOD 0 (les sommets que le LOD n'utilise plus ne sont pas retirés).
 - Les peaux ne sont pas reconstruites ; les cibles de forme ne sont pas gérées.
 - Le moteur ne charge pas encore un `.omesh` directement pour le dessiner : `RenderModel` part d'un `Model` glTF. Le fichier `.omesh` se relit en `BakedPrimitive` ou en `MeshPrimitive` (`unbake`), à passer à `renderer::Mesh` soi-même.

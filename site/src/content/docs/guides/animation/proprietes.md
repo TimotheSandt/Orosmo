@@ -95,7 +95,7 @@ anim.apply(t);
 
 ## Limites
 
-- ANIM-03 est Fait : courbes `kStep`, `kLinear`, `kCubic` et liaison par setters.
+- Courbes `kStep`, `kLinear`, `kCubic` et liaison par setters seulement.
 - Seuls `float`, `Vec2`, `Vec3` et `Vec4` ont des courbes. Pas de courbe de rotation par quaternion (une `Vec4` est interpolée composante par composante, sans normalisation), pas d'éditeur de courbes, pas de lecture depuis un fichier.
 - Pas de bouclage ni de vitesse intégrés à `PropertyAnimation` : le temps passé à `apply` est celui de l'appelant.
 

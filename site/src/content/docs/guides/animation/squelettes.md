@@ -3,6 +3,7 @@ title: "Animer un personnage : clips, machine à états, skinning"
 description: "Afficher un modèle glTF animé : objets à créer dans l'ordre, clips, machine à états, mélange de poses et skinning GPU."
 sidebar:
   order: 1
+  label: Squelettes
 ---
 
 Animer un personnage glTF demande plusieurs objets qui se référencent entre eux. Aucun objet ne les regroupe : il faut créer la chaîne complète soi-même, dans l'ordre ci-dessous, puis appeler trois choses chaque image dans un ordre précis. Cette page donne la chaîne, puis détaille chaque pièce.
@@ -35,6 +36,8 @@ Chaque image :
 #include <orosmo/assets/render_model.hpp>
 #include <orosmo/assets/texture_cache.hpp>
 
+#include <glm/gtc/matrix_transform.hpp>
+
 namespace as = orosmo::assets;
 namespace an = orosmo::anim;
 namespace rd = orosmo::renderer;
@@ -52,7 +55,7 @@ struct Hero {
 
 orosmo::core::Result<> loadHero(Hero &h, orosmo::rhi::Device &device, rd::ShaderLibrary &shaders,
                                 rd::PipelineCache &pipelines, const std::filesystem::path &shaderDir) {
-    auto loaded = as::loadGltf("res/heros.glb");
+    auto loaded = as::loadGltf(GET_RESOURCE_PATH("models/heros.glb"));
     if (!loaded) return std::unexpected(loaded.error());
     h.model = std::move(*loaded);
 
@@ -76,6 +79,7 @@ orosmo::core::Result<> loadHero(Hero &h, orosmo::rhi::Device &device, rd::Shader
         h.skinned.emplace(std::move(*skinned));
     }   // sinon le modèle reste en pose de repos
 
+    if (h.model.animations.empty()) return orosmo::core::makeError(orosmo::core::ErrorCode::kNotFound, "ce modèle n'a pas d'animation");
     for (std::size_t i = 0; i < h.model.animations.size(); ++i) {
         auto clip = an::Clip::fromModel(h.model, i);
         if (!clip) return std::unexpected(clip.error());
@@ -83,11 +87,15 @@ orosmo::core::Result<> loadHero(Hero &h, orosmo::rhi::Device &device, rd::Shader
     }
     h.machine.emplace(an::restPose(h.model));
     // h.clips ne change plus : les états gardent des pointeurs vers ses éléments.
-    if (auto r = h.machine->addState({"marche", &h.clips[0], an::LoopMode::kLoop, 1.0f}); !r) return r;
-    if (auto r = h.machine->addState({"salut", &h.clips[1], an::LoopMode::kOnce, 1.0f}); !r) return r;
-    if (auto r = h.machine->addTransition({.from = "marche", .to = "salut", .duration = 0.3f, .condition = "saluer"}); !r) return r;
-    if (auto r = h.machine->addTransition({.from = "salut", .to = "marche", .duration = 0.3f, .atEnd = true}); !r) return r;
-    return h.machine->start("marche");
+    // Un état par animation du fichier, nommé comme elle (`model.animations[i].name`) ; le premier démarre.
+    for (std::size_t i = 0; i < h.clips.size(); ++i) {
+        if (auto r = h.machine->addState({h.clips[i].name(), &h.clips[i], an::LoopMode::kLoop, 1.0f}); !r) return r;
+    }
+    // Transitions : à écrire selon vos noms de clips, par exemple
+    //   h.machine->addTransition({.from = "walk", .to = "wave", .duration = 0.3f, .condition = "saluer"});
+    //   h.machine->addTransition({.from = "wave", .to = "walk", .duration = 0.3f, .atEnd = true});   // (avec LoopMode::kOnce pour "wave")
+    h.render->setRootTransform(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -3.0f)));   // place et dimensionne le modèle dans le monde
+    return h.machine->start(h.clips[0].name());
 }
 
 // Chaque image, dans l'ordre. `encoder` est celui de l'image ; la boucle complète est dans « Première application ».
@@ -103,6 +111,8 @@ void frame(Hero &h, rd::SceneRenderer &scene, rd::Camera &camera, orosmo::rhi::C
     // ... autres dessins ... puis scene.endFrame(...), voir « Première application »
 }
 ```
+
+Il faut un fichier glTF avec une peau et au moins une animation. La démo n'en fournit pas : elle génère son personnage par code (`makeAnimatedFigure`) puis l'écrit avec `saveGltf`. Pour votre jeu, exportez un personnage depuis Blender en `.glb` ; les noms des animations sont dans `model.animations[i].name`. Les noms d'état ci-dessus sont ceux des clips ; adaptez les transitions aux vôtres. L'échelle et la position se règlent avec `render->setRootTransform(...)` (un glTF est en mètres, Y en haut).
 
 Source : `apps/demo/src/Scene/anim_scene.cpp` (`AnimScene::init`, `buildModels`, `update`, `dispatch`, `render`), adapté. L'ordre des appels d'une image (deux `beginFrame`, encodeur, `endFrame`) est expliqué dans [Lire la boucle d'une application](/demarrer/premiere-application/). La démo : `apps/demo/bin/debug/main --scene anim` après `make all-debug`.
 
@@ -186,19 +196,35 @@ Une transition doit avoir une condition, `atEnd`, ou les deux : sinon `addTransi
 
 ```cpp
 h.clips[0].addEvent(0.25f, "pas");        // événement porté par le clip, à 0,25 s
-h.machine->setTrigger("saluer");          // consommé par la transition marche -> salut
+h.machine->setTrigger("saluer");          // consommé par la transition walk -> wave (voir plus haut)
 (void)h.machine->update(dt);
 for (const an::FiredEvent &e : h.machine->takeEvents()) {
-    // e.state == "marche", e.name == "pas" : jouer un son
+    // e.state : état qui jouait, e.name == "pas" : jouer un son
 }
 ```
 
 Une transition commencée va à son terme : pendant un fondu, aucune autre transition n'est évaluée. Tout est déterministe : les mêmes appels de `update` et de paramètres donnent la même pose, sans horloge.
 
+## Ombres
+
+Un modèle skinné peut recevoir des ombres, et d'après le code il peut aussi en projeter, mais ce second cas n'est couvert ni par un test ni par la démo (`--scene anim` n'active pas les ombres).
+
+- Recevoir : créer la `ShadowFeature` avant le modèle, puis `options.shadows = shadowFeature` dans `RenderModelOptions` (le matériau PBR prend alors sa variante réceptrice ; aucune définition de shader supplémentaire n'est obligatoire, `extraDefines` ne sert qu'au forward+ ou à l'IBL). Après un `ShadowFeature::setSettings`, appeler `render->rebuildMaterials(shadowFeature, pbr)` entre deux images.
+- Projeter : déclarer chaque maillage GPU du modèle comme caster. Le caster dessine le tampon de sommets du maillage, que le compute de skinning réécrit, avec la matrice que `RenderModel::draw` pose chaque image. Une boîte vide (`Aabb::empty()`) désactive le culling de ce caster, ce qui convient à un maillage qui se déforme.
+
+```cpp
+for (std::size_t i = 0; i < h.render->meshCount(); ++i) {
+    auto id = shadowFeature->addMeshCaster(h.render->mesh(i), rd::Aabb::empty(), rd::CasterMobility::kMovable);
+    if (!id) { /* kInvalidArgument : maillage vide */ }
+}
+```
+
+`shadowFeature` est le `ShadowFeature *` obtenu à la création du plugin. Les casters ne sont pas possédés : retirez-les (`removeCaster`) avant de détruire le modèle. Un maillage GPU dessiné par plusieurs nœuds n'a qu'une matrice : l'ombre suit le dernier nœud dessiné. Le guide [Ajouter des ombres](/guides/rendu-3d/ombres/) décrit la lumière ombrée et les réglages, et le tutoriel `demarrer/tutoriel-jeu-3d` assemble le tout.
+
 ## Limites
 
-- ANIM-01, ANIM-02 sont Fait. ANIM-05 (IK, cibles de forme, mouvement de racine) et ANIM-06 (retargeting) sont Absents.
-- Skinning en compute seulement, 4 os par sommet au plus ; pas de repli en vertex shader (G198).
+- Pas d'IK, de cibles de forme, de mouvement de racine ni de retargeting.
+- Skinning en compute seulement, 4 os par sommet au plus ; pas de repli en vertex shader.
 - Un maillage GPU dessiné par plusieurs nœuds skinnés est déformé pour le premier seulement. Les normales et tangentes suivent `mat3(palette)` : exact sans échelle non uniforme dans les os.
 - Pas d'objet qui regroupe modèle, clips, machine et skinning, ni de repli CPU automatique : c'est à l'application de les assembler comme ci-dessus.
 - Pour beaucoup de personnages, voir [Foules instanciées](/guides/animation/foules/).
