@@ -16,7 +16,7 @@ Trois outils se suivent : `FramePacer` choisit la cadence, un périphérique san
 namespace rd = orosmo::renderer;
 
 rd::FramePacer pacer;
-pacer.bind([&](bool enabled) { device->setVSync(enabled); },
+pacer.bind([&](bool enabled) { device.setVSync(enabled); },
            [&](int maxFps) { window.setMaxFPS(maxFps); });   // 0 : pas de limite
 
 pacer.setMode(rd::FramePacingMode::kVSync);   // synchronisée sur l'écran
