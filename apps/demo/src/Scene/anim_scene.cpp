@@ -493,11 +493,20 @@ std::size_t AnimScene::reloadChanged()
         return 0;
     }
     const std::size_t reloaded = textures_->reloadChanged();
-    if (reloaded == 0)
+    // Un échec précédent a laissé la scène sans modèles : on retente à chaque modification, et sinon toutes les kRetryFrames
+    // images (échec transitoire, fichier inchangé).
+    constexpr int kRetryFrames = 120;
+    bool retry = false;
+    if (rebuildPending_ && reloaded == 0)
+    {
+        retry = ++retryCountdown_ >= kRetryFrames;
+    }
+    if (reloaded == 0 && !retry)
     {
         return reloaded;
     }
-    bool rebuild = rebuildPending_; // un échec précédent a laissé la scène sans modèles : on retente à chaque nouvelle modification
+    retryCountdown_ = 0;
+    bool rebuild = rebuildPending_;
     if (!rebuild && hero_)
     {
         const auto &albedo = hero_->materials().front()->desc().maps[static_cast<std::size_t>(rd::PbrMap::kBaseColor)];
@@ -510,7 +519,7 @@ std::size_t AnimScene::reloadChanged()
         if (auto rebuilt = buildModels(); !rebuilt)
         {
             rebuildPending_ = true;
-            LOG_ERROR(1, "Anim scene: rebuilding the models after the texture reload: ", rebuilt.error().message, " (retried on the next change)");
+            LOG_ERROR(1, "Anim scene: rebuilding the models after the texture reload: ", rebuilt.error().message, " (retried automatically)");
         }
         else
         {
@@ -521,7 +530,10 @@ std::size_t AnimScene::reloadChanged()
             }
         }
     }
-    LOG_INFO("Anim scene: reloaded ", texturePath_.string());
+    if (reloaded > 0)
+    {
+        LOG_INFO("Anim scene: reloaded ", texturePath_.string());
+    }
     return reloaded;
 }
 

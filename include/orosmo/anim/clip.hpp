@@ -45,7 +45,7 @@ class Clip
     core::Result<> sample(float time, Pose &pose) const;
 
     // Ajoute à `out` les événements franchis en avançant de `from` (exclu) à `to` (inclus). `laps` : nombre de tours de boucle
-    // faits (0 : sans bouclage). Avec laps >= 1 : (from, duration], puis laps-1 passages complets, puis [0, to] ; un événement
+    // faits (0 : sans bouclage). Les événements sortent dans l'ordre du parcours. Avec laps >= 1 : (from, duration], puis laps-1 passages complets, puis [0, to] ; un événement
     // est donc restitué une fois par franchissement (2,25 s d'avance sur un clip d'1 s depuis 0,25 : le marqueur 0,75 sort 2 fois).
     // Un `from` négatif inclut les événements à 0 (premier passage).
     void collectEvents(float from, float to, std::size_t laps, std::vector<AnimationEvent> &out) const;
@@ -58,6 +58,8 @@ class Clip
 
 // Temps local d'un clip après avoir avancé : borné (kOnce) ou ramené dans [0, duration) (kLoop). `laps` compte les tours de boucle
 // faits (`wrapped` : laps > 0).
+// Plafond de `ClipTime::laps` (entrées extrêmes : delta énorme, durée minuscule, temps non fini).
+inline constexpr std::size_t kMaxLaps = 4096;
 struct ClipTime
 {
     float time = 0.0f;
