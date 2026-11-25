@@ -73,8 +73,18 @@ core::Result<> checkBaked(const BakedPrimitive &b)
     {
         return makeError(ErrorCode::kInvalidArgument, "primitive cuite sans LOD");
     }
+    // Le format .omesh écrit tous ses compteurs en u32 : un compteur plus grand serait tronqué en silence.
+    constexpr std::size_t kMaxCount = std::numeric_limits<std::uint32_t>::max();
+    if (b.lods.size() > kMaxCount)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "trop de LOD pour le format .omesh");
+    }
     for (const auto &lod : b.lods)
     {
+        if (lod.size() > kMaxCount)
+        {
+            return makeError(ErrorCode::kInvalidArgument, "LOD de plus de 2^32 - 1 indices : non représentable dans le format .omesh");
+        }
         if (lod.empty() || lod.size() % 3 != 0)
         {
             return makeError(ErrorCode::kInvalidArgument, "LOD vide ou indices non multiples de 3");
@@ -298,6 +308,25 @@ core::Result<BakedPrimitive> bakePrimitive(const MeshPrimitive &primitive, const
     {
         return std::unexpected(ok.error());
     }
+    for (const float ratio : options.lodRatios)
+    {
+        if (!std::isfinite(ratio))
+        {
+            return makeError(ErrorCode::kInvalidArgument, "bakePrimitive: lodRatios contient une valeur non finie");
+        }
+    }
+    if (options.quantize)
+    {
+        // meshopt_quantizeHalf renvoie l'infini au-delà de 65504 (borne de binary16) : refus explicite plutôt qu'un UV infini.
+        constexpr float kHalfMax = 65504.0f;
+        const auto outside = [](const std::vector<core::Vec2> &uvs)
+        { return std::any_of(uvs.begin(), uvs.end(), [](const core::Vec2 &v) { return !(std::abs(v.x) <= kHalfMax && std::abs(v.y) <= kHalfMax); }); };
+        if (outside(primitive.uv0) || outside(primitive.uv1))
+        {
+            return makeError(ErrorCode::kInvalidArgument,
+                             "bakePrimitive: UV hors de [-65504, 65504] (binary16) ; utiliser quantize = false pour ces UV");
+        }
+    }
     const Layout layout = layoutOf(primitive);
     std::vector<float> vertices = interleave(primitive, layout);
     std::vector<std::uint32_t> indices = primitive.indices;
@@ -400,6 +429,10 @@ core::Result<MeshPrimitive> unbake(const BakedPrimitive &b, std::size_t lod)
 
 core::Result<std::vector<std::byte>> writeBakedMesh(std::span<const BakedPrimitive> primitives)
 {
+    if (primitives.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "trop de primitives pour le format .omesh");
+    }
     Writer w;
     w.magic();
     w.u32(kVersion);

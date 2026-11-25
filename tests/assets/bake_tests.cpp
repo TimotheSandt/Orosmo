@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <random>
 
@@ -67,7 +68,7 @@ void shuffleTriangles(as::MeshPrimitive &p)
 
 using Tri = std::array<std::array<float, 3>, 3>;
 
-// Triangles sous forme de triplets de positions, arrondis à la grille de tolérance, triés (indépendant de l'ordre et de la rotation).
+// Triangles sous forme de triplets de positions, arrondis à la grille de tolérance, triés (indépendant de l'ordre des triangles et de la rotation des sommets, pas du sens d'enroulement).
 std::vector<Tri> triangleSet(const as::MeshPrimitive &p)
 {
     std::vector<Tri> out;
@@ -80,7 +81,8 @@ std::vector<Tri> triangleSet(const as::MeshPrimitive &p)
             t[static_cast<std::size_t>(k)] = {std::round(v.x * 1000.0f) / 1000.0f, std::round(v.y * 1000.0f) / 1000.0f,
                                               std::round(v.z * 1000.0f) / 1000.0f};
         }
-        std::sort(t.begin(), t.end());
+        // Rotation cyclique vers le plus petit sommet : l'orientation (a,b,c) != (a,c,b) est conservée.
+        std::rotate(t.begin(), std::min_element(t.begin(), t.end()), t.end());
         out.push_back(t);
     }
     std::sort(out.begin(), out.end());
@@ -218,11 +220,11 @@ TEST_SUITE("assets/bake")
         auto a = as::bakePrimitive(p);
         auto b = as::bakePrimitive(p);
         REQUIRE((a.has_value() && b.has_value()));
-        const std::array<as::BakedPrimitive, 2> prims{*a, *as::bakePrimitive(grid(4), [] {
-                                                          as::BakeOptions o;
-                                                          o.quantize = false;
-                                                          return o;
-                                                      }())};
+        as::BakeOptions exact;
+        exact.quantize = false;
+        auto c = as::bakePrimitive(grid(4), exact);
+        REQUIRE(c.has_value());
+        const std::array<as::BakedPrimitive, 2> prims{*a, *c};
         auto bytesA = as::writeBakedMesh(std::span<const as::BakedPrimitive>(prims));
         const std::array<as::BakedPrimitive, 2> prims2{*b, prims[1]};
         auto bytesB = as::writeBakedMesh(std::span<const as::BakedPrimitive>(prims2));
@@ -309,27 +311,60 @@ TEST_SUITE("assets/bake")
 
     TEST_CASE("entrées invalides")
     {
-        as::MeshPrimitive empty;
-        auto r = as::bakePrimitive(empty);
-        REQUIRE_FALSE(r.has_value());
-        CHECK((r.error().code == ErrorCode::kInvalidArgument));
+        const auto expectInvalid = [](const as::MeshPrimitive &p, const as::BakeOptions &o = {})
+        {
+            auto r = as::bakePrimitive(p, o);
+            REQUIRE_FALSE(r.has_value());
+            CHECK((r.error().code == ErrorCode::kInvalidArgument));
+        };
+        expectInvalid(as::MeshPrimitive{});
 
         as::MeshPrimitive badIndex = grid(2);
         badIndex.indices.back() = 9999;
-        CHECK((as::bakePrimitive(badIndex).error().code == ErrorCode::kInvalidArgument));
+        expectInvalid(badIndex);
 
         as::MeshPrimitive badCount = grid(2);
         badCount.indices.pop_back();
-        CHECK((as::bakePrimitive(badCount).error().code == ErrorCode::kInvalidArgument));
+        expectInvalid(badCount);
 
         as::MeshPrimitive badAttr = grid(2);
         badAttr.uv0.pop_back();
-        CHECK((as::bakePrimitive(badAttr).error().code == ErrorCode::kInvalidArgument));
+        expectInvalid(badAttr);
 
         as::BakedPrimitive none;
         const std::array<as::BakedPrimitive, 1> arr{none};
         auto w = as::writeBakedMesh(std::span<const as::BakedPrimitive>(arr));
         REQUIRE_FALSE(w.has_value());
         CHECK((w.error().code == ErrorCode::kInvalidArgument));
+    }
+
+    TEST_CASE("un ratio de LOD non fini est refusé avant toute conversion")
+    {
+        as::BakeOptions nan;
+        nan.lodRatios = {std::numeric_limits<float>::quiet_NaN()};
+        auto a = as::bakePrimitive(grid(4), nan);
+        REQUIRE_FALSE(a.has_value());
+        CHECK((a.error().code == ErrorCode::kInvalidArgument));
+        as::BakeOptions inf;
+        inf.lodRatios = {0.5f, std::numeric_limits<float>::infinity()};
+        auto b = as::bakePrimitive(grid(4), inf);
+        REQUIRE_FALSE(b.has_value());
+        CHECK((b.error().code == ErrorCode::kInvalidArgument));
+    }
+
+    TEST_CASE("un UV fini hors de la plage half ne devient jamais infini")
+    {
+        as::MeshPrimitive p = grid(2);
+        p.uv0.front() = {70000.25f, 0.5f};
+        auto quantized = as::bakePrimitive(p);
+        REQUIRE_FALSE(quantized.has_value());
+        CHECK((quantized.error().code == ErrorCode::kInvalidArgument));
+        as::BakeOptions full;
+        full.quantize = false;
+        auto exact = as::bakePrimitive(p, full);
+        REQUIRE(exact.has_value());
+        auto back = as::unbake(*exact);
+        REQUIRE(back.has_value());
+        CHECK(std::isfinite(back->uv0.front().x));
     }
 }

@@ -12,9 +12,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <string>
 
 namespace as = orosmo::assets;
 namespace rd = orosmo::renderer;
@@ -221,6 +223,51 @@ TEST_SUITE("assets/ktx2")
         REQUIRE(a.has_value());
         REQUIRE(b.has_value());
         CHECK(*a == *b);
+    }
+
+    TEST_CASE("buildMipChain refuses an image whose buffer does not match its size")
+    {
+        as::DecodedImage bad = solid(2, 2, 1, 2, 3);
+        bad.rgba8.clear();
+        CHECK(as::buildMipChain(bad, as::ColorSpace::kSrgb).empty());
+        bad = solid(2, 2, 1, 2, 3);
+        bad.rgba8.pop_back();
+        CHECK(as::buildMipChain(bad, as::ColorSpace::kLinear).empty());
+        CHECK_FALSE(as::buildMipChain(solid(2, 2, 1, 2, 3), as::ColorSpace::kLinear).empty());
+    }
+
+    TEST_CASE("decodeKtx2 refuses a bottom-left origin and a channel order other than RGBA")
+    {
+        auto encoded = as::encodeKtx2(gradient(4, 4), {.role = as::TextureRole::kData, .mips = false, .basis = false, .uastcLevel = 1, .zstd = false});
+        REQUIRE(encoded.has_value());
+        REQUIRE(as::decodeKtx2(*encoded, capsWith(false, false), "ok.ktx2").has_value());
+
+        // Orientation : la métadonnée KTXorientation est écrite en texte ("rd" = droite, bas) dans le KVD.
+        std::vector<std::byte> flipped = *encoded;
+        const std::string key = "KTXorientation";
+        const auto it = std::search(flipped.begin(), flipped.end(), reinterpret_cast<const std::byte *>(key.data()),
+                                    reinterpret_cast<const std::byte *>(key.data()) + key.size());
+        REQUIRE(it != flipped.end());
+        auto value = it + static_cast<std::ptrdiff_t>(key.size()) + 1; // après le zéro séparateur
+        REQUIRE(static_cast<char>(value[1]) == 'd');
+        value[1] = static_cast<std::byte>('u');
+        auto up = as::decodeKtx2(flipped, capsWith(false, false), "up.ktx2");
+        REQUIRE_FALSE(up.has_value());
+        CHECK((up.error().code == orosmo::core::ErrorCode::kUnsupported));
+
+        // Canaux : DFD (offset en 48), échantillon 0 (R) et 2 (B) permutés -> BGRA.
+        std::vector<std::byte> bgra = *encoded;
+        std::uint32_t dfd = 0;
+        std::memcpy(&dfd, bgra.data() + 48, sizeof(dfd));
+        const std::size_t sample0 = dfd + 4 + 24 + 3; // octet du champ channelType de l'échantillon 0
+        const std::size_t sample2 = sample0 + 32;
+        REQUIRE((static_cast<unsigned>(bgra[sample0]) & 0xF) == 0);
+        REQUIRE((static_cast<unsigned>(bgra[sample2]) & 0xF) == 2);
+        bgra[sample0] = static_cast<std::byte>((static_cast<unsigned>(bgra[sample0]) & ~0xFu) | 2u);
+        bgra[sample2] = static_cast<std::byte>((static_cast<unsigned>(bgra[sample2]) & ~0xFu) | 0u);
+        auto swapped = as::decodeKtx2(bgra, capsWith(false, false), "bgra.ktx2");
+        REQUIRE_FALSE(swapped.has_value());
+        CHECK((swapped.error().code == orosmo::core::ErrorCode::kUnsupported));
     }
 
     TEST_CASE("buildMipChain filters in linear space for colour, directly for data")
@@ -465,6 +512,63 @@ TEST_SUITE("assets/ktx2")
             CHECK(cache.reloadChanged() == 1);
             CHECK(((*texture)->handle() == handle));
             CHECK(closeTo(sampleCenter(gpu, **texture), 20, 20, 200, 6));
+            gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("reloadChanged retries after a transient failure without a new modification")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            tests::TempDir dir("engine_ktx");
+            const auto file = dir.path / "t.png";
+            REQUIRE(rd::savePng(solidPng(8, 8, 255, 0, 0), file).has_value());
+            as::TextureCache cache(*gpu.device);
+            auto texture = cache.load(file, {as::TextureRole::kData});
+            REQUIRE(texture.has_value());
+
+            REQUIRE(rd::savePng(solidPng(8, 8, 0, 0, 255), file).has_value());
+            bumpTime(file, 2);
+            namespace fs = std::filesystem;
+            fs::permissions(file, fs::perms::none);
+            std::ifstream probe(file, std::ios::binary);
+            if (probe)
+            {
+                fs::permissions(file, fs::perms::owner_all);
+                MESSAGE("file permissions are not enforced (root?)");
+                continue;
+            }
+            CHECK(cache.reloadChanged() == 0); // illisible : l'ancienne texture reste
+            CHECK(closeTo(sampleCenter(gpu, **texture), 255, 0, 0, 1));
+            fs::permissions(file, fs::perms::owner_all);
+            CHECK(cache.reloadChanged() == 1); // même date et même taille : le changement n'a pas été oublié
+            CHECK(closeTo(sampleCenter(gpu, **texture), 0, 0, 255, 1));
+            gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("reloadChanged recreates the texture when only the colour format changes")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            tests::TempDir dir("engine_ktx");
+            const auto file = dir.path / "t.ktx2";
+            auto linear = as::encodeKtx2(solid(8, 8, 200, 20, 20), {.role = as::TextureRole::kData, .mips = false, .basis = false, .uastcLevel = 1, .zstd = false});
+            REQUIRE(linear.has_value());
+            writeBytes(file, *linear);
+            as::TextureCache cache(*gpu.device);
+            auto texture = cache.load(file, {as::TextureRole::kColor}); // le KTX2 garde son format : RGBA8 linéaire
+            REQUIRE(texture.has_value());
+            REQUIRE((((*texture)->format()) == Format::kRGBA8Unorm));
+
+            REQUIRE(rd::savePng(solidPng(8, 8, 200, 20, 20), file).has_value()); // même taille, mais un PNG couleur est sRGB
+            bumpTime(file, 2);
+            CHECK(cache.reloadChanged() == 1);
+            CHECK((((*texture)->format()) == Format::kRGBA8Srgb));
             gpu.expectNoValidationErrors();
         }
     }

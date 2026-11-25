@@ -7,6 +7,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <array>
 #include <cstdlib>
 #include <cstring>
@@ -51,7 +52,102 @@ const char *resultName(cgltf_result r) noexcept
 constexpr std::array<std::string_view, 4> kSupportedExtensions{"KHR_lights_punctual", "KHR_materials_unlit",
                                                                "KHR_materials_emissive_strength", "KHR_mesh_quantization"};
 
-std::string nameOf(const char *name) { return name != nullptr ? std::string(name) : std::string(); }
+void appendUtf8(std::string &out, std::uint32_t cp)
+{
+    if (cp < 0x80)
+    {
+        out += static_cast<char>(cp);
+    }
+    else if (cp < 0x800)
+    {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
+    else if (cp < 0x10000)
+    {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
+    else
+    {
+        out += static_cast<char>(0xF0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
+}
+
+// cgltf rend les chaînes JSON telles qu'écrites dans le fichier (séquences d'échappement comprises) : on les décode ici.
+std::string nameOf(const char *name)
+{
+    if (name == nullptr)
+    {
+        return {};
+    }
+    const std::string_view in(name);
+    std::string out;
+    out.reserve(in.size());
+    const auto hex4 = [&](std::size_t at, std::uint32_t &value)
+    {
+        if (at + 4 > in.size())
+        {
+            return false;
+        }
+        value = 0;
+        for (std::size_t k = 0; k < 4; ++k)
+        {
+            const char c = in[at + k];
+            const int d = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+            if (d < 0)
+            {
+                return false;
+            }
+            value = value * 16 + static_cast<std::uint32_t>(d);
+        }
+        return true;
+    };
+    for (std::size_t i = 0; i < in.size(); ++i)
+    {
+        if (in[i] != '\\' || i + 1 >= in.size())
+        {
+            out += in[i];
+            continue;
+        }
+        const char e = in[++i];
+        switch (e)
+        {
+            case 'b': out += '\b'; break;
+            case 'f': out += '\f'; break;
+            case 'n': out += '\n'; break;
+            case 'r': out += '\r'; break;
+            case 't': out += '\t'; break;
+            case 'u':
+            {
+                std::uint32_t cp = 0;
+                if (!hex4(i + 1, cp))
+                {
+                    out += "\\u"; // séquence invalide : conservée telle quelle
+                    break;
+                }
+                i += 4;
+                if (cp >= 0xD800 && cp < 0xDC00 && i + 6 < in.size() && in[i + 1] == '\\' && in[i + 2] == 'u')
+                {
+                    std::uint32_t low = 0;
+                    if (hex4(i + 3, low) && low >= 0xDC00 && low < 0xE000)
+                    {
+                        cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                        i += 6;
+                    }
+                }
+                appendUtf8(out, cp);
+                break;
+            }
+            default: out += e; // \" \\ \/
+        }
+    }
+    return out;
+}
 
 template <typename T> int indexOr(cgltf_size (*fn)(const cgltf_data *, const T *), const cgltf_data *data, const T *object)
 {
@@ -272,7 +368,7 @@ core::Result<std::vector<float>> unpackAll(const cgltf_accessor *acc, std::strin
     return out;
 }
 
-core::Result<Model> convert(const cgltf_data *data, const std::filesystem::path &baseDir, std::string_view name)
+core::Result<> checkRequiredExtensions(const cgltf_data *data, std::string_view name)
 {
     for (cgltf_size i = 0; i < data->extensions_required_count; ++i)
     {
@@ -282,6 +378,11 @@ core::Result<Model> convert(const cgltf_data *data, const std::filesystem::path 
             return makeError(ErrorCode::kUnsupported, "glTF: " + std::string(name) + " requires unsupported extension " + std::string(ext));
         }
     }
+    return {};
+}
+
+core::Result<Model> convert(const cgltf_data *data, const std::filesystem::path &baseDir, std::string_view name)
+{
     Model model;
 
     model.samplers.reserve(data->samplers_count);
@@ -340,7 +441,10 @@ core::Result<Model> convert(const cgltf_data *data, const std::filesystem::path 
         {
             std::string uri = img.uri;
             uri.resize(cgltf_decode_uri(uri.data()));
-            out.path = (baseDir / std::filesystem::path(uri)).lexically_normal();
+            std::error_code ec;
+            const std::filesystem::path joined = baseDir / std::filesystem::path(uri);
+            const std::filesystem::path absolute = std::filesystem::absolute(joined, ec);
+            out.path = (ec ? joined : absolute).lexically_normal(); // absolu (contrat de model.hpp)
         }
         model.images.push_back(std::move(out));
     }
@@ -389,7 +493,7 @@ core::Result<Model> convert(const cgltf_data *data, const std::filesystem::path 
     {
         const cgltf_mesh &m = data->meshes[i];
         MeshData out;
-        out.name = m.name != nullptr ? std::string(m.name) : "mesh" + std::to_string(i);
+        out.name = m.name != nullptr ? nameOf(m.name) : "mesh" + std::to_string(i);
         for (cgltf_size p = 0; p < m.primitives_count; ++p)
         {
             const cgltf_primitive &prim = m.primitives[p];
@@ -541,7 +645,7 @@ core::Result<Model> convert(const cgltf_data *data, const std::filesystem::path 
     {
         const cgltf_animation &a = data->animations[i];
         AnimationData out;
-        out.name = a.name != nullptr ? std::string(a.name) : "animation" + std::to_string(i);
+        out.name = a.name != nullptr ? nameOf(a.name) : "animation" + std::to_string(i);
         for (cgltf_size c = 0; c < a.channels_count; ++c)
         {
             const cgltf_animation_channel &ch = a.channels[c];
@@ -623,6 +727,11 @@ core::Result<Model> parseGltf(std::span<const std::byte> bytes, const std::files
     {
         return makeError(ErrorCode::kParse, "glTF: cannot parse " + std::string(name) + ": " + resultName(r));
     }
+    // Une extension requise inconnue est refusée avant de toucher aux tampons externes (qui peuvent manquer).
+    if (auto supported = checkRequiredExtensions(data.get(), name); !supported)
+    {
+        return std::unexpected(supported.error());
+    }
     // cgltf_load_buffers attend le chemin du fichier glTF : il en retire le nom pour résoudre les URI relatives.
     const std::string anchor = (baseDir / std::filesystem::path(std::string(name)).filename()).string();
     r = cgltf_load_buffers(&options, data.get(), anchor.c_str());
@@ -646,8 +755,17 @@ core::Result<Model> loadGltf(const std::filesystem::path &path)
     {
         return makeError(ErrorCode::kIo, "loadGltf: cannot open " + path.generic_string());
     }
-    std::vector<char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    if (in.bad())
+    // Lecture par std::istream : un échec devient kIo, sans exception.
+    std::vector<char> bytes;
+    in.seekg(0, std::ios::end);
+    const std::streamoff size = in.tellg();
+    in.seekg(0, std::ios::beg);
+    if (!in || size < 0)
+    {
+        return makeError(ErrorCode::kIo, "loadGltf: cannot read " + path.generic_string());
+    }
+    bytes.resize(static_cast<std::size_t>(size));
+    if (!bytes.empty() && !in.read(bytes.data(), size))
     {
         return makeError(ErrorCode::kIo, "loadGltf: cannot read " + path.generic_string());
     }

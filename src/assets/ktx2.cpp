@@ -73,6 +73,21 @@ rhi::Format storedFormat(ktxTexture2 *t, bool srgb)
     if (model == KHR_DF_MODEL_RGBSDA && !t->isCompressed && ktxTexture_GetElementSize(ktxTexture(t)) == 4 &&
         ktxTexture2_GetNumComponents(t) == 4)
     {
+        // Les octets sont envoyés tels quels : seul l'ordre R, G, B, A (un octet chacun) du DFD est lu comme RGBA8.
+        const ktx_uint32_t *bdb = t->pDfd + 1;
+        if (KHR_DFDSAMPLECOUNT(bdb) != 4)
+        {
+            return rhi::Format::kUndefined;
+        }
+        constexpr std::array<std::uint32_t, 4> kOrder{KHR_DF_CHANNEL_RGBSDA_RED, KHR_DF_CHANNEL_RGBSDA_GREEN, KHR_DF_CHANNEL_RGBSDA_BLUE,
+                                                      KHR_DF_CHANNEL_RGBSDA_ALPHA};
+        for (std::uint32_t i = 0; i < 4; ++i)
+        {
+            if (KHR_DFDSVAL(bdb, i, CHANNELID) != kOrder[i] || KHR_DFDSVAL(bdb, i, BITOFFSET) != 8 * i || KHR_DFDSVAL(bdb, i, BITLENGTH) != 7)
+            {
+                return rhi::Format::kUndefined;
+            }
+        }
         return srgb ? rhi::Format::kRGBA8Srgb : rhi::Format::kRGBA8Unorm;
     }
     return rhi::Format::kUndefined;
@@ -128,6 +143,11 @@ core::Result<TextureLevels> decodeKtx2(std::span<const std::byte> bytes, const r
     if (texture->numDimensions != 2 || texture->isArray || texture->isCubemap || texture->numLayers > 1 || texture->numFaces > 1)
     {
         return makeError(ErrorCode::kUnsupported, "decodeKtx2: only 2D textures are supported (" + std::string(name) + ")");
+    }
+    // Le contrat est « première ligne en haut » : un fichier dont l'origine est en bas (ou à gauche) est refusé, sans réordonner les lignes.
+    if (texture->orientation.x == KTX_ORIENT_X_LEFT || texture->orientation.y == KTX_ORIENT_Y_UP)
+    {
+        return makeError(ErrorCode::kUnsupported, "decodeKtx2: only top-left origin (KTXorientation=rd) is supported (" + std::string(name) + ")");
     }
     const bool srgb = ktxTexture2_GetTransferFunction_e(texture.get()) == KHR_DF_TRANSFER_SRGB;
     rhi::Format format = rhi::Format::kUndefined;
@@ -198,7 +218,8 @@ core::Result<TextureLevels> loadKtx2(const std::filesystem::path &path, const rh
 std::vector<DecodedImage> buildMipChain(const DecodedImage &image, ColorSpace space)
 {
     std::vector<DecodedImage> chain;
-    if (image.empty())
+    // Image incohérente (tampon plus court que largeur x hauteur x 4) : chaîne vide, rien n'est lu hors du tampon.
+    if (image.empty() || image.rgba8.size() != static_cast<std::size_t>(image.width) * image.height * 4)
     {
         return chain;
     }
@@ -267,6 +288,8 @@ core::Result<std::vector<std::byte>> encodeKtx2(const DecodedImage &image, const
         return makeError(ErrorCode::kInvalidArgument, ktxMessage("encodeKtx2: cannot create", "image", r));
     }
     KtxPtr texture(raw);
+    // Origine explicite en haut à gauche (« rd ») : c'est l'ordre des lignes de nos niveaux, et la seule orientation que decodeKtx2 accepte.
+    ktxHashList_AddKVPair(&texture->kvDataHead, KTX_ORIENTATION_KEY, 3, "rd");
     for (std::size_t level = 0; level < chain.size(); ++level)
     {
         const auto &px = chain[level].rgba8;

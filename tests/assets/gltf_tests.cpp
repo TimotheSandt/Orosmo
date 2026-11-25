@@ -11,8 +11,10 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <cmath>
 #include <fstream>
 #include <iterator>
+#include <sstream>
 
 namespace as = orosmo::assets;
 using orosmo::core::ErrorCode;
@@ -287,11 +289,14 @@ TEST_SUITE("assets/gltf")
     {
         tests::TempDir dir("engine_gltf");
         as::Model model = makeArm(dir.path);
+        // Racine : translation (10,0,0) et échelle 2 sur Y. Le coude est à (0,1.5,0) dans le repère de son parent : composé « parent d'abord »,
+        // il vaut y = 2 * 1.5 = 3 ; composé dans l'ordre inverse (enfant d'abord) il resterait à 1.5.
         model.nodes[0].translation = Vec3(10.0f, 0.0f, 0.0f);
+        model.nodes[0].scale = Vec3(1.0f, 2.0f, 1.0f);
         const auto world = model.worldMatrices();
         REQUIRE(world.size() == 5);
         CHECK(world[2][3].x == doctest::Approx(10.0f));
-        CHECK(world[2][3].y == doctest::Approx(1.5f));
+        CHECK(world[2][3].y == doctest::Approx(3.0f));
         CHECK(world[3][3].z == doctest::Approx(6.0f));
     }
 
@@ -324,6 +329,7 @@ TEST_SUITE("assets/gltf")
         auto model = as::loadGltf(dir.path / "strip.gltf");
         REQUIRE_MESSAGE(model.has_value(), (model ? "" : model.error().message));
         REQUIRE(model->meshes.size() == 1);
+        REQUIRE(model->meshes[0].primitives.size() == 1);
         const auto &prim = model->meshes[0].primitives[0];
         CHECK(prim.positions.size() == 4);
         CHECK(prim.indices == std::vector<std::uint32_t>{0, 1, 2, 2, 1, 3}); // bande → liste, même sens de rotation
@@ -349,6 +355,10 @@ TEST_SUITE("assets/gltf")
         CHECK(draco.error().message.find("KHR_draco_mesh_compression") != std::string::npos);
         writeText(dir.path / "nobuf.gltf", R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":12,"uri":"missing.bin"}]})");
         CHECK((tests::errorOf(as::loadGltf(dir.path / "nobuf.gltf")) == ErrorCode::kIo));
+        // L'extension requise inconnue est refusée avant le chargement des tampons : un tampon externe manquant ne la masque pas.
+        writeText(dir.path / "extbuf.gltf", R"({"asset":{"version":"2.0"},"extensionsRequired":["VENDOR_unknown_ext"],
+"buffers":[{"byteLength":12,"uri":"missing.bin"}]})");
+        CHECK((tests::errorOf(as::loadGltf(dir.path / "extbuf.gltf")) == ErrorCode::kUnsupported));
 
         as::Model bad = makeArm(dir.path);
         bad.meshes[0].primitives[0].indices.push_back(99);
@@ -357,5 +367,198 @@ TEST_SUITE("assets/gltf")
         CHECK((tests::errorOf(bad.validate()) == ErrorCode::kParse));
         CHECK((tests::errorOf(as::saveGltf(bad, dir.path / "bad.glb")) == ErrorCode::kParse));
         CHECK((tests::errorOf(as::saveGltf(makeArm(dir.path), dir.path / "x.obj")) == ErrorCode::kInvalidArgument));
+    }
+
+    TEST_CASE("validate: the parent link must be listed by the parent, in both directions")
+    {
+        tests::TempDir dir("engine_gltf");
+        as::Model model = makeArm(dir.path);
+        REQUIRE(model.validate().has_value());
+        model.nodes[0].children = {1, 4}; // le nœud 3 déclare le parent 0 mais n'est plus dans ses enfants
+        CHECK((tests::errorOf(model.validate()) == ErrorCode::kParse));
+
+        // Deux racines distinctes sans lien : accepté.
+        as::Model roots = makeArm(dir.path);
+        roots.nodes[3].parent = -1;
+        roots.nodes[0].children = {1, 4};
+        CHECK(roots.validate().has_value());
+
+        as::Model twice = makeArm(dir.path);
+        twice.nodes[0].children = {1, 3, 4, 3};
+        CHECK((tests::errorOf(twice.validate()) == ErrorCode::kParse));
+    }
+
+    TEST_CASE("validate: cycles are found, and a long valid chain is accepted")
+    {
+        as::Model cycle;
+        cycle.nodes.resize(3);
+        for (int i = 0; i < 3; ++i)
+        {
+            cycle.nodes[static_cast<std::size_t>(i)].parent = (i + 2) % 3;
+            cycle.nodes[static_cast<std::size_t>(i)].children = {(i + 1) % 3};
+        }
+        CHECK((tests::errorOf(cycle.validate()) == ErrorCode::kParse));
+
+        as::Model self;
+        self.nodes.resize(1);
+        self.nodes[0].parent = 0;
+        self.nodes[0].children = {0};
+        CHECK((tests::errorOf(self.validate()) == ErrorCode::kParse));
+
+        as::Model chain;
+        constexpr int kLength = 50000;
+        chain.nodes.resize(kLength);
+        for (int i = 0; i < kLength; ++i)
+        {
+            auto &n = chain.nodes[static_cast<std::size_t>(i)];
+            n.parent = i - 1;
+            if (i + 1 < kLength)
+            {
+                n.children = {i + 1};
+            }
+        }
+        chain.scenes.push_back({"s", {0}});
+        CHECK(chain.validate().has_value());
+    }
+
+    TEST_CASE("validate: animation key times are non-negative and strictly increasing, scene roots have no parent")
+    {
+        tests::TempDir dir("engine_gltf");
+        const auto withTimes = [&](std::vector<float> times)
+        {
+            as::Model m = makeArm(dir.path);
+            auto &ch = m.animations[0].channels[1]; // translation, 3 composantes
+            ch.times = times;
+            ch.values.assign(times.size() * 3, 0.0f);
+            return m;
+        };
+        CHECK(withTimes({0.0f, 1.0f}).validate().has_value());
+        CHECK(withTimes({2.0f}).validate().has_value()); // une seule clé valide
+        CHECK((tests::errorOf(withTimes({1.0f, 0.0f}).validate()) == ErrorCode::kParse));
+        CHECK((tests::errorOf(withTimes({0.0f, 0.0f}).validate()) == ErrorCode::kParse));
+        CHECK((tests::errorOf(withTimes({-1.0f, 1.0f}).validate()) == ErrorCode::kParse));
+        CHECK((tests::errorOf(withTimes({0.0f, std::nanf("")}).validate()) == ErrorCode::kParse));
+
+        as::Model m = makeArm(dir.path);
+        m.scenes[0].roots = {0, 1}; // 1 est l'enfant de 0 : dessiné deux fois
+        CHECK((tests::errorOf(m.validate()) == ErrorCode::kParse));
+    }
+
+    TEST_CASE("export: names with quotes, backslashes and control characters, and URIs with a literal percent sign, round-trip")
+    {
+        tests::TempDir dir("engine_gltf");
+        as::Model model = makeArm(dir.path);
+        model.nodes[1].name = "bone \"A\"\\\tend";
+        model.meshes[0].name = "mesh\n2";
+        as::ImageData external;
+        external.name = "ext";
+        external.path = "textures/a%20b.png";
+        model.images.push_back(external);
+        const std::filesystem::path file = dir.path / "odd%20name.gltf";
+        REQUIRE(as::saveGltf(model, file).has_value());
+        CHECK(std::filesystem::exists(dir.path / "odd%20name.bin"));
+        auto back = as::loadGltf(file);
+        REQUIRE_MESSAGE(back.has_value(), (back ? "" : back.error().message));
+        CHECK(back->nodes[1].name == model.nodes[1].name);
+        CHECK(back->meshes[0].name == "mesh\n2");
+        REQUIRE(back->images.size() == 2);
+        CHECK(back->images[1].path.filename() == "a%20b.png");
+    }
+
+    TEST_CASE("export: a failed publication keeps the previous .bin and leaves no temporary file")
+    {
+        tests::TempDir dir("engine_gltf");
+        const as::Model model = makeArm(dir.path);
+        writeText(dir.path / "scene.bin", "OLD-BINARY");
+        std::filesystem::create_directory(dir.path / "scene.gltf"); // la publication du JSON ne peut pas réussir
+        auto r = as::saveGltf(model, dir.path / "scene.gltf");
+        REQUIRE_FALSE(r.has_value());
+        CHECK((r.error().code == ErrorCode::kIo));
+        std::ifstream in(dir.path / "scene.bin", std::ios::binary);
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        CHECK(content == "OLD-BINARY");
+        for (const auto &entry : std::filesystem::directory_iterator(dir.path))
+        {
+            const std::string ext = entry.path().extension().string();
+            CHECK(ext != ".tmp");
+            CHECK(ext != ".bak");
+        }
+    }
+
+    TEST_CASE("export: the 16-bit index 65535 is reserved, a mesh without primitive is refused, weights tracks are dropped")
+    {
+        tests::TempDir dir("engine_gltf");
+        as::Model big;
+        as::MeshPrimitive prim;
+        prim.positions.assign(65536, Vec3(0.0f));
+        prim.indices = {0, 1, 65535};
+        big.meshes.push_back({"big", {prim}});
+        big.nodes.resize(1);
+        big.nodes[0].mesh = 0;
+        big.scenes.push_back({"s", {0}});
+        big.defaultScene = 0;
+        REQUIRE(as::saveGltf(big, dir.path / "big.gltf").has_value());
+        std::ifstream in(dir.path / "big.gltf");
+        std::stringstream text;
+        text << in.rdbuf();
+        CHECK(text.str().find("5125") != std::string::npos); // UNSIGNED_INT, pas UNSIGNED_SHORT (5123)
+        auto back = as::loadGltf(dir.path / "big.gltf");
+        REQUIRE(back.has_value());
+        CHECK(back->meshes[0].primitives[0].indices == prim.indices);
+
+        as::Model empty;
+        empty.meshes.push_back({"none", {}});
+        auto refused = as::saveGltf(empty, dir.path / "empty.gltf");
+        REQUIRE_FALSE(refused.has_value());
+        CHECK((refused.error().code == ErrorCode::kInvalidArgument));
+        CHECK_FALSE(std::filesystem::exists(dir.path / "empty.gltf"));
+
+        as::Model arm = makeArm(dir.path);
+        as::AnimationChannel weights;
+        weights.node = 0;
+        weights.path = as::AnimationPath::kWeights;
+        weights.componentCount = 1;
+        weights.times = {0.0f, 1.0f};
+        weights.values = {0.0f, 1.0f};
+        arm.animations[0].channels.push_back(weights);
+        as::AnimationData onlyWeights;
+        onlyWeights.name = "morph";
+        onlyWeights.channels = {weights};
+        arm.animations.push_back(onlyWeights);
+        REQUIRE(arm.validate().has_value());
+        REQUIRE(as::saveGltf(arm, dir.path / "w.glb").has_value());
+        auto reloaded = as::loadGltf(dir.path / "w.glb");
+        REQUIRE(reloaded.has_value());
+        REQUIRE(reloaded->animations.size() == 1);
+        CHECK(reloaded->animations[0].channels.size() == 2);
+    }
+
+    TEST_CASE("an image path is absolute after import and is re-expressed relative to the exported file")
+    {
+        tests::TempDir dir("engine_gltf");
+        std::filesystem::create_directories(dir.path / "assets");
+        std::filesystem::create_directories(dir.path / "out");
+        writeText(dir.path / "assets" / "scene.gltf", R"({"asset":{"version":"2.0"},"images":[{"uri":"albedo.png"}]})");
+        const std::filesystem::path previous = std::filesystem::current_path();
+        std::filesystem::current_path(dir.path);
+        auto model = as::loadGltf("assets/scene.gltf");
+        std::filesystem::current_path(previous);
+        REQUIRE_MESSAGE(model.has_value(), (model ? "" : model.error().message));
+        REQUIRE(model->images.size() == 1);
+        CHECK(model->images[0].path.is_absolute());
+        REQUIRE(as::saveGltf(*model, dir.path / "out" / "copie.gltf").has_value());
+        auto copy = as::loadGltf(dir.path / "out" / "copie.gltf");
+        REQUIRE(copy.has_value());
+        CHECK(std::filesystem::equivalent(copy->images[0].path.parent_path(), dir.path / "assets"));
+    }
+
+    TEST_CASE("names are decoded from their JSON escapes, surrogate pairs included")
+    {
+        tests::TempDir dir("engine_gltf");
+        writeText(dir.path / "esc.gltf", R"({"asset":{"version":"2.0"},"nodes":[{"name":"a\"b\\c\u00e9\ud83d\ude00\n"}]})");
+        auto model = as::loadGltf(dir.path / "esc.gltf");
+        REQUIRE_MESSAGE(model.has_value(), (model ? "" : model.error().message));
+        REQUIRE(model->nodes.size() == 1);
+        CHECK(model->nodes[0].name == "a\"b\\c\xC3\xA9\xF0\x9F\x98\x80\n");
     }
 }
