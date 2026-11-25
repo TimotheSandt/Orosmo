@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <span>
 
 namespace orosmo::assets
 {
@@ -37,6 +39,25 @@ rhi::AddressMode addressOf(WrapMode mode) noexcept
 template <typename T> bool inBounds(int index, const std::vector<T> &items) noexcept
 {
     return index >= 0 && static_cast<std::size_t>(index) < items.size();
+}
+
+// Identité d'une image incluse : ses octets (FNV-1a 64 bits) et sa taille. Deux modèles de même `sourceKey` dont l'image N
+// diffère n'ont pas la même clé ; deux références à la même image la partagent.
+std::string embeddedImageKey(const std::string &sourceKey, int image, std::span<const std::byte> bytes)
+{
+    std::uint64_t hash = 14695981039346656037ull;
+    for (const std::byte b : bytes)
+    {
+        hash = (hash ^ std::to_integer<std::uint64_t>(b)) * 1099511628211ull;
+    }
+    char digest[17];
+    static constexpr char kHex[] = "0123456789abcdef";
+    for (int i = 15; i >= 0; --i, hash >>= 4)
+    {
+        digest[i] = kHex[hash & 0xF];
+    }
+    digest[16] = '\0';
+    return sourceKey + "#image" + std::to_string(image) + "#" + std::to_string(bytes.size()) + "-" + digest;
 }
 
 core::Result<std::shared_ptr<const renderer::Texture>> textureFor(const Model &model, const TextureRef &ref, TextureRole role, TextureCache &cache,
@@ -78,7 +99,7 @@ core::Result<std::shared_ptr<const renderer::Texture>> textureFor(const Model &m
     }
     const ImageData &image = model.images[static_cast<std::size_t>(tex.image)];
     core::Result<std::shared_ptr<renderer::Texture>> loaded =
-        !image.encoded.empty() ? cache.loadFromMemory(sourceKey + "#image" + std::to_string(tex.image), image.encoded, request)
+        !image.encoded.empty() ? cache.loadFromMemory(embeddedImageKey(sourceKey, tex.image, image.encoded), image.encoded, request)
                                : cache.load(image.path, request);
     if (!loaded)
     {

@@ -190,4 +190,38 @@ TEST_SUITE("assets/render_model")
             CHECK(cache.size() == 0);
         }
     }
+
+    TEST_CASE("RenderModel: embedded images of two models in one cache do not collide; one image referenced twice is shared")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            ModelScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            tests::TempDir dir("engine_render_model");
+            auto withImage = [&](std::vector<std::byte> bytes, int textureCount)
+            {
+                as::MaterialData mat = unlit({1, 1, 1, 1});
+                mat.baseColor.texture = 0;
+                mat.emissive.texture = textureCount > 1 ? 1 : -1;
+                as::Model m = quad(mat);
+                m.images.push_back({"img", {}, std::move(bytes), "image/png"});
+                for (int t = 0; t < textureCount; ++t)
+                {
+                    m.textures.push_back({0, -1});
+                }
+                return m;
+            };
+            auto red = scene.model(withImage(pngBytes(dir, "red.png", 255, 0, 0), 2)); // clé de source par défaut
+            CHECK(scene.textures->size() == 1);                                          // même image, même rôle : partagée
+            auto green = scene.model(withImage(pngBytes(dir, "green.png", 0, 255, 0), 1));
+            CHECK(scene.textures->size() == 2);
+            const auto pxRed = scene.render(red);
+            const auto pxGreen = scene.render(green);
+            CHECK(pxRed[0] == 255);
+            CHECK(pxRed[1] == 0);
+            CHECK(pxGreen[0] == 0);
+            CHECK(pxGreen[1] == 255);
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
 }

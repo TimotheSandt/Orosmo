@@ -23,7 +23,7 @@ namespace orosmo::assets
 // Mode alpha de glTF → mode de fusion du renderer (REN-37) : OPAQUE → kOpaque, MASK → kMask, BLEND → kBlend.
 renderer::BlendMode blendModeForAlpha(AlphaMode mode) noexcept;
 
-// Matériau glTF → description PBR ; les textures viennent de `textures` (clé des images incluses : `sourceKey#imageN`).
+// Matériau glTF → description PBR ; les textures viennent de `textures` (clé des images incluses : `sourceKey#imageN#<taille>-<empreinte des octets>`, propre au contenu).
 core::Result<renderer::PbrMaterialDesc> pbrMaterialDesc(const Model &model, const MaterialData &material, TextureCache &textures,
                                                        const std::string &sourceKey);
 
