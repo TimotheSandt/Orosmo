@@ -202,6 +202,10 @@ constexpr VkFormat toVk(Format f, VkFormat d24s8Replacement = VK_FORMAT_D24_UNOR
         case Format::kR32Uint: return VK_FORMAT_R32_UINT;
         case Format::kD32Float: return VK_FORMAT_D32_SFLOAT;
         case Format::kD24UnormS8Uint: return d24s8Replacement;
+        case Format::kBC7Unorm: return VK_FORMAT_BC7_UNORM_BLOCK;
+        case Format::kBC7Srgb: return VK_FORMAT_BC7_SRGB_BLOCK;
+        case Format::kASTC4x4Unorm: return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+        case Format::kASTC4x4Srgb: return VK_FORMAT_ASTC_4x4_SRGB_BLOCK;
     }
     return VK_FORMAT_UNDEFINED;
 }

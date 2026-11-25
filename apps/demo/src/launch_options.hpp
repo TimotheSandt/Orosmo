@@ -126,8 +126,11 @@ struct LaunchOptions
     LightingMode lighting = LightingMode::kForward;
     // --lights N (REN-04/05) : N lumières ponctuelles déterministes au-dessus de la cour, en plus du soleil. 0 (défaut) : aucune.
     std::uint32_t pointLights = 0;
-    // --scene default|mixed (REN-32, R2D-05) : « mixed » ajoute des transparents triés et du 2D dans le monde. Défaut : scène inchangée.
+    // --scene default|mixed|anim (REN-32, R2D-05, M6) : « mixed » ajoute des transparents triés et du 2D dans le monde. Défaut : scène inchangée.
     bool mixedScene = false;
+    // --scene anim (M6) : personnage skinné animé (glTF généré puis importé, machine à états, skinning en compute) et foule de
+    // mille agents (un draw call par primitive skinnée) ; texture rechargée à chaud. Défaut : scène inchangée.
+    bool animScene = false;
     // --transparent-shadow none|full|masked|dithered (REN-39) : ombre des vitres de --scene mixed avec --shadows on. Absent (défaut) :
     // les vitres ne sont pas des casters (comportement d'avant REN-39, captures de référence inchangées).
     std::optional<orosmo::renderer::TransparentShadowMode> transparentShadow;

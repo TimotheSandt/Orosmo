@@ -101,6 +101,13 @@ enum class Format : std::uint8_t
     kR32Uint,
     kD32Float,
     kD24UnormS8Uint,
+    // Formats compressés par blocs de 4x4 texels, 16 octets par bloc (ASSET-03). Échantillonnables seulement : ni cible de rendu,
+    // ni image de stockage, ni mips générés, ni relecture ; envoi par `Device::updateTexture` uniquement. Disponibles selon
+    // `Capabilities::bc7Textures` et `Capabilities::astcTextures`.
+    kBC7Unorm,
+    kBC7Srgb,
+    kASTC4x4Unorm,
+    kASTC4x4Srgb,
 };
 
 enum class FormatKind : std::uint8_t
@@ -115,13 +122,22 @@ enum class FormatKind : std::uint8_t
 
 struct FormatInfo
 {
-    std::uint32_t bytesPerTexel = 0;
+    std::uint32_t bytesPerTexel = 0; // 0 pour un format compressé (voir blockExtent, bytesPerBlock)
     std::uint32_t channels = 0;
     FormatKind kind = FormatKind::kUnorm;
+    std::uint32_t blockExtent = 1;   // côté d'un bloc en texels (4 pour BC7 et ASTC 4x4, 1 sinon)
+    std::uint32_t bytesPerBlock = 0; // octets d'un bloc compressé (0 pour un format non compressé)
     bool isDepth() const noexcept { return kind == FormatKind::kDepth || kind == FormatKind::kDepthStencil; }
+    bool compressed() const noexcept { return blockExtent > 1; }
 };
 
 FormatInfo formatInfo(Format format) noexcept;
+// Octets d'une image `width` x `height` x `depth` (lignes serrées) ; un format compressé compte des blocs entiers.
+std::uint64_t imageBytes(Format format, std::uint32_t width, std::uint32_t height, std::uint32_t depth = 1) noexcept;
+// Région compatible avec les blocs d'un format compressé : décalage multiple du bloc, taille multiple du bloc ou allant jusqu'au
+// bord du niveau (`levelWidth`, `levelHeight`). Toujours vrai pour un format non compressé.
+bool blockAligned(Format format, std::int32_t x, std::int32_t y, std::uint32_t width, std::uint32_t height, std::uint32_t levelWidth,
+                  std::uint32_t levelHeight) noexcept;
 const char *toString(Format format) noexcept;
 
 // ── Buffers ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -428,7 +444,7 @@ struct BindGroupEntry
     // textures
     TextureHandle texture{};
     SamplerHandle sampler{}; // kSampledTexture
-    std::uint32_t mipLevel = 0; // kStorageImage ; tableaux, cubes et 3D sont liés en entier (toutes les couches)
+    std::uint32_t mipLevel = 0; // kStorageImage ; tableaux, cubes et 3D sont liés en entier (toutes les couches) ; un cube se lit en imageCube
 };
 
 struct BindGroupDesc

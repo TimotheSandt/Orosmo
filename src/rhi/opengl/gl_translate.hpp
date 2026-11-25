@@ -12,6 +12,10 @@
 namespace orosmo::rhi::gl
 {
 
+// ASTC LDR (GL_KHR_texture_compression_astc_ldr) : absent du chargeur glad du dépôt.
+inline constexpr GLenum kGlCompressedRgbaAstc4x4 = 0x93B0;
+inline constexpr GLenum kGlCompressedSrgb8Alpha8Astc4x4 = 0x93D0;
+
 struct GlFormat
 {
     GLenum internal = 0; // format interne
@@ -39,6 +43,11 @@ inline GlFormat glFormatOf(Format format) noexcept
         case Format::kR32Uint: return {GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, true};
         case Format::kD32Float: return {GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, false};
         case Format::kD24UnormS8Uint: return {GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, false};
+        // Compressés : pas de format ni de type de transfert (envoi par glCompressedTexSubImage*).
+        case Format::kBC7Unorm: return {GL_COMPRESSED_RGBA_BPTC_UNORM, 0, 0, false};
+        case Format::kBC7Srgb: return {GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM, 0, 0, false};
+        case Format::kASTC4x4Unorm: return {kGlCompressedRgbaAstc4x4, 0, 0, false};
+        case Format::kASTC4x4Srgb: return {kGlCompressedSrgb8Alpha8Astc4x4, 0, 0, false};
         case Format::kUndefined: break;
     }
     return {};

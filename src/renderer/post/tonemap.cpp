@@ -2,8 +2,9 @@
 // shaders/rhi/post/post_common.glsl (et inversement) : tests/renderer/post_effects_tests.cpp compare les deux.
 #include "orosmo/renderer/tonemap.hpp"
 
+#include "orosmo/core/parse.hpp"
+
 #include <algorithm>
-#include <charconv>
 #include <cmath>
 #include <string>
 
@@ -103,25 +104,24 @@ bool readFloats(std::string_view s, float *out, int count) noexcept
         {
             return false;
         }
-        const char *begin = s.data();
-        if (*begin == '+')
+        const std::size_t length = std::min(s.find_first_of(" \t\r"), s.size());
+        std::string_view token = s.substr(0, length);
+        s.remove_prefix(length);
+        if (token.front() == '+')
         {
-            ++begin;
-            if (begin == s.data() + s.size() || *begin == '+' || *begin == '-')
+            token.remove_prefix(1);
+            if (token.empty() || token.front() == '+' || token.front() == '-')
             {
                 return false;
             }
         }
-        const auto [end, ec] = std::from_chars(begin, s.data() + s.size(), out[i]);
-        if (ec != std::errc{} || !std::isfinite(out[i]))
+        // core::parseFloat et non std::from_chars : les flottants de from_chars manquent dans la libc++ des cibles macOS anciennes.
+        const auto value = core::parseFloat(token);
+        if (!value || !std::isfinite(*value))
         {
-            return false;
+            return false; // jeton qui n'est pas entièrement un nombre fini
         }
-        s.remove_prefix(static_cast<std::size_t>(end - s.data()));
-        if (!s.empty() && s.front() != ' ' && s.front() != '\t' && s.front() != '\r')
-        {
-            return false; // le jeton n'est pas consommé en entier
-        }
+        out[i] = *value;
     }
     return trim(s).empty();
 }

@@ -39,7 +39,20 @@ class CountingDevice final : public orosmo::rhi::Device
         return r;
     }
     orosmo::rhi::Result<orosmo::rhi::TextureHandle> createTexture(const orosmo::rhi::TextureDesc &d) override { return inner_.createTexture(d); }
-    orosmo::rhi::Result<orosmo::rhi::SamplerHandle> createSampler(const orosmo::rhi::SamplerDesc &d) override { return inner_.createSampler(d); }
+    // Échantillonneurs : `failSamplerAt` = rang (0, 1…) de la création qui échoue (-1 : aucune) ; `liveSamplers` = créés - détruits.
+    int failSamplerAt = -1;
+    int samplersRequested = 0;
+    int liveSamplers = 0;
+    orosmo::rhi::Result<orosmo::rhi::SamplerHandle> createSampler(const orosmo::rhi::SamplerDesc &d) override
+    {
+        if (samplersRequested++ == failSamplerAt)
+        {
+            return orosmo::core::makeError(orosmo::core::ErrorCode::kBusy, "CountingDevice: injected sampler failure");
+        }
+        auto r = inner_.createSampler(d);
+        liveSamplers += r ? 1 : 0;
+        return r;
+    }
     orosmo::rhi::Result<orosmo::rhi::ShaderHandle> createShader(const orosmo::rhi::ShaderDesc &d) override { return inner_.createShader(d); }
     orosmo::rhi::Result<orosmo::rhi::PipelineHandle> createGraphicsPipeline(const orosmo::rhi::GraphicsPipelineDesc &d) override
     {
@@ -56,7 +69,11 @@ class CountingDevice final : public orosmo::rhi::Device
     }
     void destroy(orosmo::rhi::BufferHandle h) override { inner_.destroy(h); }
     void destroy(orosmo::rhi::TextureHandle h) override { inner_.destroy(h); }
-    void destroy(orosmo::rhi::SamplerHandle h) override { inner_.destroy(h); }
+    void destroy(orosmo::rhi::SamplerHandle h) override
+    {
+        liveSamplers -= h.isNull() ? 0 : 1;
+        inner_.destroy(h);
+    }
     void destroy(orosmo::rhi::ShaderHandle h) override { inner_.destroy(h); }
     void destroy(orosmo::rhi::PipelineHandle h) override { inner_.destroy(h); }
     void destroy(orosmo::rhi::BindGroupHandle h) override { inner_.destroy(h); }

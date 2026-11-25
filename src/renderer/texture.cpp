@@ -2,7 +2,9 @@
 
 #include <stb_image.h>
 
+#include <algorithm>
 #include <memory>
+#include <string>
 
 namespace orosmo::renderer
 {
@@ -12,17 +14,21 @@ using core::makeError;
 
 std::size_t Texture::byteSize() const noexcept
 {
-    return static_cast<std::size_t>(info_.width) * info_.height * rhi::formatInfo(info_.format).bytesPerTexel;
+    return static_cast<std::size_t>(rhi::imageBytes(info_.format, info_.width, info_.height));
 }
 
-core::Result<> Texture::allocate()
+core::Result<> Texture::allocate(std::uint32_t mipLevels)
 {
     rhi::TextureDesc desc;
     desc.format = info_.format;
     desc.size = {info_.width, info_.height, 1};
     const bool depth = rhi::formatInfo(info_.format).isDepth();
-    desc.mipLevels = info_.filter == FilterMode::kLinear && !info_.renderTarget && !info_.storage && !depth ? 0 : 1;
-    desc.usage = rhi::TextureUsage::kSampled | rhi::TextureUsage::kCopySrc | rhi::TextureUsage::kCopyDst;
+    desc.mipLevels = mipLevels != 0 ? mipLevels : (info_.filter == FilterMode::kLinear && !info_.renderTarget && !info_.storage && !depth ? 0 : 1);
+    desc.usage = rhi::TextureUsage::kSampled | rhi::TextureUsage::kCopyDst;
+    if (!rhi::formatInfo(info_.format).compressed())
+    {
+        desc.usage = desc.usage | rhi::TextureUsage::kCopySrc;
+    }
     if (info_.renderTarget)
     {
         desc.usage = desc.usage | rhi::TextureUsage::kRenderTarget;
@@ -97,6 +103,56 @@ core::Result<Texture> Texture::create(rhi::Device &device, const TextureInfo &in
         }
     }
     return out;
+}
+
+core::Result<Texture> Texture::createWithLevels(rhi::Device &device, const TextureInfo &info, std::span<const std::span<const std::byte>> levels)
+{
+    if (info.width == 0 || info.height == 0 || levels.empty())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "Texture::createWithLevels: empty size or no level (" + info.debugName + ")");
+    }
+    Texture out;
+    out.device_ = &device;
+    out.info_ = info;
+    if (auto r = out.allocate(static_cast<std::uint32_t>(levels.size())); !r)
+    {
+        out.device_ = nullptr;
+        return std::unexpected(r.error());
+    }
+    if (auto r = out.uploadLevels(levels); !r)
+    {
+        return std::unexpected(r.error());
+    }
+    return out;
+}
+
+core::Result<> Texture::uploadLevels(std::span<const std::span<const std::byte>> levels)
+{
+    if (!valid())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "Texture::uploadLevels: empty texture");
+    }
+    if (levels.size() != mips_)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "Texture::uploadLevels: " + std::to_string(levels.size()) + " levels given, " +
+                                                          std::to_string(mips_) + " expected (" + info_.debugName + ")");
+    }
+    for (std::uint32_t level = 0; level < levels.size(); ++level)
+    {
+        const std::uint32_t w = std::max(1u, info_.width >> level), h = std::max(1u, info_.height >> level);
+        const std::uint64_t expected = rhi::imageBytes(info_.format, w, h);
+        if (levels[level].size() != expected)
+        {
+            return makeError(ErrorCode::kInvalidArgument, "Texture::uploadLevels: level " + std::to_string(level) + " has " +
+                                                              std::to_string(levels[level].size()) + " bytes, " + std::to_string(expected) +
+                                                              " expected (" + info_.debugName + ")");
+        }
+        if (auto r = device_->updateTexture(texture_, {.mipLevel = level}, levels[level]); !r)
+        {
+            return r;
+        }
+    }
+    return {};
 }
 
 core::Result<Texture> Texture::fromFile(rhi::Device &device, const std::filesystem::path &file, FilterMode filter, rhi::AddressMode address)

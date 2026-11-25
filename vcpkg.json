@@ -1,10 +1,17 @@
 {
   "name": "orosmo",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "dependencies": [
+    "cgltf",
+    {
+      "name": "ktx",
+      "default-features": false,
+      "features": []
+    },
     "glad",
     "nlohmann-json",
     "spirv-cross",
+    "meshoptimizer",
     "volk",
     "vulkan-memory-allocator",
     {

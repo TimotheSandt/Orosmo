@@ -405,6 +405,23 @@ orosmo::core::Result<> Game::init()
         }
     }
 
+    if (this->animScene)
+    {
+        // M6 : personnage skinné (glTF généré, écrit puis relu) et foule ; dessinés dans la passe de scène, aucun plugin en plus.
+        demo::AnimSceneOptions animOptions;
+        animOptions.workDirectory = std::filesystem::temp_directory_path() / "orosmo-demo-anim";
+        animOptions.crowdDefines = forwardPlus ? rd::forwardPlusDefines() : std::vector<rd::Define>{};
+        animOptions.modelDefines = animOptions.crowdDefines;
+        const std::vector<rd::Define> aovDefines = this->sceneRenderer->aovShaderDefines();
+        animOptions.modelDefines.insert(animOptions.modelDefines.end(), aovDefines.begin(), aovDefines.end());
+        this->anim = std::make_unique<demo::AnimScene>();
+        if (auto ready = this->anim->init(*this->device, *this->shaders, *this->pipelines, kShaderDirectory, std::move(animOptions)); !ready)
+        {
+            return orosmo::core::makeError(ready.error().code, "Failed to initialize the anim scene: " + ready.error().message);
+        }
+        this->lastAnimReload = std::chrono::steady_clock::now();
+    }
+
     if (auto created = this->createPostEffects(); !created)
     {
         return created;
@@ -490,6 +507,11 @@ void Game::stop()
     {
         this->mixed->destroy();
         this->mixed.reset();
+    }
+    if (this->anim)
+    {
+        this->anim->destroy();
+        this->anim.reset();
     }
     if (this->scene)
     {
@@ -680,6 +702,12 @@ PerformanceSample Game::samplePerformance() const
             s.objects = this->scene->instanceVisibility().objects;
         }
     }
+    if (this->anim && this->anim->crowdActive() && !s.instancedDraws)
+    {
+        // --scene anim : la foule (un draw call instancié par primitive skinnée) dans les compteurs d'objets instanciés.
+        s.instancedDraws = this->anim->crowdStats().drawCalls;
+        s.instances = this->anim->crowdStats().instances;
+    }
     if (this->shadowFeature != nullptr)
     {
         s.shadowDraws = this->shadowFeature->stats().drawCalls;
@@ -812,6 +840,20 @@ void Game::update()
 
     this->applyGpuTimings();
     this->scene->update(deltaTime, this->uiState.scene);
+    if (this->anim)
+    {
+        if (auto animated = this->anim->update(deltaTime); !animated)
+        {
+            LOG_ERROR(1, "Anim scene: ", animated.error().message);
+        }
+        // ASSET-05 : texture relue si le fichier a changé, à la cadence du FileWatcher (2 Hz, horloge réelle).
+        const auto now = std::chrono::steady_clock::now();
+        if (now - this->lastAnimReload >= std::chrono::milliseconds(500))
+        {
+            this->lastAnimReload = now;
+            (void)this->anim->reloadChanged();
+        }
+    }
     this->performance.tick(deltaTime, [&]() { return this->samplePerformance(); });
 
     const glm::vec3 forward = this->camera.orientation();
@@ -1148,12 +1190,20 @@ void Game::render()
     this->sceneRenderer->setRenderIntoOutput(toBackbuffer && !this->captureAfterThisFrame() &&
                                              (this->selectedBackend == rhi::Backend::kVulkan || this->headless));
     this->overlay->beginFrame(this->backbuffer, this->composition, this->activeUi() != nullptr);
+    if (this->anim)
+    {
+        keep(this->anim->dispatch(encoder), "anim skinning"); // compute hors passe, avant le graphe de l'image
+    }
     keep(this->sceneRenderer->beginFrame(encoder, {.clearColor = {clear.r, clear.g, clear.b, clear.a}}), "beginFrame");
     keep(this->sceneRenderer->setCamera(this->camera), "setCamera");
     Profiler::Profile(this->keyRecordScene, [&]() { keep(this->scene->render(*this->sceneRenderer, this->camera, this->uiState.scene), "scene"); });
     if (this->mixed)
     {
         keep(this->mixed->render(*this->sceneRenderer, this->camera, static_cast<float>(this->renderedFrames) / 60.0f), "mixed scene");
+    }
+    if (this->anim)
+    {
+        keep(this->anim->render(*this->sceneRenderer, this->camera), "anim scene");
     }
     Profiler::Profile(this->keyGraph,
                       [&]() { keep(this->sceneRenderer->endFrame({finalImage, rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame"); });
