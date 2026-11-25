@@ -196,21 +196,35 @@ class Writer
         const auto fail = [&](const std::filesystem::path &what) { return makeError(ErrorCode::kIo, "saveGltf: cannot write " + what.generic_string()); };
         // Noms provisoires et de sauvegarde propres à cette opération : on ne choisit jamais un fichier existant (une sauvegarde de l'utilisateur
         // comme `scene.bin.bak` n'est ni remplacée ni supprimée).
-        const auto sibling = [](const std::filesystem::path &base, const char *tag)
+        // `file_type::none` : statut indéterminable (dossier non parcourable…) : erreur kIo, jamais une boucle sans fin ; un nombre borné
+        // d'essais protège aussi contre un dossier rempli de noms `.orosmo-*`.
+        const auto sibling = [&](const std::filesystem::path &base, const char *tag) -> core::Result<std::filesystem::path>
         {
-            for (int n = 0;; ++n)
+            constexpr int kMaxAttempts = 1000;
+            for (int n = 0; n < kMaxAttempts; ++n)
             {
                 std::filesystem::path p = base;
                 p += std::string(".orosmo-") + tag + std::to_string(n);
                 std::error_code ignored; // « absent » renseigne un code d'erreur ENOENT : seul le type compte
-                if (std::filesystem::symlink_status(p, ignored).type() == std::filesystem::file_type::not_found)
+                const std::filesystem::file_type type = std::filesystem::symlink_status(p, ignored).type();
+                if (type == std::filesystem::file_type::not_found)
                 {
                     return p;
                 }
+                if (type == std::filesystem::file_type::none)
+                {
+                    break;
+                }
             }
+            return fail(base);
         };
         std::error_code ec;
-        const std::filesystem::path jsonTmp = sibling(path, "tmp");
+        const auto jsonTmpResult = sibling(path, "tmp");
+        if (!jsonTmpResult)
+        {
+            return std::unexpected(jsonTmpResult.error());
+        }
+        const std::filesystem::path &jsonTmp = *jsonTmpResult;
         if (glb)
         {
             const auto container = glbContainer(json, bin_);
@@ -235,8 +249,14 @@ class Writer
         // .gltf + .bin : les deux fichiers sont d'abord écrits en entier sous un nom provisoire ; l'ancien .bin est mis de côté pendant la
         // publication et remis en place si celle du JSON échoue, de sorte que l'ancienne paire reste cohérente.
         const std::filesystem::path binPath = dir / binName;
-        const std::filesystem::path binTmp = sibling(binPath, "tmp");
-        const std::filesystem::path binBak = sibling(binPath, "bak");
+        const auto binTmpResult = sibling(binPath, "tmp");
+        const auto binBakResult = sibling(binPath, "bak");
+        if (!binTmpResult || !binBakResult)
+        {
+            return std::unexpected(!binTmpResult ? binTmpResult.error() : binBakResult.error());
+        }
+        const std::filesystem::path &binTmp = *binTmpResult;
+        const std::filesystem::path &binBak = *binBakResult;
         const bool hasBin = !bin_.empty();
         const auto cleanup = [&]
         {

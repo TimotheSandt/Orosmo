@@ -580,4 +580,28 @@ TEST_SUITE("assets/gltf")
         CHECK(read("scene.bin") != "OLD");
         CHECK(as::loadGltf(dir.path / "scene.gltf").has_value());
     }
+
+    TEST_CASE("export: a directory whose entries cannot be inspected gives kIo instead of looping")
+    {
+        tests::TempDir dir("engine_gltf");
+        const as::Model model = makeArm(dir.path);
+        const std::filesystem::path locked = dir.path / "locked";
+        std::filesystem::create_directory(locked);
+        namespace fs = std::filesystem;
+        fs::permissions(locked, fs::perms::none);
+        // Sans droit de parcours, symlink_status rend file_type::none ; sous root ou sous Windows les droits ne s'appliquent pas.
+        std::error_code probe;
+        const bool enforced = fs::symlink_status(locked / "x", probe).type() == fs::file_type::none;
+        if (enforced)
+        {
+            const auto saved = as::saveGltf(model, locked / "scene.gltf");
+            REQUIRE_FALSE(saved.has_value());
+            CHECK((saved.error().code == ErrorCode::kIo));
+        }
+        else
+        {
+            MESSAGE("permissions not enforced here (root or Windows): case skipped");
+        }
+        fs::permissions(locked, fs::perms::owner_all);
+    }
 }
