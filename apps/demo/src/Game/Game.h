@@ -9,6 +9,7 @@
 
 #include "CameraController.h"
 #include "Game/frame_overlay.hpp"
+#include "Scene/anim_scene.hpp"
 #include "Scene/demo_scene.hpp"
 #include "Scene/mixed_scene.hpp"
 #include "UI/demo_ui_state.hpp"
@@ -75,6 +76,8 @@ class Game
     }
     // --scene mixed (R2D-05, REN-32) : transparents triés et 2D dans le monde en plus de la scène ; défaut : inchangée.
     void setMixedScene(bool enabled) noexcept { mixedScene = enabled; }
+    // --scene anim (M6) : personnage skinné animé et foule de mille agents en plus de la scène ; défaut : inchangée.
+    void setAnimScene(bool enabled) noexcept { animScene = enabled; }
     // REN-39 : ombre des vitres de la scène mêlée (sans valeur : elles ne projettent rien).
     void setTransparentShadow(std::optional<orosmo::renderer::TransparentShadowMode> mode) noexcept { transparentShadow = mode; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
@@ -166,6 +169,9 @@ class Game
     std::unique_ptr<demo::DemoScene> scene;
     std::unique_ptr<demo::MixedScene> mixed;
     bool mixedScene = false;
+    std::unique_ptr<demo::AnimScene> anim;
+    bool animScene = false;
+    std::chrono::steady_clock::time_point lastAnimReload{}; // rechargement de la texture : 2 Hz, horloge réelle (comme le FileWatcher)
     std::optional<orosmo::renderer::TransparentShadowMode> transparentShadow;
     bool stopped = false;
 

@@ -441,6 +441,7 @@ Result<> VulkanDevice::createLogicalDevice()
     enabled.independentBlend = supported.independentBlend;
     enabled.shaderFloat64 = supported.shaderFloat64;
     enabled.textureCompressionBC = supported.textureCompressionBC;
+    enabled.textureCompressionASTC_LDR = supported.textureCompressionASTC_LDR;
     enabled.fragmentStoresAndAtomics = supported.fragmentStoresAndAtomics;
     enabled.vertexPipelineStoresAndAtomics = supported.vertexPipelineStoresAndAtomics;
     enabled.imageCubeArray = supported.imageCubeArray;
@@ -541,7 +542,8 @@ void VulkanDevice::fillCapabilities()
     const bool familyWritesTimestamps = queueFamily_ < familyCount && families[queueFamily_].timestampValidBits > 0;
     caps_.timestampQueries = familyWritesTimestamps && l.timestampPeriod > 0.0f;
     caps_.anisotropy = features_.samplerAnisotropy != VK_FALSE;
-    caps_.bc7Textures = features_.textureCompressionBC != VK_FALSE;
+    caps_.bc7Textures = features_.textureCompressionBC != VK_FALSE && formatSupports(Format::kBC7Unorm, TextureUsage::kSampled | TextureUsage::kCopyDst);
+    caps_.astcTextures = features_.textureCompressionASTC_LDR != VK_FALSE && formatSupports(Format::kASTC4x4Unorm, TextureUsage::kSampled | TextureUsage::kCopyDst);
     caps_.wireframe = features_.fillModeNonSolid != VK_FALSE;
     caps_.spirvShaders = true;
     caps_.shaderFloat64 = features_.shaderFloat64 != VK_FALSE;

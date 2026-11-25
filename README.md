@@ -11,7 +11,7 @@
 - **Outils** : GNU Make, CMake, Rust (`cargo`, pour `tools/cui-rs` et `tools/engine-init-rs`), Python 3 (contrôles et comparaison d'images).
 - **Pilotes** : OpenGL 4.3+ avec `glClipControl` (OpenGL 4.5 ou `GL_ARB_clip_control`, présent sur les pilotes actuels) ; Vulkan à
   partir de M4, couches de validation conseillées.
-- **Dépendances** : glfw3, glm, stb, freetype, vulkan, shaderc, glad (v1), msdfgen, nlohmann-json (JSON), doctest (tests) — liste dans [vcpkg.json](vcpkg.json).
+- **Dépendances** : glfw3, glm, stb, freetype, vulkan, shaderc, glad (v1), msdfgen, nlohmann-json (JSON), cgltf (glTF), doctest (tests) — liste dans [vcpkg.json](vcpkg.json).
 
 ## Compiler
 
@@ -37,7 +37,7 @@ en cours, restants et à jour (sautés), puis un résumé ; les avertissements, 
 `make V=1 …` montre les commandes complètes ; `ORS_NO_PROGRESS=1 make …` garde l'affichage habituel. Hors terminal (CI,
 redirection vers un fichier), rien ne change. Il faut Python 3 (sinon, affichage habituel).
 
-`vcpkg.json` marque `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad`, `msdfgen` (sans options par défaut : noyau seulement, sans skia), `nlohmann-json`, `spirv-cross`, `volk`, `vulkan-memory-allocator` et `glfw3` (avec la fonctionnalité `wayland`, A67). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
+`vcpkg.json` marque `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `cgltf` (en-têtes seuls), `glad`, `msdfgen` (sans options par défaut : noyau seulement, sans skia), `nlohmann-json`, `spirv-cross`, `volk`, `vulkan-memory-allocator` et `glfw3` (avec la fonctionnalité `wayland`, A67). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
 
 `make clean-all` supprime `vcpkg_installed/` : relance ensuite `~/vcpkg/vcpkg install` (12 s, les archives sont en cache), `make` relie le reste.
 
@@ -86,7 +86,7 @@ tools/        précompilateur .cui (cui-rs), outil engine-init-rs, SDK (engine-s
 docs/         spécification, plan, rapports (voir docs/README.md)
 ```
 
-Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libui.a`, `libthirdparty.a`), distribuées dans `dist/orosmo-pkg-<plateforme>.zip` (`orosmo init`) et copiées dans `apps/demo/orosmo/` pour la démo du dépôt. *(Le code procédural `orosmo::world` / `TerrainRenderer` et les anciennes applications terrain ont été archivés dans la branche `archive/procedural-world`, décision A37.)*
+Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libassets.a`, `libanim.a`, `libui.a`, `libthirdparty.a`), distribuées dans `dist/orosmo-pkg-<plateforme>.zip` (`orosmo init`) et copiées dans `apps/demo/orosmo/` pour la démo du dépôt. *(Le code procédural `orosmo::world` / `TerrainRenderer` et les anciennes applications terrain ont été archivés dans la branche `archive/procedural-world`, décision A37.)*
 
 ## Documentation
 

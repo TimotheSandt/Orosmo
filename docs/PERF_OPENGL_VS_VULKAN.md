@@ -112,3 +112,33 @@ Première image (fenêtre, préchauffe faite) : 1 à 12 ms au lieu de 0,6 à 3,3
 0,5 à 1,8 ms, interface comprise), présentation (`SwapBuffers`, 0,1 à 0,4 ms en fenêtre), mise à jour de l'interface complète
 (0,2 à 0,3 ms). Le panneau de performances (`--hud`) coûte 0,1 à 0,3 ms (mise à jour + liste de dessin) plus 0,1 à 0,3 ms
 d'encodage 2D aux niveaux `full` et `graph`.
+
+## M6 : skinning et foules (2026-11-24)
+
+Mesure du coût GPU du skinning (ANIM-01, compute) et des foules (ANIM-04, skinning dans le vertex shader, un draw call par
+primitive skinnée) sur le personnage de la démo `--scene anim` agrandi à une taille réaliste : 10 147 sommets (tronc de 200 anneaux
+de 50 sommets + coiffe), 8 os, 2 primitives skinnées. Machine : la même que ci-dessus (Intel Arc Graphics Meteor Lake-P, Mesa 26.1.6 :
+ANV Vulkan 1.4.354, Iris OpenGL 4.6 ; noyau 7.2.15, KMD Xe ; gouverneur `powersave`). Binaire de tests **release**, couches de
+validation actives (Vulkan), image 1280x720, minuteries GPU (`renderer::GpuTimer`) ; médiane de 30 images après 3 de chauffe, deux
+exécutions (la plage donne les deux médianes).
+
+```bash
+make demo-test TEST_ARGS='-ts=apps/demo-anim'                                  # construit les tests (le cas mesuré est ignoré)
+cd apps/demo && ./bin/tests/tests -ts=apps/demo-anim -tc='*GPU cost*' --no-skip  # tests/apps/demo_anim_scene_tests.cpp
+```
+
+| Mesure (GPU, ms) | OpenGL | Vulkan |
+| --- | ---: | ---: |
+| Skinning en compute d'un personnage (10 147 sommets) | 0,0004 (voir réserve) | 0,054 à 0,056 |
+| Image : personnage seul (skinning + passe de scène) | 0,15 à 0,22 | 0,26 à 0,30 |
+| Image : personnage + 1000 agents (2 draw calls, 2000 instances, 10,1 M sommets skinnés) | 14,7 à 17,8 | 15,1 à 18,5 |
+
+Lecture : la foule coûte environ 15 ms GPU par image pour 10 millions de sommets skinnés (environ 1,5 ns par sommet), sur les deux
+backends à 5 % près ; elle est limitée par le traitement des sommets (aucun culling par agent ni LOD, G199). Pour 60 images par
+seconde sur ce GPU intégré, viser environ 1 million de sommets skinnés par image (ex. 1000 agents de 1000 sommets). Le personnage
+de la démo par défaut (361 sommets, 1000 agents, 0,36 M sommets) tient sous 1,3 ms GPU pour toute l'image (`--ui hud`, Vulkan).
+
+Réserves : sur OpenGL, les horodatages qui encadrent seulement un dispatch de compute rendent une durée quasi nulle (0,4 µs, non
+crédible pour 10 000 sommets) : le pilote Iris ne sérialise pas l'horodatage avec le compute ; la mesure Vulkan (barrières
+comprises) est la référence. Les palettes des agents sont calculées sur le CPU (`CrowdRenderer::setAgents`, G199) : ce coût CPU
+n'est pas dans ce tableau.

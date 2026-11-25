@@ -202,6 +202,8 @@ ENGINE_LIBS := \
     $(_ENG_LIB_DIR)/libplatform.a \
     $(_ENG_LIB_DIR)/librhi.a \
     $(_ENG_LIB_DIR)/librenderer.a \
+    $(_ENG_LIB_DIR)/libassets.a \
+    $(_ENG_LIB_DIR)/libanim.a \
     $(_ENG_LIB_DIR)/libthirdparty.a \
     $(foreach m,$(ENGINE_EXTRA_MODULES),$(_ENG_LIB_DIR)/lib$(m).a)
 
@@ -210,7 +212,12 @@ ENGINE_LIBS := \
 ENGINE_LINK_LIBS := $(_ENG_LD_START) $(ENGINE_LIBS) $(_ENG_LD_END)
 
 comma := ,
-ENGINE_LDFLAGS := -L$(_ENG_VCPKG_DIR)/lib $(_ENG_VCPKG_LIBS) $(if $(_ENG_DARWIN),-Wl$(comma)-rpath$(comma)$(abspath $(_ENG_VCPKG_DIR))/lib)
+# Assets (M6 lot G) : KTX2 (libktx, qui dépend d'astcenc et de zstd) et meshoptimizer. Le nom de l'archive astcenc dépend du jeu
+# d'instructions choisi par vcpkg (avx2, sse4.1, neon…) : on prend celle qui est installée.
+_ENG_ASTCENC_LIB := $(patsubst lib%.a,-l%,$(notdir $(firstword $(wildcard $(_ENG_VCPKG_DIR)/lib/libastcenc-*-static.a))))
+_ENG_ASSET_LIBS  := -lktx $(_ENG_ASTCENC_LIB) -lzstd -lmeshoptimizer
+
+ENGINE_LDFLAGS := -L$(_ENG_VCPKG_DIR)/lib $(_ENG_ASSET_LIBS) $(_ENG_VCPKG_LIBS) $(if $(_ENG_DARWIN),-Wl$(comma)-rpath$(comma)$(abspath $(_ENG_VCPKG_DIR))/lib)
 
 # ── Missing archive error ─────────────────────────────────────────────────────
 # Archives must come from a GitHub release or be built with mk/engine.mk.

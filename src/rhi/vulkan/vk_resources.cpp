@@ -303,6 +303,14 @@ Result<TextureHandle> VulkanDevice::createTexture(const TextureDesc &requested)
     if (desc.size.width == 0 || desc.size.height == 0 || desc.size.depth == 0)
         return makeError(ErrorCode::kInvalidArgument, "createTexture: empty extent (" + name + ")");
     const bool depth = formatInfo(desc.format).isDepth();
+    if (formatInfo(desc.format).compressed())
+    {
+        const bool astc = desc.format == Format::kASTC4x4Unorm || desc.format == Format::kASTC4x4Srgb;
+        if (!(astc ? caps_.astcTextures : caps_.bc7Textures))
+            return makeError(ErrorCode::kUnsupported, std::string("createTexture: compressed format ") + toString(desc.format) + " is not supported by this device (" + name + ")");
+        if (hasFlag(desc.usage, TextureUsage::kRenderTarget) || hasFlag(desc.usage, TextureUsage::kStorage) || desc.dimension == TextureDimension::k3D)
+            return makeError(ErrorCode::kInvalidArgument, std::string("createTexture: compressed format ") + toString(desc.format) + " is sampled only, 2D, array or cube (" + name + ")");
+    }
     if (hasFlag(desc.usage, TextureUsage::kStorage) && depth)
         return makeError(ErrorCode::kUnsupported, std::string("createTexture: format ") + toString(desc.format) + " cannot be a storage image (" + name + ")");
     // Les copies de service (envois, lectures) exigent source et destination de transfert : un format qui ne les offre pas est refusé.
@@ -442,7 +450,10 @@ Result<> VulkanDevice::updateTexture(TextureHandle handle, const TextureCopy &co
     // Depuis la mémoire du processeur, les lignes sont serrées : `bufferRowLength` et `bufferOffset` ne concernent que les copies
     // tampon <-> texture (contrat de TextureCopy).
     const std::uint32_t bpt = formatInfo(texture->desc.format).bytesPerTexel;
-    const std::uint64_t needed = region->tightBytes(bpt);
+    const std::uint64_t needed = imageBytes(texture->desc.format, region->extent.width, region->extent.height, region->extent.depth * region->layerCount);
+    if (!blockAligned(texture->desc.format, region->offset.x, region->offset.y, region->extent.width, region->extent.height,
+                      mipDim(texture->desc.size.width, region->mip), mipDim(texture->desc.size.height, region->mip)))
+        return makeError(ErrorCode::kInvalidArgument, "updateTexture: region is not aligned on 4x4 blocks (" + texture->desc.debugName + ")");
     if (data.size() < needed)
         return makeError(ErrorCode::kInvalidArgument, "updateTexture: " + std::to_string(data.size()) + " bytes given, " + std::to_string(needed) +
                                                           " needed (" + texture->desc.debugName + ")");
@@ -465,6 +476,8 @@ Result<std::vector<std::byte>> VulkanDevice::readTexture(TextureHandle handle, c
     TextureRes *texture = textures_.get(handle);
     if (texture == nullptr)
         return makeError(ErrorCode::kNotFound, "readTexture: stale or null texture handle");
+    if (formatInfo(texture->desc.format).compressed())
+        return makeError(ErrorCode::kUnsupported, "readTexture: compressed textures cannot be read back (" + texture->desc.debugName + ")");
     if (auto r = checkDepthCopy(*texture, "readTexture"); !r)
         return std::unexpected(r.error());
     auto region = resolveRegion(*texture, copy);

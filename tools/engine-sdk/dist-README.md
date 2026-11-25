@@ -15,7 +15,7 @@ orosmo-pkg-<platform>/
       renderer/        SceneRenderer, Camera (reverse-Z), CanvasRenderer, DrawList, Mesh, LightManager, DebugDraw
       ui/              orosmo::ui — widgets, layout, JSON themes, reflected parameter panels
   lib/
-    debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libui, libthirdparty (link them all:
+    debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libassets, libanim, libui, libthirdparty (link them all:
                        ENGINE_LINK_LIBS)
   make/engine.mk     — include this in your project Makefile
   cmake/             — optional CMake package (`OrosmoConfig.cmake`, `find_package(Orosmo REQUIRED)`)

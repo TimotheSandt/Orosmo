@@ -292,6 +292,9 @@ TEST_SUITE("Demo launch options")
         Assert(demo::parseLaunchOptions(3, mixed)->mixedScene, "--scene mixed is parsed");
         const char *plain[] = {"Orosmo", "--scene", "default"};
         Assert(!demo::parseLaunchOptions(3, plain)->mixedScene, "--scene default is parsed");
+        const char *anim[] = {"Orosmo", "--scene", "anim"};
+        Assert(demo::parseLaunchOptions(3, anim)->animScene && !demo::parseLaunchOptions(3, anim)->mixedScene, "--scene anim is parsed (M6)");
+        Assert(!demo::parseLaunchOptions(1, none)->animScene, "The default scene is not the anim one");
         const char *bad[] = {"Orosmo", "--scene", "other"};
         Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --scene is refused");
     }

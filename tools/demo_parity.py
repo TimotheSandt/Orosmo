@@ -28,6 +28,7 @@ QUICK = [
     ("dark-scene", ["--ui", "full", "--theme", "dark", "--tab", "scene"]),
     ("light-widgets", ["--ui", "full", "--theme", "light", "--tab", "widgets"]),
     ("post-full", ["--ui", "off", "--post", "full"]),  # REN-17/18 : HDR, exposition auto (compute), bloom, LUT, vignettage
+    ("anim", ["--ui", "off", "--scene", "anim"]),  # M6 : skinning en compute, foule de 1000 agents (un draw call par lot)
 ]
 # Le panneau de performances (--hud full, défaut) affiche des mesures réelles (FPS, temps CPU et GPU, passes) et le nom du pilote :
 # elles diffèrent d'une exécution et d'un backend à l'autre (~6,6 % des pixels de ui.png sur Intel Arc). La scène reste à 2 %.

@@ -40,7 +40,8 @@ struct Capabilities
     bool drawIndirectFirstInstance = false;
     bool timestampQueries = false;
     bool anisotropy = false;
-    bool bc7Textures = false;
+    bool bc7Textures = false;  // Format::kBC7* échantillonnables (OpenGL : BPTC, cœur 4.2 ; Vulkan : textureCompressionBC)
+    bool astcTextures = false; // Format::kASTC4x4* (OpenGL : GL_KHR_texture_compression_astc_ldr ; Vulkan : textureCompressionASTC_LDR)
     bool wireframe = false;
     bool spirvShaders = false; // ShaderLanguage::kSpirv accepté
     bool shaderFloat64 = false; // `double` dans les shaders (OpenGL 4.0+, Vulkan shaderFloat64)

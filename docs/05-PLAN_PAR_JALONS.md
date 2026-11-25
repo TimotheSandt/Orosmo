@@ -150,6 +150,27 @@ Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusi
 - ASSET-01 à ASSET-05 (glTF, textures, KTX2, cuisson, rechargement), REN-10, REN-11 (matériaux PBR et variantes), REN-13 (IBL, sondes).
 - ANIM-01 à ANIM-04 (squelettes, clips, machine à états, animation de propriétés, foules instanciées).
 
+### Découpage de M6 en lots (proposé et appliqué par l'IA le 2026-11-24, `docs/QUESTIONS.md` A70 ; même portée, ordre explicite)
+
+Chaque lot a sa branche `feat/M6-…`, fusionnée dans la branche d'intégration `milestone/M6` (pas dans `dev`, consigne de l'auteur du
+2026-11-24) quand il est vert. Deux modules neufs de `docs/03` §1 : `orosmo::assets` (`include/orosmo/assets/`, `src/assets/`,
+archive `libassets.a`, couche `assets`) et `orosmo::anim` (`include/orosmo/anim/`, `src/anim/`, archive `libanim.a`, couche `anim`).
+Dépendances ajoutées par vcpkg (`vcpkg.json`, toutes plateformes) : `cgltf` (lecture et écriture glTF, MIT), `meshoptimizer`
+(cuisson, MIT), `ktx` (KTX2 et Basis Universal, Apache-2.0).
+
+| Lot | Contenu | IDs |
+| --- | --- | --- |
+| A | **Module `assets` et textures** : nouvelle archive, couches, paquet ; images PNG/JPG avec mips, espace colorimétrique choisi par l'usage (couleur en sRGB, données en linéaire), cache par chemin | ASSET-02 |
+| B | **Import glTF 2.0** (`cgltf`) : maillages, matériaux, nœuds, caméras, lumières `KHR_lights_punctual`, peaux, animations, en données CPU sans GPU ; export pour l'aller-retour des tests | ASSET-01 |
+| C | **Matériaux PBR et variantes** : type `Material` (remplace `InstanceMaterial`, A52), métal/rugosité, cartes, modes alpha glTF → `BlendMode`, double face ; variantes par constantes de spécialisation, instances qui surchargent des paramètres | REN-10, REN-11 |
+| D | **IBL et sondes** : environnement HDR, irradiance en harmoniques sphériques, spéculaire préfiltré en compute, table BRDF, sondes pour objets mobiles | REN-13 |
+| E | **Animation** : squelettes et skinning GPU, clips, mélange, couches additives, machine à états, événements, animation de propriétés par courbes | ANIM-01, ANIM-02, ANIM-03 |
+| F | **Foules instanciées** : skinning instancié (une palette d'os par instance), mille agents en un draw call par lot ; coût GPU du skinning mesuré | ANIM-04 |
+| G | **KTX2, cuisson, rechargement** : KTX2 (BC7, ASTC selon `Capabilities`, transcodage Basis), outil de cuisson (meshoptimizer, quantification, LOD), rechargement à chaud par `core::FileWatcher` | ASSET-03, ASSET-04, ASSET-05 |
+| H | **Démo, documentation, release** : modèle glTF animé, mille instances, asset modifié en direct ; README des formats ; `docs/STATUS.md`, `docs/releases/M6.md`, description de la MR | — |
+
+Le cache par couche de l'interface (UI-13, reporté par A54) n'est pas dans ces lots : il reste proposé pour M6 si le temps le permet, sinon M8 (A70).
+
 **Démo** : un modèle glTF animé, puis mille instances animées avec un seul draw call par lot ; un asset modifié sur disque se met à jour en direct.
 **Terminé** : formats vérifiés par import/export de fichiers d'exemple ; mesure du coût GPU du skinning ; README des formats pris en charge.
 

@@ -222,6 +222,9 @@ demo-capture: all-debug
 	./$(DEMO_BIN) --api opengl --headless --ui off --scene mixed --shadows on --transparent-shadow dithered --capture build/demo-capture/mixed-shadow-dithered --capture-frames 5
 	python3 tools/compare_png.py docs/BASELINE/reference/scene-opengl-mixed-shadow-dithered-1280x720.png build/demo-capture/mixed-shadow-dithered/scene.png \
 	    --tolerance 8 --max-diff-percent 2
+	@# M6 : personnage skinné animé (glTF généré puis importé) et foule de 1000 agents (un draw call par primitive skinnée).
+	./$(DEMO_BIN) --api opengl --headless --ui hud --scene anim --capture build/demo-capture/anim --capture-frames 30
+	test -s build/demo-capture/anim/scene.png
 	test -s build/demo-capture/dark-widgets/ui.png
 	test -s build/demo-capture/light-widgets/ui.png
 	@# compare_png.py : code 0 = identiques (erreur ici) ; 1 + ligne DIFFERENT = images différentes (attendu) ; autre = erreur d'exécution.
