@@ -119,6 +119,7 @@ class PropertyAnimation
     {
         if (applying_ > 0)
         {
+            std::erase_if(pendingBind_, [&](const Track &t) { return t.name == name; }); // liaison demandée pendant cette passe
             pendingUnbind_.push_back(name);
             return;
         }
@@ -128,24 +129,16 @@ class PropertyAnimation
     // Pose la valeur de chaque piste au temps `time`, dans l'ordre d'ajout.
     void apply(float time) const
     {
-        ++applying_;
+        struct Pass // RAII : le compteur et les modifications différées survivent à une exception d'un setter
+        {
+            const PropertyAnimation &self;
+            explicit Pass(const PropertyAnimation &a) : self(a) { ++self.applying_; }
+            ~Pass() { self.endPass(); }
+        } pass(*this);
         const std::size_t count = tracks_.size(); // tracks_ ne change pas pendant la passe (bind/unbind différés)
         for (std::size_t i = 0; i < count; ++i)
         {
             std::visit([time](const auto &typed) { typed.setter(typed.curve.evaluate(time)); }, tracks_[i].typed);
-        }
-        if (--applying_ == 0 && (!pendingUnbind_.empty() || !pendingBind_.empty()))
-        {
-            for (const std::string &n : pendingUnbind_)
-            {
-                std::erase_if(tracks_, [&](const Track &t) { return t.name == n; });
-            }
-            pendingUnbind_.clear();
-            for (Track &t : pendingBind_)
-            {
-                tracks_.push_back(std::move(t));
-            }
-            pendingBind_.clear();
         }
     }
     // Plus grande durée des pistes.
@@ -171,6 +164,22 @@ class PropertyAnimation
         std::string name;
         std::variant<Typed<float>, Typed<core::Vec2>, Typed<core::Vec3>, Typed<core::Vec4>> typed;
     };
+    void endPass() const noexcept
+    {
+        if (--applying_ == 0)
+        {
+            for (const std::string &n : pendingUnbind_)
+            {
+                std::erase_if(tracks_, [&](const Track &t) { return t.name == n; });
+            }
+            pendingUnbind_.clear();
+            for (Track &t : pendingBind_)
+            {
+                tracks_.push_back(std::move(t));
+            }
+            pendingBind_.clear();
+        }
+    }
     bool has(const std::string &name) const
     {
         const auto same = [&](const Track &t) { return t.name == name; };
