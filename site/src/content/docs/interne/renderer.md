@@ -28,15 +28,15 @@ explicites. L'ordre de destruction et les durées de vie sont détaillés dans
 ## L'image de SceneRenderer
 
 ```cpp
-auto encoder = device->createCommandEncoder();
-(void)scene->beginFrame(*encoder);            // l'encodeur doit vivre jusqu'à endFrame
-(void)scene->setCamera(camera);
-(void)scene->drawMesh(cube, camera);           // enregistre seulement
-(void)scene->endFrame({texture, format, size}); // construit et exécute le graphe de l'image
-(void)device->submit(std::move(encoder));
+auto encoder = (*device)->createCommandEncoder();
+(void)(*scene)->beginFrame(*encoder);             // l'encodeur doit vivre jusqu'à endFrame
+(void)(*scene)->setCamera(camera);
+(void)(*scene)->drawMesh(*cube, camera);           // enregistre seulement
+(void)(*scene)->endFrame({texture, format, size}); // construit et exécute le graphe de l'image
+(void)(*device)->submit(std::move(encoder));
 ```
 
-(Les `(void)` sont là pour raccourcir ; une vraie boucle teste chaque `Result`.)
+Noms et types comme dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples) : `device`, `scene` et `cube` sont les `Result` rendus par les fabriques. Les `(void)` raccourcissent ; une vraie boucle teste chaque `Result`.
 
 `drawMesh` enregistre le dessin : pipeline, constantes et transformation sont résolus à l'appel, mais le dessin est joué à
 `endFrame`. Les tampons du maillage doivent donc rester valides jusque-là. Chaque dessin copie sa transformation dans sa
@@ -56,7 +56,7 @@ s'exécutent après tout plugin qui réécrit la couleur de scène. Le cycle de 
 (exécution ; un `beginFrame` y est refusé), puis nettoyage, que l'image réussisse ou non : dessins vidés,
 `RenderFeature::frameEnded` de chaque plugin. Chaque passe est mesurée par le `Profiler` sous `RenderGraph/<passe>`.
 
-## Le graphe de passes (REN-01)
+## Le graphe de passes
 
 `RenderGraph` connaît des ressources nommées (textures et tampons, importés ou transitoires) et des passes `kRaster` (le
 graphe ouvre la passe de rendu sur les attachements déclarés) ou `kGeneric` (la passe enregistre ce qu'elle veut : ses
@@ -127,9 +127,9 @@ Le renderer ne connaît que l'interface `RenderFeature` : `name`, `supports(Capa
 possédé, le renderer garde le plugin. Pour appeler les fonctions propres au plugin, on convertit le pointeur :
 
 ```cpp
-auto shadows = rd::ShadowFeature::create(*device, shaders, pipelines, shaderDir);
+auto shadows = rd::ShadowFeature::create(**device, shaders, pipelines, shaderDir);
 if (!shadows) return std::unexpected(shadows.error());
-auto added = scene->addFeature(std::move(*shadows));      // kUnsupported si supports() est faux, kAlreadyExists si le nom est pris
+auto added = (*scene)->addFeature(std::move(*shadows));      // kUnsupported si supports() est faux, kAlreadyExists si le nom est pris
 if (!added) return std::unexpected(added.error());
 auto *shadowFeature = static_cast<rd::ShadowFeature *>(*added);   // valide tant que le plugin est enregistré
 ```
@@ -145,7 +145,7 @@ Un plugin qui écrit `resources().sceneColor` s'exécute avant la mise à l'éch
 `resources().output` s'exécute après (interface, superpositions). C'est ainsi que la démo branche l'interface
 (`CanvasRenderer`) et la présentation (passes `ui` et `present`).
 
-## Données par image (REN-03)
+## Données par image
 
 `FrameData` (std140, 640 octets) est défini une seule fois pour le C++ et le GLSL (`shaders/rhi/frame_data.glsl`), avec des
 `static_assert` sur la taille et les décalages : matrices (et inverses, et celles de l'image précédente), origine de la
@@ -181,9 +181,9 @@ sur le GPU (vérifié par les tests sur OpenGL et Vulkan). En 2D : `Renderer2D` 
 
 ## Limites
 
-Absents : ombres avancées (REN-09), extensions de matériaux (REN-12), réflexions et GI (REN-15), éclairage précalculé
-(REN-16), transparence indépendante de l'ordre (REN-40) ; ciel, brouillard, eau, particules et occlusion ambiante sont
-prévus comme modules (M13). Le graphe n'a que des transitoires 2D (pas de tableau, cube, 3D ni MSAA) et tout s'exécute sur
+Absents : ombres avancées, extensions de matériaux, réflexions et illumination globale, éclairage précalculé,
+transparence indépendante de l'ordre ; ciel, brouillard, eau, particules et occlusion ambiante sont prévus comme modules
+installables (M13). Le graphe n'a que des transitoires 2D (pas de tableau, cube, 3D ni MSAA) et tout s'exécute sur
 un seul encodeur (pas de file asynchrone). Détail : [État du projet](/projet/etat/) et `docs/GAPS.md`.
 
 ## Voir aussi

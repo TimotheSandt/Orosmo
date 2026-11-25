@@ -70,31 +70,34 @@ Adapté de [`tests/core/error_tests.cpp`](https://github.com/TimotheSandt/Orosmo
 ## Propager une erreur
 
 Une fonction qui reçoit une erreur la renvoie à son appelant. Deux formes : la renvoyer telle quelle avec
-`std::unexpected(r.error())`, ou ajouter du contexte avec `makeError`. Dans cet extrait, `app.lights` est un
-`renderer::LightManager` obtenu plus tôt par `LightManager::create`.
+`std::unexpected(r.error())`, ou ajouter du contexte avec `makeError`.
 
 ```cpp
+namespace core = orosmo::core;
 namespace rd = orosmo::renderer;
 
-orosmo::core::Result<> initScene(App &app)
+core::Result<rd::Mesh> makeLitCube(orosmo::rhi::Device &device, rd::LightManager &lights, const rd::MeshData &data)
 {
-    auto mesh = rd::Mesh::create(*app.device, data);
+    auto mesh = rd::Mesh::create(device, data);
     if (!mesh)
-        return std::unexpected(mesh.error());                                       // telle quelle
+        return std::unexpected(mesh.error());                                  // telle quelle
 
-    app.cube = std::move(*mesh);
-    if (auto r = app.lights.upload(); !r)
-        return orosmo::core::makeError(r.error().code, "lights: " + r.error().message);   // avec contexte
-    return {};
+    if (auto r = lights.upload(); !r)
+        return core::makeError(r.error().code, "lights: " + r.error().message);   // avec contexte
+    return std::move(*mesh);
 }
 
 // En haut de la pile, on journalise une seule fois :
-if (auto r = initScene(app); !r)
+auto cube = makeLitCube(**device, *lights, makeColoredCube());
+if (!cube)
 {
-    orosmo::core::logError(r.error());
+    core::logError(cube.error());
     return EXIT_FAILURE;
 }
 ```
+
+`device` et `lights` sont les `Result` rendus par `rhi::createDevice` et `LightManager::create`, comme dans les
+[conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
 
 `makeError` enregistre l'endroit où il est appelé. Avec du contexte ajouté, `describe()` montre donc la fonction qui a ajouté
 le contexte, pas celle qui a échoué en premier ; le message d'origine reste dans le texte.
@@ -113,7 +116,7 @@ Les fabriques du moteur ne rendent pas toutes le même type, d'où des écriture
 | `Result<std::shared_ptr<T>>` | `PbrMaterial::create`, `ShaderLibrary::loadGraphics` | `*program` donne le `shared_ptr` |
 | `Result<>` | `LightManager::upload`, `Device::present` | tester `!r`, rien à lire |
 
-Un `Result<>` peut être ignoré quand l'échec ne change rien pour l'appelant ; on l'écrit alors `(void)device->present();`
+Un `Result<>` peut être ignoré quand l'échec ne change rien pour l'appelant ; on l'écrit alors `(void)(*device)->present();`
 pour que l'intention se voie.
 
 :::caution
@@ -209,8 +212,8 @@ Source : [`apps/demo/src/main.cpp`](https://github.com/TimotheSandt/Orosmo/blob/
 
 ## Limites
 
-- CORE-02 (Partiel) : `Result<T>`, `makeError` et `ENGINE_ASSERT` existent et sont testés, mais du code repris lance encore
-  des exceptions ou renvoie `bool` ou `int` (`docs/GAPS.md`, G51).
+- Du code repris des versions précédentes lance encore des exceptions ou renvoie `bool` ou `int` au lieu d'un
+  `Result` (liste plus haut).
 - Pas de macro de propagation d'erreur.
 - Le `Logger` garde ses anciens noms (`Logger::Log`, `L_INFO`) ; il n'a pas été renommé selon les conventions actuelles.
 

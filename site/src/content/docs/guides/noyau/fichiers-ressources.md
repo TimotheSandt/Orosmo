@@ -17,17 +17,19 @@ En-têtes : `orosmo/core/vfs.hpp`, `paths.hpp`, `resources.hpp`, `file_watcher.h
 ## Exemple minimal
 
 ```cpp
+#include <orosmo/core/paths.hpp>
 #include <orosmo/core/vfs.hpp>
 
 orosmo::core::Vfs vfs;
-vfs.mount("res", "res");                                                     // dossier réel, relatif au dossier courant
+vfs.mount("res", GET_RESOURCE_PATH("."));                                    // dossier des ressources (orosmo/core/paths.hpp)
 vfs.mount("user", orosmo::core::Vfs::defaultUserDirectory("mygame"));
 
 if (auto r = vfs.writeText("user://saves/slot1/state.json", R"({"a":1})"); !r) { /* r.error() */ }
 auto text = vfs.readText("user://saves/slot1/state.json");                  // Result<std::string>
 ```
 
-Adapté de [`tests/core/vfs_tests.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/tests/core/vfs_tests.cpp).
+Adapté de [`tests/core/vfs_tests.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/tests/core/vfs_tests.cpp). Les chemins de
+ressources suivent les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
 
 ## Vfs : chemins logiques
 
@@ -87,12 +89,13 @@ le cache ne connaît ni le disque ni le GPU. Le même chemin rend le même handl
 using namespace orosmo::core;
 
 TaskSystem tasks;
+// Le chargeur tourne dans les tâches : ne pas monter ni démonter `vfs` pendant les chargements.
 ResourceCache<std::string> texts([&](const std::string &path) { return vfs.readText(path); }, &tasks);
 
 Handle<std::string> h = texts.loadAsync("res://intro.txt");     // état kLoading, puis kReady ou kFailed
 // ... plus tard, à l'image suivante par exemple :
 if (texts.state(h) == ResourceState::kReady)
-    show(*texts.get(h));                                         // std::shared_ptr<std::string>
+    show(*texts.get(h));                                         // get : std::shared_ptr ; show : fonction de l'application
 else if (texts.state(h) == ResourceState::kFailed)
     LOG_WARNING(texts.lastError(h));
 
@@ -130,7 +133,7 @@ thread qui appelle `poll()`, donc sans verrou côté application.
 orosmo::core::FileWatcher watcher;
 watcher.setPollInterval(std::chrono::milliseconds(500));   // au plus 2 interrogations par seconde
 watcher.setFullScanEvery(4);                               // nouveaux fichiers cherchés un poll sur 4
-auto id = watcher.watch("res/config", [&](const orosmo::core::FileEvent &e) {
+auto id = watcher.watch(GET_RESOURCE_PATH("config"), [&](const orosmo::core::FileEvent &e) {
     if (e.change == orosmo::core::FileChange::kModified)
         (void)config.loadFile(e.path);
 }, {".json"});
@@ -161,9 +164,9 @@ D'autres objets du moteur se branchent sur un `FileWatcher` : les thèmes de l'i
 
 ## Limites
 
-- CORE-13 (Partiel) : `FileWatcher` interroge le disque ; il n'utilise pas les notifications du système (inotify,
-  ReadDirectoryChangesW, FSEvents). Prouvé sous Linux ; Windows et macOS attendent la preuve de la CI (`docs/GAPS.md`, G55).
-- G53 : la démo et le projet de départ utilisent `GET_RESOURCE_PATH` et pas encore `Vfs`.
+- `FileWatcher` interroge le disque ; il n'utilise pas les notifications du système (inotify, ReadDirectoryChangesW,
+  FSEvents). Son fonctionnement est vérifié sous Linux ; sous Windows et macOS, il n'est pas encore prouvé par un test.
+- La démo et le projet de départ utilisent `GET_RESOURCE_PATH`, pas encore `Vfs`.
 - `Vfs` et `FileWatcher` ne sont pas thread-safe : un seul propriétaire.
 
 ## Voir aussi

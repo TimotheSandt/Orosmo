@@ -98,8 +98,7 @@ principal une fois les tâches finies.
 
 ## Limites
 
-- CORE-04 est Fait (test de charge de 10 000 tâches, dépendances, arrêt propre).
-- G56 (`docs/GAPS.md`) : une tâche prête exécutée « par aide » dans `wait` est empilée sur l'appelant ; si elle attend
+- Une tâche prête exécutée « par aide » dans `wait` est empilée sur l'appelant ; si elle attend
   elle-même cet appelant, le pool peut se bloquer. Il faudrait des tâches suspendables.
 - Pas de priorités ni d'annulation.
 

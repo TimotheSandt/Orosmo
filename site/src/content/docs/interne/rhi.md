@@ -41,31 +41,33 @@ desc.backend = rhi::Backend::kVulkan;
 if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0) { /* pas d'affichage */ }
 desc.surface.nativeWindow = window.getWindow();        // nul : périphérique hors écran de taille surface.size
 
-auto created = rhi::createDevice(desc);                // kUnsupported, avec la raison, si le backend manque
-if (!created) { return fail(created.error()); }
-std::unique_ptr<rhi::Device> device = std::move(*created);
+auto device = rhi::createDevice(desc);                 // kUnsupported, avec la raison, si le backend manque
+if (!device) { std::cerr << device.error().message << '\n'; return EXIT_FAILURE; }
 
-while (window.newFrame())
+while (!window.shouldClose())
 {
-    auto frame = device->beginFrame();                 // texture de l'image
+    if (!window.newFrame()) continue;
+    auto frame = (*device)->beginFrame();              // texture de l'image
     if (!frame)
     {
         if (frame.error().code == core::ErrorCode::kBusy) continue;   // fenêtre réduite : sauter l'image
-        return fail(frame.error());
+        core::logError(frame.error());
+        break;
     }
-    auto encoder = device->createCommandEncoder();
+    auto encoder = (*device)->createCommandEncoder();
     encoder->beginRenderPass({.colors = {{.texture = *frame, .clearColor = {0, 0, 0, 1}}}});
     encoder->setPipeline(pipeline);
     encoder->draw(3);
     encoder->endRenderPass();
-    if (auto done = device->submit(std::move(encoder)); !done) { core::logError(done.error()); }
-    (void)device->present();                           // présente et libère les ressources détruites
+    if (auto done = (*device)->submit(std::move(encoder)); !done) { core::logError(done.error()); }
+    (void)(*device)->present();                        // présente et libère les ressources détruites
 }
-device->waitIdle();
+(*device)->waitIdle();
 ```
 
 `prepareWindowHints` s'appelle dans le rappel de `Window::init`, juste avant la création de la fenêtre : il pose les
-attributs de contexte du backend (OpenGL 4.3 core et contexte de debug, ou aucune API pour Vulkan). Exemple complet :
+attributs de contexte du backend (OpenGL 4.3 core et contexte de debug, ou aucune API pour Vulkan). `device` est le
+`Result` rendu par `createDevice`, d'où `(*device)->` ([conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples)). Exemple complet :
 [`apps/demo/src/Game/Game.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Game/Game.cpp).
 
 | Champ de `DeviceDesc` | Défaut | Effet |
@@ -121,7 +123,7 @@ Les cas à surveiller :
 le nouveau avant son prochain dessin (`assets::RenderModel::rebuildMaterials` le fait pour un modèle importé).
 
 En C++, les membres d'une classe sont détruits dans l'ordre inverse de leur déclaration. On déclare donc d'abord ce dont les
-autres dépendent :
+autres dépendent (ici les membres gardent les `unique_ptr` déjà sortis de leur `Result`) :
 
 ```cpp
 namespace rd = orosmo::renderer;
@@ -139,7 +141,7 @@ struct App
 };
 ```
 
-En fin de programme : `device->waitIdle()`, puis destruction des objets (ordre inverse de déclaration), puis
+En fin de programme : `(*device)->waitIdle()`, puis destruction des objets (ordre inverse de déclaration), puis
 `platform::Window::terminate()` après la destruction de toutes les fenêtres et du périphérique. Si le `Profiler` mesure sur
 le GPU, retirer son fournisseur avant de détruire le périphérique ([Mesurer](/guides/noyau/profilage/#minuteries-gpu)).
 
@@ -162,7 +164,7 @@ plus), le calcul ou les tampons de stockage peuvent manquer. Les objets qui en o
 C'est à l'application de prévoir le repli :
 
 ```cpp
-const auto &caps = device->capabilities();
+const auto &caps = (*device)->capabilities();
 if (anim::SkinnedModel::supportedBy(caps))
 {
     // skinning sur le GPU
@@ -172,7 +174,7 @@ else
     // repli : pose de repos (la démo fait ainsi)
 }
 
-if (auto fp = rd::enableForwardPlus(*scene, *device, shaders, pipelines, shaderDir); !fp)
+if (auto fp = rd::enableForwardPlus(**scene, **device, shaders, pipelines, shaderDir); !fp)
     LOG_WARNING("forward+ unavailable, using forward: ", fp.error().message);   // le renderer reste en forward
 ```
 
@@ -198,7 +200,7 @@ sous OpenGL. Les décalages dynamiques de `setBindGroup` se consomment dans l'or
 | --- | --- | --- |
 | Vulkan 1.3 (`src/rhi/vulkan/`) | Fait sous Linux (Windows et macOS non vérifiés) | chargé à l'exécution par volk, mémoire par VMA, rendu dynamique, `synchronization2`, sémaphore à chronologie, cache de pipelines sur disque, validation de synchronisation |
 | OpenGL 4.3+ (`src/rhi/opengl/`) | Fait | référence du comportement observable ; contexte de debug `GL_KHR_debug`, `glClipControl`, barrières conservatrices |
-| Metal | Absent (RHI-13) | reconnu et refusé avec un message |
+| Metal | Absent (prévu en M9) | reconnu et refusé avec un message |
 
 La démo choisit au lancement (`--api vulkan|opengl`) ; si Vulkan ne démarre pas, elle affiche la raison et retombe sur
 OpenGL, sauf avec `--strict-backend` ([Choisir le backend](/guides/application/peripherique/)). Les mêmes tests
@@ -212,8 +214,12 @@ l'obtient par `glClipControl`, Vulkan par un viewport de hauteur négative.
 
 ## Limites
 
-RHI-01, RHI-05, RHI-07, RHI-08, RHI-10 à RHI-12, RHI-14 et RHI-16 sont Partiel ; RHI-13 (Metal) et RHI-19 (transferts asynchrones)
-sont Absent. Détail : [État du projet](/projet/etat/) et `docs/GAPS.md`.
+- Pas de backend Metal (prévu en M9). Sur macOS, OpenGL s'arrête à 4.1, en dessous de ce que le backend OpenGL demande.
+- Une seule file : pas de transferts asynchrones ni de calcul en parallèle du rendu.
+- Dessin indirect sans nombre de commandes lu sur le GPU.
+- Textures cube et tableau créables, mais pas encore vérifiées par un test d'échantillonnage dans un shader.
+
+Détail : [État du projet](/projet/etat/).
 
 ## Voir aussi
 
