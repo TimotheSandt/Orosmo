@@ -265,6 +265,14 @@ TEST_SUITE("assets/ktx2")
         REQUIRE((static_cast<unsigned>(bgra[sample2]) & 0xF) == 2);
         bgra[sample0] = static_cast<std::byte>((static_cast<unsigned>(bgra[sample0]) & ~0xFu) | 2u);
         bgra[sample2] = static_cast<std::byte>((static_cast<unsigned>(bgra[sample2]) & ~0xFu) | 0u);
+        // Qualificatif « signé » (SNORM) : octets non convertibles en UNORM, refusé.
+        std::vector<std::byte> snorm = *encoded;
+        snorm[sample0] = static_cast<std::byte>(static_cast<unsigned>(snorm[sample0]) | 0x40u);
+        REQUIRE(static_cast<unsigned>(snorm[12]) == 37); // VK_FORMAT_R8G8B8A8_UNORM -> ..._SNORM, pour que libktx accepte l'en-tête
+        snorm[12] = static_cast<std::byte>(38);
+        auto signedResult = as::decodeKtx2(snorm, capsWith(false, false), "snorm.ktx2");
+        REQUIRE_FALSE(signedResult.has_value());
+        // libktx 4.4 refuse déjà ce fichier à la lecture (kParse) ; la garde de storedFormat double ce refus (kUnsupported) si libktx l'acceptait.
         auto swapped = as::decodeKtx2(bgra, capsWith(false, false), "bgra.ktx2");
         REQUIRE_FALSE(swapped.has_value());
         CHECK((swapped.error().code == orosmo::core::ErrorCode::kUnsupported));

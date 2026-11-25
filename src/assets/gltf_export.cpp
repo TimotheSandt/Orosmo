@@ -11,6 +11,7 @@
 #include <deque>
 #include <fstream>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <system_error>
@@ -97,12 +98,22 @@ void putU32(std::vector<std::uint8_t> &v, std::uint32_t x)
 }
 
 // Conteneur GLB 2.0 : en-tête, bloc JSON (rempli d'espaces à 4 octets), bloc binaire (rempli de zéros) s'il y en a un.
-std::vector<std::uint8_t> glbContainer(const std::string &json, const std::vector<std::uint8_t> &bin)
+// Les longueurs GLB tiennent sur 32 bits : au-delà, std::nullopt (le contrôle précède toute allocation).
+std::optional<std::vector<std::uint8_t>> glbContainer(const std::string &json, const std::vector<std::uint8_t> &bin)
 {
-    const std::size_t jsonPadded = (json.size() + 3) / 4 * 4;
-    const std::size_t binPadded = (bin.size() + 3) / 4 * 4;
+    constexpr std::uint64_t kMax = std::numeric_limits<std::uint32_t>::max();
+    if (json.size() > kMax || bin.size() > kMax)
+    {
+        return std::nullopt;
+    }
+    const std::uint64_t jsonPadded = (json.size() + 3) / 4 * 4;
+    const std::uint64_t binPadded = (bin.size() + 3) / 4 * 4;
+    const std::uint64_t total = 12 + 8 + jsonPadded + (bin.empty() ? 0 : 8 + binPadded);
+    if (jsonPadded > kMax || binPadded > kMax || total > kMax)
+    {
+        return std::nullopt;
+    }
     std::vector<std::uint8_t> out;
-    const std::size_t total = 12 + 8 + jsonPadded + (bin.empty() ? 0 : 8 + binPadded);
     out.reserve(total);
     putU32(out, 0x46546C67u); // "glTF"
     putU32(out, 2);
@@ -183,17 +194,31 @@ class Writer
         json.pop_back(); // terminateur nul de cgltf_write
 
         const auto fail = [&](const std::filesystem::path &what) { return makeError(ErrorCode::kIo, "saveGltf: cannot write " + what.generic_string()); };
-        const auto sibling = [](std::filesystem::path p, const char *suffix)
+        // Noms provisoires et de sauvegarde propres à cette opération : on ne choisit jamais un fichier existant (une sauvegarde de l'utilisateur
+        // comme `scene.bin.bak` n'est ni remplacée ni supprimée).
+        const auto sibling = [](const std::filesystem::path &base, const char *tag)
         {
-            p += suffix;
-            return p;
+            for (int n = 0;; ++n)
+            {
+                std::filesystem::path p = base;
+                p += std::string(".orosmo-") + tag + std::to_string(n);
+                std::error_code ignored; // « absent » renseigne un code d'erreur ENOENT : seul le type compte
+                if (std::filesystem::symlink_status(p, ignored).type() == std::filesystem::file_type::not_found)
+                {
+                    return p;
+                }
+            }
         };
         std::error_code ec;
-        const std::filesystem::path jsonTmp = sibling(path, ".tmp");
+        const std::filesystem::path jsonTmp = sibling(path, "tmp");
         if (glb)
         {
-            const std::vector<std::uint8_t> container = glbContainer(json, bin_);
-            if (!writeFile(jsonTmp, container))
+            const auto container = glbContainer(json, bin_);
+            if (!container)
+            {
+                return makeError(ErrorCode::kOutOfRange, "saveGltf: " + path.generic_string() + " exceeds the 4 GiB limit of a .glb container");
+            }
+            if (!writeFile(jsonTmp, *container))
             {
                 std::filesystem::remove(jsonTmp, ec);
                 return fail(path);
@@ -210,8 +235,8 @@ class Writer
         // .gltf + .bin : les deux fichiers sont d'abord écrits en entier sous un nom provisoire ; l'ancien .bin est mis de côté pendant la
         // publication et remis en place si celle du JSON échoue, de sorte que l'ancienne paire reste cohérente.
         const std::filesystem::path binPath = dir / binName;
-        const std::filesystem::path binTmp = sibling(binPath, ".tmp");
-        const std::filesystem::path binBak = sibling(binPath, ".bak");
+        const std::filesystem::path binTmp = sibling(binPath, "tmp");
+        const std::filesystem::path binBak = sibling(binPath, "bak");
         const bool hasBin = !bin_.empty();
         const auto cleanup = [&]
         {
