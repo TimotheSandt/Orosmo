@@ -72,4 +72,4 @@ Pour ajouter un cas : créer `eNN_nom.cui` avec son `expect`, puis `make cui-tes
 ## Limites
 
 Les positions d'erreur sont celles de l'élément ou du modificateur, pas de l'argument fautif (les expressions n'ont pas de
-position). `once` n'est pas figé par la cible `orosmo/ui` (G112).
+position). `once` n'est pas figé par la cible `orosmo/ui`.

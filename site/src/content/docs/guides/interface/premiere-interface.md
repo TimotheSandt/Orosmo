@@ -158,10 +158,12 @@ if (!gui.wantsKeyboard()) { /* touches du jeu : aucun champ de texte n'a le focu
 passer), pendant un glissement commencé sur l'interface, ou si une fenêtre modale est ouverte. `wantsKeyboard()` est vrai
 quand un champ de texte a le focus.
 
+Un exemple complet de menu (Échap, Quitter, changement de thème) est dans [Écrire une vue en .cui](/guides/interface/langage-cui/#exemple--un-menu-qui-souvre-avec-échap).
+
 ## Limites
 
-- UI-01 et UI-02 sont « Partiel » dans [l'état du projet](/projet/etat/) ; UI-09 (navigation à la manette, accessibilité) est absent.
-- Pas de rechargement à chaud de l'arbre, seulement du thème (UI-08, absent).
+- La couche interface est marquée « Partiel » dans [l'état du projet](/projet/etat/) ; la navigation à la manette et l'accessibilité n'existent pas encore.
+- Pas de rechargement à chaud de l'arbre, seulement du thème.
 
 ## Voir aussi
 
