@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <bit>
 #include <cstring>
+#include <optional>
 #include <string>
 
 namespace orosmo::anim
@@ -65,7 +66,8 @@ core::Result<std::unique_ptr<CrowdRenderer>> CrowdRenderer::create(rhi::Device &
             continue;
         }
         const assets::RenderModel::MeshSource &src = render.meshSource(item.mesh);
-        const assets::MeshPrimitive &prim = model.meshes[src.mesh].primitives[src.primitive];
+        const std::optional<assets::MeshPrimitive> flat = assets::flatShaded(model.meshes[src.mesh].primitives[src.primitive]);
+        const assets::MeshPrimitive &prim = flat ? *flat : model.meshes[src.mesh].primitives[src.primitive]; // comme RenderModel
         if (prim.joints.empty())
         {
             continue;

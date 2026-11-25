@@ -209,19 +209,21 @@ core::Result<> Mesh::prepareTransform(const glm::vec3 &origin, const TransformHi
     // ne change pour l'appelant : un maillage immobile n'est renvoyé que si l'origine ou la transformation change.
     bool tracked = false;
     glm::mat4 world = modelMatrix();
+    mirrored_ = glm::determinant(glm::mat3(world)) < 0.0f;
+    MotionHistory &slot = history_[historySlot_];
     if (history.frame != 0)
     {
-        if (history.frame != lastFrame_)
+        if (history.frame != slot.lastFrame)
         {
             // Le modèle suivi n'est « précédent » que pour l'image qui suit directement : après une interruption du suivi (maillage
             // non dessiné, AOV de mouvement retiré), le dernier vu est périmé et le modèle courant sert de repli (aucun mouvement).
-            previousWorld_ = hasLastWorld_ && history.frame == lastFrame_ + 1 ? lastWorld_ : world;
-            lastFrame_ = history.frame;
+            slot.previousWorld = slot.hasLastWorld && history.frame == slot.lastFrame + 1 ? slot.lastWorld : world;
+            slot.lastFrame = history.frame;
             tracked = true; // nouvelle image : le « précédent » change même si l'objet est immobile
         }
-        lastWorld_ = world;
-        hasLastWorld_ = true;
-        tracked = tracked || previousWorld_ != uploadedPreviousWorld_ || history.previousOrigin != uploadedPreviousOrigin_;
+        slot.lastWorld = world;
+        slot.hasLastWorld = true;
+        tracked = tracked || slot.previousWorld != uploadedPreviousWorld_ || history.previousOrigin != uploadedPreviousOrigin_;
     }
     const bool withHistory = history.frame != 0; // le bloc écrit avec historique a un prevModel distinct : à réécrire sans
     if (!transformDirty_ && origin == uploadedOrigin_ && !tracked && withHistory == uploadedWithHistory_)
@@ -235,7 +237,7 @@ core::Result<> Mesh::prepareTransform(const glm::vec3 &origin, const TransformHi
     block.prevModel = block.model;
     if (history.frame != 0)
     {
-        block.prevModel = previousWorld_;
+        block.prevModel = slot.previousWorld;
         block.prevModel[3] -= glm::vec4(history.previousOrigin, 0.0f);
     }
     const glm::mat3 linear(block.model);
@@ -248,9 +250,18 @@ core::Result<> Mesh::prepareTransform(const glm::vec3 &origin, const TransformHi
     transformDirty_ = false;
     uploadedOrigin_ = origin;
     uploadedWithHistory_ = withHistory;
-    uploadedPreviousWorld_ = history.frame != 0 ? previousWorld_ : world;
+    uploadedPreviousWorld_ = history.frame != 0 ? slot.previousWorld : world;
     uploadedPreviousOrigin_ = history.previousOrigin;
     return {};
+}
+
+void Mesh::setHistorySlot(std::uint32_t slot)
+{
+    if (slot >= history_.size())
+    {
+        history_.resize(std::size_t{slot} + 1);
+    }
+    historySlot_ = slot;
 }
 
 core::Result<> Mesh::setTextures(std::span<const TextureBinding> textures)
@@ -372,16 +383,15 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(matrix_, other.matrix_);
     std::swap(hasMatrix_, other.hasMatrix_);
     std::swap(cull_, other.cull_);
+    std::swap(mirrored_, other.mirrored_);
     std::swap(transformDirty_, other.transformDirty_);
     std::swap(bufferStale_, other.bufferStale_);
     std::swap(uploadedOrigin_, other.uploadedOrigin_); // va avec modelBuffer_ : l'origine des matrices déjà envoyées
     std::swap(uploadedWithHistory_, other.uploadedWithHistory_);
     std::swap(uploadedPreviousWorld_, other.uploadedPreviousWorld_);
     std::swap(uploadedPreviousOrigin_, other.uploadedPreviousOrigin_);
-    std::swap(previousWorld_, other.previousWorld_);
-    std::swap(lastWorld_, other.lastWorld_);
-    std::swap(hasLastWorld_, other.hasLastWorld_);
-    std::swap(lastFrame_, other.lastFrame_);
+    std::swap(history_, other.history_);
+    std::swap(historySlot_, other.historySlot_);
     std::swap(objectId_, other.objectId_);
     std::swap(aovMaterial_, other.aovMaterial_);
     std::swap(modelBlock_, other.modelBlock_);

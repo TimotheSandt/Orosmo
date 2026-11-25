@@ -112,7 +112,18 @@ class PbrMaterial
     core::Result<std::shared_ptr<PbrMaterial>> instantiate(const PbrParams &params, std::string name = {}) const;
     // Change les paramètres (envoi ordonné : les images en vol gardent les anciens).
     core::Result<> setParams(const PbrParams &params);
-    // Recrée le groupe 1 (ex. après un changement d'atlas d'ombres) ; `shadows` nul retire la réception.
+    // Recrée le groupe 1 (ex. après un changement d'atlas d'ombres) ; `shadows` nul retire la réception, et `features()` suit
+    // (bit kPbrShadows). En cas de succès, l'ancien groupe est DÉTRUIT : tout maillage qui l'a reçu par `group()` doit recevoir
+    // le nouveau, et la variante de `features()` si la réception change, avant son prochain dessin. En cas d'échec, l'ancien
+    // groupe et `features()` restent valides. Exemple (modèle glTF : `assets::RenderModel::rebuildMaterials` fait tout cela) :
+    //
+    //     shadows.setSettings(settings);                       // nouvel atlas
+    //     if (auto r = material->rebuild(&shadows); r) {
+    //         mesh.setMaterialGroup(material->group());
+    //         mesh.setProgram(*shaderCache.program(material->features(), extraDefines));
+    //     }
+    //
+    // Limite connue : le matériau ne connaît pas ses maillages ; c'est l'appelant qui les met à jour.
     core::Result<> rebuild(const ShadowFeature *shadows);
 
     rhi::BindGroupHandle group() const noexcept { return group_; }

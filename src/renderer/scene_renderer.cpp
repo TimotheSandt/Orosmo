@@ -450,6 +450,7 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t model
     state.vertexBuffers = mesh.vertexBuffers();
     state.vertexAttributes = mesh.vertexAttributes();
     state.raster.cull = lines ? rhi::CullMode::kNone : mesh.cullMode();
+    state.raster.frontFace = mesh.frontFace(); // miroir : sens horaire (dernier prepareTransform, celui de CE dessin)
     state.raster.fill = lines ? rhi::FillMode::kLine : rhi::FillMode::kFill;
     // Reverse-Z (REN-02) : le plus proche a la plus GRANDE profondeur. Le passage fil de fer redessine la même géométrie : à
     // profondeur égale, ses arêtes doivent passer.

@@ -11,6 +11,7 @@
 #include <orosmo/renderer/light.hpp>
 #include <orosmo/renderer/pipeline_cache.hpp>
 
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/packing.hpp>
 
 #include <cmath>
@@ -123,6 +124,13 @@ struct IblScene
     // Carré plein écran à z = -1 face à la caméra ; rend le pixel central de la sortie 8x8.
     std::array<std::uint8_t, 4> render(float metallic, float roughness, const std::string &key)
     {
+        return render(metallic, roughness, key, glm::vec3(0.0f), {{4, 4}})[0];
+    }
+
+    // Même carré, caméra et modèle déplacés de `offset` (monde) ; rend les pixels demandés.
+    std::vector<std::array<std::uint8_t, 4>> render(float metallic, float roughness, const std::string &key, const glm::vec3 &offset,
+                                                    const std::vector<std::pair<int, int>> &pixels)
+    {
         as::Model m;
         as::MeshPrimitive p;
         p.positions = {{-3, -3, -1}, {3, -3, -1}, {3, 3, -1}, {-3, 3, -1}};
@@ -147,9 +155,11 @@ struct IblScene
         auto model = as::RenderModel::create(*gpu.device, m, *textures, *shaders, defaults, options);
         INFO((model ? std::string() : model.error().message));
         REQUIRE(model.has_value());
+        model->setRootTransform(glm::translate(glm::mat4(1.0f), offset));
 
         REQUIRE(lights->upload().has_value());
         rd::Camera camera;
+        camera.setPosition(offset);
         camera.setAspect(8, 8);
         camera.setFarPlane(100.0f);
         const TextureHandle out = gpu.target(Format::kRGBA8Unorm, {8, 8}, "output");
@@ -164,7 +174,12 @@ struct IblScene
                 REQUIRE(drawn.has_value());
                 REQUIRE(renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
             });
-        return rgba(gpu.pixel(out, 4, 4));
+        std::vector<std::array<std::uint8_t, 4>> result;
+        for (const auto &[x, y] : pixels)
+        {
+            result.push_back(rgba(gpu.pixel(out, x, y)));
+        }
+        return result;
     }
 };
 
@@ -214,6 +229,16 @@ TEST_SUITE("renderer/ibl")
         CHECK((rd::projectEquirect({}).error().code == ErrorCode::kInvalidArgument));
     }
 
+    TEST_CASE("SH irradiance: a non-empty image too small for nine coefficients is rejected; the default uniform image is not")
+    {
+        auto tiny = rd::projectEquirect(rd::uniformEquirect({1, 1, 1}, 1, 1));
+        REQUIRE(!tiny.has_value());
+        CHECK((tiny.error().code == ErrorCode::kInvalidArgument));
+        auto uniform = rd::projectEquirect(rd::uniformEquirect({1, 1, 1}));
+        REQUIRE(uniform.has_value());
+        CHECK(close(uniform->evaluate({0, 1, 0}), {1, 1, 1}, 1e-4f));
+    }
+
     TEST_CASE("BRDF table: smooth at normal incidence reflects everything (A = 1, B = 0); rough loses energy; never above 1")
     {
         const std::uint32_t size = 32;
@@ -251,6 +276,33 @@ TEST_SUITE("renderer/ibl")
             REQUIRE(probes.add({.position = {100.0f + i, 0, 0}, .radius = 1.0f}).has_value());
         }
         CHECK((probes.add({.radius = 1.0f}).error().code == ErrorCode::kInvalidArgument));
+    }
+
+    TEST_CASE("IblFeature: probe positions are sent relative to the shader origin, computed in double")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            rd::ShaderLibrary library(*gpu.device);
+            rd::PipelineCache pipelines(*gpu.device);
+            auto created = rd::IblFeature::create(*gpu.device, library, pipelines, shaderDir(), smallSettings());
+            REQUIRE(created.has_value());
+            rd::IblFeature &ibl = **created;
+            rd::ProbeSet probes;
+            REQUIRE(probes.add({.position = {16777216.0f, 2.0f, -1.5f}, .radius = 0.25f}).has_value());
+            ibl.setProbes(probes);
+            CHECK(ibl.gpuBlock().probePositions[0] == glm::vec4(16777216.0f, 2.0f, -1.5f, 0.25f)); // avant la première image
+            rd::FrameData frame;
+            frame.cameraWorldHigh = {16777216.0f, 0.0f, 0.0f, 0.0f}; // rendu relatif : origine = caméra
+            frame.cameraWorldLow = {0.5f, 0.0f, 0.0f, 0.0f};           // partie basse perdue par une somme en float
+            REQUIRE(ibl.prepare(frame).has_value());
+            CHECK(ibl.gpuBlock().probePositions[0] == glm::vec4(-0.5f, 2.0f, -1.5f, 0.25f));
+            frame.cameraWorldLow = glm::vec4(0.0f);
+            frame.cameraRelativeOrigin = frame.cameraWorldHigh; // sans rendu relatif : origine 0, positions monde
+            REQUIRE(ibl.prepare(frame).has_value());
+            CHECK(ibl.gpuBlock().probePositions[0] == glm::vec4(16777216.0f, 2.0f, -1.5f, 0.25f));
+        }
     }
 
     TEST_CASE("IblFeature: the prefiltered cube matches the environment face by face, at every roughness level")
@@ -340,6 +392,22 @@ TEST_SUITE("renderer/ibl")
                 CHECK(px[0] > 200);
                 CHECK(px[1] <= 2);
                 CHECK(px[2] <= 2);
+            }
+            SUBCASE("far from the origin (camera-relative), a probe's radius is measured in camera-relative space")
+            {
+                // Caméra et sonde à X = 2^24 : une position monde en float y perd tout décalage < 1 m. Le centre de l'image est
+                // dans le rayon (0,25 m), le bord droit (≈ 0,5 m) n'y est plus et ne reçoit que l'environnement (noir).
+                scene.renderer->setCameraRelative(true);
+                REQUIRE(scene.ibl->setEnvironment(rd::uniformEquirect(glm::vec3(0.0f))).has_value());
+                const glm::vec3 far(16777216.0f, 0.0f, 0.0f);
+                rd::ProbeSet probes;
+                REQUIRE(probes.add({.position = far + glm::vec3(0, 0, -1), .radius = 0.25f, .irradiance = rd::ShIrradiance::uniform({1, 0, 0})})
+                            .has_value());
+                scene.ibl->setProbes(probes);
+                const auto px = scene.render(0.0f, 1.0f, "far", far, {{4, 4}, {7, 4}});
+                INFO("centre ", int(px[0][0]), " edge ", int(px[1][0]));
+                CHECK(px[0][0] > 20);
+                CHECK(px[1][0] == 0);
             }
             CHECK(scene.gpu.device->validationErrorCount() == 0);
         }

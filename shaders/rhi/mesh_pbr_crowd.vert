@@ -43,7 +43,8 @@ void main()
     crntPos = vec3(model * vec4(aPos, 1.0f));
     // Matrice des normales : mat3 du modèle (exact sans échelle non uniforme, comme le skinning en compute) ; normalisée par le fragment.
     normal = mat3(model) * aNormal;
-    tangent = vec4(mat3(model) * aTangent.xyz, aTangent.w);
+    // Miroir (déterminant négatif) : signe de la bitangente inversé, comme mesh_pbr.vert.
+    tangent = vec4(mat3(model) * aTangent.xyz, determinant(mat3(model)) < 0.0 ? -aTangent.w : aTangent.w);
     uv = aUv;
     vertexColor = aColor;
     gl_Position = camera.matrix * vec4(crntPos, 1.0f);

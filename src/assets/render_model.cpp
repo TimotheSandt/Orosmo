@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <span>
 
 namespace orosmo::assets
 {
@@ -34,6 +36,30 @@ rhi::AddressMode addressOf(WrapMode mode) noexcept
     }
 }
 
+template <typename T> bool inBounds(int index, const std::vector<T> &items) noexcept
+{
+    return index >= 0 && static_cast<std::size_t>(index) < items.size();
+}
+
+// Identité d'une image incluse : ses octets (FNV-1a 64 bits) et sa taille. Deux modèles de même `sourceKey` dont l'image N
+// diffère n'ont pas la même clé ; deux références à la même image la partagent.
+std::string embeddedImageKey(const std::string &sourceKey, int image, std::span<const std::byte> bytes)
+{
+    std::uint64_t hash = 14695981039346656037ull;
+    for (const std::byte b : bytes)
+    {
+        hash = (hash ^ std::to_integer<std::uint64_t>(b)) * 1099511628211ull;
+    }
+    char digest[17];
+    static constexpr char kHex[] = "0123456789abcdef";
+    for (int i = 15; i >= 0; --i, hash >>= 4)
+    {
+        digest[i] = kHex[hash & 0xF];
+    }
+    digest[16] = '\0';
+    return sourceKey + "#image" + std::to_string(image) + "#" + std::to_string(bytes.size()) + "-" + digest;
+}
+
 core::Result<std::shared_ptr<const renderer::Texture>> textureFor(const Model &model, const TextureRef &ref, TextureRole role, TextureCache &cache,
                                                                   const std::string &sourceKey)
 {
@@ -41,10 +67,23 @@ core::Result<std::shared_ptr<const renderer::Texture>> textureFor(const Model &m
     {
         return std::shared_ptr<const renderer::Texture>();
     }
+    // `pbrMaterialDesc` est publique : le modèle n'est pas forcément passé par `Model::validate`.
+    if (!inBounds(ref.texture, model.textures))
+    {
+        return makeError(ErrorCode::kOutOfRange, "glTF: " + sourceKey + ": texture " + std::to_string(ref.texture) + " does not exist");
+    }
     const TextureData &tex = model.textures[static_cast<std::size_t>(ref.texture)];
     if (tex.image < 0)
     {
         return std::shared_ptr<const renderer::Texture>(); // texture sans image utilisable (ex. KTX2 seul, lot G)
+    }
+    if (!inBounds(tex.image, model.images))
+    {
+        return makeError(ErrorCode::kOutOfRange, "glTF: " + sourceKey + ": image " + std::to_string(tex.image) + " does not exist");
+    }
+    if (tex.sampler >= 0 && !inBounds(tex.sampler, model.samplers))
+    {
+        return makeError(ErrorCode::kOutOfRange, "glTF: " + sourceKey + ": sampler " + std::to_string(tex.sampler) + " does not exist");
     }
     if (ref.texCoord != 0)
     {
@@ -60,7 +99,7 @@ core::Result<std::shared_ptr<const renderer::Texture>> textureFor(const Model &m
     }
     const ImageData &image = model.images[static_cast<std::size_t>(tex.image)];
     core::Result<std::shared_ptr<renderer::Texture>> loaded =
-        !image.encoded.empty() ? cache.loadFromMemory(sourceKey + "#image" + std::to_string(tex.image), image.encoded, request)
+        !image.encoded.empty() ? cache.loadFromMemory(embeddedImageKey(sourceKey, tex.image, image.encoded), image.encoded, request)
                                : cache.load(image.path, request);
     if (!loaded)
     {
@@ -100,6 +139,60 @@ core::Result<renderer::PbrMaterialDesc> pbrMaterialDesc(const Model &model, cons
         desc.maps[i] = std::move(*texture);
     }
     return desc;
+}
+
+std::optional<MeshPrimitive> flatShaded(const MeshPrimitive &p)
+{
+    if (!p.normals.empty() && p.normals.size() == p.positions.size())
+    {
+        return std::nullopt;
+    }
+    const std::size_t n = p.positions.size();
+    MeshPrimitive out;
+    out.material = p.material;
+    out.boundsMin = p.boundsMin;
+    out.boundsMax = p.boundsMax;
+    std::vector<std::uint32_t> corners; // sommets source des triangles gardés (un triangle hors bornes est ignoré)
+    corners.reserve(p.indices.size());
+    for (std::size_t t = 0; t + 2 < p.indices.size(); t += 3)
+    {
+        if (p.indices[t] < n && p.indices[t + 1] < n && p.indices[t + 2] < n)
+        {
+            corners.insert(corners.end(), {p.indices[t], p.indices[t + 1], p.indices[t + 2]});
+        }
+    }
+    const std::size_t count = corners.size();
+    auto copy = [&](const auto &from, auto &to)
+    {
+        if (from.size() == n)
+        {
+            to.reserve(count);
+            for (const std::uint32_t c : corners)
+            {
+                to.push_back(from[c]);
+            }
+        }
+    };
+    copy(p.positions, out.positions);
+    copy(p.uv0, out.uv0);
+    copy(p.uv1, out.uv1);
+    copy(p.colors, out.colors);
+    copy(p.joints, out.joints);
+    copy(p.weights, out.weights);
+    out.normals.reserve(count);
+    out.indices.reserve(count);
+    for (std::size_t t = 0; t < count; t += 3)
+    {
+        const core::Vec3 &a = out.positions[t];
+        const core::Vec3 face = glm::cross(out.positions[t + 1] - a, out.positions[t + 2] - a);
+        const core::Vec3 normal = glm::dot(face, face) > 0.0f ? glm::normalize(face) : core::Vec3(0.0f, 1.0f, 0.0f);
+        out.normals.insert(out.normals.end(), {normal, normal, normal});
+    }
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        out.indices.push_back(static_cast<std::uint32_t>(i));
+    }
+    return out;
 }
 
 std::vector<float> pbrVertices(const MeshPrimitive &p)
@@ -186,6 +279,7 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
         return std::unexpected(valid.error());
     }
     RenderModel out;
+    out.extraDefines_ = options.extraDefines;
     // Matériaux : un par matériau du fichier, plus le matériau par défaut de glTF (blanc, métal 1, rugosité 1) en dernier.
     for (const MaterialData &material : model.materials)
     {
@@ -210,43 +304,63 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
     }
     out.materials_.push_back(std::move(*defaultMaterial));
 
-    std::vector<std::vector<std::size_t>> meshPrimitives(model.meshes.size());
+    // Un maillage GPU par primitive ; `suffix` distingue la copie d'un nœud skinné (sa propre sortie de skinning).
+    auto buildMesh = [&](std::size_t m, std::size_t p, const std::string &suffix) -> core::Result<std::size_t>
+    {
+        const std::optional<MeshPrimitive> flat = flatShaded(model.meshes[m].primitives[p]);
+        const MeshPrimitive &prim = flat ? *flat : model.meshes[m].primitives[p];
+        renderer::MeshData data;
+        data.vertices = pbrVertices(prim);
+        data.indices = prim.indices;
+        data.attributeSizes.assign(renderer::kPbrVertexAttributeSizes.begin(), renderer::kPbrVertexAttributeSizes.end());
+        data.name = options.sourceKey + "." + model.meshes[m].name + "." + std::to_string(p) + suffix;
+        if (options.skinnable && !prim.joints.empty())
+        {
+            data.extraVertexUsage = rhi::BufferUsage::kStorage; // écrit par le skinning GPU (ANIM-01)
+        }
+        auto mesh = renderer::Mesh::create(device, data);
+        if (!mesh)
+        {
+            return std::unexpected(mesh.error());
+        }
+        const auto &material = prim.material >= 0 ? out.materials_[static_cast<std::size_t>(prim.material)] : out.materials_.back();
+        auto program = shaders.program(material->features(), options.extraDefines);
+        if (!program)
+        {
+            return std::unexpected(program.error());
+        }
+        mesh->setProgram(*program);
+        mesh->setMaterialGroup(material->group());
+        mesh->setAovMaterial({material->blend(), {}});
+        mesh->setCullMode(material->doubleSided() ? rhi::CullMode::kNone : rhi::CullMode::kBack);
+        out.meshMaterials_.push_back(prim.material >= 0 ? static_cast<std::size_t>(prim.material) : out.materials_.size() - 1);
+        out.sources_.push_back({m, p});
+        out.meshes_.push_back(std::make_unique<renderer::Mesh>(std::move(*mesh)));
+        return out.meshes_.size() - 1;
+    };
+    struct GpuPrimitive
+    {
+        std::size_t primitive = 0;
+        std::size_t mesh = 0; // dans meshes_
+        bool skinned = false; // tampon écrit par le skinning GPU
+        bool claimed = false; // déjà la sortie de skinning d'un nœud
+    };
+    std::vector<std::vector<GpuPrimitive>> meshPrimitives(model.meshes.size());
     for (std::size_t m = 0; m < model.meshes.size(); ++m)
     {
         for (std::size_t p = 0; p < model.meshes[m].primitives.size(); ++p)
         {
-            const MeshPrimitive &prim = model.meshes[m].primitives[p];
-            if (prim.indices.empty())
+            const MeshPrimitive &source = model.meshes[m].primitives[p];
+            if (source.indices.empty())
             {
                 continue;
             }
-            renderer::MeshData data;
-            data.vertices = pbrVertices(prim);
-            data.indices = prim.indices;
-            data.attributeSizes.assign(renderer::kPbrVertexAttributeSizes.begin(), renderer::kPbrVertexAttributeSizes.end());
-            data.name = options.sourceKey + "." + model.meshes[m].name + "." + std::to_string(p);
-            if (options.skinnable && !prim.joints.empty())
+            auto gpu = buildMesh(m, p, "");
+            if (!gpu)
             {
-                data.extraVertexUsage = rhi::BufferUsage::kStorage; // écrit par le skinning GPU (ANIM-01)
+                return std::unexpected(gpu.error());
             }
-            auto mesh = renderer::Mesh::create(device, data);
-            if (!mesh)
-            {
-                return std::unexpected(mesh.error());
-            }
-            const auto &material = prim.material >= 0 ? out.materials_[static_cast<std::size_t>(prim.material)] : out.materials_.back();
-            auto program = shaders.program(material->features(), options.extraDefines);
-            if (!program)
-            {
-                return std::unexpected(program.error());
-            }
-            mesh->setProgram(*program);
-            mesh->setMaterialGroup(material->group());
-            mesh->setAovMaterial({material->blend(), {}});
-            mesh->setCullMode(material->doubleSided() ? rhi::CullMode::kNone : rhi::CullMode::kBack);
-            meshPrimitives[m].push_back(out.meshes_.size());
-            out.sources_.push_back({m, p});
-            out.meshes_.push_back(std::make_unique<renderer::Mesh>(std::move(*mesh)));
+            meshPrimitives[m].push_back({p, *gpu, options.skinnable && !source.joints.empty(), false});
         }
     }
 
@@ -284,10 +398,35 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
         {
             continue;
         }
-        for (std::size_t gpu : meshPrimitives[static_cast<std::size_t>(mesh)])
+        const bool skinnedNode = model.nodes[static_cast<std::size_t>(n)].skin >= 0;
+        for (GpuPrimitive &gpu : meshPrimitives[static_cast<std::size_t>(mesh)])
         {
-            out.items_.push_back({n, gpu});
+            std::size_t index = gpu.mesh;
+            // ANIM-01 : chaque nœud skinné a sa propre sortie de skinning (sa pose) ; la géométrie au repos vient de la primitive.
+            // Les nœuds statiques gardent un seul jeu de tampons.
+            if (gpu.skinned && skinnedNode)
+            {
+                if (gpu.claimed)
+                {
+                    auto copy = buildMesh(static_cast<std::size_t>(mesh), gpu.primitive, ".node" + std::to_string(n));
+                    if (!copy)
+                    {
+                        return std::unexpected(copy.error());
+                    }
+                    index = *copy;
+                }
+                gpu.claimed = true;
+            }
+            out.items_.push_back({n, index});
         }
+    }
+    // REN-21 : un emplacement d'historique de mouvement par dessin d'un même maillage GPU (rang du nœud parmi ceux qui le
+    // dessinent), pour que chaque nœud garde sa propre matrice précédente.
+    std::vector<std::uint32_t> drawsPerMesh(out.meshes_.size(), 0);
+    out.historySlots_.reserve(out.items_.size());
+    for (const Item &item : out.items_)
+    {
+        out.historySlots_.push_back(drawsPerMesh[item.mesh]++);
     }
     out.world_ = model.worldMatrices();
     return out;
@@ -303,12 +442,42 @@ core::Result<> RenderModel::setNodeMatrices(std::vector<glm::mat4> world)
     return {};
 }
 
+core::Result<> RenderModel::rebuildMaterials(const renderer::ShadowFeature *shadows, renderer::PbrShaderCache &shaders)
+{
+    for (std::size_t i = 0; i < materials_.size(); ++i)
+    {
+        renderer::PbrMaterial &material = *materials_[i];
+        // Variante d'abord : si elle ne se compile pas, le matériau et ses maillages gardent groupe et variante précédents.
+        const std::uint32_t features = (material.features() & ~renderer::kPbrShadows) | (shadows != nullptr ? renderer::kPbrShadows : 0u);
+        auto program = shaders.program(features, extraDefines_);
+        if (!program)
+        {
+            return std::unexpected(program.error());
+        }
+        if (auto r = material.rebuild(shadows); !r) // échec : l'ancien groupe reste valide (PbrMaterial::rebuild)
+        {
+            return r;
+        }
+        for (std::size_t m = 0; m < meshes_.size(); ++m)
+        {
+            if (meshMaterials_[m] == i)
+            {
+                meshes_[m]->setProgram(*program);
+                meshes_[m]->setMaterialGroup(material.group()); // l'ancien handle est détruit par rebuild
+            }
+        }
+    }
+    return {};
+}
+
 core::Result<> RenderModel::draw(renderer::SceneRenderer &scene, const renderer::Camera &camera)
 {
-    for (const Item &item : items_)
+    for (std::size_t i = 0; i < items_.size(); ++i)
     {
+        const Item &item = items_[i];
         renderer::Mesh &mesh = *meshes_[item.mesh];
         mesh.setModelMatrix(root_ * world_[static_cast<std::size_t>(item.node)]);
+        mesh.setHistorySlot(historySlots_[i]);
         if (auto r = scene.drawMesh(mesh, camera); !r)
         {
             return r;

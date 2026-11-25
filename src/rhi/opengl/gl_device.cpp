@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <string>
 
 namespace orosmo::rhi::gl
@@ -891,6 +892,13 @@ Result<> GlDevice::updateTexture(TextureHandle handle, const TextureCopy &copy, 
         {
             return makeError(ErrorCode::kInvalidArgument, "updateTexture: region is not aligned on 4x4 blocks (" + texture->desc.debugName + ")");
         }
+        // Une couche par appel (uploadCompressedRegion) : sa taille doit tenir dans un GLsizei, sinon OpenGL refuserait l'envoi
+        // en silence (un tableau BC7 8192 × 8192 × 32 fait 2 Gio, une couche 64 Mio).
+        if (imageBytes(format, region->size.width, region->size.height) > static_cast<std::uint64_t>(std::numeric_limits<GLsizei>::max()))
+        {
+            return makeError(ErrorCode::kOutOfRange, "updateTexture: one layer of the region exceeds the GL transfer size limit (" +
+                                                         texture->desc.debugName + ")");
+        }
         uploadCompressedRegion(*texture, *region, data.first(required));
         return {};
     }
@@ -944,8 +952,11 @@ void GlDevice::uploadCompressedRegion(const TextureRes &texture, const SliceRegi
             glCompressedTexSubImage2D(GL_TEXTURE_2D, mip, x, y, w, h, internal, static_cast<GLsizei>(slice), data.data());
             break;
         case TextureDimension::k2DArray:
-            glCompressedTexSubImage3D(GL_TEXTURE_2D_ARRAY, mip, x, y, static_cast<GLint>(region.layer), w, h, static_cast<GLsizei>(region.size.depth),
-                                      internal, static_cast<GLsizei>(data.size()), data.data());
+            for (std::uint32_t layer = 0; layer < region.size.depth; ++layer) // couche par couche : `slice` tient dans un GLsizei
+            {
+                glCompressedTexSubImage3D(GL_TEXTURE_2D_ARRAY, mip, x, y, static_cast<GLint>(region.layer + layer), w, h, 1, internal,
+                                          static_cast<GLsizei>(slice), data.data() + slice * layer);
+            }
             break;
         case TextureDimension::kCube:
             for (std::uint32_t face = 0; face < region.size.depth; ++face)

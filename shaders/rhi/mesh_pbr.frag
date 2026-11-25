@@ -210,8 +210,7 @@ void main()
     s.ambientResponse = base.rgb * (1.0 - metallic) * occlusion;
     vec3 color = lights.AmbientLightColor.rgb * lights.AmbientLightStrength * s.ambientResponse;
 #ifdef OROSMO_IBL
-    vec3 worldPos = crntPos + (frame.cameraWorldHigh.xyz + frame.cameraWorldLow.xyz) - frame.cameraRelativeOrigin.xyz;
-    color += iblShade(worldPos, s.n, s.v, s.albedo, s.metallic, s.roughness, occlusion);
+    color += iblShade(crntPos, s.n, s.v, s.albedo, s.metallic, s.roughness, occlusion); // sondes relatives, comme crntPos
 #endif
 #ifdef OROSMO_FORWARD_PLUS
     const uint cluster = clusterIndexAt(crntPos);

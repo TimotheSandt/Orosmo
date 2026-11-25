@@ -70,7 +70,9 @@ struct ShIrradiance
     glm::vec3 evaluate(const glm::vec3 &normal) const noexcept;
     static ShIrradiance uniform(const glm::vec3 &radiance) noexcept;
 };
-// Projection d'un environnement, pondérée par l'angle solide de chaque texel. kInvalidArgument pour une image vide.
+// Projection d'un environnement, pondérée par l'angle solide de chaque texel. kInvalidArgument pour une image vide, ET pour une
+// image non vide trop petite pour résoudre les neuf coefficients (ex. 1 × 1). Pour un environnement uniforme,
+// `uniformEquirect(radiance)` (8 × 4 par défaut) convient.
 core::Result<ShIrradiance> projectEquirect(const EquirectImage &image);
 
 // Table BRDF split-sum : `size` × `size` couples (A, B) ; colonne = n·v (de 0 à 1, centres de texels), ligne = rugosité
@@ -116,7 +118,7 @@ struct GpuIblBlock
 {
     glm::vec4 params; // x : intensité diffuse, y : intensité spéculaire, z : dernier niveau de mip, w : nombre de sondes
     std::array<glm::vec4, 9> environmentSh;
-    std::array<glm::vec4, kMaxLightProbes> probePositions; // xyz monde, w rayon
+    std::array<glm::vec4, kMaxLightProbes> probePositions; // xyz relatifs à l'origine des shaders (docs/03 §10), w rayon
     std::array<glm::vec4, std::size_t{kMaxLightProbes} * 9> probeSh;
 };
 static_assert(sizeof(GpuIblBlock) == 16 * (1 + 9 + kMaxLightProbes + kMaxLightProbes * 9), "IblBlock std140 : vec4 seulement");
@@ -135,9 +137,14 @@ class IblFeature final : public RenderFeature
 
     std::string name() const override { return kName; }
     bool supports(const rhi::Capabilities &capabilities) const noexcept override { return capabilities.compute; }
+    // Origine des shaders de l'image (position monde de la caméra en rendu relatif, 0 sinon) : les sondes sont envoyées
+    // relatives à elle (soustraction en double), le bloc est réécrit quand elle change.
+    core::Result<> prepare(const FrameData &frame) override;
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
 
-    // Remplace l'environnement : envoi de l'image, préfiltrage en compute (soumis tout de suite), irradiance SH.
+    // Remplace l'environnement : envoi de l'image, préfiltrage en compute (soumis tout de suite), irradiance SH. kInvalidArgument
+    // (propagé de `projectEquirect`) pour une image vide ou trop petite pour les neuf coefficients SH (ex. 1 × 1) ; un
+    // environnement uniforme s'écrit `uniformEquirect(radiance)`.
     core::Result<> setEnvironment(const EquirectImage &image);
     // Intensités (appliquées à l'image suivante).
     void setIntensity(float diffuse, float specular) noexcept;
@@ -149,6 +156,7 @@ class IblFeature final : public RenderFeature
     rhi::TextureHandle brdfLut() const noexcept { return lut_; }
     std::uint32_t cubeMipLevels() const noexcept { return cubeLevels_; }
     const IblSettings &settings() const noexcept { return settings_; }
+    // Bloc envoyé : positions des sondes relatives à l'origine des shaders du dernier `prepare` (0 avant la première image).
     GpuIblBlock gpuBlock() const noexcept;
 
   private:
@@ -170,6 +178,7 @@ class IblFeature final : public RenderFeature
     std::uint32_t cubeLevels_ = 1;
     ShIrradiance environmentSh_;
     ProbeSet probes_;
+    glm::dvec3 shaderOrigin_{0.0};
     bool paramsDirty_ = true;
 };
 

@@ -1,7 +1,8 @@
 // Modèle importé prêt à dessiner (ASSET-01 + REN-10) : chaque primitive devient un `renderer::Mesh` aux sommets PBR, chaque matériau
 // glTF un `renderer::PbrMaterial` (textures par le `TextureCache` : couleur et émission en sRGB, le reste en linéaire), et chaque
 // nœud qui porte un maillage un dessin. Une primitive dessinée par plusieurs nœuds garde un seul jeu de tampons (une tranche du
-// modèle par dessin, `SceneRenderer::recordModelSlice`).
+// modèle par dessin, `SceneRenderer::recordModelSlice`), sauf pour les nœuds skinnés d'un modèle `skinnable` : chacun a son
+// propre maillage GPU, sortie du skinning de SA pose.
 #pragma once
 
 #include "orosmo/assets/model.hpp"
@@ -14,6 +15,7 @@
 #include "orosmo/renderer/scene_renderer.hpp"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -23,13 +25,20 @@ namespace orosmo::assets
 // Mode alpha de glTF → mode de fusion du renderer (REN-37) : OPAQUE → kOpaque, MASK → kMask, BLEND → kBlend.
 renderer::BlendMode blendModeForAlpha(AlphaMode mode) noexcept;
 
-// Matériau glTF → description PBR ; les textures viennent de `textures` (clé des images incluses : `sourceKey#imageN`).
+// Matériau glTF → description PBR ; les textures viennent de `textures` (clé des images incluses : `sourceKey#imageN#<taille>-<empreinte des octets>`, propre au contenu).
 core::Result<renderer::PbrMaterialDesc> pbrMaterialDesc(const Model &model, const MaterialData &material, TextureCache &textures,
                                                        const std::string &sourceKey);
 
 // Sommets entrelacés de `renderer::kPbrVertexAttributeSizes` (16 flottants). Normales absentes : calculées par face et lissées
 // par sommet ; tangentes absentes : calculées depuis les UV (repli (1, 0, 0, 1) sans UV) ; couleur absente : blanc.
+// `RenderModel` lui passe la primitive de `flatShaded` quand NORMAL manque : les normales y sont alors plates.
 std::vector<float> pbrVertices(const MeshPrimitive &primitive);
+
+// glTF 2.0 (§3.7.2.1) : une primitive sans NORMAL est dessinée avec des normales plates, et ses tangentes sont ignorées. Rend
+// alors une copie où chaque triangle a ses propres sommets (tous les attributs recopiés, articulations et poids compris), sa
+// normale de face et des index 0, 1, 2… ; rend nullopt quand la primitive a ses normales (à dessiner telle quelle). Toute vue
+// des sommets GPU d'un `RenderModel` (skinning, foule) part de cette primitive.
+std::optional<MeshPrimitive> flatShaded(const MeshPrimitive &primitive);
 
 struct RenderModelOptions
 {
@@ -54,6 +63,13 @@ class RenderModel
     core::Result<> setNodeMatrices(std::vector<glm::mat4> world);
     // Enregistre un dessin par (nœud, primitive) de la scène choisie.
     core::Result<> draw(renderer::SceneRenderer &scene, const renderer::Camera &camera);
+    // Recrée le groupe 1 de chaque matériau (`PbrMaterial::rebuild` : nouvel atlas d'ombres après `ShadowFeature::setSettings`,
+    // réception ajoutée ou retirée avec `shadows`) et remplace, dans chaque maillage du modèle, le groupe (l'ancien handle est
+    // détruit) et la variante de shader (réceptrice ou non). À appeler entre deux images, avant le prochain `draw`. Un matériau
+    // dont la variante ou le groupe ne peut être créé garde les précédents, ses maillages aussi, et l'erreur est rendue (les
+    // matériaux suivants ne sont pas traités). Limite : un groupe posé à la main (`mesh(i).setMaterialGroup(instance->group())`)
+    // est remplacé par celui du matériau du fichier, et les lots de `anim::CrowdRenderer` gardent l'ancien handle (à recréer).
+    core::Result<> rebuildMaterials(const renderer::ShadowFeature *shadows, renderer::PbrShaderCache &shaders);
 
     std::size_t drawCount() const noexcept { return items_.size(); }
     std::size_t meshCount() const noexcept { return meshes_.size(); }
@@ -81,7 +97,10 @@ class RenderModel
     std::vector<std::unique_ptr<renderer::Mesh>> meshes_; // une par primitive (unique_ptr : un Mesh déplacé garde ses tampons)
     std::vector<std::shared_ptr<renderer::PbrMaterial>> materials_;
     std::vector<Item> items_;
+    std::vector<std::uint32_t> historySlots_; // par dessin : emplacement d'historique de mouvement de son maillage (Mesh::setHistorySlot)
     std::vector<MeshSource> sources_; // un par maillage GPU
+    std::vector<std::size_t> meshMaterials_; // un par maillage GPU : indice dans materials_
+    std::vector<renderer::Define> extraDefines_; // RenderModelOptions::extraDefines (variantes recréées par rebuildMaterials)
     std::vector<glm::mat4> world_;
     glm::mat4 root_{1.0f};
 };

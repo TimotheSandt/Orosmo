@@ -43,8 +43,10 @@ void main()
 {
     crntPos = vec3(model.model * vec4(aPos, 1.0f));
     normal = mat3(model.normalMatrix) * aNormal;
-    // La tangente suit la surface (matrice du modèle, pas l'inverse transposée) ; le signe passe tel quel.
-    tangent = vec4(mat3(model.model) * aTangent.xyz, aTangent.w);
+    // La tangente suit la surface (matrice du modèle, pas l'inverse transposée). Un miroir (déterminant négatif) retourne
+    // cross(N, T) : le signe de la bitangente est inversé pour qu'elle garde son sens (glTF : B = cross(N, T) × w).
+    mat3 linear = mat3(model.model);
+    tangent = vec4(linear * aTangent.xyz, determinant(linear) < 0.0 ? -aTangent.w : aTangent.w);
     uv = aUv;
     vertexColor = aColor;
     gl_Position = camera.matrix * vec4(crntPos, 1.0f);
