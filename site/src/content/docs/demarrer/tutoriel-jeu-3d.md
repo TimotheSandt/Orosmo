@@ -343,9 +343,15 @@ struct CameraController
         }
         else
         {
-            window.setCursorMode(platform::CursorMode::kNormal);
-            looking = false;
+            release(window);
         }
+    }
+
+    // Rend le curseur : appelé aussi quand le menu s'ouvre en pause, où update n'est plus appelé.
+    void release(platform::Window &window)
+    {
+        window.setCursorMode(platform::CursorMode::kNormal);
+        looking = false;
     }
 };
 
@@ -403,9 +409,9 @@ Trois choix à comprendre :
     const std::filesystem::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
     rd::ShaderLibrary shaders(device);
     rd::PipelineCache pipelines(device);
+    auto lightsResult = rd::LightManager::create(device);   // déclaré AVANT les renderers : détruit après eux
     auto sceneResult = rd::SceneRenderer::create(device, shaders, pipelines, {.shaderDirectory = shaderDir});
     auto canvasResult = rd::CanvasRenderer::create(device, shaders, pipelines, shaderDir);
-    auto lightsResult = rd::LightManager::create(device);
     if (!sceneResult || !canvasResult || !lightsResult)
     {
         std::cerr << "Renderer: initialization failed\n";
@@ -603,6 +609,10 @@ L'ordre d'une image est celui de [Dessiner une scène](/guides/rendu-3d/scene/#l
                 if (hero.skinned)
                     (void)hero.skinned->setPose(hero.machine->pose());
             }
+        }
+        else
+        {
+            controller.release(window);   // le menu s'ouvre pendant un clic droit : le curseur redevient libre
         }
 
         // Image de la fenêtre ; échoue si la fenêtre est réduite : on saute l'image.

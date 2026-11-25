@@ -32,8 +32,8 @@ const std::filesystem::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
 rd::ShaderLibrary shaders(device);       // partagés par tous les renderers,
 rd::PipelineCache pipelines(device);     // à garder vivants jusqu'à la fin
 
+auto lightsResult = rd::LightManager::create(device);   // avant le renderer : détruit après lui (il garde un pointeur)
 auto sceneResult  = rd::SceneRenderer::create(device, shaders, pipelines, {.shaderDirectory = shaderDir});
-auto lightsResult = rd::LightManager::create(device);
 auto program      = shaders.loadGraphics(shaderDir / "mesh.vert", shaderDir / "mesh.frag");
 auto cubeResult   = rd::Mesh::create(device, makeColoredCube());   // MeshData : position, normale, couleur
 if (!sceneResult || !lightsResult || !program || !cubeResult) { /* afficher l'erreur, sortir */ }

@@ -135,9 +135,9 @@ const std::filesystem::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
 rd::ShaderLibrary shaders(device);
 rd::PipelineCache pipelines(device);
 
+auto lightsResult = rd::LightManager::create(device);   // avant les renderers : détruit après eux (ils gardent un pointeur)
 auto sceneResult  = rd::SceneRenderer::create(device, shaders, pipelines, {.shaderDirectory = shaderDir});
 auto canvasResult = rd::CanvasRenderer::create(device, shaders, pipelines, shaderDir);
-auto lightsResult = rd::LightManager::create(device);
 auto meshProgram  = shaders.loadGraphics(shaderDir / "mesh.vert", shaderDir / "mesh.frag");
 auto cubeResult   = rd::Mesh::create(device, makeColoredCube());   // MeshData : sommets, indices, attributeSizes
 if (!sceneResult || !canvasResult || !lightsResult || !meshProgram || !cubeResult) { /* afficher l'erreur, sortir */ }
