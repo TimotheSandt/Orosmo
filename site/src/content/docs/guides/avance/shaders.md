@@ -104,6 +104,12 @@ if (shaders.lastError()) { /* la compilation a échoué : message du compilateur
 // Rien d'autre : PipelineCache::graphics reconstruit le pipeline à la demande quand la révision du programme a changé.
 ```
 
+Cela ne vaut que si l'on **redemande** le pipeline : `PipelineCache::graphics` reconstruit à la demande, mais un `PipelineHandle`
+conservé (comme celui que reçoit `PulseFeature` dans [Écrire un plugin de rendu](/guides/avance/plugin-de-rendu/)) n'est pas mis
+à jour tout seul et continue d'utiliser l'ancien pipeline. Un plugin qui veut suivre le rechargement garde le `ShaderProgram`
+et l'état, puis rappelle `pipelines.graphics(*program, state)` quand `pollHotReload()` a rendu plus de 0 (ou à chaque image :
+le cache répond sans reconstruire tant que rien n'a changé) pour remplacer son handle.
+
 Si la compilation échoue, ou si les étages ne se lient plus (une sortie `vec4` devenue `vec3`), le programme garde son ancienne
 version, l'erreur est dans `lastError()` et `PipelineCache::lastError()`, et l'image continue avec l'ancien pipeline. Les étages
 modifiés ensemble sont validés ensemble : aucun n'est installé si l'un échoue. Corriger un seul étage suffit à reprendre.
