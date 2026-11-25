@@ -26,6 +26,79 @@ Les objets de rang supérieur gardent des références vers ceux de rang inféri
 poignées du RHI (`TextureHandle`…) ne sont pas possédées, et un `Mesh` ne possède pas son programme de shader ni son
 groupe de matériau. Pour l'état lié à l'interface, déclarez-le avant `ui::Ui` : il est détruit après l'arbre de vues.
 
+## Conventions des exemples
+
+Tous les exemples du wiki suivent les mêmes noms et les mêmes règles, pour pouvoir être assemblés.
+
+```cpp
+namespace core     = orosmo::core;
+namespace platform = orosmo::platform;
+namespace rhi      = orosmo::rhi;
+namespace rd       = orosmo::renderer;
+namespace ui       = orosmo::ui;
+```
+
+| Nom | Type exact | Origine |
+|---|---|---|
+| `window` | `platform::Window` | créée en premier, détruite en dernier |
+| `device` | `rhi::Device &` | `auto created = rhi::createDevice(desc); rhi::Device &device = **created;` (`created` est un `core::Result<std::unique_ptr<rhi::Device>>` qui doit rester vivant) |
+| `shaders`, `pipelines` | `rd::ShaderLibrary`, `rd::PipelineCache` | `rd::ShaderLibrary shaders(device);` |
+| `renderer` | `rd::SceneRenderer &` | `auto sceneResult = rd::SceneRenderer::create(device, shaders, pipelines, {.shaderDirectory = shaderDir}); rd::SceneRenderer &renderer = **sceneResult;` |
+| `canvas` | `rd::CanvasRenderer &` | même principe avec `rd::CanvasRenderer::create` |
+| `camera` | `rd::Camera` | objet local de l'application |
+| `lights` | `rd::LightManager` | `auto lightsResult = rd::LightManager::create(device); rd::LightManager &lights = *lightsResult;` |
+| `encoder` | `std::unique_ptr<rhi::CommandEncoder>` | `auto encoder = device.createCommandEncoder();` ; les fonctions le prennent par `*encoder` |
+| `shaderDir` | `std::filesystem::path` | `GET_RESOURCE_PATH("shader/rhi")` |
+
+Le `main.cpp` du projet de démarrage écrit `**device` et `(*scene)->` partout : c'est le même objet, sans la référence
+intermédiaire. Les exemples du wiki utilisent les références ci-dessus, plus lisibles.
+
+**Déballer un `Result`.** Les fabriques renvoient `core::Result<T>` (`std::expected<T, core::Error>`). Dans un exemple,
+`if (!r) return …;` veut dire : écrire `r.error().message` et sortir, ou propager avec `return std::unexpected(r.error());`.
+Un commentaire `// …` marque du code omis. Pour un `Result<T>` par valeur (`Mesh`, `LightManager`), on déréférence une fois
+(`*lightsResult`) ; pour un `Result<std::unique_ptr<T>>` (`SceneRenderer`, `CanvasRenderer`, `Device`), deux fois.
+
+### Chemins des ressources
+
+Le moteur lit ses shaders, une police et les thèmes à l'exécution, **relativement au dossier courant**, qui est celui de
+l'exécutable après `orosmo::core::setWorkingDirectoryToExecutable()` (`orosmo/core/paths.hpp`). Pour les écrire, utilisez
+la macro `GET_RESOURCE_PATH("dossier/fichier")` : elle vaut `"res/dossier/fichier"` (sauf si le symbole `RELEASE` est défini,
+ce que les `Makefile` du moteur ne font pas : elle vaut donc `res/…` en debug comme en release). Elle n'accepte qu'un
+littéral de chaîne.
+
+```cpp
+#include <orosmo/core/paths.hpp>
+
+const std::filesystem::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
+const char *font   = GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf");
+const char *theme  = GET_RESOURCE_PATH("themes/dark.json");
+const char *model  = GET_RESOURCE_PATH("models/casque.glb");   // un asset de votre jeu
+```
+
+Arborescence d'un projet créé par `orosmo init`, puis du dossier de l'exécutable après `make debug` :
+
+```text
+mygame/
+  orosmo/                 le paquet du moteur ; ne le modifiez pas (orosmo update le remplace)
+    res/fonts, res/themes   police et thèmes par défaut
+    shaders/                shaders du RHI (shaders/rhi/…)
+  src/                    votre code et vos .cui
+  res/                    (facultatif) vos ressources : voir ci-dessous
+  bin/debug/
+    main
+    res/fonts, themes     copiés depuis res/ si ce dossier existe, sinon depuis orosmo/res/
+    res/shader/rhi        copiés depuis orosmo/shaders/
+    res/models/…          vos assets, s'ils sont dans res/
+```
+
+:::caution
+Le `Makefile` copie **un seul** dossier vers `bin/<type>/res/` : `res/` du projet s'il existe, sinon `orosmo/res/`
+(variable `RES_DIR`). Si vous créez `res/` pour y mettre un modèle, la police et les thèmes du paquet ne sont plus copiés :
+le texte ne s'affiche plus et un thème qui étend `dark.json` ne trouve plus son parent. Copiez d'abord ceux du paquet :
+`cp -r orosmo/res res`, puis ajoutez vos fichiers (`res/models/`, `res/textures/`…). Les shaders, eux, sont toujours copiés depuis
+`orosmo/shaders/`. Conséquence : `orosmo update` ne met plus à jour la police et les thèmes de votre `res/`.
+:::
+
 ## Fenêtre et périphérique
 
 ```cpp
