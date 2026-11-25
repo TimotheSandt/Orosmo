@@ -206,8 +206,10 @@ Source : [`apps/demo/src/main.cpp`](https://github.com/TimotheSandt/Orosmo/blob/
   libc++ d'Apple, la pile est vide.
 
 :::note
-`LOG_FATAL` quitte sans écrire le journal dans le fichier. Pour garder la trace d'une erreur fatale, appeler
-`FLUSH_LOG_TO_FILE` avant, ou renvoyer l'erreur jusqu'à `main`.
+`LOG_FATAL` ajoute son message puis quitte (`std::exit(1)`) sans écrire le journal dans le fichier : un
+`FLUSH_LOG_TO_FILE` placé avant ne contiendrait pas ce message. Pour garder la trace d'une erreur fatale, journalisez-la
+avec `LOG_ERROR`, appelez `FLUSH_LOG_TO_FILE`, puis quittez vous-même (`return EXIT_FAILURE`), ou renvoyez l'erreur
+jusqu'à `main`.
 :::
 
 ## Limites
