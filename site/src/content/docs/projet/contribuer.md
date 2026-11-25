@@ -36,7 +36,7 @@ avec une IA : ces commits portent une ligne `Co-Authored-By` (voir [Histoire et 
 ```bash
 make all-debug
 make demo-test                               # tous les tests doctest
-make demo-test SANITIZE=address,undefined    # après make fclean
+make fclean demo-fclean && make demo-test SANITIZE=address,undefined   # arbre propre : SANITIZE n'invalide pas les objets déjà compilés (G66)
 make check                                   # couches, isolation des API graphiques, en-têtes autonomes
 sh tools/format_sources.sh                   # clang-format
 ```
