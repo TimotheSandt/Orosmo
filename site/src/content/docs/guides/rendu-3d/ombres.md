@@ -6,6 +6,8 @@ sidebar:
   label: Ombres
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 `rd::ShadowFeature` est un plugin qui tient à jour un atlas d'ombres : des cascades pour la première lumière
 directionnelle ombrée et une vue par projecteur ombré. En mode `kCached`, la géométrie fixe est dessinée une fois dans un
 cache ; quand rien ne bouge, rien n'est redessiné. Il faut trois choses : le plugin, des objets qui projettent (casters)

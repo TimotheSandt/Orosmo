@@ -6,6 +6,8 @@ sidebar:
   label: LOD
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 Un niveau de détail (LOD) est un maillage plus simple utilisé quand l'objet est loin. Dans Orosmo, les niveaux sont des
 maillages que vous fournissez : le moteur n'en invente pas. Il choisit le niveau selon la distance à la caméra et fond les
 deux niveaux voisins près d'une bascule. La cuisson d'assets propose des LOD automatiques, que vous

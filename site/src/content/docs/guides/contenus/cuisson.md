@@ -5,6 +5,8 @@ sidebar:
   order: 3
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 La cuisson transforme une primitive de maillage (`assets::MeshPrimitive`, celle d'un glTF importé) en une version plus compacte et plus rapide à dessiner, avec des niveaux de détail (LOD). Le résultat s'écrit dans un fichier `.omesh`. La cuisson est une bibliothèque (`include/orosmo/assets/bake.hpp`, meshoptimizer) : il n'existe pas d'exécutable en ligne de commande, on l'appelle depuis son propre outil.
 
 ## Exemple minimal

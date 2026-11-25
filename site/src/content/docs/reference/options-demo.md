@@ -7,7 +7,7 @@ sidebar:
 
 La démo est le binaire `apps/demo/bin/debug/main` (ou `bin/release/<nom>`), construit par `make all-debug`. Syntaxe : `--option valeur`
 ou `--option=valeur` ; `-h` équivaut à `--help`. Une option inconnue arrête la démo avec `Unknown argument: …` et rappelle
-l'usage. `make run` ne transmet pas d'arguments : lancez le binaire. Source :
+l'usage. Pour passer des options, lancez le binaire (voir [Explorer la démo](/demarrer/demo/)). Source :
 [`apps/demo/src/launch_options.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/launch_options.cpp).
 
 Les valeurs de `--api`, `--ui`, `--hud`, `--theme`, `--tab`, `--post`, `--aa`, `--lighting`, `--gpu-timings`, `--vsync` et

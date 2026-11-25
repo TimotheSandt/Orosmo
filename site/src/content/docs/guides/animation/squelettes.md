@@ -6,6 +6,8 @@ sidebar:
   label: Squelettes
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 Animer un personnage glTF demande plusieurs objets qui se référencent entre eux. Aucun objet ne les regroupe : il faut créer la chaîne complète soi-même, dans l'ordre ci-dessous, puis appeler trois choses chaque image dans un ordre précis. Cette page donne la chaîne, puis détaille chaque pièce.
 
 ## La chaîne complète

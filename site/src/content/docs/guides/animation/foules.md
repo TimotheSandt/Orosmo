@@ -5,6 +5,8 @@ sidebar:
   order: 3
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 `anim::CrowdRenderer` dessine beaucoup de copies d'un même modèle skinné, chacune avec sa propre pose. Le skinning se fait dans le vertex shader, avec une palette d'os par agent dans un tampon de stockage. Chaque primitive skinnée du modèle donne un seul draw call instancié pour tous les agents. Pour un seul personnage, voir plutôt [Animer un personnage](/guides/animation/squelettes/).
 
 ## Exemple minimal

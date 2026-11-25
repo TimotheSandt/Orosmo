@@ -6,6 +6,8 @@ sidebar:
   label: Debug visuel
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 Trois outils aident à voir ce que fait le rendu : `DebugDraw` trace des lignes et des formes en coordonnées monde,
 `SceneRenderer::setDebugView` change ce que l'image affiche, et `FrustumFreeze` fige la vue du culling pour la regarder de
 l'extérieur. Aucun n'a de coût tant qu'il n'est pas utilisé.

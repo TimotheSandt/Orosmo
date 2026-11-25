@@ -6,6 +6,8 @@ sidebar:
   label: Anticrénelage
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 Trois techniques sont des plugins du graphe, comme les post-traitements : FXAA et SMAA lissent les contours de l'image
 affichée, le TAA accumule les images successives grâce à un léger décalage de la caméra (jitter) et aux vecteurs de
 mouvement. Une seule est active à la fois, choisie par `rd::AntiAliasing::select`.

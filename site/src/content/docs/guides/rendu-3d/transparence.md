@@ -6,6 +6,8 @@ sidebar:
   label: Transparence
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 Un objet transparent se dessine après les opaques, sans écrire la profondeur, et les objets mélangés doivent être triés
 de l'arrière vers l'avant. `rd::TransparentFeature` fait ce tri : on lui dépose les objets de l'image, il les dessine dans
 une passe `transparents` juste après la passe `scene`.

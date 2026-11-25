@@ -6,6 +6,8 @@ sidebar:
   label: Lumières
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 Les lumières vivent dans un `rd::LightManager`, qui les range dans un tampon de stockage lu par les shaders. Le
 `SceneRenderer` le lit par un pointeur donné à `setLights`. Par défaut chaque fragment parcourt toutes les lumières
 (forward) ; avec beaucoup de lumières ponctuelles, le forward+ ne lui donne que celles de son cluster.

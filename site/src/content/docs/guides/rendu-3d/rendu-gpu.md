@@ -6,6 +6,8 @@ sidebar:
   label: Culling sur le GPU
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 `GpuDrivenFeature` est un plugin de rendu qui déplace sur le GPU ce que `ObjectSet::prepare` fait sur le CPU : un shader
 compute teste chaque objet (pyramide de vue, distance, taille à l'écran, occlusion Hi-Z), choisit le LOD et remplit des
 commandes de dessin indirectes. Le CPU n'a plus de liste de visibles à construire. Il réutilise le même `ObjectSet` et le
