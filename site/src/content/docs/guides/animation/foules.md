@@ -21,6 +21,8 @@ Adapté de `apps/demo/src/Scene/anim_scene.cpp` (`buildModels`, `updateCrowd`, `
 #include <orosmo/assets/texture_cache.hpp>
 #include <orosmo/renderer/material.hpp>
 
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -46,6 +48,8 @@ an::CrowdRenderer &crowd = **crowdResult;
 
 constexpr std::size_t kAgents = 1000;
 std::vector<orosmo::core::Mat4> worlds(kAgents);       // où est chaque agent
+for (std::size_t i = 0; i < kAgents; ++i)              // une matrice monde par agent : ici une grille de 40 par 25, espacée de 1,5 m
+    worlds[i] = glm::translate(glm::mat4(1.0f), glm::vec3(1.5f * float(i % 40), 0.0f, 1.5f * float(i / 40)));
 std::vector<an::Pose> poses(kAgents, an::restPose(model));
 
 // Chaque image.
