@@ -1,0 +1,27 @@
+/* Couleurs d'accent d'Orosmo (proches du thème « dark » de l'interface du moteur, res/themes/dark.json). */
+:root {
+  --sl-color-accent-low: #10203f;
+  --sl-color-accent: #4c8dff;
+  --sl-color-accent-high: #c9dcff;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #d6e4ff;
+  --sl-color-accent: #2f6fe0;
+  --sl-color-accent-high: #0f2a5c;
+}
+.captures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+.captures figure { margin: 0; }
+.captures img { width: 100%; height: auto; border-radius: 0.5rem; }
+.captures figcaption { font-size: var(--sl-text-sm); color: var(--sl-color-gray-3); margin-top: 0.25rem; }
+.site-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin-top: 1.5rem;
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-3);
+}
