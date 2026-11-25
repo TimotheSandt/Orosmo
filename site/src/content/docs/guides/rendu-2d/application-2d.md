@@ -128,8 +128,19 @@ int main()
         int pixelH = 0;
         window.getFramebufferSize(pixelW, pixelH);
         auto backbuffer = device.beginFrame();
-        if (!backbuffer || pixelW <= 0 || pixelH <= 0)
+        if (!backbuffer)
         {
+            // kBusy : fenêtre réduite, on saute l'image. Toute autre erreur est affichée (périphérique perdu : ne pas l'ignorer).
+            if (backbuffer.error().code != orosmo::core::ErrorCode::kBusy)
+            {
+                std::cerr << "beginFrame : " << backbuffer.error().message << '\n';
+                return EXIT_FAILURE;
+            }
+            continue;
+        }
+        if (pixelW <= 0 || pixelH <= 0)
+        {
+            (void)device.present();   // beginFrame a réussi : present() est toujours appelé
             continue;
         }
         const auto w = static_cast<std::uint32_t>(pixelW);
@@ -186,7 +197,11 @@ int main()
             std::cerr << (!ok ? ok.error().message : submitted.error().message) << '\n';
             return EXIT_FAILURE;
         }
-        (void)device.present();
+        if (auto presented = device.present(); !presented)
+        {
+            std::cerr << "present : " << presented.error().message << '\n';
+            return EXIT_FAILURE;
+        }
     }
     device.waitIdle();
     return EXIT_SUCCESS;

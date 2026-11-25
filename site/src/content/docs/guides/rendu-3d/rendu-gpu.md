@@ -89,7 +89,7 @@ après un redimensionnement ou après `resetOcclusion()`.
 
 ## Capacités et repli
 
-`GpuDrivenFeature::supportedBy(device->capabilities())` dit si le périphérique convient : compute, dessin indirect,
+`GpuDrivenFeature::supportedBy(device.capabilities())` dit si le périphérique convient : compute, dessin indirect,
 `drawIndirectFirstInstance`, 7 emplacements de tampons de stockage et des groupes de travail d'au moins 64. Sinon
 `enableGpuDriven` et `create` renvoient `kUnsupported` et rien n'est changé : gardez le chemin CPU. Sans
 `multiDrawIndirect`, le RHI rejoue les commandes une par une, avec le même résultat.

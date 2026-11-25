@@ -109,6 +109,7 @@ Règles :
 - La `Subscription` désabonne à sa destruction (RAII). Elle est marquée `[[nodiscard]]` : si on ne la garde pas,
   l'abonnement s'arrête tout de suite.
 - Le bus peut être détruit avant ses abonnements : leur destruction ne fait alors plus rien.
+- `Subscription::active()` ne teste que la présence de la fonction de désabonnement : après la destruction du bus, il reste vrai jusqu'à `reset()`. Il ne dit pas que le bus existe encore ; ne l'utilisez pas pour décider de se réabonner.
 - Pendant `publish`, un abonné peut s'abonner ou se désabonner. Un nouvel abonné ne reçoit pas l'événement en cours ; un
   désabonné ne le reçoit plus.
 - `EventBus` n'est pas thread-safe : publier et s'abonner depuis le même thread.
@@ -137,14 +138,18 @@ WorldPosition back = toWorld(camera, local);
 | `narrow(DVec3)`, `widen(Vec3)` | Conversions explicites pour les directions et les matrices (`DMat4` ↔ `Mat4`). |
 | `radians`, `degrees`, `lerp`, `saturate`, `approxEqual` | Aides courantes. `kPi` est défini. |
 
-Le renderer fait le même calcul pour le dessin quand `SceneRenderer::setCameraRelative(true)` est actif.
+Le renderer soustrait aussi la position de la caméra à celle de chaque maillage quand `SceneRenderer::setCameraRelative(true)`
+est actif, mais **en `float`** : l'origine de la caméra et la matrice du maillage (`Mesh::setPosition`, `setModelMatrix`) sont
+en `float`, donc la fraction d'une position très éloignée est déjà perdue avant la soustraction. `toLocal` n'a d'effet sur le
+dessin que si vous l'appelez vous-même, en double, et que vous donnez ensuite la position locale au maillage.
 
 ## Limites
 
 - Il n'y a pas de boucle de simulation intégrée au moteur (prévue avec la scène et les entités, M8). L'application écrit sa boucle avec
   `FrameTimer` et `FixedStepper`, comme ci-dessus.
-- `Camera` garde sa position en `float` : le rendu relatif à la caméra ne gagne rien tant que la caméra elle-même ne porte
-  pas de `double` (`src/renderer/README.md`, limites).
+- `Camera` garde sa position en `float`, et les maillages aussi (position et matrice de modèle) : le rendu relatif à la
+  caméra ne gagne rien tant que ni la caméra ni les objets ne portent de `double` (`src/renderer/README.md`, limites). Deux
+  limites distinctes : côté caméra et côté objet.
 
 ## Voir aussi
 

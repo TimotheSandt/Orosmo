@@ -135,9 +135,9 @@ const std::filesystem::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
 rd::ShaderLibrary shaders(device);
 rd::PipelineCache pipelines(device);
 
+auto lightsResult = rd::LightManager::create(device);   // avant les renderers : détruit après eux (ils gardent un pointeur)
 auto sceneResult  = rd::SceneRenderer::create(device, shaders, pipelines, {.shaderDirectory = shaderDir});
 auto canvasResult = rd::CanvasRenderer::create(device, shaders, pipelines, shaderDir);
-auto lightsResult = rd::LightManager::create(device);
 auto meshProgram  = shaders.loadGraphics(shaderDir / "mesh.vert", shaderDir / "mesh.frag");
 auto cubeResult   = rd::Mesh::create(device, makeColoredCube());   // MeshData : sommets, indices, attributeSizes
 if (!sceneResult || !canvasResult || !lightsResult || !meshProgram || !cubeResult) { /* afficher l'erreur, sortir */ }
@@ -187,6 +187,7 @@ while (!window.shouldClose()) {
     if (!backbuffer) continue;                          // sauter l'image, pas quitter
 
     auto encoder = device.createCommandEncoder();       // un encodeur par image
+    renderer.setOutputResolution(static_cast<int>(size.width), static_cast<int>(size.height));   // sinon beginFrame refuse 0 × 0
     auto ok = renderer.beginFrame(*encoder, {.clearColor = {0.10f, 0.13f, 0.18f, 1.0f}});
     if (ok) ok = renderer.setCamera(camera);
     if (ok) ok = renderer.drawMesh(cube, camera);       // enregistré, pas encore dessiné

@@ -2,8 +2,9 @@
 // Usage : npm run build && npm run check-links. Code de sortie non nul si un lien est cassé.
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = new URL('../dist/', import.meta.url).pathname;
+const root = fileURLToPath(new URL('../dist/', import.meta.url));
 if (!existsSync(root)) {
   console.error('dist/ absent : lancer npm run build d\'abord');
   process.exit(2);

@@ -48,14 +48,15 @@ if (auto theme = gui.themes().load(GET_RESOURCE_PATH("themes/dark.json")); !them
     return 1;
 }
 
-auto panel = std::make_unique<ui::Panel>();
-panel->setWidth(ui::SizeSpec::fixed(260)).setHeight(ui::SizeSpec::fit());
-panel->setMargin(ui::Insets::all(12)).setAlign(ui::Align::kStart, ui::Align::kStart);
-panel->emplace<ui::Label>("Settings", "title");
-panel->emplace<ui::Label>().bindText([&] { return ui::text("Frame ", settings.frame); });
-panel->emplace<ui::Checkbox>("Rotate", ui::Binding<bool>::ref(settings.rotate));
-panel->emplace<ui::Button>("Reset").onClick([&](const ui::Event &) { settings.reset(); });
-gui.setRoot(std::move(panel));
+auto panelOwner = std::make_unique<ui::Panel>();
+ui::Panel &panel = *panelOwner;    // reste valide après le transfert à gui (l'objet est sur le tas)
+panel.setWidth(ui::SizeSpec::fixed(260)).setHeight(ui::SizeSpec::fit());
+panel.setMargin(ui::Insets::all(12)).setAlign(ui::Align::kStart, ui::Align::kStart);
+panel.emplace<ui::Label>("Settings", "title");
+panel.emplace<ui::Label>().bindText([&] { return ui::text("Frame ", settings.frame); });
+panel.emplace<ui::Checkbox>("Rotate", ui::Binding<bool>::ref(settings.rotate));
+panel.emplace<ui::Button>("Reset").onClick([&](const ui::Event &) { settings.reset(); });
+gui.setRoot(std::move(panelOwner));
 ```
 
 Le deuxième argument de `Label` est le nom de style du thème (`widgets.title`). Le projet de démarrage nomme l'objet `interface` ;
@@ -124,7 +125,7 @@ Un `Binding` sans `set` affiche la valeur sans permettre de la changer. Pour un 
 fin de `update`, après les écritures de liaisons : un `onChange` lit déjà la nouvelle valeur.
 
 ```cpp
-panel->emplace<ui::Slider>(ui::numberBinding(settings.speed), 0.0, 5.0, 0.1).onChange([&](const ui::Event &) { /* ... */ });
+panel.emplace<ui::Slider>(ui::numberBinding(settings.speed), 0.0, 5.0, 0.1).onChange([&](const ui::Event &) { /* ... */ });
 
 gui.actions().add("reset", ui::handler([&] { settings.reset(); }));   // action nommée
 ```
@@ -138,7 +139,7 @@ qui ont été demandées mais jamais ajoutées.
 Une structure décrite par `core::Reflect<T>` devient un panneau de widgets, sans code d'interface :
 
 ```cpp
-panel->add(ui::reflectedPanel(params));          // un widget par champ, adapté au type et à la plage
+panel.add(ui::reflectedPanel(params));          // un widget par champ, adapté au type et à la plage
 ```
 
 Booléen : `Checkbox` ; énumération avec `core::EnumNames` : `Dropdown` ; nombre borné : `Slider` ; non borné : `NumberField` ;

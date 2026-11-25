@@ -32,8 +32,8 @@ const std::filesystem::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
 rd::ShaderLibrary shaders(device);       // partagés par tous les renderers,
 rd::PipelineCache pipelines(device);     // à garder vivants jusqu'à la fin
 
+auto lightsResult = rd::LightManager::create(device);   // avant le renderer : détruit après lui (il garde un pointeur)
 auto sceneResult  = rd::SceneRenderer::create(device, shaders, pipelines, {.shaderDirectory = shaderDir});
-auto lightsResult = rd::LightManager::create(device);
 auto program      = shaders.loadGraphics(shaderDir / "mesh.vert", shaderDir / "mesh.frag");
 auto cubeResult   = rd::Mesh::create(device, makeColoredCube());   // MeshData : position, normale, couleur
 if (!sceneResult || !lightsResult || !program || !cubeResult) { /* afficher l'erreur, sortir */ }
@@ -68,7 +68,7 @@ graphe de passes et l'écrit dans l'encodeur ; le GPU ne travaille qu'au `submit
 | 2 | `device.beginFrame()` | image de la fenêtre ; échoue (`kBusy`) si la fenêtre est réduite : sauter l'image |
 | 3 | `device.createCommandEncoder()` | un encodeur par image |
 | 4 | (compute : `skinned.dispatch(*encoder)`) | enregistré avant la scène |
-| 5 | `renderer.beginFrame(*encoder, options)` | prépare la cible de la scène |
+| 5 | `renderer.setOutputResolution(w, h)`, `renderer.beginFrame(*encoder, options)` | résolution de sortie (taille du framebuffer, à chaque image : elle suit le redimensionnement), puis prépare la cible de la scène ; `beginFrame` refuse une résolution vide (`0 × 0`, état d'un renderer neuf) |
 | 6 | `renderer.setCamera(camera)` | caméra de l'image |
 | 7 | `renderer.drawMesh(mesh, camera)`, `model.draw(renderer, camera)` | dessins enregistrés |
 | 8 | `renderer.endFrame(sortie)` | graphe construit : ombres, scène, plugins, copie vers la sortie |
@@ -77,11 +77,16 @@ graphe de passes et l'écrit dans l'encodeur ; le GPU ne travaille qu'au `submit
 | 11 | `device.present()` | affichage ; toujours appelé si l'étape 2 a réussi, même après une erreur |
 
 ```cpp
+renderer.setOutputResolution(static_cast<int>(size.width), static_cast<int>(size.height));   // avant beginFrame
 auto ok = renderer.beginFrame(*encoder, {.clearColor = {0.10f, 0.13f, 0.18f, 1.0f}});
 if (ok) ok = renderer.setCamera(camera);
 if (ok) ok = renderer.drawMesh(cube, camera);                                      // enregistré
 if (ok) ok = renderer.endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, size}); // exécuté ici
 ```
+
+Si `drawMesh` (ou `setCamera`) échoue après un `beginFrame` réussi, `endFrame` est sauté et l'image reste ouverte : le
+`beginFrame` suivant est refusé (`kInvalidArgument`, « the previous frame was not ended »). Après une telle erreur, affichez
+le message et arrêtez l'application, comme le fait le projet de démarrage (`Frame failed`, `EXIT_FAILURE`).
 
 `composed` est une `rd::RenderTarget` sans profondeur à la taille du framebuffer, où la scène puis l'interface sont
 dessinées avant la copie dans l'image de la fenêtre. Sa création et la boucle entière sont dans

@@ -20,7 +20,7 @@ namespace platform = orosmo::platform;
 int main()
 {
     platform::Window window("monjeu", 1280, 720, platform::WindowState::kWindowed);
-    if (window.init() != 0)             // 0 : succès ; -1 : pas d'affichage ou GLFW indisponible
+    if (window.init() != 0)             // 0 : succès ; -1 : la fenêtre n'a pas pu être créée
         return 1;
 
     platform::InputManager &input = platform::InputManager::getInstance(window.getWindow());
@@ -31,9 +31,13 @@ int main()
         if (input.isKeyJustPressed(platform::KeyButton::kEscape))
             window.requestClose();
     }
+    window.close();                     // détruit la fenêtre AVANT l'arrêt de GLFW (sinon son destructeur arrive après terminate)
     platform::Window::terminate();      // après la destruction de toutes les fenêtres et du périphérique
 }
 ```
+
+Limite : si GLFW lui-même ne s'initialise pas (`glfwInit` échoue), `init` journalise `LOG_FATAL`, qui termine le processus
+(`std::exit(1)`) : ce cas ne revient jamais à votre code et ne peut pas être traité par le test de `init`.
 
 `newFrame()` traite les événements du système et met à jour l'`InputManager` de la fenêtre : lisez les entrées après
 cet appel. Avec un périphérique graphique, `init` reçoit en plus le rappel `[&] { (void)rhi::prepareWindowHints(desc); }`

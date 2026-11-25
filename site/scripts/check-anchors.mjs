@@ -1,9 +1,10 @@
 // Vérifie les ancres des liens internes du site construit (dist/) : chaque href="/page/#ancre" (ou "#ancre")
 // doit pointer vers un id présent dans la page cible. Usage : npm run build && npm run check-anchors.
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = new URL('../dist/', import.meta.url).pathname;
+const root = fileURLToPath(new URL('../dist/', import.meta.url));
 if (!existsSync(root)) {
   console.error("dist/ absent : lancer npm run build d'abord");
   process.exit(2);
@@ -34,6 +35,12 @@ function idsOf(file) {
   return idCache.get(file);
 }
 
+// URL publique d'une page de dist/ (".../index.html" -> ".../"), base de résolution des liens relatifs.
+function publicUrl(file) {
+  const rel = relative(root, file).split(sep).join('/');
+  return new URL(rel.replace(/(^|\/)index\.html$/, '$1'), 'http://site.local/');
+}
+
 const broken = [];
 let count = 0;
 for (const file of htmlFiles(root)) {
@@ -42,7 +49,9 @@ for (const file of htmlFiles(root)) {
     const href = match[1];
     if (/^[a-z]+:|^\/\//.test(href)) continue;
     const hash = href.slice(href.indexOf('#') + 1);
-    const pathPart = href.slice(0, href.indexOf('#')).split('?')[0];
+    const rawPath = href.slice(0, href.indexOf('#')).split('?')[0];
+    // Lien relatif (../autre/#a, autre/#a) : résolu depuis l'URL publique de la page source, pas depuis la racine.
+    const pathPart = rawPath === '' ? '' : new URL(rawPath, publicUrl(file)).pathname;
     const target = pathPart === '' ? file : pageFile(pathPart);
     if (!existsSync(target) || !target.endsWith('.html')) continue; // pages manquantes : voir check-links
     count++;

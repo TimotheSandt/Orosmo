@@ -177,7 +177,7 @@ Si votre code trie déjà ses objets, remplissez l'`InstanceBatchBuilder` à la 
 
 ```cpp
 rd::InstanceBatchBuilder batches;
-batches.add({meshId, materialId}, modelMatrix, glm::vec4(1.0f, 0.5f, 0.2f, 1.0f));
+batches.add({*meshId, materialId}, modelMatrix, glm::vec4(1.0f, 0.5f, 0.2f, 1.0f));
 batches.build();                          // obligatoire avant draw ; un nouvel add l'invalide
 auto drawn = instances.draw(renderer, batches);
 ```
