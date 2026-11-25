@@ -493,22 +493,32 @@ std::size_t AnimScene::reloadChanged()
         return 0;
     }
     const std::size_t reloaded = textures_->reloadChanged();
-    if (reloaded == 0 || !hero_)
+    if (reloaded == 0)
     {
         return reloaded;
     }
-    const auto &albedo = hero_->materials().front()->desc().maps[static_cast<std::size_t>(rd::PbrMap::kBaseColor)];
-    if (albedo && !(albedo->handle() == albedoHandle_))
+    bool rebuild = rebuildPending_; // un échec précédent a laissé la scène sans modèles : on retente à chaque nouvelle modification
+    if (!rebuild && hero_)
+    {
+        const auto &albedo = hero_->materials().front()->desc().maps[static_cast<std::size_t>(rd::PbrMap::kBaseColor)];
+        rebuild = albedo && !(albedo->handle() == albedoHandle_);
+    }
+    if (rebuild)
     {
         // Taille changée : la texture partagée a été recréée ; les groupes des matériaux et des lots de la foule la lient encore.
         device_->waitIdle();
         if (auto rebuilt = buildModels(); !rebuilt)
         {
-            LOG_ERROR(1, "Anim scene: rebuilding the models after the texture reload: ", rebuilt.error().message);
+            rebuildPending_ = true;
+            LOG_ERROR(1, "Anim scene: rebuilding the models after the texture reload: ", rebuilt.error().message, " (retried on the next change)");
         }
-        else if (auto posed = update(0.0f); !posed)
+        else
         {
-            LOG_ERROR(1, "Anim scene: ", posed.error().message);
+            rebuildPending_ = false;
+            if (auto posed = update(0.0f); !posed)
+            {
+                LOG_ERROR(1, "Anim scene: ", posed.error().message);
+            }
         }
     }
     LOG_INFO("Anim scene: reloaded ", texturePath_.string());
