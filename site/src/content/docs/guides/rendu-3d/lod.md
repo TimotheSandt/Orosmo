@@ -8,7 +8,7 @@ sidebar:
 
 Un niveau de détail (LOD) est un maillage plus simple utilisé quand l'objet est loin. Dans Orosmo, les niveaux sont des
 maillages que vous fournissez : le moteur n'en invente pas. Il choisit le niveau selon la distance à la caméra et fond les
-deux niveaux voisins près d'une bascule. La cuisson d'assets peut simplement vous proposer des LOD automatiques, que vous
+deux niveaux voisins près d'une bascule. La cuisson d'assets propose des LOD automatiques, que vous
 devez ensuite transformer vous-même en maillages.
 
 ## Exemple minimal
@@ -77,7 +77,7 @@ dessiné par le GPU.
 Pas de LOD pour les modèles animés. `CrowdRenderer` et `SkinnedModel` dessinent toujours le maillage complet avec son squelette
 complet, sans choix de niveau ni culling par agent. À gérer côté application : par exemple, changer soi-même la pose passée à
 `setAgents`, ou ne pas animer les agents lointains. Un LOD animé choisi par le développeur (maillage et squelette réduits par
-niveau) est prévu avec la scène et ses composants (jalon M8) ; voir [État du moteur](/projet/etat/).
+niveau) est prévu avec la future scène à entités (le jalon M8 : scène et composants) ; voir [État du moteur](/projet/etat/).
 
 ## Limites
 
