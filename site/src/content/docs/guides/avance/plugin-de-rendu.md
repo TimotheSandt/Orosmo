@@ -13,7 +13,7 @@ dans l'ordre d'enregistrement, puis ses post-traitements, et enfin `frameEnded`.
 
 ## Exemple minimal
 
-Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` suivent [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples »).
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDir` suivent [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples »).
 
 Un plugin qui dessine un triangle plein écran par-dessus la sortie, avec un shader qui lit `FrameData`. Adapté de
 `tests/renderer/render_graph_tests.cpp` et de

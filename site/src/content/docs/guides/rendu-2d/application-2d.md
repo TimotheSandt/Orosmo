@@ -55,21 +55,22 @@ int main()
         return EXIT_FAILURE;
     }
     desc.surface.nativeWindow = window.getWindow();
-    auto device = rhi::createDevice(desc);
-    if (!device)
+    auto created = rhi::createDevice(desc);
+    if (!created)
     {
-        std::cerr << device.error().message << '\n';
+        std::cerr << created.error().message << '\n';
         return EXIT_FAILURE;
     }
+    rhi::Device &device = **created;
 
     // 2. Shaders, dessinateurs 2D, texte.
     const fs::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
-    rd::ShaderLibrary shaders(**device);
-    rd::PipelineCache pipelines(**device);
-    auto r2d = rd::Renderer2D::create(**device, shaders, pipelines, shaderDir);
-    auto canvas = rd::CanvasRenderer::create(**device, shaders, pipelines, shaderDir);
-    auto blit = rd::FullscreenBlit::create(**device, shaders, pipelines, shaderDir);
-    if (!r2d || !canvas || !blit)
+    rd::ShaderLibrary shaders(device);
+    rd::PipelineCache pipelines(device);
+    auto r2dResult = rd::Renderer2D::create(device, shaders, pipelines, shaderDir);
+    auto canvasResult = rd::CanvasRenderer::create(device, shaders, pipelines, shaderDir);
+    auto blitResult = rd::FullscreenBlit::create(device, shaders, pipelines, shaderDir);
+    if (!r2dResult || !canvasResult || !blitResult)
     {
         std::cerr << "Échec de l'initialisation du rendu 2D\n";
         return EXIT_FAILURE;
@@ -94,8 +95,8 @@ int main()
     rd::TextureInfo info;
     info.width = info.height = 8;
     info.filter = rd::FilterMode::kNearest;
-    auto checker = rd::Texture::create(**device, info, std::as_bytes(std::span(texels)));
-    auto material = checker ? (*r2d)->material(*checker, true) : orosmo::core::Result<rd::SpriteMaterial>(std::unexpected(checker.error()));
+    auto checker = rd::Texture::create(device, info, std::as_bytes(std::span(texels)));
+    auto material = checker ? r2d.material(*checker, true) : orosmo::core::Result<rd::SpriteMaterial>(std::unexpected(checker.error()));
     if (!material)
     {
         std::cerr << "Texture : " << material.error().message << '\n';
@@ -118,7 +119,7 @@ int main()
         int pixelW = 0;
         int pixelH = 0;
         window.getFramebufferSize(pixelW, pixelH);
-        auto backbuffer = (*device)->beginFrame();
+        auto backbuffer = device.beginFrame();
         if (!backbuffer || pixelW <= 0 || pixelH <= 0)
         {
             continue;
@@ -127,7 +128,7 @@ int main()
         const auto h = static_cast<std::uint32_t>(pixelH);
         if (!composed.valid())
         {
-            auto target = rd::RenderTarget::create(**device, {.size = {w, h}, .depth = false, .debugName = "2d"});
+            auto target = rd::RenderTarget::create(device, {.size = {w, h}, .depth = false, .debugName = "2d"});
             if (!target)
             {
                 std::cerr << target.error().message << '\n';
@@ -146,12 +147,12 @@ int main()
         rd::Camera2D camera;
         camera.setViewport(w, h);
         camera.setCenter({static_cast<float>(w) * 0.5f, static_cast<float>(h) * 0.5f});
-        (*r2d)->begin(camera);
-        (void)(*r2d)->draw({.material = *material, .position = {200.0f, 300.0f + 40.0f * std::sin(seconds * 2.0f)}, .size = {128.0f, 128.0f},
+        r2d.begin(camera);
+        (void)r2d.draw({.material = *material, .position = {200.0f, 300.0f + 40.0f * std::sin(seconds * 2.0f)}, .size = {128.0f, 128.0f},
                             .rotation = seconds, .z = 1.0f});
-        (*r2d)->rect({100.0f, 100.0f}, {400.0f, 24.0f}, {0.2f, 0.7f, 0.3f, 1.0f}, 0.0f, 0.0f);
-        (*r2d)->circle({700.0f, 300.0f}, 80.0f, {0.9f, 0.4f, 0.1f, 1.0f});
-        (*r2d)->line({100.0f, 600.0f}, {900.0f, 560.0f}, 4.0f, {1.0f, 1.0f, 1.0f, 1.0f});
+        r2d.rect({100.0f, 100.0f}, {400.0f, 24.0f}, {0.2f, 0.7f, 0.3f, 1.0f}, 0.0f, 0.0f);
+        r2d.circle({700.0f, 300.0f}, 80.0f, {0.9f, 0.4f, 0.1f, 1.0f});
+        r2d.line({100.0f, 600.0f}, {900.0f, 560.0f}, 4.0f, {1.0f, 1.0f, 1.0f, 1.0f});
 
         // Texte : liste de dessin en pixels, origine en haut à gauche.
         rd::DrawList list;
@@ -160,26 +161,26 @@ int main()
         text.renderText("Bonjour en 2D", 20.0f, 20.0f, 0.75f, glm::vec3(1.0f));
         text.setDrawListSink(nullptr);
 
-        auto encoder = (*device)->createCommandEncoder();
+        auto encoder = device.createCommandEncoder();
         const rhi::Format format = rhi::Format::kRGBA8Unorm;
-        auto ok = (*r2d)->render(*encoder, composed.color(0), format, {w, h}, false, {0.08f, 0.10f, 0.14f, 1.0f});
+        auto ok = r2d.render(*encoder, composed.color(0), format, {w, h}, false, {0.08f, 0.10f, 0.14f, 1.0f});
         if (ok)
         {
-            ok = (*canvas)->render(*encoder, list, {composed.color(0), format, {w, h}}, true);
+            ok = canvas.render(*encoder, list, {composed.color(0), format, {w, h}}, true);
         }
         if (ok)
         {
             ok = (*blit)->copy(*encoder, composed.color(0), (*blit)->linearSampler(), *backbuffer, format, "present");
         }
-        auto submitted = (*device)->submit(std::move(encoder));
+        auto submitted = device.submit(std::move(encoder));
         if (!ok || !submitted)
         {
             std::cerr << (!ok ? ok.error().message : submitted.error().message) << '\n';
             return EXIT_FAILURE;
         }
-        (void)(*device)->present();
+        (void)device.present();
     }
-    (*device)->waitIdle();
+    device.waitIdle();
     return EXIT_SUCCESS;
 }
 ```
@@ -189,19 +190,19 @@ Il se compile comme le projet de démarrage (il lie les modules `platform`, `rhi
 
 ## Étapes
 
-1. **Fenêtre et périphérique.** `prepareWindowHints` est appelé dans le rappel de `Window::init`, avant la création de la
+1. Fenêtre et périphérique. `prepareWindowHints` est appelé dans le rappel de `Window::init`, avant la création de la
    fenêtre. Voir [Choisir le backend graphique](/guides/application/peripherique/).
-2. **Dessinateurs.** `Renderer2D` (sprites, formes), `CanvasRenderer` (liste de dessin du texte) et `FullscreenBlit` (copie vers
+2. Dessinateurs. `Renderer2D` (sprites, formes), `CanvasRenderer` (liste de dessin du texte) et `FullscreenBlit` (copie vers
    l'écran) prennent tous `device`, `shaders`, `pipelines` et le dossier des shaders.
-3. **Texture de sprite.** `Texture::create` avec des texels RGBA8 ; `Renderer2D::material(texture, true)` l'enregistre avec un
+3. Texture de sprite. `Texture::create` avec des texels RGBA8 ; `Renderer2D::material(texture, true)` l'enregistre avec un
    filtrage au plus proche. La texture doit vivre aussi longtemps que son usage.
-4. **Cible intermédiaire.** Une `RenderTarget` sans profondeur, de la taille du framebuffer (`getFramebufferSize`, en pixels
+4. Cible intermédiaire. Une `RenderTarget` sans profondeur, de la taille du framebuffer (`getFramebufferSize`, en pixels
    réels, pas la taille logique de la fenêtre). Elle est redimensionnée à chaque image si la fenêtre change.
-5. **Image.** `Camera2D` règle la vue : ici une unité de monde par pixel, avec le centre au milieu de la cible. On dépose les
+5. Image. `Camera2D` règle la vue : ici une unité de monde par pixel, avec le centre au milieu de la cible. On dépose les
    sprites et les formes entre `begin` et `render`.
-6. **Texte.** `TextRenderer` écrit des glyphes dans une `DrawList` ; les coordonnées sont en pixels avec l'origine en haut à gauche
+6. Texte. `TextRenderer` écrit des glyphes dans une `DrawList` ; les coordonnées sont en pixels avec l'origine en haut à gauche
    et y vers le bas, alors que le monde de `Camera2D` a y vers le haut.
-7. **Ordre des passes.** `Renderer2D::render` efface la cible (`loadExisting = false`), puis `CanvasRenderer::render` pose le
+7. Ordre des passes. `Renderer2D::render` efface la cible (`loadExisting = false`), puis `CanvasRenderer::render` pose le
    texte par-dessus (`loadExisting = true`), puis `FullscreenBlit::copy` copie la cible vers le backbuffer. Tout passe par le
    même encodeur, puis `submit` et `present`.
 

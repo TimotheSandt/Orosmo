@@ -13,7 +13,7 @@ Les conventions de liaison sont dans [Conventions GLSL](/reference/conventions-g
 
 ## Exemple minimal
 
-Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` suivent [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples »).
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDir` suivent [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples »).
 
 Un programme depuis des sources en mémoire, adapté de `tests/renderer/render_graph_tests.cpp`. Le sommet dessine un triangle
 plein écran sans tampon de sommets ; le fragment lit le temps dans `FrameData`.
@@ -25,9 +25,9 @@ plein écran sans tampon de sommets ; le fragment lit le temps dans `FrameData`.
 namespace rd = orosmo::renderer;
 
 rd::ShaderLibraryConfig config;
-config.includeRoots = {shaderDirectory};          // permet #include "frame_data.glsl"
-rd::ShaderLibrary shaders(*device, config);
-rd::PipelineCache pipelines(*device);
+config.includeRoots = {shaderDir};          // permet #include "frame_data.glsl"
+rd::ShaderLibrary shaders(device, config);
+rd::PipelineCache pipelines(device);
 
 constexpr const char *vs = R"(#version 450
 void main() { vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); })";

@@ -2,7 +2,7 @@
 title: "Tutoriel : un petit jeu 3D"
 description: "De orosmo init à un personnage glTF animé, éclairé par un soleil qui projette des ombres, avec une caméra au clavier et un menu .cui."
 sidebar:
-  order: 3.5
+  order: 4
   label: Tutoriel jeu 3D
 ---
 

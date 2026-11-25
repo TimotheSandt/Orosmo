@@ -9,7 +9,7 @@ sidebar:
 
 ## Exemple minimal
 
-Ce code charge un modèle statique et le dessine. Les noms (`device`, `shaders`, `pipelines`, `scene`, `camera`, `shaderDir`) sont ceux de [Lire la boucle d'une application](/demarrer/premiere-application/) : `device` et `scene` sont des `Result<std::unique_ptr<...>>`, d'où `**device` et `(*scene)->`.
+Ce code charge un modèle statique et le dessine. Les noms (`device`, `shaders`, `pipelines`, `renderer`, `camera`, `shaderDir`) sont ceux des [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples) : `device` est un `rhi::Device &` et `renderer` un `rd::SceneRenderer &`.
 
 ```cpp
 #include <orosmo/assets/model.hpp>
@@ -24,17 +24,17 @@ auto model = as::loadGltf(GET_RESOURCE_PATH("models/casque.glb"));
 if (!model) { /* model.error().message */ }
 if (auto ok = model->validate(); !ok) { /* kParse : indice hors bornes */ }
 
-as::TextureCache textures(**device);                     // partage les textures entre les modèles
+as::TextureCache textures(device);                     // partage les textures entre les modèles
 rd::PbrShaderCache pbr(shaders, shaderDir);               // programmes PBR ; shaderDir = GET_RESOURCE_PATH("shader/rhi")
-auto defaults = rd::PbrDefaults::create(**device);       // textures neutres (blanc, normale plate...)
+auto defaults = rd::PbrDefaults::create(device);       // textures neutres (blanc, normale plate...)
 if (!defaults) { /* ... */ }
 
-auto render = as::RenderModel::create(**device, *model, textures, pbr, *defaults);
+auto render = as::RenderModel::create(device, *model, textures, pbr, *defaults);
 if (!render) { /* render.error().message */ }
 render->setRootTransform(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -3.0f)));
 
-// Chaque image, entre scene.beginFrame/setCamera et scene.endFrame.
-render->draw(**scene, camera);
+// Chaque image, entre renderer.beginFrame/setCamera et renderer.endFrame.
+render->draw(renderer, camera);
 ```
 
 `GET_RESOURCE_PATH` (`orosmo/core/paths.hpp`) donne le chemin d'une ressource : `res/...` en debug, à côté de l'exécutable en release. Le modèle va dans `res/models/` de votre projet, les shaders dans `res/shader/rhi/` (voir [Make, engine.mk et CMake](/reference/construction/)). Le `device` doit survivre à tous ces objets, et le `RenderModel` doit rester vivant jusqu'à la fin des images qui le dessinent.
@@ -87,10 +87,10 @@ Les erreurs de `loadGltf` : `kIo` (fichier illisible), `kParse` (contenu invalid
 as::RenderModelOptions options;
 options.sourceKey = "hero";
 options.extraDefines = rd::forwardPlusDefines();   // si la scène est en forward+
-auto render = as::RenderModel::create(**device, *model, textures, pbr, *defaults, options);
+auto render = as::RenderModel::create(device, *model, textures, pbr, *defaults, options);
 ```
 
-Pour recevoir et projeter des ombres, voir la section « Ombres » de [Animer un personnage](/guides/animation/squelettes/) : `shadows` se règle ici, et les casters se déclarent sur la `ShadowFeature`.
+Pour recevoir et projeter des ombres, voir la section « Ombres » de [Animer un personnage](/guides/animation/squelettes/) : `shadows` se règle ici, et les casters se déclarent sur la `ShadowFeature`. Le guide [Ajouter des ombres](/guides/rendu-3d/ombres/#exemple-minimal--un-modèle-gltf-qui-reçoit-et-projette) décrit la lumière ombrée, et le [tutoriel du jeu 3D](/demarrer/tutoriel-jeu-3d/) montre un programme complet.
 
 Autres appels de `RenderModel` :
 

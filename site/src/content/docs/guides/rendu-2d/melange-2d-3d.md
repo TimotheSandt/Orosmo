@@ -11,7 +11,7 @@ dans une texture à part, et `ViewsFeature` place ces textures dans des zones de
 
 ## Exemple minimal : 2D dans le monde
 
-Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` suivent [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples »).
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDir` suivent [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples »).
 
 Code adapté de
 [`apps/demo/src/Scene/mixed_scene.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Scene/mixed_scene.cpp).
@@ -22,7 +22,7 @@ Code adapté de
 namespace rd = orosmo::renderer;
 
 // Une fois : créer le plugin et l'enregistrer.
-auto world = rd::Layer2DFeature::create("game.world2d", rd::Layer2DMode::kWorld, *device, shaders, pipelines, shaderDirectory);
+auto world = rd::Layer2DFeature::create("game.world2d", rd::Layer2DMode::kWorld, device, shaders, pipelines, shaderDir);
 auto added = renderer.addFeature(std::move(*world));          // possédé par le SceneRenderer
 auto *layer = static_cast<rd::Layer2DFeature *>(*added);       // pointeur non possédé
 
@@ -49,7 +49,7 @@ Le plugin possède son `Renderer2D` (`renderer()`) : les sprites et formes se d�
 Pour `kTexture`, réglez la texture puis liez-la à un maillage :
 
 ```cpp
-auto panel = rd::Layer2DFeature::create("game.panel", rd::Layer2DMode::kTexture, *device, shaders, pipelines, shaderDirectory);
+auto panel = rd::Layer2DFeature::create("game.panel", rd::Layer2DMode::kTexture, device, shaders, pipelines, shaderDir);
 auto *layer = static_cast<rd::Layer2DFeature *>(*renderer.addFeature(std::move(*panel)));
 (void)layer->setTextureSize(256, 256);                // crée ou recrée la texture : son contenu est perdu
 layer->setClearColor({0.0f, 0.0f, 0.0f, 1.0f});       // effacement avant chaque image
@@ -89,11 +89,11 @@ fait la démo. Un `Layer2DFeature` ne reçoit qu'un seul dépôt par image.
 Une `SceneView` est une caméra 3D avec son propre `SceneRenderer` qui rend dans une texture à elle.
 
 ```cpp
-auto view = rd::SceneView::create(*device, shaders, pipelines, shaderDirectory, 320, 180);
+auto view = rd::SceneView::create(device, shaders, pipelines, shaderDir, 320, 180);
 (*view)->renderer().setLights(&lights);              // lumières et maillages peuvent être partagés
 (*view)->camera().setPosition({0.0f, 5.0f, 5.0f});
 
-auto views = rd::ViewsFeature::create(*device, shaders, pipelines, shaderDirectory);
+auto views = rd::ViewsFeature::create(device, shaders, pipelines, shaderDir);
 auto *placer = static_cast<rd::ViewsFeature *>(*renderer.addFeature(std::move(*views)));
 
 // À chaque image, AVANT l'endFrame de l'image principale.

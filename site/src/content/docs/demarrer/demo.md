@@ -2,7 +2,7 @@
 title: Explorer la démo
 description: Lancer la démo du dépôt et activer chaque fonction du moteur par une option de ligne de commande.
 sidebar:
-  order: 4
+  order: 5
 ---
 
 La démo (`apps/demo/`) est la seule application du dépôt. Elle montre le moteur et la bibliothèque d'interface ; son code

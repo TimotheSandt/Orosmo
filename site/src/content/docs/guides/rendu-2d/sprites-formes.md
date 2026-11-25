@@ -15,7 +15,7 @@ par-dessus, voir [Mélanger 2D et 3D](/guides/rendu-2d/melange-2d-3d/).
 
 Code adapté de `tests/renderer/renderer2d_tests.cpp`. `target` est une texture que vous possédez (format `kRGBA8Unorm` ici), par exemple `RenderTarget::color(0)`, et `encoder` un `rhi::CommandEncoder` sans passe ouverte. La création de la cible et l'affichage à l'écran sont montrés dans [Application 2D complète](/guides/rendu-2d/application-2d/).
 
-Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` sont ceux de [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples ») : `device` est un `rhi::Device &`, et `shaderDirectory` vaut `GET_RESOURCE_PATH("shader/rhi")`.
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDir` sont ceux de [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples ») : `device` est un `rhi::Device &`, et `shaderDir` vaut `GET_RESOURCE_PATH("shader/rhi")`.
 
 ```cpp
 #include <orosmo/renderer/renderer2d.hpp>
@@ -23,18 +23,19 @@ Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirect
 namespace rd = orosmo::renderer;
 namespace rhi = orosmo::rhi;
 
-auto r2d = rd::Renderer2D::create(*device, shaders, pipelines, shaderDirectory);
-if (!r2d) { /* r2d.error().message */ }
+auto r2dResult = rd::Renderer2D::create(device, shaders, pipelines, shaderDir);
+if (!r2dResult) { /* r2dResult.error().message */ }
+rd::Renderer2D &r2d = **r2dResult;
 
-auto material = (*r2d)->material(spriteTexture);       // rd::Texture : doit vivre plus longtemps que son usage
+auto material = r2d.material(spriteTexture);       // rd::Texture : doit vivre plus longtemps que son usage
 rd::Camera2D camera;
 camera.setViewport(640, 360);                           // pixels de la cible
 camera.setCenter({320.0f, 180.0f});                     // zoom 1 : une unité de monde = un pixel
 
-(*r2d)->begin(camera);
-(void)(*r2d)->draw({.material = *material, .position = {100.0f, 50.0f}, .size = {64.0f, 64.0f}});
-(*r2d)->rect({10.0f, 10.0f}, {200.0f, 4.0f}, {1.0f, 1.0f, 1.0f, 1.0f});
-auto rendered = (*r2d)->render(*encoder, target, rhi::Format::kRGBA8Unorm, {640, 360});
+r2d.begin(camera);
+(void)r2d.draw({.material = *material, .position = {100.0f, 50.0f}, .size = {64.0f, 64.0f}});
+r2d.rect({10.0f, 10.0f}, {200.0f, 4.0f}, {1.0f, 1.0f, 1.0f, 1.0f});
+auto rendered = r2d.render(*encoder, target, rhi::Format::kRGBA8Unorm, {640, 360});
 ```
 
 `render` trie, regroupe, dessine tout ce qui a été déposé, puis vide les dépôts (succès ou échec). Il garde le contenu de la
