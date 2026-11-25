@@ -2,18 +2,20 @@
 title: "Sprites, formes et caméra 2D"
 description: "Dessiner des sprites instanciés, des lignes, rectangles, cercles et polygones avec Renderer2D et une Camera2D, en mode pixel parfait si besoin."
 sidebar:
-  order: 1
+  order: 2
+  label: Sprites et formes
 ---
 
 `Renderer2D` dessine du 2D dans une texture : des sprites (un quad texturé par instance) et des formes pleines ou en
 contour. Les dessins sont triés par couche `z`, puis par type, puis par matériau (texture) ; les dessins consécutifs du même
-matériau forment un lot, donc un seul draw call. La vue vient d'une `Camera2D`. Pour afficher ce 2D dans une scène 3D ou
+matériau forment un lot, donc un seul draw call. La vue vient d'une `Camera2D`. Pour une application 100 % 2D de la fenêtre à l'écran, voir [Application 2D complète](/guides/rendu-2d/application-2d/) ; pour du 2D dans une scène 3D ou
 par-dessus, voir [Mélanger 2D et 3D](/guides/rendu-2d/melange-2d-3d/).
 
 ## Exemple minimal
 
-Code adapté de `tests/renderer/renderer2d_tests.cpp`. `target` est une texture que vous possédez (format `kRGBA8Unorm` ici),
-`encoder` un `rhi::CommandEncoder` sans passe ouverte.
+Code adapté de `tests/renderer/renderer2d_tests.cpp`. `target` est une texture que vous possédez (format `kRGBA8Unorm` ici), par exemple `RenderTarget::color(0)`, et `encoder` un `rhi::CommandEncoder` sans passe ouverte. La création de la cible et l'affichage à l'écran sont montrés dans [Application 2D complète](/guides/rendu-2d/application-2d/).
+
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` sont ceux de [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples ») : `device` est un `rhi::Device &`, et `shaderDirectory` vaut `GET_RESOURCE_PATH("shader/rhi")`.
 
 ```cpp
 #include <orosmo/renderer/renderer2d.hpp>
@@ -21,7 +23,7 @@ Code adapté de `tests/renderer/renderer2d_tests.cpp`. `target` est une texture 
 namespace rd = orosmo::renderer;
 namespace rhi = orosmo::rhi;
 
-auto r2d = rd::Renderer2D::create(*device, shaders, pipelines, shaderDirectory);   // shaders/rhi
+auto r2d = rd::Renderer2D::create(*device, shaders, pipelines, shaderDirectory);
 if (!r2d) { /* r2d.error().message */ }
 
 auto material = (*r2d)->material(spriteTexture);       // rd::Texture : doit vivre plus longtemps que son usage
@@ -95,10 +97,10 @@ et `bufferBytes` du dernier `render`.
 
 ## Limites
 
-- R2D-01, R2D-02, R2D-03 (Fait) : `tests/renderer/renderer2d_tests.cpp`.
-- G160 : un matériau est une seule texture ; à `z` égal, des matériaux différents peuvent s'intercaler (donnez des `z`
+- Un matériau est une seule texture ; à `z` égal, des matériaux différents peuvent s'intercaler (donnez des `z`
   différents pour un ordre précis) ; formes sans anticrénelage ; polygone découpé en O(n²).
-- R2D-04 (cartes de tuiles) et R2D-07 (éclairage 2D) : absents.
+- Pas de cartes de tuiles ni d'éclairage 2D.
+- Détail : [État du moteur](/projet/etat/).
 
 ## Voir aussi
 

@@ -3,6 +3,7 @@ title: "Beaucoup d'objets : instancing et culling"
 description: "Choisir entre Mesh, InstanceRenderer, CrowdRenderer et GpuDrivenFeature selon le nombre d'objets, puis dessiner des milliers d'objets avec un draw call par lot et rejeter ce qui est hors champ."
 sidebar:
   order: 9
+  label: Beaucoup d'objets
 ---
 
 Un draw call coûte du temps au processeur, quel que soit le nombre de triangles qu'il dessine. Pour dessiner beaucoup
@@ -20,7 +21,7 @@ lequel. Le tableau dit combien de draw calls chaque chemin émet et ce qu'il fai
 | `Mesh` + `SceneRenderer::drawMesh` | Peu d'objets différents : décor unique, personnage, objets de jeu. | Un par `drawMesh`, donc un par objet (un par nœud pour un `RenderModel`). | Aucun : tout ce qu'on dessine est soumis. | Aucun : l'application choisit le maillage. |
 | `Mesh` avec `MeshData::instances` | Un même maillage répété avec ses propres données d'instance, shader écrit par vous. | Un par `drawMesh`, pour toutes les instances du maillage. | Aucun. | Aucun. |
 | `InstanceRenderer` + `ObjectSet` | Des centaines à des dizaines de milliers d'objets, avec peu de maillages et de matériaux différents. | Un par couple (maillage, matériau) présent dans la vue : 4 pour 10 000 objets dans la démo. | CPU : pyramide de vue, BVH, taille à l'écran, distance. | Par distance, avec fondu tramé. |
-| `CrowdRenderer` (module `anim`) | Une foule d'agents animés qui partagent un modèle skinné. | Un par primitive skinnée du modèle, pour tous les agents. | Aucun (G199). | Aucun (A73, voir [LOD](/guides/rendu-3d/lod/)). |
+| `CrowdRenderer` (module `anim`) | Une foule d'agents animés qui partagent un modèle skinné. | Un par primitive skinnée du modèle, pour tous les agents. | Aucun : tout le lot est dessiné. | Aucun (voir [LOD](/guides/rendu-3d/lod/)). |
 | `GpuDrivenFeature` | Beaucoup d'objets quand le culling CPU ou la soumission des lots coûte trop. | Un appel indirect (multi-draw) par couple (matériau, pool de géométrie) ; le GPU écrit le nombre d'instances. | GPU : pyramide, distance, taille, puis occlusion Hi-Z. | GPU, 8 niveaux au plus. |
 
 Pour décider :
@@ -33,11 +34,46 @@ Pour décider :
 - `GpuDrivenFeature` reprend le même `ObjectSet` et le même `InstanceRenderer` que le chemin CPU et déplace le culling et le
   LOD sur le GPU. Il demande des capacités optionnelles (compute, dessin indirect) et refuse proprement sans elles : on garde
   alors le chemin CPU. Il n'est pas forcément plus rapide : sur un GPU intégré, le culling compute a coûté de 3 à 5,5 ms pour
-  100 000 objets (G154). Mesurez avant de le choisir. Voir [Culling sur le GPU](/guides/rendu-3d/rendu-gpu/).
+  100 000 objets. Mesurez avant de le choisir. Voir [Culling sur le GPU](/guides/rendu-3d/rendu-gpu/).
 
-Le nombre de draw calls se lit dans `InstanceDrawStats::drawCalls` (chemin CPU) et `GpuDrawStats::indirectCalls` (chemin GPU).
+Les lignes « Mesh » du tableau ne passent pas par cette page : voir [Dessiner une scène](/guides/rendu-3d/scene/) pour `drawMesh`, et la section suivante pour `MeshData::instances`. Le nombre de draw calls se lit dans `InstanceDrawStats::drawCalls` (chemin CPU) et `GpuDrawStats::indirectCalls` (chemin GPU).
 
-## Exemple minimal
+## Un maillage avec ses propres instances
+
+`MeshData::instances` est le chemin le plus simple : le maillage porte lui-même un tampon de données par instance, lues par
+**votre** vertex shader. Un seul `drawMesh` dessine toutes les instances. Le moteur ne fait ni culling, ni LOD, ni éclairage
+pour vous : c'est adapté à quelques centaines de copies d'un petit objet (particules, herbe, pièces).
+
+Les attributs de sommet sont décrits par `attributeSizes` (emplacements 0, 1, 2...), les attributs d'instance par
+`instanceAttributeSizes` : ils prennent les emplacements **à la suite** de ceux des sommets. Avec `attributeSizes = {3, 3, 3}`
+(position, normale, couleur), les attributs d'instance sont aux emplacements 3, 4...
+
+```cpp
+rd::MeshData data = cubeData;                      // attributeSizes = {3, 3, 3}
+data.instanceAttributeSizes = {3, 1};              // emplacement 3 : décalage (vec3), 4 : échelle (float)
+data.instances = {0.0f, 0.0f, 0.0f, 1.0f,          // 4 flottants par instance, instance après instance
+                  2.0f, 0.0f, 0.0f, 0.5f,
+                  4.0f, 0.0f, 0.0f, 2.0f};
+auto mesh = rd::Mesh::create(*device, data);
+mesh->setProgram(*program);                        // votre programme (ci-dessous)
+(void)mesh->updateInstances(newValues);            // met à jour les instances sans recréer le maillage
+```
+
+Le vertex shader lit ces emplacements comme n'importe quel attribut, un par instance :
+
+```glsl
+layout(location = 3) in vec3 iOffset;
+layout(location = 4) in float iScale;
+// ... gl_Position = camera.matrix * vec4(aPos * iScale + iOffset, 1.0);
+```
+
+Les emplacements 8 à 15 sont ceux des instances de `InstanceRenderer` : un maillage destiné à `InstanceRenderer` n'a donc pas
+d'instances propres et au plus 8 attributs de sommet. Pour écrire le programme, voir
+[Écrire et recharger des shaders](/guides/avance/shaders/).
+
+## Exemple minimal avec InstanceRenderer
+
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` sont ceux de [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples ») : `device` est un `rhi::Device &`, et `shaderDirectory` vaut `GET_RESOURCE_PATH("shader/rhi")`.
 
 On enregistre maillages et matériaux dans un `InstanceRenderer`, on ajoute les objets à un `ObjectSet`, puis à chaque image on
 calcule les lots visibles et on les dessine. Code adapté de
@@ -164,15 +200,15 @@ les objets se sont beaucoup déplacés. `ObjectSet` fait ce choix seul. La coupu
 - Les maillages enregistrés ne sont pas possédés : ils vivent jusqu'à `endFrame` et plus longtemps que l'`InstanceRenderer`.
 - Une `localBounds` trop petite fait disparaître des objets encore visibles.
 - Les instances n'écrivent que la couleur : pas d'AOV, donc pas de vecteurs de mouvement. La démo désactive `--aa taa` avec
-  `--instances` (REN-41, G169).
+  `--instances`.
 - Le tramage du LOD désactive l'early-Z pour les fragments concernés.
 
 ## Limites
 
-- REN-28 et REN-30 (Fait) : `tests/renderer/instancing_tests.cpp`, `tests/renderer/visibility_tests.cpp`.
-- REN-41 (Partiel) : les objets instanciés n'écrivent aucun AOV (G169) ; les vues `albedo`, `overdraw` et `normals` les
-  ignorent (G170).
-- `CrowdRenderer` n'a ni culling par agent ni LOD (G199, A73).
+- Les objets instanciés n'écrivent aucun AOV (sorties auxiliaires) ; les vues de debug `albedo`, `overdraw` et `normals` les
+  ignorent.
+- `CrowdRenderer` n'a ni culling par agent ni LOD.
+- Le détail de ce qui est fait et de ce qui manque est dans [État du moteur](/projet/etat/).
 
 ## Voir aussi
 

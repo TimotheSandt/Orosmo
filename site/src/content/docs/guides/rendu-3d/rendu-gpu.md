@@ -3,6 +3,7 @@ title: "Culling sur le GPU"
 description: "Faire le culling, le LOD et l'émission des dessins sur le GPU : scène GPU persistante, multi-draw indirect, occlusion Hi-Z, repli sur le CPU."
 sidebar:
   order: 11
+  label: Culling sur le GPU
 ---
 
 `GpuDrivenFeature` est un plugin de rendu qui déplace sur le GPU ce que `ObjectSet::prepare` fait sur le CPU : un shader
@@ -15,13 +16,15 @@ Pour choisir entre les deux, voir le tableau de [Instancing et culling](/guides/
 
 Code adapté de
 [`apps/demo/src/Scene/demo_scene.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Scene/demo_scene.cpp)
-(`enableGpuDriven`, `renderInstances`). `instances` est l'`InstanceRenderer` et `objects` l'`ObjectSet` du guide précédent.
+(`enableGpuDriven`, `renderInstances`). `instances` est le résultat de `InstanceRenderer::create` (un `Result<std::unique_ptr<InstanceRenderer>>`, comme dans [Instancing et culling](/guides/rendu-3d/instancing-culling/)) et `objects` l'`ObjectSet` du même guide.
+
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` sont ceux de [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples ») : `device` est un `rhi::Device &`, et `shaderDirectory` vaut `GET_RESOURCE_PATH("shader/rhi")`.
 
 ```cpp
 namespace rd = orosmo::renderer;
 
 // Une fois, après le chargement des maillages dans l'InstanceRenderer.
-auto gpu = rd::enableGpuDriven(renderer, *device, shaders, pipelines, shaderDirectory, *instances);
+auto gpu = rd::enableGpuDriven(renderer, *device, shaders, pipelines, shaderDirectory, **instances);
 rd::GpuDrivenFeature *gpuDriven = gpu ? *gpu : nullptr;   // nul : repli sur le chemin CPU
 // (gpu.error().code == kUnsupported sans compute ou dessin indirect)
 
@@ -81,7 +84,7 @@ agrandissement du tampon : tout est renvoyé.
 
 Après la passe de scène, le plugin construit une pyramide de profondeur (Hi-Z) depuis la profondeur finale. Le culling de
 l'image suivante la lit : un objet entièrement caché derrière un mur est rejeté. Conséquence : un objet qui se découvre
-(caméra qui contourne un mur, occulteur qui bouge) manque une image (G173). Il n'y a pas d'occlusion à la première image,
+(caméra qui contourne un mur, occulteur qui bouge) manque une image. Il n'y a pas d'occlusion à la première image,
 après un redimensionnement ou après `resetOcclusion()`.
 
 ## Capacités et repli
@@ -111,11 +114,12 @@ Les lectures `read*` sont synchrones : un chemin lent pour les outils, les tests
 
 ## Limites
 
-- REN-29 (Fait) : preuves dans `tests/renderer/gpu_driven_tests.cpp` (même ensemble visible et même image que le CPU).
-- G154 : pas de `drawIndexedIndirectCount` (toutes les commandes, même vides, sont jouées) ; 8 niveaux de LOD au plus ; un
-  seul dessin GPU par image.
-- G173 : occlusion en une passe, avec une image de retard. G172 : copies de géométrie perdues si une soumission échoue.
-- G169 : pas d'AOV pour les objets GPU.
+- Le rejet par occlusion est en une passe, avec une image de retard.
+- Pas de dessin indirect à compte lu sur le GPU : toutes les commandes, même vides, sont jouées.
+- 8 niveaux de LOD au plus par objet ; un seul dessin GPU par image.
+- Si une soumission échoue, les copies de géométrie des pools ne sont rejouées qu'au prochain changement du registre de maillages.
+- Les objets GPU n'écrivent pas d'AOV (sorties auxiliaires).
+- Détail : [État du moteur](/projet/etat/).
 
 ## Voir aussi
 
