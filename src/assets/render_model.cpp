@@ -34,6 +34,11 @@ rhi::AddressMode addressOf(WrapMode mode) noexcept
     }
 }
 
+template <typename T> bool inBounds(int index, const std::vector<T> &items) noexcept
+{
+    return index >= 0 && static_cast<std::size_t>(index) < items.size();
+}
+
 core::Result<std::shared_ptr<const renderer::Texture>> textureFor(const Model &model, const TextureRef &ref, TextureRole role, TextureCache &cache,
                                                                   const std::string &sourceKey)
 {
@@ -41,10 +46,23 @@ core::Result<std::shared_ptr<const renderer::Texture>> textureFor(const Model &m
     {
         return std::shared_ptr<const renderer::Texture>();
     }
+    // `pbrMaterialDesc` est publique : le modèle n'est pas forcément passé par `Model::validate`.
+    if (!inBounds(ref.texture, model.textures))
+    {
+        return makeError(ErrorCode::kOutOfRange, "glTF: " + sourceKey + ": texture " + std::to_string(ref.texture) + " does not exist");
+    }
     const TextureData &tex = model.textures[static_cast<std::size_t>(ref.texture)];
     if (tex.image < 0)
     {
         return std::shared_ptr<const renderer::Texture>(); // texture sans image utilisable (ex. KTX2 seul, lot G)
+    }
+    if (!inBounds(tex.image, model.images))
+    {
+        return makeError(ErrorCode::kOutOfRange, "glTF: " + sourceKey + ": image " + std::to_string(tex.image) + " does not exist");
+    }
+    if (tex.sampler >= 0 && !inBounds(tex.sampler, model.samplers))
+    {
+        return makeError(ErrorCode::kOutOfRange, "glTF: " + sourceKey + ": sampler " + std::to_string(tex.sampler) + " does not exist");
     }
     if (ref.texCoord != 0)
     {
