@@ -16,7 +16,7 @@ Le moteur se construit avec Make. Un projet qui l'utilise peut le consommer avec
 |---|---|
 | `all-debug`, `all-release` | moteur, copie dans `apps/demo/orosmo/`, puis démo |
 | `debug`, `dev`, `release` | archives du moteur dans `lib/<type>/` |
-| `run`, `run-debug`, `run-release` | lance la démo (construit au besoin ; aucun argument transmis) |
+| `run`, `run-debug`, `run-release` | lance la démo (construit au besoin ; options : voir [Explorer la démo](/demarrer/demo/)) |
 | `demo-debug`, `demo-release` | construit seulement la démo |
 | `demo-test` | construit les archives release et lance les tests doctest |
 | `demo-test-unit`, `demo-test-gpu` | tests sans GPU ni fenêtre / seulement l'intégration graphique |

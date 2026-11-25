@@ -41,7 +41,13 @@ make check                                   # couches, isolation des API graphi
 sh tools/format_sources.sh                   # clang-format
 ```
 
-Pour un seul test, construisez puis lancez le binaire de tests avec un filtre doctest :
+Pour un seul test, passez un filtre doctest par `TEST_ARGS` (le moteur release est reconstruit d'abord) :
+
+```bash
+make demo-test TEST_ARGS="-tc=*vsync*"
+```
+
+ou construisez une fois, puis lancez le binaire de tests :
 
 ```bash
 make demo-test-unit                                   # construit les tests et lance ceux qui n'ont pas besoin du GPU

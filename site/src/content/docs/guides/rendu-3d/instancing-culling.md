@@ -6,6 +6,8 @@ sidebar:
   label: Beaucoup d'objets
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 Un draw call coûte du temps au processeur, quel que soit le nombre de triangles qu'il dessine. Pour dessiner beaucoup
 d'objets, on regroupe donc ceux qui partagent un maillage et un matériau en un seul appel (instancing), et on ne soumet pas
 ce qui est hors de l'image (culling). Cette page dit quel outil du moteur choisir, puis détaille le chemin CPU :

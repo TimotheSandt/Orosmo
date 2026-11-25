@@ -5,6 +5,8 @@ sidebar:
   order: 2
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 Une `anim::Curve<T>` donne une valeur (`float`, `Vec2`, `Vec3` ou `Vec4`) en fonction du temps, à partir de clés. Une `anim::PropertyAnimation` associe des courbes nommées à des fonctions qui posent la valeur (`setter`) et les applique toutes à un temps donné. Le moteur ne lie rien tout seul : c'est vous qui écrivez le `setter` qui change la caméra, la lumière ou le matériau.
 
 ## Exemple minimal

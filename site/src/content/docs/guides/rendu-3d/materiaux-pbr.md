@@ -6,6 +6,8 @@ sidebar:
   label: Matériaux PBR
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 Un `rd::PbrMaterial` décrit une surface au modèle métal/rugosité de glTF : couleur de base, métal, rugosité, carte de
 normales, occlusion et émission. Il possède son bloc de paramètres et son groupe de liaison (groupe 1) ; il se lie à un
 `rd::Mesh` aux sommets PBR et se dessine par `SceneRenderer::drawMesh`. Les modèles glTF créent leurs matériaux tout seuls

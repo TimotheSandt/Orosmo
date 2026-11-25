@@ -6,6 +6,8 @@ sidebar:
   label: HDR et post-traitement
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 Chaque effet de post-traitement est un plugin du graphe de passes (`rd::PostEffect`), activable à l'exécution par
 `setEnabled`. Ils s'exécutent après les passes de la scène, à la résolution de rendu, avant la mise à l'échelle et
 l'interface. `rd::addPostEffects` les crée tous les cinq, dans l'ordre conseillé.

@@ -45,7 +45,7 @@ namespace ui       = orosmo::ui;
 |---|---|---|
 | `window` | `platform::Window` | créée en premier, détruite en dernier |
 | `device` | `rhi::Device &` | `auto created = rhi::createDevice(desc); rhi::Device &device = **created;` (`created` est un `core::Result<std::unique_ptr<rhi::Device>>` qui doit rester vivant) |
-| `shaders`, `pipelines` | `rd::ShaderLibrary`, `rd::PipelineCache` | `rd::ShaderLibrary shaders(device);` |
+| `shaders`, `pipelines` | `rd::ShaderLibrary`, `rd::PipelineCache` | `rd::ShaderLibrary shaders(device);` ; sans configuration, cela suffit pour charger les shaders du moteur ; une `ShaderLibraryConfig` n'est utile que pour un cache de shaders sur disque ou des dossiers d'inclusion (voir [Écrire et recharger des shaders](/guides/avance/shaders/)) |
 | `renderer` | `rd::SceneRenderer &` | `auto sceneResult = rd::SceneRenderer::create(device, shaders, pipelines, {.shaderDirectory = shaderDir}); rd::SceneRenderer &renderer = **sceneResult;` |
 | `canvas` | `rd::CanvasRenderer &` | même principe avec `rd::CanvasRenderer::create` |
 | `r2d` | `rd::Renderer2D &` | même principe avec `rd::Renderer2D::create` |

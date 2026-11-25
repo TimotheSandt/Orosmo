@@ -6,6 +6,8 @@ sidebar:
   label: Environnement (IBL)
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 `rd::IblFeature` éclaire les matériaux PBR par une image d'environnement : irradiance diffuse en harmoniques sphériques,
 reflets par un cube préfiltré (un niveau de mip par rugosité) et une table BRDF. Des sondes placées dans le monde
 remplacent l'environnement près d'elles, pour les objets mobiles. Seuls les matériaux PBR compilés avec `rd::iblDefines()`

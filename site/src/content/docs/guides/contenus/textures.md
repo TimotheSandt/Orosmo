@@ -5,6 +5,8 @@ sidebar:
   order: 2
 ---
 
+Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
+
 `assets::TextureCache` charge une image depuis un fichier, en fait une `renderer::Texture` avec ses mips, et rend toujours la même texture quand on la redemande avec les mêmes réglages. Le format est choisi selon l'usage : une couleur est stockée en sRGB, une donnée (normale, métal/rugosité, occlusion) en linéaire.
 
 ## Exemple minimal
