@@ -1,4 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Orosmo">
-  <circle cx="32" cy="32" r="26" fill="none" stroke="#4c8dff" stroke-width="6"/>
-  <path d="M14 40 L32 16 L50 40 Z" fill="#c9b48f" stroke="#4c8dff" stroke-width="3" stroke-linejoin="round"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="4" fill="#1f5fbf"/></svg>

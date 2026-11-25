@@ -1,105 +1,51 @@
 ---
 title: Orosmo
-description: Moteur 3D et 2D générique en C++23, rendu par une couche d'abstraction graphique (Vulkan, OpenGL), interface décrite dans un langage maison précompilé en C++.
-template: splash
-hero:
-  tagline: Moteur 3D et 2D générique en C++23. Rendu Vulkan et OpenGL derrière une même couche d'abstraction, interface décrite en .cui et compilée en C++, thèmes JSON.
-  image:
-    file: ../../assets/logo.svg
-  actions:
-    - text: Lire le wiki
-      link: /utiliser/installation/
-      icon: right-arrow
-    - text: Releases GitHub
-      link: https://github.com/TimotheSandt/Orosmo/releases
-      icon: external
-      variant: minimal
-    - text: Histoire et méthode
-      link: /histoire/
-      variant: minimal
+description: Moteur 3D et 2D générique en C++23. Rendu Vulkan et OpenGL derrière une même couche d'abstraction, interface écrite en .cui, thèmes JSON.
 ---
 
-import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import ombres from '../../assets/captures/scene-ombres.webp';
-import post from '../../assets/captures/scene-post-traitement.webp';
-import hud from '../../assets/captures/scene-hud.webp';
 
-## Vision
+Orosmo est un moteur 3D et 2D générique écrit en C++23. Le rendu passe par une couche d'abstraction graphique (le RHI) qui
+a deux backends, Vulkan et OpenGL 4.3 ; Metal n'existe pas encore. L'interface s'écrit dans un langage maison, le `.cui`,
+compilé en C++ ; son apparence vient de thèmes JSON.
 
-Orosmo vise un moteur **compréhensible** (modules petits, interfaces publiques claires, une documentation par module),
-**portable** (le code du moteur ne connaît pas l'API graphique : changer de backend ne touche pas le reste), **utile tôt**
-(chaque jalon livre une démo qui tourne) et **déterministe** (même graine, même résultat sur toutes les plateformes).
-À terme : un moteur de jeu complet, avec rendu 3D et 2D mélangeables, objets importés, animations, lumières et ombres,
-interface en langage maison et logique de jeu rechargeable à chaud. *(Source : `docs/01-VISION_ET_PERIMETRE.md`.)*
+## État
 
-## Captures
+La version courante est la 0.6.0. Le jalon M6 est livré : import glTF 2.0, matériaux PBR, éclairage par environnement,
+animation par squelette et foules instanciées, en plus du cœur du rendu de M5 (graphe de passes, forward+, ombres,
+HDR, anticrénelage, culling GPU, 2D). L'API peut encore changer entre deux versions mineures.
 
-Images de référence de la démo unique (`apps/demo`), rendues hors écran par le moteur lui-même
-(`main --headless --capture`) et comparées à chaque changement par la CI.
+Linux est la seule plateforme vérifiée. Windows et macOS sont compilés par la CI mais n'ont pas été observés pour le code
+récent. Il n'y a pas de scène à entités, pas de logique de jeu rechargeable, pas de manettes. La liste complète, avec
+les preuves, est sur la page [État du moteur](/projet/etat/).
 
-<div class="captures">
-  <figure>
-    <Image src={ombres} alt="Scène de démonstration : portique sur un dallage, ombres en cascade" />
-    <figcaption>Ombres en cascade (`--shadows on`).</figcaption>
-  </figure>
-  <figure>
-    <Image src={post} alt="Scène mixte avec objets transparents, HDR et post-traitements" />
-    <figcaption>Transparents triés, HDR, bloom, étalonnage, vignette (`--scene mixed --post full`).</figcaption>
-  </figure>
-  <figure>
-    <Image src={hud} alt="Scène mixte avec le panneau de performances de l'interface" />
-    <figcaption>Panneau de performances écrit en `.cui` (`--ui hud`).</figcaption>
-  </figure>
-</div>
+<figure>
+  <Image src={ombres} alt="Scène de démonstration : portique sur un dallage, ombres en cascade" />
+  <figcaption>Capture de la démo : <code>--shadows on</code>.</figcaption>
+</figure>
 
-## Ce qui fonctionne aujourd'hui
+## Commencer
 
-Seules les fonctions marquées **Fait** dans la checklist du dépôt (`docs/02-CHECKLIST_FONCTIONNALITES.md`), avec un test
-automatisé ou une commande de démo comme preuve (`docs/STATUS.md`), sont listées ici. Vérifié sous Linux ; Windows et macOS
-sont construits en CI mais pas encore vérifiés pour tout le code récent.
+Pour écrire un jeu ou une application, lisez dans cet ordre :
 
-<CardGrid>
-  <Card title="Couche graphique (RHI)" icon="setting">
-    Backends **Vulkan 1.3** et **OpenGL 4.3+** derrière une même interface (handles opaques, erreurs par `std::expected`,
-    capacités optionnelles lues dans `Capabilities`). Choix du backend au lancement, avec repli sur OpenGL. Compute, rendu
-    vers plusieurs cibles, dispatch indirect. Metal : prévu.
-  </Card>
-  <Card title="Rendu 3D" icon="rocket">
-    Graphe de passes et plugins de rendu, données par image partagées C++/GLSL, éclairage **forward+ clusterisé**,
-    **ombres en cascade** avec cache, **HDR et tonemapping**, bloom, exposition automatique, étalonnage, instancing,
-    **culling CPU et GPU** (Hi-Z, dessin indirect), transparents triés et leurs ombres, dessin de debug.
-  </Card>
-  <Card title="Rendu 2D" icon="puzzle">
-    Batch de sprites, caméra 2D (mode pixel parfait), formes, lignes et texte, **mélange 2D/3D** (monde, superposition,
-    vers texture) et plusieurs vues dans une même image.
-  </Card>
-  <Card title="Interface" icon="document">
-    Widgets (boutons, curseurs, onglets, menus, fenêtres modales, éditeurs de couleur, de dégradé et de courbe…), mise en
-    page complète, panneau automatique depuis une structure réfléchie. Vues écrites en **`.cui`** et compilées en C++ ;
-    apparence dans des **thèmes JSON** rechargés à chaud.
-  </Card>
-  <Card title="Noyau" icon="seti:config">
-    Logger avec pile d'appels, système de tâches, allocateurs, configuration JSON et ligne de commande, temps à pas fixe,
-    bus d'événements, positions mondiales en `double`, ressources, système de fichiers virtuel, réflexion et sérialisation.
-  </Card>
-  <Card title="Outillage" icon="laptop">
-    Outil `orosmo` (`init`, `update`, `doctor`), paquet du moteur avec `engine.mk` (Make) et `OrosmoConfig.cmake`
-    (CMake), compilateur `cui` livré compilé, extension VS Code pour le `.cui`. Parcours complet vérifié en CI Linux
-    (`make e2e-init`).
-  </Card>
-</CardGrid>
+1. [Créer un projet](/demarrer/premier-projet/) : installer les dépendances, télécharger `orosmo`, compiler le projet de départ.
+2. [Lire la boucle d'une application](/demarrer/premiere-application/) : les pièces du projet de départ et les conventions des exemples.
+3. [Un jeu 3D de bout en bout](/demarrer/tutoriel-jeu-3d/) : un programme complet qui assemble glTF, caméra, ombres et menu.
+4. [Explorer la démo](/demarrer/demo/) : une commande par fonction du moteur.
 
-**En préparation (jalon M6)** : import glTF 2.0, matériaux PBR, textures compressées et animation squelettale. Ces
-fonctions ne sont pas encore dans la branche publiée ; elles apparaîtront ici avec leur preuve quand elles y seront.
+Pour modifier le moteur lui-même, [compilez le dépôt](/demarrer/installation/).
 
-## Aller plus loin
+## Je veux…
 
-<CardGrid>
-  <LinkCard title="Installer et compiler" href="/utiliser/installation/" description="Dépendances sous Linux, Windows et macOS, premier build et démo." />
-  <LinkCard title="Créer un projet" href="/utiliser/projet/" description="orosmo init, doctor et update ; projet minimal." />
-  <LinkCard title="Architecture interne" href="/architecture/couches/" description="Couches, RHI, renderer, interface, compilateur .cui, shaders." />
-  <LinkCard title="Histoire et méthode de développement" href="/histoire/" description="D'où vient le projet et comment il est écrit aujourd'hui, avec Claude, sous la direction de l'auteur." />
-  <LinkCard title="Releases" href="https://github.com/TimotheSandt/Orosmo/releases" description="Paquets du moteur et outil orosmo pour Linux, Windows et macOS." />
-  <LinkCard title="État du moteur" href="/etat/" description="Jalons livrés, ce qui est partiel ou absent, et où trouver les preuves." />
-</CardGrid>
+- dessiner beaucoup d'objets : [Beaucoup d'objets, instancing et culling](/guides/rendu-3d/instancing-culling/) (choix entre `Mesh`, `InstanceRenderer`, `CrowdRenderer` et le culling GPU) ;
+- afficher une scène 3D : [Dessiner une scène](/guides/rendu-3d/scene/) ;
+- faire du 2D : [Une application 2D de bout en bout](/guides/rendu-2d/application-2d/), puis [Sprites, formes et caméra 2D](/guides/rendu-2d/sprites-formes/) ;
+- afficher du texte : [Texte et polices](/guides/rendu-2d/texte/) ;
+- importer un modèle : [Importer un modèle glTF](/guides/contenus/gltf/) ;
+- faire une interface : [Construire une interface en C++](/guides/interface/premiere-interface/) ;
+- connaître chaque option de la démo : [Options de la démo](/reference/options-demo/).
+
+Le code est sur [GitHub](https://github.com/TimotheSandt/Orosmo), les paquets dans les
+[releases](https://github.com/TimotheSandt/Orosmo/releases). Le projet est écrit avec l'aide d'une IA ; voir
+[Histoire et méthode](/projet/histoire/).
