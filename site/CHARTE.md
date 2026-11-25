@@ -1,7 +1,7 @@
 # Charte graphique du wiki
 
 Un wiki sobre, dans l'esprit des docs Rust, Godot ou MDN : lisible, sans effet ni animation. Le style vit dans
-`src/styles/custom.css` (variables `--sl-*` de Starlight). Exemple de chaque composant : page `/guide-style/`.
+`src/styles/custom.css` (variables `--sl-*` de Starlight). Exemple de chaque composant : page `/guide-style/` (brouillon : visible avec `npm run dev`, absente du build, du plan du site et de la recherche).
 
 ## Palette
 - Une couleur d'accent : bleu `#1f5fbf` en clair (7,0:1 sur blanc), `#7fb0ff` en sombre (8,5:1 sur `#16191f`). Contraste AA respecté dans les deux thèmes.

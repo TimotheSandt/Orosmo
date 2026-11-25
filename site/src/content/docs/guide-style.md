@@ -1,6 +1,7 @@
 ---
 title: Guide de style
 description: "Page de référence pour les rédacteurs, avec les composants du wiki et le format d'une option."
+draft: true
 sidebar:
   hidden: true
 ---

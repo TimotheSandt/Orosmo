@@ -27,12 +27,24 @@ les preuves, est sur la page [État du moteur](/projet/etat/).
 
 ## Commencer
 
-- [Installer et compiler le moteur](/demarrer/installation/) depuis le dépôt.
-- [Créer un projet](/demarrer/premier-projet/) avec `orosmo init`, sans compiler le moteur.
-- [Lire la boucle d'une application](/demarrer/premiere-application/) : fenêtre, périphérique, scène, interface.
-- [Explorer la démo](/demarrer/demo/) : une commande par fonction du moteur.
-- Les guides de rendu commencent par [Dessiner une scène](/guides/rendu-3d/scene/).
-- Toutes les options sont dans la [référence](/reference/options-demo/).
+Pour écrire un jeu ou une application, lisez dans cet ordre :
+
+1. [Créer un projet](/demarrer/premier-projet/) : installer les dépendances, télécharger `orosmo`, compiler le projet de départ.
+2. [Lire la boucle d'une application](/demarrer/premiere-application/) : les pièces du projet de départ et les conventions des exemples.
+3. [Un jeu 3D de bout en bout](/demarrer/tutoriel-jeu-3d/) : un programme complet qui assemble glTF, caméra, ombres et menu.
+4. [Explorer la démo](/demarrer/demo/) : une commande par fonction du moteur.
+
+Pour modifier le moteur lui-même, [compilez le dépôt](/demarrer/installation/).
+
+## Je veux…
+
+- dessiner beaucoup d'objets : [Beaucoup d'objets, instancing et culling](/guides/rendu-3d/instancing-culling/) (choix entre `Mesh`, `InstanceRenderer`, `CrowdRenderer` et le culling GPU) ;
+- afficher une scène 3D : [Dessiner une scène](/guides/rendu-3d/scene/) ;
+- faire du 2D : [Sprites, formes et caméra 2D](/guides/rendu-2d/sprites-formes/) ;
+- afficher du texte : [Texte et polices](/guides/rendu-2d/texte/) ;
+- importer un modèle : [Importer un modèle glTF](/guides/contenus/gltf/) ;
+- faire une interface : [Construire une interface en C++](/guides/interface/premiere-interface/) ;
+- connaître chaque option de la démo : [Options de la démo](/reference/options-demo/).
 
 Le code est sur [GitHub](https://github.com/TimotheSandt/Orosmo), les paquets dans les
 [releases](https://github.com/TimotheSandt/Orosmo/releases). Le projet est écrit avec l'aide d'une IA ; voir

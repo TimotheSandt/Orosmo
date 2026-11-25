@@ -92,4 +92,4 @@ un exemple de forme.
 
 ## Limites
 
-MOD-03 (`orosmo addon …`) est Absent : l'outil n'a que ces trois commandes. Voir [État du moteur](/projet/etat/).
+L'outil n'a que ces trois commandes : pas de gestion de modules ni d'addons (`orosmo addon …`) pour l'instant. Voir [État du moteur](/projet/etat/).
