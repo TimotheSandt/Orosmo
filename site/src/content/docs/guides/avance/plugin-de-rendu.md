@@ -3,6 +3,7 @@ title: "Écrire un plugin de rendu"
 description: "Ajouter ses propres passes au graphe de l'image avec un RenderFeature : déclarer des passes raster ou génériques, lire la scène, écrire la sortie, lire FrameData."
 sidebar:
   order: 2
+  label: Plugin de rendu
 ---
 
 Un plugin de rendu (`RenderFeature`) ajoute des passes au graphe de l'image sans modifier le cœur du renderer. Les ombres,
@@ -11,6 +12,8 @@ le renderer déclare ses passes (scène, mise à l'échelle, historique), puis a
 dans l'ordre d'enregistrement, puis ses post-traitements, et enfin `frameEnded`.
 
 ## Exemple minimal
+
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` suivent [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples »).
 
 Un plugin qui dessine un triangle plein écran par-dessus la sortie, avec un shader qui lit `FrameData`. Adapté de
 `tests/renderer/render_graph_tests.cpp` et de
@@ -120,8 +123,8 @@ ne les suppose jamais. C'est ce que font `GpuDrivenFeature::supportedBy` et `Cro
 
 ## Limites
 
-- REN-01 (Fait) : `tests/renderer/render_graph_tests.cpp`, `tests/apps/demo_frame_overlay_tests.cpp`. Limites : G151, G152 dans `docs/GAPS.md`.
-- EXT-01 (plugin voxel) et EXT-02 (tracé de rayons sur voxels) sont Absents ; ils s'écriraient avec le mécanisme de cette page.
+- Il n'existe pas encore de plugin voxel ni de tracé de rayons ; ils s'écriraient avec le mécanisme de cette page.
+- Détail : [État du moteur](/projet/etat/).
 
 ## Voir aussi
 

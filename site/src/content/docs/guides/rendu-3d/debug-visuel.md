@@ -3,6 +3,7 @@ title: "Dessin et vues de debug"
 description: "Dessiner des lignes, boîtes et sphères de debug, afficher normales, albédo, surdessin, LOD, fil de fer et mouvement, geler le frustum de culling."
 sidebar:
   order: 12
+  label: Debug visuel
 ---
 
 Trois outils aident à voir ce que fait le rendu : `DebugDraw` trace des lignes et des formes en coordonnées monde,
@@ -105,10 +106,11 @@ La démo affiche un panneau de performances avec `--hud off|fps|full|graph`, et 
 
 ## Limites
 
-- REN-34 (Fait), REN-35 (Partiel) : pas de vues cascades d'ombres ni clusters forward+ (G170).
-- Les objets instanciés ignorent `albedo`, `overdraw` et `normals` (G170) ; seule `lod` les concerne.
-- REN-21 (Partiel) : les objets instanciés et GPU n'écrivent aucun AOV (G169).
-- UI-04 (Absent) : pas d'outils de debug dans l'interface (profileur, console).
+- Pas de vue des cascades d'ombres ni des clusters forward+.
+- Les objets instanciés ignorent `albedo`, `overdraw` et `normals` ; seule `lod` les concerne.
+- Les objets instanciés et GPU n'écrivent aucun AOV.
+- Pas d'outils de debug dans l'interface (profileur, console).
+- Détail : [État du moteur](/projet/etat/).
 
 ## Voir aussi
 

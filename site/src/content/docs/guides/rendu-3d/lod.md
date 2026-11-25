@@ -3,6 +3,7 @@ title: "Niveaux de détail (LOD)"
 description: "Choisir un maillage selon la distance avec fondu tramé. Les niveaux sont des maillages fournis par le développeur ; la cuisson ne fait que proposer des LOD automatiques."
 sidebar:
   order: 10
+  label: LOD
 ---
 
 Un niveau de détail (LOD) est un maillage plus simple utilisé quand l'objet est loin. Dans Orosmo, les niveaux sont des
@@ -63,7 +64,7 @@ défaut `{0.5f, 0.25f}`, et `lodError`, par défaut 0,01) produit des listes d'i
 [Cuire les maillages](/guides/contenus/cuisson/).
 
 Le dernier niveau peut être un imposteur : n'importe quel maillage (un quad) convient, mais le moteur ne génère pas
-l'imposteur (G167).
+l'imposteur.
 
 ## LOD sur le GPU
 
@@ -73,17 +74,16 @@ dessiné par le GPU.
 
 ## Modèles animés
 
-Le LOD des modèles animés n'existe pas. `CrowdRenderer` et `SkinnedModel` dessinent toujours le maillage complet avec son
-squelette complet, sans choix de niveau ni culling par agent (G199). Le besoin est noté dans A73 de `docs/QUESTIONS.md` : un
-maillage simplifié par niveau, avec son propre squelette réduit et sa propre animation, choisis par le développeur et jamais
-générés. Il est prévu pour le jalon M8 ; en attendant, le jeu peut seulement changer lui-même la pose qu'il passe à
-`setAgents`.
+Pas de LOD pour les modèles animés. `CrowdRenderer` et `SkinnedModel` dessinent toujours le maillage complet avec son squelette
+complet, sans choix de niveau ni culling par agent. À gérer côté application : par exemple, changer soi-même la pose passée à
+`setAgents`, ou ne pas animer les agents lointains. Un LOD animé choisi par le développeur (maillage et squelette réduits par
+niveau) est prévu avec la scène et ses composants (jalon M8) ; voir [État du moteur](/projet/etat/).
 
 ## Limites
 
-- REN-31 (Partiel) : LOD par distance et fondu tramé faits ; imposteurs automatiques absents (G167).
+- LOD par distance et fondu tramé : faits. Imposteurs automatiques (végétation lointaine) : absents.
 - Un fondu croisé qui chevauche la bande de `cullDistance` n'est pas combiné : seul le dernier niveau s'efface.
-- Pas de LOD pour les modèles animés (A73, M8).
+- Pas de LOD pour les modèles animés (voir ci-dessus).
 
 ## Voir aussi
 

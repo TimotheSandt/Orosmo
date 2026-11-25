@@ -2,13 +2,16 @@
 title: "Mélanger 2D et 3D, plusieurs vues"
 description: "Mettre du 2D dans le monde 3D, par-dessus l'image ou dans une texture avec Layer2DFeature, et afficher plusieurs vues avec SceneView et ViewsFeature."
 sidebar:
-  order: 3
+  order: 4
+  label: Mélanger 2D et 3D
 ---
 
 `Layer2DFeature` enveloppe un `Renderer2D` dans un plugin du graphe de rendu, en trois modes. `SceneView` rend une caméra 3D
 dans une texture à part, et `ViewsFeature` place ces textures dans des zones de la sortie.
 
 ## Exemple minimal : 2D dans le monde
+
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` suivent [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples »).
 
 Code adapté de
 [`apps/demo/src/Scene/mixed_scene.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Scene/mixed_scene.cpp).
@@ -66,7 +69,7 @@ avec `OROSMO_TEXTURED` (voir [conventions GLSL](/reference/conventions-glsl/)).
 
 ## Ordre d'enregistrement
 
-L'ordre des plugins est l'ordre des `addFeature` (D9). L'ordre voulu d'une image est : 3D opaque, 3D transparent, 2D du monde,
+L'ordre des plugins est l'ordre des `addFeature` L'ordre voulu d'une image est : 3D opaque, 3D transparent, 2D du monde,
 post-traitement, 2D en superposition, interface.
 
 ```cpp
@@ -79,7 +82,7 @@ renderer.addFeature(std::move(overlay2d));      // Layer2DFeature kOverlay : éc
 
 Un `Layer2DFeature` en `kTexture` peut être enregistré n'importe où : sa passe s'exécute avant la scène. Si vous ajoutez ces
 plugins après une interface déjà enregistrée, retirez l'interface (`removeFeature`) et réenregistrez-la après eux, comme le
-fait la démo. Un `Layer2DFeature` ne reçoit qu'un seul dépôt par image (G160).
+fait la démo. Un `Layer2DFeature` ne reçoit qu'un seul dépôt par image.
 
 ## Plusieurs vues
 
@@ -109,9 +112,9 @@ texture une image que l'interface dessine comme une autre (`ImageView`).
 
 ## Limites
 
-- R2D-05 (Fait) : `tests/renderer/mixed_2d3d_tests.cpp`, démo `--scene mixed`.
-- R2D-06 (Fait) : exercé dans les tests ; la vue incrustée dans une interface n'est pas dans la démo.
-- G160 : un seul dépôt par `Layer2DFeature` et par image ; un matériau = une texture.
+- Un seul dépôt par `Layer2DFeature` et par image ; un matériau est une seule texture.
+- La vue 3D incrustée dans une interface est exercée dans les tests, pas dans la démo.
+- Détail : [État du moteur](/projet/etat/).
 
 ## Voir aussi
 

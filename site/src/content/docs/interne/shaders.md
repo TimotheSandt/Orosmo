@@ -42,7 +42,7 @@ Les variantes d'un shader sont choisies par macros de préprocesseur (`OROSMO_SH
 
 - **`ShaderCache`** : clé = hachage du source *prétraité* (includes et macros développés) + étage + version du cache ; en
   mémoire puis sur disque (`<dossier>/<hash>.spv`, écriture atomique par renommage ; un fichier corrompu est recompilé).
-- **Cache de pipelines** Vulkan sur disque (un fichier d'un autre GPU est ignoré, RHI-06). Pas de cache de pipelines natifs pour OpenGL.
+- **Cache de pipelines** Vulkan sur disque (un fichier d'un autre GPU est ignoré). Pas de cache de pipelines natifs pour OpenGL.
 - **Rechargement à chaud** (`ShaderHotReloader`, `ShaderLibrary::pollHotReload`) : surveille le fichier et ses
   `#include`, recompile, et l'appelant recrée le pipeline ; si la compilation échoue, l'ancien pipeline est gardé. L'application
   doit appeler `ShaderLibrary::pollHotReload` une fois par image : la démo ne le fait pas.

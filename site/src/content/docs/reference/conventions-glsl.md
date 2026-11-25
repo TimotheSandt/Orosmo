@@ -18,7 +18,7 @@ Cette page liste ce qu'un shader du moteur peut supposer. Pour écrire et charge
 | Face avant | Triangle anti-horaire en NDC (`FrontFace::kCounterClockwise`). |
 | UV | v = 0 est la première ligne de la texture (le haut). |
 
-Ces règles sont les mêmes sur Vulkan et OpenGL (décision A26) : pas de correction de repère dans vos shaders. Attention, dans
+Ces règles sont les mêmes sur Vulkan et OpenGL (décision de l'auteur) : pas de correction de repère dans vos shaders. Attention, dans
 `coords.glsl`, `uvToNdc(uv)` vaut `uv * 2 - 1` sans retourner y : `uv.y = 0` donne `ndc.y = -1`, alors que y = +1 est le haut en NDC.
 Retournez y vous-même si vous convertissez une position d'écran en NDC.
 

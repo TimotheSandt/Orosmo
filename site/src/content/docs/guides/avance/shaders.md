@@ -3,6 +3,7 @@ title: "Écrire et recharger des shaders"
 description: "Écrire un shader GLSL 450 qui tourne sur Vulkan et OpenGL, l'inclure, le charger avec ShaderLibrary, le recharger à chaud et utiliser la boîte à outils shaders/include/orosmo."
 sidebar:
   order: 1
+  label: Shaders
 ---
 
 Les shaders sont écrits une seule fois en GLSL 450, avec la syntaxe Vulkan (`layout(set, binding)`, push constants,
@@ -11,6 +12,8 @@ Les conventions de liaison sont dans [Conventions GLSL](/reference/conventions-g
 [Pipeline de shaders](/interne/shaders/).
 
 ## Exemple minimal
+
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` suivent [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples »).
 
 Un programme depuis des sources en mémoire, adapté de `tests/renderer/render_graph_tests.cpp`. Le sommet dessine un triangle
 plein écran sans tampon de sommets ; le fragment lit le temps dans `FrameData`.
@@ -22,7 +25,7 @@ plein écran sans tampon de sommets ; le fragment lit le temps dans `FrameData`.
 namespace rd = orosmo::renderer;
 
 rd::ShaderLibraryConfig config;
-config.includeRoots = {shaderDirectory};          // shaders/rhi : permet #include "frame_data.glsl"
+config.includeRoots = {shaderDirectory};          // permet #include "frame_data.glsl"
 rd::ShaderLibrary shaders(*device, config);
 rd::PipelineCache pipelines(*device);
 
@@ -113,7 +116,7 @@ pas pour OpenGL.
 
 ## Limites
 
-- RHI-12 (Partiel) et REN-22 (Partiel) : la boîte à outils n'a pas d'atmosphère (G168) ; pas de cache de pipelines natifs pour
+- La boîte à outils n'a pas d'atmosphère ; pas de cache de pipelines natifs pour
   OpenGL.
 - Un même shader doit donner la même image sur Vulkan et OpenGL : les tests tournent sur les deux backends.
 

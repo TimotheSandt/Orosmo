@@ -2,7 +2,8 @@
 title: "Texte et polices"
 description: "Afficher du texte avec une police TrueType : TextRenderer, atlas MSDF, mesure, mise en page, dessin par CanvasRenderer."
 sidebar:
-  order: 2
+  order: 3
+  label: Texte
 ---
 
 `ui::TextRenderer` charge une police TrueType (FreeType), construit un atlas MSDF à la demande et produit des séries de glyphes
@@ -39,6 +40,13 @@ text.setDrawListSink(nullptr);
 `loadFont(chemin, nom, tailleDeBase)` enregistre la police et la rend active si c'est la première. La taille de base est celle
 de l'atlas : l'échelle de `renderText` la multiplie. Sans `setDrawListSink`, `renderText` ne produit rien. Le dernier argument
 `true` de `render` garde le contenu de la cible : le texte se pose sur la scène.
+
+## Repère et module
+
+Les coordonnées de `renderText(texte, x, y, ...)` sont en pixels logiques de la `DrawList`, avec l'origine en **haut à gauche**
+et y vers le bas, contrairement à `Camera2D` (monde avec y vers le haut). Pour mélanger sprites et texte, convertissez avec
+`Camera2D::worldToScreen`. Le texte vit dans le module `ui` : même pour une application 2D sans interface, il faut lier `ui`
+(`#include <orosmo/ui/text_renderer.hpp>`). Un exemple complet est dans [Application 2D complète](/guides/rendu-2d/application-2d/).
 
 ## Dessiner
 
@@ -79,8 +87,8 @@ défaut. Voir [Thèmes JSON](/guides/interface/themes/).
 
 ## Limites
 
-- REN-36 (Partiel) : ancrage, retour à la ligne, alignement, débordement fonctionnent ; la ligne reste Partiel dans
-  `docs/02-CHECKLIST_FONCTIONNALITES.md`.
+- Le rendu du texte est classé Partiel dans [État du moteur](/projet/etat/) ; ancrage, retour à la ligne, alignement et
+  débordement fonctionnent.
 - Jeux de caractères : ASCII, Latin-1, Latin étendu A, ponctuation courante ; pas d'autres alphabets.
 - Le texte n'est pas dessiné par `Renderer2D` : seul `CanvasRenderer` le trace, en 2D écran.
 
