@@ -209,6 +209,7 @@ core::Result<> Mesh::prepareTransform(const glm::vec3 &origin, const TransformHi
     // ne change pour l'appelant : un maillage immobile n'est renvoyé que si l'origine ou la transformation change.
     bool tracked = false;
     glm::mat4 world = modelMatrix();
+    mirrored_ = glm::determinant(glm::mat3(world)) < 0.0f;
     MotionHistory &slot = history_[historySlot_];
     if (history.frame != 0)
     {
@@ -382,6 +383,7 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(matrix_, other.matrix_);
     std::swap(hasMatrix_, other.hasMatrix_);
     std::swap(cull_, other.cull_);
+    std::swap(mirrored_, other.mirrored_);
     std::swap(transformDirty_, other.transformDirty_);
     std::swap(bufferStale_, other.bufferStale_);
     std::swap(uploadedOrigin_, other.uploadedOrigin_); // va avec modelBuffer_ : l'origine des matrices déjà envoyées

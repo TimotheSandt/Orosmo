@@ -109,6 +109,7 @@ core::Result<std::uint32_t> TransparentFeature::submit(SceneRenderer &scene, Mes
     gs.vertexBuffers = mesh.vertexBuffers();
     gs.vertexAttributes = mesh.vertexAttributes();
     gs.raster.cull = rhi::CullMode::kNone;
+    gs.raster.frontFace = mesh.frontFace(); // gl_FrontFacing juste sous un miroir (matériaux double face)
     gs.depth = {true, state.depthWrite, rhi::CompareOp::kGreater}; // reverse-Z
     gs.depthFormat = info->depthFormat;
     gs.colorTargets.clear(); // le défaut de GraphicsState contient déjà une cible

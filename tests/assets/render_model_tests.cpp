@@ -346,4 +346,43 @@ TEST_SUITE("assets/render_model")
             }
         }
     }
+
+    TEST_CASE("Mesh: a mirrored transform turns the front face clockwise")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            rd::MeshData data;
+            data.vertices = {0, 0, 0, 1, 0, 0, 0, 1, 0};
+            data.indices = {0, 1, 2};
+            data.attributeSizes = {3};
+            auto mesh = rd::Mesh::create(*gpu.device, data);
+            REQUIRE(mesh.has_value());
+            CHECK((mesh->frontFace() == FrontFace::kCounterClockwise));
+            mesh->setModelMatrix(glm::scale(glm::mat4(1.0f), {-1, 1, 1}));
+            REQUIRE(mesh->prepareTransform().has_value());
+            CHECK((mesh->frontFace() == FrontFace::kClockwise));
+            mesh->setModelMatrix(glm::scale(glm::mat4(1.0f), {-1, -1, 1})); // deux miroirs : une rotation
+            REQUIRE(mesh->prepareTransform().has_value());
+            CHECK((mesh->frontFace() == FrontFace::kCounterClockwise));
+        }
+    }
+
+    TEST_CASE("RenderModel: a mirrored node with a single-sided material is still drawn")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            ModelScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            as::Model m = quad(unlit({0, 1, 0, 1}));
+            m.nodes[0].scale = {-1, 1, 1};
+            auto model = scene.model(m, "mirror");
+            CHECK(scene.render(model)[1] == 255);
+            m.nodes[0].scale = {-1, -1, 1}; // deux miroirs : une rotation, toujours visible
+            auto rotated = scene.model(m, "rotated");
+            CHECK(scene.render(rotated)[1] == 255);
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
 }

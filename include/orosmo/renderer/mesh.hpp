@@ -87,6 +87,10 @@ class Mesh
     // Faces éliminées (défaut kNone : les deux faces sont dessinées, comme avant M6). Le sens direct est anti-horaire (glTF).
     void setCullMode(rhi::CullMode cull) noexcept { cull_ = cull; }
     rhi::CullMode cullMode() const noexcept { return cull_; }
+    // Sens direct du dernier `prepareTransform` : anti-horaire, ou horaire quand la matrice du modèle est un miroir (déterminant
+    // négatif, ex. échelle (-1, 1, 1)) qui retourne l'ordre des sommets à l'écran. Porté par le pipeline de CHAQUE dessin
+    // (`SceneRenderer::drawMesh`) : élimination des faces et `gl_FrontFacing` restent justes sous un miroir.
+    rhi::FrontFace frontFace() const noexcept { return mirrored_ ? rhi::FrontFace::kClockwise : rhi::FrontFace::kCounterClockwise; }
     const glm::vec3 &position() const noexcept { return position_; }
     const glm::vec3 &rotation() const noexcept { return rotation_; }
     const glm::vec3 &scale() const noexcept { return scale_; }
@@ -166,6 +170,7 @@ class Mesh
     glm::mat4 matrix_{1.0f};
     bool hasMatrix_ = false;
     rhi::CullMode cull_ = rhi::CullMode::kNone;
+    bool mirrored_ = false; // déterminant de la matrice du modèle négatif (dernier prepareTransform)
     bool transformDirty_ = true;
     bool bufferStale_ = true; // modelBlock_ n'a pas encore été écrit dans modelBuffer_
     glm::vec3 uploadedOrigin_{0.0f};
