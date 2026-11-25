@@ -157,8 +157,8 @@ de texte, Ctrl+A, C, X, V, Z, Y sont des commandes d'édition à la place.
 ## Limites
 
 - `Plot` ne dessine que des barres.
-- La composition IME (saisie chinoise, japonaise...) n'est pas affichée dans les champs : seul le texte validé arrive (G107).
-- Pas de navigation à la manette (UI-09). Quelques tailles de comportement restent en dur (UI-07, G111).
+- La composition IME (saisie chinoise, japonaise...) n'est pas affichée dans les champs : seul le texte validé arrive.
+- Pas de navigation à la manette. Quelques tailles de comportement restent en dur (voir [l'état du projet](/projet/etat/)).
 
 ## Voir aussi
 

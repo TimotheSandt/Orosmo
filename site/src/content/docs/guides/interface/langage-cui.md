@@ -140,6 +140,100 @@ Un événement qui est un appel (`.onClick(state.go(1))`) est refusé. Une `func
 d'événement. Le piège classique : `$state.x` est une liaison (la valeur change), `\(state.x)` est une interpolation
 (le texte s'affiche) ; ne pas les confondre.
 
+## Exemple : un menu qui s'ouvre avec Échap
+
+Un menu avec trois boutons : Reprendre, changer de thème, Quitter. Échap l'affiche ou le masque, et le jeu se met en pause
+tant qu'il est ouvert. Le langage ne décide de rien : la vue montre `state.open`, et c'est la boucle C++ qui lit les drapeaux
+`open`, `quit` et `themeChanged`.
+
+```cpp title="menu_state.hpp"
+#pragma once
+
+#include <array>
+#include <string>
+
+struct MenuState
+{
+    bool open = false;        // menu visible ; le jeu se met en pause tant qu'il l'est
+    bool quit = false;        // mis à vrai par le bouton Quitter ; la boucle principale le lit
+    int theme = 0;            // index dans kThemes
+    bool themeChanged = true; // la boucle recharge le thème quand c'est vrai
+
+    static constexpr std::array<const char *, 3> kThemes{"dark", "light", "framed"};
+
+    void toggle() { open = !open; }
+    void resume() { open = false; }
+    void requestQuit() { quit = true; }
+    void nextTheme()
+    {
+        theme = (theme + 1) % static_cast<int>(kThemes.size());
+        themeChanged = true;
+    }
+    std::string themeName() const { return kThemes[static_cast<std::size_t>(theme)]; }
+};
+```
+
+```text title="MenuView.cui"
+import "orosmo/ui"
+import "menu_state.hpp"
+
+view MenuView {
+    @Mutable var state: MenuState
+
+    Overlay {
+        Panel {
+            Label("Menu").variant("title")
+            Button("Reprendre").onClick(state.resume).id("resume")
+            Button("Thème : \(state.themeName())").onClick(state.nextTheme).id("theme")
+            Button("Quitter").onClick(state.requestQuit).id("quit")
+        }
+        .width(260)
+        .height(.fit)
+        .align(.center)
+        .visible(state.open)
+    }
+}
+```
+
+`.visible(state.open)` est relue à chaque image : un panneau masqué ne dessine rien et ne reçoit aucun clic. Un bouton ne
+peut pas appeler `window.requestClose()` : la vue ne connaît pas la fenêtre. Le bouton Quitter met donc `quit` à vrai, et la
+boucle ferme la fenêtre.
+
+```cpp title="main.cpp (extrait)"
+#include <orosmo/core/paths.hpp>
+#include <orosmo/platform/input_manager.hpp>
+#include <orosmo/platform/window.hpp>
+#include <orosmo/ui/ui.hpp>
+#include <orosmo/ui/window_input.hpp>
+#include "MenuView.gen.h"
+
+namespace ui = orosmo::ui;
+namespace platform = orosmo::platform;
+
+// Une fois, après avoir créé gui (et MenuState menu avant lui) :
+gui.setRoot(cui::buildMenuView(gui, menu));
+
+// Chaque image :
+auto &input = platform::InputManager::getInstance(window.getWindow());
+if (!gui.wantsKeyboard() && input.isKeyJustPressed(platform::KeyButton::kEscape))
+    menu.toggle();                       // pas d'Échap volé à un champ de texte
+if (menu.themeChanged)
+{
+    menu.themeChanged = false;
+    auto path = std::filesystem::path(GET_RESOURCE_PATH("themes")) / (menu.themeName() + ".json");
+    if (auto r = gui.themes().load(path); !r)
+        std::cerr << r.error().message << '\n';
+}
+gui.update(ui::readWindowInput(window, dt), {1280.0f, 720.0f});
+if (menu.quit)
+    window.requestClose();               // la boucle sort au prochain shouldClose()
+const bool paused = menu.open;           // si paused : ne pas avancer la simulation ni lire la caméra
+```
+
+Le premier chargement du thème passe par la même branche, car `themeChanged` vaut vrai au départ. Pour passer d'un écran à
+l'autre (menu principal, jeu), gardez un entier dans l'état et mettez `.visible(state.screen == 0)` sur chaque écran ; une
+comparaison est une expression C++ ordinaire.
+
 ## Compiler
 
 ```bash
@@ -171,9 +265,9 @@ directives `#line`. La liste des messages est dans la [référence](/reference/l
 
 ## Limites
 
-- Pas de rechargement à chaud de la vue elle-même (UI-08, absent) : le thème se recharge, la vue se recompile.
+- Pas de rechargement à chaud de la vue elle-même : le thème se recharge, la vue se recompile.
 - Les positions d'erreur sont celles de l'élément ou du modificateur, pas de l'argument fautif.
-- `once` et `always` devant une expression sont acceptés mais sans effet : le texte est relu à chaque image (G112).
+- `once` et `always` devant une expression sont acceptés mais sans effet : le texte est relu à chaque image.
 
 ## Voir aussi
 

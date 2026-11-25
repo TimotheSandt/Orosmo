@@ -151,6 +151,6 @@ Forme : `fichier:ligne:colonne: error: message`. La colonne est celle de l'élé
 
 ## Limites
 
-- Pas de boucle ni de condition (règle 12 du projet) : une liste de widgets variable se construit en C++, ou par `ParamPanel`.
-- `once` et `always` sont acceptés devant une expression, sans effet (G112).
-- Pas de rechargement à chaud de la vue (UI-08) ni de navigation à la manette (UI-09).
+- Pas de boucle ni de condition : une liste de widgets variable se construit en C++, ou par `ParamPanel`.
+- `once` et `always` sont acceptés devant une expression, sans effet.
+- Pas de rechargement à chaud de la vue ni de navigation à la manette.

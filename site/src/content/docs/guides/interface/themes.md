@@ -140,7 +140,7 @@ est ignorée et signalée une fois dans le journal. Préférez un `.variant(...)
 ## Limites
 
 Quelques constantes de comportement restent dans le code : décalage de l'infobulle, pas de défilement de 3 lignes, largeur
-minimale d'un champ de 10 caractères (UI-07 « Partiel », G111).
+minimale d'un champ de 10 caractères ; le détail est dans [l'état du projet](/projet/etat/).
 
 ## Voir aussi
 

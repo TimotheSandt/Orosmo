@@ -70,12 +70,12 @@ la fenêtre ferme les surgissantes ; une modale ouverte ne laisse passer que ses
 état. `ThemeHost` garde le thème courant, incrémente `revision()` à chaque installation (les widgets refont leur mise en page)
 et observe les fichiers par `core::FileWatcher`. Format : [référence des thèmes](/reference/themes-json/).
 
-## Rendu économe (UI-13)
+## Rendu économe
 
 - Un widget caché ne dessine rien : `Widget::draw` retourne dès que `visible()` est faux (onglet inactif et section repliée compris).
 - `Widget::layout` calcule l'englobant du sous-arbre, ombre comprise ; `draw` l'élimine s'il ne rencontre pas l'intersection de la
   fenêtre et des zones de découpage des ancêtres. Une liste de 1000 lignes dans un `ScrollView` ne produit que les lignes visibles.
-- Le cache de rendu par couche n'est pas livré (UI-13 « Partiel », G165).
+- Le cache de rendu par couche n'est pas livré.
 
 Test : `tests/ui/lean_render_tests.cpp`.
 
@@ -87,5 +87,5 @@ clics, glissements et touches. `make demo-test-unit` les lance sans GPU. Les vue
 
 ## Limites
 
-Pas de navigation à la manette (UI-09), pas d'inspecteur d'interface (UI-10), pas de rechargement à chaud de la vue (UI-08),
-composition IME non affichée (G107). Voir [l'état du projet](/projet/etat/).
+Pas de navigation à la manette, pas d'inspecteur d'interface, pas de rechargement à chaud de la vue,
+composition IME non affichée. Voir [l'état du projet](/projet/etat/).
