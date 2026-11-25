@@ -87,7 +87,7 @@ Pas de correction d'espace de clipping : le repère du RHI (A26) est le même po
 
 - **Cache** (`ShaderCache`) : clé = hachage du source *prétraité* (includes et macros développés) + étage + version du cache ; mémoire
   puis disque (`<dossier>/<hash>.spv`, écriture dans un fichier temporaire propre au processus puis renommage atomique ; fichier
-corrompu ou rejeté par la réflexion : recompilé). Cache de **pipelines** natifs du pilote : non fait.
+corrompu ou rejeté par la réflexion : recompilé). Cache de **pipelines** natifs du pilote : fait pour Vulkan (`VkPipelineCache` écrit sur disque à l'arrêt et relu, RHI-06) ; pas pour OpenGL.
 - **Rechargement à chaud** (`ShaderHotReloader`) : surveille le fichier et ses `#include` — y compris un include **absent** ou
   ajouté par une édition qui ne compile pas encore —, recompile, appelle le rappel (résultat ou erreur) ; l'appelant recrée le
   pipeline et garde l'ancien si la compilation échoue. Les surveillances des fichiers qui restent des dépendances sont
@@ -129,7 +129,7 @@ corrompu ou rejeté par la réflexion : recompilé). Cache de **pipelines** nati
   (c'est la couche fenêtre qui le fait).
 - **Shaders GLSL 430 uniquement** (`ShaderLanguage::kGlsl`) ; SPIR-V refusé (`Capabilities::spirvShaders = false`). Le pipeline
   GLSL 450 → SPIR-V → GLSL 430 est le lot B (RHI-12).
-- Pas de cache de pipelines sur disque (RHI-06, lot B), pas de multi-draw avec compteur (`GL_ARB_indirect_parameters`), pas de
+- Pas de cache de pipelines natifs sur disque côté OpenGL (le backend Vulkan en a un, RHI-06), pas de multi-draw avec compteur (`GL_ARB_indirect_parameters`), pas de
   formats compressés (`bc7Textures = false`), pas de textures multi-échantillons.
 - Une seule file : copies et rendu sont synchrones côté pilote (RHI-19 non traité).
 - Un seul fil : le périphérique et ses encodeurs s'utilisent depuis le fil qui l'a créé (contexte GL).

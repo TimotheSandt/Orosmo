@@ -83,6 +83,7 @@ shaders/      shaders GLSL (copiés vers <bin>/res/shader/)
 res/          polices, thèmes, icône (copiés vers <bin>/res/)
 mk/           Makefile du moteur (engine.mk) et configuration (config.mk)
 tools/        précompilateur .cui (cui-rs), outil engine-init-rs, SDK (engine-sdk, dont examples/minimal/ et template/), scripts, extension VS Code
+site/         site vitrine et wiki (Astro + Starlight, image Docker nginx ; M14)
 docs/         spécification, plan, rapports (voir docs/README.md)
 ```
 
@@ -95,10 +96,11 @@ Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `lib
 - **Utiliser le moteur depuis une release** (`orosmo init`, paquet, projet minimal, stabilité de l'API) : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)
 - Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `orosmo/ui`)
 - Nettoyage M00 : [docs/CLEANUP_PLAN.md](docs/CLEANUP_PLAN.md), [docs/releases/M00.md](docs/releases/M00.md)
+- Site vitrine et wiki (Astro, M14) : [site/](site/README.md) ; image Docker et publication : [docs/DEPLOIEMENT_SITE.md](docs/DEPLOIEMENT_SITE.md)
 
 ## Origine et méthode de développement
 
-Orosmo a été **commencé par son auteur, avec OpenGL**. L'auteur a utilisé l'IA dès son apparition, mais **mal** à l'époque : sans plan ni structure clairs, en lui demandant simplement « fais tel truc », tout en continuant à coder lui-même un peu. Le projet a été **mis en pause, puis arrêté**. Il a **repris récemment** et utilise désormais **Claude** (assistant de programmation d'Anthropic) **correctement** : l'auteur décide de la direction, fixe les règles (`CLAUDE.md`, `docs/`), relit et fusionne ; l'IA écrit du code et des tests, que la CI et des preuves vérifient (aucune fonctionnalité n'est déclarée « Fait » sans test ni commande de démo). Les commits écrits avec l'IA portent la ligne `Co-Authored-By`.
+Orosmo a été **commencé par son auteur, avec OpenGL**. L'auteur a utilisé l'IA dès son apparition, mais **mal** à l'époque : sans plan ni structure clairs, en lui demandant simplement « fais tel truc », tout en continuant à coder lui-même un peu. Le projet a été **mis en pause, puis arrêté**. Il a **repris récemment** et utilise désormais **Claude** (assistant de programmation d'Anthropic) **correctement** : l'auteur décide de la direction, fixe les règles (`CLAUDE.md`, `docs/`), relit et fusionne ; l'IA écrit du code et des tests, que la CI et des preuves vérifient (aucune fonctionnalité n'est déclarée « Fait » sans test ni commande de démo). Les commits écrits avec l'IA portent la ligne `Co-Authored-By`. Version longue : la page « Histoire et méthode de développement » du site ([site/src/content/docs/projet/histoire.md](site/src/content/docs/projet/histoire.md)).
 
 ## Licence
 

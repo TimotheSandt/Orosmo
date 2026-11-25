@@ -1,0 +1,100 @@
+name: Site
+
+# Site vitrine et wiki (M14, WEB-03 et WEB-04 ; hébergement : docs/QUESTIONS.md A74, procédure : docs/DEPLOIEMENT_SITE.md).
+# - pull request qui touche site/ : npm ci + build + liens, puis construction de l'image Docker, SANS publication ;
+# - tag v* (posé par l'auteur sur main) : construction et publication de l'image sur GHCR
+#   (ghcr.io/<propriétaire>/orosmo-site:<version> et :latest) ; refusé si le commit du tag n'est pas dans main ;
+# - lancement manuel (workflow_dispatch) : même publication, depuis main seulement, étiquette latest + sha.
+# Le déploiement sur le serveur reste manuel (docker pull + docker run).
+on:
+  pull_request:
+    paths:
+      - "site/**"
+      - ".github/workflows/site.yml"
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build du site (Astro) et de l'image (sans publication)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.20.0"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: npm ci
+        working-directory: site
+        run: npm ci --no-audit --no-fund
+      - name: Build (astro build)
+        working-directory: site
+        run: npm run build
+      - name: Liens internes
+        working-directory: site
+        run: npm run check-links
+      - uses: docker/setup-buildx-action@v3
+      - name: Image Docker (construite, non publiée)
+        uses: docker/build-push-action@v6
+        with:
+          context: site
+          push: false
+          tags: orosmo-site:pr-${{ github.event.pull_request.number }}
+
+  publish:
+    name: Publication de l'image sur GHCR
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Le commit publié doit être dans main
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::lancement manuel depuis $GITHUB_REF : publication refusée (depuis la branche main seulement)."
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF ($GITHUB_SHA) n'est pas dans main : publication refusée (A74, tags posés sur main)."
+            exit 1
+          fi
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/orosmo-site
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,enable=${{ github.event_name == 'workflow_dispatch' }}
+          flavor: |
+            latest=true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Construction et publication
+        uses: docker/build-push-action@v6
+        with:
+          context: site
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SITE_URL=${{ vars.SITE_URL }}

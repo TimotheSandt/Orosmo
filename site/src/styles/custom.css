@@ -1,0 +1,54 @@
+/* Charte : site/CHARTE.md. Une seule couleur d'accent, polices système, texte à largeur limitée. */
+:root {
+  --sl-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --sl-font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+  --sl-content-width: 46rem;
+  --sl-text-body: 1rem;
+  --sl-line-height: 1.7;
+}
+/* Clair : accent #1f5fbf (7,0:1 sur blanc). */
+:root[data-theme='light'] {
+  --sl-color-accent-low: #dde8f8;
+  --sl-color-accent: #1f5fbf;
+  --sl-color-accent-high: #174a96;
+  --sl-color-white: #14181f;
+  --sl-color-gray-1: #23282f;
+  --sl-color-gray-2: #3a4049;
+  --sl-color-gray-3: #555c66;
+  --sl-color-gray-4: #6b727c;
+  --sl-color-gray-5: #d5d9df;
+  --sl-color-gray-6: #eceef1;
+  --sl-color-gray-7: #f6f7f9;
+  --sl-color-black: #ffffff;
+}
+/* Sombre : accent #7fb0ff (8,5:1 sur #16191f). */
+:root,
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #17294a;
+  --sl-color-accent: #7fb0ff;
+  --sl-color-accent-high: #b4d0ff;
+  --sl-color-black: #16191f;
+  --sl-color-gray-6: #1d2128;
+  --sl-color-gray-5: #2b3038;
+}
+/* Titres courts et sobres. */
+.sl-markdown-content h1, .sl-markdown-content h2, .sl-markdown-content h3 { font-weight: 600; }
+.sl-markdown-content code { font-size: 0.9em; }
+.sl-markdown-content table { font-size: var(--sl-text-sm); }
+.sl-markdown-content th { text-align: left; }
+.captures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+.captures figure { margin: 0; }
+.captures img { width: 100%; height: auto; border-radius: 0.25rem; }
+.captures figcaption { font-size: var(--sl-text-sm); color: var(--sl-color-gray-3); margin-top: 0.25rem; }
+.site-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin-top: 1.5rem;
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-3);
+}

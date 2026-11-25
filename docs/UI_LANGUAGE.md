@@ -9,7 +9,7 @@ ne **décide** rien. La logique est en C++ (les événements nomment des fonctio
 surcharges locales nomment des jetons du thème). Un fichier `.cui` est compilé en C++ par `cui`, puis par le compilateur C++ avec le
 reste du programme : aucun interprète à l'exécution.
 
-Exemple complet : `apps/ui_gallery/src/Gallery.cui` (chaque composant, modificateur, événement et thème ; `make gallery-run`).
+Exemples : `apps/demo/src/UI/Views/DemoView.cui` (vue de la démo, `make run`) et `tests/ui/cui/test_widgets.cui` (composants et modificateurs). La galerie `apps/ui_gallery` a été retirée du dépôt (A37).
 
 ## 1. Cible
 

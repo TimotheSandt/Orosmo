@@ -194,11 +194,11 @@ d'interface : `ParamPanel($state.params)` dans le langage, `orosmo::ui::reflecte
 ## 7. Stabilité de l'API et versions
 
 Numérotation sémantique **0.MINEUR.CORRECTIF** : tant que la version majeure est 0, un changement **mineur** peut casser l'API (la
-liste des changements incompatibles est dans `docs/releases/<jalon>.md`) ; un **correctif** ne la casse jamais. Dernière release : `v0.4.0` (M4, backend Vulkan). M3 (`v0.3.0`) n'a pas été publiée ; `v0.3.1` (M3 bis) est la première release publiée.
+liste des changements incompatibles est dans `docs/releases/<jalon>.md`) ; un **correctif** ne la casse jamais. Dernière release : `v0.6.0` (M6, import glTF, PBR, animation). M3 (`v0.3.0`) n'a pas été publiée ; `v0.3.1` (M3 bis) est la première release publiée.
 
 | Module (`include/orosmo/…`) | Statut | Remarque |
 | --- | --- | --- |
-| `core`, `rhi`, `renderer`, `ui`, `platform` | **figé pour 0.4.x** | livré dans la release ; noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
+| `core`, `rhi`, `renderer`, `ui`, `platform` | **figé pour 0.6.x** | livré dans la release ; noms selon `docs/03` §7 (`camelCase`, `kPascalCase`, fichiers `snake_case`) |
 | `core` : `Logger`, `Profiler`, `FPSCounter`, `RingBuffer` | **repris tels quels** | anciens modules `Utilities` et `Profiler` déplacés dans `orosmo::core` (2026-11-20) : noms de méthodes encore en `PascalCase` (G122) |
 | `world`, `TerrainRenderer` | **archivé (`archive/procedural-world`)** | retirés du dépôt principal (A37) ; futur module/addon en M11 |
 
@@ -208,7 +208,7 @@ liste des changements incompatibles est dans `docs/releases/<jalon>.md`) ; un **
   `--backend <opengl|vulkan|metal>` (alias de `--api`, casse indifférente, `--backend=vulkan` accepté). Si Vulkan ne démarre pas (pas
   de chargeur, pas de GPU Vulkan 1.3), la raison s'affiche sur stderr et la démo retombe sur OpenGL ; `--strict-backend` supprime ce
   repli (code de sortie non nul). Rendu sous macOS : voir §2.
-- **Texte** : `TextRendererFont` affiche l'ASCII (REN-36) ; pas de composition IME, de presse-papiers ni de sélection dans les
-  champs de texte (PLAT-05, partiel).
+- **Texte** : `TextRendererFont` affiche l'ASCII (REN-36) ; pas de composition IME affichée (PLAT-05, partiel, G107) ; la sélection et le presse-papiers existent dans les champs de
+  texte (`ui::useSystemClipboard`, voir `docs/UI_LANGUAGE.md`).
 - **Interface** : pas de rechargement à chaud de la vue elle-même (le thème se recharge) ; pas de navigation à la manette.
 - **Windows, macOS** : construits en CI, jamais observés verts ; les problèmes sont suivis dans `docs/GAPS.md`.
