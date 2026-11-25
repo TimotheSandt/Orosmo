@@ -73,6 +73,8 @@ obj/gen/%.o: $(ENGINE_GEN_DIR)/%.gen.cpp
 	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
 
 $(OBJS): | $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
+
+-include $(wildcard $(OBJS:.o=.d))                # dépendances d'en-têtes produites par -MMD -MP
 ```
 
 Adapté du commentaire d'en-tête de `tools/engine-sdk/engine.mk`. Le plus simple est de partir du `Makefile` d'un projet

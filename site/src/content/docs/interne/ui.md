@@ -81,7 +81,7 @@ Test : `tests/ui/lean_render_tests.cpp`.
 
 ## Tests
 
-`tests/ui/` ne demande ni GPU ni fenêtre, sauf la suite `ui/render` (`ui_render_tests.cpp`, un cas par backend) :
+`tests/ui/` ne demande ni GPU ni fenêtre, sauf la suite `ui/render` (`ui_render_tests.cpp`, exécutée sur chaque backend) :
 `ui_harness.hpp` fournit un `Ui` avec `FixedFont` et un thème de test, et simule clics, glissements et touches.
 `make demo-test-unit` lance les autres suites sans GPU ; `make demo-test-gpu` lance `ui/render`. Les vues `.cui` valides sont compilées puis exécutées
 (`tests/ui/cui/`, `cui_tests.cpp`).
