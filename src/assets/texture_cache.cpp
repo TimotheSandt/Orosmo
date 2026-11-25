@@ -177,8 +177,6 @@ std::size_t TextureCache::reloadChanged()
         {
             continue; // absent (peut-être en cours d'écriture) ou inchangé
         }
-        entry.time = stamp.first;
-        entry.size = stamp.second;
         const TextureRequest request{std::get<1>(key), std::get<2>(key), std::get<3>(key)};
         const std::string name = entry.file.filename().generic_string();
         auto bytes = readFile(entry.file);
@@ -211,7 +209,7 @@ std::size_t TextureCache::reloadChanged()
                 LOG(::orosmo::core::L_ERROR, "TextureCache: reload of ", entry.file.generic_string(), " failed, the previous texture is kept: ", image.error().message);
                 continue;
             }
-            if (image->width == current.width() && image->height == current.height())
+            if (image->width == current.width() && image->height == current.height() && current.format() == textureFormatFor(request.role))
             {
                 inPlace = current.upload(image->rgba8); // même handle : les groupes de liaison des matériaux restent bons
             }
@@ -228,6 +226,9 @@ std::size_t TextureCache::reloadChanged()
             LOG_WARNING("TextureCache: ", entry.file.generic_string(), " changed size or format; materials using it must rebuild their bind group");
             current = std::move(*fresh);
         }
+        // Métadonnées enregistrées seulement après installation : un échec transitoire laisse le rechargement récupérable.
+        entry.time = stamp.first;
+        entry.size = stamp.second;
         ++reloaded;
     }
     return reloaded;
