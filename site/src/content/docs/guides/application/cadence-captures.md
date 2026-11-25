@@ -113,8 +113,8 @@ Le script sort avec 0 si les images concordent, 1 sinon (taille différente comp
 
 ## Limites
 
-- PLAT-04 (mode sans fenêtre) : Partiel, `--headless` n'est vérifié que sous Linux.
-- TOOL-03 (capture d'écran) : Partiel.
+- Le mode sans fenêtre n'est vérifié que sous Linux.
+- Les captures n'ont pas d'exécutable dédié : elles passent par la démo ou par votre propre code.
 - Les images de référence viennent d'un GPU précis ; d'autres pilotes demandent une tolérance (8 sur 255 dans `make demo-capture`).
 
 Voir [État du moteur](/projet/etat/).

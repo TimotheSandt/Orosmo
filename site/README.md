@@ -22,11 +22,13 @@ docker build -t orosmo-site:test .   # image nginx (depuis ce dossier)
 | Chemin | Rôle |
 | --- | --- |
 | `astro.config.mjs` | configuration : titre, langue (français), barre latérale, pied de page, `SITE_URL` |
-| `src/content/docs/index.mdx` | accueil (vitrine) : vision, captures, fonctions **Fait**, liens |
-| `src/content/docs/histoire.md` | « Histoire et méthode de développement » (transparence, WEB-02) |
-| `src/content/docs/etat.md` | état du moteur : jalons, partiel et absent |
-| `src/content/docs/utiliser/` | wiki utilisateur : installation, `orosmo init`/`doctor`, Make et CMake, `.cui`, thèmes, exemples |
-| `src/content/docs/architecture/` | wiki interne : couches, RHI, renderer, interface, compilateur `.cui`, shaders |
+| `src/content/docs/index.mdx` | accueil : trois phrases, état, parcours « Commencer » et « Je veux… » |
+| `src/content/docs/demarrer/` | parcours de départ : créer un projet, boucle d'une application et conventions des exemples, tutoriel, démo, compiler le moteur |
+| `src/content/docs/guides/<thème>/` | un guide par système : `application`, `rendu-3d`, `rendu-2d`, `contenus`, `animation`, `interface`, `noyau`, `avance` |
+| `src/content/docs/reference/` | listes exhaustives : options de la démo, commande `orosmo`, construction, variables d'environnement, formats, `.cui`, thèmes, GLSL, en-têtes |
+| `src/content/docs/interne/` | pour les contributeurs : couches, RHI, renderer, interface, compilateur `.cui`, shaders, tests |
+| `src/content/docs/projet/` | état du moteur, histoire et méthode, contribuer |
+| `src/content/docs/guide-style.md` | page de style des rédacteurs, en brouillon (absente du build) ; règles : `CHARTE.md` |
 | `src/components/Footer.astro` | pied de page (lien « Histoire et méthode », releases, code) |
 | `src/assets/captures/` | captures de la démo (images de référence de `docs/BASELINE/reference/`, en WebP) |
 | `src/content/i18n/fr.json` | textes de l'interface de Starlight remplacés |
@@ -35,8 +37,9 @@ docker build -t orosmo-site:test .   # image nginx (depuis ce dossier)
 
 ## Règles de contenu
 
-- Une fonction n'apparaît comme disponible que si elle est **Fait** dans `docs/02` avec sa preuve (`docs/STATUS.md`) ;
+- Une fonction n'apparaît comme disponible que si elle est « Fait » dans `docs/02` avec sa preuve (`docs/STATUS.md`) ;
   le reste est dit « partiel », « absent » ou « en préparation ».
+- Les exemples suivent les conventions de `demarrer/premiere-application.md` (noms, `Result`, chemins).
 - Les pages résument `docs/` et les `README.md` des modules, et citent leurs sources ; aucune API inventée.
 - Pas de gros binaires : captures en WebP de quelques dizaines de Ko.
 
