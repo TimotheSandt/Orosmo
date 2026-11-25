@@ -386,6 +386,40 @@ TEST_SUITE("assets/render_model")
         }
     }
 
+    TEST_CASE("RenderModel: a mirrored node keeps its normal map's green axis (lit the same from +Y)")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            ModelScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            tests::TempDir dir("engine_render_model");
+            rd::Image tex;
+            tex.width = 1;
+            tex.height = 1;
+            tex.rgba = {128, 204, 230, 255}; // (0 ; 0,6 ; 0,8) en espace tangent : penchée vers +V
+            REQUIRE(rd::savePng(tex, dir.path / "normal.png").has_value());
+            as::MaterialData mat;
+            mat.name = "bumped";
+            mat.baseColorFactor = {1, 1, 1, 1};
+            mat.metallicFactor = 0.0f;
+            mat.roughnessFactor = 1.0f;
+            mat.normal.texture = 0;
+            as::Model m = quad(mat);
+            m.images.push_back({"normal", dir.path / "normal.png", {}, ""});
+            m.textures.push_back({0, -1});
+            scene.lights->addLight(rd::directionalLight({0, 1, 0}, {1, 1, 1}, 1.0f));
+            auto straight = scene.model(m, "straight");
+            m.nodes[0].scale = {-1, 1, 1};
+            auto mirrored = scene.model(m, "mirrored");
+            const auto a = scene.render(straight);
+            const auto b = scene.render(mirrored);
+            INFO("straight ", int(a[0]), " mirrored ", int(b[0]));
+            CHECK(a[0] > 60);
+            CHECK(near(b[0], a[0], 2));
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
     TEST_CASE("RenderModel::rebuildMaterials: new groups reach every mesh; the variant follows shadow reception")
     {
         FOR_EACH_BACKEND(backend)
