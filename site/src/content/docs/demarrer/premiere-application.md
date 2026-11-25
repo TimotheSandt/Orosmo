@@ -187,6 +187,7 @@ while (!window.shouldClose()) {
     if (!backbuffer) continue;                          // sauter l'image, pas quitter
 
     auto encoder = device.createCommandEncoder();       // un encodeur par image
+    renderer.setOutputResolution(static_cast<int>(size.width), static_cast<int>(size.height));   // sinon beginFrame refuse 0 × 0
     auto ok = renderer.beginFrame(*encoder, {.clearColor = {0.10f, 0.13f, 0.18f, 1.0f}});
     if (ok) ok = renderer.setCamera(camera);
     if (ok) ok = renderer.drawMesh(cube, camera);       // enregistré, pas encore dessiné
