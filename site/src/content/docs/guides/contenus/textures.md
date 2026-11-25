@@ -105,8 +105,8 @@ std::size_t n = textures.reloadChanged();
 
 Deux cas :
 
-- Même taille et même nombre de niveaux de mip : le contenu est envoyé sur la texture existante. Le handle ne change pas, les matériaux voient la nouvelle image sans rien refaire.
-- Taille, format ou nombre de niveaux de mip différents (un KTX2 peut garder ses dimensions et changer de nombre de niveaux) : la texture partagée est recréée. Les matériaux qui la lient doivent reconstruire leur groupe (`PbrMaterial::rebuild`, ou recréer le `RenderModel` comme le fait `AnimScene::reloadChanged`).
+- Même taille, même format et même nombre de niveaux de mip : le contenu est envoyé sur la texture existante. Le handle ne change pas, les matériaux voient la nouvelle image sans rien refaire.
+- Taille, format (un KTX2 peut changer de format sans changer de taille) ou nombre de niveaux de mip différents (un KTX2 peut garder ses dimensions et changer de nombre de niveaux) : la texture partagée est recréée. Les matériaux qui la lient doivent reconstruire leur groupe (`PbrMaterial::rebuild`, ou recréer le `RenderModel` comme le fait `AnimScene::reloadChanged`).
 
 Un fichier illisible garde l'ancienne texture et l'erreur est journalisée.
 
