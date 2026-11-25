@@ -61,7 +61,8 @@ struct BakedPrimitive
     std::size_t vertexCount() const noexcept { return positions.size(); }
 };
 
-// kInvalidArgument : primitive vide, indices non multiples de 3 ou hors bornes, attribut de mauvaise longueur.
+// kInvalidArgument : primitive vide, indices non multiples de 3 ou hors bornes, attribut de mauvaise longueur, ratio de LOD non fini, UV
+// hors de la plage binary16 avec `quantize` ; à l'écriture, tout compteur qui ne tient pas dans un u32.
 core::Result<BakedPrimitive> bakePrimitive(const MeshPrimitive &primitive, const BakeOptions &options = {});
 
 // Retour vers une primitive de travail (indices du LOD demandé, tous les sommets conservés). kOutOfRange si le LOD n'existe pas.
