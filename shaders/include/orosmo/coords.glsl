@@ -1,5 +1,5 @@
 // Boîte à outils de shaders (REN-22) : conversions de coordonnées et d'espaces.
-// Convention : uv a son origine en haut à gauche (comme Vulkan) ; NDC a y vers le bas dans le même sens que uv (uv 0 = ndc -1).
+// Convention : uv a son origine en haut à gauche (comme Vulkan) ; NDC a y = +1 en haut (A26) : uv.y = 0 (haut) correspond à ndc.y = +1.
 #ifndef OROSMO_COORDS_GLSL
 #define OROSMO_COORDS_GLSL
 
