@@ -6,10 +6,14 @@
 #include <cgltf_write.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
+#include <deque>
 #include <fstream>
 #include <limits>
+#include <span>
 #include <string>
+#include <system_error>
 
 namespace orosmo::assets
 {
@@ -20,7 +24,103 @@ using core::makeError;
 namespace
 {
 
-char *cstr(const std::string &s) { return s.empty() ? nullptr : const_cast<char *>(s.c_str()); }
+// cgltf insère les chaînes telles quelles dans le JSON : guillemets, barres obliques inverses et caractères de contrôle sont échappés ici.
+std::string jsonEscaped(const std::string &s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (const char ch : s)
+    {
+        const auto c = static_cast<unsigned char>(ch);
+        switch (c)
+        {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            default:
+                if (c < 0x20)
+                {
+                    static constexpr char kHex[] = "0123456789abcdef";
+                    out += "\\u00";
+                    out += kHex[c >> 4];
+                    out += kHex[c & 15];
+                }
+                else
+                {
+                    out += ch;
+                }
+        }
+    }
+    return out;
+}
+
+// URI glTF : tout octet hors des caractères non réservés (et de '/') est encodé en %XX, '%' littéral compris, pour que l'import (qui décode
+// les %XX) retrouve le nom natif.
+std::string uriEncoded(const std::string &s)
+{
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(s.size());
+    for (const char ch : s)
+    {
+        const auto c = static_cast<unsigned char>(ch);
+        const bool plain = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' ||
+                           c == '~' || c == '/';
+        if (plain)
+        {
+            out += ch;
+        }
+        else
+        {
+            out += '%';
+            out += kHex[c >> 4];
+            out += kHex[c & 15];
+        }
+    }
+    return out;
+}
+
+bool writeFile(const std::filesystem::path &path, std::span<const std::uint8_t> bytes)
+{
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    out.flush();
+    out.close(); // la fermeture vide le tampon : son échec (disque plein) doit être vu
+    return !out.fail();
+}
+
+void putU32(std::vector<std::uint8_t> &v, std::uint32_t x)
+{
+    for (int i = 0; i < 4; ++i)
+    {
+        v.push_back(static_cast<std::uint8_t>((x >> (8 * i)) & 0xFFu));
+    }
+}
+
+// Conteneur GLB 2.0 : en-tête, bloc JSON (rempli d'espaces à 4 octets), bloc binaire (rempli de zéros) s'il y en a un.
+std::vector<std::uint8_t> glbContainer(const std::string &json, const std::vector<std::uint8_t> &bin)
+{
+    const std::size_t jsonPadded = (json.size() + 3) / 4 * 4;
+    const std::size_t binPadded = (bin.size() + 3) / 4 * 4;
+    std::vector<std::uint8_t> out;
+    const std::size_t total = 12 + 8 + jsonPadded + (bin.empty() ? 0 : 8 + binPadded);
+    out.reserve(total);
+    putU32(out, 0x46546C67u); // "glTF"
+    putU32(out, 2);
+    putU32(out, static_cast<std::uint32_t>(total));
+    putU32(out, static_cast<std::uint32_t>(jsonPadded));
+    putU32(out, 0x4E4F534Au); // "JSON"
+    out.insert(out.end(), json.begin(), json.end());
+    out.resize(20 + jsonPadded, static_cast<std::uint8_t>(' '));
+    if (!bin.empty())
+    {
+        putU32(out, static_cast<std::uint32_t>(binPadded));
+        putU32(out, 0x004E4942u); // "BIN\0"
+        out.insert(out.end(), bin.begin(), bin.end());
+        out.resize(out.size() + (binPadded - bin.size()), 0);
+    }
+    return out;
+}
+
 char *lit(const char *s) { return const_cast<char *>(s); }
 
 cgltf_wrap_mode wrapOf(WrapMode mode) noexcept
@@ -50,12 +150,20 @@ class Writer
         {
             return valid;
         }
+        for (const auto &mesh : model_.meshes)
+        {
+            if (mesh.primitives.empty())
+            {
+                return makeError(ErrorCode::kInvalidArgument, "saveGltf: mesh \"" + mesh.name + "\" has no primitive (glTF requires at least one)");
+            }
+        }
         reserve();
-        build(path.parent_path());
+        const std::filesystem::path dir = path.parent_path();
+        build(dir);
 
-        binName_ = path.stem().string() + ".bin";
+        const std::string binName = path.stem().string() + ".bin";
         buffer_.size = bin_.size();
-        buffer_.uri = glb || bin_.empty() ? nullptr : cstr(binName_);
+        buffer_.uri = glb || bin_.empty() ? nullptr : uri(binName);
         data_.buffers = bin_.empty() ? nullptr : &buffer_;
         data_.buffers_count = bin_.empty() ? 0 : 1;
         if (glb)
@@ -63,26 +171,127 @@ class Writer
             data_.bin = bin_.data();
             data_.bin_size = bin_.size();
         }
-        if (!glb && !bin_.empty())
-        {
-            std::ofstream out(path.parent_path() / binName_, std::ios::binary | std::ios::trunc);
-            out.write(reinterpret_cast<const char *>(bin_.data()), static_cast<std::streamsize>(bin_.size()));
-            if (!out)
-            {
-                return makeError(ErrorCode::kIo, "saveGltf: cannot write " + (path.parent_path() / binName_).generic_string());
-            }
-        }
+        // JSON sérialisé en mémoire (cgltf_write_file ignore les erreurs de fwrite/fclose) puis écrit avec contrôle.
         cgltf_options options{};
         options.type = glb ? cgltf_file_type_glb : cgltf_file_type_gltf;
-        const std::string file = path.string();
-        if (cgltf_write_file(&options, file.c_str(), &data_) != cgltf_result_success)
+        const cgltf_size expected = cgltf_write(&options, nullptr, 0, &data_);
+        std::string json(expected, '\0');
+        if (expected == 0 || cgltf_write(&options, json.data(), expected, &data_) != expected)
         {
-            return makeError(ErrorCode::kIo, "saveGltf: cannot write " + path.generic_string());
+            return makeError(ErrorCode::kIo, "saveGltf: cannot serialize " + path.generic_string());
+        }
+        json.pop_back(); // terminateur nul de cgltf_write
+
+        const auto fail = [&](const std::filesystem::path &what) { return makeError(ErrorCode::kIo, "saveGltf: cannot write " + what.generic_string()); };
+        const auto sibling = [](std::filesystem::path p, const char *suffix)
+        {
+            p += suffix;
+            return p;
+        };
+        std::error_code ec;
+        const std::filesystem::path jsonTmp = sibling(path, ".tmp");
+        if (glb)
+        {
+            const std::vector<std::uint8_t> container = glbContainer(json, bin_);
+            if (!writeFile(jsonTmp, container))
+            {
+                std::filesystem::remove(jsonTmp, ec);
+                return fail(path);
+            }
+            std::filesystem::rename(jsonTmp, path, ec);
+            if (ec)
+            {
+                std::filesystem::remove(jsonTmp, ec);
+                return fail(path);
+            }
+            return {};
+        }
+
+        // .gltf + .bin : les deux fichiers sont d'abord écrits en entier sous un nom provisoire ; l'ancien .bin est mis de côté pendant la
+        // publication et remis en place si celle du JSON échoue, de sorte que l'ancienne paire reste cohérente.
+        const std::filesystem::path binPath = dir / binName;
+        const std::filesystem::path binTmp = sibling(binPath, ".tmp");
+        const std::filesystem::path binBak = sibling(binPath, ".bak");
+        const bool hasBin = !bin_.empty();
+        const auto cleanup = [&]
+        {
+            std::error_code ignored;
+            std::filesystem::remove(jsonTmp, ignored);
+            std::filesystem::remove(binTmp, ignored);
+        };
+        const std::span<const std::uint8_t> jsonBytes(reinterpret_cast<const std::uint8_t *>(json.data()), json.size());
+        if (!writeFile(jsonTmp, jsonBytes))
+        {
+            cleanup();
+            return fail(path);
+        }
+        if (hasBin && !writeFile(binTmp, bin_))
+        {
+            cleanup();
+            return fail(binPath);
+        }
+        bool hadBin = false;
+        if (hasBin)
+        {
+            hadBin = std::filesystem::exists(binPath, ec);
+            if (hadBin)
+            {
+                std::filesystem::rename(binPath, binBak, ec);
+                if (ec)
+                {
+                    cleanup();
+                    return fail(binPath);
+                }
+            }
+            std::filesystem::rename(binTmp, binPath, ec);
+            if (ec)
+            {
+                if (hadBin)
+                {
+                    std::filesystem::rename(binBak, binPath, ec);
+                }
+                cleanup();
+                return fail(binPath);
+            }
+        }
+        std::filesystem::rename(jsonTmp, path, ec);
+        if (ec)
+        {
+            std::error_code ignored;
+            if (hasBin)
+            {
+                std::filesystem::remove(binPath, ignored);
+                if (hadBin)
+                {
+                    std::filesystem::rename(binBak, binPath, ignored);
+                }
+            }
+            cleanup();
+            return fail(path);
+        }
+        if (hadBin)
+        {
+            std::filesystem::remove(binBak, ec);
         }
         return {};
     }
 
   private:
+    char *str(const std::string &s)
+    {
+        if (s.empty())
+        {
+            return nullptr;
+        }
+        strings_.push_back(jsonEscaped(s));
+        return strings_.back().data();
+    }
+    char *uri(const std::string &s)
+    {
+        strings_.push_back(jsonEscaped(uriEncoded(s)));
+        return strings_.back().data();
+    }
+
     // Nombre exact d'accesseurs et de vues : chaque accesseur a sa vue ; chaque image incluse a sa vue.
     void reserve()
     {
@@ -102,10 +311,17 @@ class Writer
         {
             accessors += skin.joints.empty() ? 0 : 1;
         }
+        // Aucune cible de morphing n'est exportée (docs/FORMATS.md) : les pistes de poids sont omises, et les clips qui n'ont plus de piste aussi.
+        keptAnimations_.clear();
         std::size_t channels = 0;
         for (const auto &anim : model_.animations)
         {
-            channels += anim.channels.size();
+            const std::size_t kept = static_cast<std::size_t>(std::count_if(anim.channels.begin(), anim.channels.end(), exported));
+            if (kept > 0)
+            {
+                keptAnimations_.push_back(&anim);
+                channels += kept;
+            }
         }
         accessors += channels * 2;
         std::size_t views = accessors;
@@ -117,12 +333,11 @@ class Writer
         views_.reserve(views);
         primitives_.reserve(primitives);
         attributes_.reserve(primitives);
-        animSamplers_.reserve(model_.animations.size());
-        animChannels_.reserve(model_.animations.size());
+        animSamplers_.reserve(keptAnimations_.size());
+        animChannels_.reserve(keptAnimations_.size());
         sceneRoots_.reserve(model_.scenes.size());
         skinJoints_.reserve(model_.skins.size());
         nodeChildren_.reserve(model_.nodes.size());
-        uris_.reserve(model_.images.size());
     }
 
     cgltf_buffer_view *addView(const void *bytes, std::size_t size, cgltf_buffer_view_type type)
@@ -218,17 +433,24 @@ class Writer
         for (std::size_t i = 0; i < images_.size(); ++i)
         {
             const ImageData &img = model_.images[i];
-            images_[i].name = cstr(img.name);
+            images_[i].name = str(img.name);
             if (!img.encoded.empty())
             {
                 images_[i].buffer_view = addView(img.encoded.data(), img.encoded.size(), cgltf_buffer_view_type_invalid);
-                images_[i].mime_type = cstr(img.mimeType.empty() ? kPng : img.mimeType);
+                images_[i].mime_type = str(img.mimeType.empty() ? kPng : img.mimeType);
             }
             else if (!img.path.empty())
             {
-                const std::filesystem::path rel = img.path.is_absolute() ? img.path.lexically_relative(dir.empty() ? "." : dir) : img.path;
-                uris_.push_back((rel.empty() ? img.path : rel).generic_string());
-                images_[i].uri = cstr(uris_.back());
+                // Un chemin absolu est exprimé relativement au dossier (absolu) du fichier écrit ; un chemin relatif l'est déjà.
+                std::filesystem::path rel = img.path;
+                if (img.path.is_absolute())
+                {
+                    std::error_code ec;
+                    const std::filesystem::path base = std::filesystem::absolute(dir.empty() ? std::filesystem::path(".") : dir, ec).lexically_normal();
+                    const std::filesystem::path r = ec ? std::filesystem::path() : img.path.lexically_relative(base);
+                    rel = r.empty() ? img.path : r;
+                }
+                images_[i].uri = uri(rel.generic_string());
             }
         }
         textures_.resize(model_.textures.size());
@@ -243,7 +465,7 @@ class Writer
         {
             const MaterialData &m = model_.materials[i];
             cgltf_material &out = materials_[i];
-            out.name = cstr(m.name);
+            out.name = str(m.name);
             out.has_pbr_metallic_roughness = true;
             std::memcpy(out.pbr_metallic_roughness.base_color_factor, &m.baseColorFactor[0], sizeof(float) * 4);
             out.pbr_metallic_roughness.base_color_texture = textureView(m.baseColor);
@@ -291,7 +513,7 @@ class Writer
                 prim.attributes = attrs.data();
                 prim.attributes_count = attrs.size();
                 prim.material = p.material >= 0 ? &materials_[static_cast<std::size_t>(p.material)] : nullptr;
-                const bool small = std::all_of(p.indices.begin(), p.indices.end(), [](std::uint32_t v) { return v <= 0xFFFFu; });
+                const bool small = std::all_of(p.indices.begin(), p.indices.end(), [](std::uint32_t v) { return v < 0xFFFFu; });
                 if (small)
                 {
                     indices16_.emplace_back(p.indices.begin(), p.indices.end());
@@ -305,7 +527,7 @@ class Writer
                 }
                 primitives_.push_back(prim);
             }
-            meshes_[i].name = cstr(mesh.name);
+            meshes_[i].name = str(mesh.name);
             meshes_[i].primitives = mesh.primitives.empty() ? nullptr : &primitives_[first];
             meshes_[i].primitives_count = mesh.primitives.size();
         }
@@ -315,7 +537,7 @@ class Writer
         {
             const CameraData &c = model_.cameras[i];
             cgltf_camera &out = cameras_[i];
-            out.name = cstr(c.name);
+            out.name = str(c.name);
             if (c.perspective)
             {
                 out.type = cgltf_camera_type_perspective;
@@ -340,7 +562,7 @@ class Writer
         {
             const LightData &l = model_.lights[i];
             cgltf_light &out = lights_[i];
-            out.name = cstr(l.name);
+            out.name = str(l.name);
             out.type = l.kind == LightKind::kDirectional ? cgltf_light_type_directional
                        : l.kind == LightKind::kSpot      ? cgltf_light_type_spot
                                                          : cgltf_light_type_point;
@@ -357,7 +579,7 @@ class Writer
         {
             const NodeData &n = model_.nodes[i];
             cgltf_node &out = nodes_[i];
-            out.name = cstr(n.name);
+            out.name = str(n.name);
             out.parent = n.parent >= 0 ? &nodes_[static_cast<std::size_t>(n.parent)] : nullptr;
             nodeChildren_.emplace_back();
             for (int c : n.children)
@@ -384,7 +606,7 @@ class Writer
         {
             const SkinData &s = model_.skins[i];
             cgltf_skin &out = skins_[i];
-            out.name = cstr(s.name);
+            out.name = str(s.name);
             skinJoints_.emplace_back();
             for (int j : s.joints)
             {
@@ -400,10 +622,10 @@ class Writer
             }
         }
 
-        animations_.resize(model_.animations.size());
+        animations_.resize(keptAnimations_.size());
         for (std::size_t i = 0; i < animations_.size(); ++i)
         {
-            const AnimationData &a = model_.animations[i];
+            const AnimationData &a = *keptAnimations_[i];
             animSamplers_.emplace_back();
             animChannels_.emplace_back();
             auto &samplers = animSamplers_.back();
@@ -412,6 +634,10 @@ class Writer
             channels.reserve(a.channels.size());
             for (const AnimationChannel &ch : a.channels)
             {
+                if (!exported(ch))
+                {
+                    continue;
+                }
                 cgltf_animation_sampler s{};
                 s.input = addAccessor(ch.times.data(), ch.times.size(), cgltf_type_scalar, cgltf_component_type_r_32f,
                                       cgltf_buffer_view_type_invalid, true);
@@ -431,7 +657,7 @@ class Writer
                                                                      : cgltf_animation_path_type_translation;
                 channels.push_back(c);
             }
-            animations_[i].name = cstr(a.name);
+            animations_[i].name = str(a.name);
             animations_[i].samplers = samplers.empty() ? nullptr : samplers.data();
             animations_[i].samplers_count = samplers.size();
             animations_[i].channels = channels.empty() ? nullptr : channels.data();
@@ -446,7 +672,7 @@ class Writer
             {
                 sceneRoots_.back().push_back(&nodes_[static_cast<std::size_t>(r)]);
             }
-            scenes_[i].name = cstr(model_.scenes[i].name);
+            scenes_[i].name = str(model_.scenes[i].name);
             scenes_[i].nodes = sceneRoots_.back().empty() ? nullptr : sceneRoots_.back().data();
             scenes_[i].nodes_count = sceneRoots_.back().size();
         }
@@ -472,13 +698,14 @@ class Writer
         data_.scene = model_.defaultScene >= 0 ? &scenes_[static_cast<std::size_t>(model_.defaultScene)] : nullptr;
     }
 
+    static bool exported(const AnimationChannel &ch) noexcept { return ch.path != AnimationPath::kWeights; }
+
     inline static const std::string kPng = "image/png";
 
     const Model &model_;
     cgltf_data data_{};
     cgltf_buffer buffer_{};
     std::vector<std::uint8_t> bin_;
-    std::string binName_;
     std::vector<cgltf_accessor> accessors_;
     std::vector<cgltf_buffer_view> views_;
     std::vector<cgltf_image> images_;
@@ -495,12 +722,13 @@ class Writer
     std::vector<std::vector<cgltf_node *>> nodeChildren_;
     std::vector<cgltf_skin> skins_;
     std::vector<std::vector<cgltf_node *>> skinJoints_;
+    std::vector<const AnimationData *> keptAnimations_;
     std::vector<cgltf_animation> animations_;
     std::vector<std::vector<cgltf_animation_sampler>> animSamplers_;
     std::vector<std::vector<cgltf_animation_channel>> animChannels_;
     std::vector<cgltf_scene> scenes_;
     std::vector<std::vector<cgltf_node *>> sceneRoots_;
-    std::vector<std::string> uris_;
+    std::deque<std::string> strings_; // chaînes échappées : adresses stables jusqu'à la fin de l'écriture
 };
 
 } // namespace

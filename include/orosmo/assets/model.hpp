@@ -56,7 +56,7 @@ struct SamplerData
     bool nearest = false; // filtre « plus proche voisin » demandé par le fichier
 };
 
-// Image d'un fichier : soit externe (`path`, absolu ou relatif au dossier du fichier glTF), soit incluse (`encoded`, PNG ou JPG).
+// Image d'un fichier : soit externe (`path` : absolu après `loadGltf`/`parseGltf` ; relatif, il est relatif au dossier du fichier écrit par `saveGltf`), soit incluse (`encoded`, PNG ou JPG).
 struct ImageData
 {
     std::string name;

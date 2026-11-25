@@ -2,7 +2,9 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace orosmo::assets
 {
@@ -112,6 +114,7 @@ core::Result<> Model::validate() const
             return fail("texture: image or sampler out of range");
         }
     }
+    std::vector<int> claimed(nodes.size(), 0); // nombre de listes `children` qui nomment chaque nœud
     for (std::size_t i = 0; i < nodes.size(); ++i)
     {
         const NodeData &n = nodes[i];
@@ -126,21 +129,41 @@ core::Result<> Model::validate() const
             {
                 return fail("node " + std::to_string(i) + ": child " + std::to_string(c) + " is out of range or has another parent");
             }
+            if (++claimed[static_cast<std::size_t>(c)] > 1)
+            {
+                return fail("node " + std::to_string(c) + " is listed twice in children");
+            }
         }
     }
-    // Pas de cycle : en remontant les parents, on sort en au plus nodes.size() pas.
+    // Lien parent-enfant dans les deux sens : un nœud qui déclare un parent figure dans les enfants de ce parent.
+    for (std::size_t i = 0; i < nodes.size(); ++i)
+    {
+        if (nodes[i].parent >= 0 && claimed[i] != 1)
+        {
+            return fail("node " + std::to_string(i) + ": its parent does not list it in children");
+        }
+    }
+    // Pas de cycle, en un seul passage : chaque nœud est « en cours » (1) le temps de remonter, puis « terminé » (2) ; rencontrer un
+    // nœud en cours signale un cycle, un nœud terminé n'est jamais revisité (coût linéaire).
+    std::vector<std::uint8_t> state(nodes.size(), 0);
+    std::vector<std::size_t> path;
     for (std::size_t i = 0; i < nodes.size(); ++i)
     {
         int n = static_cast<int>(i);
-        std::size_t steps = 0;
-        while (n >= 0 && steps <= nodes.size())
+        path.clear();
+        while (n >= 0 && state[static_cast<std::size_t>(n)] == 0)
         {
+            state[static_cast<std::size_t>(n)] = 1;
+            path.push_back(static_cast<std::size_t>(n));
             n = nodes[static_cast<std::size_t>(n)].parent;
-            ++steps;
         }
-        if (n >= 0)
+        if (n >= 0 && state[static_cast<std::size_t>(n)] == 1)
         {
             return fail("node hierarchy has a cycle");
+        }
+        for (std::size_t visited : path)
+        {
+            state[visited] = 2;
         }
     }
     for (const auto &skin : skins)
@@ -167,6 +190,14 @@ core::Result<> Model::validate() const
             {
                 return fail("animation " + anim.name + ": channel node or key count is wrong");
             }
+            // glTF : instants positifs ou nuls et strictement croissants (la comparaison refuse aussi NaN).
+            for (std::size_t k = 0; k < ch.times.size(); ++k)
+            {
+                if (!(k == 0 ? ch.times[0] >= 0.0f : ch.times[k] > ch.times[k - 1]))
+                {
+                    return fail("animation " + anim.name + ": key times must be non-negative and strictly increasing");
+                }
+            }
         }
     }
     for (const auto &scene : scenes)
@@ -176,6 +207,10 @@ core::Result<> Model::validate() const
             if (r < 0 || r >= static_cast<int>(nodes.size()))
             {
                 return fail("scene " + scene.name + ": root out of range");
+            }
+            if (nodes[static_cast<std::size_t>(r)].parent >= 0)
+            {
+                return fail("scene " + scene.name + ": root " + std::to_string(r) + " has a parent");
             }
         }
     }
