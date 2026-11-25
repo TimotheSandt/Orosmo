@@ -1,5 +1,7 @@
 // ANIM-02 / ANIM-03 : clips (interpolations, boucle, événements), poses (mélange, masque, couches additives, matrices monde),
 // machine à états (conditions, déclencheurs, fondu, fin de clip, événements) et courbes de propriétés. Sans GPU.
+#include <limits>
+#include <stdexcept>
 #include <doctest/doctest.h>
 
 #include <orosmo/anim/clip.hpp>
@@ -134,8 +136,8 @@ TEST_SUITE("anim/clip")
         out.clear();
         clip.collectEvents(0.75f, 0.25f, 1, out); // tour : end puis start
         REQUIRE(out.size() == 2);
-        CHECK(out[0].name == "start");
-        CHECK(out[1].name == "end");
+        CHECK(out[0].name == "end");
+        CHECK(out[1].name == "start");
 
         // Plusieurs tours : un clip d'1 s depuis 0,25 avancé de 2,25 s franchit 0,75 deux fois.
         const an::ClipTime many = an::advanceClipTime(0.25f, 2.25f, 1.0f, an::LoopMode::kLoop);
@@ -146,6 +148,24 @@ TEST_SUITE("anim/clip")
         marked.addEvent(0.75f, "m");
         marked.collectEvents(0.25f, many.time, many.laps, out);
         CHECK(out.size() == 2);
+        // Ordre des franchissements : A(0,3) B(0,75) de 0,25 à 0,5 sur 2 tours -> A B A B A.
+        an::Clip ab = moveX(0, 1, 1.0f);
+        ab.addEvent(0.75f, "B");
+        ab.addEvent(0.3f, "A");
+        out.clear();
+        ab.collectEvents(0.25f, 0.5f, 2, out);
+        REQUIRE(out.size() == 5);
+        const char *expected[] = {"A", "B", "A", "B", "A"};
+        for (std::size_t i = 0; i < 5; ++i)
+        {
+            CHECK(out[i].name == expected[i]);
+        }
+        // Entrées extrêmes : pas de conversion indéfinie, laps plafonné.
+        CHECK(an::advanceClipTime(0.0f, 1.0f, 1e-20f, an::LoopMode::kLoop).laps == an::kMaxLaps);
+        const float inf = std::numeric_limits<float>::infinity();
+        const an::ClipTime nonFinite = an::advanceClipTime(0.0f, inf, 1.0f, an::LoopMode::kLoop);
+        CHECK(nonFinite.laps == an::kMaxLaps);
+        CHECK(nonFinite.time == 0.0f);
         CHECK(an::advanceClipTime(0.25f, 0.25f, 1.0f, an::LoopMode::kLoop).laps == 0);
         CHECK(an::advanceClipTime(0.75f, 0.5f, 1.0f, an::LoopMode::kLoop).laps == 1);
     }
@@ -358,5 +378,33 @@ TEST_SUITE("anim/curves")
         CHECK(anim.trackCount() == 1);
         anim.unbind("c");
         CHECK(anim.trackCount() == 0);
+    }
+
+    TEST_CASE("PropertyAnimation: bind then unbind in a setter cancels the pending bind; an exception restores the state")
+    {
+        an::Curve<float> c;
+        c.addKey(0.0f, 1.0f);
+        an::PropertyAnimation anim;
+        REQUIRE(anim.bind<float>("a", c, [&](const float &) {
+                    (void)anim.bind<float>("n", c, [](const float &) {});
+                    anim.unbind("n");
+                }).has_value());
+        anim.apply(0.0f);
+        CHECK(anim.trackCount() == 1);
+
+        an::PropertyAnimation thrower;
+        bool first = true;
+        REQUIRE(thrower.bind<float>("t", c, [&](const float &) {
+                    if (first)
+                    {
+                        first = false;
+                        thrower.unbind("t");
+                        throw std::runtime_error("boom");
+                    }
+                }).has_value());
+        CHECK_THROWS(thrower.apply(0.0f));
+        CHECK(thrower.trackCount() == 0); // le unbind différé a été appliqué malgré l'exception
+        CHECK(thrower.bind<float>("t2", c, [](const float &) {}).has_value());
+        CHECK(thrower.trackCount() == 1); // applying_ restauré : bind immédiat
     }
 }
