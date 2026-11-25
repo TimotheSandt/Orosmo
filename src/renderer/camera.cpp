@@ -76,8 +76,10 @@ glm::mat4 Camera::projectionMatrix() const
         projection[2][3] = -1.0f;
         projection[3][2] = nearPlane_;
     }
-    projection[2][0] += jitter_.x;
-    projection[2][1] += jitter_.y;
+    // w_clip = -z_vue : le terme de la colonne 2 est multiplié par -w, d'où le signe moins pour décaler le NDC de +jitter (comme la
+    // projection orthographique, et comme le retire `aovMotionVector`, REN-19).
+    projection[2][0] -= jitter_.x;
+    projection[2][1] -= jitter_.y;
     return projection;
 }
 

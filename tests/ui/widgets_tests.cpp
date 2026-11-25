@@ -3,6 +3,8 @@
 // onFocus) et registre d'actions ; écritures différées (visibles après `update`) ; état visuel lu dans le thème. Sans GPU.
 #include "ui/ui_harness.hpp"
 
+#include <orosmo/ui/color.hpp>
+#include <functional>
 #include <orosmo/ui/reflect.hpp>
 
 namespace ui = orosmo::ui;
@@ -324,6 +326,105 @@ TEST_SUITE("ui/widgets")
         CHECK(color.r == doctest::Approx(0.75f).epsilon(0.02));
         CHECK(color.g == doctest::Approx(0.5f));
         CHECK(changes == 1);
+    }
+
+    TEST_CASE("ColorPicker: clicking the swatch opens a ColorEditor popup bound to the same color; sliders do not")
+    {
+        UiHarness h;
+        ui::Color color{0.0f, 0.5f, 1.0f, 1.0f};
+        int changes = 0;
+        auto p = std::make_unique<ui::ColorPicker>(ui::Binding<ui::Color>::ref(color), true);
+        p->onChange([&](const ui::Event &) { ++changes; });
+        auto &picker = place(h, std::move(p), {160, 60});
+        const ui::Rect sw = picker.swatchRect();
+        REQUIRE(sw.size.x > 0.0f);
+
+        h.click(UiHarness::center(*picker.children()[0]->children()[0])); // un curseur : pas de fenêtre
+        CHECK_FALSE(h.ui.anyPopupOpen());
+        changes = 0;
+
+        const glm::vec2 onSwatch = sw.position + sw.size * 0.5f;
+        h.click(onSwatch);
+        REQUIRE(h.ui.popupOpenFor(picker));
+        auto *editor = dynamic_cast<ui::ColorEditor *>(h.ui.popup()->children()[0].get());
+        REQUIRE(editor != nullptr);
+        CHECK(editor->color() == color);
+
+        // Changer la couleur dans l'éditeur (champ hexadécimal) change la valeur liée et déclenche kChange.
+        auto *hex = editor->findAs<ui::TextField>("hex");
+        REQUIRE(hex != nullptr);
+        h.click(UiHarness::center(*hex));
+        h.keys({ui::kKeyEnd});
+        for (int i = 0; i < 9; ++i)
+            h.keys({ui::kKeyBackspace});
+        h.type("#ff0000ff");
+        h.keys({ui::kKeyEnter});
+        h.frame();
+        CHECK(color.r == doctest::Approx(1.0f));
+        CHECK(color.g == doctest::Approx(0.0f));
+        CHECK(color.b == doctest::Approx(0.0f));
+        CHECK(changes >= 1);
+        CHECK(h.ui.popupOpenFor(picker));
+
+        h.click(onSwatch); // re-cliquer sur le carré referme
+        CHECK_FALSE(h.ui.anyPopupOpen());
+        h.click(onSwatch);
+        REQUIRE(h.ui.popupOpenFor(picker));
+        h.click({h.viewport.x - 2, h.viewport.y - 2}); // clic à l'extérieur : referme
+        CHECK_FALSE(h.ui.anyPopupOpen());
+        h.click(onSwatch);
+        REQUIRE(h.ui.popupOpenFor(picker));
+        h.keys({ui::kKeyEscape});
+        CHECK_FALSE(h.ui.anyPopupOpen());
+    }
+
+    TEST_CASE("ColorPicker: focusable; Enter and Space open the editor; Escape on a focused slider of the popup closes it")
+    {
+        UiHarness h;
+        ui::Color color{0.0f, 0.5f, 1.0f, 1.0f};
+        auto &picker = place(h, std::make_unique<ui::ColorPicker>(ui::Binding<ui::Color>::ref(color), true), {160, 60});
+        CHECK(picker.focusable());
+        h.keys({ui::kKeyTab}); // Tab atteint le sélecteur
+        REQUIRE(h.ui.focused() == &picker);
+        h.keys({ui::kKeyEnter});
+        REQUIRE(h.ui.popupOpenFor(picker));
+        h.keys({ui::kKeyEscape});
+        CHECK_FALSE(h.ui.anyPopupOpen());
+        h.keys({ui::kKeySpace});
+        CHECK(h.ui.popupOpenFor(picker));
+
+        // Parcours souris : ouvrir, cliquer un curseur de la fenêtre (il prend le focus), puis Échap ferme la fenêtre.
+        h.click({h.viewport.x - 2, h.viewport.y - 2});
+        CHECK_FALSE(h.ui.anyPopupOpen());
+        const ui::Rect sw = picker.swatchRect();
+        h.click(sw.position + sw.size * 0.5f);
+        REQUIRE(h.ui.popupOpenFor(picker));
+        std::function<ui::Widget *(ui::Widget &)> firstSlider = [&](ui::Widget &w) -> ui::Widget *
+        {
+            if (dynamic_cast<ui::Slider *>(&w) != nullptr)
+                return &w;
+            for (const auto &c : w.children())
+                if (ui::Widget *f = firstSlider(*c))
+                    return f;
+            return nullptr;
+        };
+        ui::Widget *slider = firstSlider(*h.ui.popup());
+        REQUIRE(slider != nullptr);
+        h.click(UiHarness::center(*slider));
+        REQUIRE(h.ui.focused() == slider);
+        h.keys({ui::kKeyEscape});
+        CHECK_FALSE(h.ui.anyPopupOpen());
+    }
+
+    TEST_CASE("ColorPicker: a read-only color opens no popup")
+    {
+        UiHarness h;
+        ui::Binding<ui::Color> readOnly;
+        readOnly.get = [] { return ui::Color{0.1f, 0.2f, 0.3f, 1.0f}; };
+        auto &picker = place(h, std::make_unique<ui::ColorPicker>(std::move(readOnly)), {160, 60});
+        const ui::Rect sw = picker.swatchRect();
+        h.click(sw.position + sw.size * 0.5f);
+        CHECK_FALSE(h.ui.anyPopupOpen());
     }
 
     TEST_CASE("Plot draws one bar per value, from zero")

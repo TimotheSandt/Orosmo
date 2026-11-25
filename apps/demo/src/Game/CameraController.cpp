@@ -65,24 +65,19 @@ void CameraController::update(platform::Window &window, orosmo::renderer::Camera
 
     if (input.isActionActive("Camera::Rotate") && viewWidth > 0 && viewHeight > 0)
     {
-        window.setCursorMode(platform::CursorMode::kHidden);
-
-        const double centerX = static_cast<double>(viewWidth) / 2.0;
-        const double centerY = static_cast<double>(viewHeight) / 2.0;
+        window.setCursorMode(platform::CursorMode::kDisabled);
+        const glm::dvec2 mouse = window.getCursorPosition();
         if (firstClick_)
         {
-            window.setCursorPosition({centerX, centerY});
+            lastCursor_ = mouse; // capture du curseur : pas de rotation à la première image
             firstClick_ = false;
         }
-
-        const glm::dvec2 mouse = window.getCursorPosition();
-        const double mouseX = mouse.x;
-        const double mouseY = mouse.y;
-        const float rotX = sensitivity_ * static_cast<float>(mouseX - centerX) / static_cast<float>(viewWidth);
-        const float rotY = sensitivity_ * static_cast<float>(mouseY - centerY) / static_cast<float>(viewHeight);
+        const glm::dvec2 delta = mouse - lastCursor_;
+        lastCursor_ = mouse;
+        const float rotX = sensitivity_ * static_cast<float>(delta.x) / static_cast<float>(viewWidth);
+        const float rotY = sensitivity_ * static_cast<float>(delta.y) / static_cast<float>(viewHeight);
         camera.rotatePitch(-rotY);
         camera.rotateYaw(-rotX);
-        window.setCursorPosition({centerX, centerY});
     }
     else
     {

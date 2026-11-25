@@ -729,6 +729,95 @@ TEST_SUITE("renderer/gpu_timer")
             gpu.expectNoValidationErrors();
         }
     }
+
+    TEST_CASE("G192: a reused GpuTimer is not ready again until its new measurement is done by the GPU")
+    {
+        // Avant (Vulkan) : la disponibilité des requêtes restait celle de la mesure précédente jusqu'à l'exécution de la remise à
+        // zéro par le GPU ; la minuterie réutilisée se disait prête aussitôt réenregistrée et rendait d'anciennes valeurs.
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            if (!gpu->capabilities().timestampQueries)
+            {
+                MESSAGE("Skipped: no timestamp queries on ", tests::backendName(backend));
+                continue;
+            }
+            const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {64, 64});
+            const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVsGlsl450), gpu.shader(ShaderStage::kFragment, kRedFsGlsl450));
+            rd::GpuTimer timer(*gpu.device, "reused");
+            auto record = [&](CommandEncoder &e)
+            {
+                timer.begin(e);
+                e.beginRenderPass(passOn(color));
+                e.setPipeline(pipe);
+                e.draw(3);
+                e.endRenderPass();
+                timer.end(e);
+            };
+            gpu.run(record);
+            gpu->waitIdle();
+            REQUIRE(timer.isReady());
+
+            timer.reset();
+            auto encoder = gpu->createCommandEncoder();
+            record(*encoder);
+            CHECK_FALSE(timer.isReady()); // enregistrée, pas soumise
+            REQUIRE(gpu->submit(std::move(encoder)).has_value());
+            gpu->waitIdle();
+            CHECK(timer.isReady());
+            CHECK(timer.elapsed().has_value());
+            gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("G192: a GpuTimer grows with the GPU work it brackets")
+    {
+        // Avant : en Vulkan, les horodatages encadrant une passe donnaient presque zéro (0,0003 ms) quelle que soit la charge.
+        // Sans horloge murale (tests déterministes) : 4 dessins lourds mesurent nettement plus qu'un seul.
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            if (!gpu->capabilities().timestampQueries)
+            {
+                MESSAGE("Skipped: no timestamp queries on ", tests::backendName(backend));
+                continue;
+            }
+            const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {512, 512});
+            const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVsGlsl450), gpu.shader(ShaderStage::kFragment, R"(#version 450
+layout(location = 0) out vec4 outColor;
+void main() { vec4 c = vec4(0.0); for (int i = 0; i < 2000; ++i) c += sin(gl_FragCoord.xyxy * float(i) * 0.001); outColor = c * 1e-4; })"));
+            auto measure = [&](int draws) -> double
+            {
+                rd::GpuTimer timer(*gpu.device, "heavy");
+                gpu.run(
+                    [&](CommandEncoder &e)
+                    {
+                        timer.begin(e);
+                        e.beginRenderPass(passOn(color));
+                        e.setPipeline(pipe);
+                        for (int i = 0; i < draws; ++i)
+                        {
+                            e.draw(3);
+                        }
+                        e.endRenderPass();
+                        timer.end(e);
+                    });
+                gpu->waitIdle();
+                const std::optional<std::chrono::nanoseconds> elapsed = timer.elapsed();
+                REQUIRE(elapsed.has_value());
+                return static_cast<double>(elapsed->count()) * 1e-6;
+            };
+            (void)measure(1); // mise en route (compilation du pipeline par le pilote, horloges)
+            const double one = measure(1);
+            const double four = measure(4);
+            MESSAGE(std::string(tests::backendName(backend)), ": GPU timer 1 draw ", one, " ms, 4 draws ", four, " ms");
+            CHECK(one > 0.0);
+            CHECK(four > one * 2.0); // linéaire en théorie (x4) ; marge pour les horloges du GPU
+            gpu.expectNoValidationErrors();
+        }
+    }
 }
 
 TEST_SUITE("renderer/gpu_timer/profiler")
@@ -768,6 +857,46 @@ TEST_SUITE("renderer/gpu_timer/profiler")
             gpu->waitIdle();
             REQUIRE(timer->IsReady());
             CHECK(timer->GetElapsedTime().count() >= 0);
+            gpu.expectNoValidationErrors();
+        }
+    }
+}
+
+TEST_SUITE("renderer/gpu-timer-recycling")
+{
+    TEST_CASE("a finished profiler timer is recycled: the next measure reuses its query pool")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            if (!gpu->capabilities().timestampQueries)
+            {
+                MESSAGE("Skipped: no timestamp queries on ", tests::backendName(backend));
+                continue;
+            }
+            rd::ProfilerGpuTimerFactory factory(*gpu.device);
+            const auto poolsBefore = gpu->stats().queryPools;
+            for (int frame = 0; frame < 5; ++frame)
+            {
+                auto timer = factory.CreateTimer("frame");
+                REQUIRE(timer != nullptr);
+                auto encoder = gpu->createCommandEncoder();
+                factory.setEncoder(encoder.get());
+                timer->Begin();
+                timer->End();
+                factory.setEncoder(nullptr);
+                REQUIRE(gpu->submit(std::move(encoder)).has_value());
+                gpu->waitIdle();
+                REQUIRE(timer->IsReady());
+            } // chaque minuterie terminée retourne au fournisseur
+            CHECK(factory.recycledCount() == 1);
+            CHECK(gpu->stats().queryPools == poolsBefore + 1); // une seule pool pour les cinq mesures
+
+            auto abandoned = factory.CreateTimer("never ended"); // reprend la minuterie recyclée
+            CHECK(factory.recycledCount() == 0);
+            abandoned.reset(); // jamais mesurée : détruite, pas recyclée
+            CHECK(factory.recycledCount() == 0);
             gpu.expectNoValidationErrors();
         }
     }

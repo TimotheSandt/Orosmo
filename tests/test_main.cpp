@@ -6,6 +6,7 @@
 #include <cstdlib>
 
 #include <orosmo/core/log.hpp>
+#include <orosmo/platform/window.hpp>
 
 #if defined(__SANITIZE_ADDRESS__)
 // libshaderc 2023.8 (Ubuntu 24.04, apt) alloue ses options avec `operator new` et les libère avec `free` : ASan signale un
@@ -47,6 +48,16 @@ DOCTEST_REGISTER_LISTENER("trace", 1, TraceListener);
 int main(int argc, char **argv)
 {
     orosmo::core::Logger::SetMinimumLevel(orosmo::core::L_FATAL);
+
+#if defined(__linux__)
+    // Les tests créent des fenêtres cachées. Sous Wayland, une fenêtre jamais affichée ne reçoit pas de rappel d'image : une
+    // présentation avec vsync (FIFO) y attend sans fin (G191). Sous une session Wayland qui a aussi X11 (XWayland), les tests
+    // passent donc par X11, comme la CI (xvfb). ENGINE_TEST_WAYLAND=1 garde Wayland (cas sans fenêtre cachée seulement).
+    if (std::getenv("WAYLAND_DISPLAY") != nullptr && std::getenv("DISPLAY") != nullptr && std::getenv("ENGINE_TEST_WAYLAND") == nullptr)
+    {
+        orosmo::platform::preferX11Platform(); // GLFW 3.4+ ; sans effet avant
+    }
+#endif
 
     doctest::Context context;
     context.applyCommandLine(argc, argv);

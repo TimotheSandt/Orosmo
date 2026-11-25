@@ -22,6 +22,7 @@ inline constexpr std::size_t kProfilerMaxQueries = 12;
 inline constexpr std::size_t kProfilerBufferSize = 512;
 inline constexpr int kProfilerSaveHistoryEveryMs = 3000;
 inline constexpr int kProfilerQueryTimeoutMs = 10000;
+inline constexpr std::size_t kProfilerMaxHistory = 1024;
 
 class Profiler
 {
@@ -35,18 +36,64 @@ class Profiler
     Profiler(Profiler &&) = delete;
     Profiler &operator=(Profiler &&) = delete;
 
+  private:
+    struct ProfilerData;
+    struct QueryData;
+
   public:
-    static void Profile(const std::string &name, const std::function<void()> &func)
+    // Clé de mesure précalculée : pointeurs vers les entrées du nom (stables : tables à nœuds, jamais effacées). À créer UNE fois
+    // (MakeKey) et à passer aux Profile / ProfileGPU de la boucle chaude : aucune std::string construite ni recherche de table par
+    // appel. Les surcharges par nom (std::string) restent, pour les usages rares ; les noms affichés ne changent pas.
+    class Key
+    {
+      public:
+        Key() = default;
+        const std::string &name() const noexcept { return *name_; }
+        bool valid() const noexcept { return name_ != nullptr; }
+
+      private:
+        friend class Profiler;
+        const std::string *name_ = nullptr;
+        ProfilerData *data_ = nullptr;
+        QueryData *queries_ = nullptr;
+    };
+
+    // Crée (ou retrouve) la clé du nom ; la seule opération qui construit des chaînes et cherche dans les tables.
+    static Key MakeKey(const std::string &name)
+    {
+        Key key;
+        {
+            std::lock_guard<std::mutex> lock(getProfilerMutex());
+            auto it = getProfilerData().try_emplace(name).first;
+            key.name_ = &it->first;
+            key.data_ = &it->second;
+        }
+        {
+            std::lock_guard<std::mutex> lock(getQueryMutex());
+            key.queries_ = &getQueryData().try_emplace(name).first->second;
+        }
+        return key;
+    }
+
+    static void Profile(const std::string &name, const std::function<void()> &func) { Profile(MakeKey(name), func); }
+
+    static void Profile(const Key &key, const std::function<void()> &func)
     {
         auto start = std::chrono::high_resolution_clock::now();
         func();
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-        AddTime(name, duration);
+        AddTime(*key.data_, duration);
     }
 
     template <typename Func, typename... Args>
     static auto Profile(const std::string &name, Func &&func, Args &&...args) -> std::invoke_result_t<Func, Args...>
+    {
+        return Profile(MakeKey(name), std::forward<Func>(func), std::forward<Args>(args)...);
+    }
+
+    template <typename Func, typename... Args>
+    static auto Profile(const Key &key, Func &&func, Args &&...args) -> std::invoke_result_t<Func, Args...>
     {
         auto start = std::chrono::high_resolution_clock::now();
 
@@ -55,14 +102,14 @@ class Profiler
             std::invoke(std::forward<Func>(func), std::forward<Args>(args)...);
             auto end = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-            AddTime(name, duration);
+            AddTime(*key.data_, duration);
         }
         else
         {
             auto result = std::invoke(std::forward<Func>(func), std::forward<Args>(args)...);
             auto end = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-            AddTime(name, duration);
+            AddTime(*key.data_, duration);
 
             return result;
         }
@@ -85,13 +132,20 @@ class Profiler
     static void ClearGpuQueries();
     static void SetGpuTimerFactory(const IGpuTimerFactory *factory) noexcept;
     static const IGpuTimerFactory *GetGpuTimerFactory() noexcept;
+    // Minuteries GPU actives (défaut : oui). Désactivées, ProfileGPU mesure sur le CPU et ne demande AUCUNE minuterie au fournisseur
+    // (aucune pool de requêtes créée, aucun horodatage écrit) ; les mesures GPU déjà en attente se terminent normalement.
+    // À couper quand personne ne lit les temps GPU (panneau de performances masqué).
+    static void SetGpuTimingsEnabled(bool enabled) noexcept;
+    static bool GpuTimingsEnabled() noexcept;
 
-    static void ProfileGPU(const std::string &name, const std::function<void()> &func)
+    static void ProfileGPU(const std::string &name, const std::function<void()> &func) { ProfileGPU(MakeKey(name), func); }
+
+    static void ProfileGPU(const Key &key, const std::function<void()> &func)
     {
-        std::unique_ptr<IGpuTimer> query = CreateGpuTimer(name);
+        std::unique_ptr<IGpuTimer> query = CreateGpuTimer(key);
         if (query == nullptr)
         {
-            Profile(name, func);
+            Profile(key, func);
             return;
         }
 
@@ -99,18 +153,24 @@ class Profiler
         func();
         query->End();
 
-        AddQuery(name, std::move(query));
+        AddQuery(*key.queries_, std::move(query));
 
-        ProcessQueries(name);
+        ProcessQueries(*key.data_, *key.queries_);
     }
 
     template <typename Func, typename... Args>
     static auto ProfileGPU(const std::string &name, Func &&func, Args &&...args) -> std::invoke_result_t<Func, Args...>
     {
-        std::unique_ptr<IGpuTimer> query = CreateGpuTimer(name);
+        return ProfileGPU(MakeKey(name), std::forward<Func>(func), std::forward<Args>(args)...);
+    }
+
+    template <typename Func, typename... Args>
+    static auto ProfileGPU(const Key &key, Func &&func, Args &&...args) -> std::invoke_result_t<Func, Args...>
+    {
+        std::unique_ptr<IGpuTimer> query = CreateGpuTimer(key);
         if (query == nullptr)
         {
-            return Profile(name, std::forward<Func>(func), std::forward<Args>(args)...);
+            return Profile(key, std::forward<Func>(func), std::forward<Args>(args)...);
         }
 
         query->Begin();
@@ -119,16 +179,16 @@ class Profiler
             std::invoke(std::forward<Func>(func), std::forward<Args>(args)...);
             query->End();
 
-            AddQuery(name, std::move(query));
-            ProcessQueries(name);
+            AddQuery(*key.queries_, std::move(query));
+            ProcessQueries(*key.data_, *key.queries_);
         }
         else
         {
             auto result = std::invoke(std::forward<Func>(func), std::forward<Args>(args)...);
             query->End();
 
-            AddQuery(name, std::move(query));
-            ProcessQueries(name);
+            AddQuery(*key.queries_, std::move(query));
+            ProcessQueries(*key.data_, *key.queries_);
 
             return result;
         }
@@ -138,14 +198,14 @@ class Profiler
     {
         for (auto &[name, queriesData] : getQueryData())
         {
-            ProcessQueries(name);
+            ProcessQueries(getProfilerData()[name], queriesData);
         }
 
         for (auto &[name, profilerData] : getProfilerData())
         {
             auto now = std::chrono::high_resolution_clock::now();
-            if (profilerData.history.size() != 0 &&
-                (now - profilerData.history.back().time) > std::chrono::milliseconds(kProfilerSaveHistoryEveryMs))
+            // Minuterie sans nouvelle mesure depuis kProfilerSaveHistoryEveryMs (passe qui ne tourne plus) : moyenne périmée, vidée.
+            if (profilerData.hasSample && (now - profilerData.lastSample) > std::chrono::milliseconds(kProfilerSaveHistoryEveryMs))
             {
                 profilerData.buffer.Clear();
             }
@@ -159,28 +219,31 @@ class Profiler
     static double GetAverageTimeMs(const std::string &name) { return static_cast<double>(GetAverageTime(name).count()) * 1e-6; }
 
   private:
-    static std::unique_ptr<IGpuTimer> CreateGpuTimer(const std::string &name)
+    // Fournisseur seulement si les minuteries sont actives.
+    static const IGpuTimerFactory *GetGpuTimingsEnabledFactory() noexcept { return GpuTimingsEnabled() ? GetGpuTimerFactory() : nullptr; }
+
+    static std::unique_ptr<IGpuTimer> CreateGpuTimer(const Key &key)
     {
-        const IGpuTimerFactory *factory = GetGpuTimerFactory();
-        return factory != nullptr ? factory->CreateTimer(name) : nullptr;
+        const IGpuTimerFactory *factory = GetGpuTimingsEnabledFactory();
+        return factory != nullptr ? factory->CreateTimer(key.name()) : nullptr;
     }
 
-    static void ProcessQueries(const std::string &name)
+    static void ProcessQueries(ProfilerData &data, QueryData &queries)
     {
-        while (!getQueries(name).empty())
+        while (!queries.queries.empty())
         {
-            const auto &q = getQueries(name).front();
+            const auto &q = queries.queries.front();
             if (q.query != nullptr && q.query->IsReady())
             {
-                AddTime(name, q.query->GetElapsedTime());
-                PopQuery(name);
+                AddTime(data, q.query->GetElapsedTime());
+                PopQuery(queries);
             }
             else
             {
                 auto now = std::chrono::high_resolution_clock::now();
-                if ((now - getQueryData()[name].lastUpdate) >= std::chrono::milliseconds(kProfilerQueryTimeoutMs))
+                if ((now - queries.lastUpdate) >= std::chrono::milliseconds(kProfilerQueryTimeoutMs))
                 {
-                    PopQuery(name);
+                    PopQuery(queries);
                 }
                 else
                 {
@@ -190,34 +253,41 @@ class Profiler
         }
     }
 
-    static void AddTime(const std::string &name, std::chrono::nanoseconds time)
+    static void AddTime(ProfilerData &data, std::chrono::nanoseconds time)
     {
         std::lock_guard<std::mutex> lock(getProfilerMutex());
-        getTimer(name).Push(time);
+        data.buffer.Push(time);
         auto now = std::chrono::high_resolution_clock::now();
-        if (getProfilerData()[name].history.size() == 0 ||
-            (now - getProfilerData()[name].history.back().time).count() >= kProfilerSaveHistoryEveryMs)
+        data.lastSample = now;
+        data.hasSample = true;
+        // Un point d'historique toutes les kProfilerSaveHistoryEveryMs (durée comparée en millisecondes : la comparaison d'un
+        // nombre de nanosecondes ajoutait un point à chaque mesure, sans limite de mémoire), kProfilerMaxHistory points au plus.
+        if (data.history.empty() || (now - data.history.back().time) >= std::chrono::milliseconds(kProfilerSaveHistoryEveryMs))
         {
-            getProfilerData()[name].history.push_back({now, getTimer(name).GetAverage(), getTimer(name).GetMax(), getTimer(name).GetMin()});
+            if (data.history.size() >= kProfilerMaxHistory)
+            {
+                data.history.erase(data.history.begin(), data.history.begin() + static_cast<std::ptrdiff_t>(kProfilerMaxHistory / 2));
+            }
+            data.history.push_back({now, data.buffer.GetAverage(), data.buffer.GetMax(), data.buffer.GetMin()});
         }
     }
 
-    static void AddQuery(const std::string &name, std::unique_ptr<IGpuTimer> query)
+    static void AddQuery(QueryData &data, std::unique_ptr<IGpuTimer> query)
     {
         std::lock_guard<std::mutex> lock(getQueryMutex());
-        if (getQueries(name).size() >= kProfilerMaxQueries)
+        if (data.queries.size() >= kProfilerMaxQueries)
         {
-            getQueries(name).pop();
+            data.queries.pop();
         }
-        getQueries(name).push({.query = std::move(query)});
-        getQueryData()[name].lastUpdate = std::chrono::high_resolution_clock::now();
+        data.queries.push({.query = std::move(query)});
+        data.lastUpdate = std::chrono::high_resolution_clock::now();
     }
 
-    static void PopQuery(const std::string &name)
+    static void PopQuery(QueryData &data)
     {
         std::lock_guard<std::mutex> lock(getQueryMutex());
-        getQueries(name).pop();
-        getQueryData()[name].lastUpdate = std::chrono::high_resolution_clock::now();
+        data.queries.pop();
+        data.lastUpdate = std::chrono::high_resolution_clock::now();
     }
 
     struct TimerData
@@ -232,6 +302,8 @@ class Profiler
     {
         RingBuffer<std::chrono::nanoseconds> buffer{kProfilerBufferSize};
         std::vector<TimerData> history;
+        std::chrono::high_resolution_clock::time_point lastSample{};
+        bool hasSample = false;
     };
 
     struct QueryData
@@ -258,10 +330,6 @@ class Profiler
     }
 
     static RingBuffer<std::chrono::nanoseconds> &getTimer(const std::string &name) { return getProfilerData()[name].buffer; }
-
-    using QueryItem = QueryData::QueryItem;
-
-    static std::queue<QueryItem> &getQueries(const std::string &name) { return getQueryData()[name].queries; }
 
     static std::mutex &getProfilerMutex()
     {

@@ -7,7 +7,7 @@ Seul endroit (avec `src/rhi/opengl/`) où existent `Vk*`, `vk*`, volk et VMA. M�
 | Fichier | Rôle |
 | --- | --- |
 | `vk_device.hpp` | **Contrat interne** : structures des ressources, classe `VulkanDevice`, qui possède quoi |
-| `vk_device.cpp` | instance, GPU, périphérique logique, VMA, capacités, séries de soumission, libération différée, lot de transferts |
+| `vk_device.cpp` | instance, GPU, périphérique logique, VMA, capacités, séries de soumission, libération différée, réserves de tampons de commandes, lot et anneau de transferts |
 | `vk_resources.cpp` | tampons, textures, échantillonneurs, requêtes de temps ; `update*` / `read*` synchrones |
 | `vk_pipelines.cpp` | shaders (réflexion SPIR-V), dispositions de descripteurs, pipelines, groupes de liaison, cache de pipelines |
 | `vk_encoder.{hpp,cpp}` | `CommandEncoder` : enregistrement, passes, barrières, `Device::submit` |
@@ -33,8 +33,15 @@ Un seul sémaphore à chronologie ; chaque soumission le fait croître de 1 (`Se
 suite (il devient périmé) et met la libération en file avec la série courante : elle s'exécute quand le GPU a atteint cette
 série (`collectReleases`) **et** que `kFramesInFlight` images ont été présentées depuis (même compteur que le backend OpenGL :
 `DeviceStats::pendingDestruction` évolue pareil) ; `waitIdle` libère sans attendre d'image, les tampons de transfert internes
-n'attendent que le GPU. Les tampons de commandes sont recyclés de la même façon (`acquireCommandBuffer` /
-`retireCommandBuffer`). `beginFrame` attend la série de l'image N - 2 (2 images d'avance au plus).
+n'attendent que le GPU. `beginFrame` attend la série de l'image N - 2 (2 images d'avance au plus).
+
+## Tampons de commandes
+
+Réserves (`VkCommandPool`, sans `RESET_COMMAND_BUFFER_BIT`) en anneau : la réserve courante donne ses tampons dans l'ordre
+(`acquireCommandBuffer`). À chaque `present` (et après `kCommandBuffersPerPool` tampons), on passe à une réserve dont tous les
+tampons sont rendus (`retireCommandBuffer` : soumis ; `releaseUnsubmitted` : abandonnés, quel que soit leur état) et finis par le
+GPU : elle est remise à zéro **en bloc** (`vkResetCommandPool`) ; sinon une réserve neuve. En régime établi : une réserve par image
+en vol, aucune allocation ni remise à zéro par tampon.
 
 ## Dispositions « de repos » et barrières déduites
 
@@ -44,17 +51,39 @@ Chaque texture a une **disposition de repos** (`TextureRes::restLayout`), fixée
 à son repos.** Une commande qui exige une autre disposition (cible de rendu, copie, mips) y fait passer l'image (transition
 précise), puis la **ramène au repos avant de finir**. Conséquences : un encodeur n'a jamais à connaître l'état laissé par un
 autre (pas d'état partagé entre encodeurs, un encodeur jamais soumis ne casse rien) ; l'échantillonnage dans une passe ne
-demande aucune barrière ; une texture neuve (UNDEFINED) est mise au repos par `flushPending`, appelé avant toute soumission.
+demande aucune barrière ; une texture neuve (UNDEFINED) est mise au repos par le lot de transferts, en tête de la prochaine soumission.
 
 Les barrières mémoire sont **conservatrices** : une dépendance « tout contre tout » (`memoryBarrierAll`) avant et après chaque
 commande hors passe (copie, dispatch, mips) et autour de chaque passe. C'est correct (la validation de synchronisation ne dit
 rien) mais pas optimal ; l'affinement par ressource est suivi dans `docs/GAPS.md`. Pas de barrière DANS une passe : une
 écriture de stockage lue par un dessin suivant de la même passe n'est pas prise en charge (le RHI l'interdit hors compute).
 
-Transferts « lents » (`updateBuffer`, `updateTexture`, tampon créé avec des données) : copie dans un **lot** (`batch()`),
-soumis par `flushPending` avant toute autre soumission, donc **ordonné avec les soumissions** comme `glBufferSubData` mais sans
-attendre le GPU. Un `update*` s'applique avant la prochaine soumission, pas à la position où un encodeur déjà enregistré l'a vu.
-`read*` et les copies bloquantes passent par `immediate()` (soumet et attend).
+## Transferts
+
+`updateBuffer` (tampon `kGpuOnly`), `updateTexture`, tampon créé avec des données : copie dans un **lot** (`batch()`), **joint en
+tête de la prochaine soumission** (même `vkQueueSubmit2`, `submitWithBatch`), donc **ordonné avec les soumissions** comme
+`glBufferSubData` sans attendre le GPU ni soumettre à part (une soumission par image en régime établi). Un `update*` s'applique
+avant la prochaine soumission, pas à la position où un encodeur déjà enregistré l'a vu. `flushPending` ne soumet le lot seul que
+quand rien d'autre ne part (`present` sans encodeur après l'envoi, `waitIdle`, lecture d'un tampon mappé, lot > 64 Mio).
+
+- **Anneau de transfert** : blocs de `kStagingBlockSize` (4 Mio) mappés en permanence, remplis linéairement ; un bloc repart de son
+  début quand le GPU a fini la dernière série qui l'a lu ; au-delà de `kStagingRetainedBlocks` blocs libres, les blocs en trop sont
+  détruits. Un envoi de plus de `kStagingDedicatedThreshold` (1 Mio) prend un tampon dédié, libéré avec son lot. Décalage aligné sur
+  16 octets et sur la taille d'un texel (copie vers une texture).
+- **Barrières groupées** : une barrière complète en début de lot (après le travail déjà soumis) et une en fin (avant ce qui suit) ;
+  entre deux copies de tampon du lot, une barrière seulement si la plage recouvre une copie précédente (la dernière écriture gagne).
+  Les transitions des envois de texture n'en tiennent pas lieu (une barrière d'image ne couvre pas la mémoire des tampons).
+- **Tampons `kUpload`** : `updateBuffer` écrit directement dans la mémoire mappée (`vmaFlushAllocation`), sans lot ni barrière,
+  **seulement si le GPU n'utilise plus le tampon** : `BufferRes::gpuUse` garde la dernière série qui le lit ou l'écrit (soumission
+  d'un encodeur qui le lie ou le copie, lot qui le copie). Sinon, copie ordonnée comme pour `kGpuOnly` : le résultat est toujours
+  celui de l'ancien chemin, seul le coût change. Suivi par tampon (pas par plage) : un tampon par image en vol côté appelant,
+  réécrit après le `beginFrame` qui a attendu son image, obtient l'écriture directe.
+- `readTimestamps` / `timestampsReady` ne soumettent rien : seuls des encodeurs déjà soumis écrivent des horodatages ; s'ils ne sont
+  pas prêts, `readTimestamps` attend la dernière série soumise.
+- Compteurs internes `VulkanDevice::transferCounters()` (soumissions, blocs, tampons dédiés, barrières, réserves) : diagnostic et
+  tests (`tests/rhi/vulkan_transfer_tests.cpp`).
+
+`read*` et les copies bloquantes passent par `immediate()` (soumet après le lot, même soumission, et attend).
 
 ## Descripteurs : groupes fixes, tout tampon dynamique
 
@@ -121,10 +150,23 @@ nativement. `readTexture` : première ligne = haut.
 
 ## Présentation
 
-L'image de fond du RHI est une **texture RGBA8 du périphérique** (comme hors écran). Avec une fenêtre, `present()` la copie (blit,
-mise à l'échelle si la taille a changé) dans l'image acquise de la chaîne d'échange puis présente : le format de la chaîne (BGRA ou
-RGBA, UNORM) ne regarde pas le moteur. `beginFrame` renvoie `kBusy` pour un framebuffer de taille nulle. Fenêtre créée APRÈS
-`prepareWindowHints` (`GLFW_NO_API`).
+Deux chemins, même contrat (`beginFrame` renvoie l'image de fond RGBA8 UNORM à la taille du framebuffer, `kBusy` pour un
+framebuffer de taille nulle ; fenêtre créée APRÈS `prepareWindowHints`, `GLFW_NO_API`) :
+
+- **Image de la chaîne directe (G185)** : quand la surface propose `R8G8B8A8_UNORM` avec les usages de l'image de fond (cible,
+  échantillonnée, source et destination de copie) — Wayland chez Mesa —, `beginFrame` acquiert l'image de la chaîne et la met dans
+  l'emplacement de l'image de fond (même poignée). La première soumission qui suit attend l'acquisition ; `present` la passe en
+  disposition de présentation et la présente, sans copie. Son contenu ne survit pas d'une image à l'autre (il faut redessiner
+  toute l'image, ce que fait le moteur). Un second `beginFrame` sans `present` rend la même image.
+- **Copie** (surface sans RGBA8, comme X11 chez Mesa, `DeviceDesc::directPresentation = false`, `setDirectPresentation(false)`
+  ou `ENGINE_VK_DIRECT_SWAPCHAIN=0`, qui l'emporte) : l'image de fond est une texture RGBA8
+  du périphérique ; `present()` la copie (blit, mise à l'échelle si la taille a changé) dans l'image acquise puis présente.
+
+Le dessin direct se coupe et se rallume en cours de route (`setDirectPresentation`) : la chaîne est reconstruite à
+l'acquisition suivante. À très haute cadence sans vsync, il peut scintiller sur certains compositeurs (G193) : le coupant,
+on revient à la copie.
+
+`transferCounters()` compte les deux (`directPresents`, `copiedPresents`) ; la démo les journalise à l'arrêt.
 
 ## Limites connues (voir `docs/GAPS.md`)
 

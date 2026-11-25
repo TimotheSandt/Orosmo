@@ -104,4 +104,66 @@ TEST_SUITE("platform/window")
         input.update();
         CHECK(input.getMouseScroll() == glm::vec2(0.0f, 0.0f));
     }
+
+    TEST_CASE("PLAT-01 the framebuffer size and the cursor are kept by GLFW callbacks, read without a display round trip")
+    {
+        platform::Window window("platform-test", 96, 64, platform::WindowState::kWindowed);
+        if (!open(window))
+        {
+            return;
+        }
+        auto *handle = static_cast<GLFWwindow *>(window.getWindow());
+        int glfwWidth = 0;
+        int glfwHeight = 0;
+        glfwGetFramebufferSize(handle, &glfwWidth, &glfwHeight);
+        int width = 0;
+        int height = 0;
+        platform::framebufferSizeOf(window.getWindow(), width, height);
+        CHECK(width == glfwWidth);
+        CHECK(height == glfwHeight);
+
+        // GLFW n'a pas d'API pour simuler un redimensionnement ni un mouvement : les rappels installés par Window sont appelés.
+        const GLFWframebuffersizefun resize = glfwSetFramebufferSizeCallback(handle, nullptr);
+        REQUIRE(resize != nullptr);
+        resize(handle, 123, 45);
+        glfwSetFramebufferSizeCallback(handle, resize);
+        window.getFramebufferSize(width, height);
+        CHECK(width == 123);
+        CHECK(height == 45);
+
+        const GLFWcursorposfun moved = glfwSetCursorPosCallback(handle, nullptr);
+        REQUIRE(moved != nullptr);
+        moved(handle, 12.5, 7.0);
+        glfwSetCursorPosCallback(handle, moved);
+        CHECK(window.getCursorPosition() == glm::dvec2(12.5, 7.0));
+        CHECK(platform::cursorPositionOf(window.getWindow()) == glm::dvec2(12.5, 7.0));
+        platform::InputManager &input = platform::InputManager::getInstance(window.getWindow());
+        input.update();
+        CHECK(input.getMousePosition() == glm::vec2(12.5f, 7.0f));
+
+        // Un déplacement demandé par le programme ne déclenche pas de rappel : la valeur gardée suit quand même, et c'est la position
+        // réellement appliquée (GLFW ignore la demande sans le focus, comme ici avec une fenêtre cachée : revue CodeRabbit PR #12).
+        window.setCursorPosition({20.0, 30.0});
+        glm::dvec2 applied{};
+        glfwGetCursorPos(handle, &applied.x, &applied.y);
+        CHECK(window.getCursorPosition() == applied);
+        CHECK(platform::cursorPositionOf(window.getWindow()) == applied);
+    }
+
+    TEST_CASE("PLAT-01 a moved Window keeps receiving the callbacks of its native window")
+    {
+        platform::Window first("platform-test", 96, 64, platform::WindowState::kWindowed);
+        if (!open(first))
+        {
+            return;
+        }
+        platform::Window moved(std::move(first));
+        auto *handle = static_cast<GLFWwindow *>(moved.getWindow());
+        const GLFWcursorposfun callback = glfwSetCursorPosCallback(handle, nullptr);
+        REQUIRE(callback != nullptr);
+        callback(handle, 3.0, 4.0);
+        glfwSetCursorPosCallback(handle, callback);
+        CHECK(moved.getCursorPosition() == glm::dvec2(3.0, 4.0));
+        CHECK(platform::cursorPositionOf(moved.getWindow()) == glm::dvec2(3.0, 4.0));
+    }
 }

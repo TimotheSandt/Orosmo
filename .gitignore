@@ -3,7 +3,7 @@
 /dist/
 /lib/
 /obj/
-/vcpkg_installed/
+vcpkg_installed
 bin/
 obj/
 Generated/

@@ -1,0 +1,51 @@
+#version 450
+// REN-18 : luminance moyenne (géométrique) de l'histogramme, exposition visée et adaptation. Un groupe de 256 (une case chacun).
+layout(local_size_x = 256) in;
+layout(set = 0, binding = 1, std430) readonly buffer Histogram { uint bins[256]; };
+layout(set = 0, binding = 2, std430) buffer Exposure
+{
+    vec4 state; // x : exposition, y : luminance moyenne, z : exposition visée, w : 1 si x est valide (sinon on part de la visée)
+};
+
+layout(push_constant) uniform Push
+{
+    vec4 range;    // x : log2 minimal, y : log2 maximal, z : facteur d'adaptation (1 : immédiat)
+    vec4 exposure; // x : clé, y : exposition minimale, z : exposition maximale (linéaires)
+} pc;
+
+shared float weighted[256];
+shared float counted[256];
+
+void main()
+{
+    uint index = gl_LocalInvocationIndex;
+    float count = index == 0u ? 0.0 : float(bins[index]); // case 0 : trop sombre, ignorée
+    weighted[index] = count * float(index);
+    counted[index] = count;
+    memoryBarrierShared();
+    barrier();
+    for (uint stride = 128u; stride > 0u; stride >>= 1u)
+    {
+        if (index < stride)
+        {
+            weighted[index] += weighted[index + stride];
+            counted[index] += counted[index + stride];
+        }
+        memoryBarrierShared();
+        barrier();
+    }
+    if (index == 0u)
+    {
+        float minLog2 = pc.range.x;
+        float maxLog2 = pc.range.y;
+        float average = exp2(minLog2);
+        if (counted[0] >= 0.5)
+        {
+            float averageBin = weighted[0] / counted[0];
+            average = exp2((averageBin - 0.5) / 254.0 * (maxLog2 - minLog2) + minLog2);
+        }
+        float target = clamp(pc.exposure.x / max(average, 1e-6), pc.exposure.y, pc.exposure.z);
+        float previous = state.w > 0.5 ? state.x : target;
+        state = vec4(previous + (target - previous) * pc.range.z, average, target, 1.0);
+    }
+}

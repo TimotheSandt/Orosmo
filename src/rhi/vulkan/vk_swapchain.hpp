@@ -1,6 +1,6 @@
-// Surface et chaîne d'échange du backend Vulkan (privé). L'image de fond du RHI est une texture RGBA8 du périphérique (comme hors
-// écran) ; `present()` la copie (blit) dans l'image de la chaîne d'échange puis présente : le format de la chaîne ne regarde pas
-// le moteur (README.md, « Présentation »).
+// Surface et chaîne d'échange du backend Vulkan (privé). Quand la surface accepte RGBA8 UNORM avec les usages de l'image de fond,
+// l'image de la chaîne acquise par `beginFrame` EST l'image de fond (G185, aucune copie). Sinon, l'image de fond est une texture
+// RGBA8 du périphérique (comme hors écran) que `present()` copie (blit) dans l'image de la chaîne (README.md, « Présentation »).
 #pragma once
 
 #include "vk_device.hpp"
@@ -24,7 +24,8 @@ struct Swapchain
     // sur la chaîne neuve (`retiredPresents`), ou à l'arrêt.
     std::vector<VkSemaphore> retired;
     std::uint32_t retiredPresents = 0;
-    bool dirty = true; // à reconstruire (taille, vsync, périmée)
+    bool dirty = true;   // à reconstruire (taille, vsync, périmée)
+    bool direct = false; // images RGBA8 UNORM utilisables comme image de fond (G185)
 
     static Result<std::vector<const char *>> requiredInstanceExtensions();
     bool presentSupported(VkPhysicalDevice device, std::uint32_t queueFamily) const;

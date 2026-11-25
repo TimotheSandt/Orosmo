@@ -3,12 +3,15 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/aov.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/shader_library.hpp"
 #include "orosmo/rhi/device.hpp"
 
 #include <glm/glm.hpp>
 
+#include <array>
+#include <cstddef>
 #include <memory>
 #include <span>
 #include <string>
@@ -36,6 +39,14 @@ struct TextureBinding
     rhi::SamplerHandle sampler;
 };
 
+// Historique pour les vecteurs de mouvement (REN-21) : `frame` = numéro de l'image (0 : pas d'historique, le modèle précédent
+// est le courant), `previousOrigin` = origine du rendu relatif à la caméra de l'image précédente.
+struct TransformHistory
+{
+    std::uint64_t frame = 0;
+    glm::vec3 previousOrigin{0.0f};
+};
+
 class Mesh
 {
   public:
@@ -59,6 +70,9 @@ class Mesh
     void setProgram(std::shared_ptr<ShaderProgram> program) { program_ = std::move(program); }
     // Textures aux liaisons 0, 1, 2... du groupe 1 (dans l'ordre).
     core::Result<> setTextures(std::span<const TextureBinding> textures);
+    // Groupe 1 fourni par l'appelant (non possédé : il doit vivre jusqu'au dernier dessin), à la place des textures ; ex. le groupe
+    // des récepteurs d'ombres (ShadowFeature::receiverGroup). Un groupe nul retire le groupe 1.
+    void setMaterialGroup(rhi::BindGroupHandle group) noexcept;
     // Octets du bloc push_constant du programme (le premier entier est réservé au drapeau fil de fer, voir mesh.frag).
     void setPushConstants(std::span<const std::byte> bytes) { pushConstants_.assign(bytes.begin(), bytes.end()); }
 
@@ -69,9 +83,27 @@ class Mesh
     const glm::vec3 &rotation() const noexcept { return rotation_; }
     const glm::vec3 &scale() const noexcept { return scale_; }
     glm::mat4 modelMatrix() const;
-    // Envoie la matrice au GPU si la transformation a changé.
-    // `origin` : rendu relatif à la caméra (REN-02) : la translation envoyée est position - origin (origin = position de la caméra).
-    core::Result<> uploadTransform(const glm::vec3 &origin = glm::vec3(0.0f));
+    // Calcule le bloc du modèle (`modelBlock()`) côté CPU seulement, sans écrire le tampon propre du maillage (perf M5) : c'est ce
+    // que font `SceneRenderer::drawMesh` et `TransparentFeature::submit`, qui copient ensuite le bloc dans la tranche de l'image
+    // (anneau par image en vol). Le tampon du maillage (`modelGroup()`) n'est alors plus à jour : `uploadTransform` le rattrape.
+    // `origin` : rendu relatif à la caméra (REN-02) : la translation est position - origin (origin = position de la caméra).
+    core::Result<> prepareTransform(const glm::vec3 &origin = glm::vec3(0.0f), const TransformHistory &history = {});
+    // `prepareTransform`, puis envoie le bloc dans le tampon propre du maillage (`modelGroup()`, groupe 2 sans décalage) s'il a
+    // changé depuis le dernier envoi. Pour un appelant qui lie lui-même `modelGroup()` ; écrire ce tampon pendant qu'une image en
+    // vol le lit encore coûte une copie ordonnée (OpenGL : glBufferSubData, Vulkan : transfert), d'où le passage par l'anneau.
+    core::Result<> uploadTransform(const glm::vec3 &origin = glm::vec3(0.0f), const TransformHistory &history = {});
+
+    // Identifiant écrit dans l'AOV `kObjectId` (REN-21) ; 0 = aucun objet (valeur d'effacement).
+    void setObjectId(std::uint32_t id) noexcept
+    {
+        objectId_ = id;
+        transformDirty_ = true; // l'identifiant voyage dans le bloc du modèle
+    }
+    std::uint32_t objectId() const noexcept { return objectId_; }
+    // Matériau vu des AOV (REN-41) : mode de fusion (appliqué au pipeline : mélange sur la couleur, profondeur non écrite pour les
+    // transparents) et AOV demandés explicitement ; un transparent n'écrit AUCUN AOV par défaut.
+    void setAovMaterial(const AovMaterial &material) noexcept { aovMaterial_ = material; }
+    const AovMaterial &aovMaterial() const noexcept { return aovMaterial_; }
 
     // Écrit `data` à partir du flottant `offsetFloats` ; ne change ni la taille ni les index.
     core::Result<> updateVertices(std::span<const float> data, std::size_t offsetFloats = 0);
@@ -86,9 +118,14 @@ class Mesh
     const std::vector<rhi::VertexBufferLayout> &vertexBuffers() const noexcept { return layouts_; }
     const std::vector<rhi::VertexAttribute> &vertexAttributes() const noexcept { return attributes_; }
     rhi::BufferHandle vertexBuffer() const noexcept { return vertexBuffer_.handle(); }
+    std::uint64_t vertexBufferSize() const noexcept { return vertexBuffer_.size(); } // octets (copie dans un pool, REN-29)
     rhi::BufferHandle instanceBuffer() const noexcept { return instanceBuffer_.handle(); }
     rhi::BufferHandle indexBuffer() const noexcept { return indexBuffer_.handle(); }
     rhi::BindGroupHandle modelGroup() const noexcept { return modelGroup_; }
+    // Bloc ModelBlock (std140, `kModelBlockSize` octets) du dernier `prepareTransform` / `uploadTransform` : copié par chaque dessin dans sa
+    // propre tranche (`SceneRenderer::recordModelSlice`), pour qu'un maillage dessiné deux fois dans l'image garde les deux poses.
+    static constexpr std::size_t kModelBlockSize = 208;
+    std::span<const std::byte> modelBlock() const noexcept { return modelBlock_; }
     rhi::BindGroupHandle textureGroup() const noexcept { return textureGroup_; }
     const std::vector<std::byte> &pushConstants() const noexcept { return pushConstants_; }
 
@@ -102,6 +139,7 @@ class Mesh
     GpuBuffer modelBuffer_;
     rhi::BindGroupHandle modelGroup_;
     rhi::BindGroupHandle textureGroup_;
+    bool ownsTextureGroup_ = true; // faux : groupe donné par setMaterialGroup
     std::vector<rhi::VertexBufferLayout> layouts_;
     std::vector<rhi::VertexAttribute> attributes_;
     std::vector<std::uint32_t> instanceSizes_;
@@ -113,7 +151,18 @@ class Mesh
     glm::vec3 rotation_{0.0f};
     glm::vec3 scale_{1.0f};
     bool transformDirty_ = true;
+    bool bufferStale_ = true; // modelBlock_ n'a pas encore été écrit dans modelBuffer_
     glm::vec3 uploadedOrigin_{0.0f};
+    bool uploadedWithHistory_ = false; // mode d'historique du bloc écrit (prevModel distinct de model ou non)
+    glm::mat4 uploadedPreviousWorld_{1.0f};
+    glm::vec3 uploadedPreviousOrigin_{0.0f};
+    glm::mat4 previousWorld_{1.0f}; // modèle (monde) de l'image précédente
+    glm::mat4 lastWorld_{1.0f};     // modèle (monde) vu par le dernier uploadTransform
+    bool hasLastWorld_ = false;
+    std::uint64_t lastFrame_ = 0;
+    std::uint32_t objectId_ = 0;
+    AovMaterial aovMaterial_;
+    std::array<std::byte, kModelBlockSize> modelBlock_{};
 };
 
 } // namespace orosmo::renderer

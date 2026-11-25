@@ -100,11 +100,13 @@ class Window
     double getAspectRatio() const { return (double)this->parameters.width / (double)this->parameters.height; }
     // Poignée native opaque, à passer telle quelle à `rhi::SurfaceDesc::nativeWindow` et à `InputManager::getInstance`.
     void *getWindow() const { return this->window; }
-    // Taille réelle en pixels du tampon d'image (≠ taille de la fenêtre sur les écrans à échelle).
+    // Taille réelle en pixels du tampon d'image (≠ taille de la fenêtre sur les écrans à échelle). Gardée par le rappel de
+    // GLFW : la lire ne coûte pas d'aller-retour avec le serveur d'affichage (X11 : XGetWindowAttributes à chaque appel).
     void getFramebufferSize(int &width, int &height) const;
     // Facteur d'échelle de contenu (DPI) : 1 = 96 dpi ; 2 sur un écran « Retina ». (1, 1) sans fenêtre.
     glm::vec2 getContentScale() const;
-    // Curseur (coordonnées en pixels de la fenêtre, origine en haut à gauche).
+    // Curseur (coordonnées en pixels de la fenêtre, origine en haut à gauche). La position est gardée par le rappel de GLFW
+    // (sans aller-retour X11 : XQueryPointer) ; hors de la fenêtre, elle reste la dernière connue tant qu'aucun bouton n'est tenu.
     void setCursorMode(CursorMode mode);
     glm::dvec2 getCursorPosition() const;
     void setCursorPosition(glm::dvec2 position);
@@ -134,7 +136,7 @@ class Window
 
     // Window state
     void saveWindowedParameters();
-    void postWindowStateChange() const;
+    void postWindowStateChange();
 
     void activateFullscreen();
     void activateWindowed();
@@ -145,6 +147,7 @@ class Window
     void callbackFocus(int focused);
     void callbackResize(int width, int height);
     void callbackPosition(int x, int y);
+    void refreshCachedState(); // relit la taille du tampon d'image et le curseur (création, changement de mode du curseur)
 
     void clearCallbacks();
     bool isWindowHealthy() const;
@@ -154,6 +157,12 @@ class Window
 
     WindowParameters parameters;
 
+    // Valeurs tenues à jour par les rappels de GLFW (voir getFramebufferSize, getCursorPosition).
+    int framebufferWidth = 0;
+    int framebufferHeight = 0;
+    glm::dvec2 cursorPosition{0.0, 0.0};
+    int cursorModeValue = -1; // dernier mode posé par setCursorMode (-1 : aucun)
+
     InputManager *inputManager;
 
     // Binding utilisé à init() : close() libère le contexte avec le même, même si le binding global a changé entretemps.
@@ -162,5 +171,15 @@ class Window
 
     std::chrono::time_point<std::chrono::high_resolution_clock> lastTime;
 };
+
+// Taille du tampon d'image et position du curseur d'une fenêtre native (`Window::getWindow()`), lues dans la Window qui la
+// possède (valeurs gardées par les rappels de GLFW, sans aller-retour avec le serveur d'affichage) ; relues chez GLFW pour une
+// fenêtre native qui n'appartient à aucune Window. Utilisées chaque image par le RHI et InputManager.
+void framebufferSizeOf(void *nativeWindow, int &width, int &height);
+glm::dvec2 cursorPositionOf(void *nativeWindow);
+
+// Linux, GLFW 3.4+ : la prochaine initialisation de GLFW prend X11 (XWayland) plutôt que Wayland. Sert aux tests, qui créent des
+// fenêtres cachées : sous Wayland, une fenêtre jamais affichée n'est pas présentée avec la vsync (G191). Ailleurs : sans effet.
+void preferX11Platform() noexcept;
 
 } // namespace orosmo::platform

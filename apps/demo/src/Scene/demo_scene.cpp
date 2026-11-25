@@ -1,5 +1,10 @@
 #include "Scene/demo_scene.hpp"
 
+#include <orosmo/core/log.hpp>
+#include <orosmo/renderer/forward_plus.hpp>
+
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -421,17 +426,59 @@ glm::vec3 DemoScene::defaultCameraOrientation()
     return glm::normalize(glm::vec3(0.0f, 1.5f, 0.0f) - defaultCameraPosition());
 }
 
+std::vector<orosmo::renderer::Light> DemoScene::pointLightField(std::uint32_t count)
+{
+    std::vector<orosmo::renderer::Light> lights;
+    lights.reserve(count);
+    const auto hash = [](std::uint32_t v)
+    {
+        v ^= v >> 16;
+        v *= 0x7feb352du;
+        v ^= v >> 15;
+        v *= 0x846ca68bu;
+        v ^= v >> 16;
+        return v;
+    };
+    const auto unit = [&](std::uint32_t v) { return static_cast<float>(hash(v) >> 8) / 16777216.0f; };
+    constexpr float kRadius = 12.0f;
+    constexpr float kGoldenAngle = 2.39996323f;
+    const float strength = count <= 64 ? 0.6f : 0.6f * std::sqrt(64.0f / static_cast<float>(count));
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        const float r = kRadius * std::sqrt((static_cast<float>(i) + 0.5f) / static_cast<float>(count));
+        const float angle = static_cast<float>(i) * kGoldenAngle;
+        const float height = 0.35f + 1.6f * unit(i * 4u);
+        const glm::vec3 color(0.35f + 0.65f * unit(i * 4u + 1u), 0.35f + 0.65f * unit(i * 4u + 2u), 0.35f + 0.65f * unit(i * 4u + 3u));
+        lights.push_back(orosmo::renderer::pointLight({r * std::cos(angle), height, r * std::sin(angle)}, color, strength, 60.0f, 3.0f));
+    }
+    return lights;
+}
+
 orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
-                                       const std::filesystem::path &shaderDirectory)
+                                       const std::filesystem::path &shaderDirectory, bool forwardPlus, std::uint32_t pointLights,
+                                       const std::vector<orosmo::renderer::Define> &aovDefines)
 {
     destroy();
 
-    auto program = shaders.loadGraphics(shaderDirectory / "mesh.vert", shaderDirectory / "mesh.frag");
+    // Variante forward+ (REN-04) et sorties auxiliaires (REN-21) : leurs macros s'additionnent.
+    std::vector<orosmo::renderer::Define> meshDefines = forwardPlus ? orosmo::renderer::forwardPlusDefines() : std::vector<orosmo::renderer::Define>{};
+    meshDefines.insert(meshDefines.end(), aovDefines.begin(), aovDefines.end());
+    auto program = shaders.loadGraphics(shaderDirectory / "mesh.vert", shaderDirectory / "mesh.frag", meshDefines);
     if (!program)
     {
         return std::unexpected(program.error());
     }
     meshProgram_ = *program;
+    if (shadows_ != nullptr)
+    {
+        // Ombres (variante OROSMO_SHADOWS), combinées au forward+ et aux sorties auxiliaires (macros de meshDefines).
+        auto receiver = shadows_->receiverProgramWith(meshDefines);
+        if (!receiver)
+        {
+            return std::unexpected(receiver.error());
+        }
+        meshProgram_ = *receiver;
+    }
 
     auto lights = orosmo::renderer::LightManager::create(device, 4);
     if (!lights)
@@ -447,8 +494,22 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
         destroy();
         return r;
     }
+    if (pointLights > 0)
+    {
+        lights_.addLights(pointLightField(pointLights)); // après le soleil (indice 0, mis à jour par syncLights)
+        if (auto r = lights_.upload(); !r)
+        {
+            destroy();
+            return r;
+        }
+    }
 
-    auto ground = orosmo::renderer::Mesh::create(device, buildCourtyardMeshData());
+    if (shadows_ != nullptr)
+    {
+        shadows_->setLights(&lights_);
+    }
+    const orosmo::renderer::MeshData groundData = buildCourtyardMeshData();
+    auto ground = orosmo::renderer::Mesh::create(device, groundData);
     if (!ground)
     {
         destroy();
@@ -457,7 +518,8 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
     ground->setProgram(meshProgram_);
     groundMesh_ = std::move(*ground);
 
-    auto structure = orosmo::renderer::Mesh::create(device, buildStructureMeshData());
+    const orosmo::renderer::MeshData structureData = buildStructureMeshData();
+    auto structure = orosmo::renderer::Mesh::create(device, structureData);
     if (!structure)
     {
         destroy();
@@ -468,7 +530,8 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
 
     MeshBuilder heroBuilder = buildHeroCrystalBuilder(defaults.accentColor);
     heroVertices_ = heroBuilder.vertices;
-    auto hero = orosmo::renderer::Mesh::create(device, heroBuilder.finish("diorama.hero"));
+    const orosmo::renderer::MeshData heroData = heroBuilder.finish("diorama.hero");
+    auto hero = orosmo::renderer::Mesh::create(device, heroData);
     if (!hero)
     {
         destroy();
@@ -481,7 +544,8 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
 
     for (std::size_t i = 0; i < orbitMeshes_.size(); ++i)
     {
-        auto orbit = orosmo::renderer::Mesh::create(device, buildOrbitMeshData(i));
+        const orosmo::renderer::MeshData orbitData = buildOrbitMeshData(i);
+        auto orbit = orosmo::renderer::Mesh::create(device, orbitData);
         if (!orbit)
         {
             destroy();
@@ -489,7 +553,38 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
         }
         orbit->setProgram(meshProgram_);
         orbitMeshes_[i] = std::move(*orbit);
+        if (shadows_ != nullptr)
+        {
+            if (auto r = registerCaster(orbitMeshes_[i], orbitData, orosmo::renderer::CasterMobility::kMovable); !r)
+            {
+                destroy();
+                return r;
+            }
+        }
     }
+    if (shadows_ != nullptr)
+    {
+        // Le sol reçoit sans projeter (plat, sous tout le reste) ; la structure est fixe (cache), le cristal est mobile.
+        for (auto *mesh : {&groundMesh_, &structureMesh_, &heroMesh_})
+        {
+            mesh->setMaterialGroup(shadows_->receiverGroup());
+        }
+        for (auto &orbit : orbitMeshes_)
+        {
+            orbit.setMaterialGroup(shadows_->receiverGroup());
+        }
+        if (auto r = registerCaster(structureMesh_, structureData, orosmo::renderer::CasterMobility::kStatic); !r)
+        {
+            destroy();
+            return r;
+        }
+        if (auto r = registerCaster(heroMesh_, heroData, orosmo::renderer::CasterMobility::kMovable); !r)
+        {
+            destroy();
+            return r;
+        }
+    }
+    (void)groundData;
 
     elapsedSeconds_ = 0.0f;
     applyTransforms();
@@ -497,8 +592,237 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
     return {};
 }
 
+orosmo::core::Result<> DemoScene::registerCaster(const orosmo::renderer::Mesh &mesh, const orosmo::renderer::MeshData &data,
+                                                orosmo::renderer::CasterMobility mobility)
+{
+    // Boîte locale depuis les positions (3 premiers flottants de chaque sommet) : culling par vue d'ombre.
+    std::uint32_t stride = 0;
+    for (const std::uint32_t size : data.attributeSizes)
+    {
+        stride += size;
+    }
+    orosmo::renderer::Aabb bounds = orosmo::renderer::Aabb::empty();
+    for (std::size_t v = 0; stride >= 3 && v + 2 < data.vertices.size(); v += stride)
+    {
+        const glm::vec3 p(data.vertices[v], data.vertices[v + 1], data.vertices[v + 2]);
+        bounds.merge({p, p});
+    }
+    auto id = shadows_->addMeshCaster(mesh, bounds, mobility);
+    if (!id)
+    {
+        return std::unexpected(id.error());
+    }
+    casterIds_.push_back(*id);
+    return {};
+}
+
+orosmo::core::Result<> DemoScene::initInstances(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
+                                                orosmo::renderer::PipelineCache &pipelines, const std::filesystem::path &shaderDirectory,
+                                                std::uint32_t count)
+{
+    namespace rd = orosmo::renderer;
+    if (count == 0)
+    {
+        return {};
+    }
+    auto renderer = rd::InstanceRenderer::create(device, shaders, pipelines, shaderDirectory);
+    if (!renderer)
+    {
+        return std::unexpected(renderer.error());
+    }
+    // Niveau 0 : bipyramide à facettes ; niveau 1 : cube (12 triangles). Sommets blancs, la couleur vient de l'instance.
+    MeshBuilder detailed;
+    detailed.addBipyramid(0.36f, 0.44f, 8, glm::vec3(1.0f), glm::vec3(0.78f));
+    MeshBuilder coarse;
+    coarse.addBox(glm::vec3(-0.3f), glm::vec3(0.3f), glm::vec3(0.9f));
+    std::array<rd::MeshData, 2> lodData{detailed.finish("instances.lod0"), coarse.finish("instances.lod1")};
+    std::array<std::uint32_t, 2> lodIds{};
+    for (std::size_t i = 0; i < lodData.size(); ++i)
+    {
+        auto mesh = rd::Mesh::create(device, lodData[i]);
+        if (!mesh)
+        {
+            return std::unexpected(mesh.error());
+        }
+        instanceLods_[i] = std::move(*mesh);
+        auto id = (*renderer)->addMesh(instanceLods_[i]);
+        if (!id)
+        {
+            return std::unexpected(id.error());
+        }
+        lodIds[i] = *id;
+    }
+    // Deux matériaux identiques (le regroupement se fait par identifiant) : quatre lots au plus, deux LOD × deux matériaux.
+    rd::InstanceMaterial material;
+    if (shadows_ != nullptr)
+    {
+        material.program = shadows_->instancedReceiverProgram();
+        material.textures = shadows_->receiverGroup();
+    }
+    const std::array<std::uint32_t, 2> materials{(*renderer)->addMaterial(material), (*renderer)->addMaterial(material)};
+
+    rd::LodSettings lod;
+    lod.switchDistances = {28.0f};
+    lod.transitionWidth = 6.0f;
+    const std::uint32_t lodSettings = instanceObjects_.addLodSettings(lod);
+
+    // Grille déterministe (aucun hasard) autour de la cour : pas de 1,6 m, les cellules de la cour (rayon 9 m) sont sautées.
+    constexpr float kSpacing = 1.6f;
+    constexpr float kClearRadius = 9.0f;
+    const float clearCells = kPi * (kClearRadius / kSpacing) * (kClearRadius / kSpacing);
+    const auto side = static_cast<std::uint32_t>(std::ceil(std::sqrt(static_cast<float>(count) + clearCells))) + 2;
+    const float centre = static_cast<float>(side - 1) * 0.5f;
+    const glm::vec3 palette[4] = {{0.95f, 0.55f, 0.30f}, {0.35f, 0.80f, 0.60f}, {0.55f, 0.60f, 0.95f}, {0.90f, 0.85f, 0.40f}};
+    std::uint32_t placed = 0;
+    for (std::uint32_t cell = 0; placed < count && cell < side * side; ++cell)
+    {
+        const std::uint32_t gx = cell % side;
+        const std::uint32_t gz = cell / side;
+        const float x = (static_cast<float>(gx) - centre) * kSpacing;
+        const float z = (static_cast<float>(gz) - centre) * kSpacing;
+        if (x * x + z * z < kClearRadius * kClearRadius)
+        {
+            continue;
+        }
+        rd::ObjectDesc desc;
+        desc.lodMeshes = {lodIds[0], lodIds[1]};
+        desc.material = materials[placed % 2];
+        desc.lodSettings = lodSettings;
+        desc.localBounds = {glm::vec3(-0.45f), glm::vec3(0.45f)};
+        glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0.45f, z));
+        transform = glm::rotate(transform, static_cast<float>(placed % 17) * 0.37f, glm::vec3(0.0f, 1.0f, 0.0f));
+        desc.transform = transform;
+        desc.color = glm::vec4(palette[(gx + gz * 3) % 4], 1.0f);
+        if (auto id = instanceObjects_.add(desc); !id)
+        {
+            return std::unexpected(id.error());
+        }
+        ++placed;
+    }
+    if (shadows_ != nullptr)
+    {
+        casterIds_.push_back(shadows_->addObjectCasters(instanceObjects_, **renderer, rd::CasterMobility::kStatic));
+    }
+    instanceRenderer_ = std::move(*renderer);
+    return {};
+}
+
+orosmo::core::Result<> DemoScene::enableGpuDriven(orosmo::renderer::SceneRenderer &renderer, orosmo::rhi::Device &device,
+                                                 orosmo::renderer::ShaderLibrary &shaders, orosmo::renderer::PipelineCache &pipelines,
+                                                 const std::filesystem::path &shaderDirectory)
+{
+    if (!instanceRenderer_)
+    {
+        return {};
+    }
+    auto enabled = orosmo::renderer::enableGpuDriven(renderer, device, shaders, pipelines, shaderDirectory, *instanceRenderer_);
+    if (!enabled)
+    {
+        return std::unexpected(enabled.error());
+    }
+    gpuDriven_ = *enabled;
+    gpuDrivenRenderer_ = &renderer;
+    LOG_INFO("GPU-driven: ", instanceObjects_.size(), " objects culled on the GPU (frustum, Hi-Z occlusion, LOD), multi-draw indirect");
+    return {};
+}
+
+orosmo::core::Result<> DemoScene::renderInstances(orosmo::renderer::SceneRenderer &renderer, const orosmo::renderer::Camera &camera)
+{
+    namespace rd = orosmo::renderer;
+    rd::CullView view = rd::CullView::fromMatrices(camera.viewMatrix(), camera.projectionMatrix(), static_cast<float>(renderer.frameHeight()),
+                                                   camera.projection() == rd::Camera::Projection::kOrthographic);
+    view.minScreenRadius = 1.0f; // moins d'un pixel de rayon : rejeté
+    // REN-35 : gel du frustum (la vue de culling reste celle de l'image du gel, la pyramide gelée est dessinée) et couleurs de LOD.
+    if (freezeFrustum_ && !frustumFreeze_.frozen())
+    {
+        frustumFreeze_.freeze(view, camera.projectionMatrix() * camera.viewMatrix());
+    }
+    view = frustumFreeze_.apply(view);
+    // Fil de fer : raccourci de la caméra ou vue de débogage (SceneRenderer l'applique à ses maillages, pas aux dessins personnalisés).
+    const bool wireframe = camera.wireframe() || debugView_ == rd::DebugView::kWireframe;
+    // REN-35 : les couleurs de LOD ne sont produites que par le culling CPU (VisibilityOptions::lodColors) : la vue kLod le garde.
+    lastInstancesGpuDriven_ = gpuDriven_ != nullptr && debugView_ != rd::DebugView::kLod;
+    if (lastInstancesGpuDriven_)
+    {
+        // Journal (image 2 puis toutes les 600) : compteurs GPU de l'image précédente, comparés au culling CPU de la même vue.
+        const bool log = instanceFrames_ == 2 || (instanceFrames_ > 0 && instanceFrames_ % 600 == 0);
+        if (log)
+        {
+            auto gpu = gpuDriven_->readStats();
+            const rd::VisibilityStats cpu = instanceObjects_.prepare(view, instanceBatches_);
+            if (gpu)
+            {
+                LOG_INFO("GPU-driven: ", gpu->objects, " objects, ", gpu->frustumVisible, " in view (", gpu->frustumCulled, " outside, ", gpu->smallCulled,
+                         " too small), ", gpu->occlusionCulled, " occluded (Hi-Z), ", gpu->visible, " visible, ", gpu->instances, " instances in ",
+                         gpu->drawsWithInstances, " indirect draws | CPU culling: ", cpu.cull.visible, " visible, ", cpu.instances, " instances in ",
+                         instanceBatches_.batches().size(), " draw calls");
+            }
+        }
+        rd::GpuDrivenView gpuView;
+        gpuView.cull = view;
+        gpuView.viewProjection = camera.projectionMatrix() * camera.viewMatrix();
+        rd::GpuDrivenOptions options;
+        options.wireframe = wireframe;
+        auto drawn = gpuDriven_->draw(renderer, instanceObjects_, gpuView, options);
+        if (!drawn)
+        {
+            return std::unexpected(drawn.error());
+        }
+        ++instanceFrames_;
+        return {};
+    }
+    if (gpuDriven_ != nullptr)
+    {
+        gpuDriven_->resetOcclusion(); // Hi-Z non reconstruite pendant le culling CPU : périmée au retour sur le GPU
+    }
+    rd::VisibilityOptions visibility;
+    visibility.lodColors = debugView_ == rd::DebugView::kLod;
+    instanceVisibility_ = instanceObjects_.prepare(view, instanceBatches_, visibility);
+
+    auto drawn = instanceRenderer_->draw(renderer, instanceBatches_, wireframe);
+    if (!drawn)
+    {
+        return std::unexpected(drawn.error());
+    }
+    instanceDrawStats_ = *drawn;
+    if (instanceFrames_++ % 600 == 0)
+    {
+        LOG_INFO("Instances: ", instanceVisibility_.objects, " objects, ", instanceVisibility_.cull.visible, " visible (", instanceVisibility_.cull.frustumCulled,
+                 " outside the view, ", instanceVisibility_.cull.smallCulled, " too small), ", instanceVisibility_.crossFades, " LOD cross-fades, ",
+                 instanceDrawStats_.instances, " instances in ", instanceDrawStats_.drawCalls, " draw calls");
+    }
+    return {};
+}
+
 void DemoScene::destroy()
 {
+    if (shadows_ != nullptr)
+    {
+        for (const auto id : casterIds_)
+        {
+            shadows_->removeCaster(id); // le plugin vit dans SceneRenderer : il ne doit plus voir ces maillages
+        }
+        shadows_->setLights(nullptr);
+    }
+    casterIds_.clear();
+    shadowFrames_ = 0;
+    if (gpuDriven_ != nullptr && gpuDrivenRenderer_ != nullptr)
+    {
+        orosmo::renderer::disableGpuDriven(*gpuDrivenRenderer_); // référence InstanceRenderer et ses maillages
+    }
+    gpuDriven_ = nullptr;
+    gpuDrivenRenderer_ = nullptr;
+    instanceRenderer_.reset(); // référence les maillages des LOD
+    for (auto &mesh : instanceLods_)
+    {
+        mesh.reset();
+    }
+    instanceObjects_.clear();
+    instanceBatches_.clear();
+    instanceVisibility_ = {};
+    instanceDrawStats_ = {};
+    instanceFrames_ = 0;
+    frustumFreeze_.unfreeze();
     groundMesh_.reset();
     structureMesh_.reset();
     heroMesh_.reset();
@@ -560,7 +884,13 @@ orosmo::core::Result<> DemoScene::syncLights(const DemoSceneParams &params)
     }
 
     const glm::vec3 sunDirection = sunDirectionFromAngles(params.sunElevation, params.sunAzimuth);
-    const orosmo::renderer::Light sunLight = orosmo::renderer::directionalLight(sunDirection, params.sunColor, params.sunIntensity);
+    orosmo::renderer::Light sunLight = orosmo::renderer::directionalLight(sunDirection, params.sunColor, params.sunIntensity);
+    if (shadows_ != nullptr)
+    {
+        // Soleil réglable dans l'interface : mobile ; ombres en cache (redessinées seulement quand quelque chose bouge).
+        sunLight.mobility = orosmo::renderer::LightMobility::kDynamic;
+        sunLight.shadowMode = orosmo::renderer::ShadowMode::kCached;
+    }
 
     lights_.setAmbientLight(params.ambientColor, params.ambientStrength);
     if (lights_.lights().empty())
@@ -643,28 +973,58 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
         return r;
     }
 
+    if (shadows_ != nullptr)
+    {
+        // Compteurs de l'image précédente (le plugin travaille à endFrame) : 12 premières images, puis toutes les 600.
+        const orosmo::renderer::ShadowStats &s = shadows_->stats();
+        if (shadowFrames_ > 0 && (shadowFrames_ <= 12 || shadowFrames_ % 600 == 0))
+        {
+            LOG_INFO("Shadows: ", s.views, " views, ", s.viewsUpdated, " updated (", s.staticRedraws, " static redraws, ", s.movableRedraws,
+                     " movable redraws, ", s.fullRedraws, " full, ", s.cacheCopies, " cache copies), ", s.cacheHits, " cache hits, ", s.deferred,
+                     " deferred, ", s.renderPasses, " shadow render passes, ", s.drawCalls, " draw calls, ", s.casterInstances, " caster instances");
+        }
+        ++shadowFrames_;
+    }
+    meshDraws_ = 0;
     if (auto r = renderer.drawMesh(groundMesh_, camera); !r)
     {
         return r;
     }
+    ++meshDraws_;
     if (auto r = renderer.drawMesh(structureMesh_, camera); !r)
     {
         return r;
     }
+    ++meshDraws_;
     if (auto r = renderer.drawMesh(heroMesh_, camera); !r)
     {
         return r;
     }
+    ++meshDraws_;
     for (auto &orbit : orbitMeshes_)
     {
         if (auto r = renderer.drawMesh(orbit, camera); !r)
         {
             return r;
         }
+        ++meshDraws_;
+    }
+
+    if (instanceRenderer_)
+    {
+        if (auto r = renderInstances(renderer, camera); !r)
+        {
+            return r;
+        }
     }
 
     debugDraw_.clear();
-    debugDraw_.setEnabled(params.debugDraw);
+    const bool frozenFrustum = frustumFreeze_.frozen();
+    debugDraw_.setEnabled(params.debugDraw || frozenFrustum);
+    if (frozenFrustum)
+    {
+        frustumFreeze_.drawFrozen(debugDraw_);
+    }
     if (params.debugDraw)
     {
         debugDraw_.axes(glm::mat4(1.0f), 3.5f);
@@ -677,7 +1037,9 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
         const glm::vec4 sunRayColor(1.0f, 0.90f, 0.15f, 1.0f);
         debugDraw_.line(rayOrigin, rayEnd, sunRayColor);
         debugDraw_.sphere(rayEnd, 0.22f, sunRayColor, 12);
-
+    }
+    if (params.debugDraw || frozenFrustum)
+    {
         if (auto r = renderer.drawDebug(debugDraw_); !r)
         {
             return r;

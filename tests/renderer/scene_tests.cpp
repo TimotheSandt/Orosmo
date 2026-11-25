@@ -11,11 +11,13 @@
 #include <orosmo/renderer/image.hpp>
 #include <orosmo/renderer/light.hpp>
 #include <orosmo/renderer/mesh.hpp>
+#include <orosmo/renderer/render_feature.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <limits>
@@ -97,8 +99,15 @@ TEST_SUITE("renderer/camera")
         CHECK(std::memcmp(data.matrix, glm::value_ptr(proj * view), sizeof data.matrix) == 0);
 
         camera.setJitter({0.01f, -0.02f});
-        CHECK(camera.projectionMatrix()[2][0] == doctest::Approx(proj[2][0] + 0.01f));
-        CHECK(camera.projectionMatrix()[2][1] == doctest::Approx(proj[2][1] - 0.02f));
+        CHECK(camera.projectionMatrix()[2][0] == doctest::Approx(proj[2][0] - 0.01f)); // w = -z_vue : NDC décalé de +jitter
+        CHECK(camera.projectionMatrix()[2][1] == doctest::Approx(proj[2][1] + 0.02f));
+        {
+            // Un point projeté est décalé de +jitter en NDC (même convention que l'orthographique et les vecteurs de mouvement).
+            const glm::vec4 p = camera.projectionMatrix() * glm::vec4(0.3f, -0.2f, -4.0f, 1.0f);
+            const glm::vec4 q = proj * glm::vec4(0.3f, -0.2f, -4.0f, 1.0f);
+            CHECK(p.x / p.w - q.x / q.w == doctest::Approx(0.01f));
+            CHECK(p.y / p.w - q.y / q.w == doctest::Approx(-0.02f));
+        }
         camera.setAspect(10, 0); // hauteur nulle : pas de division par zéro
         CHECK(camera.aspect() == 1.0f);
 
@@ -416,6 +425,70 @@ TEST_SUITE("renderer/scene")
             CHECK(near(px[2], 255));
             CHECK(scene.renderer->frameWidth() == 8);
             CHECK(scene.renderer->sceneTarget().colorCount() == 1);
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("A63: setRenderIntoOutput draws the scene straight into the output (no upscale pass, same pixels) only when nothing else needs the scene target")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Scene scene(backend);
+            REQUIRE(scene.gpu.device);
+            auto program = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag");
+            REQUIRE(program.has_value());
+            auto mesh = rd::Mesh::create(*scene.gpu.device, triangleData({0.5f, 0.25f, 1.0f}));
+            REQUIRE(mesh.has_value());
+            mesh->setProgram(*program);
+            auto lights = rd::LightManager::create(*scene.gpu.device);
+            REQUIRE(lights.has_value());
+            lights->setAmbientLight({1, 1, 1}, 1.0f);
+            REQUIRE(lights->upload().has_value());
+            scene.renderer->setLights(&*lights);
+            rd::Camera camera;
+            camera.setAspect(8, 8);
+            camera.setFarPlane(100.0f);
+            scene.renderer->setOutputResolution(8, 8);
+
+            auto frame = [&](TextureHandle out)
+            {
+                scene.gpu.run(
+                    [&](CommandEncoder &e)
+                    {
+                        REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                        REQUIRE(scene.renderer->setCamera(camera).has_value());
+                        REQUIRE(scene.renderer->drawMesh(*mesh, camera).has_value());
+                        REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
+                    });
+            };
+            auto order = [&]() { return scene.renderer->renderGraph().executionOrder(); };
+            auto has = [](const std::vector<std::string> &passes, const char *name) { return std::find(passes.begin(), passes.end(), name) != passes.end(); };
+
+            CHECK_FALSE(scene.renderer->renderIntoOutput()); // désactivé par défaut
+            const TextureHandle copied = scene.output(8, 8);
+            frame(copied);
+            CHECK_FALSE(scene.renderer->renderedIntoOutput());
+            CHECK(has(order(), "upscale"));
+
+            scene.renderer->setRenderIntoOutput(true);
+            const TextureHandle direct = scene.output(8, 8);
+            frame(direct);
+            CHECK(scene.renderer->renderedIntoOutput());
+            CHECK_FALSE(has(order(), "upscale"));
+            CHECK(has(order(), "scene"));
+            for (const auto &[x, y] : {std::pair{4, 4}, std::pair{0, 0}, std::pair{7, 7}, std::pair{2, 5}})
+            {
+                CHECK(scene.gpu.pixel(direct, x, y) == scene.gpu.pixel(copied, x, y));
+            }
+            CHECK((tests::errorOf(scene.renderer->saveColorPng("unused.png")) == ErrorCode::kUnsupported)); // cible de scène pas écrite
+
+            // Mise à l'échelle demandée : la copie revient (la scène est plus petite que la sortie).
+            scene.renderer->setUpscalingEnabled(true);
+            scene.renderer->setRenderScale(0.5f);
+            const TextureHandle scaled = scene.output(8, 8);
+            frame(scaled);
+            CHECK_FALSE(scene.renderer->renderedIntoOutput());
+            CHECK(has(order(), "upscale"));
             scene.gpu.expectNoValidationErrors();
         }
     }
@@ -897,6 +970,177 @@ TEST_SUITE("renderer/scene")
             REQUIRE(frame());
             CHECK_FALSE(flaky->hadPrevious); // l'historique n'a pas été écrit à l'image 3 : pas d'image précédente valide...
             CHECK(flaky->reset);              // ...et une réinitialisation est signalée
+
+            // Échec APRÈS la passe « history » (plugin dont la passe s'exécute ensuite) : la copie a réussi, mais l'image a échoué :
+            // l'historique n'est pas publié comme « image précédente ».
+            struct LateFailure final : rd::RenderFeature
+            {
+                bool fail = false;
+                std::string name() const override { return "late.failure"; }
+                orosmo::core::Result<> declarePasses(rd::RenderGraphBuilder &builder) override
+                {
+                    builder.graph()
+                        .addPass("late.failure", rd::PassType::kGeneric,
+                                 [this](rd::RenderPassContext &) -> orosmo::core::Result<>
+                                 { return fail ? orosmo::core::makeError(ErrorCode::kUnknown, "late") : orosmo::core::Result<>{}; })
+                        .sideEffect();
+                    return {};
+                }
+            };
+            auto late = scene.renderer->addFeature(std::make_unique<LateFailure>());
+            REQUIRE(late.has_value());
+            auto *lateFailure = static_cast<LateFailure *>(*late);
+            REQUIRE(frame());
+            REQUIRE(frame());
+            CHECK(flaky->hadPrevious);
+            lateFailure->fail = true;
+            CHECK_FALSE(frame());
+            const auto order = scene.renderer->renderGraph().executionOrder();
+            CHECK(std::find(order.begin(), order.end(), "history") < std::find(order.begin(), order.end(), "late.failure"));
+            lateFailure->fail = false;
+            REQUIRE(frame());
+            CHECK_FALSE(flaky->hadPrevious);
+            CHECK(flaky->reset);
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("SceneRenderer: a mesh drawn twice in one frame keeps both poses; transparents stay out of the depth prepass; the frame format is the one of beginFrame")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Scene scene(backend);
+            REQUIRE(scene.gpu.device);
+            auto program = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag");
+            REQUIRE(program.has_value());
+            auto quad = [&](const std::array<float, 3> &c)
+            {
+                rd::MeshData d;
+                d.vertices = {-1, -1, 0, 0, 0, 1, c[0], c[1], c[2], 1, -1, 0, 0, 0, 1, c[0], c[1], c[2],
+                              1,  1,  0, 0, 0, 1, c[0], c[1], c[2], -1, 1, 0, 0, 0, 1, c[0], c[1], c[2]};
+                d.indices = {0, 1, 2, 0, 2, 3};
+                d.attributeSizes = {3, 3, 3};
+                auto mesh = rd::Mesh::create(*scene.gpu.device, d);
+                REQUIRE(mesh.has_value());
+                mesh->setProgram(*program);
+                return std::move(*mesh);
+            };
+            auto lights = rd::LightManager::create(*scene.gpu.device);
+            REQUIRE(lights.has_value());
+            lights->setAmbientLight({1, 1, 1}, 1.0f);
+            REQUIRE(lights->upload().has_value());
+            scene.renderer->setLights(&*lights);
+            rd::Camera camera;
+            camera.setAspect(8, 8);
+            camera.setNearPlane(0.1f);
+            camera.setFarPlane(100.0f);
+            camera.setOrthographic(8.0f); // une unité = un pixel
+            scene.renderer->setOutputResolution(8, 8);
+            const TextureHandle out = scene.output(8, 8);
+
+            // Un maillage, deux poses dans la même image : chaque dessin garde la sienne (tranche du modèle par dessin).
+            auto red = quad({1, 0, 0});
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                    REQUIRE(scene.renderer->setCamera(camera).has_value());
+                    red.setPosition({-2.0f, 0.0f, -5.0f});
+                    REQUIRE(scene.renderer->drawMesh(red, camera).has_value());
+                    red.setPosition({2.0f, 0.0f, -5.0f});
+                    REQUIRE(scene.renderer->drawMesh(red, camera).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
+                });
+            CHECK(rgba(scene.gpu.pixel(out, 2, 4))[0] > 200); // première pose (x = -2 : colonnes 1 et 2)
+            CHECK(rgba(scene.gpu.pixel(out, 5, 4))[0] > 200); // seconde pose (x = 2 : colonnes 5 et 6)
+            CHECK(rgba(scene.gpu.pixel(out, 0, 4))[0] < 10);
+
+            // Pré-passe (REN-04) : un transparent n'y écrit pas sa profondeur. Le verre (rouge, devant) est dessiné AVANT l'opaque
+            // (vert, derrière) : l'opaque, qui retrouve sa propre profondeur de pré-passe, doit passer. Si la pré-passe avait écrit
+            // la profondeur du verre, l'opaque serait caché et le pixel resterait rouge.
+            scene.renderer->setDepthPrepass(true);
+            auto glass = quad({1, 0, 0});
+            glass.setAovMaterial({rd::BlendMode::kBlend, {}});
+            glass.setPosition({0.0f, 0.0f, -3.0f});
+            auto wall = quad({0, 1, 0});
+            wall.setPosition({0.0f, 0.0f, -6.0f});
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                    REQUIRE(scene.renderer->setCamera(camera).has_value());
+                    REQUIRE(scene.renderer->drawMesh(glass, camera).has_value());
+                    REQUIRE(scene.renderer->drawMesh(wall, camera).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
+                });
+            const auto covered = rgba(scene.gpu.pixel(out, 4, 4));
+            CHECK(covered[1] > 200);
+            CHECK(covered[0] < 10);
+            scene.renderer->setDepthPrepass(false);
+
+            // setSceneColorFormat pendant l'image : la cible et les pipelines de CETTE image gardent le format de beginFrame.
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                    REQUIRE(scene.renderer->setSceneColorFormat(Format::kRGBA16Float).has_value());
+                    REQUIRE(scene.renderer->setCamera(camera).has_value());
+                    REQUIRE(scene.renderer->drawMesh(wall, camera).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
+                });
+            CHECK((scene.renderer->sceneTarget().info().colorFormats[0] == Format::kRGBA8Unorm));
+            CHECK(rgba(scene.gpu.pixel(out, 4, 4))[1] > 200);
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e, {.clearColor = {0, 0, 0, 1}}).has_value());
+                    REQUIRE(scene.renderer->setCamera(camera).has_value());
+                    REQUIRE(scene.renderer->drawMesh(wall, camera).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {8, 8}}).has_value());
+                });
+            CHECK((scene.renderer->sceneTarget().info().colorFormats[0] == Format::kRGBA16Float)); // appliqué à l'image suivante
+            CHECK(rgba(scene.gpu.pixel(out, 4, 4))[1] > 200);
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("SceneRenderer: beginFrame is refused while the frame executes (from a draw played by endFrame), then available again")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Scene scene(backend);
+            REQUIRE(scene.gpu.device);
+            scene.renderer->setOutputResolution(4, 4);
+            const TextureHandle out = scene.output(4, 4);
+            bool refused = false;
+            for (int frame = 0; frame < 2; ++frame)
+            {
+                const bool fail = frame == 0;
+                scene.gpu.run(
+                    [&](CommandEncoder &e)
+                    {
+                        REQUIRE(scene.renderer->beginFrame(e).has_value());
+                        REQUIRE(scene.renderer
+                                    ->drawCustom(
+                                        [&](CommandEncoder &encoder, rhi::BindGroupHandle) -> orosmo::core::Result<>
+                                        {
+                                            // Ré-entrée : vider les dessins maintenant invaliderait ce rappel.
+                                            refused = !scene.renderer->beginFrame(encoder).has_value();
+                                            return fail ? orosmo::core::makeError(ErrorCode::kUnknown, "draw failed") : orosmo::core::Result<>{};
+                                        })
+                                    .has_value());
+                        const auto ended = scene.renderer->endFrame({out, Format::kRGBA8Unorm, {4, 4}});
+                        CHECK(ended.has_value() == !fail);
+                    });
+                CHECK(refused);
+            }
+            // Après un échec comme après un succès, le renderer est de nouveau disponible.
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(scene.renderer->beginFrame(e).has_value());
+                    REQUIRE(scene.renderer->endFrame({out, Format::kRGBA8Unorm, {4, 4}}).has_value());
+                });
             scene.gpu.expectNoValidationErrors();
         }
     }

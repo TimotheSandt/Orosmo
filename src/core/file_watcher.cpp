@@ -43,6 +43,21 @@ std::vector<std::pair<fs::path, FileWatcher::Stamp>> FileWatcher::scan(const Wat
     return out;
 }
 
+std::vector<std::pair<fs::path, FileWatcher::Stamp>> FileWatcher::scanTracked(const Watch &w)
+{
+    std::vector<std::pair<fs::path, Stamp>> out;
+    out.reserve(w.known.size());
+    for (const auto &entry : w.known)
+    {
+        std::error_code e1, e2;
+        const auto time = fs::last_write_time(entry.first, e1);
+        const auto size = fs::file_size(entry.first, e2);
+        if (!e1 && !e2)
+            out.push_back({entry.first, Stamp{time, size}});
+    }
+    return out; // l'ordre de `known` (trié) est conservé
+}
+
 FileWatcher::WatchId FileWatcher::watch(fs::path path, Callback callback, std::vector<std::string> extensions)
 {
     Watch w{++mNextId, std::move(path), std::move(callback), std::move(extensions), {}};
@@ -60,6 +75,14 @@ void FileWatcher::unwatch(WatchId id)
 
 std::size_t FileWatcher::poll()
 {
+    if (mPollInterval.count() > 0)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        if (mLastPoll && now - *mLastPoll < mPollInterval)
+            return 0;
+        mLastPoll = now;
+    }
+    ++mStats.polls;
     std::size_t count = 0;
     // Copie des identifiants : un rappel peut appeler watch()/unwatch().
     std::vector<WatchId> ids;
@@ -71,7 +94,22 @@ std::size_t FileWatcher::poll()
         if (it == mWatches.end())
             continue;
         bool complete = true;
-        auto now = scan(*it, complete);
+        // Parcours complet : fichier racine (un seul stat), état connu vide (fichier ou dossier qui n'existait pas), ou un poll() sur
+        // mFullScanEvery ; sinon seuls les fichiers déjà suivis sont vérifiés.
+        std::error_code rootEc;
+        const bool full = mFullScanEvery <= 1 || it->known.empty() || ++it->sinceFullScan >= mFullScanEvery || fs::is_regular_file(it->root, rootEc);
+        std::vector<std::pair<fs::path, Stamp>> now;
+        if (full)
+        {
+            it->sinceFullScan = 0;
+            ++mStats.fullScans;
+            now = scan(*it, complete);
+        }
+        else
+        {
+            ++mStats.trackedScans;
+            now = scanTracked(*it);
+        }
         if (!complete)
             continue; // scan interrompu : on garde l'état connu et on réessaie au prochain poll()
         std::vector<FileEvent> events;

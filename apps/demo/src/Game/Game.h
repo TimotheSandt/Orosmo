@@ -1,12 +1,16 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "CameraController.h"
+#include "Game/frame_overlay.hpp"
 #include "Scene/demo_scene.hpp"
+#include "Scene/mixed_scene.hpp"
 #include "UI/demo_ui_state.hpp"
 #include "UI/performance_stats.hpp"
 #include "launch_options.hpp"
@@ -16,10 +20,12 @@
 #include <orosmo/core/profiler.hpp>
 #include <orosmo/platform/input_manager.hpp>
 #include <orosmo/platform/window.hpp>
+#include <orosmo/renderer/antialiasing.hpp>
 #include <orosmo/renderer/camera.hpp>
 #include <orosmo/renderer/canvas_renderer.hpp>
 #include <orosmo/renderer/gpu_timer.hpp>
 #include <orosmo/renderer/pipeline_cache.hpp>
+#include <orosmo/renderer/post_effects.hpp>
 #include <orosmo/renderer/render_target.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
 #include <orosmo/renderer/shader_library.hpp>
@@ -46,7 +52,34 @@ class Game
 
     // TOOL-03: after `frames` rendered frames, save <directory>/scene.png (3D) and ui.png, then close.
     void enableCapture(std::string directory, std::uint32_t frames);
+    // --instances N (REN-28) : N objets instanciés ajoutés à la scène par init() ; 0 (défaut) : aucun.
+    void setInstanceCount(std::uint32_t count) noexcept { this->instanceCount = count; }
+    void setGpuDriven(bool enabled) noexcept { this->gpuDriven = enabled; }
+    // --debug-view / --freeze-frustum (REN-35) : appliqués par init().
+    void setDebugView(orosmo::renderer::DebugView view, bool freezeFrustum) noexcept
+    {
+        this->debugView = view;
+        this->freezeFrustum = freezeFrustum;
+    }
+    // --shadows on (REN-06 à 08) : ombres en cascade avec cache (plugin ShadowFeature) ; désactivées par défaut.
+    void setShadowsEnabled(bool enabled) noexcept { this->shadowsEnabled = enabled; }
+    // --post (REN-17/18) : effets activés par init() ; kNone (défaut) : aucun effet enregistré, scène LDR inchangée.
+    void setPostMode(demo::PostMode mode) noexcept { postMode = mode; }
+    // --aa (REN-19) : technique activée par init() ; kNone (défaut) : aucun plugin enregistré, image inchangée.
+    void setAntiAliasing(orosmo::renderer::AntiAliasingMode mode) noexcept { antiAliasingMode = mode; }
+    // --lighting / --lights (REN-04) : mode d'éclairage demandé (forward+ : repli sur forward sans compute) et lumières ponctuelles.
+    void setLighting(demo::LightingMode mode, std::uint32_t pointLights) noexcept
+    {
+        this->lightingMode = mode;
+        this->pointLightCount = pointLights;
+    }
+    // --scene mixed (R2D-05, REN-32) : transparents triés et 2D dans le monde en plus de la scène ; défaut : inchangée.
+    void setMixedScene(bool enabled) noexcept { mixedScene = enabled; }
+    // REN-39 : ombre des vitres de la scène mêlée (sans valeur : elles ne projettent rien).
+    void setTransparentShadow(std::optional<orosmo::renderer::TransparentShadowMode> mode) noexcept { transparentShadow = mode; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
+    // --hud (niveau du panneau de performances ; Ctrl+F le change ensuite).
+    void setHudLevel(demo::HudLevel level) noexcept { performance.level = level; }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
     void setCaptureInteraction(std::string hover, std::string click)
@@ -54,17 +87,24 @@ class Game
         hoverId = std::move(hover);
         clickId = std::move(click);
     }
-    void setVSync(bool enabled)
-    {
-        if (device)
-        {
-            device->setVSync(enabled);
-        }
-    }
+    // Cadence d'images (vsync, limite à N FPS, sans limite), changeable à chaud (aussi depuis l'interface complète). Sans fenêtre
+    // (--headless) : mémorisée et affichée, sans effet (ni vsync ni limiteur).
+    void setFramePacing(orosmo::renderer::FramePacing pacing);
+    const orosmo::renderer::FramePacing &framePacing() const noexcept { return pacer.current(); }
+    // Minuteries GPU : auto (actives quand le panneau de performances affiche des temps GPU), on, off. Changeable à chaud.
+    void setGpuTimings(demo::GpuTimingsMode mode);
+    // Dessin direct dans l'image de la fenêtre (Vulkan, G185) ; voir rhi::DeviceDesc::directPresentation.
+    void setDirectPresentation(bool enabled);
+    demo::GpuTimingsMode gpuTimings() const noexcept { return gpuTimingsMode; }
     // Faux si une capture était demandée et n'a pas été faite, ou si une image de la capture a été refusée par le périphérique.
     bool captureSucceeded() const noexcept { return !captureFailed && (captureDirectory.empty() || captureDone); }
     // Sans fenêtre : faux si une image n'a pas pu être commencée ou a été refusée (submit ou scène), avec ou sans capture.
     bool headlessSucceeded() const noexcept { return !headlessFrameFailed; }
+    // Temps CPU de chaque image rendue par run() (ms), dans l'ordre : bilan de fin (médiane, première image, maximum).
+    // Durée complète de l'image ; `frameWaitTimes` en est la part bloquée dans Device::beginFrame et Device::present (image
+    // précédente encore au GPU, vsync). Le travail du processeur est la différence.
+    const std::vector<float> &frameTimes() const noexcept { return frameTimesMs; }
+    const std::vector<float> &frameWaitTimes() const noexcept { return frameWaitMs; }
 
   private:
     Game(bool headless, int width, int height, orosmo::rhi::Backend backend);
@@ -74,12 +114,22 @@ class Game
     bool beginFrame();
     void render();
     void endFrame();
+    void presentFrame(); // Device::present, compté dans l'attente de l'image (vsync)
     void refreshViewSize();
     void applySceneParams();
     void resetCamera();
     orosmo::core::Result<> createUi();
+    void warmUp();
+    void recordFrameTime(std::chrono::steady_clock::time_point frameStart);
+    // Mesures du panneau de performances (4 fois par seconde) : tout ce qui est affiché vient d'ici.
+    PerformanceSample samplePerformance() const;
+    orosmo::core::Result<> createPostEffects();
     bool loadFullUiTheme(bool reportAsError);
     bool renderUi(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
+    void present(orosmo::rhi::CommandEncoder &encoder, const orosmo::rhi::TextureHandle &composedTexture);
+    orosmo::ui::Ui *activeUi() const noexcept; // interface affichée (HUD ou complète), nulle avec --ui off
+    bool captureAfterThisFrame() const noexcept;
+    orosmo::core::Result<> registerOverlay(); // plugin de rendu : passes « ui » et « present » du graphe de l'image (frame_overlay.hpp)
 
   private:
     orosmo::platform::Window window;
@@ -89,8 +139,12 @@ class Game
     std::unique_ptr<orosmo::renderer::PipelineCache> pipelines;
     std::unique_ptr<orosmo::renderer::SceneRenderer> sceneRenderer;
     std::unique_ptr<orosmo::renderer::CanvasRenderer> canvas;
+    demo::FrameOverlay *overlay = nullptr; // possédé par sceneRenderer
     std::unique_ptr<orosmo::renderer::ProfilerGpuTimerFactory> gpuTimers;
-    orosmo::renderer::RenderTarget composed; // image finale (scène puis interface), à la taille de la vue
+    // Image finale (scène puis interface) à la taille de la vue, quand elle ne se compose pas dans le backbuffer (captures, vue
+    // étirée) : créée à la première image qui la demande.
+    orosmo::renderer::RenderTarget composed;
+    demo::FrameComposition composition = demo::FrameComposition::kComposedTarget; // choisie par beginFrame
     orosmo::renderer::RenderTarget uiTarget; // interface à échelle réduite (touches de debug 5 à 8)
     std::unique_ptr<orosmo::rhi::CommandEncoder> frameEncoder;
     orosmo::rhi::TextureHandle backbuffer;
@@ -110,6 +164,9 @@ class Game
     orosmo::renderer::Camera camera;
     CameraController cameraController;
     std::unique_ptr<demo::DemoScene> scene;
+    std::unique_ptr<demo::MixedScene> mixed;
+    bool mixedScene = false;
+    std::optional<orosmo::renderer::TransparentShadowMode> transparentShadow;
     bool stopped = false;
 
     int requestedWidth = 1280;
@@ -122,12 +179,22 @@ class Game
     demo::UiMode uiMode = demo::UiMode::kHud;
     std::string initialTheme = "dark";
     std::string initialTab = "scene";
+    std::uint32_t instanceCount = 0;
+    bool gpuDriven = false;
+    orosmo::renderer::DebugView debugView = orosmo::renderer::DebugView::kNone;
+    bool freezeFrustum = false;
+    bool shadowsEnabled = false;
+    demo::PostMode postMode = demo::PostMode::kNone;
+    orosmo::renderer::PostEffects post; // effets possédés par sceneRenderer
+    orosmo::renderer::AntiAliasingMode antiAliasingMode = orosmo::renderer::AntiAliasingMode::kNone;
+    orosmo::renderer::AntiAliasing antiAliasing; // plugins possédés par sceneRenderer
+    demo::LightingMode lightingMode = demo::LightingMode::kForward;
+    std::uint32_t pointLightCount = 0;
     std::string hoverId;
     std::string clickId;
     std::string captureDirectory;
     std::uint32_t captureFrames = 0;
     std::uint32_t renderedFrames = 0;
-    double watchClock = 0.0;
     bool captureDone = false;
     bool manualCapturePending = false;
     bool headlessFrameFailed = false;
@@ -135,4 +202,16 @@ class Game
     std::optional<orosmo::core::Error> sceneError;
     bool uiFailed = false;
     bool headless = false;
+    std::vector<float> frameTimesMs;
+    std::vector<float> frameWaitMs;
+    std::chrono::steady_clock::duration frameWait{}; // attente de l'image en cours (beginFrame + present du périphérique)
+    std::chrono::steady_clock::duration captureTime{}; // écriture des PNG de l'image en cours (exclue de son temps)
+    std::optional<std::chrono::steady_clock::time_point> lastFrameStart; // intervalle entre images (FPS du panneau)
+    orosmo::renderer::FramePacer pacer; // reliée à Device::setVSync et Window::setMaxFPS (fenêtre seulement)
+    demo::GpuTimingsMode gpuTimingsMode = demo::GpuTimingsMode::kAuto;
+    void applyGpuTimings();
+    // Clés du Profiler des mesures de la boucle, calculées une fois (createGraphics) : aucune chaîne ni recherche par image.
+    orosmo::core::Profiler::Key keyRender, keyUpdate, keyRecordScene, keyGraph, keySubmit, keySwapBuffers;
+    bool forwardPlusActive = false;
+    orosmo::renderer::ShadowFeature *shadowFeature = nullptr; // possédé par sceneRenderer (--shadows on)
 };

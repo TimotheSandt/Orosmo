@@ -15,15 +15,17 @@
 
 ## Compiler
 
-### Linux (apt d'abord, vcpkg pour glad, msdfgen et nlohmann-json)
+### Linux (apt d'abord, vcpkg pour glad, msdfgen, nlohmann-json et GLFW)
 
 ```bash
 sudo apt install build-essential cmake cargo python3 \
-    libglfw3-dev libglm-dev libstb-dev libshaderc-dev glslc doctest-dev libfreetype-dev \
+    libglm-dev libstb-dev libshaderc-dev glslc doctest-dev libfreetype-dev \
     libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
-    autoconf autoconf-archive automake libtool
+    autoconf autoconf-archive automake libtool \
+    pkg-config libwayland-dev libxkbcommon-dev wayland-protocols libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
 
-# glad (v1), msdfgen et nlohmann-json (JSON) ne sont pas pris dans apt : vcpkg, en UNE commande qui lit vcpkg.json (12 s)
+# glad (v1), msdfgen, nlohmann-json (JSON) et GLFW (3.4 et plus : Wayland natif, X11 sinon ; le paquet apt d'Ubuntu 24.04
+# est en 3.3, X11 seulement, donc XWayland sous Wayland) viennent de vcpkg, en UNE commande qui lit vcpkg.json
 git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
 ~/vcpkg/vcpkg install                    # à la racine du dépôt
 
@@ -35,7 +37,7 @@ en cours, restants et à jour (sautés), puis un résumé ; les avertissements, 
 `make V=1 …` montre les commandes complètes ; `ORS_NO_PROGRESS=1 make …` garde l'affichage habituel. Hors terminal (CI,
 redirection vers un fichier), rien ne change. Il faut Python 3 (sinon, affichage habituel).
 
-`vcpkg.json` marque `glfw3`, `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad`, `msdfgen`, `nlohmann-json` et `spirv-cross` (sans options par défaut : noyau seulement, sans skia). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
+`vcpkg.json` marque `glm`, `stb`, `freetype`, `vulkan`, `shaderc` et `doctest` en `"platform": "!linux"` (apt les fournit) ; sous Linux `vcpkg install` n'installe donc que `glad`, `msdfgen` (sans options par défaut : noyau seulement, sans skia), `nlohmann-json`, `spirv-cross`, `volk`, `vulkan-memory-allocator` et `glfw3` (avec la fonctionnalité `wayland`, A67). Il les place dans `vcpkg_installed/x64-linux/`, où `tools/setup-linux-deps.sh` (lancé par `make`) ajoute les paquets apt.
 
 `make clean-all` supprime `vcpkg_installed/` : relance ensuite `~/vcpkg/vcpkg install` (12 s, les archives sont en cache), `make` relie le reste.
 
@@ -51,13 +53,13 @@ make all-debug
 
 | Commande | Effet |
 | --- | --- |
-| `make run` | Construit si besoin puis lance la démo unique (`apps/demo/bin/<type>/` ; `Escape` ouvre/ferme l'UI, bouton `Quit` ou `File > Quit` pour quitter) |
+| `make run` | Construit si besoin puis lance la démo unique (`apps/demo/bin/<type>/` ; `Escape` ouvre/ferme l'UI, `Ctrl+F` fait défiler les niveaux du panneau de performances, bouton `Quit` ou `File > Quit` pour quitter) |
 | `make demo-capture` | Capture hors écran de la démo unifiée (scène 3D, thèmes `dark`/`light`/`framed`, onglets UI) |
 | `make demo-test` | Construit et lance les tests (`tests/`, doctest ; filtres : `-ts=<suite>`, `-tc=<cas>`) |
 | `make demo-test SANITIZE=address,undefined` | Idem sous ASan + UBSan (arbre propre : `make fclean` avant) |
 | `make demo-test-unit` / `make demo-test-gpu` | Seulement les tests sans GPU ni fenêtre / seulement l'intégration graphique (contexte OpenGL, fenêtre). `ENGINE_TEST_REQUIRE_GPU=1` : un test graphique sans pilote ni affichage échoue au lieu d'être ignoré |
 | `make check` | Dépôt, couches, isolation des API (y compris GLFW et `<windows.h>`), en-têtes autonomes : **bloquant** (échoue à la première violation, comme la CI) |
-| `main --api opengl --headless --capture <dossier>` | Rend 10 images à 1280x720 (options : `--ui off|hud|full`, `--theme dark|light|framed`, `--tab scene|widgets|controls|color|windows|layout|themes`, `--size WxH`, `--capture-frames N`, `--hover <id>`, `--click <id>`) ; `--backend vulkan` (alias de `--api`) avec repli sur OpenGL si Vulkan ne démarre pas, `--strict-backend` pour l'interdire |
+| `main --api opengl --headless --capture <dossier>` | Rend 10 images à 1280x720 (options : `--ui off|hud|full`, `--hud off|fps|full|graph` (panneau de performances, défaut `full`), `--theme dark|light|framed`, `--tab scene|widgets|controls|color|windows|layout|themes`, `--size WxH`, `--vsync [on|off]` (synchronisation verticale, active par défaut ; sans effet avec `--headless`), `--fps-limit N` (10 à 1000, coupe la vsync), `--direct-present on|off` (Vulkan : dessin direct dans l'image de la fenêtre, actif par défaut ; `off` revient à la copie si l'image scintille à très haute cadence sans vsync, G193), `--gpu-timings auto|on|off` (minuteries GPU : `auto`, défaut, seulement quand le panneau affiche des temps GPU, c'est-à-dire `--hud full|graph` ; les outils qui lisent les lignes `Perf: RenderGraph/...` passent `on`), `--capture-frames N`, `--hover <id>`, `--click <id>`) ; Vulkan par défaut, avec repli sur OpenGL s'il ne démarre pas ; `--backend` est un alias de `--api`, `--strict-backend` pour l'interdire |
 | `python3 tools/compare_png.py A.png B.png` | Compare deux images (tolérance, budget de pixels, image de différence) |
 | `python3 -m unittest discover -s tests/tools` | Tests des outils Python |
 | `make debug` / `make release` | Archives du moteur dans `lib/<type>/` |
@@ -93,6 +95,10 @@ Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `lib
 - **Utiliser le moteur depuis une release** (`orosmo init`, paquet, projet minimal, stabilité de l'API) : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)
 - Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `orosmo/ui`)
 - Nettoyage M00 : [docs/CLEANUP_PLAN.md](docs/CLEANUP_PLAN.md), [docs/releases/M00.md](docs/releases/M00.md)
+
+## Origine et méthode de développement
+
+Orosmo a été **commencé par son auteur, avec OpenGL**. L'auteur a utilisé l'IA dès son apparition, mais **mal** à l'époque : sans plan ni structure clairs, en lui demandant simplement « fais tel truc », tout en continuant à coder lui-même un peu. Le projet a été **mis en pause, puis arrêté**. Il a **repris récemment** et utilise désormais **Claude** (assistant de programmation d'Anthropic) **correctement** : l'auteur décide de la direction, fixe les règles (`CLAUDE.md`, `docs/`), relit et fusionne ; l'IA écrit du code et des tests, que la CI et des preuves vérifient (aucune fonctionnalité n'est déclarée « Fait » sans test ni commande de démo). Les commits écrits avec l'IA portent la ligne `Co-Authored-By`.
 
 ## Licence
 

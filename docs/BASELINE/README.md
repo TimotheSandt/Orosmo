@@ -123,3 +123,35 @@ make demo-vulkan-check            # 5 cas (off, hud, dark/light widgets, dark sc
 - La cible exige aussi que le journal Vulkan de chaque exécution contienne `Vulkan validation: 0 error/warning message(s)` (validation de synchronisation active, binaire debug).
 - `docs/BASELINE/reference/scene-opengl-demo-1280x720.png` : la capture OpenGL actuelle en diffère de 332 pixels (0,036 %, écart max 237 : arêtes) ; la référence est peut-être à régénérer (à vérifier, non modifiée ici).
 - Performances comparées : `docs/PERF_OPENGL_VS_VULKAN.md`.
+
+## Ombres en cascade de la démo (M5, REN-07/08, 2026-11-21)
+
+`reference/scene-opengl-demo-shadows-1280x720.png` : `apps/demo/bin/debug/main --api opengl --headless --ui off --shadows on
+--capture build/demo-capture/shadows --capture-frames 5` (ligne ajoutée à `make demo-capture`), Intel Arc (Mesa 26.1.6). sha256
+`700fccec7aca1bdb10991e64d39553a3bb9396e19e6c8d5286b3c1820b1d6aac`. Vulkan donne la même image (écart max 1/255, 0 pixel au-delà de la
+tolérance 8) avec 0 message de validation. Sans `--shadows` (défaut), la capture de la scène est identique au pixel près à celle d'avant
+les ombres. La CI ne compare pas encore cette image (`.github/` à mettre à jour par l'auteur).
+
+## Mise à jour du 2026-11-21 : post-traitements (REN-17, REN-18)
+
+`reference/scene-opengl-post-{hdr,bloom,full}-1280x720.png` : `apps/demo/bin/debug/main --api opengl --headless --ui off --post <mode>
+--capture <dir> --capture-frames 5`, Intel Arc (Mesa 26.1.6). Vérifiées par `make demo-capture` (tolérance 8, 2 %). Vulkan donne la
+même image (écart max 1/255) et `make demo-vulkan-check` couvre `--post full`. Sans `--post` (défaut `none`), `scene.png` et `ui.png`
+sont identiques au pixel près à celles d'avant les post-traitements, sur OpenGL et Vulkan.
+
+`reference/scene-opengl-mixed-post-full-1280x720.png` : même commande avec `--scene mixed --post full` (transparents et 2D du monde
+passés par toute la chaîne de post-traitement), vérifiée par `make demo-capture`.
+
+`reference/scene-opengl-mixed-shadow-dithered-1280x720.png` (REN-39) : `--ui off --scene mixed --shadows on --transparent-shadow dithered`
+(5 images, OpenGL), vérifiée par `make demo-capture`. Sans `--transparent-shadow`, les images par défaut (`--shadows on`, `--scene mixed`)
+sont identiques au pixel près à celles de milestone/M5 sur OpenGL et Vulkan.
+
+## Mise à jour du 2026-11-22 : panneau de performances à quatre niveaux (`--ui hud`)
+
+Le panneau compact (`apps/demo/src/UI/Views/PerformanceView.cui`, `res/themes/hud.json`) a quatre niveaux (`--hud off|fps|full|graph`,
+`Ctrl+F` en fenêtre). Le niveau par défaut, `full`, affiche plus de mesures qu'avant (FPS moyen / 1 % bas / min / max, temps CPU
+par image et son découpage, GPU `Render` et passes actives du graphe, dessins, objets, lumières, backend et pilote, résolutions,
+vsync, modes, mémoire) : **les captures `--ui hud` changent, de façon assumée** (panneau plus large et plus haut). Elles n'ont pas
+d'image de référence à tolérance 0 (les valeurs mesurées changent d'une exécution à l'autre) ; `make demo-vulkan-check` les compare
+toujours entre OpenGL et Vulkan avec sa tolérance. `--ui off` et `--ui full` ne montrent pas ce panneau et ne changent pas, sauf la
+ligne de statistiques de l'onglet Scene, qui affiche les mêmes valeurs qu'avant (FPS de la fenêtre, `Render`, passes `scene` et `ui`).

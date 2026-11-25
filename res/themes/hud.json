@@ -1,15 +1,22 @@
 {
     "name": "hud",
-    "description": "Panneau de performances de la démo (apps/demo, PerformanceView.cui) : le thème sombre, plus le fond translucide et les tailles de texte de l'ancien panneau.",
+    "description": "Panneau de performances de la démo (apps/demo, PerformanceView.cui) : le thème sombre, plus le fond translucide, les tailles de texte du panneau et les couleurs des graphes de temps d'image (CPU, GPU).",
     "extends": "dark.json",
     "tokens": {
         "color.hud": "#0d0d14a6",
+        "color.hudPlot": "#00000059",
+        "color.hudCpu": "#4fc3f7",
+        "color.hudGpu": "#ffb74d",
         "font.size.hudTitle": 24,
-        "font.size.hudMetric": 14.4
+        "font.size.hudMetric": 14.4,
+        "font.size.hudDetail": 12.8
     },
     "widgets": {
         "hud": {"background": "color.hud", "padding": "space.large", "spacing": "space.small", "radius": 0, "borderWidth": 0},
         "hudTitle": {"fontSize": "font.size.hudTitle", "padding": 0},
-        "hudMetric": {"fontSize": "font.size.hudMetric", "padding": 0}
+        "hudMetric": {"fontSize": "font.size.hudMetric", "padding": 0},
+        "hudDetail": {"fontSize": "font.size.hudDetail", "padding": 0},
+        "hudPlotCpu": {"background": "color.hudPlot", "accent": "color.hudCpu", "padding": 2, "radius": 0, "borderWidth": 0},
+        "hudPlotGpu": {"background": "color.hudPlot", "accent": "color.hudGpu", "padding": 2, "radius": 0, "borderWidth": 0}
     }
 }

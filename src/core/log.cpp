@@ -7,6 +7,8 @@
 #include <sstream>
 #include <filesystem>
 #include <algorithm>
+#include <cstdio>
+#include <ctime>
 
 namespace orosmo::core
 {
@@ -123,12 +125,35 @@ void Logger::FlushToFile() noexcept
             return;
         }
 
+        std::lock_guard<std::mutex> lock(logMutex);
+        FlushLocked(true);
+    }
+    catch (...)
+    {
+        std::fputs("Logger::FlushToFile failed\n", stderr);
+    }
+}
+
+size_t Logger::KeptLogCount()
+{
+    std::lock_guard<std::mutex> lock(logMutex);
+    return logs.size();
+}
+
+// Écrit dans le fichier les messages pas encore écrits ; appelé avec logMutex tenu. `announce` : message de réussite en DEBUG
+// (pas pendant l'élagage, qui ne doit rien afficher entre deux messages).
+void Logger::FlushLocked(bool announce)
+{
+    static_cast<void>(announce); // utilisé seulement en DEBUG
+    {
 #ifdef DEBUG
         bool flushFailed = false;
         bool wroteLogs = false;
 #endif
-        std::lock_guard<std::mutex> lock(logMutex);
-
+        if (!isLoggingToFile)
+        {
+            return;
+        }
         if (!logFile || !logFile->is_open())
         {
             std::cerr << "Logger file is not available for flushing" << std::endl;
@@ -172,7 +197,7 @@ void Logger::FlushToFile() noexcept
                 *logFile << " (Error: " << log.errorCode << ")";
             }
 
-            *logFile << std::endl;
+            *logFile << '\n';
 #ifdef DEBUG
             wroteLogs = true;
 #endif
@@ -186,7 +211,7 @@ void Logger::FlushToFile() noexcept
         {
             std::cerr << "ERROR: Failed to write to log file!" << std::endl;
         }
-        else if (wroteLogs)
+        else if (wroteLogs && announce)
         {
             std::cout << "\033[32m";
             std::cout << "Successfully flushed logs to file";
@@ -194,10 +219,19 @@ void Logger::FlushToFile() noexcept
         }
 #endif
     }
-    catch (...)
+}
+
+// Borne la mémoire : au-delà de kMaxKeptLogs messages, les plus anciens (écrits d'abord dans le fichier) sont oubliés.
+void Logger::TrimLocked()
+{
+    if (logs.size() <= kMaxKeptLogs)
     {
-        std::fputs("Logger::FlushToFile failed\n", stderr);
+        return;
     }
+    FlushLocked(false);
+    const size_t drop = logs.size() - kMaxKeptLogs / 2;
+    logs.erase(logs.begin(), logs.begin() + static_cast<std::ptrdiff_t>(drop));
+    lastFlushedIndex = lastFlushedIndex > drop ? lastFlushedIndex - drop : 0;
 }
 
 size_t getTerminalWidth() { return orosmo::core::system::terminalWidth(); } // OS : src/platform/system.cpp
@@ -225,9 +259,12 @@ size_t Logger::CalculateLogLength(const LogMessage &log)
     return length;
 }
 
-size_t Logger::CalculateNumberOfLines(const LogMessage &log)
+size_t Logger::CalculateNumberOfLines(const LogMessage &log, size_t terminalWidth)
 {
-    size_t terminalWidth = getTerminalWidth();
+    if (log.level < lLevelPrinted)
+    {
+        return 0; // jamais affiché (PrintLog)
+    }
     if (terminalWidth == 0)
     {
         return 1;
@@ -303,42 +340,46 @@ void Logger::AddLog(LogMessage &&log)
 {
     std::lock_guard<std::mutex> lock(logMutex);
 
-    auto timeLimit = std::chrono::system_clock::now() - std::chrono::seconds(3);
+    const auto timeLimit = std::chrono::system_clock::now() - std::chrono::seconds(3);
 
+    // Doublon récent : parmi les kDuplicateSearchDepth derniers messages des 3 dernières secondes (comparaisons seulement ;
+    // les lignes à remonter ne sont comptées que si un doublon est trouvé).
     bool isDuplicate = false;
     size_t duplicateIndex = 0;
-    size_t dstUp = 0;
-
-    // Chercher en partant de la fin, sécurisé contre les vecteurs vides
-    if (!logs.empty())
+    for (size_t i = logs.size(), scanned = 0; i > 0 && scanned < kDuplicateSearchDepth; --i, ++scanned)
     {
-        for (size_t i = logs.size(); i > 0; i--)
+        const size_t idx = i - 1;
+        if (logs[idx].time < timeLimit)
         {
-            size_t idx = i - 1; // Index réel
-
-            if (logs[idx].time < timeLimit)
-            {
-                break; // Trop ancien, arrêter la recherche
-            }
-
-            dstUp += CalculateNumberOfLines(logs[idx]);
-
-            if (logs[idx] == log)
-            {
-                logs[idx].repetition++; // Modifier l'original dans le vecteur
-                duplicateIndex = idx;
-                isDuplicate = true;
-                break;
-            }
+            break; // Trop ancien, arrêter la recherche
+        }
+        if (logs[idx] == log)
+        {
+            duplicateIndex = idx;
+            isDuplicate = true;
+            break;
         }
     }
 
     if (isDuplicate)
     {
+        LogMessage &duplicateLog = logs[duplicateIndex];
+        if (duplicateLog.level < lLevelPrinted)
+        {
+            duplicateLog.repetition++; // jamais affiché : rien à réécrire
+            return;
+        }
+        const size_t terminalWidth = getTerminalWidth();
+        size_t dstUp = 0;
+        for (size_t idx = duplicateIndex; idx < logs.size(); ++idx)
+        {
+            dstUp += CalculateNumberOfLines(logs[idx], terminalWidth);
+        }
+        duplicateLog.repetition++;
+
         // Remonter à la ligne du duplicate
         std::cout << "\033[" << dstUp << "F";
 
-        const auto &duplicateLog = logs[duplicateIndex];
         bool needFullRewrite = std::to_string(duplicateLog.repetition).size() != std::to_string(duplicateLog.repetition - 1).size() ||
                                duplicateLog.repetition == 2;
 
@@ -367,6 +408,7 @@ void Logger::AddLog(LogMessage &&log)
         {
             std::exit(1);
         }
+        TrimLocked();
     }
 }
 
@@ -375,10 +417,25 @@ std::string Logger::FormatTimestamp(const std::chrono::time_point<std::chrono::s
     auto time_t = std::chrono::system_clock::to_time_t(timestamp);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(timestamp.time_since_epoch()) % 1000;
 
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
-    return ss.str();
+    // La date à la seconde est mise en cache : std::localtime relit le fuseau horaire (/etc/localtime) à chaque appel.
+    thread_local std::time_t cachedSecond = static_cast<std::time_t>(-1);
+    thread_local std::string cachedText;
+    if (time_t != cachedSecond)
+    {
+        std::tm local{};
+#if defined(_WIN32)
+        localtime_s(&local, &time_t);
+#else
+        localtime_r(&time_t, &local);
+#endif
+        std::stringstream ss;
+        ss << std::put_time(&local, "%Y-%m-%d %H:%M:%S");
+        cachedText = ss.str();
+        cachedSecond = time_t;
+    }
+    char millis[8];
+    std::snprintf(millis, sizeof(millis), ".%03d", static_cast<int>(ms.count()));
+    return cachedText + millis;
 }
 
 void Logger::PrintLog(const LogMessage &log)

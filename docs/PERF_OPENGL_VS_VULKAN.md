@@ -17,7 +17,7 @@ son avantage structurel (moins de surcharge du pilote sur de grandes scènes), i
 - Modes : `headless` (appareil hors écran, pas de présentation) et `windowed` (fenêtre réelle, chaîne d'échange, sans synchronisation verticale).
 - Interface : `--ui off` (scène seule) et `--ui full` (interface complète, onglet scène, thème sombre).
 - **Frame CPU** = durée de `Game::run()` / 600 (horloge `steady_clock`, journalisée par `apps/demo/src/main.cpp` : `Perf: loopMs=`). Elle inclut l'attente de l'image précédente (contre-pression du GPU) ; ce n'est pas un temps CPU pur.
-- **Temps GPU par passe** : moyennes du `Profiler` (`Render`, `RenderScene`, `Upscale`, `UIUpscale`) mesurées par les requêtes de temps du RHI (`ProfilerGpuTimerFactory`) ; `SwapBuffers` est une mesure CPU. Les valeurs sont celles du journal `Perf: <nom> avgMs=`.
+- **Temps GPU par passe** : moyennes du `Profiler` (`Render`, `RenderScene`, `Upscale`, `UIUpscale`) mesurées par les requêtes de temps du RHI (`ProfilerGpuTimerFactory`) ; `SwapBuffers` est une mesure CPU. Les valeurs sont celles du journal `Perf: <nom> avgMs=`. Les minuteries GPU ne tournent que si la démo les demande (`--gpu-timings auto|on|off`, `auto` = seulement quand le panneau de performances affiche des temps GPU) : `tools/perf_compare.py` passe `--gpu-timings on`, à faire de même pour toute mesure à la main (sinon `Render` et `RenderGraph/...` sont des temps CPU).
 - Résultats bruts : `docs/BASELINE/perf-opengl-vs-vulkan-ui-off.json` et `...-ui-full.json`.
 
 Reproduire (affichage requis pour le mode `windowed`) :
@@ -72,3 +72,43 @@ python3 tools/perf_compare.py --runs 7 --frames 600 --ui full --out /tmp/perf-fu
 - Les barrières de Vulkan sont conservatrices (« tout contre tout », voir `src/rhi/vulkan/README.md`) : une marge de gain existe côté Vulkan.
 - Mesure en fenêtre sans synchronisation verticale ; avec elle, les deux backends sont bornés par l'écran.
 - llvmpipe / lavapipe : non mesurés (le temps GPU logiciel n'a pas de sens pour comparer des API) ; la parité d'image a été vérifiée sur lavapipe (voir `docs/BASELINE/README.md`).
+
+## Coût CPU par image et premier affichage (fix/M5-ui-perf, 2026-11-22)
+
+Symptôme : moins de 1 ms de GPU mais 150 à 200 FPS, et un gel d'environ une seconde à la première ouverture de l'interface complète.
+Mesures : binaire release, Intel Arc (MTL), Mesa 26.1.6 ; machine chargée par d'autres compilations (charge 7 à 15 sur 6 coeurs) :
+les valeurs absolues sont bruitées, les écarts restent nets.
+
+Causes trouvées (minuteurs temporaires) :
+
+- `DemoUiState::tick` recalculait la prévisualisation 96x96 et la boussole 64x64 pixel par pixel à chaque image, interface fermée
+  comprise (~2,3 ms CPU par image). Elles ne sont plus dessinées que visibles (onglet Windows de l'interface complète) et modifiées.
+- Premier affichage : génération des atlas MSDF (msdfgen, 5 à 10 ms par glyphe, 0,7 à 1,1 s par taille de police ; l'interface
+  complète en demande 3 de plus que le HUD, l'onglet Themes 2 dont un étendu de 4 s), puis la scène (~0,5 s : pipelines, pilote).
+  Corrections : glyphes calculés en parallèle (`TaskSystem`, ~2,5x ici), cache SPIR-V sur disque
+  (`userDataDirectory()/Orosmo/shader_cache`), préchauffe avant la boucle en fenêtre (scène, HUD, interface complète sur l'onglet
+  courant ; ~1,3 à 1,5 s à charge normale, 2,5 à 4,5 s sous forte charge). Les autres onglets restent paresseux (0,3 à 1,5 s chacun).
+
+`tools/perf_compare.py --runs 3 --frames 600` (`frameCpuMs` = boucle / images, premier affichage compris ; `frameMedian` : médiane
+du temps CPU par image, journal `Perf: frameMedianMs=`, nouveau) :
+
+| Mode | `--ui` | API | avant `frameCpuMs` | après `frameCpuMs` | après `frameMedian` |
+| --- | --- | --- | ---: | ---: | ---: |
+| headless | off | OpenGL | 4,33 | 1,61 | 0,69 |
+| headless | off | Vulkan | 4,75 | 1,70 | 0,45 |
+| headless | hud | OpenGL | 6,03 | 2,43 | 0,87 |
+| headless | hud | Vulkan | 6,28 | 2,08 | 0,60 |
+| headless | full | OpenGL | 9,01 | 5,21 | 1,67 |
+| headless | full | Vulkan | 9,83 | 8,66 (bruit) | 1,45 |
+| fenêtre | off | OpenGL | 4,80 | 2,02 | 1,07 |
+| fenêtre | off | Vulkan | 5,15 | 1,80 | 0,81 |
+| fenêtre | hud | OpenGL | 6,10 | 1,84 | 1,10 |
+| fenêtre | hud | Vulkan | 6,51 | 2,08 | 1,15 |
+| fenêtre | full | OpenGL | 9,52 | 5,35 | 2,45 |
+| fenêtre | full | Vulkan | 9,88 | 4,75 | 2,26 |
+
+Première image (fenêtre, préchauffe faite) : 1 à 12 ms au lieu de 0,6 à 3,3 s ; aucun pic au-dessus de 50 ms dans la boucle hors
+écriture des captures PNG (exclue du temps d'image). Coûts CPU restants par image : exécution du graphe et encodage (`CPU/Graph`,
+0,5 à 1,8 ms, interface comprise), présentation (`SwapBuffers`, 0,1 à 0,4 ms en fenêtre), mise à jour de l'interface complète
+(0,2 à 0,3 ms). Le panneau de performances (`--hud`) coûte 0,1 à 0,3 ms (mise à jour + liste de dessin) plus 0,1 à 0,3 ms
+d'encodage 2D aux niveaux `full` et `graph`.

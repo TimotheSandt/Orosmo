@@ -125,6 +125,26 @@ Result<> GlDevice::submit(std::unique_ptr<CommandEncoder> encoder)
         error = makeError(ErrorCode::kInvalidArgument, "submit: a render pass or a debug group is still open").error();
     }
     encoder.reset(); // referme quand même la passe ou le groupe laissé ouvert, pour ne rien laisser dans le contexte
+    // Fin du lot : ses commandes sont dans le flux GL. Une clôture seulement s'il a utilisé un tampon kUpload mappé (updateBuffer
+    // saura quand le GPU a fini de le lire).
+    if (batchUsesMapped_)
+    {
+        if (GLsync fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0); fence != nullptr)
+        {
+            useFences_.push_back({useSerial_, fence});
+        }
+        else
+        {
+            glFinish(); // pas de clôture : le lot est terminé tout de suite, les écritures mappées suivantes restent sûres
+            completedUse_ = useSerial_;
+        }
+        batchUsesMapped_ = false;
+        if (useFences_.size() > 64)
+        {
+            pollUseFences();
+        }
+    }
+    ++useSerial_;
     if (error)
     {
         return std::unexpected(*error);

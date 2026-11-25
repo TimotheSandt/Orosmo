@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -31,6 +32,14 @@ struct DemoUiState
     bool resetCameraRequested = false;
     bool captureRequested = false;
     bool themeRequested = false;
+    // Cadence d'images et minuteries GPU (contrôles de la barre latérale ; Game applique les demandes, voir FramePacer).
+    bool pacingRequested = false;
+    int pacingMode = 0; // 0=vsync, 1=limit, 2=unlimited (ordre de orosmo::renderer::FramePacingMode)
+    int fpsLimit = 60;
+    bool directPresentationRequested = false;
+    bool directPresentation = true; // Vulkan : dessin direct dans l'image de la fenêtre (G185)
+    bool gpuTimingsRequested = false;
+    int gpuTimings = 0; // 0=auto, 1=on, 2=off (ordre de demo::GpuTimingsMode)
     int theme = 0; // 0=dark, 1=light, 2=framed
     int tab = 0;   // 0=scene, 1=widgets, 2=controls, 3=color, 4=windows, 5=layout, 6=themes
     float cameraYawRadians = 0.0f;
@@ -90,6 +99,9 @@ struct DemoUiState
     void hovered(const orosmo::ui::Event &e);
     void focused(const orosmo::ui::Event &e);
     void applyTheme() { themeRequested = true; }
+    void applyPacing() { pacingRequested = true; }
+    void applyGpuTimings() { gpuTimingsRequested = true; }
+    void applyDirectPresentation() { directPresentationRequested = true; }
     void clearLog() { log.clear(); }
     void openDialog() { dialogOpen = true; }
     void closeDialog() { dialogOpen = false; }
@@ -104,18 +116,44 @@ struct DemoUiState
     std::string logLine(int i) const;
     std::string summary() const;
     std::string controlsSummary() const;
+    static std::vector<std::string> pacingModes() { return {"vsync", "limit", "unlimited"}; }
+    static std::vector<std::string> gpuTimingsModes() { return {"auto", "on", "off"}; }
+    bool fpsLimitEditable() const { return pacingMode == 1; }
     bool canSubmit() const { return enabled && !name.empty(); }
 
     // ── Frame update & event log ──
     void record(std::string line);
     void tick(float deltaTime, float frameTimeMs);
+    // Images vivantes (prévisualisation et boussole, onglet « Windows ») : redessinées seulement si elles sont visibles
+    // (`fullUiShown` et onglet « Windows ») et que leurs entrées ont changé depuis le dernier dessin. À appeler après la mise à
+    // jour de l'interface (l'onglet choisi cette image) et avant son dessin.
+    void refreshLiveImages(bool fullUiShown);
+    bool liveImagesVisible(bool fullUiShown) const;
 
     std::deque<std::string> log;
     std::vector<float> frameSamples;
     float time = 0.0f;
     int notified = 0;
+    // Nombre de dessins de chaque image vivante depuis la création (tests et diagnostics).
+    std::uint64_t previewDraws = 0;
+    std::uint64_t compassDraws = 0;
 
   private:
+    // Entrées dont dépendent les pixels de la prévisualisation.
+    struct PreviewInputs
+    {
+        double rangeLow = 0.0;
+        double rangeHigh = 0.0;
+        int steps = 0;
+        bool showMarker = false;
+        float cameraYawRadians = 0.0f;
+        glm::vec4 accent{0.0f};
+        orosmo::ui::Gradient gradient;
+        orosmo::ui::Curve curve;
+    };
+    bool previewInputsChanged() const;
     void drawPreview();
     void drawCompass();
+    std::optional<PreviewInputs> drawnPreview_;
+    std::optional<float> drawnCompassYaw_;
 };

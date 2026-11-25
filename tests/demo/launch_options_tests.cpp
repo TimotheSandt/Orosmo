@@ -36,7 +36,7 @@ TEST_SUITE("Demo launch options")
     {
         const char *argv[] = {"Orosmo"};
         const demo::LaunchOptions options = *demo::parseLaunchOptions(1, argv);
-        Assert(options.api == Backend::kOpenGL, "Default graphics API should stay OpenGL");
+        Assert(options.api == Backend::kVulkan, "Default graphics API is Vulkan (OpenGL is the fallback)");
         Assert(!options.chooseApiInteractively, "Interactive selection should be disabled by default");
         Assert(!options.apiExplicitlyRequested, "Default launch should not mark the API as explicit");
         Assert(options.uiMode == UiMode::kHud, "Default UI mode should be hud");
@@ -169,6 +169,133 @@ TEST_SUITE("Demo launch options")
         AssertEqual(options.captureFrames, 25u, "Capture frame count should be parsed");
     }
 
+    TEST_CASE("launch options parse --shadows on|off; off by default (REN-07)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(!demo::parseLaunchOptions(1, none)->shadows, "No shadows by default");
+        const char *on[] = {"Orosmo", "--shadows", "on"};
+        Assert(demo::parseLaunchOptions(3, on)->shadows, "--shadows on enables them");
+        const char *off[] = {"Orosmo", "--shadows", "off"};
+        Assert(!demo::parseLaunchOptions(3, off)->shadows, "--shadows off disables them");
+        const char *bad[] = {"Orosmo", "--shadows", "maybe"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --shadows value is refused");
+    }
+
+    TEST_CASE("launch options parse --gpu-driven on|off; off by default (REN-29)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(!demo::parseLaunchOptions(1, none)->gpuDriven, "CPU culling by default");
+        const char *on[] = {"Orosmo", "--gpu-driven", "on", "--instances", "100000"};
+        const auto parsed = demo::parseLaunchOptions(5, on);
+        Assert(parsed.has_value() && parsed->gpuDriven && parsed->instances == 100000, "--gpu-driven on with --instances");
+        const char *equals[] = {"Orosmo", "--gpu-driven=on"};
+        Assert(demo::parseLaunchOptions(2, equals)->gpuDriven, "--gpu-driven=on is accepted");
+        const char *off[] = {"Orosmo", "--gpu-driven", "off"};
+        Assert(!demo::parseLaunchOptions(3, off)->gpuDriven, "--gpu-driven off keeps the CPU culling");
+        const char *bad[] = {"Orosmo", "--gpu-driven", "yes"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --gpu-driven value is refused");
+        const char *missing[] = {"Orosmo", "--gpu-driven"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--gpu-driven needs a value");
+    }
+
+    TEST_CASE("launch options parse --transparent-shadow; absent by default (REN-39)")
+    {
+        namespace rd = orosmo::renderer;
+        const char *none[] = {"Orosmo"};
+        Assert(!demo::parseLaunchOptions(1, none)->transparentShadow.has_value(), "No transparent shadow mode by default");
+        const struct
+        {
+            const char *name;
+            rd::TransparentShadowMode mode;
+        } cases[] = {{"none", rd::TransparentShadowMode::kNone},
+                     {"full", rd::TransparentShadowMode::kFull},
+                     {"masked", rd::TransparentShadowMode::kMasked},
+                     {"dithered", rd::TransparentShadowMode::kDithered}};
+        for (const auto &c : cases)
+        {
+            const char *argv[] = {"Orosmo", "--scene", "mixed", "--shadows", "on", "--transparent-shadow", c.name};
+            const auto parsed = demo::parseLaunchOptions(7, argv);
+            Assert(parsed.has_value() && parsed->transparentShadow == c.mode && parsed->mixedScene && parsed->shadows, "--transparent-shadow parses each mode");
+        }
+        const char *bad[] = {"Orosmo", "--transparent-shadow", "partial"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --transparent-shadow value is refused");
+        const char *missing[] = {"Orosmo", "--transparent-shadow"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "A missing --transparent-shadow value is refused");
+    }
+
+    TEST_CASE("launch options parse --post; none by default (REN-17/18)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(demo::parseLaunchOptions(1, none)->post == demo::PostMode::kNone, "No post-processing by default");
+        const char *full[] = {"Orosmo", "--post", "FULL", "--scene", "mixed"};
+        const auto parsed = demo::parseLaunchOptions(5, full);
+        Assert(parsed.has_value() && parsed->post == demo::PostMode::kFull && parsed->mixedScene, "--post full combines with --scene mixed");
+        const char *bad[] = {"Orosmo", "--post", "filmic"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "unknown post mode is refused");
+        const char *missing[] = {"Orosmo", "--post"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--post needs a value");
+    }
+
+    TEST_CASE("launch options parse --aa; none by default (REN-19)")
+    {
+        using orosmo::renderer::AntiAliasingMode;
+        const char *none[] = {"Orosmo"};
+        Assert(demo::parseLaunchOptions(1, none)->antiAliasing == AntiAliasingMode::kNone, "No anti-aliasing by default");
+        const char *taa[] = {"Orosmo", "--aa", "TAA", "--post", "hdr"};
+        const auto parsed = demo::parseLaunchOptions(5, taa);
+        Assert(parsed.has_value() && parsed->antiAliasing == AntiAliasingMode::kTaa && parsed->post == demo::PostMode::kHdr, "--aa taa combines with --post");
+        const char *smaa[] = {"Orosmo", "--aa", "smaa"};
+        Assert(demo::parseLaunchOptions(3, smaa)->antiAliasing == AntiAliasingMode::kSmaa, "--aa smaa");
+        const char *bad[] = {"Orosmo", "--aa", "msaa"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "unknown anti-aliasing mode is refused");
+        const char *missing[] = {"Orosmo", "--aa"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--aa needs a value");
+    }
+
+    TEST_CASE("launch options parse --instances; none by default (REN-28)")
+    {
+        const char *none[] = {"Orosmo"};
+        AssertEqual(demo::parseLaunchOptions(1, none)->instances, 0u, "No instanced objects by default");
+        const char *argv[] = {"Orosmo", "--instances", "10000"};
+        AssertEqual(demo::parseLaunchOptions(3, argv)->instances, 10000u, "--instances should be parsed");
+        const char *bad[] = {"Orosmo", "--instances", "many"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "A non-numeric --instances is refused");
+        const char *missing[] = {"Orosmo", "--instances"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--instances without a value is refused");
+    }
+
+    TEST_CASE("launch options parse --lighting and --lights; forward without extra lights by default (REN-04)")
+    {
+        const char *none[] = {"Orosmo"};
+        const demo::LaunchOptions defaults = *demo::parseLaunchOptions(1, none);
+        Assert(defaults.lighting == demo::LightingMode::kForward, "Forward lighting by default");
+        AssertEqual(defaults.pointLights, 0u, "No point lights by default");
+        const char *argv[] = {"Orosmo", "--lighting", "ForwardPlus", "--lights", "1000"};
+        const demo::LaunchOptions options = *demo::parseLaunchOptions(5, argv);
+        Assert(options.lighting == demo::LightingMode::kForwardPlus, "--lighting forwardplus should be parsed");
+        AssertEqual(options.pointLights, 1000u, "--lights should be parsed");
+        const char *plus[] = {"Orosmo", "--lighting=forward+"};
+        Assert(demo::parseLaunchOptions(2, plus)->lighting == demo::LightingMode::kForwardPlus, "forward+ is an alias");
+        const char *bad[] = {"Orosmo", "--lighting", "deferred"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown lighting mode is refused");
+        const char *badCount[] = {"Orosmo", "--lights", "lots"};
+        Assert(!demo::parseLaunchOptions(3, badCount).has_value(), "A non-numeric --lights is refused");
+        const char *missing[] = {"Orosmo", "--lights"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--lights without a value is refused");
+    }
+
+    TEST_CASE("launch options parse --scene; the default scene is unchanged (R2D-05)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(!demo::parseLaunchOptions(1, none)->mixedScene, "The default scene is not the mixed one");
+        const char *mixed[] = {"Orosmo", "--scene", "mixed"};
+        Assert(demo::parseLaunchOptions(3, mixed)->mixedScene, "--scene mixed is parsed");
+        const char *plain[] = {"Orosmo", "--scene", "default"};
+        Assert(!demo::parseLaunchOptions(3, plain)->mixedScene, "--scene default is parsed");
+        const char *bad[] = {"Orosmo", "--scene", "other"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --scene is refused");
+    }
+
     TEST_CASE("launch options default to no capture")
     {
         const char *argv[] = {"Orosmo"};
@@ -191,6 +318,28 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(3, invalid).has_value(), "Unknown --ui mode should be rejected");
         Assert(demo::parseLaunchOptions(3, invalid).error().code == orosmo::core::ErrorCode::kInvalidArgument, "Invalid --ui returns kInvalidArgument");
         Assert(!demo::parseLaunchOptions(2, missing).has_value(), "Missing --ui value should be rejected");
+    }
+
+    TEST_CASE("launch options parse --hud level (default full, the previous complete panel)")
+    {
+        const char *none[] = {"Orosmo"};
+        const char *fps[] = {"Orosmo", "--hud", "fps"};
+        const char *graph[] = {"Orosmo", "--hud=GRAPH"};
+        const char *off[] = {"Orosmo", "--hud", "off"};
+        Assert(demo::parseLaunchOptions(1, none)->hudLevel == demo::HudLevel::kFull, "--hud defaults to full");
+        Assert(demo::parseLaunchOptions(3, fps)->hudLevel == demo::HudLevel::kFps, "--hud fps should parse to kFps");
+        Assert(demo::parseLaunchOptions(2, graph)->hudLevel == demo::HudLevel::kGraph, "--hud=GRAPH should parse to kGraph");
+        Assert(demo::parseLaunchOptions(3, off)->hudLevel == demo::HudLevel::kOff, "--hud off should parse to kOff");
+
+        const char *invalid[] = {"Orosmo", "--hud", "all"};
+        const char *missing[] = {"Orosmo", "--hud"};
+        Assert(!demo::parseLaunchOptions(3, invalid).has_value(), "Unknown --hud level should be rejected");
+        Assert(demo::parseLaunchOptions(3, invalid).error().code == orosmo::core::ErrorCode::kInvalidArgument, "Invalid --hud returns kInvalidArgument");
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "Missing --hud value should be rejected");
+        std::ostringstream usage;
+        demo::printUsage(usage);
+        Assert(usage.str().find("--hud off|fps|full|graph") != std::string::npos, "--help documents --hud");
+        Assert(usage.str().find("Ctrl+F") != std::string::npos, "--help documents Ctrl+F");
     }
 
     TEST_CASE("launch options parse --theme")
@@ -293,12 +442,91 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(1, none)->headless, "a window is the default");
     }
 
-    TEST_CASE("launch options parse --vsync")
+    TEST_CASE("launch options: vsync is on by default, --vsync alone is on, --vsync off turns it off")
     {
-        const char *argv[] = {"Orosmo", "--vsync"};
-        Assert(demo::parseLaunchOptions(2, argv)->vsync, "--vsync should be parsed");
         const char *none[] = {"Orosmo"};
-        Assert(!demo::parseLaunchOptions(1, none)->vsync, "vsync is off by default, as before");
+        const auto defaults = demo::parseLaunchOptions(1, none);
+        Assert(defaults->vsync, "vsync is on by default");
+        Assert(demo::framePacingFor(*defaults).mode == orosmo::renderer::FramePacingMode::kVSync, "default pacing is vsync");
+
+        const char *alone[] = {"Orosmo", "--vsync"};
+        Assert(demo::parseLaunchOptions(2, alone)->vsync, "--vsync alone is on");
+        const char *aloneThenOption[] = {"Orosmo", "--vsync", "--headless"};
+        const auto followed = demo::parseLaunchOptions(3, aloneThenOption);
+        Assert(followed->vsync && followed->headless, "--vsync does not eat the next option");
+        const char *on[] = {"Orosmo", "--vsync", "on"};
+        Assert(demo::parseLaunchOptions(3, on)->vsync, "--vsync on");
+        const char *off[] = {"Orosmo", "--vsync", "off"};
+        const auto unlimited = demo::parseLaunchOptions(3, off);
+        Assert(!unlimited->vsync, "--vsync off");
+        Assert(demo::framePacingFor(*unlimited).mode == orosmo::renderer::FramePacingMode::kUnlimited, "vsync off is unlimited");
+        const char *equals[] = {"Orosmo", "--vsync=off"};
+        Assert(!demo::parseLaunchOptions(2, equals)->vsync, "--vsync=off");
+        const char *bad[] = {"Orosmo", "--vsync=maybe"};
+        Assert(!demo::parseLaunchOptions(2, bad).has_value(), "--vsync=maybe is refused");
+    }
+
+    TEST_CASE("launch options: --direct-present is on by default, off turns it off, other values are refused")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(demo::parseLaunchOptions(1, none)->directPresentation, "direct presentation is on by default");
+        const char *off[] = {"Orosmo", "--direct-present", "off"};
+        const auto copied = demo::parseLaunchOptions(3, off);
+        Assert(copied.has_value() && !copied->directPresentation, "--direct-present off");
+        const char *on[] = {"Orosmo", "--direct-present=on"};
+        const auto direct = demo::parseLaunchOptions(2, on);
+        Assert(direct.has_value() && direct->directPresentation, "--direct-present=on");
+        const char *bad[] = {"Orosmo", "--direct-present", "maybe"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "--direct-present maybe is refused");
+        const char *missing[] = {"Orosmo", "--direct-present"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--direct-present needs a value");
+    }
+
+    TEST_CASE("launch options: --fps-limit selects the limited mode")
+    {
+        const char *limit[] = {"Orosmo", "--fps-limit", "120"};
+        const auto options = demo::parseLaunchOptions(3, limit);
+        Assert(options.has_value() && options->fpsLimit == 120 && !options->vsync, "--fps-limit 120 turns vsync off");
+        const auto pacing = demo::framePacingFor(*options);
+        Assert(pacing.mode == orosmo::renderer::FramePacingMode::kLimited && pacing.fpsLimit == 120, "limited at 120 FPS");
+
+        const char *withOff[] = {"Orosmo", "--vsync", "off", "--fps-limit=30"};
+        Assert(demo::parseLaunchOptions(4, withOff)->fpsLimit == 30, "--vsync off with --fps-limit is accepted");
+        const char *zero[] = {"Orosmo", "--fps-limit", "0"};
+        Assert(demo::parseLaunchOptions(3, zero)->fpsLimit == 0, "0 means no limit");
+        const char *conflict[] = {"Orosmo", "--vsync", "on", "--fps-limit", "60"};
+        Assert(!demo::parseLaunchOptions(5, conflict).has_value(), "--vsync on and --fps-limit contradict each other");
+        for (const char *value : {"5", "1001", "abc", "-1"})
+        {
+            const char *invalid[] = {"Orosmo", "--fps-limit", value};
+            Assert(!demo::parseLaunchOptions(3, invalid).has_value(), "invalid --fps-limit value is refused");
+        }
+        const char *missing[] = {"Orosmo", "--fps-limit"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--fps-limit needs a value");
+    }
+
+    TEST_CASE("launch options: --gpu-timings and the automatic decision")
+    {
+        using demo::GpuTimingsMode;
+        using demo::HudLevel;
+        const char *none[] = {"Orosmo"};
+        Assert(demo::parseLaunchOptions(1, none)->gpuTimings == GpuTimingsMode::kAuto, "auto by default");
+        for (const auto &[text, mode] : {std::pair<const char *, GpuTimingsMode>{"auto", GpuTimingsMode::kAuto}, {"ON", GpuTimingsMode::kOn}, {"off", GpuTimingsMode::kOff}})
+        {
+            const char *argv[] = {"Orosmo", "--gpu-timings", text};
+            Assert(demo::parseLaunchOptions(3, argv)->gpuTimings == mode, "--gpu-timings value parsed");
+        }
+        const char *bad[] = {"Orosmo", "--gpu-timings", "maybe"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "unknown --gpu-timings value is refused");
+
+        // auto : seulement quand un panneau affiche des temps GPU (HUD full / graph).
+        Assert(demo::gpuTimingsWanted(GpuTimingsMode::kAuto, UiMode::kHud, HudLevel::kFull), "hud full shows GPU times");
+        Assert(demo::gpuTimingsWanted(GpuTimingsMode::kAuto, UiMode::kHud, HudLevel::kGraph), "hud graph shows GPU times");
+        Assert(!demo::gpuTimingsWanted(GpuTimingsMode::kAuto, UiMode::kHud, HudLevel::kFps), "hud fps shows none");
+        Assert(!demo::gpuTimingsWanted(GpuTimingsMode::kAuto, UiMode::kHud, HudLevel::kOff), "hud off shows none");
+        Assert(!demo::gpuTimingsWanted(GpuTimingsMode::kAuto, UiMode::kOff, HudLevel::kFull), "no UI, no panel");
+        Assert(demo::gpuTimingsWanted(GpuTimingsMode::kOn, UiMode::kOff, HudLevel::kOff), "on forces the timers");
+        Assert(!demo::gpuTimingsWanted(GpuTimingsMode::kOff, UiMode::kHud, HudLevel::kGraph), "off forces them off");
     }
 
     TEST_CASE("launch options reject invalid capture arguments")
@@ -329,7 +557,7 @@ TEST_SUITE("Demo launch options")
         Backend selectedApi = Backend::kMetal;
 
         Assert(demo::promptForBackend(input, output, selectedApi), "Empty selection should accept the default");
-        Assert(selectedApi == Backend::kOpenGL, "Empty selection should default to OpenGL");
+        Assert(selectedApi == Backend::kVulkan, "Empty selection should default to Vulkan");
     }
 
     TEST_CASE("interactive selection rejects invalid entries")
@@ -356,6 +584,23 @@ TEST_SUITE("Demo launch options")
         Assert(demo::isBackendAvailable(Backend::kOpenGL), "OpenGL is the RHI backend");
         Assert(!demo::isBackendAvailable(Backend::kMetal), "Metal is not built (M9)");
         Assert(!demo::backendAvailabilityMessage(Backend::kMetal).empty(), "refusing Metal should say why");
+    }
+
+    TEST_CASE("--aa taa with --instances is refused: TAA disabled, with a reason (the instances write no motion vectors)")
+    {
+        using orosmo::renderer::AntiAliasingMode;
+        const demo::AntiAliasingDecision refused = demo::resolveAntiAliasing(AntiAliasingMode::kTaa, 100);
+        CHECK((refused.mode == AntiAliasingMode::kNone));
+        CHECK(refused.message.find("--instances") != std::string::npos);
+        for (const AntiAliasingMode mode : {AntiAliasingMode::kNone, AntiAliasingMode::kFxaa, AntiAliasingMode::kSmaa})
+        {
+            const demo::AntiAliasingDecision kept = demo::resolveAntiAliasing(mode, 100);
+            CHECK((kept.mode == mode));
+            CHECK(kept.message.empty());
+        }
+        const demo::AntiAliasingDecision taa = demo::resolveAntiAliasing(AntiAliasingMode::kTaa, 0);
+        CHECK((taa.mode == AntiAliasingMode::kTaa));
+        CHECK(taa.message.empty());
     }
 
     TEST_CASE("other backend messages are non-empty")

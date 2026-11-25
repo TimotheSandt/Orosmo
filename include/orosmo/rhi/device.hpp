@@ -23,7 +23,14 @@ using orosmo::core::Result;
 class CommandEncoder
 {
   public:
+    CommandEncoder() noexcept;
     virtual ~CommandEncoder() = default;
+    CommandEncoder(const CommandEncoder &) = delete;
+    CommandEncoder &operator=(const CommandEncoder &) = delete;
+
+    // Identifiant unique dans le processus, jamais réutilisé (contrairement à l'adresse de l'encodeur, que l'allocateur
+    // redonne souvent à l'encodeur de l'image suivante) : un cache par encodeur sait ainsi qu'il voit un encodeur neuf.
+    std::uint64_t id() const noexcept { return id_; }
 
     // Passes (RHI-08, RHI-15). Hors passe : copies, dispatch, minuteries. Dans une passe : état, liaisons, dessins.
     virtual void beginRenderPass(const RenderPassDesc &desc) = 0;
@@ -63,6 +70,9 @@ class CommandEncoder
     // Première erreur d'usage rencontrée pendant l'enregistrement (handle périmé, pipeline absent, hors passe...).
     // Vide si tout va bien. Les commandes invalides sont ignorées et journalisées ; `Device::submit` renvoie cette erreur.
     virtual const std::optional<Error> &error() const noexcept = 0;
+
+  private:
+    std::uint64_t id_;
 };
 
 struct SurfaceDesc
@@ -79,6 +89,10 @@ struct DeviceDesc
     SurfaceDesc surface{};
     bool validation = true; // GL_KHR_debug / couches de validation Vulkan ; les messages d'erreur sont comptés
     bool vsync = false;
+    // Dessin direct dans l'image présentée (Vulkan, G185) au lieu d'une image hors écran copiée à la présentation : une copie
+    // en moins par image. Peut faire scintiller l'image (interface absente, zones noires) à très haute cadence sans vsync sur
+    // certains compositeurs (constaté : COSMIC + Mesa ANV à ~1000 FPS, docs/GAPS.md). Sans effet sur OpenGL et hors écran.
+    bool directPresentation = true;
     std::string appName = "engine";
 };
 
@@ -126,6 +140,8 @@ class Device
 
     // Mises à jour et lectures synchrones (chemin lent : chargement, captures, tests). Les copies asynchrones passent par
     // CommandEncoder::copy*.
+    // updateBuffer : appliqué avant la prochaine soumission (ordonné comme glBufferSubData) ; sur un tampon kUpload que le GPU
+    // n'utilise plus, écriture directe, sans copie (voir MemoryKind, types.hpp).
     virtual Result<> updateBuffer(BufferHandle buffer, std::uint64_t offset, std::span<const std::byte> data) = 0;
     virtual Result<> updateTexture(TextureHandle texture, const TextureCopy &region, std::span<const std::byte> data) = 0;
     virtual Result<std::vector<std::byte>> readBuffer(BufferHandle buffer, std::uint64_t offset, std::uint64_t size) = 0;
@@ -151,6 +167,8 @@ class Device
     virtual Result<> resize(Extent2D size) = 0;
     // Synchronisation verticale (RHI-08) ; sans effet hors écran.
     virtual void setVSync(bool enabled) = 0;
+    // Dessin direct dans l'image présentée (voir DeviceDesc::directPresentation) ; appliqué à l'image suivante.
+    virtual void setDirectPresentation(bool enabled) = 0;
     virtual void waitIdle() = 0;
 
     // Nombre de messages d'erreur ou d'avertissement reçus de la couche de validation depuis la création (GL_KHR_debug,

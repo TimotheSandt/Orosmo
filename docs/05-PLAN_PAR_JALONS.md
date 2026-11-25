@@ -139,6 +139,8 @@ Décidé par l'auteur le 2026-11-21 : une release intermédiaire, après la fusi
 
 - REN-01 (graphe de passes, plugins), REN-03 (données par image), REN-04 (forward+ clusterisé), REN-05, REN-06 à REN-08 (ombres, mobilité, cache), REN-17 à REN-19 (HDR, post-traitement, anticrénélage), REN-21 (AOV et MRT à la demande), REN-22 (boîte à outils), REN-28 à REN-31 (instancing, rendu piloté par GPU, culling, LOD), REN-32, REN-35, REN-37 (modes de fusion), REN-39 (ombres des transparents), REN-41 (transparents et sorties auxiliaires).
 - **2D** : R2D-01, R2D-02, R2D-03, R2D-05, R2D-06 ; l'interface passe par le batch 2D.
+- **Interface économe (UI-13, demande de l'auteur du 2026-11-21, A42)** : (1) un élément caché (`visible` faux, onglet inactif, section repliée) ne produit aucune commande ni aucun dessin (déjà vrai depuis M2 : à figer par un test qui compte les commandes et les dessins) ; (2) un élément entièrement hors de sa zone de découpage (contenu défilé hors d'un `ScrollView`, hors de la fenêtre) n'est pas envoyé : élimination par rectangle à la production de la liste ; (3) **cache par couche** : un conteneur dont rien n'a changé n'est ni remis en page, ni redessiné, son image d'une image précédente est recomposée (`BeginLayer` sans effacement et `DrawLayerImage` existent déjà dans `CanvasRenderer` depuis M2 B5 ; il manque le suivi des changements dans `orosmo::ui` : liaisons relues, survol, animation, thème). Mesure avant/après dans `docs/PERF_OPENGL_VS_VULKAN.md` (frame CPU avec `--ui full`, nombre de dessins de l'interface).
+- **Sélecteur de couleur (UI-03, demande de l'auteur du 2026-11-21)** : un clic sur le carré d'un `ColorPicker` ouvre une fenêtre surgissante avec la roue (`ColorEditor`). Fait en M5 (`ColorPicker::onRelease` ouvre le `ColorEditor` en fenêtre surgissante ; `docs/STATUS.md`, « M5 ») ; reste : l'ouverture au clavier (revue de la PR #12).
 
 **Démo** : la scène générique de la démo unique avec ombres en cascade et cache, des milliers d'objets instanciés en quelques draw calls, normales et vecteurs de mouvement activés à la demande par un effet, scène mélangeant 3D, sprites dans le monde et interface.
 **Terminé** : tests d'images par backend, profilage GPU par passe visible, nombre de draw calls mesuré et documenté, aucune régression sur les démos précédentes.
@@ -223,6 +225,26 @@ Les effets de rendu retirés de M7 deviennent des **modules** au format de M11, 
 
 **Démo** : la scène de la démo unique avec chaque effet activé puis désactivé depuis l'interface, sans recompiler le cœur.
 **Terminé** : chaque module testé sur les deux backends (images dans la tolérance), coût GPU noté, un projet `orosmo init` peut retirer un module préinstallé sans erreur de compilation, README par module.
+
+## M14 · Site vitrine et Wiki du moteur (décidé par l'auteur le 2026-11-21, A43)
+
+*(Note : le numéro M7 reste volontairement non réattribué selon A39 pour préserver les références historiques ; ce chantier est donc numéroté **M14**.)*
+
+Objectif : fournir un **site de présentation** du moteur Orosmo et un **wiki complet** (guide d'utilisation du SDK **et** explication de l'architecture interne du moteur), construits avec **Astro**, conteneurisés en Docker et publiés par CI.
+
+- **Calendrier et indépendance** :
+  - **Peut être commencé avant M6** : ne modifie pas le code C++ du moteur et peut avancer en parallèle.
+  - **Publication initiale après M6** : mise en ligne publique une fois M5 (cœur du rendu) et M6 (import glTF / PBR / animation) livrés, puis **mise à jour à chaque jalon**.
+  - **Spécifications détaillées** (hébergement, coûts, DevOps, staging) à trancher dans `docs/QUESTIONS.md` au **début du jalon**, avant l'implémentation.
+- **WEB-01 — Wiki technique et guide utilisateur (Astro)** : documentation structurée avec Astro (ex. Astro / Starlight) couvrant (a) l'utilisation du moteur (installation, `orosmo init`/`doctor`, Make & CMake, `.cui`, thèmes, exemples) et (b) le fonctionnement interne (couches, RHI, renderer, UI, compilateur `.cui`, pipeline de shaders).
+- **WEB-02 — Site vitrine du moteur** : page(s) de présentation d'Orosmo (vision, fonctionnalités clés, captures/démos, liens vers les releases GitHub et le wiki).
+  **Transparence sur l'origine du projet (exigence de l'auteur, 2026-11-21)** : une page « Histoire et méthode de développement » dit honnêtement que le moteur a été **commencé par l'auteur**, avec **OpenGL**, que l'auteur a utilisé l'IA dès son apparition mais **mal** à l'époque (sans plan ni structure clairs, en demandant « fais tel truc » tout en codant lui-même un peu), ce qui l'a conduit à **mettre le projet en pause puis à l'arrêter**, et qu'il l'a **repris récemment** avec **Claude** (assistant de programmation d'Anthropic), **utilisé correctement** cette fois, sous la direction de l'auteur : l'auteur décide, fixe les règles (`CLAUDE.md`, `docs/`), relit et fusionne ; l'IA écrit du code et des tests, vérifiés par la CI et des preuves (règle « preuve avant case cochée »). Cette page est liée depuis l'accueil et le pied de page du site, et reprise dans le `README.md` du dépôt.
+- **WEB-03 — Conteneurisation Docker et registre** : `Dockerfile` reproductible servant le site/wiki compilé ; workflow CI qui construit l'image Docker et la publie sur un registre (ex. GHCR ou autre registre choisi selon les coûts) afin de pouvoir la démarrer manuellement ou automatiquement sur un serveur.
+- **WEB-04 — CI de publication sur tag `main` et maintenance par jalon** : déclenchement automatique de la construction et publication lors de la pose d'un tag sur `main` ; stratégie de déploiement serveur (manuel ou automatique) définie selon le budget et l'infrastructure retenus au début du jalon.
+- **WEB-05 — Prévisualisation / staging sur PR *(optionnel, à trancher au début du jalon)*** : possibilité d'ajouter une CI qui construit et déploie le site/wiki en staging sur un sous-domaine de test à chaque PR pour vérification visuelle avant fusion (faisabilité, coût et spécifications à décider au démarrage de M14).
+
+**Démo** : image Docker construite par la CI, lancée localement ou sur serveur, servant le site vitrine et le wiki Astro complets ; publication déclenchée par un tag sur `main`.
+**Terminé** : site et wiki construits sans erreur en CI, image Docker publiée sur le registre, déploiement documenté (coûts et procédure dans `docs/`), processus de mise à jour par jalon en place.
 
 ## Fonctions non rattachées à un jalon
 

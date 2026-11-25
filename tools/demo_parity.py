@@ -23,11 +23,16 @@ OK_LINE = re.compile(r"Vulkan validation: 0 error/warning message\(s\)")
 
 QUICK = [
     ("off", ["--ui", "off"]),
-    ("hud", ["--ui", "hud"]),
+    ("hud", ["--ui", "hud"]),  # ui.png : budget HUD_UI_DIFF_PERCENT (mesures et pilote affichés)
     ("dark-widgets", ["--ui", "full", "--theme", "dark", "--tab", "widgets"]),
     ("dark-scene", ["--ui", "full", "--theme", "dark", "--tab", "scene"]),
     ("light-widgets", ["--ui", "full", "--theme", "light", "--tab", "widgets"]),
+    ("post-full", ["--ui", "off", "--post", "full"]),  # REN-17/18 : HDR, exposition auto (compute), bloom, LUT, vignettage
 ]
+# Le panneau de performances (--hud full, défaut) affiche des mesures réelles (FPS, temps CPU et GPU, passes) et le nom du pilote :
+# elles diffèrent d'une exécution et d'un backend à l'autre (~6,6 % des pixels de ui.png sur Intel Arc). La scène reste à 2 %.
+HUD_UI_DIFF_PERCENT = 10.0
+
 FULL = [
     (f"dark-{t}", ["--ui", "full", "--theme", "dark", "--tab", t])
     for t in ("controls", "color", "windows", "layout", "themes")
@@ -71,7 +76,7 @@ def main():
             cmp = subprocess.run(
                 [sys.executable, str(ROOT / "tools/compare_png.py"), str(dirs["opengl"] / f"{image}.png"),
                  str(dirs["vulkan"] / f"{image}.png"), "--tolerance", str(opts.tolerance),
-                 "--max-diff-percent", str(opts.max_diff_percent), "--diff-out", str(out / f"diff-{name}-{image}.png")],
+                 "--max-diff-percent", str(HUD_UI_DIFF_PERCENT if (name, image) == ("hud", "ui") else opts.max_diff_percent), "--diff-out", str(out / f"diff-{name}-{image}.png")],
                 capture_output=True, text=True)
             print(f"{name}/{image}: {cmp.stdout.strip() or cmp.stderr.strip()}")
             if cmp.returncode != 0:

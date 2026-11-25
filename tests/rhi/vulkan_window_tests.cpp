@@ -6,6 +6,8 @@
 
 #include <orosmo/rhi/device.hpp>
 
+#include "../../src/rhi/vulkan/vk_device.hpp"
+
 #include <GLFW/glfw3.h>
 
 #include <chrono>
@@ -105,6 +107,91 @@ TEST_SUITE("rhi/vulkan/window")
         device->setVSync(true);
         for (int i = 0; i < 3; ++i)
             CHECK(renderAndPresent(*device));
+        CHECK(device->validationErrorCount() == 0);
+    }
+
+    TEST_CASE("G185: beginFrame twice without present keeps the same image; the backbuffer reads back what was drawn")
+    {
+        // Image de fond directe (image de la chaîne, surfaces RGBA8 : Wayland) ou copiée (X11) : même contrat. Avec une image
+        // acquise, un second beginFrame ne doit pas en acquérir une autre (la chaîne s'épuiserait) ; la lecture de l'image de fond
+        // avant present rend le dessin.
+        VulkanWindow window;
+        SKIP_TEST_IF_NULL(window.handle, "window able to host a Vulkan surface");
+        auto device = window.device(false);
+        SKIP_TEST_IF_NULL(device.get(), "windowed Vulkan 1.3 device");
+        for (int i = 0; i < 5; ++i)
+        {
+            auto first = device->beginFrame();
+            REQUIRE(first.has_value());
+            auto again = device->beginFrame(); // image sautée par l'application : toujours la même
+            REQUIRE(again.has_value());
+            CHECK(*again == *first);
+            auto encoder = device->createCommandEncoder();
+            RenderPassDesc pass;
+            pass.colors = {{.texture = *again, .clearColor = {1.0f, 0.0f, 0.0f, 1.0f}}};
+            encoder->beginRenderPass(pass);
+            encoder->endRenderPass();
+            REQUIRE(device->submit(std::move(encoder)).has_value());
+            auto desc = device->textureDesc(*again);
+            REQUIRE(desc.has_value());
+            TextureCopy corner;
+            corner.size = {1, 1, 1};
+            auto pixel = device->readTexture(*again, corner);
+            REQUIRE(pixel.has_value());
+            REQUIRE(pixel->size() == 4);
+            CHECK(static_cast<int>((*pixel)[0]) == 255);
+            CHECK(static_cast<int>((*pixel)[1]) == 0);
+            CHECK((desc->format == Format::kRGBA8Unorm));
+            CHECK(device->present().has_value());
+        }
+        CHECK(device->validationErrorCount() == 0);
+    }
+
+    TEST_CASE("G185: direct presentation can be switched off and on live, even with an image already acquired")
+    {
+        // Paramètre de la démo (--direct-present, case de l'interface) : la chaîne est reconstruite à l'acquisition suivante ;
+        // une image acquise en dessin direct est d'abord dessinée et présentée normalement.
+        VulkanWindow window;
+        SKIP_TEST_IF_NULL(window.handle, "window able to host a Vulkan surface");
+        auto device = window.device(false);
+        SKIP_TEST_IF_NULL(device.get(), "windowed Vulkan 1.3 device");
+        const auto &counters = static_cast<orosmo::rhi::vk::VulkanDevice &>(*device).transferCounters();
+        std::uint64_t directSeen = 0;
+        for (int round = 0; round < 4; ++round)
+        {
+            const bool direct = round % 2 == 1;
+            auto frame = device->beginFrame();
+            REQUIRE(frame.has_value());
+            device->setDirectPresentation(direct); // image déjà acquise (ou non) : elle garde son mode jusqu'à present
+            auto encoder = device->createCommandEncoder();
+            RenderPassDesc pass;
+            pass.colors = {{.texture = *frame, .clearColor = {0.0f, 1.0f, 0.0f, 1.0f}}};
+            encoder->beginRenderPass(pass);
+            encoder->endRenderPass();
+            REQUIRE(device->submit(std::move(encoder)).has_value());
+            TextureCopy corner;
+            corner.size = {1, 1, 1};
+            auto pixel = device->readTexture(*frame, corner);
+            REQUIRE(pixel.has_value());
+            REQUIRE(pixel->size() == 4);
+            CHECK(static_cast<int>((*pixel)[1]) == 255);
+            REQUIRE(device->present().has_value());
+            // Le chemin réellement pris par les images suivantes (revue CodeRabbit) : compteurs du périphérique.
+            const std::uint64_t directBefore = counters.directPresents;
+            const std::uint64_t copiedBefore = counters.copiedPresents;
+            for (int i = 0; i < 3; ++i)
+                CHECK(renderAndPresent(*device));
+            const std::uint64_t directDelta = counters.directPresents - directBefore;
+            const std::uint64_t copiedDelta = counters.copiedPresents - copiedBefore;
+            CHECK(directDelta + copiedDelta == 3);
+            if (!direct)
+                CHECK(directDelta == 0); // coupé : toujours la copie
+            directSeen += direct ? directDelta : 0;
+        }
+        if (directSeen == 0)
+            MESSAGE("Surface without direct presentation (BGRA or X11): only the copy path was verified");
+        else
+            CHECK(directSeen == 6); // surface éligible : les deux tours « direct » dessinent dans l'image de la chaîne
         CHECK(device->validationErrorCount() == 0);
     }
 }

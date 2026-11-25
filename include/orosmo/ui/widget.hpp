@@ -349,6 +349,9 @@ class Widget
 
   protected:
     // Taille du contenu (sans la marge intérieure du style) quand `available` est offert au contenu.
+    // Rectangle que le contenu PROPRE du widget dessine (hors enfants) quand il peut dépasser `rect_` (texte plus large que le
+    // rectangle) ; sert au rejet hors écran. Par défaut : `rect_`. Ignoré si le contenu est découpé (`overflow == kHidden`).
+    virtual Rect contentExtent(Ui &ui, const Style &style) const;
     virtual glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style);
     // Place les enfants dans `content` (rectangle du widget moins la marge intérieure). Par défaut : superposés.
     virtual void arrange(Ui &ui, const Rect &content, const Style &style);
@@ -370,6 +373,11 @@ class Widget
     glm::vec2 measured_{0.0f};
 
   private:
+    // Rectangle englobant le widget et ses descendants visibles non découpés (ombre comprise), posé par `layout` : sert à
+    // éliminer à `draw` un sous-arbre entièrement hors de sa zone de découpage (UI-13).
+    Rect bounds_{{-1e30f, -1e30f}, {2e30f, 2e30f}}; // jamais posé : jamais éliminé
+    Rect clipOf() const noexcept;
+
     friend class Ui;
     void adopt(std::unique_ptr<Widget> child);
 

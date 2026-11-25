@@ -71,6 +71,25 @@ rd::DrawList listOf(float size = 16.0f)
 
 using Px = std::array<std::uint8_t, 4>;
 
+// Atlas 2x2 de couverture pleine et série de glyphes : un carré [x0, x1] x [y0, y1] de la couleur donnée.
+std::shared_ptr<rd::AtlasImage> solidAtlas()
+{
+    auto atlas = std::make_shared<rd::AtlasImage>();
+    atlas->id = rd::newAtlasId();
+    atlas->width = 2;
+    atlas->height = 2;
+    atlas->rgba.assign(16, 255);
+    return atlas;
+}
+rd::DrawGlyphs squareRun(const std::shared_ptr<rd::AtlasImage> &atlas, float x0, float y0, float x1, float y1, const glm::vec3 &color)
+{
+    rd::DrawGlyphs run;
+    run.atlas = atlas;
+    run.color = color;
+    run.vertices = {x0, y0, 0, 0, x0, y1, 0, 1, x1, y1, 1, 1, x0, y0, 0, 0, x1, y1, 1, 1, x1, y0, 1, 0};
+    return run;
+}
+
 } // namespace
 
 TEST_SUITE("renderer/canvas")
@@ -113,6 +132,26 @@ TEST_SUITE("renderer/canvas")
             REQUIRE(c.render(l, false).has_value());
             CHECK(c.px(1, 14) == Px{0, 0, 0, 0}); // effacé en transparent
             CHECK(c.px(1, 1) == Px{255, 0, 0, 255});
+            c.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("two render() calls on one encoder before submit keep the instances of both")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Canvas c(backend);
+            REQUIRE(c.gpu.device);
+            rd::DrawList first = listOf();
+            first.rect({0, 0}, {8, 16}, {1, 0, 0, 1});
+            rd::DrawList second = listOf();
+            second.rect({8, 0}, {8, 16}, {0, 0, 1, 1});
+            auto encoder = c.gpu->createCommandEncoder();
+            REQUIRE(c.canvas->render(*encoder, first, c.canvasTarget(), false).has_value());
+            REQUIRE(c.canvas->render(*encoder, second, c.canvasTarget(), true).has_value());
+            REQUIRE(c.gpu->submit(std::move(encoder)).has_value());
+            CHECK(c.px(3, 8) == Px{255, 0, 0, 255});
+            CHECK(c.px(12, 8) == Px{0, 0, 255, 255});
             c.gpu.expectNoValidationErrors();
         }
     }
@@ -310,6 +349,99 @@ TEST_SUITE("renderer/canvas")
             CHECK(half[0] == 0);
             CHECK(std::abs(int(half[1]) - 128) <= 2);
             CHECK(std::abs(int(half[2]) - 128) <= 2);
+            c.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("R2D-01: N rectangles of the same style are one draw call; stats report both counts")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Canvas c(backend);
+            REQUIRE(c.gpu.device);
+            rd::DrawList l = listOf();
+            for (int i = 0; i < 8; ++i)
+            {
+                l.rect({float(i * 2), 0}, {2, 2}, {1, 0, 0, 1});
+            }
+            l.rect(rd::DrawRect{.position = {0, 4}, .size = {16, 2}, .color = {0, 0, 1, 1}, .radius = 0.5f}); // couleur et forme différentes : même lot
+            REQUIRE(c.render(l).has_value());
+            CHECK(c.canvas->stats().drawCommands == 9);
+            CHECK(c.canvas->stats().batchedCommands == 9);
+            CHECK(c.canvas->stats().drawCalls == 1);
+            CHECK(c.px(15, 1) == Px{255, 0, 0, 255});
+            CHECK(c.px(15, 5) == Px{0, 0, 255, 255});
+            c.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("R2D-01: a clip change, an atlas change or another kind starts a new batch; the same atlas with other colors does not")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Canvas c(backend);
+            REQUIRE(c.gpu.device);
+            rd::DrawList clip = listOf();
+            clip.rect({0, 0}, {2, 2}, {1, 0, 0, 1});
+            clip.pushClip({0, 0}, {8, 8});
+            clip.rect({2, 0}, {2, 2}, {1, 0, 0, 1});
+            clip.popClip();
+            clip.rect({4, 0}, {2, 2}, {1, 0, 0, 1});
+            REQUIRE(c.render(clip).has_value());
+            CHECK(c.canvas->stats().drawCalls == 3);
+
+            auto a = solidAtlas();
+            auto b = solidAtlas();
+            rd::DrawList same = listOf();
+            same.glyphs(squareRun(a, 0, 8, 4, 12, {1, 0, 0}));
+            same.glyphs(squareRun(a, 8, 8, 12, 12, {0, 0, 1})); // même atlas, autre couleur : un seul dessin
+            REQUIRE(c.render(same).has_value());
+            CHECK(c.canvas->stats().drawCalls == 1);
+            CHECK(c.px(2, 10) == Px{255, 0, 0, 255});
+            CHECK(c.px(10, 10) == Px{0, 0, 255, 255});
+
+            rd::DrawList other = listOf();
+            other.glyphs(squareRun(a, 0, 8, 4, 12, {1, 0, 0}));
+            other.glyphs(squareRun(b, 8, 8, 12, 12, {0, 0, 1})); // autre atlas : nouveau lot
+            REQUIRE(c.render(other, false).has_value()); // cible remise à zéro : aucun pixel résiduel ne masque une erreur
+            CHECK(c.canvas->stats().drawCalls == 2);
+            CHECK(c.px(2, 10) == Px{255, 0, 0, 255});
+            CHECK(c.px(10, 10) == Px{0, 0, 255, 255});
+            CHECK(c.px(14, 2) == Px{0, 0, 0, 0});
+            c.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("R2D-01: draw order is kept when batches overlap; disjoint draws may be merged without changing the picture")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Canvas c(backend);
+            REQUIRE(c.gpu.device);
+            auto atlas = solidAtlas();
+            // rect rouge, glyphes bleus par-dessus, rect vert par-dessus les glyphes ET le rouge : on ne peut pas fusionner les rects.
+            rd::DrawList l = listOf();
+            l.rect({0, 0}, {8, 8}, {1, 0, 0, 1});
+            l.glyphs(squareRun(atlas, 4, 4, 12, 12, {0, 0, 1}));
+            l.rect({6, 6}, {8, 8}, {0, 1, 0, 1});
+            REQUIRE(c.render(l, false).has_value());
+            CHECK(c.canvas->stats().drawCalls == 3);
+            CHECK(c.px(2, 2) == Px{255, 0, 0, 255});
+            CHECK(c.px(5, 5) == Px{0, 0, 255, 255}); // le bleu est au-dessus du rouge
+            CHECK(c.px(7, 7) == Px{0, 255, 0, 255}); // le vert est au-dessus du bleu et du rouge
+            CHECK(c.px(13, 13) == Px{0, 255, 0, 255});
+
+            // Le deuxième rectangle ne touche ni le premier ni les glyphes : il rejoint le premier lot (2 dessins, même image).
+            rd::DrawList apart = listOf();
+            apart.rect({0, 0}, {2, 2}, {1, 0, 0, 1});
+            apart.glyphs(squareRun(atlas, 4, 4, 8, 8, {0, 0, 1}));
+            apart.rect({12, 12}, {2, 2}, {0, 1, 0, 1});
+            REQUIRE(c.render(apart, false).has_value());
+            CHECK(c.canvas->stats().drawCalls == 2);
+            CHECK(c.px(14, 2) == Px{0, 0, 0, 0});
+            CHECK(c.px(1, 1) == Px{255, 0, 0, 255});
+            CHECK(c.px(6, 6) == Px{0, 0, 255, 255});
+            CHECK(c.px(13, 13) == Px{0, 255, 0, 255});
             c.gpu.expectNoValidationErrors();
         }
     }

@@ -1,6 +1,6 @@
 {
   "name": "orosmo",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "dependencies": [
     "glad",
     "nlohmann-json",
@@ -14,7 +14,12 @@
     },
     {
       "name": "glfw3",
-      "platform": "!linux"
+      "features": [
+        {
+          "name": "wayland",
+          "platform": "linux"
+        }
+      ]
     },
     {
       "name": "glm",

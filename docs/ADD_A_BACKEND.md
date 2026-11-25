@@ -152,10 +152,10 @@ jusqu'où va l'énumération des API).
   Tout `.cpp` placé sous `src/rhi/` (donc `src/rhi/<backend>/`) est compilé et archivé dans `librhi.a` (`$(LIB_RHI): $(Rhi_OBJS)`) **sans
   rien modifier** ; ne l'écris pas à la main dans le makefile.
 - **Liaison** : les bibliothèques de l'application sont listées dans `tools/engine-sdk/engine.mk` (`_ENG_VCPKG_LIBS` par plateforme :
-  `-lvolk -lglfw -lglad -lGL ...` sous Linux ; blocs Windows et Darwin séparés, ce dernier avec `-framework OpenGL ...`). Ajoute ici les
+  `-lvolk -lglfw3 -lglad -lGL ...` sous Linux ; blocs Windows et Darwin séparés, ce dernier avec `-framework OpenGL ...`). Ajoute ici les
   bibliothèques ou frameworks du nouveau backend (pour Metal : `-framework Metal -framework QuartzCore`, **à vérifier**). Pour garder
   la liaison optionnelle sur une plateforme, protège avec le bloc de plateforme existant.
-- **vcpkg** : dépendances déclarées dans `vcpkg.json` (`glad`, `spirv-cross`, `volk`, `vulkan-memory-allocator` ; `shaderc`, `glfw3`,
+- **vcpkg** : dépendances déclarées dans `vcpkg.json` (`glad`, `spirv-cross`, `volk`, `vulkan-memory-allocator`, `glfw3` ; `shaderc`,
   `doctest`... sous `"platform": "!linux"` car Linux les prend en paquets système, `tools/setup-linux-deps.sh`). Ajoute la bibliothèque
   du backend dans `vcpkg.json`, puis `vcpkg install` à la racine ; documente la commande exacte (règle d'environnement de `CLAUDE.md`).
 - Vulkan se charge à l'exécution par **volk** : le moteur ne se lie pas au chargeur. Préfère ce modèle (chargement dynamique et

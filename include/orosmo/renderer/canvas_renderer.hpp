@@ -1,10 +1,11 @@
 // Exécute une `DrawList` 2D sur une texture du RHI : rectangles, glyphes MSDF, couches hors écran (conteneurs dessinés dans une
 // texture puis affichés, avec défilement), découpages. Le dessinateur 2D qui accompagne le RHI (docs/03 : plugin « renderer2d ») ;
-// le batch par instances de R2D-01 viendra en M5 (QUESTIONS A21).
+// R2D-01 : les dessins consécutifs compatibles sont regroupés en lots (rectangles instanciés, séries de glyphes et d'images fusionnées).
 #pragma once
 
 #include "orosmo/core/error.hpp"
 #include "orosmo/renderer/draw_list.hpp"
+#include "orosmo/renderer/batch_arena.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/render_target.hpp"
@@ -27,6 +28,15 @@ struct CanvasTarget
     rhi::Extent2D size{};
 };
 
+// Compteurs du dernier `render` (R2D-01).
+struct CanvasStats
+{
+    std::uint32_t drawCommands = 0;    // commandes de la liste qui dessinent (rectangle, effacement, glyphes, image, image de couche)
+    std::uint32_t batchedCommands = 0; // celles effectivement dessinées (hors découpage vide) : le nombre de dessins SANS lots
+    std::uint32_t drawCalls = 0;       // dessins émis vers le RHI avec les lots
+    std::uint64_t bufferBytes = 0;     // octets du tampon d'instances et de sommets envoyé
+};
+
 class CanvasRenderer
 {
   public:
@@ -44,10 +54,20 @@ class CanvasRenderer
     // par l'appelant est perdu : il doit redemander une liste complète, sans image de couche).
     core::Result<> render(rhi::CommandEncoder &encoder, const DrawList &list, const CanvasTarget &target, bool loadExisting = true);
 
+    // R2D-06 : image dont les pixels sont déjà sur le GPU (vue 3D incrustée dans un widget, rendu vers texture). `image` est une
+    // `AtlasImage` sans pixels (`id` neuf par `newAtlasId`, `width`/`height` = taille d'affichage, `rgba` vide) que l'interface
+    // dessine comme n'importe quelle image (`ImageView`, `DrawImage`) : elle utilise cette texture au lieu d'envoyer des pixels. La
+    // texture n'est pas possédée (à garder vivante, `unregisterExternalImage` avant de la détruire) ; son échantillonneur est
+    // celui donné. La première ligne de la texture est le HAUT de l'image. Réinscrire le même `id` remplace la texture (taille de la vue
+    // changée).
+    core::Result<> registerExternalImage(std::uint64_t id, rhi::TextureHandle texture, rhi::SamplerHandle sampler);
+    void unregisterExternalImage(std::uint64_t id);
+    std::size_t externalImageCount() const noexcept { return externals_.size(); }
     // Libère les textures d'atlas et de couches (les handles sont détruits ; la prochaine liste les recrée).
     void clear();
     std::size_t layerCount() const noexcept { return layers_.size(); }
     std::size_t atlasCount() const noexcept { return atlases_.size(); }
+    const CanvasStats &stats() const noexcept { return stats_; }
     // Une image (atlas de glyphes, image de thème ou du jeu) absente de ce nombre de rendus successifs est libérée.
     static constexpr std::uint64_t kAtlasIdleRenders = 240;
 
@@ -97,7 +117,13 @@ class CanvasRenderer
         kStraight,      // couleur non prémultipliée (rectangles, glyphes) : src * a + dst * (1 - a)
         kPremultiplied, // image de couche, déjà prémultipliée : src + dst * (1 - a)
     };
-    core::Result<rhi::PipelineHandle> pipeline(const ShaderProgram &program, rhi::Format format, Blend blend, bool glyph);
+    enum class Layout : std::uint8_t
+    {
+        kNone,            // quad généré par gl_VertexIndex (images de couche)
+        kRectInstances,   // un rectangle par instance (attributs par instance)
+        kColoredVertices, // x, y, u, v + couleur par sommet (glyphes, images)
+    };
+    core::Result<rhi::PipelineHandle> pipeline(const ShaderProgram &program, rhi::Format format, Blend blend, Layout layout);
     core::Result<Atlas *> atlasFor(const AtlasImage &image);
     core::Result<Layer *> layerFor(std::uint64_t id, std::uint32_t width, std::uint32_t height, bool &created);
     void beginPass(rhi::CommandEncoder &encoder, const Surface &surface, rhi::LoadOp load, const char *name);
@@ -112,9 +138,11 @@ class CanvasRenderer
     std::shared_ptr<ShaderProgram> layerImage_;
     std::shared_ptr<ShaderProgram> image_;
     rhi::SamplerHandle atlasSampler_;
-    GpuBuffer glyphBuffer_;
+    BatchArena arena_; // une plage par appel de render() sur un même encodeur
+    CanvasStats stats_;
     std::map<std::uint64_t, Layer> layers_;
     std::map<std::uint64_t, Atlas> atlases_;
+    std::map<std::uint64_t, Atlas> externals_; // textures non possédées (`texture` de l'Atlas reste vide)
     std::uint64_t renderCount_ = 0;
 };
 
