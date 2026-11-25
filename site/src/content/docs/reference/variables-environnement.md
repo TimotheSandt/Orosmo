@@ -26,7 +26,7 @@ sous macOS, `%APPDATA%` sous Windows. La démo y place aussi le cache SPIR-V des
 | Variable | Effet |
 |---|---|
 | `ENGINE_TEST_BACKENDS` | liste de backends (`opengl,vulkan`) : restreint ceux que les tests essaient |
-| `ENGINE_TEST_REQUIRE_GPU` | si définie, un backend désigné mais indisponible, ou un test de fenêtre sans affichage, échoue au lieu d'être ignoré |
+| `ENGINE_TEST_REQUIRE_GPU` | si définie et différente de `0`, un backend désigné mais indisponible, ou un test de fenêtre sans affichage, échoue au lieu d'être ignoré |
 | `ENGINE_TEST_WAYLAND` | sous une session Wayland qui a aussi X11, les tests passent par X11 ; cette variable garde Wayland |
 | `DOCTEST_TRACE`, `CI` | écrit `[trace] suite :: cas` sur la sortie d'erreur au début de chaque cas |
 

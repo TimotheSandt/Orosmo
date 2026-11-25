@@ -1,6 +1,6 @@
 ---
 title: Lire la boucle d'une application
-description: Les pièces du projet de démarrage d'orosmo init, dans l'ordre : fenêtre, périphérique, scène, interface, boucle d'images.
+description: "Les pièces du projet de démarrage d'orosmo init, dans l'ordre : fenêtre, périphérique, scène, interface, boucle d'images."
 sidebar:
   order: 3
 ---
