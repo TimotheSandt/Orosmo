@@ -33,7 +33,7 @@ Aucun (moteur, paquet de release et CI existante inchangés).
 ## Commande de démo
 
 ```bash
-cd site && npm ci && npm run build && npm run check-links && npm run check-anchors
+(cd site && npm ci && npm run build && npm run check-links && npm run check-anchors)
 docker build -t orosmo-site:test site/ && docker run -d --name orosmo-site-test -p 8089:80 orosmo-site:test
 curl -sf localhost:8089/projet/histoire/ >/dev/null && echo OK; docker rm -f orosmo-site-test
 ```

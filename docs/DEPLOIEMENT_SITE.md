@@ -56,7 +56,7 @@ local (`-p 127.0.0.1:8080:80`). Retour arrière : relancer avec l'étiquette de 
 ## Construire et tester en local (sans registre)
 
 ```bash
-cd site && npm ci && npm run build && npm run check-links      # dist/ ; npm run dev pour l'édition (http://localhost:4321)
+(cd site && npm ci && npm run build && npm run check-links)    # dist/ ; npm run dev pour l'édition (http://localhost:4321)
 docker build -t orosmo-site:test site/                          # depuis la racine du dépôt
 docker run -d --name orosmo-site-test -p 8089:80 orosmo-site:test
 curl -sf localhost:8089/ && curl -sf localhost:8089/architecture/rhi/
