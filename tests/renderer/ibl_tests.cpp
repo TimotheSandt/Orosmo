@@ -229,6 +229,16 @@ TEST_SUITE("renderer/ibl")
         CHECK((rd::projectEquirect({}).error().code == ErrorCode::kInvalidArgument));
     }
 
+    TEST_CASE("SH irradiance: a non-empty image too small for nine coefficients is rejected; the default uniform image is not")
+    {
+        auto tiny = rd::projectEquirect(rd::uniformEquirect({1, 1, 1}, 1, 1));
+        REQUIRE(!tiny.has_value());
+        CHECK((tiny.error().code == ErrorCode::kInvalidArgument));
+        auto uniform = rd::projectEquirect(rd::uniformEquirect({1, 1, 1}));
+        REQUIRE(uniform.has_value());
+        CHECK(close(uniform->evaluate({0, 1, 0}), {1, 1, 1}, 1e-4f));
+    }
+
     TEST_CASE("BRDF table: smooth at normal incidence reflects everything (A = 1, B = 0); rough loses energy; never above 1")
     {
         const std::uint32_t size = 32;
