@@ -527,13 +527,28 @@ GpuIblBlock IblFeature::gpuBlock() const noexcept
     }
     for (std::size_t i = 0; i < probes.size(); ++i)
     {
-        block.probePositions[i] = glm::vec4(probes[i].position, probes[i].radius);
+        // docs/03 §10 : le shader ne voit que des positions relatives (crntPos) ; la différence est faite ici en double.
+        const glm::vec3 relative(glm::dvec3(probes[i].position) - shaderOrigin_);
+        block.probePositions[i] = glm::vec4(relative, probes[i].radius);
         for (std::size_t k = 0; k < 9; ++k)
         {
             block.probeSh[i * 9 + k] = glm::vec4(probes[i].irradiance.coefficients[k], 0.0f);
         }
     }
     return block;
+}
+
+core::Result<> IblFeature::prepare(const FrameData &frame)
+{
+    // Même origine que celle des positions vues par les shaders (ShadowFeature::prepare) : caméra en rendu relatif, 0 sinon.
+    const glm::dvec3 world = glm::dvec3(glm::vec3(frame.cameraWorldHigh)) + glm::dvec3(glm::vec3(frame.cameraWorldLow));
+    const glm::dvec3 origin = world - glm::dvec3(glm::vec3(frame.cameraRelativeOrigin));
+    if (origin != shaderOrigin_)
+    {
+        shaderOrigin_ = origin;
+        paramsDirty_ = paramsDirty_ || !probes_.probes().empty(); // sans sonde, rien ne dépend de l'origine
+    }
+    return {};
 }
 
 core::Result<> IblFeature::declarePasses(RenderGraphBuilder &builder)
