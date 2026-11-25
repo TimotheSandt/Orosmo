@@ -11,29 +11,44 @@ sol, un soleil dont l'ombre suit l'animation, un rendu HDR avec tonemapping, une
 et un menu `.cui` qu'Échap ouvre et ferme, avec un bouton Quitter.
 
 Le programme tient en un fichier, `src/main.cpp`, plus l'état du menu et sa vue. Les blocs de code de cette page, mis bout
-à bout, forment ce fichier ; il a été compilé avec les options du projet (`-Wall -Wextra -Wpedantic -Werror`) et lancé
-sous Linux avec OpenGL, sans erreur de validation.
+à bout, forment ce fichier. Il a été compilé avec les options du projet (`-Wall -Wextra -Wpedantic -Werror`) et lancé
+sous Linux avec OpenGL et le modèle CesiumMan ci-dessous : personnage animé, ombre portée sur le sol, menu, aucune erreur
+de validation. Cette vérification a été faite à la main (captures comparées) ; aucun test automatique ne couvre ce
+programme ni l'ombre d'un modèle animé.
 
 ## Préparer le projet
 
 ```bash
 ./orosmo init monjeu && cd monjeu        # voir « Créer un projet avec orosmo init »
 cp -r orosmo/res res                     # garder la police et les thèmes du paquet dans res/
-mkdir -p res/models                      # le personnage ira dans res/models/hero.glb
+mkdir -p res/models                      # le personnage ira dans res/models/hero.glb (voir plus bas)
 rm src/HudView.cui src/hud_state.hpp     # le panneau du projet de démarrage est remplacé par le menu
 ```
 
 Pourquoi copier `orosmo/res` : dès que le projet a son propre dossier `res/`, c'est le seul copié à côté de l'exécutable
 (voir [Chemins des ressources](/demarrer/premiere-application/#chemins-des-ressources)).
 
-Il faut un modèle glTF avec une peau (skin) et au moins une animation, rangé sous `res/models/hero.glb`. Deux sources :
+Il faut un modèle glTF avec une peau (skin) et au moins une animation. Le chemin est la constante `kHeroModel`, en haut
+de `src/main.cpp` (section 1) : `res/models/hero.glb` par défaut.
 
-- `CesiumMan.glb` du dépôt [KhronosGroup/glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets)
-  (dossier `Models/CesiumMan/glTF-Binary/`) ; vérifiez sa licence dans le dossier du modèle. Ce modèle n'a pas été essayé
-  avec ce tutoriel : si son échelle ou son orientation ne conviennent pas, réglez `hero.render->setRootTransform(...)` ;
-- le personnage que génère la démo du moteur : `apps/demo/bin/debug/main --scene anim` écrit `figure.gltf`, `figure.bin`
-  et `figure_albedo.png` dans le dossier temporaire du système (`/tmp/orosmo-demo-anim/` sous Linux). Copiez les trois
-  fichiers dans `res/models/` et remplacez `"models/hero.glb"` par `"models/figure.gltf"` dans le code.
+Le modèle essayé est CesiumMan, du dépôt d'exemples de Khronos
+([glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CesiumMan)) : un personnage
+d'environ 1,5 m, debout selon +Y, avec une animation de marche. Il s'affiche sans réglage d'échelle ni de rotation.
+
+```bash
+curl -L -o res/models/hero.glb \
+  https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/CesiumMan/glTF-Binary/CesiumMan.glb
+```
+
+Licence : © 2017 Cesium, [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/) (CC-BY-4.0).
+Si vous distribuez le modèle, citez « Cesium Man, © 2017 Cesium, CC-BY 4.0 » ; le logo Cesium de la texture est une
+marque, exclue de cette licence.
+
+Autre source, si vous avez compilé le dépôt du moteur (voir [Installer et compiler le moteur](/demarrer/installation/)) :
+`apps/demo/bin/debug/main --scene anim` écrit un personnage généré par le code, `figure.gltf`, `figure.bin` et
+`figure_albedo.png`, dans le dossier `orosmo-demo-anim` du dossier temporaire du système (`/tmp/orosmo-demo-anim/` sous
+Linux, vidé au redémarrage). Copiez les trois fichiers dans `res/models/` et donnez à `kHeroModel` la valeur
+`GET_RESOURCE_PATH("models/figure.gltf")`. Ce modèle a aussi été essayé avec le programme.
 
 ## L'état du menu et sa vue
 
@@ -156,6 +171,8 @@ namespace
 {
 constexpr int kWidth = 1280;
 constexpr int kHeight = 720;
+// Modèle du personnage (glTF avec peau et animations), relatif au dossier de l'exécutable.
+constexpr const char *kHeroModel = GET_RESOURCE_PATH("models/hero.glb");
 ```
 
 ## 2. Le personnage animé
@@ -189,7 +206,7 @@ core::Result<> loadHero(Hero &hero, rhi::Device &device, rd::ShaderLibrary &shad
                         const std::filesystem::path &shaderDir, as::TextureCache &textures, rd::PbrShaderCache &pbr,
                         const std::shared_ptr<rd::PbrDefaults> &defaults, const rd::ShadowFeature *shadows)
 {
-    auto loaded = as::loadGltf(GET_RESOURCE_PATH("models/hero.glb"));
+    auto loaded = as::loadGltf(kHeroModel);
     if (!loaded)
         return std::unexpected(loaded.error());
     hero.model = std::move(*loaded);
@@ -696,7 +713,8 @@ make run
 ## Limites
 
 - Un personnage animé ne projette une ombre juste qu'avec une lumière en `ShadowMode::kDynamic`, qui redessine ses vues
-  d'ombre à chaque image (plus coûteux que `kCached`).
+  d'ombre à chaque image (plus coûteux que `kCached`). Ce comportement a été vérifié à la main avec ce programme
+  (l'ombre suit la pose en `kDynamic`, se fige en `kCached`) ; il n'a pas encore de test automatique.
 - Sans compute (certains pilotes logiciels, macOS), `SkinnedModel` n'est pas créé : le personnage reste en pose de repos,
   et son ombre aussi. Le moteur n'a pas de repli de skinning sur le CPU pour le dessin.
 - Le programme n'ouvre que OpenGL ; il n'y a pas encore de boucle de simulation à pas fixe ni de scène à entités : chaque
