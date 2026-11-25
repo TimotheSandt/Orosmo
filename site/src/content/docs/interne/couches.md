@@ -22,7 +22,7 @@ inférieur.
 | 3 | `renderer` | graphe de passes, plugins, scène, matériaux, lumières, ombres, effets, 2D | présent |
 | 4 | `assets` | import glTF, textures, cuisson | présent |
 | 5 | `anim` | squelettes, clips, machines à états, courbes, foules | présent |
-| 6 | `scene` | entités, composants, transformations | prévu (ECS-01 Absent) |
+| 6 | `scene` | entités, composants, transformations | prévu (M8) |
 | 7 | `ui` | widgets, mise en page, thèmes, code généré par le langage `.cui` | présent |
 | 8 à 10 | `world`, `sim`, `game` | monde, boucle de simulation, logique de jeu rechargeable | prévus ou archivés |
 | 11 | `apps` | la démo `apps/demo`, les jeux | présent |
@@ -38,7 +38,7 @@ La liste des en-têtes de chaque module est dans l'[index des en-têtes](/refere
 
 Une application 3D se construit avec `platform`, `renderer`, `assets`, `anim` et `ui`. Du `rhi`, elle n'utilise que le
 strict nécessaire pour faire tourner une image : créer le `rhi::Device`, ouvrir un `CommandEncoder` par image, `submit` et
-`present`, et passer `*device` aux objets du renderer.
+`present`, et passer le périphérique (`**device`) aux objets du renderer.
 
 | Besoin | Niveau | Exemples de types |
 | --- | --- | --- |
@@ -61,6 +61,7 @@ namespace rd = orosmo::renderer;
 
 platform::Window window("jeu", 1280, 720);           // 1. fenêtre, créée avant le périphérique
 auto device = rhi::createDevice(desc);               // 2. GPU : Result<std::unique_ptr<rhi::Device>>
+const fs::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
 rd::ShaderLibrary shaders(**device);                 // 3. partagés par tous les renderers,
 rd::PipelineCache pipelines(**device);               //    vivants jusqu'à la fin
 auto scene = rd::SceneRenderer::create(**device, shaders, pipelines, {.shaderDirectory = shaderDir});

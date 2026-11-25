@@ -118,7 +118,7 @@ fait échouer au lieu de sauter le test.
 
 ## Limites
 
-RHI-13 (Metal) est Absent. Les points marqués « à vérifier » dans `docs/ADD_A_BACKEND.md` (repère de Metal et WebGPU,
+Le backend Metal n'existe pas encore (prévu en M9). Les points marqués « à vérifier » dans `docs/ADD_A_BACKEND.md` (repère de Metal et WebGPU,
 fichiers `.mm`, liaison des frameworks) n'ont pas été confirmés.
 
 ## Voir aussi

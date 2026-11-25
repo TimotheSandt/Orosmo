@@ -6,7 +6,7 @@ sidebar:
 ---
 
 On décrit les champs d'une structure une seule fois, dans une spécialisation de `orosmo::core::Reflect<T>`. La
-sérialisation (JSON, MessagePack), la configuration (`Config::applyTo`) et le panneau d'interface automatique (UI-12) s'en
+sérialisation (JSON, MessagePack), la configuration (`Config::applyTo`) et le panneau d'interface automatique s'en
 servent. Il n'y a ni macro ni code généré.
 
 En-têtes : `orosmo/core/reflection.hpp`, `orosmo/core/serialization.hpp`, `orosmo/core/config.hpp`.
@@ -196,8 +196,7 @@ Un fichier cassé pendant l'édition ne remet rien à zéro : l'erreur est rendu
 
 ## Limites
 
-- CORE-06 et CORE-12 sont Fait. La démo n'utilise pas encore `Config` pour sa ligne de commande (elle a son propre analyseur,
-  `docs/GAPS.md` G52).
+- La démo n'utilise pas encore `Config` pour sa ligne de commande : elle a son propre analyseur.
 - `Config`, `Json` et les fonctions de sérialisation ne sont pas thread-safe : un seul propriétaire, ou un verrou extérieur.
 
 ## Voir aussi

@@ -141,8 +141,7 @@ Le renderer fait le même calcul pour le dessin quand `SceneRenderer::setCameraR
 
 ## Limites
 
-- CORE-07, CORE-08 et CORE-09 sont Fait.
-- SIM-01 (Absent) : il n'y a pas de boucle de simulation intégrée au moteur. L'application écrit sa boucle avec
+- Il n'y a pas de boucle de simulation intégrée au moteur (prévue avec la scène et les entités, M8). L'application écrit sa boucle avec
   `FrameTimer` et `FixedStepper`, comme ci-dessus.
 - `Camera` garde sa position en `float` : le rendu relatif à la caméra ne gagne rien tant que la caméra elle-même ne porte
   pas de `double` (`src/renderer/README.md`, limites).

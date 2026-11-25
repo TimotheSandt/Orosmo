@@ -61,19 +61,19 @@ l'image courante, que l'application lui donne au début de l'image et lui retire
 ```cpp
 #include <orosmo/renderer/gpu_timer.hpp>
 
-auto gpuTimers = std::make_unique<rd::ProfilerGpuTimerFactory>(*device);
+auto gpuTimers = std::make_unique<rd::ProfilerGpuTimerFactory>(**device);
 Profiler::SetGpuTimerFactory(gpuTimers.get());
 const Profiler::Key keyRender = Profiler::MakeKey("Render");
 
 // image :
-auto encoder = device->createCommandEncoder();
+auto encoder = (*device)->createCommandEncoder();
 gpuTimers->setEncoder(encoder.get());
 Profiler::ProfileGPU(keyRender, [&] { render(*encoder); });
 gpuTimers->setEncoder(nullptr);
-(void)device->submit(std::move(encoder));
+(void)(*device)->submit(std::move(encoder));
 
 // fin du programme, avant de détruire le périphérique :
-device->waitIdle();
+(*device)->waitIdle();
 Profiler::SetGpuTimerFactory(nullptr);
 Profiler::ClearGpuQueries();
 ```
@@ -181,9 +181,8 @@ posée par `Window::setMaxFPS`. Une application passe en général par `renderer
 
 ## Limites
 
-- CORE-05 (Partiel) : les mesures GPU du `Profiler` passent par le RHI, mais `TraceRecorder` ne reçoit pas encore les
-  minuteries GPU toutes seules (`addSample` avec `TraceTrack::kGpu` est à appeler à la main) ; pas d'adaptateur Tracy
-  (`docs/GAPS.md`, G54).
+- Les mesures GPU du `Profiler` passent par le RHI, mais `TraceRecorder` ne les reçoit pas toutes seules
+  (`addSample` avec `TraceTrack::kGpu` est à appeler à la main). Pas d'export vers Tracy.
 - `bench::writeReport` lance `std::runtime_error` si le fichier ne s'ouvre pas (exception de l'ancien code).
 - Le `Profiler` garde ses anciens noms (`Profile`, `GetAverageTime`) et un état global.
 

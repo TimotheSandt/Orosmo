@@ -120,9 +120,9 @@ même version de Mesa et `LIBGL_ALWAYS_SOFTWARE=1`. Le GPU, le pilote et les mes
 
 ## Limites
 
-- RHI-14 (Partiel) : la comparaison OpenGL/Vulkan est automatisée (`make demo-vulkan-check`), mais une seule référence
-  OpenGL sert aux deux backends et la comparaison n'est ni dans `make demo-test` ni en CI (`docs/GAPS.md`, G143).
-- BLD-01 et BLD-02 restent Partiel dans `docs/02` : les tests graphiques et les captures ne tournent en CI que sous Linux.
+- La comparaison OpenGL/Vulkan est automatisée (`make demo-vulkan-check`), mais une seule référence OpenGL sert aux deux
+  backends et la comparaison ne fait partie ni de `make demo-test` ni de la CI.
+- Les tests graphiques et les captures ne tournent en CI que sous Linux.
 - Metal n'est pas testé (backend absent).
 
 ## Voir aussi
