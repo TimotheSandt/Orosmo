@@ -83,7 +83,8 @@ rhi::Format storedFormat(ktxTexture2 *t, bool srgb)
                                                       KHR_DF_CHANNEL_RGBSDA_ALPHA};
         for (std::uint32_t i = 0; i < 4; ++i)
         {
-            if (KHR_DFDSVAL(bdb, i, CHANNELID) != kOrder[i] || KHR_DFDSVAL(bdb, i, BITOFFSET) != 8 * i || KHR_DFDSVAL(bdb, i, BITLENGTH) != 7)
+            if (KHR_DFDSVAL(bdb, i, CHANNELID) != kOrder[i] || KHR_DFDSVAL(bdb, i, BITOFFSET) != 8 * i || KHR_DFDSVAL(bdb, i, BITLENGTH) != 7 ||
+                (KHR_DFDSVAL(bdb, i, QUALIFIERS) & (KHR_DF_SAMPLE_DATATYPE_SIGNED | KHR_DF_SAMPLE_DATATYPE_FLOAT)) != 0)
             {
                 return rhi::Format::kUndefined;
             }

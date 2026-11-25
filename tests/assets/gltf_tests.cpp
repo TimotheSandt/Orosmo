@@ -479,9 +479,7 @@ TEST_SUITE("assets/gltf")
         CHECK(content == "OLD-BINARY");
         for (const auto &entry : std::filesystem::directory_iterator(dir.path))
         {
-            const std::string ext = entry.path().extension().string();
-            CHECK(ext != ".tmp");
-            CHECK(ext != ".bak");
+            CHECK(entry.path().filename().string().find(".orosmo-") == std::string::npos);
         }
     }
 
@@ -560,5 +558,26 @@ TEST_SUITE("assets/gltf")
         REQUIRE_MESSAGE(model.has_value(), (model ? "" : model.error().message));
         REQUIRE(model->nodes.size() == 1);
         CHECK(model->nodes[0].name == "a\"b\\c\xC3\xA9\xF0\x9F\x98\x80\n");
+    }
+
+    TEST_CASE("export: an existing .bak or .tmp neighbour belongs to the user and is never replaced or removed")
+    {
+        tests::TempDir dir("engine_gltf");
+        const as::Model model = makeArm(dir.path);
+        writeText(dir.path / "scene.bin", "OLD");
+        writeText(dir.path / "scene.bin.bak", "USER-BACKUP");
+        writeText(dir.path / "scene.bin.tmp", "USER-TMP");
+        writeText(dir.path / "scene.gltf.tmp", "USER-JSON-TMP");
+        REQUIRE(as::saveGltf(model, dir.path / "scene.gltf").has_value());
+        const auto read = [&](const char *name)
+        {
+            std::ifstream in(dir.path / name, std::ios::binary);
+            return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        };
+        CHECK(read("scene.bin.bak") == "USER-BACKUP");
+        CHECK(read("scene.bin.tmp") == "USER-TMP");
+        CHECK(read("scene.gltf.tmp") == "USER-JSON-TMP");
+        CHECK(read("scene.bin") != "OLD");
+        CHECK(as::loadGltf(dir.path / "scene.gltf").has_value());
     }
 }
