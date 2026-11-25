@@ -1,7 +1,8 @@
 // Modèle importé prêt à dessiner (ASSET-01 + REN-10) : chaque primitive devient un `renderer::Mesh` aux sommets PBR, chaque matériau
 // glTF un `renderer::PbrMaterial` (textures par le `TextureCache` : couleur et émission en sRGB, le reste en linéaire), et chaque
 // nœud qui porte un maillage un dessin. Une primitive dessinée par plusieurs nœuds garde un seul jeu de tampons (une tranche du
-// modèle par dessin, `SceneRenderer::recordModelSlice`).
+// modèle par dessin, `SceneRenderer::recordModelSlice`), sauf pour les nœuds skinnés d'un modèle `skinnable` : chacun a son
+// propre maillage GPU, sortie du skinning de SA pose.
 #pragma once
 
 #include "orosmo/assets/model.hpp"

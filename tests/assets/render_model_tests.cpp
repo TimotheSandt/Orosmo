@@ -275,4 +275,41 @@ TEST_SUITE("assets/render_model")
             scene.gpu.expectNoValidationErrors();
         }
     }
+
+    TEST_CASE("RenderModel: two skinned nodes on one primitive get their own GPU mesh; static nodes share theirs")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            ModelScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            as::Model m;
+            as::MeshPrimitive p = roof();
+            for (auto &j : p.joints)
+            {
+                j = {0, 0, 0, 0};
+            }
+            p.normals.assign(4, Vec3(0, 0, 1));
+            m.meshes.push_back({"skinned", {p}});
+            m.nodes.resize(5);
+            m.nodes[0].mesh = 0; // deux nœuds skinnés
+            m.nodes[0].skin = 0;
+            m.nodes[1].mesh = 0;
+            m.nodes[1].skin = 0;
+            m.nodes[2].mesh = 0; // deux nœuds statiques
+            m.nodes[3].mesh = 0;
+            m.skins.push_back({"skin", {4}, {orosmo::core::Mat4(1.0f)}, -1});
+
+            auto skinnable = scene.model(m, "skinnable", true);
+            REQUIRE(skinnable.drawCount() == 4);
+            const auto &items = skinnable.items();
+            CHECK(items[0].mesh != items[1].mesh); // une sortie de skinning par nœud skinné
+            CHECK(items[2].mesh == items[3].mesh); // statiques : un seul jeu de tampons
+            CHECK(skinnable.meshCount() == 2);
+            CHECK(skinnable.meshSource(items[1].mesh).mesh == 0);
+            CHECK(skinnable.meshSource(items[1].mesh).primitive == 0);
+
+            auto plain = scene.model(m, "plain", false); // sans skinning GPU : tout est partagé
+            CHECK(plain.meshCount() == 1);
+        }
+    }
 }

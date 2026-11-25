@@ -303,44 +303,62 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
     }
     out.materials_.push_back(std::move(*defaultMaterial));
 
-    std::vector<std::vector<std::size_t>> meshPrimitives(model.meshes.size());
+    // Un maillage GPU par primitive ; `suffix` distingue la copie d'un nœud skinné (sa propre sortie de skinning).
+    auto buildMesh = [&](std::size_t m, std::size_t p, const std::string &suffix) -> core::Result<std::size_t>
+    {
+        const std::optional<MeshPrimitive> flat = flatShaded(model.meshes[m].primitives[p]);
+        const MeshPrimitive &prim = flat ? *flat : model.meshes[m].primitives[p];
+        renderer::MeshData data;
+        data.vertices = pbrVertices(prim);
+        data.indices = prim.indices;
+        data.attributeSizes.assign(renderer::kPbrVertexAttributeSizes.begin(), renderer::kPbrVertexAttributeSizes.end());
+        data.name = options.sourceKey + "." + model.meshes[m].name + "." + std::to_string(p) + suffix;
+        if (options.skinnable && !prim.joints.empty())
+        {
+            data.extraVertexUsage = rhi::BufferUsage::kStorage; // écrit par le skinning GPU (ANIM-01)
+        }
+        auto mesh = renderer::Mesh::create(device, data);
+        if (!mesh)
+        {
+            return std::unexpected(mesh.error());
+        }
+        const auto &material = prim.material >= 0 ? out.materials_[static_cast<std::size_t>(prim.material)] : out.materials_.back();
+        auto program = shaders.program(material->features(), options.extraDefines);
+        if (!program)
+        {
+            return std::unexpected(program.error());
+        }
+        mesh->setProgram(*program);
+        mesh->setMaterialGroup(material->group());
+        mesh->setAovMaterial({material->blend(), {}});
+        mesh->setCullMode(material->doubleSided() ? rhi::CullMode::kNone : rhi::CullMode::kBack);
+        out.sources_.push_back({m, p});
+        out.meshes_.push_back(std::make_unique<renderer::Mesh>(std::move(*mesh)));
+        return out.meshes_.size() - 1;
+    };
+    struct GpuPrimitive
+    {
+        std::size_t primitive = 0;
+        std::size_t mesh = 0; // dans meshes_
+        bool skinned = false; // tampon écrit par le skinning GPU
+        bool claimed = false; // déjà la sortie de skinning d'un nœud
+    };
+    std::vector<std::vector<GpuPrimitive>> meshPrimitives(model.meshes.size());
     for (std::size_t m = 0; m < model.meshes.size(); ++m)
     {
         for (std::size_t p = 0; p < model.meshes[m].primitives.size(); ++p)
         {
-            const std::optional<MeshPrimitive> flat = flatShaded(model.meshes[m].primitives[p]);
-            const MeshPrimitive &prim = flat ? *flat : model.meshes[m].primitives[p];
-            if (prim.indices.empty())
+            const MeshPrimitive &source = model.meshes[m].primitives[p];
+            if (source.indices.empty())
             {
                 continue;
             }
-            renderer::MeshData data;
-            data.vertices = pbrVertices(prim);
-            data.indices = prim.indices;
-            data.attributeSizes.assign(renderer::kPbrVertexAttributeSizes.begin(), renderer::kPbrVertexAttributeSizes.end());
-            data.name = options.sourceKey + "." + model.meshes[m].name + "." + std::to_string(p);
-            if (options.skinnable && !prim.joints.empty())
+            auto gpu = buildMesh(m, p, "");
+            if (!gpu)
             {
-                data.extraVertexUsage = rhi::BufferUsage::kStorage; // écrit par le skinning GPU (ANIM-01)
+                return std::unexpected(gpu.error());
             }
-            auto mesh = renderer::Mesh::create(device, data);
-            if (!mesh)
-            {
-                return std::unexpected(mesh.error());
-            }
-            const auto &material = prim.material >= 0 ? out.materials_[static_cast<std::size_t>(prim.material)] : out.materials_.back();
-            auto program = shaders.program(material->features(), options.extraDefines);
-            if (!program)
-            {
-                return std::unexpected(program.error());
-            }
-            mesh->setProgram(*program);
-            mesh->setMaterialGroup(material->group());
-            mesh->setAovMaterial({material->blend(), {}});
-            mesh->setCullMode(material->doubleSided() ? rhi::CullMode::kNone : rhi::CullMode::kBack);
-            meshPrimitives[m].push_back(out.meshes_.size());
-            out.sources_.push_back({m, p});
-            out.meshes_.push_back(std::make_unique<renderer::Mesh>(std::move(*mesh)));
+            meshPrimitives[m].push_back({p, *gpu, options.skinnable && !source.joints.empty(), false});
         }
     }
 
@@ -378,9 +396,26 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
         {
             continue;
         }
-        for (std::size_t gpu : meshPrimitives[static_cast<std::size_t>(mesh)])
+        const bool skinnedNode = model.nodes[static_cast<std::size_t>(n)].skin >= 0;
+        for (GpuPrimitive &gpu : meshPrimitives[static_cast<std::size_t>(mesh)])
         {
-            out.items_.push_back({n, gpu});
+            std::size_t index = gpu.mesh;
+            // ANIM-01 : chaque nœud skinné a sa propre sortie de skinning (sa pose) ; la géométrie au repos vient de la primitive.
+            // Les nœuds statiques gardent un seul jeu de tampons.
+            if (gpu.skinned && skinnedNode)
+            {
+                if (gpu.claimed)
+                {
+                    auto copy = buildMesh(static_cast<std::size_t>(mesh), gpu.primitive, ".node" + std::to_string(n));
+                    if (!copy)
+                    {
+                        return std::unexpected(copy.error());
+                    }
+                    index = *copy;
+                }
+                gpu.claimed = true;
+            }
+            out.items_.push_back({n, index});
         }
     }
     out.world_ = model.worldMatrices();
