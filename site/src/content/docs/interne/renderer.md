@@ -31,7 +31,7 @@ explicites. L'ordre de destruction et les durées de vie sont détaillés dans
 auto encoder = device.createCommandEncoder();
 (void)renderer.beginFrame(*encoder);             // l'encodeur doit vivre jusqu'à endFrame
 (void)renderer.setCamera(camera);
-(void)renderer.drawMesh(*cube, camera);           // enregistre seulement
+(void)renderer.drawMesh(cube, camera);            // enregistre seulement
 (void)renderer.endFrame({texture, format, size}); // construit et exécute le graphe de l'image
 (void)device.submit(std::move(encoder));
 ```
