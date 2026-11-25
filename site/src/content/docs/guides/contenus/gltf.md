@@ -9,7 +9,7 @@ sidebar:
 
 ## Exemple minimal
 
-Ce code charge un modèle statique et le dessine. Il suppose que la fenêtre, le `rhi::Device` (`device`), la `ShaderLibrary` (`shaders`), le `SceneRenderer` (`scene`) et une `Camera` (`camera`) existent déjà ; voir [Dessiner une scène](/guides/rendu-3d/scene/).
+Ce code charge un modèle statique et le dessine. Les noms (`device`, `shaders`, `pipelines`, `scene`, `camera`, `shaderDir`) sont ceux de [Lire la boucle d'une application](/demarrer/premiere-application/) : `device` et `scene` sont des `Result<std::unique_ptr<...>>`, d'où `**device` et `(*scene)->`.
 
 ```cpp
 #include <orosmo/assets/model.hpp>
@@ -20,24 +20,24 @@ namespace as = orosmo::assets;
 namespace rd = orosmo::renderer;
 
 // Une fois, au chargement.
-auto model = as::loadGltf("res/casque.glb");
+auto model = as::loadGltf(GET_RESOURCE_PATH("models/casque.glb"));
 if (!model) { /* model.error().message */ }
 if (auto ok = model->validate(); !ok) { /* kParse : indice hors bornes */ }
 
-as::TextureCache textures(*device);                       // partage les textures entre les modèles
-rd::PbrShaderCache pbr(shaders, "shaders/rhi");           // programmes PBR (ShaderLibrary + dossier des shaders)
-auto defaults = rd::PbrDefaults::create(*device);         // textures neutres (blanc, normale plate...)
+as::TextureCache textures(**device);                     // partage les textures entre les modèles
+rd::PbrShaderCache pbr(shaders, shaderDir);               // programmes PBR ; shaderDir = GET_RESOURCE_PATH("shader/rhi")
+auto defaults = rd::PbrDefaults::create(**device);       // textures neutres (blanc, normale plate...)
 if (!defaults) { /* ... */ }
 
-auto render = as::RenderModel::create(*device, *model, textures, pbr, *defaults);
+auto render = as::RenderModel::create(**device, *model, textures, pbr, *defaults);
 if (!render) { /* render.error().message */ }
 render->setRootTransform(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -3.0f)));
 
 // Chaque image, entre scene.beginFrame/setCamera et scene.endFrame.
-render->draw(scene, camera);
+render->draw(**scene, camera);
 ```
 
-Le dossier des shaders est celui de `shaders/rhi/` du dépôt (la démo utilise `kShaderDirectory`). Le `device` doit survivre à tous ces objets, et le `RenderModel` doit rester vivant jusqu'à la fin des images qui le dessinent.
+`GET_RESOURCE_PATH` (`orosmo/core/paths.hpp`) donne le chemin d'une ressource : `res/...` en debug, à côté de l'exécutable en release. Le modèle va dans `res/models/` de votre projet, les shaders dans `res/shader/rhi/` (voir [Make, engine.mk et CMake](/reference/construction/)). Le `device` doit survivre à tous ces objets, et le `RenderModel` doit rester vivant jusqu'à la fin des images qui le dessinent.
 
 Source : `apps/demo/src/Scene/anim_scene.cpp` (`AnimScene::buildModels`) et `tests/assets/render_model_tests.cpp`.
 
@@ -87,8 +87,10 @@ Les erreurs de `loadGltf` : `kIo` (fichier illisible), `kParse` (contenu invalid
 as::RenderModelOptions options;
 options.sourceKey = "hero";
 options.extraDefines = rd::forwardPlusDefines();   // si la scène est en forward+
-auto render = as::RenderModel::create(*device, *model, textures, pbr, *defaults, options);
+auto render = as::RenderModel::create(**device, *model, textures, pbr, *defaults, options);
 ```
+
+Pour recevoir et projeter des ombres, voir la section « Ombres » de [Animer un personnage](/guides/animation/squelettes/) : `shadows` se règle ici, et les casters se déclarent sur la `ShadowFeature`.
 
 Autres appels de `RenderModel` :
 
@@ -114,11 +116,11 @@ Les pistes `weights` (cibles de forme) sont supprimées à l'export.
 
 ## Limites
 
-- ASSET-01 est Fait pour l'import ; ASSET-06 (OBJ) est Absent. Le tableau complet des extensions est dans [Formats de fichiers](/reference/formats/).
-- Pas de cibles de forme (morph targets) : ignorées (ANIM-05, G198). Draco et `EXT_meshopt_compression` sont refusés (`kUnsupported`) quand le fichier les exige. `KHR_texture_transform` est ignoré.
-- Rendu (G195) : un seul jeu d'UV (une carte qui demande `TEXCOORD_1` est lue avec `TEXCOORD_0`, avec un avertissement), un seul mode d'adressage par texture (celui de `wrapS`), tangentes calculées par triangle (pas MikkTSpace), transparents `BLEND` dessinés dans l'ordre du fichier sans tri.
+- L'import OBJ n'existe pas. Le tableau complet des extensions est dans [Formats de fichiers](/reference/formats/).
+- Pas de cibles de forme (morph targets) : ignorées (pas encore prévues). Draco et `EXT_meshopt_compression` sont refusés (`kUnsupported`) quand le fichier les exige. `KHR_texture_transform` est ignoré.
+- Rendu : un seul jeu d'UV (une carte qui demande `TEXCOORD_1` est lue avec `TEXCOORD_0`, avec un avertissement), un seul mode d'adressage par texture (celui de `wrapS`), tangentes calculées par triangle (pas MikkTSpace), transparents `BLEND` dessinés dans l'ordre du fichier sans tri.
 - Un nœud à échelle négative inverse le sens des faces.
-- Un modèle glTF n'est pas rechargé à chaud : seules les textures le sont (G200).
+- Un modèle glTF n'est pas rechargé à chaud : seules les textures le sont (rechargement de textures seulement).
 - Aucune façade « charger et afficher en un appel » n'existe : il faut créer `TextureCache`, `PbrShaderCache` et `PbrDefaults` soi-même.
 
 ## Voir aussi
