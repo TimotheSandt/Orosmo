@@ -5,7 +5,9 @@ sidebar:
   order: 4
 ---
 
-*(Sources : `docs/03` §5, `src/rhi/README.md` « Pipeline de shaders », `src/renderer/README.md`.)*
+Page pour les contributeurs. Pour écrire un shader, voir [Écrire et recharger des shaders](/guides/avance/shaders/) ; les conventions de
+liaison et les définitions sont dans [Conventions GLSL](/reference/conventions-glsl/). Sources : `docs/03` §5,
+`src/rhi/README.md` (« Pipeline de shaders »), `src/rhi/shader_compiler.cpp`.
 
 ## Source unique en GLSL 450
 
@@ -32,15 +34,18 @@ s'ajouter derrière `Capabilities::spirvShaders`.
 ## Variantes
 
 Les variantes d'un shader sont choisies par macros de préprocesseur (`OROSMO_SHADOWS`, `OROSMO_FORWARD_PLUS`,
-`OROSMO_TRANSPARENT`, AOV…), sélectionnées par l'application ou le plugin qui en a besoin.
+`OROSMO_TRANSPARENT`, AOV…), sélectionnées par l'application ou le plugin qui en a besoin ; la liste est dans
+[Conventions GLSL](/reference/conventions-glsl/). Chaque combinaison est un programme distinct : le renderer doit être configuré
+(plugins, AOV, vue de debug) avant la compilation des programmes de maillage.
 
 ## Cache et rechargement à chaud
 
 - **`ShaderCache`** : clé = hachage du source *prétraité* (includes et macros développés) + étage + version du cache ; en
   mémoire puis sur disque (`<dossier>/<hash>.spv`, écriture atomique par renommage ; un fichier corrompu est recompilé).
-- **Cache de pipelines** Vulkan sur disque (un fichier d'un autre GPU est ignoré).
+- **Cache de pipelines** Vulkan sur disque (un fichier d'un autre GPU est ignoré, RHI-06). Pas de cache de pipelines natifs pour OpenGL.
 - **Rechargement à chaud** (`ShaderHotReloader`, `ShaderLibrary::pollHotReload`) : surveille le fichier et ses
-  `#include`, recompile, et l'appelant recrée le pipeline ; si la compilation échoue, l'ancien pipeline est gardé.
+  `#include`, recompile, et l'appelant recrée le pipeline ; si la compilation échoue, l'ancien pipeline est gardé. L'application
+  doit appeler `ShaderLibrary::pollHotReload` une fois par image : la démo ne le fait pas.
 
 ## Garantie
 
