@@ -28,7 +28,7 @@ namespace ui = orosmo::ui;
 auto root = std::make_unique<ui::Overlay>();
 auto &col = root->emplace<ui::VBox>();
 col.emplace<ui::Button>("Save").onClick([&](const ui::Event &) { save(); });
-gui.setRoot(std::move(root));
+// ... autres widgets, puis gui.setRoot(std::move(root)) en dernier (voir « Menus et fenêtres »)
 ```
 
 ## Base
@@ -128,6 +128,7 @@ dialog.body().emplace<ui::Label>("Inside");
 
 root->emplace<ui::Notifications>(3).setAlign(ui::Align::kEnd, ui::Align::kEnd);
 gui.notify("Saved", ui::NotificationKind::kSuccess, 4.0f);   // kInfo, kSuccess, kWarning, kError
+gui.setRoot(std::move(root));                                 // après la dernière utilisation de root
 ```
 
 Échap ferme le menu ouvert, sinon la fenêtre modale. Au clavier : Tab jusqu'au titre d'un menu, Bas ou Entrée l'ouvrent,
@@ -139,11 +140,12 @@ les flèches parcourent, Entrée active. Une fenêtre modale ouverte ne laisse p
 `commit()` : la texture est mise à jour en place à l'image suivante (même taille).
 
 ```cpp
-ui::DynamicImage minimap(128, 128);
-col.emplace<ui::ImageView>([&] { return minimap.image(); }, ui::ImageFit::kCover);
+// Le rappel est conservé par le widget : il tient l'image par valeur (shared_ptr), pas par référence.
+auto minimap = std::make_shared<ui::DynamicImage>(128, 128);
+col.emplace<ui::ImageView>([minimap] { return minimap->image(); }, ui::ImageFit::kCover);
 // chaque image :
-minimap.setPixel(10, 20, {1.0f, 0.0f, 0.0f, 1.0f});
-minimap.commit();
+minimap->setPixel(10, 20, {1.0f, 0.0f, 0.0f, 1.0f});
+minimap->commit();
 ```
 
 `ImageFit` : `kContain` (défaut, image entière), `kCover` (remplit en coupant), `kStretch` (déforme).
