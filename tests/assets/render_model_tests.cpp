@@ -385,4 +385,38 @@ TEST_SUITE("assets/render_model")
             scene.gpu.expectNoValidationErrors();
         }
     }
+
+    TEST_CASE("RenderModel::rebuildMaterials: new groups reach every mesh; the variant follows shadow reception")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            ModelScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            as::Model m = quad(unlit({0, 0, 1, 1}));
+            m.nodes.resize(2);
+            m.nodes[1].mesh = 0;
+            auto model = scene.model(m, "rebuild");
+            const BindGroupHandle before = model.materials()[0]->group();
+            REQUIRE(model.rebuildMaterials(nullptr, *scene.shaders).has_value());
+            const BindGroupHandle after = model.materials()[0]->group();
+            CHECK(after != before);
+            CHECK(model.mesh(0).textureGroup() == after);
+            CHECK(model.mesh(0).program() != nullptr);
+            CHECK(scene.render(model)[2] == 255); // l'ancien handle, détruit, n'est plus lié
+
+            // Réception des ombres ajoutée puis retirée : la variante (programme) suit le groupe.
+            auto shadows = rd::ShadowFeature::create(*scene.gpu.device, *scene.library, *scene.pipelines, shaderDir());
+            INFO((shadows ? std::string() : shadows.error().message));
+            REQUIRE(shadows.has_value());
+            REQUIRE(model.rebuildMaterials(shadows->get(), *scene.shaders).has_value());
+            const std::uint32_t receiving = model.materials()[0]->features();
+            CHECK((receiving & rd::kPbrShadows) != 0u);
+            CHECK(model.mesh(0).textureGroup() == model.materials()[0]->group());
+            CHECK(model.mesh(0).program() == *scene.shaders->program(receiving));
+            REQUIRE(model.rebuildMaterials(nullptr, *scene.shaders).has_value());
+            CHECK((model.materials()[0]->features() & rd::kPbrShadows) == 0u);
+            CHECK(model.mesh(0).program() == *scene.shaders->program(model.materials()[0]->features()));
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
 }

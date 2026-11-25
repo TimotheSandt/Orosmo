@@ -279,6 +279,7 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
         return std::unexpected(valid.error());
     }
     RenderModel out;
+    out.extraDefines_ = options.extraDefines;
     // Matériaux : un par matériau du fichier, plus le matériau par défaut de glTF (blanc, métal 1, rugosité 1) en dernier.
     for (const MaterialData &material : model.materials)
     {
@@ -332,6 +333,7 @@ core::Result<RenderModel> RenderModel::create(rhi::Device &device, const Model &
         mesh->setMaterialGroup(material->group());
         mesh->setAovMaterial({material->blend(), {}});
         mesh->setCullMode(material->doubleSided() ? rhi::CullMode::kNone : rhi::CullMode::kBack);
+        out.meshMaterials_.push_back(prim.material >= 0 ? static_cast<std::size_t>(prim.material) : out.materials_.size() - 1);
         out.sources_.push_back({m, p});
         out.meshes_.push_back(std::make_unique<renderer::Mesh>(std::move(*mesh)));
         return out.meshes_.size() - 1;
@@ -437,6 +439,34 @@ core::Result<> RenderModel::setNodeMatrices(std::vector<glm::mat4> world)
         return makeError(ErrorCode::kInvalidArgument, "RenderModel::setNodeMatrices: expected " + std::to_string(world_.size()) + " matrices");
     }
     world_ = std::move(world);
+    return {};
+}
+
+core::Result<> RenderModel::rebuildMaterials(const renderer::ShadowFeature *shadows, renderer::PbrShaderCache &shaders)
+{
+    for (std::size_t i = 0; i < materials_.size(); ++i)
+    {
+        renderer::PbrMaterial &material = *materials_[i];
+        // Variante d'abord : si elle ne se compile pas, le matériau et ses maillages gardent groupe et variante précédents.
+        const std::uint32_t features = (material.features() & ~renderer::kPbrShadows) | (shadows != nullptr ? renderer::kPbrShadows : 0u);
+        auto program = shaders.program(features, extraDefines_);
+        if (!program)
+        {
+            return std::unexpected(program.error());
+        }
+        if (auto r = material.rebuild(shadows); !r) // échec : l'ancien groupe reste valide (PbrMaterial::rebuild)
+        {
+            return r;
+        }
+        for (std::size_t m = 0; m < meshes_.size(); ++m)
+        {
+            if (meshMaterials_[m] == i)
+            {
+                meshes_[m]->setProgram(*program);
+                meshes_[m]->setMaterialGroup(material.group()); // l'ancien handle est détruit par rebuild
+            }
+        }
+    }
     return {};
 }
 
