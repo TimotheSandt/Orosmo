@@ -34,7 +34,7 @@ Le troisième paramètre de `load` est un `TextureRequest`. Les trois champs fon
 
 | Option | Type | Défaut | Effet |
 |---|---|---|---|
-| `role` | `TextureRole` | `kColor` | `kColor` : format `kRGBA8Srgb` (albédo, émission, interface). `kData` et `kNormal` : format `kRGBA8Unorm` (déjà linéaire). |
+| `role` | `TextureRole` | `kColor` | `kColor` : format `kRGBA8Srgb` (albédo, émission, interface). `kData` et `kNormal` : format `kRGBA8Unorm` (déjà linéaire). Pour un fichier PNG, JPG, TGA ou BMP seulement : un KTX2 garde le format du fichier (un KTX2 sRGB reste sRGB même avec `kNormal`), donc encodez-le avec le bon rôle (`Ktx2EncodeOptions::role` : `kData` ou `kNormal` pour du linéaire). |
 | `filter` | `renderer::FilterMode` | `kLinear` | `kLinear` : filtrage linéaire avec mips (trilinéaire). `kNearest` : plus proche voisin, sans mips. `kLinearNoMipmaps` : linéaire, sans mips. |
 | `address` | `rhi::AddressMode` | `kRepeat` | Adressage hors de `[0, 1]`. |
 
@@ -106,7 +106,7 @@ std::size_t n = textures.reloadChanged();
 Deux cas :
 
 - Même taille et même nombre de niveaux de mip : le contenu est envoyé sur la texture existante. Le handle ne change pas, les matériaux voient la nouvelle image sans rien refaire.
-- Taille ou format différents : la texture partagée est recréée. Les matériaux qui la lient doivent reconstruire leur groupe (`PbrMaterial::rebuild`, ou recréer le `RenderModel` comme le fait `AnimScene::reloadChanged`).
+- Taille, format ou nombre de niveaux de mip différents (un KTX2 peut garder ses dimensions et changer de nombre de niveaux) : la texture partagée est recréée. Les matériaux qui la lient doivent reconstruire leur groupe (`PbrMaterial::rebuild`, ou recréer le `RenderModel` comme le fait `AnimScene::reloadChanged`).
 
 Un fichier illisible garde l'ancienne texture et l'erreur est journalisée.
 
