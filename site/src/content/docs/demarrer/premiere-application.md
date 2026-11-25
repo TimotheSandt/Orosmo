@@ -48,8 +48,11 @@ namespace ui       = orosmo::ui;
 | `shaders`, `pipelines` | `rd::ShaderLibrary`, `rd::PipelineCache` | `rd::ShaderLibrary shaders(device);` |
 | `renderer` | `rd::SceneRenderer &` | `auto sceneResult = rd::SceneRenderer::create(device, shaders, pipelines, {.shaderDirectory = shaderDir}); rd::SceneRenderer &renderer = **sceneResult;` |
 | `canvas` | `rd::CanvasRenderer &` | même principe avec `rd::CanvasRenderer::create` |
+| `r2d` | `rd::Renderer2D &` | même principe avec `rd::Renderer2D::create` |
+| `gui` | `ui::Ui` | `ui::Ui gui(font);` (`font` est un `ui::TextRendererFont`) |
 | `camera` | `rd::Camera` | objet local de l'application |
 | `lights` | `rd::LightManager` | `auto lightsResult = rd::LightManager::create(device); rd::LightManager &lights = *lightsResult;` |
+| `cube` | `rd::Mesh &` | `auto cubeResult = rd::Mesh::create(device, data); rd::Mesh &cube = *cubeResult;` |
 | `encoder` | `std::unique_ptr<rhi::CommandEncoder>` | `auto encoder = device.createCommandEncoder();` ; les fonctions le prennent par `*encoder` |
 | `shaderDir` | `std::filesystem::path` | `GET_RESOURCE_PATH("shader/rhi")` |
 
@@ -160,10 +163,10 @@ ui::TextRenderer text;
 if (!text.init(1280, 720) || !text.loadFont(GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"), "default", 48)) { /* ... */ }
 text.setActiveFont("default");
 ui::TextRendererFont font(text);
-HudState state;                       // avant `interface`
-ui::Ui interface(font);
-interface.themes().load(GET_RESOURCE_PATH("themes/dark.json"));
-interface.setRoot(cui::buildHudView(interface, state));
+HudState state;                       // avant `gui`
+ui::Ui gui(font);
+gui.themes().load(GET_RESOURCE_PATH("themes/dark.json"));
+gui.setRoot(cui::buildHudView(gui, state));
 ```
 
 `HudView.gen.h` est produit à la compilation par le compilateur `.cui` à partir de `HudView.cui` ; `cui::buildHudView`
@@ -178,7 +181,7 @@ while (!window.shouldClose()) {
     if (!window.newFrame()) continue;                   // événements, entrées, compteur de FPS
 
     ui::InputFrame input = ui::readWindowInput(window, dt);   // dt : durée de l'image précédente, en secondes
-    interface.update(input, {viewW, viewH});
+    gui.update(input, {viewW, viewH});
 
     auto backbuffer = device.beginFrame();              // image de la fenêtre ; erreur si la fenêtre est réduite
     if (!backbuffer) continue;                          // sauter l'image, pas quitter
@@ -190,7 +193,7 @@ while (!window.shouldClose()) {
     if (ok) ok = renderer.endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, size});   // le graphe est exécuté ici
 
     rd::DrawList drawList;
-    interface.draw(drawList);
+    gui.draw(drawList);
     if (ok) ok = canvas.render(*encoder, drawList, {composed.color(0), rhi::Format::kRGBA8Unorm, size}, true);
     if (ok) ok = renderer.blit().copy(*encoder, composed.color(0), renderer.blit().linearSampler(), *backbuffer,
                                       rhi::Format::kRGBA8Unorm, "present");

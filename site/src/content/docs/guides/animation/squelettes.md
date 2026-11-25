@@ -25,8 +25,8 @@ Chaque image :
 
 1. `machine.update(dt)` : avance le temps et calcule la pose.
 2. `skinned.setPose(machine.pose())` : envoie les palettes d'os.
-3. `skinned.dispatch(*encoder)` : enregistre le compute, **avant** `scene.beginFrame`, sur le même encodeur.
-4. `scene.beginFrame`, `scene.setCamera`, `render.draw(scene, camera)`, `scene.endFrame`.
+3. `skinned.dispatch(*encoder)` : enregistre le compute, **avant** `renderer.beginFrame`, sur le même encodeur.
+4. `renderer.beginFrame`, `renderer.setCamera`, `render.draw(renderer, camera)`, `renderer.endFrame`.
 
 ```cpp
 #include <orosmo/anim/clip.hpp>
@@ -99,16 +99,16 @@ orosmo::core::Result<> loadHero(Hero &h, orosmo::rhi::Device &device, rd::Shader
 }
 
 // Chaque image, dans l'ordre. `encoder` est celui de l'image ; la boucle complète est dans « Première application ».
-void frame(Hero &h, rd::SceneRenderer &scene, rd::Camera &camera, orosmo::rhi::CommandEncoder &encoder, float dt) {
+void frame(Hero &h, rd::SceneRenderer &renderer, rd::Camera &camera, orosmo::rhi::CommandEncoder &encoder, float dt) {
     (void)h.machine->update(dt);
     if (h.skinned) {
         (void)h.skinned->setPose(h.machine->pose());
-        (void)h.skinned->dispatch(encoder);          // AVANT scene.beginFrame
+        (void)h.skinned->dispatch(encoder);          // AVANT renderer.beginFrame
     }
-    (void)scene.beginFrame(encoder, {});
-    (void)scene.setCamera(camera);
-    (void)h.render->draw(scene, camera);
-    // ... autres dessins ... puis scene.endFrame(...), voir « Première application »
+    (void)renderer.beginFrame(encoder, {});
+    (void)renderer.setCamera(camera);
+    (void)h.render->draw(renderer, camera);
+    // ... autres dessins ... puis renderer.endFrame(...), voir « Première application »
 }
 ```
 
@@ -120,7 +120,7 @@ Pièges :
 
 - Le `RenderModel` ne doit pas bouger après `SkinnedModel::create` (le skinning garde un pointeur vers lui) : le ranger dans un `unique_ptr`, comme ci-dessus. Détruire le `SkinnedModel` avant le `RenderModel` (déclarer le premier après le second dans la structure).
 - `AnimState::clip` est un pointeur non possédé. Remplir le `std::vector<Clip>` complètement avant de prendre des adresses, et ne plus l'agrandir ensuite.
-- `dispatch` enregistre du compute hors passe de rendu : il se place avant `scene.beginFrame`, sur l'encodeur de l'image, et il est soumis avant les dessins du modèle.
+- `dispatch` enregistre du compute hors passe de rendu : il se place avant `renderer.beginFrame`, sur l'encodeur de l'image, et il est soumis avant les dessins du modèle.
 - Sans compute et sans tampons de stockage (`supportedBy` faux), `SkinnedModel::create` refuse (`kUnsupported`) et le modèle reste en pose de repos. Il n'y a pas de repli en vertex shader. `anim::skinVertices` fait le même calcul sur le CPU mais ne remplace pas le compute dans le dessin.
 - Le skinning agit sur les nœuds qui portent une peau : la transformation du nœud du maillage est ignorée (règle glTF). La position dans le monde se donne par `render->setRootTransform(...)`.
 
@@ -219,7 +219,7 @@ for (std::size_t i = 0; i < h.render->meshCount(); ++i) {
 }
 ```
 
-`shadowFeature` est le `ShadowFeature *` obtenu à la création du plugin. Les casters ne sont pas possédés : retirez-les (`removeCaster`) avant de détruire le modèle. Un maillage GPU dessiné par plusieurs nœuds n'a qu'une matrice : l'ombre suit le dernier nœud dessiné. Le guide [Ajouter des ombres](/guides/rendu-3d/ombres/) décrit la lumière ombrée et les réglages, et le tutoriel `demarrer/tutoriel-jeu-3d` assemble le tout.
+`shadowFeature` est le `ShadowFeature *` obtenu à la création du plugin. Les casters ne sont pas possédés : retirez-les (`removeCaster`) avant de détruire le modèle. Un maillage GPU dessiné par plusieurs nœuds n'a qu'une matrice : l'ombre suit le dernier nœud dessiné. Le guide [Ajouter des ombres](/guides/rendu-3d/ombres/#un-modèle-animé-skinning) décrit la lumière ombrée et les réglages, et le [tutoriel du jeu 3D](/demarrer/tutoriel-jeu-3d/) assemble le tout.
 
 ## Limites
 

@@ -61,19 +61,19 @@ l'image courante, que l'application lui donne au début de l'image et lui retire
 ```cpp
 #include <orosmo/renderer/gpu_timer.hpp>
 
-auto gpuTimers = std::make_unique<rd::ProfilerGpuTimerFactory>(**device);
+auto gpuTimers = std::make_unique<rd::ProfilerGpuTimerFactory>(device);
 Profiler::SetGpuTimerFactory(gpuTimers.get());
 const Profiler::Key keyRender = Profiler::MakeKey("Render");
 
 // image :
-auto encoder = (*device)->createCommandEncoder();
+auto encoder = device.createCommandEncoder();
 gpuTimers->setEncoder(encoder.get());
 Profiler::ProfileGPU(keyRender, [&] { render(*encoder); });
 gpuTimers->setEncoder(nullptr);
-(void)(*device)->submit(std::move(encoder));
+(void)device.submit(std::move(encoder));
 
 // fin du programme, avant de détruire le périphérique :
-(*device)->waitIdle();
+device.waitIdle();
 Profiler::SetGpuTimerFactory(nullptr);
 Profiler::ClearGpuQueries();
 ```

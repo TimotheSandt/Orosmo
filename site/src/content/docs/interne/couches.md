@@ -38,7 +38,7 @@ La liste des en-têtes de chaque module est dans l'[index des en-têtes](/refere
 
 Une application 3D se construit avec `platform`, `renderer`, `assets`, `anim` et `ui`. Du `rhi`, elle n'utilise que le
 strict nécessaire pour faire tourner une image : créer le `rhi::Device`, ouvrir un `CommandEncoder` par image, `submit` et
-`present`, et passer le périphérique (`**device`) aux objets du renderer.
+`present`, et passer le périphérique (`device`) aux objets du renderer.
 
 | Besoin | Niveau | Exemples de types |
 | --- | --- | --- |
@@ -60,11 +60,13 @@ Les objets d'une application 3D et leur ordre de création :
 namespace rd = orosmo::renderer;
 
 platform::Window window("jeu", 1280, 720);           // 1. fenêtre, créée avant le périphérique
-auto device = rhi::createDevice(desc);               // 2. GPU : Result<std::unique_ptr<rhi::Device>>
+auto created = rhi::createDevice(desc);              // 2. GPU : Result<std::unique_ptr<rhi::Device>>
+rhi::Device &device = **created;
 const fs::path shaderDir = GET_RESOURCE_PATH("shader/rhi");
-rd::ShaderLibrary shaders(**device);                 // 3. partagés par tous les renderers,
-rd::PipelineCache pipelines(**device);               //    vivants jusqu'à la fin
-auto scene = rd::SceneRenderer::create(**device, shaders, pipelines, {.shaderDirectory = shaderDir});
+rd::ShaderLibrary shaders(device);                 // 3. partagés par tous les renderers,
+rd::PipelineCache pipelines(device);               //    vivants jusqu'à la fin
+auto sceneResult = rd::SceneRenderer::create(device, shaders, pipelines, {.shaderDirectory = shaderDir});
+rd::SceneRenderer &renderer = **sceneResult;
 // ensuite : Mesh ou RenderModel (contenu), LightManager, Camera, Ui (interface)
 ```
 

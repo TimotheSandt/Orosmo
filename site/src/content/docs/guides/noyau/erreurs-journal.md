@@ -88,7 +88,7 @@ core::Result<rd::Mesh> makeLitCube(orosmo::rhi::Device &device, rd::LightManager
 }
 
 // En haut de la pile, on journalise une seule fois :
-auto cube = makeLitCube(**device, *lights, makeColoredCube());
+auto cube = makeLitCube(device, lights, makeColoredCube());
 if (!cube)
 {
     core::logError(cube.error());
@@ -96,7 +96,7 @@ if (!cube)
 }
 ```
 
-`device` et `lights` sont les `Result` rendus par `rhi::createDevice` et `LightManager::create`, comme dans les
+`device` et `lights` sont des références (`rhi::Device &`, `rd::LightManager &`), comme dans les
 [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
 
 `makeError` enregistre l'endroit où il est appelé. Avec du contexte ajouté, `describe()` montre donc la fonction qui a ajouté
@@ -112,11 +112,11 @@ Les fabriques du moteur ne rendent pas toutes le même type, d'où des écriture
 | Type rendu | Exemples | Accès |
 | --- | --- | --- |
 | `Result<T>` (valeur) | `Mesh::create`, `LightManager::create` | `mesh->setProgram(...)`, `std::move(*mesh)` |
-| `Result<std::unique_ptr<T>>` | `rhi::createDevice`, `SceneRenderer::create`, `CanvasRenderer::create` | `(*scene)->setLights(...)` ; `**device` pour la référence |
+| `Result<std::unique_ptr<T>>` | `rhi::createDevice`, `SceneRenderer::create`, `CanvasRenderer::create` | `(*sceneResult)->setLights(...)` ; `**sceneResult` pour la référence |
 | `Result<std::shared_ptr<T>>` | `PbrMaterial::create`, `ShaderLibrary::loadGraphics` | `*program` donne le `shared_ptr` |
 | `Result<>` | `LightManager::upload`, `Device::present` | tester `!r`, rien à lire |
 
-Un `Result<>` peut être ignoré quand l'échec ne change rien pour l'appelant ; on l'écrit alors `(void)(*device)->present();`
+Un `Result<>` peut être ignoré quand l'échec ne change rien pour l'appelant ; on l'écrit alors `(void)device.present();`
 pour que l'intention se voie.
 
 :::caution

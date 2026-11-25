@@ -28,15 +28,15 @@ explicites. L'ordre de destruction et les durées de vie sont détaillés dans
 ## L'image de SceneRenderer
 
 ```cpp
-auto encoder = (*device)->createCommandEncoder();
-(void)(*scene)->beginFrame(*encoder);             // l'encodeur doit vivre jusqu'à endFrame
-(void)(*scene)->setCamera(camera);
-(void)(*scene)->drawMesh(*cube, camera);           // enregistre seulement
-(void)(*scene)->endFrame({texture, format, size}); // construit et exécute le graphe de l'image
-(void)(*device)->submit(std::move(encoder));
+auto encoder = device.createCommandEncoder();
+(void)renderer.beginFrame(*encoder);             // l'encodeur doit vivre jusqu'à endFrame
+(void)renderer.setCamera(camera);
+(void)renderer.drawMesh(*cube, camera);           // enregistre seulement
+(void)renderer.endFrame({texture, format, size}); // construit et exécute le graphe de l'image
+(void)device.submit(std::move(encoder));
 ```
 
-Noms et types comme dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples) : `device`, `scene` et `cube` sont les `Result` rendus par les fabriques. Les `(void)` raccourcissent ; une vraie boucle teste chaque `Result`.
+Noms et types comme dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples) : `device`, `renderer` et `cube` sont des références, comme dans ce tableau. Les `(void)` raccourcissent ; une vraie boucle teste chaque `Result`.
 
 `drawMesh` enregistre le dessin : pipeline, constantes et transformation sont résolus à l'appel, mais le dessin est joué à
 `endFrame`. Les tampons du maillage doivent donc rester valides jusque-là. Chaque dessin copie sa transformation dans sa
@@ -127,9 +127,9 @@ Le renderer ne connaît que l'interface `RenderFeature` : `name`, `supports(Capa
 possédé, le renderer garde le plugin. Pour appeler les fonctions propres au plugin, on convertit le pointeur :
 
 ```cpp
-auto shadows = rd::ShadowFeature::create(**device, shaders, pipelines, shaderDir);
+auto shadows = rd::ShadowFeature::create(device, shaders, pipelines, shaderDir);
 if (!shadows) return std::unexpected(shadows.error());
-auto added = (*scene)->addFeature(std::move(*shadows));      // kUnsupported si supports() est faux, kAlreadyExists si le nom est pris
+auto added = renderer.addFeature(std::move(*shadows));      // kUnsupported si supports() est faux, kAlreadyExists si le nom est pris
 if (!added) return std::unexpected(added.error());
 auto *shadowFeature = static_cast<rd::ShadowFeature *>(*added);   // valide tant que le plugin est enregistré
 ```

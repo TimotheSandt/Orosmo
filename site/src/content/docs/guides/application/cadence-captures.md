@@ -51,11 +51,12 @@ Une `DeviceDesc` dont `surface.nativeWindow` reste nul crée un périphérique h
 rhi::DeviceDesc desc;
 desc.backend = rhi::Backend::kOpenGL;
 desc.surface.size = {1280, 720};            // taille du backbuffer hors écran
-auto device = rhi::createDevice(desc);
+auto created = rhi::createDevice(desc);
+rhi::Device &device = **created;       // à tester avant : voir « Créer le périphérique »
 
-auto backbuffer = (*device)->beginFrame();  // une texture RGBA8 de cette taille
+auto backbuffer = device.beginFrame();  // une texture RGBA8 de cette taille
 // ... mêmes appels que dans la boucle d'une fenêtre ...
-(void)(*device)->present();                 // hors écran : libère seulement les ressources détruites
+(void)device.present();                 // hors écran : libère seulement les ressources détruites
 ```
 
 Ce qui change : le backbuffer a la taille de `surface.size` (modifiable par `Device::resize`), `setVSync` est sans effet, et
@@ -65,7 +66,7 @@ lancez sous `xvfb-run -a`. Le projet de démarrage et la démo utilisent ce mode
 ## Enregistrer une image
 
 ```cpp
-if (auto saved = rd::savePng(**device, texture, "sortie/scene.png"); !saved)
+if (auto saved = rd::savePng(device, texture, "sortie/scene.png"); !saved)
     std::cerr << saved.error().message << '\n';
 ```
 

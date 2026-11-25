@@ -16,15 +16,15 @@ Pour choisir entre les deux, voir le tableau de [Instancing et culling](/guides/
 
 Code adapté de
 [`apps/demo/src/Scene/demo_scene.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/Scene/demo_scene.cpp)
-(`enableGpuDriven`, `renderInstances`). `instances` est le résultat de `InstanceRenderer::create` (un `Result<std::unique_ptr<InstanceRenderer>>`, comme dans [Instancing et culling](/guides/rendu-3d/instancing-culling/)) et `objects` l'`ObjectSet` du même guide.
+(`enableGpuDriven`, `renderInstances`). `instances` est un `rd::InstanceRenderer &` obtenu comme dans [Instancing et culling](/guides/rendu-3d/instancing-culling/)) et `objects` l'`ObjectSet` du même guide.
 
-Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` sont ceux de [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples ») : `device` est un `rhi::Device &`, et `shaderDirectory` vaut `GET_RESOURCE_PATH("shader/rhi")`.
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDir` sont ceux de [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples ») : `device` est un `rhi::Device &`, et `shaderDir` vaut `GET_RESOURCE_PATH("shader/rhi")`.
 
 ```cpp
 namespace rd = orosmo::renderer;
 
 // Une fois, après le chargement des maillages dans l'InstanceRenderer.
-auto gpu = rd::enableGpuDriven(renderer, *device, shaders, pipelines, shaderDirectory, **instances);
+auto gpu = rd::enableGpuDriven(renderer, device, shaders, pipelines, shaderDir, instances);
 rd::GpuDrivenFeature *gpuDriven = gpu ? *gpu : nullptr;   // nul : repli sur le chemin CPU
 // (gpu.error().code == kUnsupported sans compute ou dessin indirect)
 
@@ -41,7 +41,7 @@ else
 {
     rd::CullView view = rd::CullView::fromMatrices(camera.viewMatrix(), camera.projectionMatrix(), float(renderer.frameHeight()));
     objects.prepare(view, batches);
-    (void)(*instances)->draw(renderer, batches);
+    (void)instances.draw(renderer, batches);
 }
 
 // À l'arrêt, avant de détruire l'InstanceRenderer et ses maillages.

@@ -54,7 +54,7 @@ data.instanceAttributeSizes = {3, 1};              // emplacement 3 : décalage 
 data.instances = {0.0f, 0.0f, 0.0f, 1.0f,          // 4 flottants par instance, instance après instance
                   2.0f, 0.0f, 0.0f, 0.5f,
                   4.0f, 0.0f, 0.0f, 2.0f};
-auto mesh = rd::Mesh::create(*device, data);
+auto mesh = rd::Mesh::create(device, data);
 mesh->setProgram(*program);                        // votre programme (ci-dessous)
 (void)mesh->updateInstances(newValues);            // met à jour les instances sans recréer le maillage
 ```
@@ -73,7 +73,7 @@ d'instances propres et au plus 8 attributs de sommet. Pour écrire le programme,
 
 ## Exemple minimal avec InstanceRenderer
 
-Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDirectory` sont ceux de [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples ») : `device` est un `rhi::Device &`, et `shaderDirectory` vaut `GET_RESOURCE_PATH("shader/rhi")`.
+Dans les extraits, `device`, `shaders`, `pipelines`, `renderer` et `shaderDir` sont ceux de [Lire la boucle d'une application](/demarrer/premiere-application/) (section « Conventions des exemples ») : `device` est un `rhi::Device &`, et `shaderDir` vaut `GET_RESOURCE_PATH("shader/rhi")`.
 
 On enregistre maillages et matériaux dans un `InstanceRenderer`, on ajoute les objets à un `ObjectSet`, puis à chaque image on
 calcule les lots visibles et on les dessine. Code adapté de
@@ -87,12 +87,13 @@ calcule les lots visibles et on les dessine. Code adapté de
 namespace rd = orosmo::renderer;
 
 // Une fois : maillages, matériau, objets.
-auto instances = rd::InstanceRenderer::create(*device, shaders, pipelines, shaderDirectory);
-if (!instances) { /* instances.error().message */ }
+auto instancesResult = rd::InstanceRenderer::create(device, shaders, pipelines, shaderDir);
+if (!instancesResult) { /* instancesResult.error().message */ }
+rd::InstanceRenderer &instances = **instancesResult;
 
-rd::Mesh cube = *rd::Mesh::create(*device, cubeData);    // MeshData : attributeSizes = {3, 3, 3}
-auto meshId = (*instances)->addMesh(cube);               // non possédé : cube doit vivre plus longtemps
-const std::uint32_t materialId = (*instances)->addMaterial({}); // programme par défaut
+rd::Mesh cube = *rd::Mesh::create(device, cubeData);    // MeshData : attributeSizes = {3, 3, 3}
+auto meshId = instances.addMesh(cube);               // non possédé : cube doit vivre plus longtemps
+const std::uint32_t materialId = instances.addMaterial({}); // programme par défaut
 
 rd::ObjectSet objects;
 rd::ObjectDesc desc;
@@ -110,7 +111,7 @@ rd::InstanceBatchBuilder batches;
 rd::CullView view = rd::CullView::fromMatrices(camera.viewMatrix(), camera.projectionMatrix(), float(renderer.frameHeight()));
 view.minScreenRadius = 1.0f;                              // moins d'un pixel de rayon : rejeté
 const rd::VisibilityStats visible = objects.prepare(view, batches);
-auto drawn = (*instances)->draw(renderer, batches);       // un draw call par lot
+auto drawn = instances.draw(renderer, batches);       // un draw call par lot
 ```
 
 La couleur de l'instance (`ObjectDesc::color`) est multipliée à celle des sommets (blancs dans la démo). Le programme par
@@ -176,7 +177,7 @@ Si votre code trie déjà ses objets, remplissez l'`InstanceBatchBuilder` à la 
 rd::InstanceBatchBuilder batches;
 batches.add({meshId, materialId}, modelMatrix, glm::vec4(1.0f, 0.5f, 0.2f, 1.0f));
 batches.build();                          // obligatoire avant draw ; un nouvel add l'invalide
-auto drawn = (*instances)->draw(renderer, batches);
+auto drawn = instances.draw(renderer, batches);
 ```
 
 ## Culling seul

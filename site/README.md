@@ -13,6 +13,7 @@ npm ci                 # dépendances exactes de package-lock.json
 npm run dev            # serveur d'édition, http://localhost:4321
 npm run build          # site statique dans dist/
 npm run check-links    # liens internes de dist/ (après build)
+npm run check-anchors  # ancres (#id) des liens internes de dist/ (après build)
 npm run preview        # sert dist/
 docker build -t orosmo-site:test .   # image nginx (depuis ce dossier)
 ```
@@ -33,6 +34,7 @@ docker build -t orosmo-site:test .   # image nginx (depuis ce dossier)
 | `src/assets/captures/` | captures de la démo (images de référence de `docs/BASELINE/reference/`, en WebP) |
 | `src/content/i18n/fr.json` | textes de l'interface de Starlight remplacés |
 | `scripts/check-links.mjs` | vérification des liens internes |
+| `scripts/check-anchors.mjs` | vérification des ancres des liens internes |
 | `Dockerfile`, `nginx.conf`, `.dockerignore` | image de production |
 
 ## Règles de contenu

@@ -14,7 +14,7 @@ sidebar:
 
 namespace as = orosmo::assets;
 
-as::TextureCache textures(**device);   // device : voir « Lire la boucle d'une application »
+as::TextureCache textures(device);   // device : voir « Lire la boucle d'une application »
 
 auto albedo = textures.load(GET_RESOURCE_PATH("textures/brick.png"));   // couleur : sRGB, mips générés
 if (!albedo) { /* albedo.error().message */ }

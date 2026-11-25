@@ -27,12 +27,13 @@ if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)   // avant l
     return 1;
 desc.surface.nativeWindow = window.getWindow();                      // après
 
-auto device = rhi::createDevice(desc);
-if (!device)
+auto created = rhi::createDevice(desc);
+if (!created)
 {
-    std::cerr << device.error().message << '\n';                     // raison : « Vulkan: no usable physical device… »
+    std::cerr << created.error().message << '\n';                    // raison : « Vulkan: no usable physical device… »
     return 1;
 }
+rhi::Device &device = **created;
 ```
 
 `prepareWindowHints` doit précéder la création de la fenêtre, car les attributs de contexte dépendent du backend
@@ -74,13 +75,14 @@ auto tryBackend = [](rhi::Backend backend, platform::Window &window) -> core::Re
 };
 
 auto window = std::make_unique<platform::Window>("monjeu", 1280, 720, platform::WindowState::kWindowed);
-auto device = tryBackend(rhi::Backend::kVulkan, *window);
-if (!device && device.error().code == core::ErrorCode::kUnsupported)
+auto created = tryBackend(rhi::Backend::kVulkan, *window);
+if (!created && created.error().code == core::ErrorCode::kUnsupported)
 {
-    std::cerr << device.error().message << " ; repli sur OpenGL\n";
+    std::cerr << created.error().message << " ; repli sur OpenGL\n";
     window = std::make_unique<platform::Window>("monjeu", 1280, 720, platform::WindowState::kWindowed);
-    device = tryBackend(rhi::Backend::kOpenGL, *window);
+    created = tryBackend(rhi::Backend::kOpenGL, *window);
 }
+// puis, si created est valide : rhi::Device &device = **created;
 ```
 
 Adapté de `apps/demo/src/main.cpp` et `Game::createGraphics`. La démo prend la décision dans `demo::resolveBackend`
@@ -90,7 +92,7 @@ de commande : `--api vulkan|opengl`, `--list-apis`, `--choose-api`
 
 ## Lire les capacités
 
-`device->capabilities()` renvoie une `Capabilities` : nom du GPU et du pilote, limites (`maxTextureSize`,
+`device.capabilities()` renvoie une `Capabilities` : nom du GPU et du pilote, limites (`maxTextureSize`,
 `maxColorAttachments`, tailles de groupes compute…) et fonctions. Ne supposez jamais une fonction optionnelle : lisez-la.
 
 | Champ | Sens |
@@ -143,7 +145,7 @@ moteur ne les utilise pas.
 ## Validation
 
 Avec `validation = true`, les messages d'erreur et d'avertissement de la couche de validation sont comptés :
-`device->validationErrorCount()` doit rester à 0 (c'est ce que les tests exigent). Le starter et la démo l'activent en debug
+`device.validationErrorCount()` doit rester à 0 (c'est ce que les tests exigent). Le starter et la démo l'activent en debug
 seulement (`#ifdef DEBUG`). Sous Vulkan, la couche est `VK_LAYER_KHRONOS_validation` (paquet `vulkan-validationlayers`) ; si elle est
 absente, un avertissement est écrit et le rendu continue sans validation.
 

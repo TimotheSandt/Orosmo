@@ -26,7 +26,9 @@ if (!text.init(1280, 720) || !text.loadFont(GET_RESOURCE_PATH("fonts/Roboto-Regu
     /* échec : FreeType ou fichier de police */
 }
 
-auto canvas = rd::CanvasRenderer::create(*device, shaders, pipelines, shaderDirectory);
+auto canvasResult = rd::CanvasRenderer::create(device, shaders, pipelines, shaderDir);
+if (!canvasResult) { /* canvasResult.error().message */ }
+rd::CanvasRenderer &canvas = **canvasResult;
 
 // À chaque image, après la scène.
 rd::DrawList list;
@@ -34,7 +36,7 @@ list.logicalSize = {1280.0f, 720.0f};
 text.setDrawListSink(&list);
 text.renderText("Bonjour", 20.0f, 20.0f, 0.5f, glm::vec3(1.0f));   // taille = 48 * 0,5 = 24 pixels
 text.setDrawListSink(nullptr);
-(void)(*canvas)->render(*encoder, list, {outputTexture, orosmo::rhi::Format::kRGBA8Unorm, {1280, 720}}, true);
+(void)canvas.render(*encoder, list, {outputTexture, orosmo::rhi::Format::kRGBA8Unorm, {1280, 720}}, true);
 ```
 
 `loadFont(chemin, nom, tailleDeBase)` enregistre la police et la rend active si c'est la première. La taille de base est celle

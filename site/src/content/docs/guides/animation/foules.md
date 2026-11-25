@@ -9,7 +9,7 @@ sidebar:
 
 ## Exemple minimal
 
-Adapté de `apps/demo/src/Scene/anim_scene.cpp` (`buildModels`, `updateCrowd`, `render`). Il suppose un `model` (glTF avec une peau et des clips, voir [Importer un modèle glTF](/guides/contenus/gltf/)) et les objets décrits dans les commentaires de l'extrait, avec les noms de [Lire la boucle d'une application](/demarrer/premiere-application/) (`device`, `shaders`, `pipelines`, `scene`, `shaderDir`).
+Adapté de `apps/demo/src/Scene/anim_scene.cpp` (`buildModels`, `updateCrowd`, `render`). Il suppose un `model` (glTF avec une peau et des clips, voir [Importer un modèle glTF](/guides/contenus/gltf/)) et les objets décrits dans les commentaires de l'extrait, avec les noms de [Lire la boucle d'une application](/demarrer/premiere-application/) (`device`, `shaders`, `pipelines`, `renderer`, `shaderDir`).
 
 ```cpp
 #include <orosmo/anim/clip.hpp>
@@ -28,18 +28,19 @@ namespace as = orosmo::assets;
 namespace rd = orosmo::renderer;
 
 // Variables supposées (voir « Animer un personnage » pour les créer) :
-//   as::Model model;                       as::TextureCache textures(**device);
+//   as::Model model;                       as::TextureCache textures(device);
 //   rd::PbrShaderCache pbr(shaders, shaderDir);   std::shared_ptr<rd::PbrDefaults> defaults;
 //   std::vector<an::Clip> clips;           float time;   std::vector<float> speed, phase;   // un par agent
 
 // Mise en place (une fois). Un RenderModel DÉDIÉ à la foule : sans `skinnable`.
-auto render = as::RenderModel::create(**device, model, textures, pbr, defaults, {});
+auto render = as::RenderModel::create(device, model, textures, pbr, defaults, {});
 if (!render) { /* ... */ }
 auto crowdModel = std::make_unique<as::RenderModel>(std::move(*render));
 
-if (!an::CrowdRenderer::supportedBy((*device)->capabilities())) { /* pas de foule sur ce périphérique */ }
-auto crowd = an::CrowdRenderer::create(**device, shaders, pipelines, shaderDir, model, *crowdModel);
-if (!crowd) { /* crowd.error().message */ }
+if (!an::CrowdRenderer::supportedBy(device.capabilities())) { /* pas de foule sur ce périphérique */ }
+auto crowdResult = an::CrowdRenderer::create(device, shaders, pipelines, shaderDir, model, *crowdModel);
+if (!crowdResult) { /* crowdResult.error().message */ }
+an::CrowdRenderer &crowd = **crowdResult;
 
 constexpr std::size_t kAgents = 1000;
 std::vector<orosmo::core::Mat4> worlds(kAgents);       // où est chaque agent
@@ -50,10 +51,10 @@ for (std::size_t i = 0; i < kAgents; ++i) {
     float t = std::fmod(time * speed[i] + phase[i], clips[0].duration());   // un temps par agent
     (void)clips[0].sample(t, poses[i]);
 }
-(void)(*crowd)->setAgents(worlds, poses);              // calcule les palettes, envoie les tampons
-// ... scene.beginFrame, scene.setCamera ...
-auto stats = (*crowd)->draw(**scene);                    // un draw call par lot
-// ... scene.endFrame
+(void)crowd.setAgents(worlds, poses);              // calcule les palettes, envoie les tampons
+// ... renderer.beginFrame, renderer.setCamera ...
+auto stats = crowd.draw(renderer);                    // un draw call par lot
+// ... renderer.endFrame
 ```
 
 Les `worlds` sont des matrices monde (position, rotation, échelle de chaque agent). Chaque agent a sa propre `Pose` : on peut échantillonner le même clip à des temps différents, ou des clips différents.
@@ -84,12 +85,12 @@ Pièges :
 | `agentPalette(pose, out)` | Calcule la palette d'un agent (`jointCount()` matrices). Peut s'appeler depuis plusieurs fils. |
 
 ```cpp
-std::vector<orosmo::core::Mat4> palettes(kAgents * (*crowd)->jointCount());
+std::vector<orosmo::core::Mat4> palettes(kAgents * crowd.jointCount());
 for (std::size_t i = 0; i < kAgents; ++i) {            // boucle parallélisable
-    std::span<orosmo::core::Mat4> out(palettes.data() + i * (*crowd)->jointCount(), (*crowd)->jointCount());
-    (void)(*crowd)->agentPalette(poses[i], out);
+    std::span<orosmo::core::Mat4> out(palettes.data() + i * crowd.jointCount(), crowd.jointCount());
+    (void)crowd.agentPalette(poses[i], out);
 }
-(void)(*crowd)->setAgentPalettes(worlds, palettes);
+(void)crowd.setAgentPalettes(worlds, palettes);
 ```
 
 Tailles refusées avec `kInvalidArgument`. Les calculs sont déterministes.
