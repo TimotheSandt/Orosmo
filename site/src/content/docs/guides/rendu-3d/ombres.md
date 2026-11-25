@@ -79,8 +79,9 @@ maillage, celui que le compute de skinning réécrit au début de l'image : l'om
 :::caution
 En mode `kCached`, une ombre mobile n'est redessinée que si la matrice d'un caster change. Un personnage qui s'anime sur
 place (bras qui bougent, même position) garde alors l'ombre d'une ancienne pose. Pour un personnage animé, donnez au soleil
-`sun.shadowMode = rd::ShadowMode::kDynamic` : chaque vue due est redessinée à chaque image. Ce comportement est déduit du
-code du plugin ; ni les tests ni la démo (`--scene anim` n'active pas les ombres) ne le couvrent encore.
+`sun.shadowMode = rd::ShadowMode::kDynamic` : chaque vue due est redessinée à chaque image. Vérifié à la main avec le
+programme du [tutoriel](/demarrer/tutoriel-jeu-3d/) (en `kCached`, l'ombre ne bouge plus ; en `kDynamic`, elle suit la
+pose) ; aucun test automatique ni la démo ne couvrent encore ce cas.
 :::
 
 ## Un maillage écrit à la main
