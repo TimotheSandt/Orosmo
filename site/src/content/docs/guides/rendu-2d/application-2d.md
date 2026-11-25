@@ -14,6 +14,11 @@ par `orosmo init` a déjà les dossiers `shader/rhi` et `fonts` de ressources.
 
 ## Le programme
 
+Le programme choisit OpenGL (`rhi::Backend::kOpenGL`) pour rester court. Pour Vulkan ou le choix à l'exécution, voir
+[Choisir le backend graphique](/guides/application/peripherique/). Pour l'essayer dans un projet créé par `orosmo init`,
+remplacez `src/main.cpp` par ce fichier et supprimez les fichiers du panneau d'exemple, comme dans le
+[tutoriel du jeu 3D](/demarrer/tutoriel-jeu-3d/) : `rm src/HudView.cui src/hud_state.hpp`.
+
 ```cpp title="src/main.cpp"
 #include <orosmo/core/paths.hpp>
 #include <orosmo/platform/input_manager.hpp>
@@ -46,7 +51,7 @@ namespace ui = orosmo::ui;
 int main()
 {
     // 1. Fenêtre et périphérique.
-    platform::Window window("jeu2d", 1280, 720);
+    platform::Window window("jeu2d", 1280, 720, platform::WindowState::kWindowed);
     rhi::DeviceDesc desc;
     desc.backend = rhi::Backend::kOpenGL;
     if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
@@ -75,6 +80,9 @@ int main()
         std::cerr << "Échec de l'initialisation du rendu 2D\n";
         return EXIT_FAILURE;
     }
+    rd::Renderer2D &r2d = **r2dResult;
+    rd::CanvasRenderer &canvas = **canvasResult;
+    rd::FullscreenBlit &blit = **blitResult;
     ui::TextRenderer text;
     if (!text.init(1280, 720) || !text.loadFont(GET_RESOURCE_PATH("fonts/Roboto-Regular.ttf"), "default", 48))
     {
@@ -170,7 +178,7 @@ int main()
         }
         if (ok)
         {
-            ok = (*blit)->copy(*encoder, composed.color(0), (*blit)->linearSampler(), *backbuffer, format, "present");
+            ok = blit.copy(*encoder, composed.color(0), blit.linearSampler(), *backbuffer, format, "present");
         }
         auto submitted = device.submit(std::move(encoder));
         if (!ok || !submitted)
@@ -185,8 +193,9 @@ int main()
 }
 ```
 
-Il se compile comme le projet de démarrage (il lie les modules `platform`, `rhi`, `renderer` et `ui`) ; vérifié ici avec
-`g++ -std=c++23 -fsyntax-only` seulement, pas lancé.
+Il lie les modules `platform`, `rhi`, `renderer` et `ui`, comme le projet de démarrage. Le bloc ci-dessus, assemblé tel quel,
+passe `g++ -std=c++23 -fsyntax-only` ; il n'a pas été lancé. `Window` est créée en `kWindowed` : sans cet argument, elle s'ouvre
+en plein écran dans un build qui n'est pas en debug.
 
 ## Étapes
 
