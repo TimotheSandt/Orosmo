@@ -19,9 +19,11 @@ Les exemples suivent les noms de [Dessiner une scène](/guides/rendu-3d/scene/#n
 
 ```cpp
 auto created = rd::IblFeature::create(device, shaders, pipelines, shaderDir);   // kUnsupported sans compute
-if (!created) { /* garder l'éclairage sans IBL */ }
+if (!created)
+    return 1;   // ou : garder le rendu sans IBL, en sautant tout ce bloc (jamais de *created sur une erreur)
 auto added = renderer.addFeature(std::move(*created));
-if (!added) { /* erreur */ }
+if (!added)
+    return 1;   // idem : ne pas déréférencer *added
 auto *ibl = static_cast<rd::IblFeature *>(*added);
 
 if (auto r = ibl->setEnvironment(rd::uniformEquirect(glm::vec3(0.5f), 32, 16)); !r) { /* erreur */ }
