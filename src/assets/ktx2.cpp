@@ -1,5 +1,11 @@
 #include "orosmo/assets/ktx2.hpp"
 
+// vcpkg lie libktx en statique sur toutes les cibles (x64-mingw-static compris).
+// Sans KHRONOS_STATIC, ktx.h déclare l'API en dllimport sous Windows et l'édition
+// de liens cherche des symboles __imp_ktx* qui n'existent pas.
+#ifndef KHRONOS_STATIC
+#define KHRONOS_STATIC
+#endif
 #include <ktx.h>
 
 #include <algorithm>
