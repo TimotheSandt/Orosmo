@@ -48,6 +48,10 @@ Non-régression : 24 captures (12 configurations × OpenGL et Vulkan : HUD, ombr
 Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 718 cas, 718 verts (7 nouveaux), 1 ignoré ; ASan + UBSan sur les suites `renderer/*` et `assets/*` (`make demo-test SANITIZE=address,undefined TEST_ARGS='--test-suite=renderer/*,assets/*'`) : 260 cas verts, aucun rapport ; `make check` : OK ; `make demo-capture` : OK (références comparées) ; `make demo-vulkan-check` : OK, validation Vulkan silencieuse. Non vérifié : Windows et macOS (compilés par la CI au push).
 
 
+## M8 lot L0 : `--shadow-quality` de la démo
+
+Option de la démo, sans changement du moteur (`docs/05` M8, A79). `apps/demo/src/launch_options.hpp` : `ShadowQuality`, `parseShadowQuality`, `shadowSettingsForQuality` (préréglages `low`, `medium`, `high` = `ShadowSettings{}`), `shadowQualityLabel` ; `Game::setShadowSettings` passe les réglages à `ShadowFeature::create` ; le panneau de performances affiche « shadows on <qualité> ». Tests : `tests/demo/launch_options_tests.cpp` (lecture, défaut `high`, valeur invalide refusée, préréglages, `high` égal à `ShadowSettings{}`). Démo : `apps/demo/bin/debug/main --shadows on --shadow-quality low`.
+
 ## SDK (v0.6.2)
 
 Distribution du SDK, décision A76 (`docs/QUESTIONS.md`), contrat `docs/03` §16. Aucun code C++ du moteur touché ; aucune ligne de `docs/02` ne change d'état (BLD-01, BLD-02 : Partiel, Windows et macOS non vérifiés). Preuves sous Linux x64 (Ubuntu 24.04, g++ 13.3), branche `docs/SDK` fondée sur `feat/SDK-integ` (`788c332`) :

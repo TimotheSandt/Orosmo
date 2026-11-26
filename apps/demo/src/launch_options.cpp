@@ -117,6 +117,86 @@ std::optional<LightingMode> parseLightingMode(std::string_view value) noexcept
     return std::nullopt;
 }
 
+std::optional<ShadowQuality> parseShadowQuality(std::string_view value) noexcept
+{
+    constexpr std::pair<std::string_view, ShadowQuality> kQualities[] = {{"low", ShadowQuality::kLow}, {"medium", ShadowQuality::kMedium}, {"high", ShadowQuality::kHigh}};
+    for (const auto &[name, quality] : kQualities)
+    {
+        if (equalsIgnoreCase(value, name))
+        {
+            return quality;
+        }
+    }
+    return std::nullopt;
+}
+
+std::string_view shadowQualityName(ShadowQuality quality) noexcept
+{
+    switch (quality)
+    {
+    case ShadowQuality::kLow:
+        return "low";
+    case ShadowQuality::kMedium:
+        return "medium";
+    case ShadowQuality::kHigh:
+        break;
+    }
+    return "high";
+}
+
+orosmo::renderer::ShadowSettings shadowSettingsForQuality(ShadowQuality quality) noexcept
+{
+    orosmo::renderer::ShadowSettings settings{};
+    switch (quality)
+    {
+    case ShadowQuality::kLow:
+        settings.cascadeResolution = 256;
+        settings.cascadeCount = 2;
+        settings.atlasSize = 1024;
+        settings.spotResolution = 256;
+        settings.pcfRadius = 0;
+        settings.maxDistance = 40.0f;
+        settings.cascadeUpdateInterval = {1, 4, 8, 16};
+        settings.maxViewUpdatesPerFrame = 4;
+        break;
+    case ShadowQuality::kMedium:
+        settings.cascadeResolution = 512;
+        settings.cascadeCount = 3;
+        settings.atlasSize = 2048;
+        settings.spotResolution = 512;
+        settings.pcfRadius = 1;
+        settings.maxDistance = 60.0f;
+        settings.cascadeUpdateInterval = {1, 2, 4, 8};
+        settings.maxViewUpdatesPerFrame = 6;
+        break;
+    case ShadowQuality::kHigh:
+        break; // réglages du moteur
+    }
+    return settings;
+}
+
+bool sameShadowSettings(const orosmo::renderer::ShadowSettings &left, const orosmo::renderer::ShadowSettings &right) noexcept
+{
+    return left.atlasSize == right.atlasSize && left.minTileSize == right.minTileSize && left.cascadeCount == right.cascadeCount &&
+           left.cascadeResolution == right.cascadeResolution && left.maxDistance == right.maxDistance && left.splitLambda == right.splitLambda &&
+           left.fadeFraction == right.fadeFraction && left.depthExtension == right.depthExtension && left.cascadeUpdateInterval == right.cascadeUpdateInterval &&
+           left.maxViewUpdatesPerFrame == right.maxViewUpdatesPerFrame && left.pcfRadius == right.pcfRadius && left.constantBias == right.constantBias &&
+           left.slopeBias == right.slopeBias && left.normalOffset == right.normalOffset && left.spotResolution == right.spotResolution &&
+           left.maxSpotShadows == right.maxSpotShadows;
+}
+
+std::string_view shadowQualityLabel(const orosmo::renderer::ShadowSettings &settings) noexcept
+{
+    for (const ShadowQuality quality : {ShadowQuality::kLow, ShadowQuality::kMedium, ShadowQuality::kHigh})
+    {
+        if (sameShadowSettings(settings, shadowSettingsForQuality(quality)))
+        {
+            return shadowQualityName(quality);
+        }
+    }
+    return "custom";
+}
+
 std::optional<UiMode> parseUiMode(std::string_view value) noexcept
 {
     if (equalsIgnoreCase(value, "off"))
@@ -530,6 +610,15 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.shadows = *value == "on";
         }
+        else if (matchOption("--shadow-quality", value))
+        {
+            const auto quality = value ? parseShadowQuality(*value) : std::nullopt;
+            if (!quality)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --shadow-quality (low, medium or high): " + value.value_or(""));
+            }
+            options.shadowQuality = *quality;
+        }
         else if (matchOption("--transparent-shadow", value))
         {
             const auto mode = value ? orosmo::renderer::transparentShadowModeFromName(*value) : std::unexpected(makeError(ErrorCode::kInvalidArgument, "").error());
@@ -613,7 +702,7 @@ void printUsage(std::ostream &out)
         << "              [--theme dark|light|framed]"
         << " [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
         << "              [--instances N] [--gpu-driven off|on] [--debug-view none|normals|albedo|overdraw|lod|wireframe|motion] [--freeze-frustum]\n"
-        << "              [--shadows off|on] [--transparent-shadow none|full|masked|dithered] [--scene default|mixed|anim] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
+        << "              [--shadows off|on] [--shadow-quality low|medium|high] [--transparent-shadow none|full|masked|dithered] [--scene default|mixed|anim] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
         << "              [--aa none|fxaa|smaa|taa]\n"
         << "              [--headless] [--vsync [on|off]] [--fps-limit N] [--direct-present on|off] [--gpu-timings auto|on|off]\n"
         << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
@@ -642,6 +731,8 @@ void printUsage(std::ostream &out)
     out << "          from the previous frame); GPU and CPU culling counts are logged side by side. Falls back to CPU culling.\n";
     out << "Shadows  : --shadows on draws cascaded sun shadows with a cache (redrawn only where something moves); the shadow\n";
     out << "          update statistics are logged. Off by default.\n";
+    out << "          --shadow-quality low|medium|high picks the shadow preset (cascade and spot resolution, cascade count, atlas size,\n";
+    out << "          PCF radius, distance, update rate); high (default) is the engine defaults. Needs --shadows on.\n";
     out << "          --transparent-shadow none|full|masked|dithered makes the panes of --scene mixed cast a shadow of that kind\n";
     out << "          (needs --shadows on; absent: the panes cast no shadow).\n";
     out << "Post:     --post hdr renders the scene in HDR with ACES tonemapping; bloom adds bloom; full adds auto exposure,\n";
