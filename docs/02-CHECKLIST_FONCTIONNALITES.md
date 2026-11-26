@@ -34,7 +34,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | --- | --- | --- | --- | --- |
 | PLAT-01 | Fenêtre | P0 | Abstraction au-dessus de GLFW : création, redimensionnement, plein écran, DPI élevé, surface pour le RHI. | Partiel (GLFW caché, DPI lisible ; ×2 non observé) |
 | PLAT-02 | InputManager | P0 | Existe déjà. Dispositions QWERTY/AZERTY/DVORAK, remappage, état par image. | Partiel (molette faite) |
-| PLAT-03 | Manettes | P2 | Axes, boutons, hot-plug. | Absent |
+| PLAT-03 | Manettes | P2 | Axes, boutons, hot-plug. | Partiel (M8 L9 : sous-ensemble pour UI-09, `platform::Gamepads` ; manque vibrations, remappage, joysticks sans disposition connue, G223) |
 | PLAT-04 | Mode sans fenêtre | P0 | Démarrage sans fenêtre (génération et export en ligne de commande) sur les trois systèmes. | Partiel (`--headless` sous Linux) |
 | PLAT-05 | Saisie de texte | P1 | Texte Unicode, composition IME, presse-papiers. | Partiel (texte Unicode, presse-papiers du système en mode fenêtré par `ui::useSystemClipboard` ; pas de composition IME : G107) |
 
@@ -181,7 +181,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | UI-06 | Mise en page complète | P0 | `VBox`, `HBox`, grille, superposition, marges, alignement, tailles fixes, flexibles et minimales. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | UI-07 | Thèmes en JSON | P0 | Fichier de données avec **jetons** (`color.primary`, `radius.medium`, polices, tailles, marges, ombres, bordures) et états (normal, survol, appuyé, désactivé, focus) ; les widgets lisent le thème, jamais de valeur en dur ; changement à chaud ; variantes clair/sombre ; surcharge locale possible dans le langage. | Partiel — preuve : `docs/STATUS.md`, « M3 » (ajouts) ; reste des tailles en dur dans les widgets (G111) |
 | UI-08 | Rechargement à chaud de l'interface | P1 | Mode développement : le même arbre est interprété ou chargé en bibliothèque dynamique et se met à jour à l'enregistrement ; mode final : C++ généré lié directement. | Absent |
-| UI-09 | Navigation et accessibilité de base | P1 | Clavier et manette, focus visible, ordre de tabulation. | Absent |
+| UI-09 | Navigation et accessibilité de base | P1 | Clavier et manette, focus visible, ordre de tabulation. | Fait (M8 L9 ; défilement vers le widget focalisé : G222) |
 | UI-10 | Inspecteur d'interface | P1 | Arbre des composants et tailles calculées affichés dans les outils de debug. | Absent |
 | UI-11 | Spécification et tests du langage | P0 | `docs/UI_LANGUAGE.md` : grammaire, exemples, limites ; tests de compilation avec entrées valides et invalides et messages d'erreur attendus. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | UI-12 | Paramètres réfléchis → curseurs | P1 | Une structure de paramètres réfléchie (CORE-12) est affichée automatiquement en widgets adaptés au type et à la plage. | Fait — preuve : `docs/STATUS.md`, « M3 » |

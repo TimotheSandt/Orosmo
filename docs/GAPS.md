@@ -135,7 +135,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | TER-13 | Lancer de rayon sur le terrain | Archivé (A37) | `raycastTerrain`, cohérent avec la profondeur rendue. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | UI-04 | Outils de debug | Absent | Absent. | M8 |
 | UI-08 | Rechargement à chaud de l'interface | Absent | Absent. | M8 |
-| UI-09 | Navigation et accessibilité de base | Absent | Absent. | M8 |
+| UI-09 | Navigation et accessibilité de base | Fait (M8 L9) | Ordre de tabulation (`tabIndex`, `.focusable`), flèches entre voisins, manette, anneau de focus du thème. Reste : défilement vers le widget focalisé (G222). Preuve : `docs/STATUS.md`, section « M8 lot L9 ». | — |
 | UI-10 | Inspecteur d'interface | Absent | Absent. | M8 |
 | UI-12 | Paramètres réfléchis → curseurs | Fait (M3) | `reflectedPanel`, `ParamPanel` du langage. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 
@@ -148,7 +148,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | ASSET-06 | OBJ | Absent | Absent. | Après M10 (P2) |
 | EXT-01 | Plugin de rendu voxel | Absent | Absent (pas de graphe de passes, voir REN-01). | M10 |
 | EXT-02 | Tracé de rayons logiciel sur voxels | Absent | Absent. | Après M10 (P2) |
-| PLAT-03 | Manettes | Absent | Aucune manette. | Après M10 (P2) ; UI-09 la demande en M8 |
+| PLAT-03 | Manettes | Partiel (M8 L9) | Sous-ensemble pour UI-09 (`platform::Gamepads` : boutons, axes, branchement à chaud, manettes à disposition standard). **Manque** : vibrations, remappage, joysticks sans disposition connue, événements par rappel (G223). | Après M10 (P2) |
 | REN-09 | Ombres avancées | Absent | Absent. | Après M10 (P2) |
 | REN-12 | Extensions de matériaux | Absent | Absent. | Après M10 (P2) |
 | REN-15 | Réflexions et GI | Absent | Absent. | Après M10 (P2) |
@@ -552,3 +552,10 @@ Fondations de M8 (A79 lot L1) : `platform::DynamicLibrary`, liaison de la biblio
 | G231 | Nombre de symboles exportés par l'hôte (limite PE de 65 535) | Mesuré sous Linux : **10 109** symboles exportés par l'exécutable des tests lié avec `-rdynamic` (`nm -D --defined-only`, moteur et dépendances tierces compris). Sous MinGW, la règle de lien des tests affiche le compte de la table d'exports (`objdump -p`) dans le journal de la CI. Si l'exécutable du jeu (lot L5) approche la limite : exclure les archives tierces des exports (`-Wl,--exclude-libs,<archives>`), la bibliothèque de jeu n'ayant besoin que du moteur. | M8 L5 |
 | G232 | Copies laissées après un plantage | `DynamicLibrary` efface sa copie (`<nom>-<pid>-<n><ext>`) au déchargement ; un processus tué la laisse à côté de l'original. Le module de jeu (L5) doit effacer les copies périmées au démarrage (motif `<nom>-*-*<ext>`, pid absent). | M8 L5 |
 | G233 | TSan : réglage de l'ASLR sur les noyaux récents | Le runtime TSan de GCC 13 refuse l'entropie mmap de 32 bits des noyaux récents (« unexpected memory mapping ») : le job CI `tsan` passe `vm.mmap_rnd_bits=28` ; en local, même réglage (`sudo sysctl -w vm.mmap_rnd_bits=28`) ou `setarch -R make demo-test-unit SANITIZE=thread`. Sans affichage ni pilote Vulkan (`env -u DISPLAY -u WAYLAND_DISPLAY VK_DRIVER_FILES=/nonexistent.json`, comme le job) : **439 cas unitaires propres sous TSan** (dont `core/spsc_queue` et `platform/dynamic_library`). Avec un affichage, TSan signale une course dans Mesa et libxcb (bibliothèques non instrumentées) : `GPU_TEST_SUITES` du `Makefile` (`demo-test-unit`) n'exclut pas toutes les suites qui ouvrent un périphérique (`anim/*`, `assets/*`, `apps/demo*`…) ; elles s'ignorent seulement faute de GPU. Classement à revoir (lot L4, test concurrent simulation + rendu). | M8 L4 |
+
+## Ajouts de M8 lot L9 (G222, G223)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G222 | Focus hors de la vue d'une `ScrollView` | Tab ou une flèche peut donner le focus à un widget défilé hors de sa `ScrollView` : la vue ne défile pas vers lui (l'anneau de focus est découpé comme le widget, donc invisible). Les flèches choisissent le voisin par géométrie, y compris hors de la zone visible. | M10 |
+| G223 | Manettes : reste de PLAT-03 | `platform::Gamepads` ne lit que les manettes à disposition standard reconnues par GLFW, par scrutation à chaque image ; ni vibration, ni remappage, ni joystick quelconque, ni deuxième stick ou gâchettes dans la navigation de l'interface. Aucune manette réelle essayée (tests par `Gamepads::simulate`) ; Windows et macOS non vérifiés. | Après M10 (P2) |

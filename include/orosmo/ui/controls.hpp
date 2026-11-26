@@ -62,6 +62,7 @@ class RangeSlider : public Widget
     void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
     bool onSecondaryClick(Ui &ui, glm::vec2 mouse) override;
     void onKey(Ui &ui, int key) override;
+    bool usesArrowKey(int key, bool fromGamepad) const override;
     // Poignée prise par le dernier appui ou la dernière touche (0 : basse, 1 : haute).
     int activeHandle() const noexcept { return handle_; }
 
@@ -143,6 +144,7 @@ class TextArea : public Widget
     void onPress(Ui &ui, glm::vec2 mouse) override;
     void onDrag(Ui &ui, glm::vec2 mouse) override;
     void onKey(Ui &ui, int key) override;
+    bool usesArrowKey(int key, bool fromGamepad) const override;
     void onText(Ui &ui, std::string_view text) override;
     bool onWheel(Ui &ui, glm::vec2 wheel) override;
     void onFocusChanged(Ui &ui, bool focused) override;

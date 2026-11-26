@@ -525,6 +525,14 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.hoverId = std::move(*value);
         }
+        else if (matchOption("--focus", value))
+        {
+            if (!value || value->empty())
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after --focus");
+            }
+            options.focusId = std::move(*value);
+        }
         else if (matchOption("--click", value))
         {
             if (!value || value->empty())
@@ -679,6 +687,11 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
         return makeError(ErrorCode::kInvalidArgument, "--click requires --capture-frames 3 or more");
     }
 
+    if (!options.focusId.empty() && options.captureFrames < 2)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "--focus requires --capture-frames 2 or more");
+    }
+
     if (!options.hoverId.empty() && options.captureFrames < 2)
     {
         return makeError(ErrorCode::kInvalidArgument, "--hover requires --capture-frames 2 or more");
@@ -705,13 +718,14 @@ void printUsage(std::ostream &out)
         << "              [--shadows off|on] [--shadow-quality low|medium|high] [--transparent-shadow none|full|masked|dithered] [--scene default|mixed|anim] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
         << "              [--aa none|fxaa|smaa|taa]\n"
         << "              [--headless] [--vsync [on|off]] [--fps-limit N] [--direct-present on|off] [--gpu-timings auto|on|off]\n"
-        << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
+        << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>] [--focus <id>]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : Vulkan by default; --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
     out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
     out << "Example: Orosmo --api opengl --ui full --theme dark --tab scene\n";
     out << "Capture : renders N frames (default 10) at WxH (default 1280x720, min 640x400), writes <dir>/scene.png and\n";
-    out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames, --hover >= 2).\n";
+    out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames, --hover >= 2);\n"
+        << "          --focus gives the keyboard focus to a widget, focus ring shown (>= 2 frames).\n";
     out << "Headless: --headless creates no window (offscreen device, fixed time step), renders N frames and exits;\n";
     out << "          combine it with --capture <dir> to save the images.\n";
     out << "Pacing  : vertical synchronization is on by default; --vsync off removes it (no limit), --fps-limit N (10 to 1000) caps\n";

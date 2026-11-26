@@ -25,6 +25,12 @@ TEST_SUITE("ui/cui")
         h.click(UiHarness::center(*low));
         CHECK(state.quality == 0);
         CHECK(root->findAs<ui::RangeSlider>("range") != nullptr);
+        // UI-09 : ordre de tabulation et prise de focus décrits dans le langage.
+        CHECK(high->tabIndex() == 1);
+        CHECK(low->tabIndex() == 0);
+        CHECK(root->find("count")->tabIndex() == -1);
+        CHECK_FALSE(root->find("range")->canTakeFocus());
+        CHECK(high->canTakeFocus());
         CHECK(root->findAs<ui::SpinBox>("count") != nullptr);
         CHECK(root->findAs<ui::TextArea>("notes") != nullptr);
         CHECK(root->findAs<ui::ColorEditor>("color")->color() == ui::Color(0.2f, 0.4f, 0.6f, 1.0f));

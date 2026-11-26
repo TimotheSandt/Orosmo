@@ -889,10 +889,30 @@ void Game::update()
                 input.mouse = target->rect().position + target->rect().size * 0.5f;
                 input.mouseDown = !this->clickId.empty() && this->renderedFrames == 1;
             }
+            if (!this->focusId.empty() && this->renderedFrames >= 1)
+            {
+                ui::Widget *target = this->fullUi->find(this->focusId);
+                if (target == nullptr || !target->canTakeFocus() || !target->visibleInTree())
+                {
+                    LOG_ERROR(1, "Capture: no visible focusable widget with id '", this->focusId, "' (--focus)");
+                    std::cerr << "Orosmo: no visible focusable widget with id '" << this->focusId << "' (--focus)\n";
+                    this->captureFailed = true;
+                    if (this->headless)
+                    {
+                        this->headlessFrameFailed = true;
+                    }
+                    this->window.requestClose();
+                    return;
+                }
+                this->fullUi->focus(target); // comme après Tab : anneau de focus visible
+                this->fullUi->setFocusVisible(true);
+            }
         }
         else if (!this->headless && wasFullUi)
         {
             input = ui::readWindowInput(this->window, deltaTime);
+            this->gamepads.poll(); // UI-09 : manette branchée à chaud, croix / stick / A / B / LB / RB
+            this->gamepadNavigator.apply(this->gamepads.first(), input);
         }
 
         this->fullUi->update(input, viewport);

@@ -1,4 +1,4 @@
-// expect: 5:19: error: 'Label' has no modifier 'colour' (modifiers: width, height, margin, align, span, id, tooltip, visible, enabled, style, variant, overflow, textAlign, onHover, onFocus)
+// expect: 5:19: error: 'Label' has no modifier 'colour' (modifiers: width, height, margin, align, span, id, tooltip, visible, enabled, style, variant, overflow, tabIndex, focusable, textAlign, onHover, onFocus)
 import "orosmo/ui"
 
 view V {

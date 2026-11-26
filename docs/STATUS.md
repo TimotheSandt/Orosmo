@@ -70,6 +70,18 @@ Après la revue de la PR #15 (`fix/SDK-review1`, 2026-11-26) : `make e2e-init` v
 
 Non prouvé : Windows et macOS (G215, G216 ; `install.ps1` jamais exécuté), installeurs et `orosmo install` depuis GitHub (après publication), `update` de bout en bout, chemins avec espaces (G214, atténué), redirections hors curl (G221). Limites : G214 à G220.
 
+## Identifiants de `docs/02` touchés par M8 lot L9 (UI-09)
+
+Preuves sous Linux x64 (g++ 13.3, Mesa 26.1.6, Intel Arc), branche `feat/M8-L9-ui-focus`. Windows et macOS non vérifiés (CI).
+Décisions sur les ambiguïtés : `docs/QUESTIONS.md`, A79, « Lot L9 ».
+
+| ID | Avant | Après | Preuve |
+| --- | --- | --- | --- |
+| UI-09 | Absent | **Fait** | Ordre de tabulation : `include/orosmo/ui/widget.hpp` `Widget::setTabIndex`, `setFocusable`, `canTakeFocus` ; `src/ui/ui.cpp` `Ui::focusNext` (positif croissant, puis 0 dans l'ordre de l'arbre, négatif exclu). Flèches : `Ui::moveFocus` (voisin le plus proche, sans boucler), `Widget::usesArrowKey` (curseur, champ de texte, liste, menus gardent leurs flèches). Manette : `include/orosmo/ui/gamepad_navigation.hpp` `GamepadNavigator` → `InputFrame::navigation`. Focus visible : style de thème `focusRing` (`res/themes/base.json`, jetons `color.focus`, `border.focus`, `focus.ringGap`), `Ui::drawFocusRing`, `Ui::focusVisible` (clavier ou manette, pas la souris). Langage : `.tabIndex(n)`, `.focusable(false)`, moins unaire (`tools/cui-rs/src/engine.rs`, `parser.rs`). Tests : `tests/ui/navigation_tests.cpp` (6 cas : ordre de tabulation, grille 3 x 3 aux flèches, flèches gardées par un curseur, manette simulée avec branchement, répétition, A / B / LB / RB, liste déroulante fermée par B, anneau de focus du thème), `tests/ui/cui_widgets_tests.cpp` (`tabIndex` et `focusable` compilés depuis `tests/ui/cui/test_widgets.cui`), `tools/cui-rs/src/tests.rs` `ui09_tab_index_and_focusable_describe_the_keyboard_order`. Démo : `apps/demo/bin/debug/main --api opengl --headless --ui full --tab controls --focus detailMedium --capture <dir>` ; `make demo-capture` compare à `docs/BASELINE/reference/ui-opengl-controls-focus-1280x720.png`. Résultats : `make demo-test` 717 / 717 (1 ignoré) ; `make demo-test-unit SANITIZE=address,undefined` (après `make fclean demo-fclean`) 432 / 432 sans signalement ; `make cui-test` vert (17 tests `cargo` de `cui`, 18 cas d'erreur) ; `make check` vert ; captures sans `--focus` identiques avant / après (0 pixel, onglets `controls`, `widgets`, `windows`, liste ouverte) ; capture avec focus identique OpenGL / Vulkan (0 pixel), validation Vulkan 0 message. Reste : G222 (défilement vers le widget focalisé) |
+| PLAT-03 | Absent | Partiel | `include/orosmo/platform/gamepad.hpp` `Gamepads` (`poll` par GLFW, `simulate`, `events`, `first`), `GamepadState`, `GamepadButton`, `GamepadAxis` ; tests par `Gamepads::simulate` dans `tests/ui/navigation_tests.cpp` ; démo : manette branchée sur l'interface complète (`apps/demo/src/Game/Game.cpp`). **Manque** : vibrations, remappage, joysticks sans disposition connue, aucune manette réelle essayée (G223) |
+
+Totaux de `docs/02` : Fait +1 (UI-09), Partiel +1 (PLAT-03), Absent −2.
+
 ## Identifiants de `docs/02` touchés par M14
 
 Preuves sous Linux (Node 24.20.0, npm 11.19.0, Docker 29.1.3), sur `feat/M14-site` puis depuis un clone propre (`docs/releases/M14.md`).
