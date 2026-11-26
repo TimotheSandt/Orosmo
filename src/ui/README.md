@@ -77,7 +77,7 @@ l'arbre ; négatif hors de l'ordre ; `setFocusable(false)` : jamais de focus). U
 (`Widget::usesArrowKey`) passe le focus au voisin dans sa direction (`Ui::moveFocus` : plus proche bord à bord, décalage
 perpendiculaire pénalisé, sans boucler) ; sans focus, les flèches du clavier ne font rien (l'application peut s'en servir). La
 manette passe par `InputFrame::navigation` (`GamepadNavigator`) : sans focus, une direction le donne au premier widget ; un
-curseur horizontal y laisse Haut et Bas à la navigation ; LB / RB sortent même d'un éditeur qui garde Tab. Après une navigation au
+curseur horizontal y laisse Haut et Bas à la navigation ; LB / RB sortent même d'un éditeur qui garde Tab. Un `RangeSlider` passe d'une poignée à l'autre avec Entrée (A à la manette) ; Début / Fin restent au clavier. Après une navigation au
 clavier ou à la manette (`Ui::focusVisible`), l'anneau de focus du style `focusRing` du thème est dessiné autour du widget ; un clic
 l'éteint. Un thème sans `focusRing` n'en dessine pas.
 

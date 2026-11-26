@@ -293,6 +293,8 @@ void RangeSlider::onKey(Ui &ui, int key)
         handle_ = 0;
     else if (key == kKeyEnd)
         handle_ = 1;
+    else if (key == kKeyEnter)
+        handle_ = 1 - handle_; // UI-09 : Entrée (A à la manette, qui n'a ni Début ni Fin) passe à l'autre poignée
 }
 
 glm::vec2 RangeSlider::measureContent(Ui &ui, glm::vec2, const Style &style)

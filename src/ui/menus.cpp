@@ -95,7 +95,7 @@ std::vector<Widget *> menuEntries(const Widget &list)
 {
     std::vector<Widget *> out;
     for (const auto &c : list.children())
-        if (c->visible() && c->enabled() && c->focusable())
+        if (c->visible() && c->enabled() && c->canTakeFocus())
             out.push_back(c.get());
     return out;
 }
@@ -131,7 +131,7 @@ void switchBarMenu(Ui &ui, Menu &current, int direction, bool openIt)
 {
     std::vector<Menu *> menus;
     for (const auto &c : current.parent()->children())
-        if (auto *m = dynamic_cast<Menu *>(c.get()); m != nullptr && m->visible() && m->enabled())
+        if (auto *m = dynamic_cast<Menu *>(c.get()); m != nullptr && m->visible() && m->enabled() && m->canTakeFocus())
             menus.push_back(m);
     const auto it = std::find(menus.begin(), menus.end(), &current);
     if (it == menus.end() || menus.size() < 2)
@@ -166,7 +166,7 @@ bool menuEntryKey(Ui &ui, Widget &self, int key)
         if (key == kKeyLeft && menu == nullptr)
             return true; // menu contextuel : rien à gauche
         ui.closePopupOf(*owner);
-        ui.focus(owner->focusable() ? owner : nullptr);
+        ui.focus(owner->canTakeFocus() ? owner : nullptr);
         return true;
     }
     case kKeyRight:

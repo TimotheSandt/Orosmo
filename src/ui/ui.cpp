@@ -1111,7 +1111,10 @@ void Ui::drawFocusRing(renderer::DrawList &list) const
 {
     const Widget *f = focused();
     if (f == nullptr || !theme().hasWidget("focusRing"))
-        return; // un thème sans anneau n'en dessine pas (aucune valeur par défaut en dur)
+        return;
+    for (const Widget *w = f; w != nullptr; w = w->parent())
+        if (!w->visible())
+            return; // masqué depuis la dernière mise à jour (action différée) : le focus reste, l'anneau n'est pas dessiné // un thème sans anneau n'en dessine pas (aucune valeur par défaut en dur)
     const Style &s = theme().style("focusRing", WidgetState::kNormal);
     if (s.borderWidth <= 0.0f || s.border.a <= 0.0f)
         return;

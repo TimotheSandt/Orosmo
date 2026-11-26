@@ -115,6 +115,18 @@ struct Event
 
 using Handler = std::function<void(const Event &)>;
 
+// `.tabIndex(expr)` du langage d'interface : valeur bornée à `int`, 0 si elle n'est pas finie (aucune conversion indéfinie).
+inline int tabIndexFrom(double value) noexcept
+{
+    if (!std::isfinite(value))
+        return 0;
+    if (value <= static_cast<double>(std::numeric_limits<int>::min()))
+        return std::numeric_limits<int>::min();
+    if (value >= static_cast<double>(std::numeric_limits<int>::max()))
+        return std::numeric_limits<int>::max();
+    return static_cast<int>(value);
+}
+
 // Appelle `f(event)` si `f` accepte un `const Event &`, sinon `f()` : le code généré par le langage d'interface lie ainsi une
 // fonction C++ quelle que soit sa signature (avec ou sans l'événement).
 template <typename F> Handler handler(F f)
@@ -295,6 +307,14 @@ class Widget
     // Faux : le widget ne prend jamais le focus (ni Tab, ni flèches, ni clic), même s'il le pourrait (`focusable`).
     Widget &setFocusable(bool allowed) noexcept { focusAllowed_ = allowed; return *this; }
     bool canTakeFocus() const { return focusAllowed_ && focusable(); }
+    // Vrai si le widget et tous ses parents sont visibles (`visible` ne regarde que le widget).
+    bool visibleInTree() const
+    {
+        for (const Widget *w = this; w != nullptr; w = w->parent_)
+            if (!w->visible())
+                return false;
+        return true;
+    }
 
     // ── Événements ──
     Widget &onClick(Handler h) { handlers_[0] = std::move(h); return *this; }

@@ -5,6 +5,8 @@
 #include "ui/ui_harness.hpp"
 
 #include <orosmo/platform/gamepad.hpp>
+#include <orosmo/ui/controls.hpp>
+#include <orosmo/ui/menus.hpp>
 #include <orosmo/ui/gamepad_navigation.hpp>
 
 namespace ui = orosmo::ui;
@@ -325,5 +327,83 @@ TEST_SUITE("UI-09 navigation")
             REQUIRE(rings.size() == 1);
             CHECK(rings[0].position == b[5]->rect().position - glm::vec2(3.0f));
         }
+    }
+}
+
+TEST_SUITE("UI-09 navigation (revue de la PR #18)")
+{
+    TEST_CASE("UI-09 setFocusable(false) is honoured in menus: opening skips the entry, the bar skips the menu")
+    {
+        UiHarness h;
+        auto root = std::make_unique<ui::VBox>();
+        auto &bar = root->emplace<ui::MenuBar>();
+        auto &file = bar.emplace<ui::Menu>("File");
+        auto &hidden = file.items().emplace<ui::MenuItem>("Hidden");
+        hidden.setFocusable(false);
+        auto &save = file.items().emplace<ui::MenuItem>("Save");
+        auto &edit = bar.emplace<ui::Menu>("Edit");
+        edit.setFocusable(false);
+        auto &view = bar.emplace<ui::Menu>("View");
+        view.items().emplace<ui::MenuItem>("Grid");
+        h.ui.setRoot(std::move(root));
+        h.frame();
+
+        h.keys({ui::kKeyTab});
+        REQUIRE(h.ui.focused() == &file);
+        h.keys({ui::kKeyDown}); // ouvre : la première entrée focalisable
+        CHECK(h.ui.focused() == &save);
+        h.keys({ui::kKeyEscape});
+        REQUIRE(h.ui.focused() == &file);
+        h.keys({ui::kKeyRight}); // barre : « Edit » est sauté
+        CHECK(h.ui.focused() == &view);
+    }
+
+    TEST_CASE("UI-09 the gamepad reaches the high handle of a RangeSlider (A switches the handle)")
+    {
+        UiHarness h;
+        double low = 20.0;
+        double high = 80.0;
+        auto root = std::make_unique<ui::VBox>();
+        root->setAlign(ui::Align::kStart, ui::Align::kStart);
+        auto &range = root->emplace<ui::RangeSlider>(ui::numberBinding(low), ui::numberBinding(high), 0.0, 100.0, 1.0);
+        range.setWidth(ui::SizeSpec::fixed(120));
+        h.ui.setRoot(std::move(root));
+        h.frame();
+        ui::GamepadNavigator nav;
+        pf::GamepadState pad;
+        pad.connected = true;
+        const auto press = [&](pf::GamepadButton b)
+        {
+            pad.setButton(b, true);
+            padFrame(h, nav, &pad);
+            pad.setButton(b, false);
+            padFrame(h, nav, &pad);
+        };
+        press(pf::GamepadButton::kDpadDown); // sans focus : le premier widget
+        REQUIRE(h.ui.focused() == &range);
+        press(pf::GamepadButton::kDpadRight);
+        CHECK(low == doctest::Approx(21.0));
+        press(pf::GamepadButton::kA); // poignée haute
+        press(pf::GamepadButton::kDpadRight);
+        CHECK(high == doctest::Approx(81.0));
+        CHECK(low == doctest::Approx(21.0));
+        press(pf::GamepadButton::kA); // retour à la poignée basse
+        press(pf::GamepadButton::kDpadLeft);
+        CHECK(low == doctest::Approx(20.0));
+    }
+
+    TEST_CASE("UI-09 no focus ring around a focused widget hidden since the last update")
+    {
+        UiHarness h;
+        auto b = grid(h);
+        useRingTheme(h);
+        h.keys({ui::kKeyTab});
+        REQUIRE(h.ui.focused() == b[0]);
+        b[0]->setVisible(false); // masqué par une action différée, avant le dessin
+        rd::DrawList list;
+        h.ui.draw(list);
+        CHECK(ringsOf(list).empty());
+        CHECK_FALSE(b[0]->visibleInTree());
+        CHECK(b[1]->visibleInTree());
     }
 }
