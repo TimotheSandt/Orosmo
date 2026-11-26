@@ -12,6 +12,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/fullscreen_blit.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/render_feature.hpp"
@@ -38,6 +39,11 @@ class PostContext
   public:
     static core::Result<std::shared_ptr<PostContext>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                              const std::filesystem::path &shaderDirectory);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::shared_ptr<PostContext>> create(const RenderContext &context)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory());
+    }
     ~PostContext();
     PostContext(const PostContext &) = delete;
     PostContext &operator=(const PostContext &) = delete;

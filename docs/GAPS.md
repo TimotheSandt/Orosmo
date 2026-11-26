@@ -566,6 +566,17 @@ Entités, composants et transformations (A79 lot L2, ECS-01, ECS-02) : module `s
 | G263 | Génération d'entité sur 32 bits | Après 2^32 destructions du même indice, la génération reboucle et un très vieil identifiant redeviendrait valide (non détecté ; l'indice n'est pas retiré). | Plus tard |
 | G264 | `scene` vérifié sous Linux seulement | Compilé et testé avec g++ 13.3 (debug, release, ASan+UBSan) ; clang de macOS (`-Werror`) et MinGW/MSVC de Windows seulement par la CI. Les composants alignés au-delà de `alignof(std::max_align_t)` utilisent `operator new(std::align_val_t)` (C++17, disponible partout). | CI |
 
+## Ajouts du lot M8-L11, API de rendu simplifiée (G240 à G243)
+
+Numéros pris à partir de G240 pour ne pas croiser ceux des lots M8 menés en parallèle (L0, L1, L9).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G240 | Récepteurs d'ombres non résolus au dessin | `SceneRenderer::drawMesh(Mesh &)` résout le programme du matériau PBR (variante `kPbrShadows` si le matériau a été créé avec les ombres) et le programme par défaut `mesh.vert`/`mesh.frag` ; la variante réceptrice d'ombres de `mesh.frag` (`ShadowFeature::receiverProgramWith`, groupe `receiverGroup`) reste à imposer par `setProgram` (la démo le fait, avec `shaderDefines()`). | M8 (L12a) ou M10 |
+| G241 | Passe « upscale » non renommée « present » (A75.7) | `endFrame(rhi::TextureHandle)` lit le format et la taille de la sortie ; la copie finale garde le nom de passe « upscale » (clés du Profiler `RenderGraph/upscale`, tests, `tools/perf_compare.py`). Le renommage est reporté avec les sous-objets de réglages d'A75.17. | M10 |
+| G242 | Défaut `Mesh::setCullMode` inchangé (A75.15) | Le défaut reste `kNone` pour l'existant ; `kBack` vient de `Mesh::setMaterial` (et de `assets::RenderModel` depuis M6) ; `MeshBuilder` produit des faces anti-horaires vues de l'extérieur, mais un maillage sans matériau reste à `kNone`. | M10 (changement incompatible annoncé) |
+| G243 | `drawMesh(Mesh &)` : résolution par disposition limitée | Sans programme ni matériau, seule la disposition kColored (trois `vec3`, sans instance) reçoit un programme par défaut ; les dispositions texturée (`mesh_textured.vert`) et instanciée gardent `setProgram`. | M10 |
+
 ## Ajouts de M8 lot L9 (G222, G223)
 
 | ID | Sujet | Détail | Jalon |

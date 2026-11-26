@@ -70,6 +70,25 @@ Vérifications (Linux, g++ 13.3, Intel Xe, Mesa) : `make demo-test` **724 cas ve
 SANITIZE=address,undefined` : aucun message ASan ni UBSan, 723 cas sur 724 (le seul échec est `PLAT-01 the framebuffer size…`,
 instable sous un gestionnaire de fenêtres qui redimensionne la fenêtre de test, déjà noté sous G201 ; 1 échec sur 3 en le relançant
 seul) ; `make all-debug` sans avertissement ; `make check` OK.
+
+## M8 lot L11 : API de rendu simplifiée (A75.3 à A75.7, A75.15)
+
+Sur `feat/M8-L11-api-rendu` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa, OpenGL et Vulkan). Les anciennes signatures restent (choix 10) et sont encore exercées par les tests. Tests : `tests/renderer/render_api_tests.cpp` (suites `renderer/render-api`, `renderer/mesh-builder`, sur les deux backends).
+
+| Proposition | État | Fichier et symbole | Preuve |
+| --- | --- | --- | --- |
+| A75.3 définitions et programme résolu au dessin | **Fait** (récepteurs d'ombres par `mesh.frag` : G240 ; dispositions texturée et instanciée : G243) | `scene_renderer.hpp` `SceneRenderer::shaderDefines`, `revision`, `resolveProgram` ; `render_feature.hpp` `RenderFeature::shaderDefines` ; `ForwardPlusLighting::shaderDefines` | cas « SceneRenderer::shaderDefines and revision », « drawMesh(mesh) (A75.3, A75.6) » (recompilé pour un AOV ajouté, mêmes pixels que l'ancien chemin) : verts |
+| A75.4 `RenderContext` | **Fait** | `render_context.hpp` `RenderContext` ; surcharges `create(const RenderContext &…)` de 17 fabriques, `enableForwardPlus` et `enableGpuDriven` | cas « RenderContext (A75.4) » : contexte possédant et contexte qui référence, ancienne signature : verts |
+| A75.5 matériau porté par le maillage, `MeshBuilder` | **Fait** | `mesh.hpp` `Mesh::setMaterial`, `material` ; `mesh_builder.hpp` `MeshBuilder` (`computeTangents`, `addBox`, `addPlane`) | cas « MeshBuilder (A75.5) » et « Mesh::setMaterial » (matériau gardé vivant, groupe suivi, mêmes pixels que l'ancien chemin) : verts |
+| A75.6 `drawMesh(Mesh &)`, `setWireframe` | **Fait** | `SceneRenderer::drawMesh(Mesh &)`, `setWireframe` | cas « setWireframe (A75.6) » : verts ; démo migrée (`apps/demo/src/Scene/demo_scene.cpp`) |
+| A75.7 `endFrame(backbuffer)` | **Partiel** (passe « upscale » non renommée : G241) | `SceneRenderer::endFrame(rhi::TextureHandle)` | cas « endFrame(texture) (A75.7) » : mêmes pixels, sortie étirée, texture inconnue refusée : verts ; démo migrée (`Game::render`) |
+| A75.15 `kBack` pour le contenu glTF | **Fait** pour les matériaux (défaut global gardé : G242) | `Mesh::setMaterial` ; `assets::RenderModel` (depuis M6) | cas « Mesh::setMaterial » : `kBack`, `kNone` en double face |
+
+Non-régression : 24 captures (12 configurations × OpenGL et Vulkan : HUD, ombres, forward+, forward+ et ombres, widgets, scène mixte, ombre tramée, animation, TAA, debug normales, fil de fer, 200 instances) faites avant puis après : les 24 `scene.png` identiques au pixel près (`tools/compare_png.py --tolerance 0`), `ui.png` identiques sauf le texte des mesures en direct du HUD (FPS, ms) ; couches de validation Vulkan : 0 message sur chaque exécution.
+
+Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 718 cas, 718 verts (7 nouveaux), 1 ignoré ; ASan + UBSan sur les suites `renderer/*` et `assets/*` (`make demo-test SANITIZE=address,undefined TEST_ARGS='--test-suite=renderer/*,assets/*'`) : 260 cas verts, aucun rapport ; `make check` : OK ; `make demo-capture` : OK (références comparées) ; `make demo-vulkan-check` : OK, validation Vulkan silencieuse. Non vérifié : Windows et macOS (compilés par la CI au push).
+
+
 ## M8 lot L0 : `--shadow-quality` de la démo
 
 Option de la démo, sans changement du moteur (`docs/05` M8, A79). `apps/demo/src/launch_options.hpp` : `ShadowQuality`, `parseShadowQuality`, `shadowSettingsForQuality` (préréglages `low`, `medium`, `high` = `ShadowSettings{}`), `shadowQualityLabel` ; `Game::setShadowSettings` passe les réglages à `ShadowFeature::create` ; le panneau de performances affiche « shadows on <qualité> ». Tests : `tests/demo/launch_options_tests.cpp` (lecture, défaut `high`, valeur invalide refusée, préréglages, `high` égal à `ShadowSettings{}`). Démo : `apps/demo/bin/debug/main --shadows on --shadow-quality low`.

@@ -15,10 +15,13 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace orosmo::renderer
 {
+
+class PbrMaterial;
 
 struct MeshData
 {
@@ -69,7 +72,17 @@ class Mesh
 
     static core::Result<Mesh> create(rhi::Device &device, const MeshData &data);
 
+    // Programme imposé (ancien chemin, gardé). Sans programme, `SceneRenderer::drawMesh(Mesh &)` le choisit au dessin (A75.3) : celui du
+    // matériau (`setMaterial`), sinon le programme par défaut de la scène pour la disposition kColored (`MeshBuilder`), compilés
+    // avec `SceneRenderer::shaderDefines()` et recompilés quand ces définitions changent.
     void setProgram(std::shared_ptr<ShaderProgram> program) { program_ = std::move(program); }
+    // A75.5 : matériau PBR partagé, gardé vivant par le maillage. Son groupe 1 (`PbrMaterial::group`, suivi même après
+    // `PbrMaterial::rebuild`) remplace les textures et le groupe donné par `setMaterialGroup` ; sa variante choisit le programme
+    // au dessin (sauf programme imposé par `setProgram`). Règle aussi les faces éliminées (A75.15 : kBack, kNone si le matériau est
+    // double face) et le mode de fusion vu des AOV (`setAovMaterial`, AOV demandés gardés) ; les deux restent modifiables après.
+    // Nul : retire le matériau (faces et fusion gardent leur valeur).
+    void setMaterial(std::shared_ptr<PbrMaterial> material);
+    const std::shared_ptr<PbrMaterial> &material() const noexcept { return material_; }
     // Textures aux liaisons 0, 1, 2... du groupe 1 (dans l'ordre).
     core::Result<> setTextures(std::span<const TextureBinding> textures);
     // Groupe 1 fourni par l'appelant (non possédé : il doit vivre jusqu'au dernier dessin), à la place des textures ; ex. le groupe
@@ -143,7 +156,8 @@ class Mesh
     // propre tranche (`SceneRenderer::recordModelSlice`), pour qu'un maillage dessiné deux fois dans l'image garde les deux poses.
     static constexpr std::size_t kModelBlockSize = 208;
     std::span<const std::byte> modelBlock() const noexcept { return modelBlock_; }
-    rhi::BindGroupHandle textureGroup() const noexcept { return textureGroup_; }
+    // Groupe 1 du dessin : celui du matériau (`setMaterial`) s'il y en a un, sinon les textures ou le groupe donné.
+    rhi::BindGroupHandle textureGroup() const noexcept;
     const std::vector<std::byte> &pushConstants() const noexcept { return pushConstants_; }
 
   private:
@@ -163,6 +177,7 @@ class Mesh
     std::uint32_t indexCount_ = 0;
     std::uint32_t instanceCount_ = 1;
     std::shared_ptr<ShaderProgram> program_;
+    std::shared_ptr<PbrMaterial> material_;
     std::vector<std::byte> pushConstants_;
     glm::vec3 position_{0.0f};
     glm::vec3 rotation_{0.0f};

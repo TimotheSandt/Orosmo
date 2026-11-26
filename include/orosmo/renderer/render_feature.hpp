@@ -8,6 +8,7 @@
 #include "orosmo/renderer/aov.hpp"
 #include "orosmo/renderer/frame_data.hpp"
 #include "orosmo/renderer/render_graph.hpp"
+#include "orosmo/renderer/shader_library.hpp"
 #include "orosmo/rhi/capabilities.hpp"
 #include "orosmo/rhi/types.hpp"
 
@@ -120,6 +121,9 @@ class RenderFeature
     // REN-19 : vrai si ce plugin veut une caméra décalée d'un sous-pixel à chaque image (suite de Halton du renderer, en mode
     // `JitterMode::kAuto`), comme un mode de mise à l'échelle temporel. Lu à `beginFrame` ; faux par défaut (aucun décalage).
     virtual bool wantsJitter() const noexcept { return false; }
+    // A75.3 : définitions de préprocesseur que ce plugin demande aux programmes de maillage (ex. OROSMO_FORWARD_PLUS). Réunies par
+    // `SceneRenderer::shaderDefines()`, dans l'ordre d'enregistrement des plugins ; aucune par défaut.
+    virtual std::vector<Define> shaderDefines() const { return {}; }
     // A63 : vrai si ce plugin, à cette image, modifie ou échantillonne la couleur de scène après la passe de scène (effets de
     // post-traitement). La scène n'est alors pas dessinée droit dans la sortie : l'effet garde sa place avant la superposition
     // (interface) et la couleur qu'il lit reste échantillonnable. Faux par défaut.
