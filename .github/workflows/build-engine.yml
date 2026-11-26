@@ -238,6 +238,9 @@ jobs:
       # ── Build dist package + engine tool ───────────────────────────────────────
       # 'engine-tool' builds debug+release archives, packages the dist/ into a zip,
       # and compiles the orosmo tool (downloads the pkg from GitHub at runtime).
+      # The package carries deps/ (tools/package-deps.sh): the engine's third-party libraries from ./vcpkg_installed, static;
+      # on Linux plus the static archives of the apt packages installed above (libshaderc_combined.a, glslang, SPIRV-Tools,
+      # freetype, png16, brotli). Never the Vulkan loader, OpenGL, X11/Wayland or libc.
       - name: Build engine tool (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -319,6 +322,15 @@ jobs:
           ls -l dist/
           test "$(ls dist/ | wc -l)" -eq 10   # 5 platforms x (orosmo tool + package)
 
+      # Installers (site/public/, when present) are attached too; SHA256SUMS covers every release file (`orosmo install`
+      # checks the package against it). Format of sha256sum: "<hash>  <file name>".
+      - name: Installers and SHA256SUMS
+        run: |
+          for f in site/public/install.sh site/public/install.ps1; do
+            if [ -f "$f" ]; then cp "$f" dist/; fi
+          done
+          cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -338,20 +350,20 @@ jobs:
 
             **Orosmo tool** (`orosmo`) — downloads the engine package automatically from this release.
             ```sh
-            # New project
-            ./orosmo init myproject
-            cd myproject && make install && make debug
+            # New project (the engine version is installed once in ~/.orosmo/engines/<version>, shared by every project)
+            orosmo init myproject
+            cd myproject && make debug
 
-            # Update existing project
-            cd myproject && ./orosmo update
+            # Update an existing project to the latest engine
+            cd myproject && orosmo update
             ```
 
             **Engine package** — generic engine public headers (`include/orosmo/{core,platform,rhi,renderer,assets,anim,ui}`), pre-built static
             libraries (debug + release: `libcore`, `libplatform`, `librhi`, `librenderer`, `libassets`, `libanim`, `libui`, `libthirdparty`), `engine.mk`,
             the interface language compiler `cui`, the generic RHI shaders (`shaders/rhi`), the default font and themes (`res/`),
-            a minimal example buildable from the package (`examples/minimal`) and `vcpkg.json`.
-            Downloaded automatically by `orosmo init` / `orosmo update`, or used offline: `orosmo init --package orosmo-pkg-<platform>.zip myproject`.
-            Run `make install` in the project to populate `vcpkg_installed/`.
+            a minimal example buildable from the package (`examples/minimal`), and `deps/`: the engine's third-party libraries,
+            prebuilt and static (no vcpkg, no `make install`; the Vulkan loader, OpenGL and X11/Wayland come from the system).
+            Installed by `orosmo install <version>` (checked against `SHA256SUMS`), or used offline: `orosmo init --package orosmo-pkg-<platform>.zip myproject`.
 
             **Graphics API**: the RHI has an OpenGL 4.3+ backend (with `glClipControl`: OpenGL 4.5 or `GL_ARB_clip_control`);
             Backends: OpenGL 4.3 and Vulkan 1.3 (`--backend vulkan|opengl`, fallback to OpenGL if Vulkan cannot start); Metal later. **Guide**: `docs/USING_THE_ENGINE.md`; incompatible changes: `docs/releases/`.
