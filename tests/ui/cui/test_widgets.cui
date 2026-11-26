@@ -19,9 +19,9 @@ view WidgetsPanel {
                 }
             }
             RadioButton("Low", value: 0, selected: $state.quality).id("low")
-            RadioButton("High", value: 1, selected: $state.quality).id("high")
-            RangeSlider($state.low, $state.high, min: 0, max: 100, step: 1).id("range")
-            SpinBox($state.count, min: 0, max: 10).id("count")
+            RadioButton("High", value: 1, selected: $state.quality).id("high").tabIndex(1)
+            RangeSlider($state.low, $state.high, min: 0, max: 100, step: 1).id("range").focusable(false)
+            SpinBox($state.count, min: 0, max: 10).id("count").tabIndex(-1)
             TextArea($state.notes, lineNumbers: true).height(60).id("notes")
             ColorEditor($state.color, alpha: true).id("color")
             ColorWheel($state.color).width(80).height(80).id("wheel")

@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <unordered_set>
 
@@ -340,7 +342,7 @@ void Ui::collectFocusable(Widget &w, std::vector<Widget *> &out) const
     {
         return;
     }
-    if (w.focusable() && w.enabled())
+    if (w.canTakeFocus() && w.enabled())
     {
         out.push_back(&w);
     }
@@ -350,7 +352,7 @@ void Ui::collectFocusable(Widget &w, std::vector<Widget *> &out) const
     }
 }
 
-void Ui::focusNext(bool backwards)
+std::vector<Widget *> Ui::focusScope() const
 {
     std::vector<Widget *> order;
     if (!modals_.empty())
@@ -361,6 +363,20 @@ void Ui::focusNext(bool backwards)
     {
         collectFocusable(*root_, order);
     }
+    return order;
+}
+
+void Ui::focusNext(bool backwards)
+{
+    std::vector<Widget *> order = focusScope();
+    // Ordre de tabulation : `tabIndex` positif d'abord (croissant), puis 0 ; ordre de l'arbre à égalité ; négatif : hors de l'ordre.
+    std::erase_if(order, [](const Widget *w) { return w->tabIndex() < 0; });
+    std::stable_sort(order.begin(), order.end(),
+                     [](const Widget *a, const Widget *b)
+                     {
+                         const auto rank = [](const Widget *w) { return w->tabIndex() > 0 ? w->tabIndex() : std::numeric_limits<int>::max(); };
+                         return rank(a) < rank(b);
+                     });
     if (order.empty())
     {
         focus(nullptr);
@@ -378,6 +394,58 @@ void Ui::focusNext(bool backwards)
         index = backwards ? (current + order.size() - 1) % order.size() : (current + 1) % order.size();
     }
     focus(order[index]);
+}
+
+bool Ui::moveFocus(int key)
+{
+    Widget *from = focused();
+    if (from == nullptr)
+        return false;
+    glm::vec2 dir{0.0f};
+    switch (key)
+    {
+    case kKeyLeft: dir = {-1.0f, 0.0f}; break;
+    case kKeyRight: dir = {1.0f, 0.0f}; break;
+    case kKeyUp: dir = {0.0f, -1.0f}; break;
+    case kKeyDown: dir = {0.0f, 1.0f}; break;
+    default: return false;
+    }
+    const glm::vec2 ortho{dir.y, dir.x}; // axe perpendiculaire (le signe ne compte pas)
+    const Rect &a = from->rect();
+    const glm::vec2 aCenter = a.position + a.size * 0.5f;
+    // Écart entre deux intervalles sur un axe (0 s'ils se chevauchent).
+    const auto gap = [](float lo0, float hi0, float lo1, float hi1) { return std::max(0.0f, std::max(lo0, lo1) - std::min(hi0, hi1)); };
+    Widget *best = nullptr;
+    float bestScore = 0.0f;
+    float bestDistance = 0.0f;
+    for (Widget *w : focusScope())
+    {
+        if (w == from)
+            continue;
+        const Rect &b = w->rect();
+        const glm::vec2 bCenter = b.position + b.size * 0.5f;
+        // Le voisin est dans la direction : son centre est au-delà de celui du widget courant.
+        const float along = glm::dot(bCenter - aCenter, dir);
+        if (along <= 0.5f)
+            continue;
+        // Distance sur l'axe de la direction (bord à bord), puis décalage perpendiculaire (nul si les deux se font face), pénalisé :
+        // dans une grille, Bas va à la case du dessous plutôt qu'à la case en diagonale plus proche.
+        const bool horizontal = dir.x != 0.0f;
+        const float primary = horizontal ? gap(a.position.x, a.end().x, b.position.x, b.end().x) : gap(a.position.y, a.end().y, b.position.y, b.end().y);
+        const float side = horizontal ? gap(a.position.y, a.end().y, b.position.y, b.end().y) : gap(a.position.x, a.end().x, b.position.x, b.end().x);
+        const float score = primary + 2.0f * side;
+        const float distance = std::abs(glm::dot(bCenter - aCenter, ortho)) + along; // départage : centre le plus proche
+        if (best == nullptr || score < bestScore || (score == bestScore && distance < bestDistance))
+        {
+            best = w;
+            bestScore = score;
+            bestDistance = distance;
+        }
+    }
+    if (best == nullptr)
+        return false;
+    focus(best);
+    return true;
 }
 
 void Ui::defer(std::function<void()> action) { deferred_.push_back(std::move(action)); }
@@ -801,7 +869,8 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         else
         {
             if (target == nullptr || target->focusOnClick())
-                focus(target != nullptr && target->focusable() ? target : nullptr);
+                focus(target != nullptr && target->canTakeFocus() ? target : nullptr);
+            focusVisible_ = false; // la souris ne montre pas l'anneau de focus
             active_ = target;
             activeAlive_ = target != nullptr ? std::weak_ptr<char>(target->lifetime_) : std::weak_ptr<char>();
             if (active_ != nullptr)
@@ -871,9 +940,11 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
     auto dispatchKey = [&](int key, bool shift)
     {
         shift_ = shift; // Maj au moment de CET appui (les widgets la lisent par shiftHeld)
+        const bool arrow = key == kKeyLeft || key == kKeyRight || key == kKeyUp || key == kKeyDown;
         if (key == kKeyTab && !(focused_ != nullptr && focused_->wantsTab()))
         {
             focusNext(shift);
+            focusVisible_ = true;
         }
         else if ((key == kKeyDown || key == kKeyUp) && !popups_.empty() && !(focused_ != nullptr && inAnyPopup(focused_)) && enterPopup(key == kKeyDown))
         {
@@ -882,6 +953,12 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         else if (key == kKeyEscape && !popups_.empty() && !(focused_ != nullptr && inAnyPopup(focused_)))
         {
             closePopupsFrom(popups_.size() - 1); // la fenêtre du dessus
+        }
+        else if (arrow && focused_ != nullptr && !focused_->usesArrowKey(key, false) && !inAnyPopup(focused_))
+        {
+            // UI-09 : une flèche que le widget n'utilise pas passe le focus au voisin dans sa direction.
+            if (moveFocus(key))
+                focusVisible_ = true;
         }
         else if (focused_ != nullptr)
         {
@@ -915,6 +992,32 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
             dispatchKey(key, input.shift);
         if (!input.text.empty() && focused_ != nullptr)
             focused_->onText(*this, input.text);
+    }
+    // Commandes de navigation d'une manette (UI-09).
+    for (const InputFrame::Event &command : input.navigation)
+    {
+        const int key = command.key;
+        const bool arrow = key == kKeyLeft || key == kKeyRight || key == kKeyUp || key == kKeyDown;
+        shift_ = command.shift;
+        if (key == kKeyTab)
+        {
+            focusNext(command.shift); // même dans un éditeur qui garde Tab : la manette n'a pas d'autre moyen d'en sortir
+            focusVisible_ = true;
+        }
+        else if (arrow && focused_ == nullptr && popups_.empty())
+        {
+            focusNext(false); // sans focus : le premier widget de l'ordre de tabulation
+            focusVisible_ = true;
+        }
+        else if (arrow && focused_ != nullptr && !focused_->usesArrowKey(key, true) && !inAnyPopup(focused_))
+        {
+            if (moveFocus(key))
+                focusVisible_ = true;
+        }
+        else
+        {
+            dispatchKey(key, command.shift);
+        }
     }
     shift_ = input.shift;
     for (const std::string &raw : input.shortcuts)
@@ -955,9 +1058,25 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
 void Ui::draw(renderer::DrawList &list) const
 {
     list.logicalSize = viewport_;
+    // L'anneau de focus est dessiné juste après la couche qui contient le widget focalisé (arbre, fenêtre modale, fenêtre
+    // surgissante) : une couche au-dessus le recouvre comme le widget lui-même.
+    const Widget *ringOwner = nullptr; // couche de l'anneau (nulle : aucun anneau)
+    if (const Widget *f = focused(); f != nullptr && focusVisible_)
+    {
+        for (auto it = popups_.rbegin(); it != popups_.rend() && ringOwner == nullptr; ++it)
+            if (inSubtree(it->view, f))
+                ringOwner = it->view;
+        for (auto it = modals_.rbegin(); it != modals_.rend() && ringOwner == nullptr; ++it)
+            if (inSubtree(it->panel, f))
+                ringOwner = it->panel;
+        if (ringOwner == nullptr && root_ && inSubtree(root_.get(), f))
+            ringOwner = root_.get();
+    }
     if (root_)
     {
         root_->draw(*this, list);
+        if (ringOwner == root_.get())
+            drawFocusRing(list);
     }
     for (const ModalEntry &modal : modals_)
     {
@@ -967,10 +1086,14 @@ void Ui::draw(renderer::DrawList &list) const
             list.rect({0.0f, 0.0f}, viewport_, veil.background);
         }
         modal.panel->draw(*this, list);
+        if (ringOwner == modal.panel)
+            drawFocusRing(list);
     }
     for (const PopupEntry &p : popups_)
     {
         p.view->draw(*this, list);
+        if (ringOwner == p.view)
+            drawFocusRing(list);
     }
     if (!tooltipText_.empty())
     {
@@ -982,6 +1105,34 @@ void Ui::draw(renderer::DrawList &list) const
         Widget::drawBox(list, {at, size}, s);
         font().draw(list, tooltipText_, at + glm::vec2(s.padding), s.fontSize, s.foreground, s.font.get());
     }
+}
+
+void Ui::drawFocusRing(renderer::DrawList &list) const
+{
+    const Widget *f = focused();
+    if (f == nullptr || !theme().hasWidget("focusRing"))
+        return;
+    for (const Widget *w = f; w != nullptr; w = w->parent())
+        if (!w->visible())
+            return; // masqué depuis la dernière mise à jour (action différée) : le focus reste, l'anneau n'est pas dessiné // un thème sans anneau n'en dessine pas (aucune valeur par défaut en dur)
+    const Style &s = theme().style("focusRing", WidgetState::kNormal);
+    if (s.borderWidth <= 0.0f || s.border.a <= 0.0f)
+        return;
+    // `padding` : écart entre le widget et l'anneau (négatif : l'anneau est à l'intérieur du widget).
+    const Rect r{f->rect().position - glm::vec2(s.padding), f->rect().size + glm::vec2(2.0f * s.padding)};
+    // Découpé comme le widget (vue qui défile, conteneur coupé) : un widget défilé hors de la vue n'a pas d'anneau visible.
+    const Rect clip = f->clipOf();
+    const glm::vec2 lo = glm::max(clip.position, glm::vec2(0.0f));
+    const glm::vec2 hi = glm::min(clip.end(), viewport_);
+    if (hi.x <= lo.x || hi.y <= lo.y)
+        return;
+    const bool clipped = clip.position.x > -1e29f || clip.position.y > -1e29f || clip.end().x < 1e29f || clip.end().y < 1e29f;
+    if (clipped)
+        list.pushClip(lo, hi - lo);
+    list.rect(renderer::DrawRect{.position = r.position, .size = r.size, .color = glm::vec4(0.0f), .radius = s.radius, .borderWidth = s.borderWidth,
+                                 .borderColor = s.border});
+    if (clipped)
+        list.popClip();
 }
 
 } // namespace orosmo::ui

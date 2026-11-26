@@ -18,6 +18,7 @@ utilise ce module).
 | `widgets.hpp` | UI-03 : `Label`, `Button`, `Checkbox`, `Slider`, `Dropdown` (fenêtre surgissante), `TextField`, `NumberField`, `ColorPicker` (le carré d'aperçu ouvre la roue `ColorEditor` en fenêtre surgissante), `Plot`, `Tabs`, `Section`, `Separator` ; infobulles par `Widget::setTooltip` |
 | `controls.hpp` | UI-03 : `RadioButton`, `RangeSlider` (deux poignées), `SpinBox` (champ numérique à − / +), `TextArea` (éditeur multiligne, numéros de ligne, lecture seule) ; `TextEditState` (sélection, presse-papiers) partagé avec `TextField` |
 | `color.hpp` | UI-03 : conversions RGB / HSV / HSL / hexadécimal ; `Gradient`, `Curve` (données évaluables par le jeu) ; `ColorWheel`, `ColorEditor` (formats, alpha, hexadécimal), `GradientEditor`, `CurveEditor` |
+| `gamepad_navigation.hpp` | `GamepadNavigator` (UI-09) : état d'une manette (`platform::GamepadState`) → `InputFrame::navigation` (croix et stick gauche = flèches répétées, A = Entrée, B = Échap, RB / LB = Tab / Maj+Tab) ; réglages `GamepadNavigationSettings` (zone morte, répétition) |
 | `window_input.hpp` | `readWindowInput(window, dt)` : entrées de l'image lues sur une fenêtre `platform` (souris, texte, touches répétées, raccourcis) ; `useSystemClipboard(ui, window)` |
 | `menus.hpp` | UI-03 : `Dialog` (fenêtre modale), `MenuBar`, `Menu` (sous-menus), `MenuItem` (raccourci, case cochée), `ContextMenu` (clic droit), `Notifications` (nombre et hauteur maximaux), `DynamicImage` + `ImageView` (image produite par le jeu : mini-carte, boussole) |
 | `ui.hpp` | `Ui` : racine, thème, police, `ActionRegistry` (actions par nom), entrées de l'image (`InputFrame`, `Key`), survol / appui / focus / tabulation, pile de fenêtres surgissantes (menus, sous-menus), fenêtres modales, notifications (`notify`), presse-papiers (`setClipboard`), infobulle, `wantsMouse` / `wantsKeyboard`, écritures et événements différés |
@@ -71,11 +72,20 @@ seule ou lié sans setter garde la sélection et la copie, `Widget::handlesEditC
 (flèches, Entrée, Échap). `InputFrame::events` (rempli par `readWindowInput`) garde l'ordre réel du texte et des touches, et
 l'état de Maj de chaque appui.
 
+Navigation (UI-09) : Tab suit l'ordre de tabulation (`Widget::setTabIndex` : positif d'abord, croissant ; 0 dans l'ordre de
+l'arbre ; négatif hors de l'ordre ; `setFocusable(false)` : jamais de focus). Une flèche que le widget focalisé n'utilise pas
+(`Widget::usesArrowKey`) passe le focus au voisin dans sa direction (`Ui::moveFocus` : plus proche bord à bord, décalage
+perpendiculaire pénalisé, sans boucler) ; sans focus, les flèches du clavier ne font rien (l'application peut s'en servir). La
+manette passe par `InputFrame::navigation` (`GamepadNavigator`) : sans focus, une direction le donne au premier widget ; un
+curseur horizontal y laisse Haut et Bas à la navigation ; LB / RB sortent même d'un éditeur qui garde Tab. Un `RangeSlider` passe d'une poignée à l'autre avec Entrée (A à la manette) ; Début / Fin restent au clavier. Après une navigation au
+clavier ou à la manette (`Ui::focusVisible`), l'anneau de focus du style `focusRing` du thème est dessiné autour du widget ; un clic
+l'éteint. Un thème sans `focusRing` n'en dessine pas.
+
 Contrats de robustesse : un événement différé dont la source a été détruite n'est pas livré ; les actions différées au-delà de
 huit vagues passent à l'image suivante ; le focus quitte un widget inactif, masqué ou hors de la fenêtre modale ;
 `clearChildren` garde la structure des widgets composés (Tabs, Section, éditeurs).
 
-Limites (docs/GAPS.md) : pas de navigation à la manette (UI-09) ; `Plot` en barres seulement ; composition IME non affichée (G107).
+Limites (docs/GAPS.md) : une `ScrollView` ne défile pas vers le widget focalisé (G222) ; `Plot` en barres seulement ; composition IME non affichée (G107).
 
 ## Rendu économe (UI-13)
 
