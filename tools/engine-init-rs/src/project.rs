@@ -13,15 +13,17 @@ fn assignment<'a>(line: &'a str, var: &str) -> Option<(&'a str, &'a str)> {
     None
 }
 
-/// Valeur de `var` (dernière affectation, commentaire en fin de ligne retiré). None si absente ou vide.
+/// Valeur de `var` telle que GNU Make la voit : affectations dans l'ordre, la dernière gagne, sauf `?=` qui ne s'applique que si
+/// la variable n'est pas encore définie (même vide). Commentaire en fin de ligne retiré. None si absente ou vide.
 pub fn read_var(content: &str, var: &str) -> Option<String> {
-    content
-        .lines()
-        .filter(|l| !l.trim_start().starts_with('#'))
-        .filter_map(|l| assignment(l, var))
-        .map(|(_, v)| v.split('#').next().unwrap_or("").trim().to_string())
-        .next_back()
-        .filter(|v| !v.is_empty())
+    let mut value: Option<String> = None;
+    for (op, v) in content.lines().filter(|l| !l.trim_start().starts_with('#')).filter_map(|l| assignment(l, var)) {
+        if op == "?=" && value.is_some() {
+            continue;
+        }
+        value = Some(v.split('#').next().unwrap_or("").trim().to_string());
+    }
+    value.filter(|v| !v.is_empty())
 }
 
 /// Version du moteur nommée par le projet ; une valeur de gabarit non remplie (`{{…}}`, `$(…)`) ne compte pas.
@@ -83,6 +85,11 @@ mod tests {
         assert!(new.starts_with("PROJECT_NAME ?= game\n\n# Engine version"));
         assert!(new.ends_with("OROSMO_VERSION := 0.6.2\n"));
         assert_eq!(read_orosmo_version(&new).as_deref(), Some("0.6.2"));
+
+        // `?=` après une affectation (même vide) ne change rien ; seul, il donne la valeur.
+        assert_eq!(read_orosmo_version("OROSMO_VERSION := 0.6.2\nOROSMO_VERSION ?= 0.7.0\n").as_deref(), Some("0.6.2"));
+        assert_eq!(read_orosmo_version("OROSMO_VERSION :=\nOROSMO_VERSION ?= 0.7.0\n"), None);
+        assert_eq!(read_orosmo_version("OROSMO_VERSION ?= 0.7.0\nOROSMO_VERSION := 0.8.0\n").as_deref(), Some("0.8.0"));
 
         // OROSMO_VERSION_EXTRA n'est pas OROSMO_VERSION ; un gabarit non rempli n'est pas une version.
         assert_eq!(read_orosmo_version("OROSMO_VERSION_EXTRA := 1\n"), None);

@@ -280,6 +280,23 @@ fn check_engine_dir(sdk_dir: &Path, repair: &str) -> Vec<CheckResult> {
     results
 }
 
+/// `ENGINE_DIR` imposé au Makefile du gabarit : `config.local.mk`, puis `config.mk`, puis l'environnement (une affectation dans
+/// un fichier inclus l'emporte sur l'environnement). Une valeur calculée (`$(…)`) n'est pas interprétée. Chemin relatif : au projet.
+fn engine_dir_override(project_dir: &Path) -> Option<(std::path::PathBuf, &'static str)> {
+    let from_file = |name: &'static str| {
+        std::fs::read_to_string(project_dir.join(name)).ok()
+            .and_then(|c| crate::project::read_var(&c, "ENGINE_DIR"))
+            .map(|v| (v, name))
+    };
+    let (value, from) = from_file("config.local.mk")
+        .or_else(|| from_file("config.mk"))
+        .or_else(|| std::env::var("ENGINE_DIR").ok().filter(|v| !v.trim().is_empty()).map(|v| (v, "environment")))?;
+    if value.contains("$(") {
+        return None;
+    }
+    Some((project_dir.join(value.trim()), from))
+}
+
 /// `home` : racine OROSMO_HOME (engines/<v>) ; None si elle est introuvable.
 pub fn check_project_layout(project_dir: &Path, triplet: &str, home: Option<&Path>) -> Vec<CheckResult> {
     let mut results = Vec::new();
@@ -304,7 +321,19 @@ pub fn check_project_layout(project_dir: &Path, triplet: &str, home: Option<&Pat
         }
     }
 
-    if sdk_dir.is_dir() {
+    if let Some((dir, from)) = engine_dir_override(project_dir) {
+        // Priorité du gabarit : ENGINE_DIR donné passe avant orosmo/ et OROSMO_VERSION.
+        if dir.join("make").join("engine.mk").is_file() {
+            results.push(CheckResult::ok("Project engine", true, format!("ENGINE_DIR ({from}) -> {}", dir.display())));
+            results.extend(check_engine_dir(&dir, &format!("Fix ENGINE_DIR in {from}")));
+        } else {
+            results.push(CheckResult::error(
+                "Project engine",
+                format!("ENGINE_DIR ({from}) = {}: no make/engine.mk there", dir.display()),
+                format!("Fix or remove ENGINE_DIR in {from}"),
+            ));
+        }
+    } else if sdk_dir.is_dir() {
         results.extend(check_engine_dir(&sdk_dir, "Run `orosmo update` to restore the engine package"));
     } else if let Some(v) = version {
         match home.and_then(|h| crate::home::engine_path(h, &v)) {
@@ -700,6 +729,36 @@ mod tests {
         assert!(checks.iter().any(|c| c.name == "Project engine" && c.severity == Severity::Ok));
         assert!(checks.iter().any(|c| c.name == "Orosmo SDK" && c.severity == Severity::Ok));
         assert!(checks.iter().any(|c| c.name == "SDK dependencies" && c.severity == Severity::Ok));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn engine_dir_override_comes_first() {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = env::temp_dir().join(format!("orosmo_doctor_engdir_{stamp}"));
+        let project = root.join("game");
+        let home = root.join("home");
+        let sdk = root.join("sdk");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(sdk.join("make")).unwrap();
+        fs::create_dir_all(sdk.join("include/orosmo")).unwrap();
+        fs::create_dir_all(sdk.join("lib/release")).unwrap();
+        fs::create_dir_all(sdk.join("deps/lib")).unwrap();
+        fs::create_dir_all(sdk.join("deps/include")).unwrap();
+        fs::create_dir_all(sdk.join("tools")).unwrap();
+        fs::write(sdk.join("tools").join(if cfg!(windows) { "cui.exe" } else { "cui" }), b"").unwrap();
+        fs::write(sdk.join("make/engine.mk"), b"# mk\n").unwrap();
+        fs::write(sdk.join("lib/release/libcore.a"), b"!<arch>\n").unwrap();
+        // OROSMO_VERSION 0.6.2 absent de OROSMO_HOME, mais ENGINE_DIR désigne un moteur valide : pas d'erreur.
+        fs::write(project.join("config.mk"), "OROSMO_VERSION := 0.6.2\n").unwrap();
+        fs::write(project.join("config.local.mk"), format!("ENGINE_DIR := {}\n", sdk.display())).unwrap();
+        let checks = check_project_layout(&project, "x64-linux", Some(&home));
+        assert!(checks.iter().any(|c| c.name == "Project engine" && c.severity == Severity::Ok), "{:?}", checks.iter().map(|c| &c.name).collect::<Vec<_>>());
+        assert!(!checks.iter().any(|c| c.severity == Severity::Error), "{:?}", checks.iter().map(|c| (&c.name, &c.detail)).collect::<Vec<_>>());
+        // ENGINE_DIR qui ne désigne pas un moteur : erreur qui nomme ENGINE_DIR.
+        fs::write(project.join("config.local.mk"), "ENGINE_DIR := nowhere\n").unwrap();
+        let checks = check_project_layout(&project, "x64-linux", Some(&home));
+        assert!(checks.iter().any(|c| c.name == "Project engine" && c.severity == Severity::Error && c.detail.contains("ENGINE_DIR")));
         let _ = fs::remove_dir_all(&root);
     }
 
