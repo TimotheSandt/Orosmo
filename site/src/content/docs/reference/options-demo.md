@@ -10,7 +10,7 @@ ou `--option=valeur` ; `-h` équivaut à `--help`. Une option inconnue arrête l
 l'usage. Pour passer des options, lancez le binaire (voir [Explorer la démo](/demarrer/demo/)). Source :
 [`apps/demo/src/launch_options.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/apps/demo/src/launch_options.cpp).
 
-Les valeurs de `--api`, `--ui`, `--hud`, `--theme`, `--tab`, `--post`, `--aa`, `--lighting`, `--gpu-timings`, `--vsync` et
+Les valeurs de `--api`, `--ui`, `--hud`, `--theme`, `--tab`, `--post`, `--aa`, `--lighting`, `--shadow-quality`, `--gpu-timings`, `--vsync` et
 `--direct-present` ignorent la casse. Celles de `--shadows`, `--gpu-driven`, `--scene`, `--debug-view` et `--transparent-shadow` doivent
 être écrites en minuscules.
 
@@ -58,6 +58,7 @@ Les valeurs de `--api`, `--ui`, `--hud`, `--theme`, `--tab`, `--post`, `--aa`, `
 | Option | Valeurs | Défaut | Effet |
 |---|---|---|---|
 | `--shadows` | `on`, `off` | `off` | Ombres en cascade avec cache. |
+| `--shadow-quality` | `low`, `medium`, `high` | `high` | Préréglage des ombres (résolution et nombre des cascades, taille de l'atlas, résolution des projecteurs, rayon du PCF, portée, cadence de mise à jour). `high` est égal aux réglages du moteur (`ShadowSettings{}`). Demande `--shadows on`. |
 | `--transparent-shadow` | `none`, `full`, `masked`, `dithered` | absent | Ombre des vitres de `--scene mixed`. Demande `--shadows on`. Absent : les vitres ne projettent pas d'ombre. |
 | `--post` | `none`, `hdr`, `bloom`, `full` | `none` | `hdr` : scène HDR et tonemapping ACES. `bloom` : + bloom. `full` : + exposition automatique, étalonnage par LUT, vignettage. |
 | `--aa` | `none`, `fxaa`, `smaa`, `taa` | `none` | Anticrénelage. |
@@ -98,6 +99,7 @@ Les messages sont ceux du code, en anglais.
 ```bash
 apps/demo/bin/debug/main --api opengl --headless --capture /tmp/out
 apps/demo/bin/debug/main --scene mixed --shadows on --transparent-shadow dithered
+apps/demo/bin/debug/main --shadows on --shadow-quality low
 apps/demo/bin/debug/main --instances 10000 --gpu-driven on --hud graph
 apps/demo/bin/debug/main --ui full --theme light --tab widgets --headless --click fruit --capture /tmp/dropdown --capture-frames 5
 ```

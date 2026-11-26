@@ -3,7 +3,9 @@
 #include "launch_options.hpp"
 #include <orosmo/rhi/device.hpp>
 
+#include <array>
 #include <sstream>
+#include <string>
 #include <utility>
 
 namespace tests
@@ -262,6 +264,91 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(3, bad).has_value(), "A non-numeric --instances is refused");
         const char *missing[] = {"Orosmo", "--instances"};
         Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--instances without a value is refused");
+    }
+
+    TEST_CASE("launch options parse --shadow-quality low|medium|high; high by default (M8)")
+    {
+        const char *none[] = {"Orosmo"};
+        Assert(demo::parseLaunchOptions(1, none)->shadowQuality == demo::ShadowQuality::kHigh, "High shadow quality by default");
+        const std::pair<const char *, demo::ShadowQuality> cases[] = {
+            {"low", demo::ShadowQuality::kLow}, {"medium", demo::ShadowQuality::kMedium}, {"high", demo::ShadowQuality::kHigh}, {"MeDiUm", demo::ShadowQuality::kMedium}};
+        for (const auto &[name, quality] : cases)
+        {
+            const char *argv[] = {"Orosmo", "--shadow-quality", name};
+            const auto parsed = demo::parseLaunchOptions(3, argv);
+            Assert(parsed.has_value() && parsed->shadowQuality == quality, "--shadow-quality parses each level (case-insensitive)");
+            AssertEqual(std::string(demo::shadowQualityName(quality)), std::string(demo::shadowQualityName(*demo::parseShadowQuality(name))),
+                        "parseShadowQuality and shadowQualityName agree");
+        }
+        const char *equals[] = {"Orosmo", "--shadow-quality=low"};
+        Assert(demo::parseLaunchOptions(2, equals)->shadowQuality == demo::ShadowQuality::kLow, "--shadow-quality=low is accepted");
+        const char *bad[] = {"Orosmo", "--shadow-quality", "ultra"};
+        Assert(!demo::parseLaunchOptions(3, bad).has_value(), "An unknown --shadow-quality is refused");
+        const char *missing[] = {"Orosmo", "--shadow-quality"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--shadow-quality without a value is refused");
+    }
+
+    TEST_CASE("shadow quality presets fill the shadow settings (M8)")
+    {
+        const orosmo::renderer::ShadowSettings low = demo::shadowSettingsForQuality(demo::ShadowQuality::kLow);
+        AssertEqual(low.cascadeResolution, 256u, "low: cascadeResolution");
+        AssertEqual(low.cascadeCount, 2u, "low: cascadeCount");
+        AssertEqual(low.atlasSize, 1024u, "low: atlasSize");
+        AssertEqual(low.spotResolution, 256u, "low: spotResolution");
+        AssertEqual(low.pcfRadius, 0, "low: pcfRadius");
+        AssertEqual(low.maxDistance, 40.0f, "low: maxDistance");
+        Assert(low.cascadeUpdateInterval == std::array<std::uint32_t, orosmo::renderer::kMaxShadowCascades>{1, 4, 8, 16}, "low: cascadeUpdateInterval");
+        AssertEqual(low.maxViewUpdatesPerFrame, 4u, "low: maxViewUpdatesPerFrame");
+
+        const orosmo::renderer::ShadowSettings medium = demo::shadowSettingsForQuality(demo::ShadowQuality::kMedium);
+        AssertEqual(medium.cascadeResolution, 512u, "medium: cascadeResolution");
+        AssertEqual(medium.cascadeCount, 3u, "medium: cascadeCount");
+        AssertEqual(medium.atlasSize, 2048u, "medium: atlasSize");
+        AssertEqual(medium.spotResolution, 512u, "medium: spotResolution");
+        AssertEqual(medium.pcfRadius, 1, "medium: pcfRadius");
+        AssertEqual(medium.maxDistance, 60.0f, "medium: maxDistance");
+        Assert(medium.cascadeUpdateInterval == std::array<std::uint32_t, orosmo::renderer::kMaxShadowCascades>{1, 2, 4, 8}, "medium: cascadeUpdateInterval");
+        AssertEqual(medium.maxViewUpdatesPerFrame, 6u, "medium: maxViewUpdatesPerFrame");
+
+        // Les autres champs (biais, fondu, projecteurs...) restent ceux du moteur.
+        const orosmo::renderer::ShadowSettings engine{};
+        for (const auto &preset : {low, medium})
+        {
+            AssertEqual(preset.minTileSize, engine.minTileSize, "minTileSize unchanged");
+            AssertEqual(preset.splitLambda, engine.splitLambda, "splitLambda unchanged");
+            AssertEqual(preset.constantBias, engine.constantBias, "constantBias unchanged");
+            AssertEqual(preset.maxSpotShadows, engine.maxSpotShadows, "maxSpotShadows unchanged");
+        }
+    }
+
+    TEST_CASE("shadow quality high equals the engine defaults ShadowSettings{} (M8)")
+    {
+        // Le tableau de docs/05 M8 fige le préréglage high ; s'il diverge de ShadowSettings{} (défaut du moteur changé), ce test échoue.
+        const orosmo::renderer::ShadowSettings high = demo::shadowSettingsForQuality(demo::ShadowQuality::kHigh);
+        const orosmo::renderer::ShadowSettings engine{};
+        AssertEqual(high.cascadeResolution, 1024u, "high: cascadeResolution");
+        AssertEqual(high.cascadeCount, 4u, "high: cascadeCount");
+        AssertEqual(high.atlasSize, 4096u, "high: atlasSize");
+        AssertEqual(high.spotResolution, 1024u, "high: spotResolution");
+        AssertEqual(high.pcfRadius, 1, "high: pcfRadius");
+        AssertEqual(high.maxDistance, 80.0f, "high: maxDistance");
+        Assert(high.cascadeUpdateInterval == std::array<std::uint32_t, orosmo::renderer::kMaxShadowCascades>{1, 1, 2, 4}, "high: cascadeUpdateInterval");
+        AssertEqual(high.maxViewUpdatesPerFrame, 8u, "high: maxViewUpdatesPerFrame");
+        Assert(demo::sameShadowSettings(high, engine), "high equals ShadowSettings{} field by field");
+        AssertEqual(engine.cascadeResolution, 1024u, "engine default: cascadeResolution");
+        AssertEqual(engine.cascadeCount, 4u, "engine default: cascadeCount");
+        AssertEqual(engine.atlasSize, 4096u, "engine default: atlasSize");
+        AssertEqual(engine.spotResolution, 1024u, "engine default: spotResolution");
+        AssertEqual(engine.pcfRadius, 1, "engine default: pcfRadius");
+        AssertEqual(engine.maxDistance, 80.0f, "engine default: maxDistance");
+        Assert(engine.cascadeUpdateInterval == std::array<std::uint32_t, orosmo::renderer::kMaxShadowCascades>{1, 1, 2, 4}, "engine default: cascadeUpdateInterval");
+        AssertEqual(engine.maxViewUpdatesPerFrame, 8u, "engine default: maxViewUpdatesPerFrame");
+        // Libellé du panneau de performances, retrouvé depuis les réglages.
+        AssertEqual(std::string(demo::shadowQualityLabel(engine)), std::string("high"), "ShadowSettings{} is labelled high");
+        AssertEqual(std::string(demo::shadowQualityLabel(demo::shadowSettingsForQuality(demo::ShadowQuality::kLow))), std::string("low"), "low label");
+        orosmo::renderer::ShadowSettings custom{};
+        custom.pcfRadius = 3;
+        AssertEqual(std::string(demo::shadowQualityLabel(custom)), std::string("custom"), "other settings are labelled custom");
     }
 
     TEST_CASE("launch options parse --lighting and --lights; forward without extra lights by default (REN-04)")
