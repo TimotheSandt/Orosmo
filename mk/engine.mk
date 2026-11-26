@@ -19,8 +19,10 @@
 #     (the zip is also embedded in the orosmo[.exe] tool)
 #       includes/   — public headers
 #       lib/        — debug + release archives
+#       deps/       — third-party libraries of the engine, prebuilt and static (include/, lib/, licenses/): tools/package-deps.sh
 #       make/       — engine.mk
 #       tools/      — CUI precompiler
+#       VERSION     — engine version (x.y.z)
 #
 # ── orosmo tool (make engine-tool) ───────────────────────────────────────────
 #   dist/orosmo-<platform>[.exe]  — scaffolding tool (orosmo init/update)
@@ -416,6 +418,9 @@ else
 	@cp -r res/fonts res/themes "$(DIST_PKG_DIR)/res/"
 	@cp tools/engine-sdk/examples/minimal/main.cpp tools/engine-sdk/examples/minimal/Makefile "$(DIST_PKG_DIR)/examples/minimal/"
 endif
+	@# deps/ : bibliothèques tierces du moteur (celles de ce build), statiques, sans chargeur Vulkan ni OpenGL (contrat A76).
+	@sh tools/package-deps.sh "$(VCPKG_INSTALLED_DIR)" "$(DIST_PKG_DIR)/deps"
+	@printf '%s\n' "$(ENGINE_VERSION)" > "$(DIST_PKG_DIR)/VERSION"
 	@echo "Engine package ready: $(DIST_PKG_DIR)/"
 
 # ── zip helper ────────────────────────────────────────────────────────────────
@@ -490,10 +495,12 @@ engine-tool: $(ENGINE_PKG_ZIP) $(ENGINE_TOOL_EXE)
 # Copies keep their dates (cp -p; Copy-Item keeps LastWriteTime on Windows): an unchanged header or archive does not make the
 # demo recompile or relink at every sync.
 # Faster than install-demo: no dist packaging step required.
-# vcpkg_installed/ is linked (not copied) to avoid duplicating hundreds of MB.
+# vcpkg_installed/ is linked (not copied) to avoid duplicating hundreds of MB. A deps/ left by install-demo is removed: it would
+# take priority over vcpkg_installed/ in engine.mk and could be older than the repository's dependencies.
 .PHONY: sync-demo
 sync-demo: $(ENGINE_LIBS) $(_CUI_INSTALLED)
 	@mkdir -p apps/demo/orosmo/lib/$(BUILD_TYPE) apps/demo/orosmo/make apps/demo/orosmo/tools
+	@rm -rf apps/demo/orosmo/deps
 ifeq ($(DETECTED_OS),Windows)
 	@mkdir -p apps/demo/orosmo/includes
 	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination 'apps/demo/orosmo/includes' -Recurse -Force"

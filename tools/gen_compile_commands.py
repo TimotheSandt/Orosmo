@@ -2,8 +2,8 @@
 """Generate a Clang JSON Compilation Database (compile_commands.json) for Orosmo.
 
 Supports two layouts automatically (or via --mode):
-  - repo:    Orosmo engine repository (src/, apps/demo/src/, tests/, apps/demo/orosmo/Generated/)
-  - project: Standalone game project created by `orosmo init` (src/, orosmo/Generated/)
+  - repo:    Orosmo engine repository (src/, apps/demo/src/, tests/, apps/demo/Generated/)
+  - project: Standalone game project created by `orosmo init` (src/, Generated/ ; engine headers and deps/ from --engine-dir)
 
 No external tools (such as `bear`) are required.
 """
@@ -125,10 +125,10 @@ def generate_repo_entries(
             )
         )
 
-    # 2. Demo & generated CUI sources (apps/demo/src/, apps/demo/orosmo/Generated/)
+    # 2. Demo & generated CUI sources (apps/demo/src/, apps/demo/Generated/)
     demo_dir = root / "apps" / "demo"
     demo_src = demo_dir / "src"
-    demo_gen = demo_dir / "orosmo" / "Generated"
+    demo_gen = demo_dir / "Generated"
     demo_includes = [
         *engine_includes,
         f"-I{demo_gen.resolve()}",
@@ -188,6 +188,7 @@ def generate_repo_entries(
 def generate_project_entries(
     root: Path,
     engine_dir: Path,
+    gen_dir: Path,
     build_type: str,
     cxx: str,
     cc: str,
@@ -198,8 +199,10 @@ def generate_project_entries(
     inc_base = engine_dir / "includes"
     if not inc_base.is_dir():
         inc_base = engine_dir / "include"
-    gen_dir = engine_dir / "Generated"
-    vcpkg_inc = engine_dir / "vcpkg_installed" / triplet / "include"
+    # Third-party headers: deps/ of a release package, else vcpkg_installed/<triplet> (engine repository, older packages).
+    vcpkg_inc = engine_dir / "deps" / "include"
+    if not vcpkg_inc.is_dir():
+        vcpkg_inc = engine_dir / "vcpkg_installed" / triplet / "include"
     src_dir = root / "src"
 
     includes = [f"-I{inc_base.resolve()}"]
@@ -251,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", default=".", help="Project or repository root directory")
     parser.add_argument("--mode", choices=("auto", "repo", "project"), default="auto")
     parser.add_argument("--engine-dir", default="orosmo", help="Engine SDK directory in project mode")
+    parser.add_argument("--gen-dir", default="Generated", help="CUI output directory of the project (project mode)")
     parser.add_argument("--build-type", choices=("debug", "dev", "release"), default="debug")
     parser.add_argument("--cxx", default=os.environ.get("CXX", "g++"))
     parser.add_argument("--cc", default=os.environ.get("CC", "gcc"))
@@ -268,8 +272,11 @@ def main(argv: list[str] | None = None) -> int:
         engine_dir = Path(args.engine_dir)
         if not engine_dir.is_absolute():
             engine_dir = (root / engine_dir).resolve()
+        gen_dir = Path(args.gen_dir)
+        if not gen_dir.is_absolute():
+            gen_dir = (root / gen_dir).resolve()
         entries = generate_project_entries(
-            root, engine_dir, args.build_type, cxx, cc, args.triplet, arch_flags, platform_defs
+            root, engine_dir, gen_dir, args.build_type, cxx, cc, args.triplet, arch_flags, platform_defs
         )
 
     out_path = Path(args.out) if args.out else (root / "compile_commands.json")

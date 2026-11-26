@@ -17,6 +17,11 @@ orosmo-pkg-<platform>/
   lib/
     debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libassets, libanim, libui, libthirdparty (link them all:
                        ENGINE_LINK_LIBS)
+  deps/
+    include/, lib/   — the engine's third-party libraries, prebuilt and static (GLFW, glad, volk, shaderc/glslang/SPIRV-Tools,
+                       spirv-cross, freetype, msdfgen, ktx, meshoptimizer, glm, stb…): no vcpkg, no `make install`.
+                       Never included: the Vulkan loader, OpenGL, X11/Wayland and libc (system packages)
+    licenses/        — their licence files
   make/engine.mk     — include this in your project Makefile
   cmake/             — optional CMake package (`OrosmoConfig.cmake`, `find_package(Orosmo REQUIRED)`)
   tools/cui[.exe]    — interface language compiler (.cui → C++), run by engine.mk or CMake
@@ -24,9 +29,15 @@ orosmo-pkg-<platform>/
   shaders/rhi/       — GLSL 450 shaders of the RHI renderers: copy them next to your executable (res/shader/rhi/)
   res/fonts, res/themes — default font and the dark/light themes of orosmo::ui
   examples/
-    minimal/         — the smallest program linked to the engine (orosmo::core tasks + reflection, no window): make -C examples/minimal
-  vcpkg.json         — third-party dependencies (make install in a project created by `orosmo init`)
+    minimal/         — the smallest program linked to the engine (orosmo::core tasks + reflection, no window): copy the folder
+                       out of the package, then make ENGINE_DIR=/path/to/this/package
+  VERSION            — engine version (x.y.z)
+  vcpkg.json         — the vcpkg manifest deps/ was built from (reference only)
   .gitignore, README.md
+
+Installed with `orosmo install <version>` in `$OROSMO_HOME/engines/<version>/` (default `~/.orosmo`, `%LOCALAPPDATA%\Orosmo` on
+Windows), this directory is read-only and shared by every project: nothing is ever written into it (the CUI output goes to
+`Generated/` in the project).
 ```
 
 ## Prerequisites
@@ -35,7 +46,7 @@ orosmo-pkg-<platform>/
 |------|----------------|-------|
 | GNU Make | 4.x | `make --version` |
 | g++ or clang++ | g++ 13 (verified: 13.3) or clang++ 17 | C++23 (`std::expected`, `<stacktrace>`); set `CXX` to override |
-| vcpkg | any | only needed for `make install` |
+| vcpkg | any | optional: only for the game's own libraries (`make add-dep`) |
 
 No Python, no Rust toolchain required. The CUI precompiler ships as a native binary.
 
@@ -44,7 +55,7 @@ No Python, no Rust toolchain required. The CUI precompiler ships as a native bin
 ### 1 — Point your Makefile at the engine
 
 ```makefile
-ENGINE_DIR   := path/to/orosmo-pkg-<platform>   # this directory
+ENGINE_DIR   := path/to/orosmo-pkg-<platform>   # this directory (`orosmo path <version>`)
 GAME_SRC_DIR := src
 BUILD_TYPE   ?= release                      # debug | dev | release
 include $(ENGINE_DIR)/make/engine.mk

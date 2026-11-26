@@ -9,6 +9,7 @@ logs/
 *.log
 imgui.ini
 orosmo/
+orosmo.old/
 vcpkg_installed/
 config.local.mk
 /orosmo
