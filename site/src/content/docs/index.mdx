@@ -1,14 +1,40 @@
 ---
-title: Orosmo
-description: Moteur 3D et 2D générique en C++23. Rendu Vulkan et OpenGL derrière une même couche d'abstraction, interface écrite en .cui, thèmes JSON.
+title: Orosmo, moteur de jeu 2D et 3D en C++23
+description: "Orosmo, moteur de jeu 2D et 3D open source en C++23 : rendu Vulkan et OpenGL, Metal prévu, interface décrite en langage .cui. Licence Apache-2.0."
+head:
+  - tag: script
+    attrs:
+      type: application/ld+json
+    content: |
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Orosmo",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Linux, Windows, macOS",
+        "description": "Moteur de jeu 2D et 3D open source écrit en C++23. Rendu Vulkan et OpenGL 4.3 derrière une même couche d'abstraction ; backend Metal prévu, pas encore disponible. Interface décrite dans un langage maison, le .cui, compilé en C++.",
+        "url": "https://orosmo.gasshog.fr/",
+        "codeRepository": "https://github.com/TimotheSandt/Orosmo",
+        "programmingLanguage": "C++",
+        "license": "https://github.com/TimotheSandt/Orosmo/blob/main/LICENSE",
+        "author": {
+          "@type": "Person",
+          "name": "Timothé Sandt",
+          "url": "https://github.com/TimotheSandt"
+        }
+      }
 ---
 
 import { Image } from 'astro:assets';
 import ombres from '../../assets/captures/scene-ombres.webp';
 
-Orosmo est un moteur 3D et 2D générique écrit en C++23. Le rendu passe par une couche d'abstraction graphique (le RHI) qui
-a deux backends, Vulkan et OpenGL 4.3 ; Metal n'existe pas encore. L'interface s'écrit dans un langage maison, le `.cui`,
-compilé en C++ ; son apparence vient de thèmes JSON.
+Orosmo est un moteur de jeu 2D et 3D open source (Apache-2.0) écrit en C++23, développé par Timothé Sandt. Le rendu
+passe par une couche d'abstraction graphique (le RHI) qui a deux backends, Vulkan et OpenGL 4.3 ; un backend Metal est
+prévu et n'existe pas encore. L'interface s'écrit dans un langage maison, le `.cui`, compilé en C++ ; son apparence vient
+de thèmes JSON.
+
+[Installer](/demarrer/installation/) · [Code sur GitHub](https://github.com/TimotheSandt/Orosmo) ·
+[À propos](/projet/a-propos/) · [Fonctionnalités](/projet/fonctionnalites/)
 
 ## État
 

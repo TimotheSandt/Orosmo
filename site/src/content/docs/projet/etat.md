@@ -2,7 +2,7 @@
 title: État du moteur
 description: Ce qui est livré, partiel ou absent dans la version 0.6.2, par section de la checklist, avec où trouver les preuves.
 sidebar:
-  order: 1
+  order: 3
 ---
 
 Cette page résume l'état à la version 0.6.2 (M6 livré le 2026-11-24, M14, distribution du SDK le 2026-11-25). La référence est le dépôt :
