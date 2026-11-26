@@ -96,7 +96,7 @@ Chaque point est une **proposition**, rien n'est appliqué. Références : `docs
 | A23 | Ne pas dupliquer un run déjà existant | Job `plan` dans `ci.yml` : saute le run de la PR si la base est contenue dans la tête **et** qu'un run de push existe pour ce commit |
 | A19 | Compris : seuls des caches de compilation seront supprimés | Aucune action de ma part |
 | A11 | Corriger en temps voulu, selon le plan | Rien à faire avant M2/M4 |
-| Q5 | Licence à voir plus tard | Rien (note : un stash contient une GPL-3.0, voir `docs/notes/archive/README.md`) |
+| Q5 | Licence à voir plus tard ; **tranché le 2026-11-25 : Apache-2.0** | Fichier `LICENSE` (texte officiel) ajouté à la racine ; README et page Contribuer mis à jour |
 | Q3 / A16 | Aligner `main` sur le remote | `main` locale ramenée sur `origin/main` ; **rien n'est perdu** : `main` locale (44 commits d'avance) était entièrement contenue dans `dev` |
 | Q7 | Analyser puis supprimer les stashes | Analysés ; 2 archivés ; patchs complets hors dépôt ; suppression en attente de ton « go » |
 | A18 | macOS : on ne se bloque pas dessus | macOS reste `continue-on-error` ; on le retouche à chaque PR |
