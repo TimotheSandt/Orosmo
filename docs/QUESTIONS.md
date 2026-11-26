@@ -371,4 +371,4 @@ Choix faits pendant le jalon M5 (`docs/releases/M5.md`). Aucun n'est une décisi
   - **Construction par l'outil** : `orosmo build`, `orosmo run`, `orosmo clean` lancent `make` ; `orosmo build --json` écrit une ligne JSON par événement (`begin`, `end`, `diagnostic`, `done`), pour une future interface graphique. `make` reste utilisable directement.
   - **Linux garanti : glibc ≥ 2.38 (Ubuntu 24.04 et plus récent)**, la version de la machine qui construit le paquet.
   - **Reportés** : paquets natifs (`.deb`, Homebrew, winget) et signature des binaires (G218).
-  - Contrat détaillé : `docs/03` §10 « Distribution du SDK ». Le jeu livré aux joueurs ne change pas (liaison statique).
+  - Contrat détaillé : `docs/03` §16 « Distribution du SDK ». Le jeu livré aux joueurs ne change pas (liaison statique).
