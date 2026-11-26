@@ -28,7 +28,7 @@ orosmo run                              # compile (make debug) puis lance bin/de
 ```
 
 Ni vcpkg ni `make install` : les bibliothèques tierces du moteur sont dans le paquet (`deps/`). Linux : glibc 2.38 ou plus
-récent (Ubuntu 24.04+) ; Windows et macOS ne sont pas vérifiés ([docs/GAPS.md](docs/GAPS.md), G214 à G219). Guide complet :
+récent (Ubuntu 24.04+) ; Windows et macOS ne sont pas vérifiés ([docs/GAPS.md](docs/GAPS.md), G214 à G220). Guide complet :
 [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md). La suite de ce fichier concerne la compilation du dépôt du moteur.
 
 ## Prérequis
