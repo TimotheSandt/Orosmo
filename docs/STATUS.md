@@ -52,6 +52,17 @@ Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 718 ca
 
 Option de la démo, sans changement du moteur (`docs/05` M8, A79). `apps/demo/src/launch_options.hpp` : `ShadowQuality`, `parseShadowQuality`, `shadowSettingsForQuality` (préréglages `low`, `medium`, `high` = `ShadowSettings{}`), `shadowQualityLabel` ; `Game::setShadowSettings` passe les réglages à `ShadowFeature::create` ; le panneau de performances affiche « shadows on <qualité> ». Tests : `tests/demo/launch_options_tests.cpp` (lecture, défaut `high`, valeur invalide refusée, préréglages, `high` égal à `ShadowSettings{}`). Démo : `apps/demo/bin/debug/main --shadows on --shadow-quality low`.
 
+## M8 lot L12b : petites fabriques et plateforme (A75.10, A75.12, A75.16, part `platform` d'A75.8)
+
+Sur `feat/M8-L12b-fabriques-platform` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa, OpenGL et Vulkan). Tests : `tests/renderer/light_camera_api_tests.cpp` (sans GPU), cas « A75.10 descriptor light factories give the same image… » de `tests/renderer/forward_plus_tests.cpp` (deux backends), cas A75.8 et A75.16 de `tests/platform/window_input_tests.cpp`.
+
+| Proposition | État | Fichier et symbole | Preuve |
+| --- | --- | --- | --- |
+| A75.10 une convention de direction, portée, degrés | **Fait** (limites : G272) | `light.hpp` `DirectionalLightDesc`, `PointLightDesc`, `SpotLightDesc`, `directionalLight(desc)`, `pointLight(desc)`, `spotLight(desc)`, `lightDirection` ; anciennes fabriques gardées | cas « A75.10 directionalLight(desc) / spotLight(desc) / pointLight(desc) » (portée = `lightRange`) et « same image as the old ones » (tolérance 0, OpenGL et Vulkan) : verts |
+| A75.12 `setForward`, `lookAt` | **Fait** (verticale : G273) | `camera.hpp` `Camera::setForward`, `lookAt`, `forward` | cas « A75.12 setForward… », « A75.12 lookAt… » (cible au centre de l'écran, même vue que `glm::lookAt`) : verts |
+| A75.16 `pollEvents` séparé de `newFrame` | **Fait** | `window.hpp` `Window::pollEvents`, `newFrame` (documenté ; faux sans fenêtre au lieu d'un pointeur nul) ; gabarit : `break` au lieu de `continue` | cas « A75.16 pollEvents… » et « a window that was never created behaves safely » : verts |
+| A75.8 (part `platform`) `init` → `Result<>`, `Window::input()` | **Fait** pour `init` et `input` (changement incompatible : G270 ; reste : G271) | `Window::init` (kInvalidArgument, kAlreadyExists, kUnsupported ; `glfwInit` en échec ne quitte plus), `Window::input` | cas « A75.8 Window::init returns a Result… », « a second init… », « Window::input() is the InputManager of getInstance » : verts |
+
 ## SDK (v0.6.2)
 
 Distribution du SDK, décision A76 (`docs/QUESTIONS.md`), contrat `docs/03` §16. Aucun code C++ du moteur touché ; aucune ligne de `docs/02` ne change d'état (BLD-01, BLD-02 : Partiel, Windows et macOS non vérifiés). Preuves sous Linux x64 (Ubuntu 24.04, g++ 13.3), branche `docs/SDK` fondée sur `feat/SDK-integ` (`788c332`) :

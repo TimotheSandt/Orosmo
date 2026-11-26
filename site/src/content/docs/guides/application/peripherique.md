@@ -23,7 +23,7 @@ rhi::DeviceDesc desc;
 desc.backend = rhi::Backend::kOpenGL;
 desc.validation = true;
 
-if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)   // avant la création de la fenêtre
+if (!window.init([&] { (void)rhi::prepareWindowHints(desc); }))   // avant la création de la fenêtre
     return 1;
 desc.surface.nativeWindow = window.getWindow();                      // après
 
@@ -68,7 +68,7 @@ auto tryBackend = [](rhi::Backend backend, platform::Window &window) -> core::Re
 {
     rhi::DeviceDesc desc;
     desc.backend = backend;
-    if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
+    if (!window.init([&] { (void)rhi::prepareWindowHints(desc); }))
         return core::makeError(core::ErrorCode::kUnsupported, "fenêtre impossible");
     desc.surface.nativeWindow = window.getWindow();
     return rhi::createDevice(desc);
