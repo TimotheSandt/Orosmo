@@ -299,12 +299,16 @@ fn ui09_tab_index_and_focusable_describe_the_keyboard_order() {
         "view V {\n    VBox {\n        Button(\"a\").tabIndex(2)\n        Button(\"b\").tabIndex(-1)\n        Button(\"c\").focusable(false)\n    }\n}\n",
     )
     .unwrap();
-    assert!(source.contains("->setTabIndex(static_cast<int>(2.0));"), "{source}");
-    assert!(source.contains("->setTabIndex(static_cast<int>(-1.0));"), "{source}");
+    assert!(source.contains("->setTabIndex(orosmo::ui::tabIndexFrom(static_cast<double>(2.0)));"), "{source}");
+    assert!(source.contains("->setTabIndex(orosmo::ui::tabIndexFrom(static_cast<double>(-1.0)));"), "{source}");
     assert!(source.contains("->setFocusable(false);"), "{source}");
     assert_eq!(
         errors("view V {\n    Button(\"a\").tabIndex(1.5)\n}\n"),
         vec!["v.cui:3:16: error: '.tabIndex' expects an integer".to_string()]
+    );
+    assert_eq!(
+        errors("view V {\n    Button(\"a\").tabIndex(2147483648)\n}\n"),
+        vec!["v.cui:3:16: error: '.tabIndex' must be between -2147483648 and 2147483647".to_string()]
     );
     assert_eq!(
         errors("view V {\n    Button(\"a\").focusable(\"no\")\n}\n"),

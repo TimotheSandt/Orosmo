@@ -839,9 +839,12 @@ impl<'a> Gen<'a> {
                 if let Some(e) = one(self) {
                     match e {
                         Expr::Number(n) if n.fract() != 0.0 => self.err(line, col, "'.tabIndex' expects an integer"),
+                        Expr::Number(n) if *n < i32::MIN as f64 || *n > i32::MAX as f64 => {
+                            self.err(line, col, "'.tabIndex' must be between -2147483648 and 2147483647")
+                        }
                         Expr::StringLit(_) | Expr::Bool(_) => self.err(line, col, "'.tabIndex' expects an integer"),
                         _ => match expr_cpp(e, &self.scope) {
-                            Ok(v) => self.emit(format!("{var}->setTabIndex(static_cast<int>({v}));")),
+                            Ok(v) => self.emit(format!("{var}->setTabIndex(orosmo::ui::tabIndexFrom(static_cast<double>({v})));")),
                             Err(e) => self.err(line, col, e),
                         },
                     }

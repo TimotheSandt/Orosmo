@@ -892,10 +892,10 @@ void Game::update()
             if (!this->focusId.empty() && this->renderedFrames >= 1)
             {
                 ui::Widget *target = this->fullUi->find(this->focusId);
-                if (target == nullptr || !target->canTakeFocus())
+                if (target == nullptr || !target->canTakeFocus() || !target->visibleInTree())
                 {
-                    LOG_ERROR(1, "Capture: no focusable widget with id '", this->focusId, "' (--focus)");
-                    std::cerr << "Orosmo: no focusable widget with id '" << this->focusId << "' (--focus)\n";
+                    LOG_ERROR(1, "Capture: no visible focusable widget with id '", this->focusId, "' (--focus)");
+                    std::cerr << "Orosmo: no visible focusable widget with id '" << this->focusId << "' (--focus)\n";
                     this->captureFailed = true;
                     if (this->headless)
                     {
