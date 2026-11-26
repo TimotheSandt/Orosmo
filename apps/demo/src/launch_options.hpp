@@ -116,6 +116,10 @@ struct LaunchOptions
     std::string clickId;
     // --focus <id> (UI-09) : focus clavier sur ce widget pendant --capture, anneau de focus visible (--capture-frames >= 2).
     std::string focusId;
+    // --debug-tools (UI-04, UI-10) : outils de debug ouverts dès le départ (F12 les ouvre ou ferme) ; --debug-tab
+    // console|widgets|entities|profiler : onglet affiché (défaut : widgets).
+    bool debugTools = false;
+    std::string debugTab = "widgets";
     // --size WxH (défaut : 1280x720, minimum : 640x400).
     int width = 1280;
     int height = 720;

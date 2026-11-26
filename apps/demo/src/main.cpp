@@ -182,6 +182,7 @@ int main(int argc, char **argv)
             game.setHudLevel(launchOptions.hudLevel);
             game.setInitialTheme(launchOptions.theme);
             game.setInitialTab(launchOptions.tab);
+            game.setDebugTools(launchOptions.debugTools, launchOptions.debugTab);
             game.setCaptureInteraction(launchOptions.hoverId, launchOptions.clickId);
             game.setCaptureFocus(launchOptions.focusId);
             game.setFramePacing(demo::framePacingFor(launchOptions));
