@@ -294,6 +294,7 @@ e2e-init:
 	@# Sans ENGINE_DIR : le Makefile du projet appelle `orosmo path $(OROSMO_VERSION)` (outil trouvé dans le PATH).
 	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) debug
 	test -n "$$(find $(E2E_RUN)/mygame/Generated -name '*.gen.cpp')"   # sortie de cui dans le projet
+	@# 2e build (copy_res recopie les ressources du moteur en lecture seule : elles doivent rester inscriptibles, G220).
 	cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo build --json > ../build.json
 	grep -q '"event":"done"' $(E2E_RUN)/build.json
 	@if [ "$(E2E_RUN_GRAPHICS)" = 1 ]; then \
@@ -308,6 +309,7 @@ e2e-init:
 	$(E2E_RUN)/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
 	@echo "e2e-init : sortie de l'exemple minimal :"; cat $(E2E_RUN)/minimal.txt
 	grep -q 524800 $(E2E_RUN)/minimal.txt
+	@# doctor avec le même OROSMO_HOME que install/init (G219).
 	cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo doctor
 	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) compile-commands
 	test -s $(E2E_RUN)/mygame/compile_commands.json
