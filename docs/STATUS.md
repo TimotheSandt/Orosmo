@@ -30,6 +30,22 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L11 : API de rendu simplifiée (A75.3 à A75.7, A75.15)
+
+Sur `feat/M8-L11-api-rendu` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa, OpenGL et Vulkan). Les anciennes signatures restent (choix 10) et sont encore exercées par les tests. Tests : `tests/renderer/render_api_tests.cpp` (suites `renderer/render-api`, `renderer/mesh-builder`, sur les deux backends).
+
+| Proposition | État | Fichier et symbole | Preuve |
+| --- | --- | --- | --- |
+| A75.3 définitions et programme résolu au dessin | **Fait** (récepteurs d'ombres par `mesh.frag` : G240 ; dispositions texturée et instanciée : G243) | `scene_renderer.hpp` `SceneRenderer::shaderDefines`, `revision`, `resolveProgram` ; `render_feature.hpp` `RenderFeature::shaderDefines` ; `ForwardPlusLighting::shaderDefines` | cas « SceneRenderer::shaderDefines and revision », « drawMesh(mesh) (A75.3, A75.6) » (recompilé pour un AOV ajouté, mêmes pixels que l'ancien chemin) : verts |
+| A75.4 `RenderContext` | **Fait** | `render_context.hpp` `RenderContext` ; surcharges `create(const RenderContext &…)` de 17 fabriques, `enableForwardPlus` et `enableGpuDriven` | cas « RenderContext (A75.4) » : contexte possédant et contexte qui référence, ancienne signature : verts |
+| A75.5 matériau porté par le maillage, `MeshBuilder` | **Fait** | `mesh.hpp` `Mesh::setMaterial`, `material` ; `mesh_builder.hpp` `MeshBuilder` (`computeTangents`, `addBox`, `addPlane`) | cas « MeshBuilder (A75.5) » et « Mesh::setMaterial » (matériau gardé vivant, groupe suivi, mêmes pixels que l'ancien chemin) : verts |
+| A75.6 `drawMesh(Mesh &)`, `setWireframe` | **Fait** | `SceneRenderer::drawMesh(Mesh &)`, `setWireframe` | cas « setWireframe (A75.6) » : verts ; démo migrée (`apps/demo/src/Scene/demo_scene.cpp`) |
+| A75.7 `endFrame(backbuffer)` | **Partiel** (passe « upscale » non renommée : G241) | `SceneRenderer::endFrame(rhi::TextureHandle)` | cas « endFrame(texture) (A75.7) » : mêmes pixels, sortie étirée, texture inconnue refusée : verts ; démo migrée (`Game::render`) |
+| A75.15 `kBack` pour le contenu glTF | **Fait** pour les matériaux (défaut global gardé : G242) | `Mesh::setMaterial` ; `assets::RenderModel` (depuis M6) | cas « Mesh::setMaterial » : `kBack`, `kNone` en double face |
+
+Non-régression : 24 captures (12 configurations × OpenGL et Vulkan : HUD, ombres, forward+, forward+ et ombres, widgets, scène mixte, ombre tramée, animation, TAA, debug normales, fil de fer, 200 instances) faites avant puis après : les 24 `scene.png` identiques au pixel près (`tools/compare_png.py --tolerance 0`), `ui.png` identiques sauf le texte des mesures en direct du HUD (FPS, ms) ; couches de validation Vulkan : 0 message sur chaque exécution.
+
+
 ## SDK (v0.6.2)
 
 Distribution du SDK, décision A76 (`docs/QUESTIONS.md`), contrat `docs/03` §16. Aucun code C++ du moteur touché ; aucune ligne de `docs/02` ne change d'état (BLD-01, BLD-02 : Partiel, Windows et macOS non vérifiés). Preuves sous Linux x64 (Ubuntu 24.04, g++ 13.3), branche `docs/SDK` fondée sur `feat/SDK-integ` (`788c332`) :
