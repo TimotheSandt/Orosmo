@@ -236,8 +236,11 @@ $(ENGINE_LIBS):
 
 # ── CUI precompiler ───────────────────────────────────────────────────────────
 
-# Generated/ itself is skipped (its redirect shims are .cui files) when it lies under GAME_SRC_DIR (GAME_SRC_DIR := .).
-_ENG_CUI_SRCS    := $(shell find $(GAME_SRC_DIR) -path "$(GAME_SRC_DIR)/$(ENGINE_GEN_DIR)" -prune -o -type f -name "*.cui" -print 2>/dev/null)
+# Generated/ itself is skipped (its redirect shims are .cui files) when it lies under GAME_SRC_DIR (GAME_SRC_DIR := . or
+# ENGINE_GEN_DIR := src/Generated). ENGINE_GEN_DIR is relative to the project root, like the paths find prints (`src/…`, or
+# `./…` when GAME_SRC_DIR starts with `.`): both spellings are pruned.
+_ENG_GEN_PRUNE   := $(patsubst ./%,%,$(ENGINE_GEN_DIR))
+_ENG_CUI_SRCS    := $(shell find $(GAME_SRC_DIR) \( -path "$(_ENG_GEN_PRUNE)" -o -path "./$(_ENG_GEN_PRUNE)" \) -prune -o -type f -name "*.cui" -print 2>/dev/null)
 
 GEN_CPP_SOURCES      := $(patsubst $(GAME_SRC_DIR)/%.cui,$(ENGINE_GEN_DIR)/%.gen.cpp,$(_ENG_CUI_SRCS))
 GEN_REDIRECT_SOURCES := $(patsubst $(GAME_SRC_DIR)/%.cui,$(ENGINE_GEN_DIR)/%.cui,$(_ENG_CUI_SRCS))

@@ -459,7 +459,8 @@ $(ENGINE_PKG_ZIP): dist
 # ── engine tool binary ────────────────────────────────────────────────────────
 # The engine package is NOT embedded in the tool (small binary): `orosmo install` downloads it, `--package <zip>` offline.
 # GITHUB_REPO is baked in at compile time so the URL is not hardcoded in source.
-$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) $(TOOLS_TEMPLATE)
+# mk/config.mk : ENGINE_VERSION (and the identity) are baked in by build.rs; a change must rebuild the tool (not via `dist`).
+$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) $(TOOLS_TEMPLATE) $(wildcard $(_MK_DIR)config.mk)
 	REPO_HOST="$(REPO_HOST)" \
 	GITHUB_REPO="$(REPO_SLUG)" \
 	ENGINE_NAME="$(ENGINE_NAME)" \

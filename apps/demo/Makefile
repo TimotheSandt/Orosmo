@@ -425,11 +425,12 @@ install install-deps add-dep:
 	        fi; \
 	        b=$$(mktemp); a=$$(mktemp); \
 	        ls "$$LIBDIR/"*.a 2>/dev/null | sort > "$$b" || :; \
-	        $(VCPKG) install "$$dep" \
+	        $(VCPKG) install \
 	            --triplet=$(ENGINE_VCPKG_TRIPLET) \
 	            --x-manifest-root=. \
 	            --x-install-root=$(_ADD_DEP_VCPKG_ROOT) \
-	            --no-print-usage; \
+	            --no-print-usage \
+	            || { rm -f "$$b" "$$a"; printf "Error: vcpkg could not install the manifest (vcpkg.json, with %s)\n" "$$dep"; exit 1; }; \
 	        ls "$$LIBDIR/"*.a 2>/dev/null | sort > "$$a" || :; \
 	        if [ -n "$(LIBS)" ]; then \
 	            NEW="$(LIBS)"; \
