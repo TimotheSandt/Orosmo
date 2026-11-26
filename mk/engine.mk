@@ -23,6 +23,7 @@
 #       make/       — engine.mk
 #       tools/      — CUI precompiler
 #       VERSION     — engine version (x.y.z)
+#       LICENSE     — Apache-2.0 (the engine's licence; third-party licences are in deps/licenses/)
 #
 # ── orosmo tool (make engine-tool) ───────────────────────────────────────────
 #   dist/orosmo-<platform>[.exe]  — scaffolding tool (orosmo init/update)
@@ -419,6 +420,7 @@ endif
 	@# deps/ : bibliothèques tierces du moteur (celles de ce build), statiques, sans chargeur Vulkan ni OpenGL (contrat A76).
 	@sh tools/package-deps.sh "$(VCPKG_INSTALLED_DIR)" "$(DIST_PKG_DIR)/deps"
 	@printf '%s\n' "$(ENGINE_VERSION)" > "$(DIST_PKG_DIR)/VERSION"
+	@cp LICENSE "$(DIST_PKG_DIR)/LICENSE"   # Apache-2.0 du moteur, à la racine du paquet
 	@echo "Engine package ready: $(DIST_PKG_DIR)/"
 
 # ── zip helper ────────────────────────────────────────────────────────────────
