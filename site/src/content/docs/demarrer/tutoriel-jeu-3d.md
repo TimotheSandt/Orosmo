@@ -21,7 +21,7 @@ programme ni l'ombre d'un modèle animé.
 ```bash
 orosmo init monjeu && cd monjeu          # voir « Créer un projet avec orosmo init »
 eng=$(ORS_NO_PROGRESS=1 make -s info | sed -n '/^Engine:/{s/^Engine: *//;s/ (OROSMO_VERSION.*//;p;}')   # moteur utilisé par make (OROSMO_VERSION de config.mk)
-mkdir -p res && cp -R "$eng/res/." res/                                # police et thèmes de ce moteur dans res/
+test -d "$eng/res" && mkdir -p res && cp -R "$eng/res/." res/               # police et thèmes de ce moteur dans res/
 mkdir -p res/models                      # le personnage ira dans res/models/hero.glb (voir plus bas)
 rm src/HudView.cui src/hud_state.hpp     # le panneau du projet de démarrage est remplacé par le menu
 ```

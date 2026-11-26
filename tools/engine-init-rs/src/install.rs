@@ -187,7 +187,11 @@ pub fn install_tree_atomic(bytes: &[u8], dest: &Path, replace: bool) -> Result<u
 /// Même normalisation que l'extraction (`safe_relative`) : `pkg/./make//engine.mk` compte, un chemin dangereux jamais.
 pub fn zip_has_file(bytes: &[u8], rel: &str) -> bool {
     let Some(want) = safe_relative(rel) else { return false };
-    ZipArchive::new(Cursor::new(bytes)).is_ok_and(|a| a.file_names().any(|n| safe_relative(strip_top_dir(n)).as_ref() == Some(&want)))
+    // Une entrée répertoire (`make/engine.mk/`) n'est pas le fichier demandé.
+    let Ok(mut a) = ZipArchive::new(Cursor::new(bytes)) else { return false };
+    (0..a.len()).any(|i| {
+        a.by_index_raw(i).is_ok_and(|e| !e.is_dir() && safe_relative(strip_top_dir(e.name())).as_ref() == Some(&want))
+    })
 }
 
 /// Contenu du fichier `VERSION` à la racine du paquet, s'il existe.
@@ -324,5 +328,11 @@ mod tests {
         let evil = make_zip(&[("pkg/x/../make/engine.mk", b"# mk\n")]);
         assert!(!zip_has_file(&evil, "make/engine.mk"));
         assert!(!zip_has_file(&make_zip(&[("pkg/VERSION", b"1")]), "make/engine.mk"));
+        // Un répertoire du même nom n'est pas le fichier.
+        let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        w.add_directory("pkg/make/engine.mk/", SimpleFileOptions::default()).unwrap();
+        w.start_file("pkg/VERSION", SimpleFileOptions::default()).unwrap();
+        let dir_entry = w.finish().unwrap().into_inner();
+        assert!(!zip_has_file(&dir_entry, "make/engine.mk"));
     }
 }

@@ -206,6 +206,8 @@ REPO_SLUG ?= $(_GIT_REPO_SLUG)
 # ── Rust tools workspace — variables only, rules come after main targets ───────
 TOOLS_WORKSPACE   := tools/Cargo.toml
 TOOLS_BUILD_RS    := $(wildcard tools/cui-rs/build.rs tools/engine-init-rs/build.rs)
+# Manifests and lock file: a dependency change (e.g. ureq) must rerun Cargo too.
+TOOLS_MANIFESTS   := $(wildcard tools/Cargo.lock tools/*/Cargo.toml)
 TOOLS_RS_SRCS     := $(shell find tools/cui-rs/src tools/engine-init-rs/src -type f -name "*.rs" 2>/dev/null) $(TOOLS_BUILD_RS)
 # Project template embedded in the orosmo tool by its build.rs: a change must rebuild the tool too.
 TOOLS_TEMPLATE    := $(wildcard apps/demo/Makefile apps/demo/config.mk apps/demo/.gitignore) \
@@ -466,7 +468,7 @@ _TOOL_PARAMS       := $(REPO_HOST)|$(REPO_SLUG)|$(ENGINE_NAME)|$(ENGINE_VERSION)
 _TOOL_PARAMS_STAMP := $(CARGO_TARGET_DIR)/orosmo-baked-params.txt
 _TOOL_PARAMS_Q     := $(subst ','\'',$(_TOOL_PARAMS))
 _TOOL_PARAMS_SYNC  := $(shell mkdir -p "$(CARGO_TARGET_DIR)" && { [ "$$(cat "$(_TOOL_PARAMS_STAMP)" 2>/dev/null)" = '$(_TOOL_PARAMS_Q)' ] || printf '%s\n' '$(_TOOL_PARAMS_Q)' > "$(_TOOL_PARAMS_STAMP)"; })
-$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) $(TOOLS_TEMPLATE) $(wildcard $(_MK_DIR)config.mk) $(_TOOL_PARAMS_STAMP)
+$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_MANIFESTS) $(TOOLS_RS_SRCS) $(TOOLS_TEMPLATE) $(wildcard $(_MK_DIR)config.mk) $(_TOOL_PARAMS_STAMP)
 	REPO_HOST="$(REPO_HOST)" \
 	GITHUB_REPO="$(REPO_SLUG)" \
 	ENGINE_NAME="$(ENGINE_NAME)" \

@@ -605,7 +605,13 @@ fn disable_vendored_engine_dir(project_dir: &Path) -> Result<(), String> {
             let vendored = !t.starts_with('#')
                 && ["ENGINE_DIR", "_ENGINE_MK"].iter().any(|var| {
                     project::eval_var(None, &[("", line)], var).is_some_and(|(v, _)| {
-                        if *var == "ENGINE_DIR" { points_to_vendored(&v, project_dir) } else { v.trim_start_matches("./").starts_with("orosmo/") }
+                        if *var == "ENGINE_DIR" {
+                            points_to_vendored(&v, project_dir)
+                        } else {
+                            // `_ENGINE_MK` : son dossier moteur (`<dir>/make/engine.mk`), relatif ou absolu.
+                            let v = v.trim().replace('\\', "/");
+                            v.strip_suffix("/make/engine.mk").is_some_and(|d| points_to_vendored(d, project_dir))
+                        }
                     })
                 });
             if vendored {
@@ -1407,7 +1413,11 @@ mod tests {
         let dir = home::tests::temp_dir("vendordir");
         fs::create_dir_all(dir.join("orosmo")).unwrap();
         fs::write(dir.join("config.local.mk"), "ENGINE_DIR := orosmo/\n_ENGINE_MK := orosmo/make/engine.mk\nCXX := g++-14\n").unwrap();
-        let abs = format!("ENGINE_DIR ?= {}\nENGINE_DIR := /opt/other\n", dir.join("orosmo").display());
+        let abs = format!(
+            "ENGINE_DIR ?= {}\nENGINE_DIR := /opt/other\n_ENGINE_MK := {}\n_ENGINE_MK ?= /opt/other/make/engine.mk\n",
+            dir.join("orosmo").display(),
+            dir.join("orosmo").join("make").join("engine.mk").display()
+        );
         fs::write(dir.join("config.mk"), &abs).unwrap();
         disable_vendored_engine_dir(&dir).unwrap();
         let local = fs::read_to_string(dir.join("config.local.mk")).unwrap();
@@ -1417,6 +1427,8 @@ mod tests {
         let cfg = fs::read_to_string(dir.join("config.mk")).unwrap();
         assert!(cfg.lines().next().unwrap().starts_with("# ENGINE_DIR ?="));
         assert_eq!(project::read_var(&cfg, "ENGINE_DIR").as_deref(), Some("/opt/other"), "another engine is kept");
+        // `_ENGINE_MK` absolu vers orosmo/ : désactivé ; vers un autre SDK : gardé.
+        assert_eq!(project::read_var(&cfg, "_ENGINE_MK").as_deref(), Some("/opt/other/make/engine.mk"));
         let _ = fs::remove_dir_all(&dir);
     }
 }
