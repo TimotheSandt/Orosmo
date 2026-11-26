@@ -279,6 +279,8 @@ bool RangeSlider::onSecondaryClick(Ui &ui, glm::vec2)
     return true;
 }
 
+bool RangeSlider::usesArrowKey(int key, bool fromGamepad) const { return !fromGamepad || key == kKeyLeft || key == kKeyRight; }
+
 void RangeSlider::onKey(Ui &ui, int key)
 {
     const double step = step_ > 0.0 ? step_ : (max_ - min_) / 100.0;
@@ -522,6 +524,8 @@ void TextArea::onText(Ui &ui, std::string_view text)
     desiredX_ = -1.0f;
     changed(ui);
 }
+
+bool TextArea::usesArrowKey(int, bool) const { return true; }
 
 void TextArea::onKey(Ui &ui, int key)
 {

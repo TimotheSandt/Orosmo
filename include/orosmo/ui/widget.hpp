@@ -287,6 +287,15 @@ class Widget
     bool pressed() const noexcept { return pressed_; }
     bool focused() const noexcept { return focused_; }
 
+    // ── Navigation au clavier et à la manette (UI-09) ──
+    // Ordre de tabulation (Ui::focusNext) : positif d'abord, par valeur croissante ; 0 (défaut) dans l'ordre de l'arbre ; négatif
+    // hors de l'ordre de tabulation (le clic et les flèches l'atteignent encore).
+    Widget &setTabIndex(int index) noexcept { tabIndex_ = index; return *this; }
+    int tabIndex() const noexcept { return tabIndex_; }
+    // Faux : le widget ne prend jamais le focus (ni Tab, ni flèches, ni clic), même s'il le pourrait (`focusable`).
+    Widget &setFocusable(bool allowed) noexcept { focusAllowed_ = allowed; return *this; }
+    bool canTakeFocus() const { return focusAllowed_ && focusable(); }
+
     // ── Événements ──
     Widget &onClick(Handler h) { handlers_[0] = std::move(h); return *this; }
     Widget &onChange(Handler h) { handlers_[1] = std::move(h); return *this; }
@@ -331,6 +340,10 @@ class Widget
     virtual Widget *detached() const noexcept { return nullptr; }
     // Le widget garde la touche Tab pour lui (éditeur de texte) au lieu de passer le focus.
     virtual bool wantsTab() const { return false; }
+    // Le widget focalisé garde cette flèche (kKeyLeft...) pour lui (curseur, champ de texte, liste) au lieu de passer le focus au
+    // voisin (UI-09). `fromGamepad` : commande de la croix ou du stick d'une manette (un curseur horizontal y laisse Haut et Bas
+    // à la navigation).
+    virtual bool usesArrowKey(int key, bool fromGamepad) const;
     virtual bool onWheel(Ui &ui, glm::vec2 wheel);
     virtual void onKey(Ui &ui, int key);                // orosmo::ui::Key
     virtual void onText(Ui &ui, std::string_view text); // UTF-8 saisi
@@ -397,6 +410,8 @@ class Widget
     bool hovered_ = false;
     bool pressed_ = false;
     bool focused_ = false;
+    bool focusAllowed_ = true;
+    int tabIndex_ = 0;
     mutable bool overrideWarned_ = false;
 };
 

@@ -178,6 +178,8 @@ bool menuEntryKey(Ui &ui, Widget &self, int key)
 }
 } // namespace
 
+bool MenuItem::usesArrowKey(int, bool) const { return true; } // haut et bas dans le menu, gauche et droite entre menus
+
 void MenuItem::onKey(Ui &ui, int key)
 {
     if (key == kKeyEnter || key == kKeySpace)
@@ -230,6 +232,8 @@ void Menu::open(Ui &ui, bool focusFirst)
             ui.focus(entries.front());
     }
 }
+
+bool Menu::usesArrowKey(int, bool) const { return true; }
 
 void Menu::onKey(Ui &ui, int key)
 {

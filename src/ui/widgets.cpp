@@ -298,6 +298,8 @@ bool Slider::onSecondaryClick(Ui &ui, glm::vec2)
     return true;
 }
 
+bool Slider::usesArrowKey(int key, bool fromGamepad) const { return !fromGamepad || key == kKeyLeft || key == kKeyRight; }
+
 void Slider::onKey(Ui &ui, int key)
 {
     const double step = step_ > 0.0 ? step_ : (max_ - min_) / 100.0;
@@ -420,6 +422,8 @@ void Dropdown::onRelease(Ui &ui, glm::vec2, bool inside)
         open(ui);
 }
 
+bool Dropdown::usesArrowKey(int key, bool) const { return key == kKeyUp || key == kKeyDown; }
+
 void Dropdown::onKey(Ui &ui, int key)
 {
     if (key == kKeyUp)
@@ -541,6 +545,8 @@ void TextField::onText(Ui &, std::string_view text)
     edit_.beginEdit(TextEditState::EditKind::kTyping, clean);
     edit_.insert(clean);
 }
+
+bool TextField::usesArrowKey(int key, bool) const { return key == kKeyLeft || key == kKeyRight; }
 
 void TextField::onKey(Ui &ui, int key)
 {
