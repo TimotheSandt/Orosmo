@@ -5,6 +5,8 @@
 // construction. À ne pas confondre avec `core::RingBuffer` (tampon de mesures sans synchronisation).
 #pragma once
 
+#include <orosmo/core/error.hpp>
+
 #include <atomic>
 #include <cstddef>
 #include <memory>
@@ -21,7 +23,12 @@ template <typename T> class SpscQueue
     static_assert(std::is_nothrow_destructible_v<T>, "SpscQueue: T must be nothrow destructible");
 
   public:
-    // Capacité utile : `capacity` arrondie à la puissance de deux supérieure (au moins 2).
+    // Capacité utile : `capacity` arrondie à la puissance de deux supérieure (au moins 2), au plus `kMaxCapacity`. Une capacité
+    // plus grande (dont l'arrondi ne tient pas dans size_t) est une erreur de programmation : ENGINE_ASSERT_ALWAYS (journal, puis
+    // gestionnaire d'assertion ; std::abort par défaut), comme une allocation impossible. La file n'est pas déplaçable, une
+    // fabrique en `Result` ne servirait qu'à ce cas.
+    static constexpr std::size_t kMaxCapacity = (static_cast<std::size_t>(-1) >> 1u) + 1u;
+
     explicit SpscQueue(std::size_t capacity) : capacity_(roundUp(capacity)), mask_(capacity_ - 1u)
     {
         slots_ = std::make_unique<Slot[]>(capacity_);
@@ -99,7 +106,12 @@ template <typename T> class SpscQueue
     }
 
     // Approximations (exactes seulement quand l'autre côté ne travaille pas) : diagnostic et tests.
-    std::size_t sizeApprox() const noexcept { return tail_.load(std::memory_order_acquire) - head_.load(std::memory_order_acquire); }
+    // `head_` d'abord : `tail_` ne décroît jamais et reste >= `head_` lu avant lui, la différence ne passe jamais sous zéro.
+    std::size_t sizeApprox() const noexcept
+    {
+        const std::size_t head = head_.load(std::memory_order_acquire);
+        return tail_.load(std::memory_order_acquire) - head;
+    }
     bool emptyApprox() const noexcept { return sizeApprox() == 0u; }
     std::size_t capacity() const noexcept { return capacity_; }
 
@@ -109,8 +121,9 @@ template <typename T> class SpscQueue
         alignas(T) unsigned char bytes[sizeof(T)];
     };
 
-    static std::size_t roundUp(std::size_t n) noexcept
+    static std::size_t roundUp(std::size_t n)
     {
+        ENGINE_ASSERT_ALWAYS(n <= kMaxCapacity, "SpscQueue: capacity too large (its power-of-two rounding overflows)");
         std::size_t c = 2u;
         while (c < n)
             c <<= 1u;
