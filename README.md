@@ -113,7 +113,7 @@ site/         site vitrine et wiki (Astro + Starlight, image Docker nginx ; M14)
 docs/         spécification, plan, rapports (voir docs/README.md)
 ```
 
-Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libassets.a`, `libanim.a`, `libui.a`, `libthirdparty.a`), distribuées dans `dist/orosmo-pkg-<plateforme>.zip` avec leurs bibliothèques tierces précompilées (`deps/`, installé par `orosmo install` dans `$OROSMO_HOME/engines/<version>`) et copiées dans `apps/demo/orosmo/` pour la démo du dépôt. *(Le code procédural `orosmo::world` / `TerrainRenderer` et les anciennes applications terrain ont été archivés dans la branche `archive/procedural-world`, décision A37.)*
+Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libassets.a`, `libanim.a`, `libscene.a`, `libui.a`, `libthirdparty.a`), distribuées dans `dist/orosmo-pkg-<plateforme>.zip` avec leurs bibliothèques tierces précompilées (`deps/`, installé par `orosmo install` dans `$OROSMO_HOME/engines/<version>`) et copiées dans `apps/demo/orosmo/` pour la démo du dépôt. *(Le code procédural `orosmo::world` / `TerrainRenderer` et les anciennes applications terrain ont été archivés dans la branche `archive/procedural-world`, décision A37.)*
 
 ## Documentation
 

@@ -28,7 +28,7 @@ inférieur.
 | 11 | `apps` | la démo `apps/demo`, les jeux | présent |
 
 Chaque module présent est une bibliothèque statique : `libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`,
-`libassets.a`, `libanim.a`, `libui.a`, plus `libthirdparty.a`. `ui` produit des listes de dessin (`renderer::DrawList`) que
+`libassets.a`, `libanim.a`, `libscene.a`, `libui.a`, plus `libthirdparty.a`. `ui` produit des listes de dessin (`renderer::DrawList`) que
 le renderer affiche. `platform` et `rhi` ne se rencontrent qu'à la création de la surface : la fenêtre donne un pointeur
 opaque (`Window::getWindow()`) que `rhi::SurfaceDesc::nativeWindow` reçoit.
 

@@ -96,8 +96,8 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | CORE-08 | Événements | Absent | Pas de bus d'événements typé. | M3 (proposé : premier usage, événements de l'interface) |
 | CORE-12 | Sérialisation et réflexion | Absent | Ni sérialisation, ni réflexion, ni versionnage. | M1 |
 | CORE-13 | Observateur de fichiers | Absent | Aucun observateur de fichiers. | M1 |
-| ECS-01 | Entités et composants | Absent | Absent ; choix ECS maison/EnTT à trancher. | M8 |
-| ECS-02 | Transformations hiérarchiques | Absent | Absent (transformations dans `Mesh`). | M8 |
+| ECS-01 | Entités et composants | Fait | Module `scene` (M8 L2), ECS maison (A79 choix 1) ; limites G260 à G264. | — |
+| ECS-02 | Transformations hiérarchiques | Fait | `scene::Transform`, `World::updateTransforms` (M8 L2) ; G260, G262. Le rendu des entités (`Mesh` garde sa transformation) vient en L13. | — |
 | ECS-03 | Chargement et sauvegarde de scène | Absent | Absent. | M8 |
 | GAME-01 | Module de jeu rechargeable | Absent | Absent. | M8 |
 | GAME-02 | État côté moteur | Absent | Absent. | M8 |
@@ -552,6 +552,18 @@ Fondations de M8 (A79 lot L1) : `platform::DynamicLibrary`, liaison de la biblio
 | G231 | Nombre de symboles exportés par l'hôte (limite PE de 65 535) | Mesuré sous Linux : **10 109** symboles exportés par l'exécutable des tests lié avec `-rdynamic` (`nm -D --defined-only`, moteur et dépendances tierces compris). Sous MinGW, la règle de lien des tests affiche le compte de la table d'exports (`objdump -p`) dans le journal de la CI. Si l'exécutable du jeu (lot L5) approche la limite : exclure les archives tierces des exports (`-Wl,--exclude-libs,<archives>`), la bibliothèque de jeu n'ayant besoin que du moteur. | M8 L5 |
 | G232 | Copies laissées après un plantage | `DynamicLibrary` efface sa copie (`<nom>-<pid>-<n><ext>`) au déchargement ; un processus tué la laisse à côté de l'original. Le module de jeu (L5) doit effacer les copies périmées au démarrage (motif `<nom>-*-*<ext>`, pid absent). | M8 L5 |
 | G233 | TSan : réglage de l'ASLR sur les noyaux récents | Le runtime TSan de GCC 13 refuse l'entropie mmap de 32 bits des noyaux récents (« unexpected memory mapping ») : le job CI `tsan` passe `vm.mmap_rnd_bits=28` ; en local, même réglage (`sudo sysctl -w vm.mmap_rnd_bits=28`) ou `setarch -R make demo-test-unit SANITIZE=thread`. Sans affichage ni pilote Vulkan (`env -u DISPLAY -u WAYLAND_DISPLAY VK_DRIVER_FILES=/nonexistent.json`, comme le job) : **439 cas unitaires propres sous TSan** (dont `core/spsc_queue` et `platform/dynamic_library`). Avec un affichage, TSan signale une course dans Mesa et libxcb (bibliothèques non instrumentées) : `GPU_TEST_SUITES` du `Makefile` (`demo-test-unit`) n'exclut pas toutes les suites qui ouvrent un périphérique (`anim/*`, `assets/*`, `apps/demo*`…) ; elles s'ignorent seulement faute de GPU. Classement à revoir (lot L4, test concurrent simulation + rendu). | M8 L4 |
+
+## Ajouts de M8 lot L2 (G260 à G264)
+
+Entités, composants et transformations (A79 lot L2, ECS-01, ECS-02) : module `scene` (`src/scene/README.md`).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G260 | Écriture directe dans un `Transform` non suivie | `World::get` et `view(...).each` rendent un `Transform &` modifiable sans marquer l'entité sale : l'appelant appelle `markTransformDirty` (ou passe par `setTransform` / `editTransform`). Un oubli laisse la partie monde périmée jusqu'au prochain marquage, sans message. Une vue en lecture seule ou un marquage automatique par système est à décider avec la boucle de simulation. | M8 L3 |
+| G261 | Requêtes simples | `view` et `forEach` : intersection de types, parcours du plus petit stockage, un seul thread. Pas d'exclusion (`without`), de type optionnel, de tri, de groupes ni de parcours parallèle (`TaskSystem::parallelFor`) ; recherche d'un type par nom linéaire en nombre de types. | Plus tard (selon besoin mesuré) |
+| G262 | Changement de parent sans garder la position monde | `setParent` garde la transformation **locale** : l'entité saute à la position relative à son nouveau parent. Pas d'option « garder la position monde » (inverse de `worldLinear` à calculer). | M8 L10 ou plus tard |
+| G263 | Génération d'entité sur 32 bits | Après 2^32 destructions du même indice, la génération reboucle et un très vieil identifiant redeviendrait valide (non détecté ; l'indice n'est pas retiré). | Plus tard |
+| G264 | `scene` vérifié sous Linux seulement | Compilé et testé avec g++ 13.3 (debug, release, ASan+UBSan) ; clang de macOS (`-Werror`) et MinGW/MSVC de Windows seulement par la CI. Les composants alignés au-delà de `alignof(std::max_align_t)` utilisent `operator new(std::align_val_t)` (C++17, disponible partout). | CI |
 
 ## Ajouts de M8 lot L9 (G222, G223)
 

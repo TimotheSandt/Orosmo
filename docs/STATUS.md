@@ -30,6 +30,22 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L2 : entités et transformations (A79, ECS-01, ECS-02)
+
+Branche `feat/M8-L2-ecs` (depuis `feat/M8-L1-fondations`). Nouveau module `scene` (`src/scene/README.md`), couche 6, archive
+`libscene.a`, dépend seulement de `core`. ECS maison (A79 choix 1), composants trivialement copiables (choix 2) ; choix de
+réalisation sous A79 « L2 ». Linux seulement en local (g++ 13.3) ; macOS et Windows par la CI (G264).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| ECS-01 Entités | `include/orosmo/scene/entity.hpp` (`Entity`), `world.hpp` (`World::create`, `destroy`, `alive`) | `make demo-test` (suite `scene/world`) | une entité détruite est refusée par sa génération, même après réutilisation de l'indice, et n'atteint pas les composants de la nouvelle |
+| ECS-01 Composants par nom | `component.hpp` (`ComponentDesc`, `validateComponentDesc`, `describeComponent<T>`), `World::registerComponent`, `componentId`, `componentType<T>`, `add(e, nom)` | suite `scene/world` | description copiée (survit à l'original), valeur par défaut, version ; composant inconnu refusé par nom (`kNotFound`) ; disposition différente `kAlreadyExists` ; descriptions invalides refusées ; retrait d'un type et identifiant périmé |
+| ECS-01 Stockage contigu, requêtes | `component_pool.hpp` (`ComponentPool`), `World::view`, `forEach`, `forEachComponent` | suite `scene/world` | stockage contigu aligné (64 octets), dense après retraits ; vues typées et non typées concordantes ; copie profonde ; **100 000 entités parcourues** (temps dans `src/scene/README.md`) |
+| Réflexion avec décalages | `include/orosmo/core/reflection.hpp` (`FieldDesc::offset`, `size`, `fields`, `kDVec3`, `kQuat`, `kDQuat`) | suite `core/reflection` | décalages et tailles égaux à `offsetof` / `sizeof`, sous-champs, type sans constructeur par défaut |
+| ECS-02 Hiérarchie, transformations | `transform.hpp` (`Transform`, `composeWorld`, `relativeMatrix`), `World::setParent`, `updateTransforms` | suite `scene/hierarchy` | ordre des enfants, changement de parent, cycle refusé, destruction du sous-arbre ; propagation (rotation, échelle, ancêtre sans `Transform`) ; seules les entités sales et leurs descendants recalculées ; **précision à 10^7 m : erreur < 1 mm relative à la caméra** ; 100 000 entités en hiérarchie |
+
+Vérifications : VERIF_A_REMPLIR
+
 ## M8 lot L1 : fondations (A79)
 
 Branche `feat/M8-L1-fondations`. Aucune ligne de `docs/02` ne change d'état : ce lot prépare GAME-01, UI-08 (chargement
