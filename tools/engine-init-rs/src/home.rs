@@ -109,9 +109,44 @@ pub fn remove_version(home: &Path, version: &str) -> Result<PathBuf, String> {
 }
 
 /// Chemin affiché pour make : séparateurs `/` (le make de MinGW les accepte, et `$(ENGINE_DIR)/make/engine.mk` reste cohérent).
+/// GNU Make découpe les mots sur les espaces : sous Windows, un chemin qui en contient (`C:\Users\Prénom Nom\…`) est donné sous
+/// sa forme courte 8.3 quand le volume en a une (G214) ; sinon le Makefile du gabarit refuse le chemin avec un message clair.
 pub fn path_for_make(p: &Path) -> String {
-    let s = p.display().to_string();
-    if cfg!(windows) { s.replace('\\', "/") } else { s }
+    #[cfg(windows)]
+    {
+        let s = p.display().to_string();
+        let s = if s.contains(' ') { short_path(p).unwrap_or(s) } else { s };
+        s.replace('\\', "/")
+    }
+    #[cfg(not(windows))]
+    {
+        p.display().to_string()
+    }
+}
+
+/// Forme courte (8.3) d'un chemin existant, par `GetShortPathNameW` ; None si le volume n'en a pas ou en cas d'échec.
+#[cfg(windows)]
+fn short_path(p: &Path) -> Option<String> {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetShortPathNameW(long_path: *const u16, short_path: *mut u16, len: u32) -> u32;
+    }
+    let wide: Vec<u16> = p.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    // SAFETY : `wide` est terminé par un zéro ; un tampon nul de longueur 0 demande la taille nécessaire.
+    let needed = unsafe { GetShortPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0) };
+    if needed == 0 {
+        return None;
+    }
+    let mut buf = vec![0u16; needed as usize];
+    // SAFETY : `buf` a `needed` éléments ; la fonction écrit au plus `needed` caractères, zéro final compris.
+    let written = unsafe { GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), needed) };
+    if written == 0 || written >= needed {
+        return None;
+    }
+    buf.truncate(written as usize);
+    let short = std::ffi::OsString::from_wide(&buf).to_string_lossy().into_owned();
+    (!short.contains(' ')).then_some(short)
 }
 
 #[cfg(test)]
