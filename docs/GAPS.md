@@ -548,3 +548,9 @@ Distribution du SDK (A76, `docs/03` §16) : outil `orosmo`, moteurs dans `OROSMO
 | --- | --- | --- | --- |
 | G222 | Focus hors de la vue d'une `ScrollView` | Tab ou une flèche peut donner le focus à un widget défilé hors de sa `ScrollView` : la vue ne défile pas vers lui (l'anneau de focus est découpé comme le widget, donc invisible). Les flèches choisissent le voisin par géométrie, y compris hors de la zone visible. | M10 |
 | G223 | Manettes : reste de PLAT-03 | `platform::Gamepads` ne lit que les manettes à disposition standard reconnues par GLFW, par scrutation à chaque image ; ni vibration, ni remappage, ni joystick quelconque, ni deuxième stick ou gâchettes dans la navigation de l'interface. Aucune manette réelle essayée (tests par `Gamepads::simulate`) ; Windows et macOS non vérifiés. | Après M10 (P2) |
+
+## Ajouts hors lot (G290)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G290 | Qualité d'ombre selon l'importance d'un objet | Aucune résolution d'ombre propre à un caster : la netteté dépend de la cascade (ou de la lumière, `LightShadowParams`), pas de l'objet. Pistes : ombre dédiée par objet, maillage simplifié pour l'ombre, distance d'ombre par caster (A80). Fonctionnement à confirmer par l'auteur avant M10. | M10 (à confirmer, A80) |
