@@ -229,7 +229,7 @@ fn check_tool(
 }
 
 /// Contrôles d'un dossier de moteur (paquet de release extrait : `orosmo/` d'un ancien projet ou `engines/<v>`).
-fn check_engine_dir(sdk_dir: &Path, triplet: &str, repair: &str) -> Vec<CheckResult> {
+fn check_engine_dir(sdk_dir: &Path, repair: &str) -> Vec<CheckResult> {
     let mut results = Vec::new();
     let cui_name = if cfg!(windows) { "cui.exe" } else { "cui" };
     let inc_ok = sdk_dir.join("includes").join("orosmo").is_dir() || sdk_dir.join("include").join("orosmo").is_dir();
@@ -261,19 +261,15 @@ fn check_engine_dir(sdk_dir: &Path, triplet: &str, repair: &str) -> Vec<CheckRes
         results.push(CheckResult::error("CUI compiler", format!("missing {}", cui_path.display()), repair));
     }
 
-    // Paquet du contrat SDK : deps/ (bibliothèques tierces précompilées). Paquet plus ancien : vcpkg_installed/<triplet>.
+    // Contrat SDK : deps/{include,lib} (bibliothèques tierces précompilées du moteur). Plus de vcpkg_installed/.
     let deps_dir = sdk_dir.join("deps");
-    let vcpkg_dir = sdk_dir.join("vcpkg_installed").join(triplet);
-    if deps_dir.is_dir() {
+    if deps_dir.join("include").is_dir() && deps_dir.join("lib").is_dir() {
         results.push(CheckResult::ok("SDK dependencies", false, format!("found {}", deps_dir.display())));
-    } else if vcpkg_dir.is_dir() {
-        results.push(CheckResult::ok("SDK dependencies", false, format!("found {}", vcpkg_dir.display())));
     } else {
-        results.push(CheckResult::warn(
+        results.push(CheckResult::error(
             "SDK dependencies",
-            false,
-            format!("missing {}", deps_dir.display()),
-            "Older engine package without deps/: run `make install` in the project, or `orosmo migrate` to a newer engine",
+            format!("missing {}/{{include,lib}}", deps_dir.display()),
+            "Engine package without deps/ (older than 0.6.2): `orosmo install latest` then `orosmo update` (or `orosmo migrate`)",
         ));
     }
 
@@ -309,12 +305,12 @@ pub fn check_project_layout(project_dir: &Path, triplet: &str, home: Option<&Pat
     }
 
     if sdk_dir.is_dir() {
-        results.extend(check_engine_dir(&sdk_dir, triplet, "Run `orosmo update` to restore the engine package"));
+        results.extend(check_engine_dir(&sdk_dir, "Run `orosmo update` to restore the engine package"));
     } else if let Some(v) = version {
         match home.and_then(|h| crate::home::engine_path(h, &v)) {
             Some(p) => {
                 results.push(CheckResult::ok("Project engine", true, format!("OROSMO_VERSION {v} -> {}", p.display())));
-                results.extend(check_engine_dir(&p, triplet, &format!("Reinstall it: `orosmo install {v} --force`")));
+                results.extend(check_engine_dir(&p, &format!("Reinstall it: `orosmo install {v} --force`")));
             }
             None => results.push(CheckResult::error(
                 "Project engine",
@@ -697,6 +693,7 @@ mod tests {
         fs::create_dir_all(engine.join("include/orosmo")).unwrap();
         fs::create_dir_all(engine.join("lib/release")).unwrap();
         fs::create_dir_all(engine.join("deps/lib")).unwrap();
+        fs::create_dir_all(engine.join("deps/include")).unwrap();
         fs::write(engine.join("lib/release/libcore.a"), b"!<arch>\n").unwrap();
         let checks = check_project_layout(&project, "x64-linux", Some(&home));
         assert!(checks.iter().any(|c| c.name == "Project engine" && c.severity == Severity::Ok));
@@ -722,7 +719,10 @@ mod tests {
         let checks = check_project_layout(&root, "x64-linux", None);
         assert!(checks.iter().any(|c| c.name == "Orosmo SDK" && c.severity == Severity::Ok));
         assert!(checks.iter().any(|c| c.name == "CUI compiler" && c.severity == Severity::Ok));
-        assert!(checks.iter().any(|c| c.name == "SDK dependencies" && c.severity == Severity::Warn));
+        // Un vcpkg_installed/ (ancien paquet) ne remplace plus deps/.
+        fs::create_dir_all(sdk.join("vcpkg_installed/x64-linux/lib")).unwrap();
+        let checks = check_project_layout(&root, "x64-linux", None);
+        assert!(checks.iter().any(|c| c.name == "SDK dependencies" && c.severity == Severity::Error));
         assert!(checks.iter().any(|c| c.name == "CMake package" && c.severity == Severity::Ok));
 
         let _ = fs::remove_dir_all(&root);
