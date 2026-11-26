@@ -49,6 +49,9 @@ Vérifications (Linux, g++ 13.3, Intel Xe, Mesa) : `make demo-test` **724 cas ve
 SANITIZE=address,undefined` : aucun message ASan ni UBSan, 723 cas sur 724 (le seul échec est `PLAT-01 the framebuffer size…`,
 instable sous un gestionnaire de fenêtres qui redimensionne la fenêtre de test, déjà noté sous G201 ; 1 échec sur 3 en le relançant
 seul) ; `make all-debug` sans avertissement ; `make check` OK.
+## M8 lot L0 : `--shadow-quality` de la démo
+
+Option de la démo, sans changement du moteur (`docs/05` M8, A79). `apps/demo/src/launch_options.hpp` : `ShadowQuality`, `parseShadowQuality`, `shadowSettingsForQuality` (préréglages `low`, `medium`, `high` = `ShadowSettings{}`), `shadowQualityLabel` ; `Game::setShadowSettings` passe les réglages à `ShadowFeature::create` ; le panneau de performances affiche « shadows on <qualité> ». Tests : `tests/demo/launch_options_tests.cpp` (lecture, défaut `high`, valeur invalide refusée, préréglages, `high` égal à `ShadowSettings{}`). Démo : `apps/demo/bin/debug/main --shadows on --shadow-quality low`.
 
 ## SDK (v0.6.2)
 
