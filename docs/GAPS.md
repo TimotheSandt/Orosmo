@@ -135,7 +135,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | TER-13 | Lancer de rayon sur le terrain | Archivé (A37) | `raycastTerrain`, cohérent avec la profondeur rendue. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | UI-04 | Outils de debug | Absent | Absent. | M8 |
 | UI-08 | Rechargement à chaud de l'interface | Absent | Absent. | M8 |
-| UI-09 | Navigation et accessibilité de base | Absent | Absent. | M8 |
+| UI-09 | Navigation et accessibilité de base | Fait (M8 L9) | Ordre de tabulation (`tabIndex`, `.focusable`), flèches entre voisins, manette, anneau de focus du thème. Reste : défilement vers le widget focalisé (G222). Preuve : `docs/STATUS.md`, section « M8 lot L9 ». | — |
 | UI-10 | Inspecteur d'interface | Absent | Absent. | M8 |
 | UI-12 | Paramètres réfléchis → curseurs | Fait (M3) | `reflectedPanel`, `ParamPanel` du langage. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 
@@ -148,7 +148,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | ASSET-06 | OBJ | Absent | Absent. | Après M10 (P2) |
 | EXT-01 | Plugin de rendu voxel | Absent | Absent (pas de graphe de passes, voir REN-01). | M10 |
 | EXT-02 | Tracé de rayons logiciel sur voxels | Absent | Absent. | Après M10 (P2) |
-| PLAT-03 | Manettes | Absent | Aucune manette. | Après M10 (P2) ; UI-09 la demande en M8 |
+| PLAT-03 | Manettes | Partiel (M8 L9) | Sous-ensemble pour UI-09 (`platform::Gamepads` : boutons, axes, branchement à chaud, manettes à disposition standard). **Manque** : vibrations, remappage, joysticks sans disposition connue, événements par rappel (G223). | Après M10 (P2) |
 | REN-09 | Ombres avancées | Absent | Absent. | Après M10 (P2) |
 | REN-12 | Extensions de matériaux | Absent | Absent. | Après M10 (P2) |
 | REN-15 | Réflexions et GI | Absent | Absent. | Après M10 (P2) |
@@ -541,3 +541,10 @@ Distribution du SDK (A76, `docs/03` §16) : outil `orosmo`, moteurs dans `OROSMO
 | G219 | Moteurs installés modifiables | `orosmo install` n'enlève pas les droits d'écriture de `$OROSMO_HOME/engines/<v>` : rien du build n'y écrit (vérifié par `make e2e-init` sur un paquet en lecture seule), mais une modification à la main touche tous les projets de cette version. `orosmo install <v> --force` le réinstalle. (Un moteur en lecture seule ne casse plus le 2e build : `copy_res` rend la copie inscriptible, prouvé par le 2e build de `make e2e-init`.) | Avant v0.7 |
 | G220 | ~~`make e2e-init` : `orosmo doctor` sans l'`OROSMO_HOME` isolé~~ | **Corrigé** (feat/SDK-installers) : toutes les commandes `orosmo` de `e2e-init` reçoivent le même `OROSMO_HOME`. | — |
 | G221 | `install.sh` avec wget : protocole des redirections non contrôlé | L'outil `orosmo` (client `https_only`), `install.sh` avec curl (`--proto '=https' --proto-redir '=https'`) et, depuis fix/SDK-review2, `install.ps1` (redirections suivies à la main, `HttpWebRequest` avec `AllowAutoRedirect = $false`, HTTPS seulement ; jamais exécuté, pas de PowerShell ici, G216) refusent `http://`, redirections comprises. `install.sh` avec wget seulement (son `--https-only` ne vaut qu'en mode récursif) refuse une base `http://` mais ne contrôle pas une redirection HTTPS → HTTP décidée par le serveur. | Avant v0.7 |
+
+## Ajouts de M8 lot L9 (G222, G223)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G222 | Focus hors de la vue d'une `ScrollView` | Tab ou une flèche peut donner le focus à un widget défilé hors de sa `ScrollView` : la vue ne défile pas vers lui (l'anneau de focus est découpé comme le widget, donc invisible). Les flèches choisissent le voisin par géométrie, y compris hors de la zone visible. | M10 |
+| G223 | Manettes : reste de PLAT-03 | `platform::Gamepads` ne lit que les manettes à disposition standard reconnues par GLFW, par scrutation à chaque image ; ni vibration, ni remappage, ni joystick quelconque, ni deuxième stick ou gâchettes dans la navigation de l'interface. Aucune manette réelle essayée (tests par `Gamepads::simulate`) ; Windows et macOS non vérifiés. | Après M10 (P2) |
