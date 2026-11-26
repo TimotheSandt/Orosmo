@@ -37,27 +37,38 @@ const TPL_CONFIG_LOCAL_MK: &str = "\
 const HASH_TAG: &str = "# @engine-template-hash:";
 const SUMS_ASSET: &str = "SHA256SUMS";
 
-/// `OROSMO_DOWNLOAD_BASE` : dossier local (ou URL http(s)) qui contient les fichiers d'une release (`orosmo-pkg-<plateforme>.zip`,
+/// `OROSMO_DOWNLOAD_BASE` : dossier local (ou URL https) qui contient les fichiers d'une release (`orosmo-pkg-<plateforme>.zip`,
 /// `SHA256SUMS`) ; remplace l'API du dépôt. Sert aux tests de bout en bout et aux miroirs ; install.sh lit la même variable.
 fn download_base() -> Option<String> {
     std::env::var("OROSMO_DOWNLOAD_BASE").ok().map(|b| b.trim_end_matches('/').to_string()).filter(|b| !b.is_empty())
 }
 
-fn fetch_from_base(base: &str, name: &str) -> Result<Vec<u8>, String> {
-    if base.starts_with("http://") || base.starts_with("https://") {
-        return download_bytes(&format!("{base}/{name}"), name);
+/// Fichier `name` de `base` ; `Ok(None)` seulement s'il est absent (fichier inexistant, HTTP 404). Toute autre erreur remonte.
+/// Une URL `http://` est refusée : le paquet et `SHA256SUMS` viendraient du même canal non authentifié.
+fn fetch_from_base(base: &str, name: &str) -> Result<Option<Vec<u8>>, String> {
+    let lower = base.to_ascii_lowercase();
+    if lower.starts_with("http://") {
+        return Err(format!("refusing {base}: OROSMO_DOWNLOAD_BASE must be an https:// URL or a local directory"));
+    }
+    if lower.starts_with("https://") {
+        return download_optional(&format!("{base}/{name}"), name);
     }
     let dir = base.strip_prefix("file://").unwrap_or(base);
     let path = Path::new(dir).join(name);
-    fs::read(&path).map_err(|e| format!("failed to read {}: {e}", path.display()))
+    match fs::read(&path) {
+        Ok(b) => Ok(Some(b)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("failed to read {}: {e}", path.display())),
+    }
 }
 
 /// Paquet du moteur pris dans `OROSMO_DOWNLOAD_BASE`, vérifié contre son `SHA256SUMS` s'il y en a un.
 fn package_from_base(base: &str) -> Result<Vec<u8>, String> {
     let pkg_name = engine_pkg_name();
     println!("  Downloading {pkg_name} from {base} (OROSMO_DOWNLOAD_BASE)...");
-    let bytes = fetch_from_base(base, &pkg_name)?;
-    let sums = fetch_from_base(base, SUMS_ASSET).ok().map(|b| String::from_utf8_lossy(&b).into_owned());
+    let bytes = fetch_from_base(base, &pkg_name)?.ok_or_else(|| format!("{pkg_name} not found in {base}"))?;
+    // Absent : ancienne release, avertissement. Présent mais illisible : erreur (jamais d'installation sans vérification).
+    let sums = fetch_from_base(base, SUMS_ASSET)?.map(|b| String::from_utf8_lossy(&b).into_owned());
     match verify_checksum(&bytes, &pkg_name, sums.as_deref())? {
         Checksum::Verified => println!("  [ok] SHA-256 verified"),
         Checksum::NoSumsFile => eprintln!("  Warning: no {SUMS_ASSET} in {base}; {pkg_name} is not verified"),
@@ -653,8 +664,13 @@ struct Release {
     assets: Vec<(String, String)>, // (name, browser_download_url)
 }
 
+/// Client HTTP : HTTPS seulement, redirections comprises (un miroir ou une redirection vers http:// est refusé).
+fn http_agent() -> ureq::Agent {
+    ureq::AgentBuilder::new().https_only(true).build()
+}
+
 fn api_get(url: &str) -> Result<serde_json::Value, String> {
-    let resp = ureq::get(url)
+    let resp = http_agent().get(url)
         .set("User-Agent", &format!("{ENGINE_NAME}/{ENGINE_VERSION}"))
         .set("Accept",     "application/vnd.github+json")
         .call()
@@ -734,16 +750,21 @@ impl Release {
 }
 
 fn download_bytes(url: &str, label: &str) -> Result<Vec<u8>, String> {
-    let resp = ureq::get(url)
-        .set("User-Agent", &format!("{ENGINE_NAME}/{ENGINE_VERSION}"))
-        .call()
-        .map_err(|e| format!("download of {label} failed: {e}"))?;
+    download_optional(url, label)?.ok_or_else(|| format!("download of {label} failed: not found (HTTP 404)"))
+}
 
+/// `Ok(None)` pour une réponse 404 seulement.
+fn download_optional(url: &str, label: &str) -> Result<Option<Vec<u8>>, String> {
+    let resp = match http_agent().get(url).set("User-Agent", &format!("{ENGINE_NAME}/{ENGINE_VERSION}")).call() {
+        Ok(r) => r,
+        Err(ureq::Error::Status(404, _)) => return Ok(None),
+        Err(e) => return Err(format!("download of {label} failed: {e}")),
+    };
     let mut bytes = Vec::new();
     resp.into_reader()
         .read_to_end(&mut bytes)
         .map_err(|e| format!("failed to read {label}: {e}"))?;
-    Ok(bytes)
+    Ok(Some(bytes))
 }
 
 // ── Vendored engine (`init --vendor`, old projects) ───────────────────────────
@@ -1071,11 +1092,25 @@ mod tests {
     #[test]
     fn release_files_from_a_local_directory() {
         let dir = std::env::temp_dir().join(format!("orosmo_base_test_{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(dir.join("SHA256SUMS")).unwrap(); // présent mais illisible comme fichier
         fs::write(dir.join("a.txt"), b"x").unwrap();
-        assert_eq!(fetch_from_base(dir.to_str().unwrap(), "a.txt").unwrap(), b"x");
-        assert_eq!(fetch_from_base(&format!("file://{}", dir.display()), "a.txt").unwrap(), b"x");
-        assert!(fetch_from_base(dir.to_str().unwrap(), "missing").is_err());
+        let base = dir.to_str().unwrap();
+        assert_eq!(fetch_from_base(base, "a.txt").unwrap().as_deref(), Some(&b"x"[..]));
+        assert_eq!(fetch_from_base(&format!("file://{}", dir.display()), "a.txt").unwrap().as_deref(), Some(&b"x"[..]));
+        // Absent : None (repli des anciennes releases) ; illisible : erreur, pas une absence.
+        assert_eq!(fetch_from_base(base, "missing"), Ok(None));
+        assert!(fetch_from_base(base, "SHA256SUMS").is_err());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn plain_http_is_refused() {
+        // Refusé avant toute connexion : ni réseau ni serveur nécessaires.
+        let e = fetch_from_base("http://127.0.0.1:9/mirror", "SHA256SUMS").unwrap_err();
+        assert!(e.contains("https://"), "{e}");
+        assert!(fetch_from_base("HTTP://127.0.0.1:9", "x").is_err());
+        // Le client lui-même refuse http:// (et donc une redirection vers http://).
+        let e = download_bytes("http://127.0.0.1:9/x", "x").unwrap_err();
+        assert!(e.contains("https"), "{e}");
     }
 }
