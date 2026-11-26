@@ -209,6 +209,14 @@ Le moteur reste générique : l'atmosphère, les effets et le « monde riche » 
   - Aide (`printUsage`) : ajouter `[--shadow-quality low|medium|high]` dans la ligne d'usage et le décrire dans le paragraphe « Shadows ».
   - Tests (`tests/demo/launch_options_tests.cpp`) : lecture (défaut `high`, chaque valeur, valeur invalide refusée), préréglages qui remplissent bien les champs, cohérence avec les défauts du moteur (`shadowSettingsForQuality(kHigh)` comparé aux champs du tableau dans `ShadowSettings{}`, sinon un changement de défaut côté moteur passerait inaperçu).
 
+### Lots de M8 (proposés par l'IA le 2026-11-26, `docs/QUESTIONS.md` A79 ; à valider, même portée)
+
+Une branche `feat/M8-L<n>-…` par lot, créée depuis `dev`, une PR vers `dev` par lot (CI verte, CodeRabbit). Détail (contenu, critères de fin, tailles, choix par défaut, reports proposés) : A79.
+
+- **L0** `--shadow-quality` de la démo · **L1** fondations (modules `scene`, `sim`, `app`, `DynamicLibrary`, `Random`, `SpscQueue`, job TSan) · **L2** entités et transformations (ECS-01, ECS-02) · **L3** sauvegarde de scène et boucle à pas fixe (ECS-03, SIM-01) · **L4** thread de simulation · **L5** module de jeu rechargeable (GAME-01, 02, 07) · **L6** migration, gestionnaires, paramètres (GAME-03, 04, 05) · **L7** construction incrémentale (GAME-06) · **L8** interface rechargée à chaud (UI-08) · **L9** navigation et accessibilité (UI-09) · **L10** outils de debug et inspecteur (UI-04, UI-10) · **L11** API de rendu simplifiée (A75.3 à A75.7, A75.15) · **L12** API des contenus et fabriques (A75.2, A75.8 pour `platform`, A75.10 à A75.12, A75.16) · **L13** façade d'application et rendu de scène (A75.1, A73 point 3) · **L14** programme de départ et tutoriel réécrits · **L15** démo, documentation, release `v0.7.0`.
+- **Ordre** : L1, avec L0, L9 et L11 en parallèle ; puis L2 (et L12 après L11) ; L3 (et L10 dès L2) ; L4 et L5 ; L6, L7 puis L8 ; L13 puis L14 ; L15.
+- **Mesure A77** (lignes non vides hors commentaires `//`, commande dans A79) : avant, programme de départ d'`orosmo init` **403** lignes, tutoriel 3D **459** ; cible, **≤ 80** et **≤ 180**.
+
 **Démo** : on modifie un fichier de logique pendant que le programme tourne, on compile, et le comportement change sans redémarrage ni perte d'état ; on modifie un fichier d'interface et l'écran se met à jour ; un petit programme de simulation (quelques centaines d'agents évoluant dans une scène de test) tourne sans fenêtre, rejouable avec la même graine.
 **Terminé** : cas de rechargement testés (changement de corps de fonction, ajout de champ, changement de hiérarchie avec repli sur sauvegarde/restauration) ; boucle à pas fixe testée ; rejouabilité vérifiée ; cadence de simulation réglable testée (pas par image et fréquence fixe) et échange simulation/rendu propre sous TSan ; les trois niveaux de `--shadow-quality` testés avec `high` vérifié égal aux défauts du moteur.
 
