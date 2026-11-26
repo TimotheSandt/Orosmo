@@ -95,8 +95,9 @@ orosmo migrate          # dans le dossier du projet
 ```
 
 L'outil installe la même version que celle du dossier `orosmo/` (fichier `VERSION` du paquet), ou la dernière s'il ne la
-trouve pas, met à jour `Makefile`, `.gitignore` et `config.mk`, renomme `orosmo/` en `orosmo.old/`, puis compile. Si la
-compilation réussit, `orosmo.old/` est supprimé. Sinon il est gardé : le renommer en `orosmo/` annule la migration.
+trouve pas, met à jour `Makefile`, `.gitignore` et `config.mk`, renomme `orosmo/` en `orosmo.old/`, puis compile avec le moteur
+installé. Si la compilation réussit, `orosmo.old/` est supprimé. Sinon la migration est annulée : `orosmo/`, `Makefile`,
+`.gitignore`, `config.mk` et `config.local.mk` reprennent leur état d'avant.
 
 ## Garder le moteur dans le projet
 

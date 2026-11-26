@@ -42,7 +42,8 @@ ifeq ($(strip $(ENGINE_DIR)),)
         _OROSMO_HOME := $(subst \,/,$(or $(OROSMO_HOME),$(if $(filter Windows_NT,$(OS)),$(LOCALAPPDATA)/Orosmo,$(HOME)/.orosmo)))
         _OROSMO_BIN  := $(or $(shell command -v $(OROSMO_TOOL) 2>/dev/null),$(wildcard $(_OROSMO_HOME)/bin/orosmo$(if $(filter Windows_NT,$(OS)),.exe)))
         _OROSMO_PATH := $(if $(_OROSMO_BIN),$(subst \,/,$(shell "$(_OROSMO_BIN)" path $(OROSMO_VERSION) 2>/dev/null)))
-        ENGINE_DIR   := $(if $(wildcard $(_OROSMO_PATH)/make/engine.mk),$(_OROSMO_PATH))
+        # make splits words on spaces: a path with one (and no 8.3 short form, see `orosmo path`) is refused below (G214).
+        ENGINE_DIR   := $(if $(word 2,$(_OROSMO_PATH)),,$(if $(wildcard $(_OROSMO_PATH)/make/engine.mk),$(_OROSMO_PATH)))
     endif
 endif
 _ENGINE_MK  ?= $(ENGINE_DIR)/make/engine.mk
@@ -90,6 +91,8 @@ ifeq ($(_ENGINE_MK_FOUND),)
             $(error Engine not found: no orosmo/ folder and OROSMO_VERSION is not set in config.mk (add OROSMO_VERSION := x.y.z, or pass ENGINE_DIR=/path/to/engine))
         else ifeq ($(_OROSMO_BIN),)
             $(error Orosmo $(OROSMO_VERSION) not found: the orosmo tool is not installed (not in PATH nor in $(_OROSMO_HOME)/bin). Install it, then run "orosmo install $(OROSMO_VERSION)" (or pass ENGINE_DIR=/path/to/engine))
+        else ifneq ($(word 2,$(_OROSMO_PATH)),)
+            $(error Orosmo $(OROSMO_VERSION) is installed in "$(_OROSMO_PATH)", but make cannot use a path with spaces: set OROSMO_HOME to a folder without spaces and run "orosmo install $(OROSMO_VERSION)" again (or pass ENGINE_DIR=/path/without/spaces))
         else
             $(error Orosmo $(OROSMO_VERSION) is not installed: run "orosmo install $(OROSMO_VERSION)" (or pass ENGINE_DIR=/path/to/engine))
         endif
@@ -422,11 +425,12 @@ install install-deps add-dep:
 	        fi; \
 	        b=$$(mktemp); a=$$(mktemp); \
 	        ls "$$LIBDIR/"*.a 2>/dev/null | sort > "$$b" || :; \
-	        $(VCPKG) install "$$dep" \
+	        $(VCPKG) install \
 	            --triplet=$(ENGINE_VCPKG_TRIPLET) \
 	            --x-manifest-root=. \
 	            --x-install-root=$(_ADD_DEP_VCPKG_ROOT) \
-	            --no-print-usage; \
+	            --no-print-usage \
+	            || { rm -f "$$b" "$$a"; printf "Error: vcpkg could not install the manifest (vcpkg.json, with %s)\n" "$$dep"; exit 1; }; \
 	        ls "$$LIBDIR/"*.a 2>/dev/null | sort > "$$a" || :; \
 	        if [ -n "$(LIBS)" ]; then \
 	            NEW="$(LIBS)"; \

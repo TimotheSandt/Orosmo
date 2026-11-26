@@ -27,7 +27,7 @@ orosmo init mygame && cd mygame         # config.mk nomme la version du moteur (
 orosmo run                              # compile (make debug) puis lance bin/debug/main
 ```
 
-Ni vcpkg ni `make install` : les bibliothèques tierces du moteur sont dans le paquet (`deps/`). Linux : glibc 2.38 ou plus
+Ni vcpkg ni `make install` : les bibliothèques tierces du moteur sont dans le paquet (`deps/`). Linux : glibc 2.39 ou plus
 récent (Ubuntu 24.04+) ; Windows et macOS ne sont pas vérifiés ([docs/GAPS.md](docs/GAPS.md), G214 à G220). Guide complet :
 [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md). La suite de ce fichier concerne la compilation du dépôt du moteur.
 

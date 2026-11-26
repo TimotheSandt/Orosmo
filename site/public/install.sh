@@ -21,7 +21,7 @@
 #   -h, --help          this help
 # Environment:
 #   OROSMO_HOME           install root (default: ~/.orosmo)
-#   OROSMO_DOWNLOAD_BASE  directory or URL holding the release files (tests, mirrors); default: GitHub releases
+#   OROSMO_DOWNLOAD_BASE  directory or https:// URL holding the release files (tests, mirrors); default: GitHub releases
 #
 # Licence: Apache-2.0 (https://github.com/TimotheSandt/Orosmo).
 
@@ -108,13 +108,18 @@ elif [ -n "$VERSION" ]; then
 else
     BASE="https://github.com/$REPO/releases/latest/download"
 fi
+# HTTPS only (with curl, redirects too): over plain HTTP the tool and SHA256SUMS would come through the same unauthenticated channel.
+case "$BASE" in
+[Hh][Tt][Tt][Pp]://*) die "refusing $BASE: OROSMO_DOWNLOAD_BASE must be an https:// URL or a local directory" ;;
+esac
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
 # Answer to a yes/no question: --yes answers yes; without a terminal (curl | sh with no tty) the answer is no.
 confirm() {
     [ "$YES" = 1 ] && return 0
-    if [ -r /dev/tty ] && { : </dev/tty; } 2>/dev/null; then
+    # Subshell: a failed redirection on the special built-in `:` would exit a non-interactive POSIX shell.
+    if [ -r /dev/tty ] && (: </dev/tty) 2>/dev/null; then
         printf '%s [y/N] ' "$1" >/dev/tty
         read -r answer </dev/tty || answer=""
         case "$answer" in y | Y | yes | YES | o | O | oui) return 0 ;; esac
@@ -272,10 +277,11 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 
 fetch() { # fetch <file name> <destination>
     case "$BASE" in
-    http://* | https://*)
+    https://*)
         if have curl; then
-            curl -fsSL --retry 3 -o "$2" "$BASE/$1"
+            curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 -o "$2" "$BASE/$1"
         elif have wget; then
+            # wget cannot restrict the protocol of redirects (its --https-only is for recursive mode): curl is preferred.
             wget -q -O "$2" "$BASE/$1"
         else
             die "curl or wget is needed to download $1"

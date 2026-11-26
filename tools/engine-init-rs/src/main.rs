@@ -37,27 +37,38 @@ const TPL_CONFIG_LOCAL_MK: &str = "\
 const HASH_TAG: &str = "# @engine-template-hash:";
 const SUMS_ASSET: &str = "SHA256SUMS";
 
-/// `OROSMO_DOWNLOAD_BASE` : dossier local (ou URL http(s)) qui contient les fichiers d'une release (`orosmo-pkg-<plateforme>.zip`,
+/// `OROSMO_DOWNLOAD_BASE` : dossier local (ou URL https) qui contient les fichiers d'une release (`orosmo-pkg-<plateforme>.zip`,
 /// `SHA256SUMS`) ; remplace l'API du dépôt. Sert aux tests de bout en bout et aux miroirs ; install.sh lit la même variable.
 fn download_base() -> Option<String> {
     std::env::var("OROSMO_DOWNLOAD_BASE").ok().map(|b| b.trim_end_matches('/').to_string()).filter(|b| !b.is_empty())
 }
 
-fn fetch_from_base(base: &str, name: &str) -> Result<Vec<u8>, String> {
-    if base.starts_with("http://") || base.starts_with("https://") {
-        return download_bytes(&format!("{base}/{name}"), name);
+/// Fichier `name` de `base` ; `Ok(None)` seulement s'il est absent (fichier inexistant, HTTP 404). Toute autre erreur remonte.
+/// Une URL `http://` est refusée : le paquet et `SHA256SUMS` viendraient du même canal non authentifié.
+fn fetch_from_base(base: &str, name: &str) -> Result<Option<Vec<u8>>, String> {
+    let lower = base.to_ascii_lowercase();
+    if lower.starts_with("http://") {
+        return Err(format!("refusing {base}: OROSMO_DOWNLOAD_BASE must be an https:// URL or a local directory"));
+    }
+    if lower.starts_with("https://") {
+        return download_optional(&format!("{base}/{name}"), name);
     }
     let dir = base.strip_prefix("file://").unwrap_or(base);
     let path = Path::new(dir).join(name);
-    fs::read(&path).map_err(|e| format!("failed to read {}: {e}", path.display()))
+    match fs::read(&path) {
+        Ok(b) => Ok(Some(b)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("failed to read {}: {e}", path.display())),
+    }
 }
 
 /// Paquet du moteur pris dans `OROSMO_DOWNLOAD_BASE`, vérifié contre son `SHA256SUMS` s'il y en a un.
 fn package_from_base(base: &str) -> Result<Vec<u8>, String> {
     let pkg_name = engine_pkg_name();
     println!("  Downloading {pkg_name} from {base} (OROSMO_DOWNLOAD_BASE)...");
-    let bytes = fetch_from_base(base, &pkg_name)?;
-    let sums = fetch_from_base(base, SUMS_ASSET).ok().map(|b| String::from_utf8_lossy(&b).into_owned());
+    let bytes = fetch_from_base(base, &pkg_name)?.ok_or_else(|| format!("{pkg_name} not found in {base}"))?;
+    // Absent : ancienne release, avertissement. Présent mais illisible : erreur (jamais d'installation sans vérification).
+    let sums = fetch_from_base(base, SUMS_ASSET)?.map(|b| String::from_utf8_lossy(&b).into_owned());
     match verify_checksum(&bytes, &pkg_name, sums.as_deref())? {
         Checksum::Verified => println!("  [ok] SHA-256 verified"),
         Checksum::NoSumsFile => eprintln!("  Warning: no {SUMS_ASSET} in {base}; {pkg_name} is not verified"),
@@ -241,8 +252,14 @@ fn install_version(home: &Path, requested: Option<&str>, force: bool) -> Result<
 
     if let Some(pkg) = LOCAL_PACKAGE.with(|p| p.borrow().clone()) {
         let bytes = fs::read(&pkg).map_err(|e| format!("failed to read {}: {e}", pkg.display()))?;
-        let version = match requested.clone().or_else(|| zip_version(&bytes)) {
-            Some(v) => normalize_version(&v)?,
+        let declared = zip_version(&bytes).map(|v| normalize_version(&v)).transpose()?;
+        if let (Some(r), Some(d)) = (&requested, &declared)
+            && r != d
+        {
+            return Err(format!("{} holds engine {d}, not {r}", pkg.display()));
+        }
+        let version = match requested.clone().or(declared) {
+            Some(v) => v,
             None => {
                 eprintln!("  Warning: {} has no VERSION file; assuming {ENGINE_VERSION}", pkg.display());
                 ENGINE_VERSION.to_string()
@@ -318,10 +335,12 @@ fn install_bytes(engines: &Path, version: &str, bytes: &[u8], force: bool) -> Re
     Ok((version.to_string(), dest))
 }
 
-/// Dernière version (installée au besoin). Hors ligne : la plus récente déjà installée, avec un avertissement.
+/// Dernière version (installée au besoin). Hors ligne : la plus récente déjà installée, avec un avertissement. Un paquet
+/// donné par `--package` qui échoue est une erreur : le repli ne vaut que pour le choix implicite de la dernière release.
 fn latest_engine(home: &Path) -> Result<(String, PathBuf), String> {
     match install_version(home, None, false) {
         Ok(r) => Ok(r),
+        Err(e) if LOCAL_PACKAGE.with(|p| p.borrow().is_some()) => Err(e),
         Err(e) => {
             let newest = list_versions(home).pop().ok_or(e.clone())?;
             eprintln!("  Warning: {e}; using the newest installed engine {newest}");
@@ -365,7 +384,8 @@ fn cmd_init(args: &[String]) -> Result<(), String> {
     let (version, label) = if vendor {
         let release = fetch_release_or_warn();
         fs::create_dir_all(&dir).map_err(|e| format!("failed to create project directory: {e}"))?;
-        let v = extract_engine(&dir, release.as_ref())?;
+        // Échec d'acquisition : le dossier créé par cet appel est retiré (jamais un dossier existant, `init` sur place).
+        let v = remove_dir_on_error(&dir, !in_place, extract_engine(&dir, release.as_ref()))?;
         (v.clone(), format!("{v}, vendored in orosmo/"))
     } else {
         let home = orosmo_home()?;
@@ -389,6 +409,14 @@ fn cmd_init(args: &[String]) -> Result<(), String> {
     println!("  orosmo build      # or: make debug");
     println!("  orosmo run");
     Ok(())
+}
+
+/// `r` en erreur et `created` : `dir` (créé par l'appelant) est supprimé.
+fn remove_dir_on_error<T>(dir: &Path, created: bool, r: Result<T, String>) -> Result<T, String> {
+    if r.is_err() && created {
+        let _ = fs::remove_dir_all(dir);
+    }
+    r
 }
 
 fn render_version(template: &str, name: &str, version: &str) -> String {
@@ -429,15 +457,28 @@ fn update_template_files(project_dir: &Path) -> Result<(), String> {
 
 // ── orosmo update [path] ──────────────────────────────────────────────────────
 
+/// Projet Orosmo : moteur vendorisé (`orosmo/` avec `make/engine.mk` ou `VERSION`), `OROSMO_VERSION` dans `config.mk`, ou
+/// `Makefile` écrit par `orosmo init` (ligne d'empreinte du gabarit). Un simple `config.mk` ne suffit pas.
+fn is_orosmo_project(dir: &Path) -> bool {
+    let vendored = dir.join("orosmo");
+    if vendored.join("make").join("engine.mk").is_file() || vendored.join("VERSION").is_file() {
+        return true;
+    }
+    if fs::read_to_string(dir.join("config.mk")).ok().and_then(|c| project::read_orosmo_version(&c)).is_some() {
+        return true;
+    }
+    fs::read_to_string(dir.join("Makefile")).is_ok_and(|m| m.lines().next().is_some_and(|l| l.starts_with(HASH_TAG)))
+}
+
 fn cmd_update(args: &[String]) -> Result<(), String> {
     reject_unknown_options(args, "update")?;
     let project_dir = args.first()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
     let vendored = project_dir.join("orosmo").is_dir();
-    if !vendored && !project_dir.join("config.mk").is_file() {
+    if !is_orosmo_project(&project_dir) {
         return Err(format!(
-            "'{}' does not look like an Orosmo project (no config.mk)",
+            "'{}' does not look like an Orosmo project (no orosmo/, no OROSMO_VERSION in config.mk, no Makefile from `orosmo init`)",
             project_dir.display()
         ));
     }
@@ -492,20 +533,93 @@ fn cmd_migrate(args: &[String]) -> Result<i32, String> {
         })?,
         None => latest_engine(&home)?,
     };
-    update_template_files(&project_dir)?;
-    write_project_version(&project_dir, &version)?;
-
-    fs::rename(&vendored, &old_dir).map_err(|e| format!("failed to rename orosmo/ to orosmo.old/: {e}"))?;
-    println!("  [moved] orosmo/ -> orosmo.old/ (kept until the project builds with engine {version})");
-    println!("Building with {}...", path.display());
-    let code = makerun::run_make(&project_dir, &build_goals(false), Output::Human)?;
-    if code == 0 {
-        fs::remove_dir_all(&old_dir).map_err(|e| format!("build ok, but failed to remove {}: {e}", old_dir.display()))?;
-        println!("Migrated: the project now uses engine {version} from {}; orosmo.old/ removed.", path.display());
-    } else {
-        eprintln!("Build failed: the previous engine is kept in orosmo.old/ (rename it back to orosmo/ to undo).");
+    // Fichiers réécrits par la migration : restaurés (avec orosmo/) si elle échoue, quel que soit l'endroit de l'échec.
+    let backup = ProjectBackup::take(&project_dir, &MIGRATED_FILES)?;
+    let rollback = |why: &str| -> String {
+        let mut problems = backup.restore();
+        if old_dir.is_dir() && !vendored.exists() && let Err(e) = fs::rename(&old_dir, &vendored) {
+            problems.push(format!("orosmo.old/ -> orosmo/: {e}"));
+        }
+        if problems.is_empty() {
+            format!("{why}; migration rolled back (orosmo/, {} restored)", MIGRATED_FILES.join(", "))
+        } else {
+            format!("{why}; rollback incomplete: {}", problems.join("; "))
+        }
+    };
+    if let Err(e) = update_template_files(&project_dir).and_then(|()| write_project_version(&project_dir, &version).map(drop)) {
+        return Err(rollback(&e));
     }
-    Ok(code)
+    if let Err(e) = fs::rename(&vendored, &old_dir) {
+        return Err(rollback(&format!("failed to rename orosmo/ to orosmo.old/: {e}")));
+    }
+    println!("  [moved] orosmo/ -> orosmo.old/ (kept until the project builds with engine {version})");
+
+    // Le build de validation utilise le moteur sélectionné, même si config.local.mk (ou l'environnement) fixe ENGINE_DIR.
+    let local_engine = fs::read_to_string(project_dir.join("config.local.mk")).ok().and_then(|c| project::read_var(&c, "ENGINE_DIR"));
+    let mut goals = build_goals(false);
+    goals.extend(engine_override(&path));
+    println!("Building with {}...", path.display());
+    match makerun::run_make(&project_dir, &goals, Output::Human) {
+        Ok(0) => {
+            fs::remove_dir_all(&old_dir).map_err(|e| format!("build ok, but failed to remove {}: {e}", old_dir.display()))?;
+            println!("Migrated: the project now uses engine {version} from {}; orosmo.old/ removed.", path.display());
+            if let Some(d) = local_engine {
+                eprintln!("  Note: config.local.mk sets ENGINE_DIR := {d}; plain `make` keeps using it (remove it to use engine {version}).");
+            }
+            Ok(0)
+        }
+        Ok(code) => {
+            eprintln!("{}", rollback(&format!("build failed with engine {version} (make exit code {code})")));
+            Ok(code)
+        }
+        Err(e) => Err(rollback(&e)),
+    }
+}
+
+/// Fichiers du projet que `migrate` réécrit (`config.local.mk` : créé s'il manque).
+const MIGRATED_FILES: [&str; 4] = ["Makefile", ".gitignore", "config.mk", "config.local.mk"];
+
+/// Arguments de make qui imposent le moteur `path` (priorité sur config.local.mk et l'environnement).
+fn engine_override(path: &Path) -> [String; 2] {
+    let dir = path_for_make(path);
+    [format!("ENGINE_DIR={dir}"), format!("_ENGINE_MK={dir}/make/engine.mk")]
+}
+
+/// Contenu de quelques fichiers du projet avant une opération ; `restore` remet chacun dans cet état (absent : supprimé).
+struct ProjectBackup {
+    files: Vec<(PathBuf, Option<Vec<u8>>)>,
+}
+
+impl ProjectBackup {
+    fn take(dir: &Path, names: &[&str]) -> Result<Self, String> {
+        let mut files = Vec::new();
+        for n in names {
+            let p = dir.join(n);
+            let content = match fs::read(&p) {
+                Ok(b) => Some(b),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+                Err(e) => return Err(format!("failed to read {}: {e}", p.display())),
+            };
+            files.push((p, content));
+        }
+        Ok(Self { files })
+    }
+
+    /// Renvoie les erreurs (vide : tout est restauré).
+    fn restore(&self) -> Vec<String> {
+        let mut problems = Vec::new();
+        for (p, content) in &self.files {
+            let r = match content {
+                Some(b) => fs::write(p, b),
+                None if p.exists() => fs::remove_file(p),
+                None => Ok(()),
+            };
+            if let Err(e) = r {
+                problems.push(format!("{}: {e}", p.display()));
+            }
+        }
+        problems
+    }
 }
 
 // ── orosmo build / run / clean ────────────────────────────────────────────────
@@ -653,8 +767,13 @@ struct Release {
     assets: Vec<(String, String)>, // (name, browser_download_url)
 }
 
+/// Client HTTP : HTTPS seulement, redirections comprises (un miroir ou une redirection vers http:// est refusé).
+fn http_agent() -> ureq::Agent {
+    ureq::AgentBuilder::new().https_only(true).build()
+}
+
 fn api_get(url: &str) -> Result<serde_json::Value, String> {
-    let resp = ureq::get(url)
+    let resp = http_agent().get(url)
         .set("User-Agent", &format!("{ENGINE_NAME}/{ENGINE_VERSION}"))
         .set("Accept",     "application/vnd.github+json")
         .call()
@@ -734,16 +853,21 @@ impl Release {
 }
 
 fn download_bytes(url: &str, label: &str) -> Result<Vec<u8>, String> {
-    let resp = ureq::get(url)
-        .set("User-Agent", &format!("{ENGINE_NAME}/{ENGINE_VERSION}"))
-        .call()
-        .map_err(|e| format!("download of {label} failed: {e}"))?;
+    download_optional(url, label)?.ok_or_else(|| format!("download of {label} failed: not found (HTTP 404)"))
+}
 
+/// `Ok(None)` pour une réponse 404 seulement.
+fn download_optional(url: &str, label: &str) -> Result<Option<Vec<u8>>, String> {
+    let resp = match http_agent().get(url).set("User-Agent", &format!("{ENGINE_NAME}/{ENGINE_VERSION}")).call() {
+        Ok(r) => r,
+        Err(ureq::Error::Status(404, _)) => return Ok(None),
+        Err(e) => return Err(format!("download of {label} failed: {e}")),
+    };
     let mut bytes = Vec::new();
     resp.into_reader()
         .read_to_end(&mut bytes)
         .map_err(|e| format!("failed to read {label}: {e}"))?;
-    Ok(bytes)
+    Ok(Some(bytes))
 }
 
 // ── Vendored engine (`init --vendor`, old projects) ───────────────────────────
@@ -776,6 +900,11 @@ fn extract_engine(project_dir: &Path, release: Option<&Release>) -> Result<Strin
 fn extract_vendored(project_dir: &Path, bytes: &[u8], tag: Option<&str>) -> Result<String, String> {
     // Extraction par-dessus (pas de remplacement atomique) : les fichiers propres à un ancien projet dans orosmo/ restent.
     let dest = project_dir.join("orosmo");
+    for f in install::REQUIRED_PACKAGE_FILES {
+        if !install::zip_has_file(bytes, f) {
+            return Err(format!("not an Orosmo engine package: {f} is missing (orosmo/ left unchanged)"));
+        }
+    }
     let count = install::extract_zip_into(bytes, &dest)?;
     println!("  [ok] orosmo/ ({count} files)");
     let version = tag.map(str::to_string).or_else(|| zip_version(bytes)).unwrap_or_else(|| ENGINE_VERSION.to_string());
@@ -1071,11 +1200,132 @@ mod tests {
     #[test]
     fn release_files_from_a_local_directory() {
         let dir = std::env::temp_dir().join(format!("orosmo_base_test_{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(dir.join("SHA256SUMS")).unwrap(); // présent mais illisible comme fichier
         fs::write(dir.join("a.txt"), b"x").unwrap();
-        assert_eq!(fetch_from_base(dir.to_str().unwrap(), "a.txt").unwrap(), b"x");
-        assert_eq!(fetch_from_base(&format!("file://{}", dir.display()), "a.txt").unwrap(), b"x");
-        assert!(fetch_from_base(dir.to_str().unwrap(), "missing").is_err());
+        let base = dir.to_str().unwrap();
+        assert_eq!(fetch_from_base(base, "a.txt").unwrap().as_deref(), Some(&b"x"[..]));
+        assert_eq!(fetch_from_base(&format!("file://{}", dir.display()), "a.txt").unwrap().as_deref(), Some(&b"x"[..]));
+        // Absent : None (repli des anciennes releases) ; illisible : erreur, pas une absence.
+        assert_eq!(fetch_from_base(base, "missing"), Ok(None));
+        assert!(fetch_from_base(base, "SHA256SUMS").is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn plain_http_is_refused() {
+        // Refusé avant toute connexion : ni réseau ni serveur nécessaires.
+        let e = fetch_from_base("http://127.0.0.1:9/mirror", "SHA256SUMS").unwrap_err();
+        assert!(e.contains("https://"), "{e}");
+        assert!(fetch_from_base("HTTP://127.0.0.1:9", "x").is_err());
+        // Le client lui-même refuse http:// (et donc une redirection vers http://).
+        let e = download_bytes("http://127.0.0.1:9/x", "x").unwrap_err();
+        assert!(e.contains("https"), "{e}");
+    }
+
+    fn package(version: Option<&str>) -> Vec<u8> {
+        use std::io::Write;
+        let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let opt = zip::write::SimpleFileOptions::default();
+        if let Some(v) = version {
+            w.start_file("pkg/VERSION", opt).unwrap();
+            w.write_all(v.as_bytes()).unwrap();
+        }
+        w.start_file("pkg/make/engine.mk", opt).unwrap();
+        w.write_all(b"# mk\n").unwrap();
+        w.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn local_package_must_match_the_requested_version() {
+        let home = home::tests::temp_dir("pkgver");
+        let zip = home.join("pkg.zip");
+        fs::write(&zip, package(Some("0.7.0"))).unwrap();
+        LOCAL_PACKAGE.with(|p| *p.borrow_mut() = Some(zip.clone()));
+        let e = install_version(&home, Some("0.6.2"), true).unwrap_err();
+        assert!(e.contains("0.7.0") && e.contains("0.6.2"), "{e}");
+        assert!(engine_path(&home, "0.6.2").is_none());
+        // Même version : installé ; sans VERSION : la version demandée.
+        assert_eq!(install_version(&home, Some("v0.7.0"), false).unwrap().0, "0.7.0");
+        fs::write(&zip, package(None)).unwrap();
+        assert_eq!(install_version(&home, Some("0.6.2"), false).unwrap().0, "0.6.2");
+        LOCAL_PACKAGE.with(|p| *p.borrow_mut() = None);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn explicit_package_failure_is_not_replaced_by_a_cached_engine() {
+        let home = home::tests::temp_dir("pkgfail");
+        fs::create_dir_all(home::engines_dir(&home).join("0.1.0")).unwrap();
+        let bad = home.join("bad.zip");
+        fs::write(&bad, b"not a zip").unwrap();
+        LOCAL_PACKAGE.with(|p| *p.borrow_mut() = Some(bad));
+        assert!(latest_engine(&home).is_err());
+        LOCAL_PACKAGE.with(|p| *p.borrow_mut() = None);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn vendored_extraction_refuses_an_incomplete_package_and_cleans_up() {
+        let root = home::tests::temp_dir("vendor");
+        let game = root.join("game");
+        fs::create_dir_all(&game).unwrap();
+        assert!(extract_vendored(&game, &package(Some("0.6.2")), None).is_ok());
+        let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        w.start_file("pkg/VERSION", zip::write::SimpleFileOptions::default()).unwrap();
+        let partial = w.finish().unwrap().into_inner();
+        assert!(extract_vendored(&root.join("game2"), &partial, None).is_err());
+        assert!(!root.join("game2").exists());
+
+        let created = root.join("new");
+        fs::create_dir_all(&created).unwrap();
+        assert!(remove_dir_on_error::<()>(&created, true, Err("x".into())).is_err());
+        assert!(!created.exists());
+        assert!(remove_dir_on_error::<()>(&game, false, Err("x".into())).is_err());
+        assert!(game.exists(), "an existing directory (init in place) is never removed");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn update_needs_an_orosmo_project() {
+        let root = home::tests::temp_dir("marker");
+        let other = root.join("other");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join("config.mk"), "CXXFLAGS := -O2\n").unwrap();
+        assert!(!is_orosmo_project(&other));
+        fs::write(other.join("Makefile"), "all:\n").unwrap();
+        assert!(!is_orosmo_project(&other));
+
+        let p1 = root.join("p1");
+        fs::create_dir_all(&p1).unwrap();
+        fs::write(p1.join("config.mk"), "OROSMO_VERSION := 0.6.2\n").unwrap();
+        assert!(is_orosmo_project(&p1));
+        let p2 = root.join("p2");
+        fs::create_dir_all(&p2).unwrap();
+        fs::write(p2.join("Makefile"), format!("{HASH_TAG} 0123\nall:\n")).unwrap();
+        assert!(is_orosmo_project(&p2));
+        let p3 = root.join("p3");
+        fs::create_dir_all(p3.join("orosmo").join("make")).unwrap();
+        fs::write(p3.join("orosmo").join("make").join("engine.mk"), "").unwrap();
+        assert!(is_orosmo_project(&p3));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn migrate_backup_restores_files_and_forces_the_engine() {
+        let dir = home::tests::temp_dir("backup");
+        fs::write(dir.join("Makefile"), b"old makefile").unwrap();
+        fs::write(dir.join("config.mk"), b"PROJECT_NAME ?= g\n").unwrap();
+        let b = ProjectBackup::take(&dir, &MIGRATED_FILES).unwrap();
+        fs::write(dir.join("Makefile"), b"new").unwrap();
+        fs::write(dir.join("config.mk"), b"OROSMO_VERSION := 0.6.2\n").unwrap();
+        fs::write(dir.join("config.local.mk"), b"# created").unwrap();
+        assert!(b.restore().is_empty());
+        assert_eq!(fs::read(dir.join("Makefile")).unwrap(), b"old makefile");
+        assert_eq!(fs::read(dir.join("config.mk")).unwrap(), b"PROJECT_NAME ?= g\n");
+        assert!(!dir.join("config.local.mk").exists() && !dir.join(".gitignore").exists());
+
+        let [e, mk] = engine_override(Path::new("/h/engines/0.6.2"));
+        assert_eq!((e.as_str(), mk.as_str()), ("ENGINE_DIR=/h/engines/0.6.2", "_ENGINE_MK=/h/engines/0.6.2/make/engine.mk"));
         let _ = fs::remove_dir_all(&dir);
     }
 }

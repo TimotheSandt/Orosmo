@@ -133,7 +133,7 @@ après une nouvelle installation.
 
 | Système | Exigence | Vérifié |
 |---|---|---|
-| Linux x64, arm64 | glibc 2.38 ou plus récent (Ubuntu 24.04 et suivants) ; GCC 13+ ou Clang 17+ | x64 seulement : Ubuntu 24.04, g++ 13.3 |
+| Linux x64, arm64 | glibc 2.39 ou plus récent (Ubuntu 24.04 et suivants) ; GCC 13+ ou Clang 17+ | x64 seulement : Ubuntu 24.04, g++ 13.3 |
 | Windows x64 | MinGW-w64 g++ 13+ (MSYS2 MINGW64) | non |
 | macOS arm64, x64 | clang++ 17+ ; MoltenVK pour Vulkan (non embarqué) | non |
 

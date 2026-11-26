@@ -64,7 +64,7 @@ $OROSMO_HOME/engines/<x.y.z>/     un paquet extrait tel quel ; rien ne l'écrit 
 
 | Système | Compilateur (C++23) | Outils | Graphique |
 | --- | --- | --- | --- |
-| Linux (vérifié : Ubuntu 24.04, g++ 13.3) | g++ 13+ ou clang++ 17+ | GNU Make ; **glibc ≥ 2.38** (Ubuntu 24.04 et plus récent, G217) | OpenGL 4.5 (ou 4.3 + `GL_ARB_clip_control`), Vulkan 1.3 conseillé, X11 ou Wayland |
+| Linux (vérifié : Ubuntu 24.04, g++ 13.3) | g++ 13+ ou clang++ 17+ | GNU Make ; **glibc ≥ 2.39** (Ubuntu 24.04 et plus récent, G217) | OpenGL 4.5 (ou 4.3 + `GL_ARB_clip_control`), Vulkan 1.3 conseillé, X11 ou Wayland |
 | Windows (non vérifié, G216) | MinGW-w64 g++ 13+ (MSYS2 MINGW64) | `mingw32-make` | OpenGL 4.5 |
 | macOS (non vérifié, G216) | clang++ 17+ (Homebrew LLVM ; le clang d'Apple doit fournir `std::expected`) | GNU Make | macOS s'arrête à OpenGL 4.1 et le chargeur Vulkan (MoltenVK) n'est pas embarqué (G215) : ce qui se passe de GPU (`orosmo::core`, `examples/minimal`) devrait fonctionner, non vérifié |
 
@@ -97,8 +97,8 @@ Le `Makefile` trouve le moteur (`ENGINE_DIR`) dans cet ordre : `ENGINE_DIR` donn
 | `orosmo list` / `orosmo remove <version>` | versions installées (celle du projet courant marquée) / suppression |
 | `orosmo path <version>` | chemin du moteur ; code 1 s'il n'est pas installé (utilisé par le `Makefile`) |
 | `orosmo init [nom] [--vendor]` | crée un projet (dossier courant sans nom) ; `--vendor` copie le moteur dans `orosmo/` (ancien mode) |
-| `orosmo update [chemin]` | passe le projet à la dernière version (`OROSMO_VERSION`), met à jour `Makefile` et `.gitignore` s'ils sont intacts (sinon confirmation `y/N`), ajoute à `config.mk` les champs nouveaux |
-| `orosmo migrate [chemin]` | ancien projet avec `orosmo/` → moteur partagé ; `orosmo/` renommé `orosmo.old/`, supprimé seulement si le build réussit |
+| `orosmo update [chemin]` | (projet Orosmo : `orosmo/`, `OROSMO_VERSION` dans `config.mk` ou `Makefile` d'`orosmo init`) passe le projet à la dernière version (`OROSMO_VERSION`), met à jour `Makefile` et `.gitignore` s'ils sont intacts (sinon confirmation `y/N`), ajoute à `config.mk` les champs nouveaux |
+| `orosmo migrate [chemin]` | ancien projet avec `orosmo/` → moteur partagé ; `orosmo/` renommé `orosmo.old/`, supprimé seulement si le build (avec le moteur installé) réussit, sinon la migration est annulée |
 | `orosmo build [--release] [--json] [-C dir]` | `make -jN debug` (ou `release`) ; `--json` : une ligne JSON par événement |
 | `orosmo run [--release] [-C dir] [-- args…]` | build, puis lance le programme avec `args` |
 | `orosmo clean [-C dir]` | `make clean` |
@@ -106,8 +106,10 @@ Le `Makefile` trouve le moteur (`ENGINE_DIR`) dans cet ordre : `ENGINE_DIR` donn
 | `orosmo doctor [--json] [--fix] [chemin]` | contrôle de l'environnement ; `--fix` affiche la commande du gestionnaire de paquets et la lance après confirmation |
 | `--package <orosmo-pkg.zip>` | (`install`, `init`, `update`) paquet local au lieu du téléchargement, sans réseau ni vérification d'empreinte |
 
-Hors ligne, `install latest`, `init` et `update` retombent sur le paquet embarqué dans l'outil, ou sur la plus récente version
-déjà installée. Format de `build --json` : une ligne par événement, `{"event":"begin","label":…,"shown":…,"target":…}`,
+Hors ligne, `install latest` échoue : sans réseau, un paquet s'installe avec `--package <zip>`. `init` et `update` (sans
+`--package`) prennent la plus récente version déjà installée, avec un avertissement ; sans version installée, il faut fournir
+le paquet avec `--package`. `OROSMO_DOWNLOAD_BASE` (miroir, tests) est un dossier local ou une URL `https://` : `http://` est
+refusé, et l'outil ne suit pas une redirection vers `http://`. Format de `build --json` : une ligne par événement, `{"event":"begin","label":…,"shown":…,"target":…}`,
 `{"event":"end","target":…}`, `{"event":"diagnostic","level":…,"text":…}` (avec `file`, `line`, `column`, `message` quand la
 ligne a la forme `fichier:ligne:colonne: niveau: message`), puis `{"event":"done","code":…,"compiled":…,"failed":[…],"elapsed_ms":…}` ;
 le code de sortie est celui de `make`.
@@ -117,8 +119,8 @@ le code de sortie est celui de `make`.
 - **Mettre à jour** : `orosmo update` change `OROSMO_VERSION` ; les autres projets gardent la leur. Changer la ligne à la main et
   lancer `orosmo install x.y.z` revient au même.
 - **Ancien projet** (moteur copié dans `orosmo/`, dépendances vcpkg dans `orosmo/vcpkg_installed`) : `orosmo migrate`. La même
-  version du moteur est installée si le paquet copié a un fichier `VERSION`, sinon la dernière. Un échec du build laisse
-  `orosmo.old/` : le renommer en `orosmo/` annule la migration.
+  version du moteur est installée si le paquet copié a un fichier `VERSION`, sinon la dernière. Le build de validation impose ce
+  moteur (`ENGINE_DIR` sur la ligne de commande de `make`, même si `config.local.mk` en fixe un autre). Si le lancement de `make` ou le build échoue (ou une étape d'avant), la migration est annulée : `orosmo/`, `Makefile`, `.gitignore`, `config.mk` et `config.local.mk` reprennent leur état d'avant.
 - **Projet figé ou hors ligne** : `orosmo init --vendor` (ou garder `orosmo/`). `orosmo update` remplace alors `orosmo/` par-dessus,
   comme avant la `v0.6.2` : les fichiers retirés d'une release restent en place ; pour un moteur identique à une installation neuve,
   videz `orosmo/` avant `update`.

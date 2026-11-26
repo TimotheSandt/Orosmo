@@ -15,7 +15,7 @@
     4. Runs `orosmo install latest` (or -Version): the prebuilt engine goes to $OROSMO_HOME\engines\<version>.
 
     With `irm | iex` options cannot be passed: the environment variables OROSMO_YES=1, OROSMO_NO_DEPS=1 and
-    OROSMO_VERSION=x.y.z do the same. OROSMO_DOWNLOAD_BASE (directory or URL holding the release files) replaces GitHub.
+    OROSMO_VERSION=x.y.z do the same. OROSMO_DOWNLOAD_BASE (directory or https:// URL holding the release files) replaces GitHub.
 
 .PARAMETER Yes
     Do not ask (install the system packages, modify PATH).
@@ -68,6 +68,8 @@ $BinDir = Join-Path $OrosmoHome "bin"
 if ($env:OROSMO_DOWNLOAD_BASE) { $Base = $env:OROSMO_DOWNLOAD_BASE.TrimEnd("/", "\") }
 elseif ($Version) { $Base = "https://github.com/$Repo/releases/download/v$Version" }
 else { $Base = "https://github.com/$Repo/releases/latest/download" }
+# HTTPS only: over plain HTTP the tool and SHA256SUMS would come through the same unauthenticated channel.
+if ($Base -match '^http://') { Fail "refusing ${Base}: OROSMO_DOWNLOAD_BASE must be an https:// URL or a local directory" }
 
 function Confirm-Step([string]$Question) {
     if ($Yes) { return $true }
@@ -81,7 +83,8 @@ function Test-Command([string]$Name) { return [bool](Get-Command $Name -ErrorAct
 function Add-UserPath([string]$Dir) {
     $current = [Environment]::GetEnvironmentVariable("Path", "User")
     $parts = @()
-    if ($current) { $parts = $current.Split(";") | Where-Object { $_ -ne "" } }
+    # @(...): with a single entry, Where-Object returns a string and `$parts + $Dir` would concatenate without ";".
+    if ($current) { $parts = @($current.Split(";") | Where-Object { $_ -ne "" }) }
     if ($parts -contains $Dir) { return $false }
     [Environment]::SetEnvironmentVariable("Path", (($parts + $Dir) -join ";"), "User")
     return $true
@@ -143,7 +146,7 @@ $Tmp = Join-Path ([IO.Path]::GetTempPath()) ("orosmo-install-" + [Guid]::NewGuid
 New-Item -ItemType Directory -Path $Tmp | Out-Null
 
 function Get-ReleaseFile([string]$Name, [string]$Dest) {
-    if ($Base -match '^https?://') {
+    if ($Base -match '^https://') {
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri "$Base/$Name" -OutFile $Dest -UseBasicParsing
     } else {

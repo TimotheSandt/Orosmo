@@ -65,8 +65,26 @@ pub fn strip_top_dir(path: &str) -> &str {
     }
 }
 
-/// Extrait l'archive dans `dest_root` (créé au besoin). Chaque entrée doit rester dans `dest_root` (paquet non fiable).
+/// Refuse d'écrire à travers un lien symbolique (ou une jonction) déjà présent : `dest_root` ou un composant de `rel`. Le dossier
+/// `orosmo/` d'un projet (mode vendorisé, `orosmo update`) vient peut-être d'un dépôt cloné : un lien y ferait écrire ailleurs.
+fn refuse_symlinks(dest_root: &Path, rel: &Path) -> Result<(), String> {
+    let check = |p: &Path| match fs::symlink_metadata(p) {
+        Ok(m) if m.file_type().is_symlink() => Err(format!("refusing to write through the symbolic link {}", p.display())),
+        _ => Ok(()),
+    };
+    check(dest_root)?;
+    let mut p = dest_root.to_path_buf();
+    for c in rel.components() {
+        p.push(c);
+        check(&p)?;
+    }
+    Ok(())
+}
+
+/// Extrait l'archive dans `dest_root` (créé au besoin). Chaque entrée doit rester dans `dest_root` (paquet non fiable), sans
+/// passer par un lien symbolique déjà présent dans `dest_root` (dossier existant non fiable).
 pub fn extract_zip_into(bytes: &[u8], dest_root: &Path) -> Result<usize, String> {
+    refuse_symlinks(dest_root, Path::new(""))?;
     fs::create_dir_all(dest_root).map_err(|e| format!("failed to create {}: {e}", dest_root.display()))?;
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("failed to open engine package zip: {e}"))?;
     let mut count = 0;
@@ -78,6 +96,7 @@ pub fn extract_zip_into(bytes: &[u8], dest_root: &Path) -> Result<usize, String>
             continue;
         }
         let safe = safe_relative(rel).ok_or_else(|| format!("unsafe path in the engine package: {raw}"))?;
+        refuse_symlinks(dest_root, &safe)?;
         let dest = dest_root.join(safe);
         if entry.is_dir() {
             fs::create_dir_all(&dest).map_err(|e| format!("failed to create {}: {e}", dest.display()))?;
@@ -106,20 +125,35 @@ fn unique_sibling(dest: &Path, tag: &str) -> PathBuf {
     dest.with_file_name(format!(".{tag}-{name}-{}-{stamp}", std::process::id()))
 }
 
+/// Fichiers sans lesquels un dossier n'est pas un moteur utilisable (le Makefile du gabarit inclut `make/engine.mk`).
+pub const REQUIRED_PACKAGE_FILES: [&str; 1] = ["make/engine.mk"];
+
 /// Extrait dans un dossier temporaire voisin, puis le renomme en `dest` : `dest` est complet ou absent, jamais à moitié.
+/// Un paquet incomplet (sans `make/engine.mk`) est refusé avant de toucher à `dest`.
 /// `replace` : un `dest` existant est remplacé (mis de côté, puis supprimé après le renommage).
 pub fn install_tree_atomic(bytes: &[u8], dest: &Path, replace: bool) -> Result<usize, String> {
     if dest.exists() && !replace {
         return Err(format!("{} already exists", dest.display()));
     }
     let tmp = unique_sibling(dest, "tmp");
-    let count = match extract_zip_into(bytes, &tmp) {
+    let extracted = extract_zip_into(bytes, &tmp).and_then(|n| {
+        match REQUIRED_PACKAGE_FILES.iter().find(|f| !tmp.join(f).is_file()) {
+            Some(f) => Err(format!("not an Orosmo engine package: {f} is missing (the installed engine is left unchanged)")),
+            None => Ok(n),
+        }
+    });
+    let count = match extracted {
         Ok(n) => n,
         Err(e) => {
             let _ = fs::remove_dir_all(&tmp);
             return Err(e);
         }
     };
+    // Relu au moment de publier : une autre installation a pu créer `dest` pendant l'extraction.
+    if dest.exists() && !replace {
+        let _ = fs::remove_dir_all(&tmp);
+        return Err(format!("{} already exists", dest.display()));
+    }
     let old = if dest.exists() {
         let old = unique_sibling(dest, "old");
         if let Err(e) = fs::rename(dest, &old) {
@@ -132,8 +166,14 @@ pub fn install_tree_atomic(bytes: &[u8], dest: &Path, replace: bool) -> Result<u
     };
     if let Err(e) = fs::rename(&tmp, dest) {
         let _ = fs::remove_dir_all(&tmp);
-        if let Some(old) = &old {
-            let _ = fs::rename(old, dest);
+        if let Some(old) = &old
+            && let Err(e2) = fs::rename(old, dest)
+        {
+            return Err(format!(
+                "failed to move the engine into {}: {e}; restoring the previous engine failed too ({e2}): it is kept in {}",
+                dest.display(),
+                old.display()
+            ));
         }
         return Err(format!("failed to move the engine into {}: {e}", dest.display()));
     }
@@ -141,6 +181,11 @@ pub fn install_tree_atomic(bytes: &[u8], dest: &Path, replace: bool) -> Result<u
         let _ = fs::remove_dir_all(old);
     }
     Ok(count)
+}
+
+/// Le paquet contient-il `rel` (chemin sous le dossier de tête) ?
+pub fn zip_has_file(bytes: &[u8], rel: &str) -> bool {
+    ZipArchive::new(Cursor::new(bytes)).is_ok_and(|a| a.file_names().any(|n| strip_top_dir(n) == rel))
 }
 
 /// Contenu du fichier `VERSION` à la racine du paquet, s'il existe.
@@ -219,10 +264,54 @@ mod tests {
         let leftovers: Vec<_> = fs::read_dir(root.join("engines")).unwrap().flatten().map(|e| e.file_name()).collect();
         assert_eq!(leftovers, vec![std::ffi::OsString::from("0.6.2")]);
 
+        // Paquet incomplet (sans make/engine.mk), même avec --force : refusé, le moteur installé reste intact.
+        let partial = make_zip(&[("pkg/VERSION", b"0.6.2\n")]);
+        assert!(install_tree_atomic(&partial, &dest, true).unwrap_err().contains("make/engine.mk"));
+        assert!(dest.join("make/engine.mk").is_file());
+
         // Remplacement (--force) : l'ancien contenu disparaît.
-        let newer = make_zip(&[("pkg/VERSION", b"0.6.2\n")]);
-        assert_eq!(install_tree_atomic(&newer, &dest, true), Ok(1));
-        assert!(!dest.join("make/engine.mk").exists());
+        let newer = make_zip(&[("pkg/VERSION", b"0.6.2\n"), ("pkg/make/engine.mk", b"# mk 2\n"), ("pkg/new.txt", b"n")]);
+        fs::write(dest.join("stale.txt"), b"old").unwrap();
+        assert_eq!(install_tree_atomic(&newer, &dest, true), Ok(3));
+        assert!(!dest.join("stale.txt").exists());
+        assert_eq!(fs::read(dest.join("make/engine.mk")).unwrap(), b"# mk 2\n");
+        let leftovers: Vec<_> = fs::read_dir(root.join("engines")).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(leftovers, vec![std::ffi::OsString::from("0.6.2")]);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn extraction_does_not_follow_existing_symlinks() {
+        let root = temp_dir("symlink");
+        let outside = root.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("VERSION"), b"precious").unwrap();
+        let pkg = make_zip(&[("pkg/VERSION", b"0.6.2\n"), ("pkg/make/engine.mk", b"# mk\n")]);
+
+        // Fichier lien : orosmo/VERSION -> outside/VERSION.
+        let vendored = root.join("game").join("orosmo");
+        fs::create_dir_all(&vendored).unwrap();
+        std::os::unix::fs::symlink(outside.join("VERSION"), vendored.join("VERSION")).unwrap();
+        assert!(extract_zip_into(&pkg, &vendored).unwrap_err().contains("symbolic link"));
+        assert_eq!(fs::read(outside.join("VERSION")).unwrap(), b"precious");
+
+        // Dossier lien : orosmo/make -> outside.
+        fs::remove_file(vendored.join("VERSION")).unwrap();
+        std::os::unix::fs::symlink(&outside, vendored.join("make")).unwrap();
+        assert!(extract_zip_into(&pkg, &vendored).unwrap_err().contains("symbolic link"));
+        assert!(!outside.join("engine.mk").exists());
+
+        // orosmo/ lui-même est un lien.
+        let linked = root.join("game2").join("orosmo");
+        fs::create_dir_all(linked.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&outside, &linked).unwrap();
+        assert!(extract_zip_into(&pkg, &linked).unwrap_err().contains("symbolic link"));
+        assert_eq!(fs::read(outside.join("VERSION")).unwrap(), b"precious");
+
+        // Sans lien : extraction normale.
+        let clean = root.join("game3").join("orosmo");
+        assert_eq!(extract_zip_into(&pkg, &clean), Ok(2));
         let _ = fs::remove_dir_all(&root);
     }
 }

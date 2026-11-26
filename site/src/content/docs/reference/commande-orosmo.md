@@ -60,8 +60,11 @@ SHA-256 contre le fichier `SHA256SUMS` de la release, l'extrait dans un dossier 
 `engines/<version>` : une installation interrompue ne laisse pas de moteur à moitié écrit. Une release sans `SHA256SUMS`
 donne un avertissement, pas une erreur. Un chemin absolu, un `..` ou une lettre de lecteur dans l'archive est refusé.
 
-Une version déjà installée n'est pas retéléchargée (sans `--force`). Si le réseau ne répond pas, `install latest` utilise le
-paquet embarqué dans l'outil quand il en a un.
+Une version déjà installée n'est pas retéléchargée (sans `--force`). Le paquet n'est pas embarqué dans l'outil : sans réseau,
+`install latest` échoue, et un paquet s'installe avec `--package <zip>`. Sans `--package`, `init` et `update` utilisent alors
+la plus récente version déjà installée, avec un avertissement. Un paquet sans `make/engine.mk` est refusé avant de toucher à
+la version installée ; avec `--package`, un fichier `VERSION` qui contredit la version demandée aussi. Les téléchargements se
+font en HTTPS seulement (redirections comprises) ; `OROSMO_DOWNLOAD_BASE` est un dossier local ou une URL `https://`.
 
 ```bash
 orosmo install                # dernière release
@@ -112,9 +115,11 @@ release, et met à jour un binaire `orosmo` placé dans le projet si la release 
 1. il installe la version du fichier `orosmo/VERSION`, ou la dernière si ce fichier manque ou si cette version n'est pas
    disponible ;
 2. il met à jour `Makefile`, `.gitignore` et `config.mk` (`OROSMO_VERSION`) ;
-3. il renomme `orosmo/` en `orosmo.old/` et lance `make debug` ;
-4. si le build réussit, il supprime `orosmo.old/` ; sinon il le garde et sort avec le code de `make`. Renommer `orosmo.old/`
-   en `orosmo/` annule la migration.
+3. il renomme `orosmo/` en `orosmo.old/` et lance `make debug` avec ce moteur (`ENGINE_DIR` imposé sur la ligne de commande,
+   même si `config.local.mk` en fixe un autre ; un message le rappelle) ;
+4. si le build réussit, il supprime `orosmo.old/`. Si une étape échoue (fichiers, renommage, lancement de `make`, build), la
+   migration est annulée : `orosmo.old/` redevient `orosmo/` et `Makefile`, `.gitignore`, `config.mk`, `config.local.mk`
+   reprennent leur contenu d'avant ; la commande sort avec le code de `make` (ou 1).
 
 La commande refuse un projet sans `orosmo/`, ou qui a déjà un `orosmo.old/`.
 
