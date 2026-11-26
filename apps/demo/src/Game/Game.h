@@ -19,6 +19,7 @@
 #include <orosmo/core/error.hpp>
 #include <orosmo/core/file_watcher.hpp>
 #include <orosmo/core/profiler.hpp>
+#include <orosmo/platform/gamepad.hpp>
 #include <orosmo/platform/input_manager.hpp>
 #include <orosmo/platform/window.hpp>
 #include <orosmo/renderer/antialiasing.hpp>
@@ -32,6 +33,7 @@
 #include <orosmo/renderer/shader_library.hpp>
 #include <orosmo/rhi/device.hpp>
 #include <orosmo/ui/font.hpp>
+#include <orosmo/ui/gamepad_navigation.hpp>
 #include <orosmo/ui/text_renderer.hpp>
 #include <orosmo/ui/ui.hpp>
 
@@ -90,6 +92,7 @@ class Game
         hoverId = std::move(hover);
         clickId = std::move(click);
     }
+    void setCaptureFocus(std::string focus) { focusId = std::move(focus); }
     // Cadence d'images (vsync, limite à N FPS, sans limite), changeable à chaud (aussi depuis l'interface complète). Sans fenêtre
     // (--headless) : mémorisée et affichée, sans effet (ni vsync ni limiteur).
     void setFramePacing(orosmo::renderer::FramePacing pacing);
@@ -198,6 +201,10 @@ class Game
     std::uint32_t pointLightCount = 0;
     std::string hoverId;
     std::string clickId;
+    std::string focusId;
+    // UI-09 : manettes lues à chaque image, traduites en navigation de l'interface complète.
+    orosmo::platform::Gamepads gamepads;
+    orosmo::ui::GamepadNavigator gamepadNavigator;
     std::string captureDirectory;
     std::uint32_t captureFrames = 0;
     std::uint32_t renderedFrames = 0;

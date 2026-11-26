@@ -104,6 +104,8 @@ struct LaunchOptions
     // --hover <id> / --click <id> : pointeur simulé pendant --capture (--click exige --capture-frames >= 3, --hover >= 2).
     std::string hoverId;
     std::string clickId;
+    // --focus <id> (UI-09) : focus clavier sur ce widget pendant --capture, anneau de focus visible (--capture-frames >= 2).
+    std::string focusId;
     // --size WxH (défaut : 1280x720, minimum : 640x400).
     int width = 1280;
     int height = 720;

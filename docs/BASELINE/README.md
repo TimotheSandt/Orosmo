@@ -155,3 +155,12 @@ vsync, modes, mémoire) : **les captures `--ui hud` changent, de façon assumée
 d'image de référence à tolérance 0 (les valeurs mesurées changent d'une exécution à l'autre) ; `make demo-vulkan-check` les compare
 toujours entre OpenGL et Vulkan avec sa tolérance. `--ui off` et `--ui full` ne montrent pas ce panneau et ne changent pas, sauf la
 ligne de statistiques de l'onglet Scene, qui affiche les mêmes valeurs qu'avant (FPS de la fenêtre, `Render`, passes `scene` et `ui`).
+
+## Anneau de focus (UI-09, M8 lot L9, 2026-11-26)
+
+`reference/ui-opengl-controls-focus-1280x720.png` : `apps/demo/bin/debug/main --api opengl --headless --ui full --theme dark --tab
+controls --focus detailMedium --capture <dir> --capture-frames 5` (`ui.png`), Intel Arc (Mesa 26.1.6), sha256
+`e832002c19b6f065c82eaa5410bccbd39d32c412a74b65dd5c07859a5e365639`. Le bouton radio « Medium » a le focus clavier, entouré de
+l'anneau du style `focusRing` de `base.json`. `make demo-capture` la compare avec la tolérance des références GPU (8, 2 %) et
+vérifie que la capture sans focus en diffère. Les captures sans `--focus` sont inchangées par UI-09 (0 pixel d'écart : onglets
+`controls`, `widgets`, `windows`, liste déroulante ouverte ; l'anneau n'apparaît qu'après une navigation au clavier ou à la manette).
