@@ -370,6 +370,7 @@ Choix faits pendant le jalon M5 (`docs/releases/M5.md`). Aucun n'est une décisi
   - **`--vendor` conservé** : `orosmo init --vendor` copie le moteur dans `orosmo/` comme avant (projets hors ligne ou figés) ; `orosmo migrate` passe un ancien projet au nouveau mode et ne supprime `orosmo/` qu'après un build réussi (sinon il reste en `orosmo.old/`).
   - **Construction par l'outil** : `orosmo build`, `orosmo run`, `orosmo clean` lancent `make` ; `orosmo build --json` écrit une ligne JSON par événement (`begin`, `end`, `diagnostic`, `done`), pour une future interface graphique. `make` reste utilisable directement.
   - **Linux garanti : glibc ≥ 2.38 (Ubuntu 24.04 et plus récent)**, la version de la machine qui construit le paquet.
+    *Correction (revue CodeRabbit de la PR #15, 2026-11-26)* : la machine de construction (`ubuntu-24.04`, `ubuntu-24.04-arm` de `build-engine.yml`) a glibc **2.39**. Mesure sur une construction locale équivalente (Ubuntu 24.04, `objdump -T`) : l'outil `orosmo` demande `GLIBC_2.39` (`pidfd_spawnp`, `pidfd_getpid` de la bibliothèque standard Rust), `tools/cui` `GLIBC_2.34`, les archives du paquet `__isoc23_*` (`GLIBC_2.38`). Garantie effective : **glibc ≥ 2.39** (Ubuntu 24.04 et plus récent ; G217).
   - **Reportés** : paquets natifs (`.deb`, Homebrew, winget) et signature des binaires (G218).
   - Contrat détaillé : `docs/03` §16 « Distribution du SDK ». Le jeu livré aux joueurs ne change pas (liaison statique).
 

@@ -64,7 +64,7 @@ $OROSMO_HOME/engines/<x.y.z>/     un paquet extrait tel quel ; rien ne l'écrit 
 
 | Système | Compilateur (C++23) | Outils | Graphique |
 | --- | --- | --- | --- |
-| Linux (vérifié : Ubuntu 24.04, g++ 13.3) | g++ 13+ ou clang++ 17+ | GNU Make ; **glibc ≥ 2.38** (Ubuntu 24.04 et plus récent, G217) | OpenGL 4.5 (ou 4.3 + `GL_ARB_clip_control`), Vulkan 1.3 conseillé, X11 ou Wayland |
+| Linux (vérifié : Ubuntu 24.04, g++ 13.3) | g++ 13+ ou clang++ 17+ | GNU Make ; **glibc ≥ 2.39** (Ubuntu 24.04 et plus récent, G217) | OpenGL 4.5 (ou 4.3 + `GL_ARB_clip_control`), Vulkan 1.3 conseillé, X11 ou Wayland |
 | Windows (non vérifié, G216) | MinGW-w64 g++ 13+ (MSYS2 MINGW64) | `mingw32-make` | OpenGL 4.5 |
 | macOS (non vérifié, G216) | clang++ 17+ (Homebrew LLVM ; le clang d'Apple doit fournir `std::expected`) | GNU Make | macOS s'arrête à OpenGL 4.1 et le chargeur Vulkan (MoltenVK) n'est pas embarqué (G215) : ce qui se passe de GPU (`orosmo::core`, `examples/minimal`) devrait fonctionner, non vérifié |
 
