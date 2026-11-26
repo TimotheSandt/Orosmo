@@ -24,7 +24,9 @@ struct DynamicLibraryOptions
 {
     // Charger une copie sous un nom unique (défaut) plutôt que le fichier lui-même.
     bool copyBeforeLoad = true;
-    // Dossier de la copie ; vide = dossier de l'original (les bibliothèques voisines dont elle dépend restent trouvables).
+    // Dossier de la copie (relatif : au dossier courant au moment du chargement) ; vide = dossier de l'original. Sous Windows, les
+    // dépendances sont cherchées d'abord dans le dossier de la COPIE (LOAD_WITH_ALTERED_SEARCH_PATH) : un autre dossier doit
+    // contenir les DLL voisines dont la bibliothèque dépend.
     std::filesystem::path copyDirectory = {};
 };
 

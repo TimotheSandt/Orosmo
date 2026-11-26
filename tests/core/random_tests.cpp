@@ -102,6 +102,29 @@ TEST_SUITE("core/random")
         }
     }
 
+    TEST_CASE("Random: float range never returns high after rounding, and finite opposite bounds do not overflow")
+    {
+        // Intervalle d'un seul pas de float : tout tirage >= 0.5 s'arrondissait à `high` en calcul float (revue de la PR #20).
+        Random narrow(42);
+        constexpr float kLow = 1.0f, kHigh = 0x1.000002p0f;
+        for (int i = 0; i < 1000; ++i)
+            REQUIRE(narrow.range(kLow, kHigh) == kLow);
+
+        Random wide(42);
+        constexpr float kMax = 0x1.fffffep127f;
+        for (int i = 0; i < 1000; ++i)
+        {
+            const float v = wide.range(-kMax, kMax);
+            REQUIRE(v >= -kMax);
+            REQUIRE(v < kMax);
+        }
+
+        Random rng(7);
+        CHECK(rng.range(3.0f, 3.0f) == 3.0f); // intervalle vide : `low`
+        CHECK(rng.range(-1.0f, 0.0f) < 0.0f);
+        static_assert(Random(42).range(1.0f, 0x1.000002p0f) == 1.0f, "constexpr");
+    }
+
     TEST_CASE("Random: derived values are exact functions of the frozen integers (same on every platform)")
     {
         Random rng(42);

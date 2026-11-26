@@ -102,6 +102,53 @@ TEST_SUITE("platform/dynamic_library")
         CHECK_FALSE(second->isLoaded());
     }
 
+    TEST_CASE("DynamicLibrary: each loaded copy has its own static state, fresh after a reload (no GNU unique symbol)")
+    {
+        auto first = DynamicLibrary::load(testModulePath());
+        auto second = DynamicLibrary::load(testModulePath());
+        REQUIRE(first.has_value());
+        REQUIRE(second.has_value());
+        auto incFirst = first->function<int()>("orosmoTestModuleIncrement");
+        auto incSecond = second->function<int()>("orosmoTestModuleIncrement");
+        REQUIRE(incFirst.has_value());
+        REQUIRE(incSecond.has_value());
+        CHECK((*incFirst)() == 1);
+        CHECK((*incFirst)() == 2);
+        const int secondValue = (*incSecond)();
+
+        first->unload();
+        second->unload();
+        auto reloaded = DynamicLibrary::load(testModulePath());
+        REQUIRE(reloaded.has_value());
+        auto incReloaded = reloaded->function<int()>("orosmoTestModuleIncrement");
+        REQUIRE(incReloaded.has_value());
+        const int reloadedValue = (*incReloaded)();
+#if defined(__APPLE__)
+        // dyld peut fusionner les définitions faibles de deux images : comportement relevé, pas encore exigé (G234).
+        MESSAGE("macOS: second copy counter " << secondValue << ", after reload " << reloadedValue << " (1 and 1 = isolated)");
+#else
+        CHECK(secondValue == 1);   // l'autre copie ne partage pas la variable statique
+        CHECK(reloadedValue == 1); // déchargée pour de bon : état neuf
+#endif
+    }
+
+    TEST_CASE("DynamicLibrary: the copy path stays absolute, so unload removes it after a change of current directory")
+    {
+        const fs::path previous = fs::current_path();
+        fs::current_path(testModulePath().parent_path());
+        DynamicLibraryOptions options;
+        options.copyDirectory = "."; // relatif au dossier courant au moment du chargement
+        auto library = DynamicLibrary::load(testModulePath().filename(), options);
+        fs::current_path(previous);
+        REQUIRE(library.has_value());
+        const fs::path copy = library->loadedPath();
+        CHECK(copy.is_absolute());
+        CHECK(library->sourcePath().is_absolute());
+        CHECK(fs::exists(copy));
+        library->unload();
+        CHECK_FALSE(fs::exists(copy));
+    }
+
     TEST_CASE("DynamicLibrary: copyBeforeLoad = false loads the file itself")
     {
         DynamicLibraryOptions options;

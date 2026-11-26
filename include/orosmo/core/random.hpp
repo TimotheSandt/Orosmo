@@ -5,6 +5,7 @@
 // référence `pcg32-demo` (0xa15c02b7, 0x7b47f409, …), figée par `tests/core/random_tests.cpp`.
 #pragma once
 
+#include <bit>
 #include <cstdint>
 
 namespace orosmo::core
@@ -77,8 +78,17 @@ class Random
     constexpr float nextFloat() noexcept { return static_cast<float>(nextU32() >> 8u) * 0x1.0p-24f; }
     constexpr double nextDouble() noexcept { return static_cast<double>(nextU64() >> 11u) * 0x1.0p-53; }
 
-    // Réel uniforme dans [low, high).
-    constexpr float range(float low, float high) noexcept { return low + (high - low) * nextFloat(); }
+    // Réel uniforme dans [low, high) (un tirage). Calcul en double : aucune différence de bornes finies ne déborde ; un résultat
+    // que l'arrondi vers float amène sur `high` est ramené au float précédent. `low >= high` (ou NaN) renvoie `low`.
+    constexpr float range(float low, float high) noexcept
+    {
+        const float t = nextFloat();
+        if (!(low < high))
+            return low;
+        const double value = static_cast<double>(low) + (static_cast<double>(high) - static_cast<double>(low)) * t;
+        const auto result = static_cast<float>(value);
+        return result < high ? result : floatBelow(high);
+    }
 
     // Avance de `delta` tirages en O(log delta) (`pcg32_advance_r`) : sauter à un pas donné d'une simulation rejouée.
     constexpr void advance(std::uint64_t delta) noexcept
@@ -115,6 +125,15 @@ class Random
     friend constexpr bool operator==(const Random &, const Random &) noexcept = default;
 
   private:
+    // Plus grand float strictement inférieur à `x` (fini, > plus petit float) : un pas sur la représentation.
+    static constexpr float floatBelow(float x) noexcept
+    {
+        if (x == 0.0f)
+            return -0x1.0p-149f;
+        const auto bits = std::bit_cast<std::uint32_t>(x);
+        return std::bit_cast<float>(x > 0.0f ? bits - 1u : bits + 1u);
+    }
+
     static constexpr std::uint64_t kMultiplier = 6364136223846793005u;
     std::uint64_t state_ = 0u;
     std::uint64_t increment_ = 1u;

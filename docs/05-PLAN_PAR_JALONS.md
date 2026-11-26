@@ -235,6 +235,7 @@ Une branche `feat/M8-L<n>-…` par lot, créée depuis `dev`, une PR vers `dev` 
 - Revue de documentation, schémas, guide de démarrage.
 - Nettoyage : TODO restants, code mort, avertissements.
 - Passe de performance : budgets de mémoire et de temps notés par système.
+- Qualité d'ombre selon l'importance des objets (A80, G290 ; demandé par l'auteur le 2026-11-26, **fonctionnement à confirmer par l'auteur avant d'être validé**) : ombre dédiée aux objets importants, maillage simplifié pour l'ombre des objets secondaires, distance d'ombre par caster.
 - Emballage : binaires des démos, README principal.
 
 **Terminé** : passe de confirmation de `docs/04` (§« Confirmation de la couverture ») sans écart non justifié.

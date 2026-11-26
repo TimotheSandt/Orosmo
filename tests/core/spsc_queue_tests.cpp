@@ -1,13 +1,21 @@
 #include <doctest/doctest.h>
 
+#include <orosmo/core/error.hpp>
 #include <orosmo/core/spsc_queue.hpp>
 
 #include <cstdint>
 #include <memory>
+#include <source_location>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
 using orosmo::core::SpscQueue;
+
+namespace
+{
+[[noreturn]] void throwOnAssert(const char *, const char *message, std::source_location) { throw std::runtime_error(message); }
+} // namespace
 
 TEST_SUITE("core/spsc_queue")
 {
@@ -34,6 +42,15 @@ TEST_SUITE("core/spsc_queue")
         }
         CHECK_FALSE(q.tryPop().has_value());
         CHECK(SpscQueue<int>(0).capacity() == 2u);
+    }
+
+    TEST_CASE("SpscQueue: a capacity whose power-of-two rounding overflows is refused by an assertion (no endless loop)")
+    {
+        CHECK(SpscQueue<int>::kMaxCapacity == (static_cast<std::size_t>(-1) >> 1u) + 1u);
+        const auto previous = orosmo::core::setAssertHandler(&throwOnAssert);
+        CHECK_THROWS_AS(SpscQueue<int>(SpscQueue<int>::kMaxCapacity + 1u), std::runtime_error);
+        CHECK_THROWS_AS(SpscQueue<int>(static_cast<std::size_t>(-1)), std::runtime_error);
+        orosmo::core::setAssertHandler(previous);
     }
 
     TEST_CASE("SpscQueue: move-only and non-trivial elements; the remaining ones are destroyed with the queue")
