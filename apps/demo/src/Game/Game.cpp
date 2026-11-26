@@ -364,8 +364,8 @@ orosmo::core::Result<> Game::init()
         this->scene->setShadows(shadowFeature);
     }
     this->scene->setDebugOptions(this->debugView, this->freezeFrustum);
-    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory, forwardPlus, this->pointLightCount,
-                                       this->sceneRenderer->aovShaderDefines()); !ready)
+    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory, this->pointLightCount,
+                                       this->sceneRenderer->shaderDefines()); !ready)
     {
         return orosmo::core::makeError(ready.error().code, "Failed to initialize the demo scene: " + ready.error().message);
     }
@@ -411,9 +411,7 @@ orosmo::core::Result<> Game::init()
         demo::AnimSceneOptions animOptions;
         animOptions.workDirectory = std::filesystem::temp_directory_path() / "orosmo-demo-anim";
         animOptions.crowdDefines = forwardPlus ? rd::forwardPlusDefines() : std::vector<rd::Define>{};
-        animOptions.modelDefines = animOptions.crowdDefines;
-        const std::vector<rd::Define> aovDefines = this->sceneRenderer->aovShaderDefines();
-        animOptions.modelDefines.insert(animOptions.modelDefines.end(), aovDefines.begin(), aovDefines.end());
+        animOptions.modelDefines = this->sceneRenderer->shaderDefines(); // forward+ et AOV (A75.3)
         this->anim = std::make_unique<demo::AnimScene>();
         if (auto ready = this->anim->init(*this->device, *this->shaders, *this->pipelines, kShaderDirectory, std::move(animOptions)); !ready)
         {
@@ -1226,7 +1224,7 @@ void Game::render()
         keep(this->anim->render(*this->sceneRenderer, this->camera), "anim scene");
     }
     Profiler::Profile(this->keyGraph,
-                      [&]() { keep(this->sceneRenderer->endFrame({finalImage, rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame"); });
+                      [&]() { keep(this->sceneRenderer->endFrame(finalImage), "endFrame"); });
 
     // Graphe interrompu (scène refusée) : l'interface et la présentation sont encodées quand même, comme avant le graphe.
     if (!this->overlay->uiDone)

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/draw_list.hpp"
 #include "orosmo/renderer/batch_arena.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
@@ -43,6 +44,11 @@ class CanvasRenderer
     // `shaderDirectory` contient ui_rect, ui_glyph et ui_layer (.vert et .frag), soit shaders/rhi/.
     static core::Result<std::unique_ptr<CanvasRenderer>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                                 const std::filesystem::path &shaderDirectory);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<CanvasRenderer>> create(const RenderContext &context)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory());
+    }
     ~CanvasRenderer();
     CanvasRenderer(const CanvasRenderer &) = delete;
     CanvasRenderer &operator=(const CanvasRenderer &) = delete;

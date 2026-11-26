@@ -6,6 +6,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/instance_batch.hpp"
 #include "orosmo/renderer/mesh.hpp"
@@ -56,6 +57,11 @@ class InstanceRenderer
     // `shaderDirectory` : shaders/rhi (mesh_instanced.vert, mesh.frag).
     static core::Result<std::unique_ptr<InstanceRenderer>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                                   const std::filesystem::path &shaderDirectory);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<InstanceRenderer>> create(const RenderContext &context)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory());
+    }
     InstanceRenderer(const InstanceRenderer &) = delete;
     InstanceRenderer &operator=(const InstanceRenderer &) = delete;
 

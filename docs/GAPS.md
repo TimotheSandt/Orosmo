@@ -554,6 +554,17 @@ Fondations de M8 (A79 lot L1) : `platform::DynamicLibrary`, liaison de la biblio
 | G233 | TSan : réglage de l'ASLR sur les noyaux récents | Le runtime TSan de GCC 13 refuse l'entropie mmap de 32 bits des noyaux récents (« unexpected memory mapping ») : le job CI `tsan` passe `vm.mmap_rnd_bits=28` ; en local, même réglage (`sudo sysctl -w vm.mmap_rnd_bits=28`) ou `setarch -R make demo-test-unit SANITIZE=thread`. Sans affichage ni pilote Vulkan (`env -u DISPLAY -u WAYLAND_DISPLAY VK_DRIVER_FILES=/nonexistent.json`, comme le job) : **439 cas unitaires propres sous TSan** (dont `core/spsc_queue` et `platform/dynamic_library`). Avec un affichage, TSan signale une course dans Mesa et libxcb (bibliothèques non instrumentées) : `GPU_TEST_SUITES` du `Makefile` (`demo-test-unit`) n'exclut pas toutes les suites qui ouvrent un périphérique (`anim/*`, `assets/*`, `apps/demo*`…) ; elles s'ignorent seulement faute de GPU. Classement à revoir (lot L4, test concurrent simulation + rendu). | M8 L4 |
 | G234 | État statique d'une bibliothèque rechargée sous macOS | Sous Linux (GCC), `-fno-gnu-unique` dans `ENGINE_MODULE_CXXFLAGS` donne à chaque copie chargée ses propres variables `static` de fonctions `inline` et un vrai déchargement (test « each loaded copy has its own static state… ») ; Windows l'a par construction. Sous macOS, dyld peut fusionner les définitions faibles de deux images : le test n'y exige rien et affiche les valeurs observées (`MESSAGE`, journal de la CI). Si elles ne valent pas 1 et 1 : compiler la bibliothèque de jeu avec une visibilité cachée par défaut (`-fvisibility=hidden`, exports marqués). | M8 L5 |
 
+## Ajouts du lot M8-L11, API de rendu simplifiée (G240 à G243)
+
+Numéros pris à partir de G240 pour ne pas croiser ceux des lots M8 menés en parallèle (L0, L1, L9).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G240 | Récepteurs d'ombres non résolus au dessin | `SceneRenderer::drawMesh(Mesh &)` résout le programme du matériau PBR (variante `kPbrShadows` si le matériau a été créé avec les ombres) et le programme par défaut `mesh.vert`/`mesh.frag` ; la variante réceptrice d'ombres de `mesh.frag` (`ShadowFeature::receiverProgramWith`, groupe `receiverGroup`) reste à imposer par `setProgram` (la démo le fait, avec `shaderDefines()`). | M8 (L12a) ou M10 |
+| G241 | Passe « upscale » non renommée « present » (A75.7) | `endFrame(rhi::TextureHandle)` lit le format et la taille de la sortie ; la copie finale garde le nom de passe « upscale » (clés du Profiler `RenderGraph/upscale`, tests, `tools/perf_compare.py`). Le renommage est reporté avec les sous-objets de réglages d'A75.17. | M10 |
+| G242 | Défaut `Mesh::setCullMode` inchangé (A75.15) | Le défaut reste `kNone` pour l'existant ; `kBack` vient de `Mesh::setMaterial` (et de `assets::RenderModel` depuis M6) ; `MeshBuilder` produit des faces anti-horaires vues de l'extérieur, mais un maillage sans matériau reste à `kNone`. | M10 (changement incompatible annoncé) |
+| G243 | `drawMesh(Mesh &)` : résolution par disposition limitée | Sans programme ni matériau, seule la disposition kColored (trois `vec3`, sans instance) reçoit un programme par défaut ; les dispositions texturée (`mesh_textured.vert`) et instanciée gardent `setProgram`. | M10 |
+
 ## Ajouts de M8 lot L9 (G222, G223)
 
 | ID | Sujet | Détail | Jalon |
