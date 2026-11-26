@@ -43,7 +43,7 @@ macOS par la CI (G222).
 | Générateur PCG32 | `include/orosmo/core/random.hpp` (`Random`) | suite `core/random` | 5 cas verts : 1 000 valeurs de la graine 42 égales à `tests/core/random_seed42_table.inc` (référence Python indépendante, début = `pcg32-demo`), `advance`, `fromState`, bornes |
 | File SPSC sans verrou | `include/orosmo/core/spsc_queue.hpp` (`SpscQueue<T>`) | suite `core/spsc_queue` ; sous TSan : `setarch -R` + `-fsanitize=thread` | 3 cas verts, 1e6 éléments entre deux threads dans l'ordre ; propre sous TSan ; une version cassée (`relaxed` à la publication) y est signalée (data race) |
 | Couches `scene`, `sim`, `app`, `game` | `tools/layers.json` (niveau `app` entre `sim` et `game`, A79 à confirmer), `docs/03` §1 annoté | `make check` ; `python3 -m unittest discover -s tests/tools` | OK ; 5 tests de `tests/tools/test_check_layers.py` (arbre factice : `scene -> app` et `sim -> game` refusés) |
-| Job CI TSan | `.github/workflows/ci.yml` (job `tsan` : `make demo-test-unit SANITIZE=thread`, `vm.mmap_rnd_bits=28`) | actionlint 1.7.12 | 0 erreur ; le job lui-même s'observe au push |
+| Job CI TSan | `.github/workflows/ci.yml` (job `tsan` : `make demo-test-unit SANITIZE=thread`, `vm.mmap_rnd_bits=28`) | actionlint 1.7.12 ; en local `make fclean && setarch -R make demo-test-unit SANITIZE=thread`, puis le binaire sans affichage ni pilote Vulkan (G225) | actionlint : 0 erreur ; **439 cas unitaires verts et propres sous TSan** ; le job lui-même s'observe au push |
 
 ## SDK (v0.6.2)
 
