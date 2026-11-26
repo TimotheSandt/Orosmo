@@ -111,7 +111,7 @@ que `make` utilise réellement (`make info` l'affiche : `ENGINE_DIR` donné, `or
 
 ```bash
 eng=$(ORS_NO_PROGRESS=1 make -s info | sed -n '/^Engine:/{s/^Engine: *//;s/ (OROSMO_VERSION.*//;p;}')
-test -d "$eng/res" && mkdir -p res && cp -R "$eng/res/." res/   # contenu de res/ du moteur, même dans un res/ existant ; rien si eng est vide
+[ -n "$eng" ] && test -d "$eng/res" && mkdir -p res && cp -R "$eng/res/." res/   # contenu de res/ du moteur, même dans un res/ existant ; rien si eng est vide
 ```
 
 puis ajoutez vos fichiers (`res/models/`, `res/textures/`…). Les shaders, eux, sont toujours copiés depuis le moteur. Conséquence : `orosmo update` ne met plus à jour

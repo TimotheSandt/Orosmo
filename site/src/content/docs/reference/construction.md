@@ -207,7 +207,7 @@ assets, copiez d'abord le `res/` du moteur dans le projet (le dossier `Engine:` 
 
 ```bash
 eng=$(ORS_NO_PROGRESS=1 make -s info | sed -n '/^Engine:/{s/^Engine: *//;s/ (OROSMO_VERSION.*//;p;}')
-test -d "$eng/res" && mkdir -p res && cp -R "$eng/res/." res/
+[ -n "$eng" ] && test -d "$eng/res" && mkdir -p res && cp -R "$eng/res/." res/
 ```
 
 Voir les
