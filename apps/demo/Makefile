@@ -202,13 +202,19 @@ endif
 endif
 
 # Test sources
-TEST_SRCS   := $(shell find $(TEST_DIR) -type f -name "*.cpp" 2>/dev/null)
+# tests/**/test_module/ : sources de bibliothèques chargées par les tests (platform::DynamicLibrary), pas de l'exécutable.
+TEST_SRCS   := $(shell find $(TEST_DIR) -type f -name "*.cpp" -not -path "*/test_module/*" 2>/dev/null)
 # UI-11 : les vues .cui des tests (sauf les cas d'erreur de cui_errors/) sont compilées par cui, puis avec les tests.
 TEST_CUI_SRCS := $(shell find $(TEST_DIR) -type f -name "*.cui" -not -path "*/cui_errors/*" 2>/dev/null)
 TEST_GEN_CPP  := $(patsubst $(TEST_DIR)/%.cui,$(ENGINE_GEN_DIR)/tests/%.gen.cpp,$(TEST_CUI_SRCS))
 TEST_GEN_OBJS := $(TEST_GEN_CPP:$(ENGINE_GEN_DIR)/%.gen.cpp=$(OBJ_DIR)/gen/%.o)
 TEST_OBJS   := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/tests/%.o) $(TEST_GAME_OBJS) $(GEN_OBJS) $(TEST_GEN_OBJS)
 TEST_TARGET := bin/tests/tests$(ENGINE_EXE_EXT)
+# A79 L1 : bibliothèque de test chargée par tests/platform/dynamic_library_tests.cpp ; elle n'est liée à aucune archive du
+# moteur et utilise celui de l'exécutable des tests (engine_host_ldflags / engine_module_ldflags, tools/engine-sdk/engine.mk).
+TEST_MODULE_SRCS := $(shell find $(TEST_DIR) -type f -path "*/test_module/*.cpp" 2>/dev/null)
+TEST_MODULE_OBJS := $(TEST_MODULE_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/tests/%.o)
+TEST_MODULE      := $(if $(TEST_MODULE_SRCS),bin/tests/test_module$(ENGINE_MODULE_EXT))
 
 # Style sources
 BENCH_DIR    := benchmark
@@ -296,12 +302,31 @@ $(BIN_DIR)/icon.rc: $(ICON_NAME) | $(BIN_DIR)
 # ── Tests ─────────────────────────────────────────────────────────────────────
 .PHONY: test
 TEST_ARGS ?=
-test: $(TEST_TARGET)
+test: $(TEST_TARGET) $(TEST_MODULE)
 	@./$(TEST_TARGET) $(TEST_ARGS)
 
+# L'exécutable des tests exporte le moteur (engine_host_ldflags) : la bibliothèque de test s'y relie au chargement. Nombre de
+# symboles exportés affiché : un exécutable PE (Windows) en exporte au plus 65 535.
 $(TEST_TARGET): $(TEST_OBJS) $(ENGINE_LIBS) | bin/tests
 	$(call ors_link,LD)
-	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(TEST_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(TEST_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) $(call engine_host_ldflags,$@) -o $@
+	$(ors_end)
+	$(if $(engine_count_exports),@echo "  exported symbols in $@: $$($(call engine_count_exports,$@)) (PE limit 65535)")
+
+# Sous Windows, la bibliothèque se lie à la bibliothèque d'import de l'exécutable des tests : elle vient après lui.
+$(TEST_MODULE): $(TEST_MODULE_OBJS) $(if $(filter Windows,$(ENGINE_OS)),$(TEST_TARGET)) | bin/tests
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(TEST_MODULE_OBJS) $(call engine_module_ldflags,$(TEST_TARGET)) -o $@
+	$(ors_end)
+	@# Linux : aucune fonction ni donnée du moteur définie dans la bibliothèque (seules des instanciations de modèles, faibles).
+	@# Sous ELF, une copie serait masquée à l'exécution par les symboles de l'hôte : ce contrôle la voit, le test non.
+	$(if $(filter Linux,$(ENGINE_OS)),@! nm -DC --defined-only $@ | grep -E ' [TDBR] orosmo::' \
+	    || { echo "$@ : le moteur est copié dans la bibliothèque (symboles orosmo:: définis ci-dessus)"; exit 1; })
+
+$(TEST_MODULE_OBJS): $(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp
+	@mkdir -p "$(dir $@)"
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 	$(ors_end)
 
 # Les tests incluent aussi les vues générées de la démo (UI/Views/*.gen.h) : elles doivent exister avant leur compilation.
@@ -543,6 +568,7 @@ info:
 # ── Dependency files ──────────────────────────────────────────────────────────
 -include $(wildcard $(ALL_OBJS:.o=.d))
 -include $(wildcard $(TEST_OBJS:.o=.d))
+-include $(wildcard $(TEST_MODULE_OBJS:.o=.d))
 -include $(wildcard $(BENCH_OBJS:.o=.d))
 
 # ── Installer (packaging) ─────────────────────────────────────────────────────

@@ -25,6 +25,8 @@
 #   GEN_REDIRECT_SOURCES — .cui redirect shims (must exist before compilation)
 #   ENGINE_GEN_DIR       — output of the CUI precompiler, in the PROJECT (default: Generated, overridable; already included in
 #                          ENGINE_INCLUDES). Nothing is ever written under ENGINE_DIR: one installed engine serves every project.
+#   ENGINE_MODULE_EXT, ENGINE_MODULE_CXXFLAGS, engine_host_ldflags, engine_module_ldflags, engine_count_exports
+#                        — a library loaded at run time that uses the host's engine (see "Library loaded at run time" below)
 #
 # ── Minimal Makefile example ──────────────────────────────────────────────────
 #   ENGINE_DIR   := path/to/engine
@@ -228,6 +230,46 @@ _ENG_ASSET_LIBS  := -lktx $(_ENG_ASTCENC_LIB) -lzstd -lmeshoptimizer
 # macOS rpath to vcpkg's vulkan-loader dylib: only without deps/ (the Vulkan loader is never shipped in deps/: system install).
 ENGINE_LDFLAGS := -L$(ENGINE_DEPS_DIR)/lib $(_ENG_ASSET_LIBS) $(_ENG_VCPKG_LIBS) \
     $(if $(and $(_ENG_DARWIN),$(if $(_ENG_DEPS_PACKAGED),,1)),-Wl$(comma)-rpath$(comma)$(abspath $(ENGINE_DEPS_DIR))/lib)
+
+# ── Library loaded at run time by a host executable (A79 lot L1; the game library of GAME-01) ─────────────────────────────
+# The library does NOT embed the engine: its engine symbols stay undefined and are resolved in the host executable when it is
+# loaded (platform::DynamicLibrary), so both share one engine (same Logger, same registries). Proof:
+# tests/platform/dynamic_library_tests.cpp with tests/platform/test_module/.
+#   Host executable: add $(call engine_host_ldflags,<host exe path>) to its link command.
+#   Library: compile with $(ENGINE_MODULE_CXXFLAGS), link with $(call engine_module_ldflags,<host exe path>), no ENGINE_LIBS;
+#            file name <name>$(ENGINE_MODULE_EXT). On Windows the host must be linked first (its import library is used).
+#   Linux   host -rdynamic (exports its symbols); library -shared, undefined symbols allowed.
+#   macOS   an executable exports its global symbols by default; library -undefined dynamic_lookup (looked up in the host
+#           when loaded; -no_fixup_chains: dynamic_lookup is not reliable with chained fixups).
+#   Windows host --export-all-symbols and an import library (<exe without .exe>.host.a); the library links against it. A PE
+#           image exports at most 65,535 symbols: `engine_count_exports` prints the count (apps/demo/Makefile, test link).
+ifeq ($(ENGINE_OS),Windows)
+    ENGINE_MODULE_EXT      := .dll
+    ENGINE_MODULE_CXXFLAGS :=
+    engine_host_implib      = $(basename $(1)).host.a
+    engine_host_ldflags     = -Wl,--export-all-symbols -Wl,--out-implib,$(call engine_host_implib,$(1))
+    engine_module_ldflags   = -shared $(call engine_host_implib,$(1))
+    # objdump -p : « Export Address Table  0000xxxx » (hexadécimal)
+    engine_count_exports    = printf '%d\n' 0x$$(objdump -p "$(1)" | sed -n 's/^[[:space:]]*Export Address Table[[:space:]]*\([0-9a-fA-F]*\).*/\1/p' | head -n 1)
+else ifeq ($(ENGINE_OS),Darwin)
+    ENGINE_MODULE_EXT      := .dylib
+    ENGINE_MODULE_CXXFLAGS := -fPIC
+    engine_host_implib      =
+    engine_host_ldflags     =
+    engine_module_ldflags   = -dynamiclib -undefined dynamic_lookup -Wl,-no_fixup_chains
+    engine_count_exports    = nm -gU "$(1)" | wc -l | tr -d ' '
+else
+    ENGINE_MODULE_EXT      := .so
+    # GCC: no STB_GNU_UNIQUE symbols (static locals of inline functions, static members of templates). They stay unique in
+    # the process despite RTLD_LOCAL and make dlclose a no-op: a reloaded library would keep the old one's state. Clang
+    # does not emit them (and does not know the option).
+    _ENG_CXX_IS_GCC        := $(shell $(CXX) -v 2>&1 | grep -q '^gcc version' && echo 1)
+    ENGINE_MODULE_CXXFLAGS := -fPIC $(if $(_ENG_CXX_IS_GCC),-fno-gnu-unique)
+    engine_host_implib      =
+    engine_host_ldflags     = -rdynamic
+    engine_module_ldflags   = -shared
+    engine_count_exports    = nm -D --defined-only "$(1)" | wc -l | tr -d ' '
+endif
 
 # ── Missing archive error ─────────────────────────────────────────────────────
 # Archives must come from a GitHub release or be built with mk/engine.mk.

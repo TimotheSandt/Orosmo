@@ -30,6 +30,26 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L1 : fondations (A79)
+
+Branche `feat/M8-L1-fondations`. Aucune ligne de `docs/02` ne change d'état : ce lot prépare GAME-01, UI-08 (chargement
+dynamique), SIM-01 bis (file entre threads, TSan) et ECS/SIM (couches). Linux seulement en local (g++ 13.3) ; Windows MinGW et
+macOS par la CI (G230).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| Bibliothèque dynamique | `include/orosmo/platform/dynamic_library.hpp`, `src/platform/dynamic_library.cpp` (`DynamicLibrary::load`, `symbol`, `function<Sig>`, `unload`, copie sous un nom unique) | `make demo-test` (suite `platform/dynamic_library`) | 5 cas verts : fichier absent `kNotFound`, symbole absent `kNotFound`, appel d'une fonction, copie unique effacée au déchargement, deux versions chargées ensemble |
+| Bibliothèque liée au moteur de l'hôte | `tools/engine-sdk/engine.mk` (`engine_host_ldflags`, `engine_module_ldflags`, `ENGINE_MODULE_EXT`, `engine_count_exports`), `apps/demo/Makefile` (`TEST_MODULE`), `tests/platform/test_module/test_module.cpp` | même commande ; `nm -DC bin/tests/test_module.so` | le message écrit par la bibliothèque arrive dans le `Logger` de l'hôte et la bibliothèque lit le même compte ; `Logger::AddLog` et `KeptLogCount` indéfinis (`U`) dans la bibliothèque, contrôle `nm` au lien ; **10 109** symboles exportés par l'exécutable des tests (limite PE 65 535, G231) |
+| Générateur PCG32 | `include/orosmo/core/random.hpp` (`Random`) | suite `core/random` | 5 cas verts : 1 000 valeurs de la graine 42 égales à `tests/core/random_seed42_table.inc` (référence Python indépendante, début = `pcg32-demo`), `advance`, `fromState`, bornes |
+| File SPSC sans verrou | `include/orosmo/core/spsc_queue.hpp` (`SpscQueue<T>`) | suite `core/spsc_queue` ; sous TSan : `setarch -R` + `-fsanitize=thread` | 3 cas verts, 1e6 éléments entre deux threads dans l'ordre ; propre sous TSan ; une version cassée (`relaxed` à la publication) y est signalée (data race) |
+| Couches `scene`, `sim`, `app`, `game` | `tools/layers.json` (niveau `app` entre `sim` et `game`, A79 à confirmer), `docs/03` §1 annoté | `make check` ; `python3 -m unittest discover -s tests/tools` | OK ; 5 tests de `tests/tools/test_check_layers.py` (arbre factice : `scene -> app` et `sim -> game` refusés) |
+| Job CI TSan | `.github/workflows/ci.yml` (job `tsan` : `make demo-test-unit SANITIZE=thread`, `vm.mmap_rnd_bits=28`) | actionlint 1.7.12 ; en local `make fclean && setarch -R make demo-test-unit SANITIZE=thread`, puis le binaire sans affichage ni pilote Vulkan (G233) | actionlint : 0 erreur ; **439 cas unitaires verts et propres sous TSan** ; le job lui-même s'observe au push |
+
+Vérifications (Linux, g++ 13.3, Intel Xe, Mesa) : `make demo-test` **724 cas verts** (13 nouveaux) ; `make fclean && make demo-test
+SANITIZE=address,undefined` : aucun message ASan ni UBSan, 723 cas sur 724 (le seul échec est `PLAT-01 the framebuffer size…`,
+instable sous un gestionnaire de fenêtres qui redimensionne la fenêtre de test, déjà noté sous G201 ; 1 échec sur 3 en le relançant
+seul) ; `make all-debug` sans avertissement ; `make check` OK.
+
 ## M8 lot L11 : API de rendu simplifiée (A75.3 à A75.7, A75.15)
 
 Sur `feat/M8-L11-api-rendu` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa, OpenGL et Vulkan). Les anciennes signatures restent (choix 10) et sont encore exercées par les tests. Tests : `tests/renderer/render_api_tests.cpp` (suites `renderer/render-api`, `renderer/mesh-builder`, sur les deux backends).
