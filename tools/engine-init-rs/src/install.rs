@@ -184,8 +184,10 @@ pub fn install_tree_atomic(bytes: &[u8], dest: &Path, replace: bool) -> Result<u
 }
 
 /// Le paquet contient-il `rel` (chemin sous le dossier de tête) ?
+/// Même normalisation que l'extraction (`safe_relative`) : `pkg/./make//engine.mk` compte, un chemin dangereux jamais.
 pub fn zip_has_file(bytes: &[u8], rel: &str) -> bool {
-    ZipArchive::new(Cursor::new(bytes)).is_ok_and(|a| a.file_names().any(|n| strip_top_dir(n) == rel))
+    let Some(want) = safe_relative(rel) else { return false };
+    ZipArchive::new(Cursor::new(bytes)).is_ok_and(|a| a.file_names().any(|n| safe_relative(strip_top_dir(n)).as_ref() == Some(&want)))
 }
 
 /// Contenu du fichier `VERSION` à la racine du paquet, s'il existe.
@@ -313,5 +315,14 @@ mod tests {
         let clean = root.join("game3").join("orosmo");
         assert_eq!(extract_zip_into(&pkg, &clean), Ok(2));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn required_file_lookup_uses_the_extractor_normalisation() {
+        let z = make_zip(&[("pkg/./make//engine.mk", b"# mk\n")]);
+        assert!(zip_has_file(&z, "make/engine.mk"));
+        let evil = make_zip(&[("pkg/x/../make/engine.mk", b"# mk\n")]);
+        assert!(!zip_has_file(&evil, "make/engine.mk"));
+        assert!(!zip_has_file(&make_zip(&[("pkg/VERSION", b"1")]), "make/engine.mk"));
     }
 }
