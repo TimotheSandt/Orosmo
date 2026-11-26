@@ -2,7 +2,7 @@
 title: Contribuer
 description: "Proposer un changement au dépôt d'Orosmo : ticket, fork, pull request, vérifications et règles de code."
 sidebar:
-  order: 3
+  order: 5
 ---
 
 Le dépôt est [`TimotheSandt/Orosmo`](https://github.com/TimotheSandt/Orosmo) sur GitHub. Les règles de travail de l'auteur
