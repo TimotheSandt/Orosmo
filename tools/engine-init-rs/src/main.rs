@@ -533,20 +533,93 @@ fn cmd_migrate(args: &[String]) -> Result<i32, String> {
         })?,
         None => latest_engine(&home)?,
     };
-    update_template_files(&project_dir)?;
-    write_project_version(&project_dir, &version)?;
-
-    fs::rename(&vendored, &old_dir).map_err(|e| format!("failed to rename orosmo/ to orosmo.old/: {e}"))?;
-    println!("  [moved] orosmo/ -> orosmo.old/ (kept until the project builds with engine {version})");
-    println!("Building with {}...", path.display());
-    let code = makerun::run_make(&project_dir, &build_goals(false), Output::Human)?;
-    if code == 0 {
-        fs::remove_dir_all(&old_dir).map_err(|e| format!("build ok, but failed to remove {}: {e}", old_dir.display()))?;
-        println!("Migrated: the project now uses engine {version} from {}; orosmo.old/ removed.", path.display());
-    } else {
-        eprintln!("Build failed: the previous engine is kept in orosmo.old/ (rename it back to orosmo/ to undo).");
+    // Fichiers réécrits par la migration : restaurés (avec orosmo/) si elle échoue, quel que soit l'endroit de l'échec.
+    let backup = ProjectBackup::take(&project_dir, &MIGRATED_FILES)?;
+    let rollback = |why: &str| -> String {
+        let mut problems = backup.restore();
+        if old_dir.is_dir() && !vendored.exists() && let Err(e) = fs::rename(&old_dir, &vendored) {
+            problems.push(format!("orosmo.old/ -> orosmo/: {e}"));
+        }
+        if problems.is_empty() {
+            format!("{why}; migration rolled back (orosmo/, {} restored)", MIGRATED_FILES.join(", "))
+        } else {
+            format!("{why}; rollback incomplete: {}", problems.join("; "))
+        }
+    };
+    if let Err(e) = update_template_files(&project_dir).and_then(|()| write_project_version(&project_dir, &version).map(drop)) {
+        return Err(rollback(&e));
     }
-    Ok(code)
+    if let Err(e) = fs::rename(&vendored, &old_dir) {
+        return Err(rollback(&format!("failed to rename orosmo/ to orosmo.old/: {e}")));
+    }
+    println!("  [moved] orosmo/ -> orosmo.old/ (kept until the project builds with engine {version})");
+
+    // Le build de validation utilise le moteur sélectionné, même si config.local.mk (ou l'environnement) fixe ENGINE_DIR.
+    let local_engine = fs::read_to_string(project_dir.join("config.local.mk")).ok().and_then(|c| project::read_var(&c, "ENGINE_DIR"));
+    let mut goals = build_goals(false);
+    goals.extend(engine_override(&path));
+    println!("Building with {}...", path.display());
+    match makerun::run_make(&project_dir, &goals, Output::Human) {
+        Ok(0) => {
+            fs::remove_dir_all(&old_dir).map_err(|e| format!("build ok, but failed to remove {}: {e}", old_dir.display()))?;
+            println!("Migrated: the project now uses engine {version} from {}; orosmo.old/ removed.", path.display());
+            if let Some(d) = local_engine {
+                eprintln!("  Note: config.local.mk sets ENGINE_DIR := {d}; plain `make` keeps using it (remove it to use engine {version}).");
+            }
+            Ok(0)
+        }
+        Ok(code) => {
+            eprintln!("{}", rollback(&format!("build failed with engine {version} (make exit code {code})")));
+            Ok(code)
+        }
+        Err(e) => Err(rollback(&e)),
+    }
+}
+
+/// Fichiers du projet que `migrate` réécrit (`config.local.mk` : créé s'il manque).
+const MIGRATED_FILES: [&str; 4] = ["Makefile", ".gitignore", "config.mk", "config.local.mk"];
+
+/// Arguments de make qui imposent le moteur `path` (priorité sur config.local.mk et l'environnement).
+fn engine_override(path: &Path) -> [String; 2] {
+    let dir = path_for_make(path);
+    [format!("ENGINE_DIR={dir}"), format!("_ENGINE_MK={dir}/make/engine.mk")]
+}
+
+/// Contenu de quelques fichiers du projet avant une opération ; `restore` remet chacun dans cet état (absent : supprimé).
+struct ProjectBackup {
+    files: Vec<(PathBuf, Option<Vec<u8>>)>,
+}
+
+impl ProjectBackup {
+    fn take(dir: &Path, names: &[&str]) -> Result<Self, String> {
+        let mut files = Vec::new();
+        for n in names {
+            let p = dir.join(n);
+            let content = match fs::read(&p) {
+                Ok(b) => Some(b),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+                Err(e) => return Err(format!("failed to read {}: {e}", p.display())),
+            };
+            files.push((p, content));
+        }
+        Ok(Self { files })
+    }
+
+    /// Renvoie les erreurs (vide : tout est restauré).
+    fn restore(&self) -> Vec<String> {
+        let mut problems = Vec::new();
+        for (p, content) in &self.files {
+            let r = match content {
+                Some(b) => fs::write(p, b),
+                None if p.exists() => fs::remove_file(p),
+                None => Ok(()),
+            };
+            if let Err(e) = r {
+                problems.push(format!("{}: {e}", p.display()));
+            }
+        }
+        problems
+    }
 }
 
 // ── orosmo build / run / clean ────────────────────────────────────────────────
@@ -1235,5 +1308,24 @@ mod tests {
         fs::write(p3.join("orosmo").join("make").join("engine.mk"), "").unwrap();
         assert!(is_orosmo_project(&p3));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn migrate_backup_restores_files_and_forces_the_engine() {
+        let dir = home::tests::temp_dir("backup");
+        fs::write(dir.join("Makefile"), b"old makefile").unwrap();
+        fs::write(dir.join("config.mk"), b"PROJECT_NAME ?= g\n").unwrap();
+        let b = ProjectBackup::take(&dir, &MIGRATED_FILES).unwrap();
+        fs::write(dir.join("Makefile"), b"new").unwrap();
+        fs::write(dir.join("config.mk"), b"OROSMO_VERSION := 0.6.2\n").unwrap();
+        fs::write(dir.join("config.local.mk"), b"# created").unwrap();
+        assert!(b.restore().is_empty());
+        assert_eq!(fs::read(dir.join("Makefile")).unwrap(), b"old makefile");
+        assert_eq!(fs::read(dir.join("config.mk")).unwrap(), b"PROJECT_NAME ?= g\n");
+        assert!(!dir.join("config.local.mk").exists() && !dir.join(".gitignore").exists());
+
+        let [e, mk] = engine_override(Path::new("/h/engines/0.6.2"));
+        assert_eq!((e.as_str(), mk.as_str()), ("ENGINE_DIR=/h/engines/0.6.2", "_ENGINE_MK=/h/engines/0.6.2/make/engine.mk"));
+        let _ = fs::remove_dir_all(&dir);
     }
 }
