@@ -4,6 +4,8 @@
 #include "orosmo/renderer/image.hpp"
 
 #include <algorithm>
+#include <string>
+#include <utility>
 #include <cstring>
 #include <limits>
 #include <vector>
@@ -216,6 +218,13 @@ core::Result<RenderFeature *> SceneRenderer::addFeature(std::unique_ptr<RenderFe
 
 void SceneRenderer::removeFeature(const std::string &name)
 {
+    if (frameOpen_ || executing_)
+    {
+        // Image en cours : les définitions des programmes (figées à beginFrame) et les liaisons du groupe 0 (déclarées à endFrame)
+        // doivent rester celles des mêmes plugins ; le retrait est appliqué à la fin de l'image (EndOfFrame).
+        pendingRemovals_.push_back(name);
+        return;
+    }
     std::erase_if(features_, [&](const std::unique_ptr<RenderFeature> &f) { return f->name() == name; });
     featureFrameBindings_.clear(); // les liaisons d'un plugin retiré ne doivent plus entrer dans le groupe 0 (redéclarées à chaque image)
 }
@@ -1099,7 +1108,9 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
                     input.motionVectors = aovLayout_.set().has(Aov::kMotion) ? sceneTarget_.color(1) : rhi::TextureHandle{};
                     input.historyColor = previous;
                     input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
-                    input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+                    // Taille de la texture de sortie (celle que le mode écrit), comme l'adaptateur `upscale()` : elle peut différer
+                    // de `setOutputResolution` (`endFrame(rhi::TextureHandle)` étire la scène sur la texture).
+                    input.outputResolution = {static_cast<float>(output.size.width), static_cast<float>(output.size.height)};
                     input.jitter = currentJitter_;
                     input.deltaTimeSeconds = deltaTime_;
                     input.resetHistory = resetHistory;
@@ -1129,7 +1140,7 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
     if (frameGenMode_ != nullptr)
     {
         auto generation = graph_.addPass("frame-generation", PassType::kGeneric,
-                                         [this, previous, resetHistory](RenderPassContext &ctx) -> core::Result<>
+                                         [this, output, previous, resetHistory](RenderPassContext &ctx) -> core::Result<>
                                          {
                                              FrameContext context{device_, ctx.encoder(), *blit_};
                                              FrameGenerationInput input;
@@ -1139,7 +1150,7 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
                                              input.motionVectors =
                                                  aovLayout_.set().has(Aov::kMotion) ? sceneTarget_.color(1) : rhi::TextureHandle{};
                                              input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
-                                             input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+                                             input.outputResolution = {static_cast<float>(output.size.width), static_cast<float>(output.size.height)};
                                              input.jitter = currentJitter_;
                                              input.deltaTimeSeconds = deltaTime_;
                                              input.resetHistory = resetHistory;
@@ -1273,9 +1284,19 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
             // les redéclare (revue CodeRabbit PR #12).
             self.featureFrameBindings_.clear();
             self.executing_ = false;
+            for (const std::string &name : std::exchange(self.pendingRemovals_, {}))
+            {
+                self.removeFeature(name); // retraits demandés pendant l'image
+            }
         }
     } endOfFrame{*this};
 
+    // Sortie nulle (ou texture inconnue de `endFrame(rhi::TextureHandle)`) : refusée avant le graphe, quel que soit le mode (à
+    // échelle réduite sans mode, aucune passe ne la lirait et l'image passerait pour réussie). endOfFrame ferme l'image.
+    if (output.texture.isNull())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::endFrame: the output texture is null or unknown");
+    }
     if (auto r = updateFrameData(); !r)
     {
         return r;
