@@ -356,6 +356,7 @@ pub fn check_project_layout(project_dir: &Path, triplet: &str, home: Option<&Pat
 }
 
 fn check_graphics_env() -> Vec<CheckResult> {
+    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
     let mut results = Vec::new();
     #[cfg(target_os = "linux")]
     {

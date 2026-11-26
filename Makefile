@@ -296,7 +296,8 @@ e2e-init:
 	test -n "$$(find $(E2E_RUN)/mygame/Generated -name '*.gen.cpp')"   # sortie de cui dans le projet
 	@# 2e build (copy_res recopie les ressources du moteur en lecture seule : elles doivent rester inscriptibles, G220).
 	cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo build --json > ../build.json
-	grep -q '"event":"done"' $(E2E_RUN)/build.json
+	@# Motif sans guillemets doubles : sous mingw32-make (Windows), '"…"' arrive à grep avec des barres obliques inverses.
+	grep -q 'event.:.done' $(E2E_RUN)/build.json || { echo "e2e-init : pas d'événement done dans build.json :"; tail -n 20 $(E2E_RUN)/build.json; exit 1; }
 	@if [ "$(E2E_RUN_GRAPHICS)" = 1 ]; then \
 	    echo "e2e-init : orosmo run (OpenGL, sans fenêtre)"; \
 	    cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo run -- --api opengl --headless \
