@@ -1,8 +1,10 @@
 #include "support/test_support.hpp"
 
 #include <orosmo/core/fps_counter.hpp>
+#include <orosmo/core/profiler.hpp>
 #include <orosmo/core/ring_buffer.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <thread>
 
@@ -96,6 +98,19 @@ TEST_SUITE("Profiler")
         Assert(fpsCounter.getMaxFPS() >= fpsCounter.getMinFPS(), "Max FPS should stay above min FPS");
         Assert(fpsCounter.getAverageFPS() >= fpsCounter.getMinFPS(), "Average FPS should stay above min FPS");
         Assert(fpsCounter.getAverageFPS() <= fpsCounter.getMaxFPS(), "Average FPS should stay below max FPS");
+    }
+
+    TEST_CASE("Names lists the known measures sorted")
+    {
+        orosmo::core::Profiler::Profile("zz.names.b", [] {});
+        orosmo::core::Profiler::Profile("zz.names.a", [] {});
+        const auto names = orosmo::core::Profiler::Names();
+        const auto a = std::find(names.begin(), names.end(), "zz.names.a");
+        const auto b = std::find(names.begin(), names.end(), "zz.names.b");
+        REQUIRE(a != names.end());
+        REQUIRE(b != names.end());
+        CHECK(a < b);
+        CHECK(std::is_sorted(names.begin(), names.end()));
     }
 }
 
