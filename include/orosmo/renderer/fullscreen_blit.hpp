@@ -3,6 +3,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/shader_library.hpp"
 #include "orosmo/rhi/device.hpp"
@@ -21,6 +22,11 @@ class FullscreenBlit
     // `shaderDirectory` contient `blit.vert` et `blit.frag` (shaders/rhi/).
     static core::Result<std::unique_ptr<FullscreenBlit>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                                 const std::filesystem::path &shaderDirectory);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<FullscreenBlit>> create(const RenderContext &context)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory());
+    }
     ~FullscreenBlit();
     FullscreenBlit(const FullscreenBlit &) = delete;
     FullscreenBlit &operator=(const FullscreenBlit &) = delete;

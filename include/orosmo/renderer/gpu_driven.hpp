@@ -18,6 +18,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/culling.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/gpu_scene.hpp"
@@ -108,6 +109,11 @@ class GpuDrivenFeature final : public RenderFeature
     // hiz_build.comp depuis `shaderDirectory` (shaders/rhi/). kUnsupported sans les capacités (voir `supportedBy`).
     static core::Result<std::unique_ptr<GpuDrivenFeature>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                                   const std::filesystem::path &shaderDirectory, const InstanceRenderer &meshes);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<GpuDrivenFeature>> create(const RenderContext &context, const InstanceRenderer &meshes)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory(), meshes);
+    }
     static bool supportedBy(const rhi::Capabilities &capabilities) noexcept;
 
     ~GpuDrivenFeature() override;
@@ -232,6 +238,11 @@ class GpuDrivenFeature final : public RenderFeature
 // kUnsupported sans les capacités : rien n'est changé, l'application garde le culling CPU.
 core::Result<GpuDrivenFeature *> enableGpuDriven(SceneRenderer &renderer, rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                  const std::filesystem::path &shaderDirectory, const InstanceRenderer &meshes);
+// A75.4 : même fonction depuis un `RenderContext`.
+inline core::Result<GpuDrivenFeature *> enableGpuDriven(SceneRenderer &renderer, const RenderContext &context, const InstanceRenderer &meshes)
+{
+    return enableGpuDriven(renderer, context.device(), context.library(), context.pipelines(), context.shaderDirectory(), meshes);
+}
 void disableGpuDriven(SceneRenderer &renderer);
 
 } // namespace orosmo::renderer
