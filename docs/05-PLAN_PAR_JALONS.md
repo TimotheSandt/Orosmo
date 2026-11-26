@@ -186,6 +186,7 @@ Le moteur reste générique : l'atmosphère, les effets et le « monde riche » 
 - UI-04, UI-08 (rechargement à chaud de l'interface), UI-09, UI-10.
 - ECS-01 à ECS-03, SIM-01 (SIM-02 et SIM-03, accès aux données du monde et agents, sont hors moteur : A39).
 - GAME-01 à GAME-07 : module de jeu en bibliothèque dynamique, registre de gestionnaires, migration d'état, paramètres JSON, version finale statique.
+- **Simplicité d'utilisation de l'API (décidé par l'auteur le 2026-11-26, A77)** : aujourd'hui, il faut beaucoup de code pour obtenir un résultat (le tutoriel 3D du site en est la mesure). M8, qui ajoute la scène et la logique de jeu, est le jalon où l'API de haut niveau prend forme : on y simplifie l'usage courant (création de l'application, boucle, scène, chargement d'un modèle, lumière, caméra, interface) en s'appuyant sur les propositions A75.1 à A75.17. L'API bas niveau reste accessible. Mesure : le nombre de lignes du programme de départ et du tutoriel 3D, avant et après, noté dans le bilan du jalon.
 
 **Démo** : on modifie un fichier de logique pendant que le programme tourne, on compile, et le comportement change sans redémarrage ni perte d'état ; on modifie un fichier d'interface et l'écran se met à jour ; un petit programme de simulation (quelques centaines d'agents évoluant dans une scène de test) tourne sans fenêtre, rejouable avec la même graine.
 **Terminé** : cas de rechargement testés (changement de corps de fonction, ajout de champ, changement de hiérarchie avec repli sur sauvegarde/restauration) ; boucle à pas fixe testée ; rejouabilité vérifiée.
@@ -266,6 +267,18 @@ Objectif : fournir un **site de présentation** du moteur Orosmo et un **wiki co
 
 **Démo** : image Docker construite par la CI, lancée localement ou sur serveur, servant le site vitrine et le wiki Astro complets ; publication déclenchée par un tag sur `main`.
 **Terminé** : site et wiki construits sans erreur en CI, image Docker publiée sur le registre, déploiement documenté (coûts et procédure dans `docs/`), processus de mise à jour par jalon en place.
+
+## M15 · Façade du projet : site vitrine, documentation simplifiée, présentation (décidé par l'auteur le 2026-11-26, A78)
+
+Jalon de fin de plan (après M10 à M13), pour polir la présentation du projet une fois le moteur assez complet pour être montré. Le site actuel (M14, Starlight, `orosmo.gasshog.fr`) est une version de développement.
+
+- **Site vitrine** soigné et agréable : accueil qui présente l'essentiel, projets faits avec Orosmo (quand il y en aura), installation, fonctionnalités principales.
+- **Partie documentation** séparée et plus simple, qui présente seulement la documentation du projet.
+- **Méthode** : d'abord un comparatif des sites d'autres moteurs (ce qu'ils montrent, dans quel ordre) et un inventaire du contenu réel d'Orosmo ; puis l'auteur fait la **charte graphique et le wireframe** ; l'implémentation suit ces deux documents, rien de visuel n'est décidé avant.
+- **Présentation du dépôt** : `README.md`, captures, page des releases et description du projet mises au même niveau.
+- Pas de devlog pour l'instant (décision de l'auteur, 2026-11-26).
+
+**Terminé** : site vitrine et documentation en ligne, conformes à la charte et au wireframe de l'auteur, relus par lui ; liens, ancres et build vérifiés en CI.
 
 ## Fonctions non rattachées à un jalon
 
