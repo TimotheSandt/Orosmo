@@ -483,7 +483,7 @@ jobs:
             ```
 
             **Engine package** — generic engine public headers (`include/orosmo/{core,platform,rhi,renderer,assets,anim,scene,ui}`), pre-built static
-            libraries (debug + release: `libcore`, `libplatform`, `librhi`, `librenderer`, `libassets`, `libanim`, `libscene`, `libui`, `libthirdparty`), `engine.mk`,
+            libraries (debug + release: `libcore`, `libplatform`, `librhi`, `librenderer`, `libassets`, `libanim`, `libscene`, `libsim`, `libui`, `libthirdparty`), `engine.mk`,
             the interface language compiler `cui`, the generic RHI shaders (`shaders/rhi`), the default font and themes (`res/`),
             a minimal example buildable from the package (`examples/minimal`), and `deps/`: the engine's third-party libraries,
             prebuilt and static (no vcpkg, no `make install`; the Vulkan loader, OpenGL and X11/Wayland come from the system).
