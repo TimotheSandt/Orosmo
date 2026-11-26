@@ -18,8 +18,7 @@ namespace
 // Construite par `make test` à côté de l'exécutable des tests (apps/demo/Makefile, tests/platform/test_module/).
 fs::path testModulePath()
 {
-    return orosmo::core::system::executablePath().parent_path() /
-           ("test_module" + std::string(DynamicLibrary::extension()));
+    return orosmo::core::system::executablePath().parent_path() / ("test_module" + std::string(DynamicLibrary::extension()));
 }
 } // namespace
 
@@ -68,7 +67,7 @@ TEST_SUITE("platform/dynamic_library")
         const std::size_t before = orosmo::core::Logger::KeptLogCount();
         const std::size_t seenByLibrary = (*log)("message written by the dynamic library");
         const std::size_t seenByHost = orosmo::core::Logger::KeptLogCount();
-        CHECK(seenByHost == before + 1); // le message de la bibliothèque est dans le journal de l'hôte
+        CHECK(seenByHost == before + 1);    // le message de la bibliothèque est dans le journal de l'hôte
         CHECK(seenByLibrary == seenByHost); // et la bibliothèque lit ce même journal
         orosmo::core::Logger::Clear();
     }
@@ -95,7 +94,7 @@ TEST_SUITE("platform/dynamic_library")
         first->unload();
         CHECK_FALSE(first->isLoaded());
         CHECK_FALSE(fs::exists(firstCopy));
-        CHECK(fs::exists(path)); // l'original n'est jamais touché
+        CHECK(fs::exists(path));        // l'original n'est jamais touché
         CHECK((*addSecond)(1, 2) == 3); // l'autre version reste utilisable
 
         DynamicLibrary moved = std::move(*second);

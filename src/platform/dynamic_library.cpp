@@ -29,8 +29,7 @@ std::string lastSystemError()
 {
     const DWORD code = GetLastError();
     char *text = nullptr;
-    const DWORD length = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                                            FORMAT_MESSAGE_IGNORE_INSERTS,
+    const DWORD length = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
                                         nullptr, code, 0, reinterpret_cast<char *>(&text), 0, nullptr);
     std::string message = length > 0 && text != nullptr ? std::string(text, length) : std::string("error ");
     if (text != nullptr)
@@ -120,8 +119,7 @@ core::Result<DynamicLibrary> DynamicLibrary::load(const fs::path &path, const Dy
     {
         const fs::path copy = uniqueCopyPath(library.sourcePath_, options.copyDirectory);
         if (!fs::copy_file(library.sourcePath_, copy, fs::copy_options::overwrite_existing, ec))
-            return makeError(ErrorCode::kIo, "cannot copy " + library.sourcePath_.string() + " to " + copy.string() +
-                                                 ": " + ec.message());
+            return makeError(ErrorCode::kIo, "cannot copy " + library.sourcePath_.string() + " to " + copy.string() + ": " + ec.message());
         library.loadedPath_ = copy;
         library.ownsCopy_ = true;
     }

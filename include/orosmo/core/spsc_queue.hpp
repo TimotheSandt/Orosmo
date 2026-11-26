@@ -99,10 +99,7 @@ template <typename T> class SpscQueue
     }
 
     // Approximations (exactes seulement quand l'autre côté ne travaille pas) : diagnostic et tests.
-    std::size_t sizeApprox() const noexcept
-    {
-        return tail_.load(std::memory_order_acquire) - head_.load(std::memory_order_acquire);
-    }
+    std::size_t sizeApprox() const noexcept { return tail_.load(std::memory_order_acquire) - head_.load(std::memory_order_acquire); }
     bool emptyApprox() const noexcept { return sizeApprox() == 0u; }
     std::size_t capacity() const noexcept { return capacity_; }
 

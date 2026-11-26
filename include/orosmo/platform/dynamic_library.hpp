@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 namespace orosmo::platform
 {
@@ -53,7 +54,10 @@ class DynamicLibrary
     template <typename Signature> core::Result<Signature *> function(std::string_view name) const
     {
         static_assert(std::is_function_v<Signature>, "DynamicLibrary::function<R(Args...)>");
-        return symbol(name).transform([](void *address) { return std::bit_cast<Signature *>(address); });
+        core::Result<void *> address = symbol(name);
+        if (!address)
+            return std::unexpected(std::move(address.error()));
+        return std::bit_cast<Signature *>(*address);
     }
 
     // Décharge la bibliothèque et efface sa copie. Sans effet si rien n'est chargé. Tout pointeur obtenu par `symbol` devient

@@ -61,15 +61,17 @@ TEST_SUITE("core/spsc_queue")
     {
         constexpr std::uint64_t kCount = 1'000'000;
         SpscQueue<std::uint64_t> q(1024);
-        std::thread producer([&q] {
-            for (std::uint64_t i = 0; i < kCount;)
+        std::thread producer(
+            [&q]
             {
-                if (q.tryPush(i))
-                    ++i;
-                else
-                    std::this_thread::yield();
-            }
-        });
+                for (std::uint64_t i = 0; i < kCount;)
+                {
+                    if (q.tryPush(i))
+                        ++i;
+                    else
+                        std::this_thread::yield();
+                }
+            });
 
         std::uint64_t expected = 0;
         std::uint64_t outOfOrder = 0;
