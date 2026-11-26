@@ -104,4 +104,4 @@ Orosmo a été **commencé par son auteur, avec OpenGL**. L'auteur a utilisé l'
 
 ## Licence
 
-À décider (Apache-2.0 envisagée). Aucun fichier `LICENSE` pour l'instant.
+[Apache-2.0](LICENSE). Les bibliothèques tierces gardent leurs propres licences.

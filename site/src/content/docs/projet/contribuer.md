@@ -9,10 +9,9 @@ Le dépôt est [`TimotheSandt/Orosmo`](https://github.com/TimotheSandt/Orosmo) s
 sont dans [`CLAUDE.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/CLAUDE.md) et
 [`docs/06-WORKFLOW_GIT_ET_NETTOYAGE.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/06-WORKFLOW_GIT_ET_NETTOYAGE.md).
 
-:::caution
-Le dépôt n'a pas de fichier de licence pour l'instant (l'auteur n'a pas tranché). Tant qu'il n'y en a pas, rien ne vous
-donne le droit de réutiliser ou de redistribuer le code ; une contribution sans licence claire est à discuter avec l'auteur
-dans un ticket avant d'écrire du code.
+:::note
+Orosmo est sous licence [Apache-2.0](https://github.com/TimotheSandt/Orosmo/blob/main/LICENSE). Une contribution
+proposée au dépôt est publiée sous cette même licence (section 5 de la licence).
 :::
 
 ## Proposer un changement
