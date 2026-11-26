@@ -45,6 +45,8 @@ Sur `feat/M8-L11-api-rendu` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa, OpenG
 
 Non-régression : 24 captures (12 configurations × OpenGL et Vulkan : HUD, ombres, forward+, forward+ et ombres, widgets, scène mixte, ombre tramée, animation, TAA, debug normales, fil de fer, 200 instances) faites avant puis après : les 24 `scene.png` identiques au pixel près (`tools/compare_png.py --tolerance 0`), `ui.png` identiques sauf le texte des mesures en direct du HUD (FPS, ms) ; couches de validation Vulkan : 0 message sur chaque exécution.
 
+Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 718 cas, 718 verts (7 nouveaux), 1 ignoré ; ASan + UBSan sur les suites `renderer/*` et `assets/*` (`make demo-test SANITIZE=address,undefined TEST_ARGS='--test-suite=renderer/*,assets/*'`) : 260 cas verts, aucun rapport ; `make check` : OK ; `make demo-capture` : OK (références comparées) ; `make demo-vulkan-check` : OK, validation Vulkan silencieuse. Non vérifié : Windows et macOS (compilés par la CI au push).
+
 
 ## SDK (v0.6.2)
 
