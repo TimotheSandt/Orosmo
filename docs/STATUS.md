@@ -30,6 +30,10 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L0 : `--shadow-quality` de la démo
+
+Option de la démo, sans changement du moteur (`docs/05` M8, A79). `apps/demo/src/launch_options.hpp` : `ShadowQuality`, `parseShadowQuality`, `shadowSettingsForQuality` (préréglages `low`, `medium`, `high` = `ShadowSettings{}`), `shadowQualityLabel` ; `Game::setShadowSettings` passe les réglages à `ShadowFeature::create` ; le panneau de performances affiche « shadows on <qualité> ». Tests : `tests/demo/launch_options_tests.cpp` (lecture, défaut `high`, valeur invalide refusée, préréglages, `high` égal à `ShadowSettings{}`). Démo : `apps/demo/bin/debug/main --shadows on --shadow-quality low`.
+
 ## SDK (v0.6.2)
 
 Distribution du SDK, décision A76 (`docs/QUESTIONS.md`), contrat `docs/03` §16. Aucun code C++ du moteur touché ; aucune ligne de `docs/02` ne change d'état (BLD-01, BLD-02 : Partiel, Windows et macOS non vérifiés). Preuves sous Linux x64 (Ubuntu 24.04, g++ 13.3), branche `docs/SDK` fondée sur `feat/SDK-integ` (`788c332`) :

@@ -349,7 +349,7 @@ orosmo::core::Result<> Game::init()
     rd::ShadowFeature *shadowFeature = nullptr;
     if (this->shadowsEnabled)
     {
-        auto shadows = rd::ShadowFeature::create(*this->device, *this->shaders, *this->pipelines, kShaderDirectory);
+        auto shadows = rd::ShadowFeature::create(*this->device, *this->shaders, *this->pipelines, kShaderDirectory, this->shadowSettings.value_or(rd::ShadowSettings{}));
         if (!shadows)
         {
             return orosmo::core::makeError(shadows.error().code, "Failed to create the shadows: " + shadows.error().message);
@@ -729,7 +729,7 @@ PerformanceSample Game::samplePerformance() const
                    ? (this->headless ? "off" : "on")
                    : (pacing.mode == rd::FramePacingMode::kLimited ? "off, limit " + std::to_string(pacing.fpsLimit) + " FPS" : "off, no limit");
     s.modes = std::string("AA ") + std::string(rd::toString(this->antiAliasingMode)) + "   post " + std::string(demo::postModeName(this->postMode)) +
-              "   shadows " + (this->shadowFeature != nullptr ? "on" : "off") + "   lighting " + (this->forwardPlusActive ? "forward+" : "forward");
+              "   shadows " + (this->shadowFeature != nullptr ? "on " + std::string(demo::shadowQualityLabel(this->shadowSettings.value_or(rd::ShadowSettings{}))) : std::string("off")) + "   lighting " + (this->forwardPlusActive ? "forward+" : "forward");
     s.residentMiB = processResidentMiB();
     return s;
 }

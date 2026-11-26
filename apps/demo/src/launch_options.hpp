@@ -6,6 +6,7 @@
 #include <orosmo/renderer/antialiasing.hpp>
 #include <orosmo/renderer/debug_view.hpp>
 #include <orosmo/renderer/frame_pacing.hpp>
+#include <orosmo/renderer/shadow_feature.hpp>
 #include <orosmo/renderer/transparent_shadow.hpp>
 #include <orosmo/rhi/types.hpp>
 
@@ -31,6 +32,15 @@ enum class LightingMode : std::uint8_t
 {
     kForward,
     kForwardPlus,
+};
+
+// --shadow-quality low|medium|high (M8) : préréglage des ombres (ShadowSettings passé à ShadowFeature::create). high (défaut)
+// est égal à ShadowSettings{}, les réglages du moteur : captures de référence inchangées.
+enum class ShadowQuality : std::uint8_t
+{
+    kLow,
+    kMedium,
+    kHigh,
 };
 
 enum class UiMode : std::uint8_t
@@ -121,6 +131,8 @@ struct LaunchOptions
     bool freezeFrustum = false;
     // --shadows off|on (REN-06 à 08) : ombres en cascade avec cache. off (défaut) : captures de référence inchangées.
     bool shadows = false;
+    // --shadow-quality low|medium|high (M8) : préréglage des ombres. high (défaut) : ShadowSettings{}, captures inchangées.
+    ShadowQuality shadowQuality = ShadowQuality::kHigh;
     // --post none|hdr|bloom|full (défaut : none, captures de référence inchangées).
     PostMode post = PostMode::kNone;
     // --aa none|fxaa|smaa|taa (REN-19) : anticrénelage. none (défaut) : aucun plugin, captures de référence inchangées.
@@ -162,6 +174,16 @@ std::optional<PostMode> parsePostMode(std::string_view value) noexcept;
 std::string_view postModeName(PostMode mode) noexcept;
 // « forward », « forwardplus » / « forward+ » (casse indifférente).
 std::optional<LightingMode> parseLightingMode(std::string_view value) noexcept;
+
+// « low », « medium », « high » (casse indifférente).
+std::optional<ShadowQuality> parseShadowQuality(std::string_view value) noexcept;
+std::string_view shadowQualityName(ShadowQuality quality) noexcept;
+// Préréglage d'ombres (tableau de docs/05 M8) ; kHigh rend ShadowSettings{}. Les champs hors du tableau gardent les défauts du moteur.
+orosmo::renderer::ShadowSettings shadowSettingsForQuality(ShadowQuality quality) noexcept;
+// Égalité champ par champ (ShadowSettings n'a pas d'operator==, le moteur n'est pas modifié par cette option).
+bool sameShadowSettings(const orosmo::renderer::ShadowSettings &left, const orosmo::renderer::ShadowSettings &right) noexcept;
+// Nom du préréglage égal à `settings` (« low », « medium », « high »), sinon « custom » : affiché par le panneau de performances.
+std::string_view shadowQualityLabel(const orosmo::renderer::ShadowSettings &settings) noexcept;
 
 // Argument inconnu ou valeur invalide : erreur kInvalidArgument (message prêt à afficher).
 orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv);

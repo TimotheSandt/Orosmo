@@ -191,6 +191,7 @@ int main(int argc, char **argv)
             game.setGpuDriven(launchOptions.gpuDriven);
             game.setDebugView(launchOptions.debugView, launchOptions.freezeFrustum);
             game.setShadowsEnabled(launchOptions.shadows);
+            game.setShadowSettings(demo::shadowSettingsForQuality(launchOptions.shadowQuality));
             game.setPostMode(launchOptions.post);
             game.setAntiAliasing(launchOptions.antiAliasing);
             game.setLighting(launchOptions.lighting, launchOptions.pointLights);

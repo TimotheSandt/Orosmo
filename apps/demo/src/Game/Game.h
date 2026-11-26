@@ -82,6 +82,8 @@ class Game
     void setAnimScene(bool enabled) noexcept { animScene = enabled; }
     // REN-39 : ombre des vitres de la scène mêlée (sans valeur : elles ne projettent rien).
     void setTransparentShadow(std::optional<orosmo::renderer::TransparentShadowMode> mode) noexcept { transparentShadow = mode; }
+    // --shadow-quality (M8) : réglages passés à ShadowFeature::create (sans valeur : ShadowSettings{}, les défauts du moteur).
+    void setShadowSettings(std::optional<orosmo::renderer::ShadowSettings> settings) noexcept { shadowSettings = settings; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
     // --hud (niveau du panneau de performances ; Ctrl+F le change ensuite).
     void setHudLevel(demo::HudLevel level) noexcept { performance.level = level; }
@@ -176,6 +178,7 @@ class Game
     bool animScene = false;
     std::chrono::steady_clock::time_point lastAnimReload{}; // rechargement de la texture : 2 Hz, horloge réelle (comme le FileWatcher)
     std::optional<orosmo::renderer::TransparentShadowMode> transparentShadow;
+    std::optional<orosmo::renderer::ShadowSettings> shadowSettings;
     bool stopped = false;
 
     int requestedWidth = 1280;
