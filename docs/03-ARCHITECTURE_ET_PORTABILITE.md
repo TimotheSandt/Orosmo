@@ -8,6 +8,7 @@ Un module ne dépend que des modules **du dessous**. Jamais l'inverse. Une CI le
  apps/        terrain-viewer, terrain-gen, (futurs jeux)
  game/        logique de jeu (bibliothèque rechargeable en développement)
  ─────────────────────────────────────────────────────────────
+ app          Application, GameModule : assemble les modules ci-dessous (A79, à confirmer)
  sim          boucle à pas fixe, accès aux données du monde
  world        bruit, terrain, planètes, biomes, export
  ui           UIManager, widgets, thèmes, code généré par le langage d'interface
@@ -29,6 +30,7 @@ Notes :
 - `world` ne dépend **pas** de `renderer` : la génération fonctionne sans GPU (mode ligne de commande, simulation). Les calculs sur GPU passent par `rhi` (compute) et sont isolés dans `world/gpu/`.
 - `ui` produit des listes de dessin ; le plugin `renderer2d` les affiche.
 - `game/` ne dépend que de l'API publique du moteur et se compile en bibliothèque séparée (§13). Aucun module du moteur ne dépend de `game/`.
+- **`app` (A79, à confirmer par l'auteur)** : module proposé par le découpage de M8 (`docs/QUESTIONS.md` A79, choix 3) pour `Application` et `GameModule`, qui assemblent `platform`, `renderer`, `assets`, `anim`, `scene`, `ui` et `sim` ; aucune couche existante ne peut le faire sans dépendre d'une couche supérieure. `tools/layers.json` le place entre `sim` et `game/` (le lot L1 n'y met que la règle de dépendance ; le dossier du module est créé par le lot L5 qui le remplit). Si l'auteur refuse, `GameModule` va dans `sim` et la façade attend M10.
 - `platform` et `rhi` se rencontrent à un seul endroit : la création de la surface de fenêtre, par une fonction de `platform` appelée par le backend.
 
 ## 2. Arborescence
