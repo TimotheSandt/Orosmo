@@ -20,6 +20,8 @@ glm::vec3 normalizeOrFallback(const glm::vec3 &vector, const glm::vec3 &fallback
 }
 } // namespace
 
+void Camera::setForward(const glm::vec3 &forward) { orientation_ = normalizeOrFallback(forward, orientation_); }
+
 void Camera::rotate(const glm::vec3 &eulerDegrees)
 {
     rotatePitch(eulerDegrees.x);
