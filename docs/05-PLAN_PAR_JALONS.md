@@ -188,8 +188,30 @@ Le moteur reste générique : l'atmosphère, les effets et le « monde riche » 
 - GAME-01 à GAME-07 : module de jeu en bibliothèque dynamique, registre de gestionnaires, migration d'état, paramètres JSON, version finale statique.
 - **Simplicité d'utilisation de l'API (décidé par l'auteur le 2026-11-26, A77)** : aujourd'hui, il faut beaucoup de code pour obtenir un résultat (le tutoriel 3D du site en est la mesure). M8, qui ajoute la scène et la logique de jeu, est le jalon où l'API de haut niveau prend forme : on y simplifie l'usage courant (création de l'application, boucle, scène, chargement d'un modèle, lumière, caméra, interface) en s'appuyant sur les propositions A75.1 à A75.17. L'API bas niveau reste accessible. Mesure : le nombre de lignes du programme de départ et du tutoriel 3D, avant et après, noté dans le bilan du jalon.
 
+- **SIM-01 bis — Thread de simulation optionnel (décidé par l'auteur le 2026-11-26)** : la boucle de SIM-01 peut tourner sur un thread dédié, à cadence configurable (N cycles par frame de rendu, ou fréquence fixe indépendante du rendu, par ex. 20/50/120 Hz, réglée via `Config`). Synchronisation par le seul point d'échange : un snapshot immuable publié par la simulation (double-buffer), lu par le rendu ; les événements sim → rendu passent par une file type SPSC (`ring_buffer.hpp`), l'`EventBus` restant propriété du thread principal. Le mode mono-thread déterministe de SIM-01 reste le défaut ; aucune des données non thread-safe (`EventBus`, `Vfs`, `Config`, `FileWatcher`, `ArenaAllocator`) n'est traversée par deux threads (l'arène est un par thread, réinitialisée par cycle). Preuve : test concurrent sim + rendu propre sous TSan dans la CI.
+- **Option `--shadow-quality low|medium|high` (décidé par l'auteur le 2026-11-26)** : trois niveaux de réglages d'ombres passés au `ShadowFeature` du renderer, `high` étant le défaut et égal aux réglages actuels du moteur (captures de référence inchangées).
+  - `apps/demo/src/launch_options.hpp` : inclure `<orosmo/renderer/shadow_feature.hpp>` ; `enum class ShadowQuality { kLow, kMedium, kHigh }` ; champ `ShadowQuality shadowQuality` dans `LaunchOptions` ; `parseShadowQuality(std::string_view)` et `shadowSettingsForQuality(ShadowQuality)` → `renderer::ShadowSettings`.
+  - `apps/demo/src/launch_options.cpp` : parser `--shadow-quality` (casse indifférente, valeur invalide refusée comme pour les autres options).
+  - Presets (à valider au bench) :
+
+    | Réglage | low | medium | high (défaut) |
+    |---|---|---|---|
+    | `cascadeResolution` | 256 | 512 | 1024 |
+    | `cascadeCount` | 2 | 3 | 4 |
+    | `atlasSize` | 1024 | 2048 | 4096 |
+    | `spotResolution` | 256 | 512 | 1024 |
+    | `pcfRadius` | 0 | 1 | 1 |
+    | `maxDistance` | 40 | 60 | 80 |
+    | `cascadeUpdateInterval` | {1,4,8,16} | {1,2,4,8} | {1,1,2,4} |
+    | `maxViewUpdatesPerFrame` | 4 | 6 | 8 |
+
+  - `apps/demo/src/Game/Game.h` et `Game.cpp` : champ `std::optional<renderer::ShadowSettings> shadowSettings` + setter (même schéma que `setTransparentShadow`) ; `createGraphics()` passe `shadowSettings.value_or(ShadowSettings{})` à `ShadowFeature::create` (Game.cpp:352) et affiche la qualité dans le bandeau « shadows on » (Game.cpp:732).
+  - `apps/demo/src/main.cpp:192` : `game.setShadowQuality(...)` à côté de `setShadowsEnabled`.
+  - Aide (`printUsage`) : ajouter `[--shadow-quality low|medium|high]` dans la ligne d'usage et un paragraphe « Shadows ».
+  - Tests (`tests/demo/launch_options_tests.cpp`) : parsing (défaut high, chaque valeur, valeur invalide refusée), presets qui remplissent bien les champs, cohérence avec les défauts du moteur (`shadowSettingsForQuality(kHigh)` comparé aux champs importants de `ShadowSettings{}` — sinon un changement de défaut côté moteur passerait inaperçu).
+
 **Démo** : on modifie un fichier de logique pendant que le programme tourne, on compile, et le comportement change sans redémarrage ni perte d'état ; on modifie un fichier d'interface et l'écran se met à jour ; un petit programme de simulation (quelques centaines d'agents évoluant dans une scène de test) tourne sans fenêtre, rejouable avec la même graine.
-**Terminé** : cas de rechargement testés (changement de corps de fonction, ajout de champ, changement de hiérarchie avec repli sur sauvegarde/restauration) ; boucle à pas fixe testée ; rejouabilité vérifiée.
+**Terminé** : cas de rechargement testés (changement de corps de fonction, ajout de champ, changement de hiérarchie avec repli sur sauvegarde/restauration) ; boucle à pas fixe testée ; rejouabilité vérifiée ; cadence de simulation réglable testée (cycles par frame et Hz fixes) et échange sim/rendu propre sous TSan ; les trois niveaux de `--shadow-quality` testés avec `high` vérifié égal aux défauts du moteur.
 
 ## M9 · macOS et Metal
 
