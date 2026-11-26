@@ -45,6 +45,11 @@ macOS par la CI (G222).
 | Couches `scene`, `sim`, `app`, `game` | `tools/layers.json` (niveau `app` entre `sim` et `game`, A79 à confirmer), `docs/03` §1 annoté | `make check` ; `python3 -m unittest discover -s tests/tools` | OK ; 5 tests de `tests/tools/test_check_layers.py` (arbre factice : `scene -> app` et `sim -> game` refusés) |
 | Job CI TSan | `.github/workflows/ci.yml` (job `tsan` : `make demo-test-unit SANITIZE=thread`, `vm.mmap_rnd_bits=28`) | actionlint 1.7.12 ; en local `make fclean && setarch -R make demo-test-unit SANITIZE=thread`, puis le binaire sans affichage ni pilote Vulkan (G225) | actionlint : 0 erreur ; **439 cas unitaires verts et propres sous TSan** ; le job lui-même s'observe au push |
 
+Vérifications (Linux, g++ 13.3, Intel Xe, Mesa) : `make demo-test` **724 cas verts** (13 nouveaux) ; `make fclean && make demo-test
+SANITIZE=address,undefined` : aucun message ASan ni UBSan, 723 cas sur 724 (le seul échec est `PLAT-01 the framebuffer size…`,
+instable sous un gestionnaire de fenêtres qui redimensionne la fenêtre de test, déjà noté sous G201 ; 1 échec sur 3 en le relançant
+seul) ; `make all-debug` sans avertissement ; `make check` OK.
+
 ## SDK (v0.6.2)
 
 Distribution du SDK, décision A76 (`docs/QUESTIONS.md`), contrat `docs/03` §16. Aucun code C++ du moteur touché ; aucune ligne de `docs/02` ne change d'état (BLD-01, BLD-02 : Partiel, Windows et macOS non vérifiés). Preuves sous Linux x64 (Ubuntu 24.04, g++ 13.3), branche `docs/SDK` fondée sur `feat/SDK-integ` (`788c332`) :
