@@ -260,7 +260,11 @@ else ifeq ($(ENGINE_OS),Darwin)
     engine_count_exports    = nm -gU "$(1)" | wc -l | tr -d ' '
 else
     ENGINE_MODULE_EXT      := .so
-    ENGINE_MODULE_CXXFLAGS := -fPIC
+    # GCC: no STB_GNU_UNIQUE symbols (static locals of inline functions, static members of templates). They stay unique in
+    # the process despite RTLD_LOCAL and make dlclose a no-op: a reloaded library would keep the old one's state. Clang
+    # does not emit them (and does not know the option).
+    _ENG_CXX_IS_GCC        := $(shell $(CXX) -v 2>&1 | grep -q '^gcc version' && echo 1)
+    ENGINE_MODULE_CXXFLAGS := -fPIC $(if $(_ENG_CXX_IS_GCC),-fno-gnu-unique)
     engine_host_implib      =
     engine_host_ldflags     = -rdynamic
     engine_module_ldflags   = -shared

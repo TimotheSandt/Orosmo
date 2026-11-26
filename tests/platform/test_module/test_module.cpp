@@ -21,3 +21,14 @@ OROSMO_TEST_MODULE_EXPORT std::size_t orosmoTestModuleLog(const char *message)
     LOG_INFO(message);
     return orosmo::core::Logger::KeptLogCount();
 }
+
+// Variable `static` locale d'une fonction `inline` : GCC sous Linux en fait par défaut un symbole STB_GNU_UNIQUE, unique dans le
+// processus malgré RTLD_LOCAL, qui rend aussi `dlclose` sans effet. ENGINE_MODULE_CXXFLAGS passe -fno-gnu-unique : chaque copie
+// chargée garde son propre compteur et repart de zéro après un rechargement (tests/platform/dynamic_library_tests.cpp).
+inline int &orosmoTestModuleCounter()
+{
+    static int counter = 0;
+    return counter;
+}
+
+OROSMO_TEST_MODULE_EXPORT int orosmoTestModuleIncrement() { return ++orosmoTestModuleCounter(); }

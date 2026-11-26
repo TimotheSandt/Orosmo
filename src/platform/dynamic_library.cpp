@@ -44,7 +44,10 @@ void *openLibrary(const fs::path &path, std::string &error)
     // Pas de boîte de dialogue du système si une dépendance manque : l'erreur revient par le résultat.
     DWORD previousMode = 0;
     SetThreadErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX, &previousMode);
-    HMODULE module = LoadLibraryW(path.c_str());
+    // Chemin absolu + LOAD_WITH_ALTERED_SEARCH_PATH : les dépendances sont cherchées d'abord dans le dossier de la bibliothèque
+    // (pas celui de l'exécutable), puis dans les dossiers système et le PATH (libstdc++ de MinGW). Les modules déjà chargés
+    // (l'exécutable hôte dont elle importe le moteur, ses DLL) sont repris par leur nom.
+    HMODULE module = LoadLibraryExW(path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (module == nullptr)
         error = lastSystemError();
     SetThreadErrorMode(previousMode, nullptr);
@@ -110,14 +113,17 @@ core::Result<DynamicLibrary> DynamicLibrary::load(const fs::path &path, const Dy
         return makeError(ErrorCode::kNotFound, "dynamic library not found: " + path.string());
 
     DynamicLibrary library;
+    // Chemins absolus : `unload` efface la même copie même si le dossier courant a changé entre-temps.
     library.sourcePath_ = fs::absolute(path, ec);
     if (ec)
-        library.sourcePath_ = path;
+        return makeError(ErrorCode::kIo, "cannot make " + path.string() + " absolute: " + ec.message());
     library.loadedPath_ = library.sourcePath_;
 
     if (options.copyBeforeLoad)
     {
-        const fs::path copy = uniqueCopyPath(library.sourcePath_, options.copyDirectory);
+        const fs::path copy = fs::absolute(uniqueCopyPath(library.sourcePath_, options.copyDirectory), ec);
+        if (ec)
+            return makeError(ErrorCode::kIo, "cannot make the copy directory absolute: " + ec.message());
         if (!fs::copy_file(library.sourcePath_, copy, fs::copy_options::overwrite_existing, ec))
             return makeError(ErrorCode::kIo, "cannot copy " + library.sourcePath_.string() + " to " + copy.string() + ": " + ec.message());
         library.loadedPath_ = copy;
