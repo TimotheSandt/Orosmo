@@ -1,6 +1,7 @@
 # scene
 
-Couche 6 de `docs/03` §1 : entités, composants, hiérarchie et transformations (ECS-01, ECS-02). Archive : `libscene.a`
+Couche 6 de `docs/03` §1 : entités, composants, hiérarchie et transformations (ECS-01, ECS-02), sauvegarde de scène et
+empreinte d'état (ECS-03, SIM-01 ; lot L3). Archive : `libscene.a`
 (`src/scene/`), API publique `include/orosmo/scene/`, namespace `orosmo::scene`. Dépend seulement de `core` (réflexion,
 erreurs, mathématiques). Créé en M8 (A79 lot L2).
 
@@ -17,7 +18,9 @@ destructeur.
 | `component.hpp` | `ComponentDesc` (nom, taille, alignement, version, champs, valeur par défaut ; `sameLayout`), `validateComponentDesc`, `ComponentId` (emplacement + génération), `ComponentType<T>`, `describeComponent<T>(nom)` |
 | `component_pool.hpp` | `ComponentPool` : ensemble clairsemé, octets denses contigus et alignés (jusqu'à 4096), retrait par échange avec le dernier |
 | `transform.hpp` | `Transform` (local en double : position, rotation `DQuat`, échelle ; cache monde : `worldPosition`, `worldLinear`), `composeWorld`, `relativeMatrix(t, origine)` (float relatif à la caméra), `worldPosition(t)` |
-| `world.hpp` | `World` : entités (`create`, `destroy` du sous-arbre, `alive`), registre (`registerComponent`, `unregisterComponent`, `componentId`, `componentType<T>`, `componentDesc`), données (`add` / `get` / `has` / `remove` par identifiant, par nom ou typées), requêtes (`view(a, b).each(fn)`, `forEach` et `forEachComponent` non typés), hiérarchie (`setParent`, `parent`, `children`), transformations (`setTransform`, `editTransform`, `markTransformDirty`, `updateTransforms`) |
+| `scene_file.hpp` | `saveScene` / `loadScene` (JSON), `saveSceneBinary` / `loadSceneBinary` (MessagePack), `saveSceneFile` / `loadSceneFile`, `SceneMigrations`, `SceneLoadReport`, `componentToJson` / `componentFromJson`, `kSceneFormatVersion` (lot L3) |
+| `fingerprint.hpp` | `fingerprint(world)`, `hashWorld` : empreinte des champs décrits (lot L3) |
+| `world.hpp` | `World` : entités (`create`, `destroy` du sous-arbre, `alive`), registre (`registerComponent`, `unregisterComponent`, `componentId`, `componentType<T>`, `componentDesc`), données (`add` / `get` / `has` / `remove` par identifiant, par nom ou typées), requêtes (`view(a, b).each(fn)`, `forEach` et `forEachComponent` non typés), hiérarchie (`setParent`, `parent`, `children`), table des entités (`entityTable`, `resetEntities`, lot L3), ordre dense (`componentEntities`), transformations (`setTransform`, `editTransform`, `markTransformDirty`, `updateTransforms`) |
 
 Exemple :
 
@@ -62,13 +65,24 @@ auto model = relativeMatrix(*world.transform(ship), cameraPosition); // float, r
   l'arrondi, `core::toLocal`).
 - **Copie** : `World` est copiable (copie profonde) ; non thread-safe (un propriétaire).
 
+## Sauvegarde et empreinte (lot L3)
+
+- **Format** : `{"version": kSceneFormatVersion, "data": {"entities": {"generations", "free"}, "hierarchy": [[enfant, parent]...],
+  "components": [{"name", "version", "entities", "values"}]}}`. Table des entités entière (mêmes identifiants après chargement,
+  références `Entity` valides, mêmes `create` ensuite), ordre des enfants, ordre dense des stockages (ordre de parcours gardé).
+- **Valeurs** : écrites champ par champ à partir de `ComponentDesc::fields` (jamais les octets bruts : ni remplissage, ni cache
+  monde de `Transform`). Réels au plus court qui se relit à l'identique ; NaN et infinis en `"nan"`, `"inf"`, `"-inf"` ;
+  quaternions `[w, x, y, z]` ; énumérations en entier signé de leur taille ; structure non réfléchie en octets hexadécimaux.
+- **Chargement** : par nom, dans un monde où les types sont enregistrés ; champ manquant = défaut du type ; champ inconnu et type
+  non enregistré ignorés avec un avertissement (journal + `SceneLoadReport::warnings`) ; version plus ancienne : migrations du
+  type (`SceneMigrations::components[nom][v]`) ; plus récente : `kVersionMismatch` ; plage d'un champ (`range`) vérifiée. Tout
+  ou rien (chargé dans une copie). Le cache monde est recalculé (`updateTransforms`).
+- **Empreinte** : FNV-1a 64 bits (`core/hash.hpp`) de la table des entités, de la hiérarchie et des valeurs des champs décrits
+  des types non vides, par nom de type croissant, dans l'ordre dense ; réels par motif de bits.
+
 ## Pour les lots suivants (non faits ici)
 
-- **L3, sauvegarde** : écrire les champs décrits (`ComponentDesc::fields`, décalage et taille, sous-champs) et non les octets
-  bruts (le remplissage d'une valeur fournie par l'appelant n'est pas initialisé) ; le cache monde de `Transform` n'est pas
-  décrit : le recalculer après chargement (`setTransform` ou `markTransformDirty`). Les références `Entity` dans un composant
-  supposent que la restauration garde les indices et générations (capture de la table d'entités). `World` copiable sert la
-  capture et restauration ; l'empreinte doit hacher les champs, pas les octets.
+- **L3, sauvegarde** : fait (section ci-dessus).
 - **L5, bibliothèque de jeu** : enregistrement par `registerComponent(ComponentDesc)` (rien ne pointe dans la bibliothèque) ;
   un nouvel enregistrement identique après rechargement garde données et identifiant. `unregisterComponent` détruit les
   données : le retrait au déchargement est une décision de L5/L6.
@@ -93,4 +107,7 @@ Xe), machine chargée par d'autres compilations (charge ~25) : ordre de grandeur
 tailles de `FieldDesc`) ; `make demo-test-unit` (sans GPU ni fenêtre). Pas encore de démo : la scène sera rendue par la façade
 d'application (lot L13).
 
-Limites : voir `docs/GAPS.md` (G260 à G264).
+Limites : voir `docs/GAPS.md` (G260 à G264, G280 à G288).
+
+Tests du lot L3 : `tests/scene/scene_file_tests.cpp` (aller-retour JSON et MessagePack exact, migration v1 -> v2, documents
+invalides, empreinte).

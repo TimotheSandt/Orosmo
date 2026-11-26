@@ -566,6 +566,23 @@ Entités, composants et transformations (A79 lot L2, ECS-01, ECS-02) : module `s
 | G263 | Génération d'entité sur 32 bits | Après 2^32 destructions du même indice, la génération reboucle et un très vieil identifiant redeviendrait valide (non détecté ; l'indice n'est pas retiré). | Plus tard |
 | G264 | `scene` vérifié sous Linux seulement | Compilé et testé avec g++ 13.3 (debug, release, ASan+UBSan) ; clang de macOS (`-Werror`) et MinGW/MSVC de Windows seulement par la CI. Les composants alignés au-delà de `alignof(std::max_align_t)` utilisent `operator new(std::align_val_t)` (C++17, disponible partout). | CI |
 
+## Ajouts de M8 lot L3 (G280 à G288)
+
+Sauvegarde de scène et boucle de simulation à pas fixe (A79 lot L3, ECS-03, SIM-01) : `scene/scene_file.hpp`,
+`scene/fingerprint.hpp`, module `sim` (`src/sim/README.md`).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G280 | Empreinte figée vérifiée sous Linux x64 seulement | L'empreinte de `--sim-agents 500 --seed 42 --sim-steps 1000` est figée par `tests/demo/agent_simulation_tests.cpp` à partir de g++ 13.3 (x64, debug et release, ASan+UBSan). Linux arm64, Windows MinGW et macOS clang ne sont vérifiés que par la CI : une valeur différente y ferait échouer le test (c'est son rôle). MSVC (pas de `-ffp-contract=off`, `/fp:precise` peut contracter selon la version) n'est pas couvert. | CI de la PR L3 |
+| G281 | Contrôle du chemin rejoué lexical | `tools/check_deterministic_math.py` cherche des noms (`sin(`, `std::exp(`, `glm::angleAxis(`, `rand(`, `steady_clock::now`…) dans `src/sim`, `src/scene`, `core/random.hpp`, `core/hash.hpp` et `apps/demo/src/Sim` : un appel caché derrière une autre fonction (d'un autre module, ou d'une fonction de glm non listée) n'est pas vu ; la bibliothèque de jeu (L5) n'est pas couverte. | L5 (jeu), plus tard |
+| G282 | Valeurs que la sauvegarde ne garde pas au bit près | NaN écrit `"nan"` : la charge et le signe d'un NaN sont perdus (relu en NaN silencieux). Structure non réfléchie dans un composant (`kStruct` sans sous-champ) : écrite en octets hexadécimaux dans l'ordre de la machine (fichier non portable entre boutismes ; toutes les cibles sont petit-boutistes). | Plus tard |
+| G283 | Type de composant non enregistré au chargement | Ignoré avec un avertissement : ses données sont perdues si la scène est ensuite resauvegardée (pas de conservation des blocs inconnus). Les systèmes ne font pas partie de l'état sauvegardé (enregistrés par le jeu, L5). | L6 (migration), plus tard |
+| G284 | Temps accumulé non capturé | `Snapshot` et `saveState` gardent monde, générateur, pas et entrées en attente, pas l'accumulateur de `FixedStepper` (sans accesseur) : après `restore`, la fraction `alpha()` repart de 0 (l'état simulé est exact ; seule l'interpolation de la première image diffère). | L4 |
+| G285 | Empreinte sensible à l'ordre dense | Deux mondes de même contenu mais d'ordre de stockage différent ont des empreintes différentes (voulu : l'ordre de parcours change le résultat d'une simulation). Pas d'empreinte « contenu seul ». | Plus tard si besoin |
+| G286 | Chargement en copie | `loadScene` (tout ou rien) construit une copie du monde avant d'échanger : mémoire doublée pendant le chargement ; recherche d'un type par nom linéaire. Pas de chargement en flux ni partiel (sous-arbre, préfabriqué). | Plus tard (L12a contenus ?) |
+| G287 | Thread de simulation | `Simulation` est mono-thread : pas de thread dédié, pas d'instantané immuable en double tampon pour le rendu, pas de cadence configurable (`Config`). | M8 L4 |
+| G288 | Entrées en JSON | `Input::data` est un `core::Json` libre, haché par son texte (`dump()`) : un réel d'entrée est exact (écrit au plus court) mais une entrée lourde coûte une allocation par pas. Pas de format binaire de rejeu (le JSON du `Replay` passe par `core::toBinary` si besoin). | Plus tard |
+
 ## Ajouts de M8 lot L9 (G222, G223)
 
 | ID | Sujet | Détail | Jalon |

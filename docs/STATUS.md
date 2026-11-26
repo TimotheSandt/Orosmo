@@ -30,6 +30,33 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L3 : sauvegarde de scène et boucle à pas fixe (A79, ECS-03, SIM-01)
+
+Branche `feat/M8-L3-sauvegarde-simulation` (depuis `feat/M8-L2-ecs`). Sauvegarde et empreinte dans `scene`
+(`src/scene/README.md`), nouveau module `sim` (`src/sim/README.md`), couche 9, archive `libsim.a`. Choix de réalisation sous
+A79 « L3 ». Linux x64 seulement en local (g++ 13.3) ; arm64, Windows et macOS par la CI (G280).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| ECS-03 Sauvegarde JSON et binaire | `include/orosmo/scene/scene_file.hpp` (`saveScene`, `loadScene`, `saveSceneBinary`, `loadSceneBinary`, `saveSceneFile`, `loadSceneFile`) ; `World::entityTable`, `resetEntities`, `componentEntities` | `make demo-test-unit` (suite `scene/file`) | aller-retour JSON et MessagePack **exact** (même empreinte, même texte, mêmes octets ; -0, infinis, dénormaux, `int64` min, `uint64` max, références `Entity`, ordre dense, ordre des enfants, indices libres, `create` suivants identiques) ; cache monde recalculé |
+| ECS-03 Versions | `SceneMigrations` (format et par type), `kSceneFormatVersion` | suite `scene/file` | migration de composant v1 -> v2 ; sans migration ou version plus récente : `kVersionMismatch`, monde inchangé ; champ manquant = défaut ; champ inconnu et type non enregistré ignorés avec avertissement ; documents invalides refusés (tout ou rien) |
+| Empreinte | `include/orosmo/scene/fingerprint.hpp` (`fingerprint`, `hashWorld`), `include/orosmo/core/hash.hpp` (`Fnv1a`) | suite `scene/file` | ignore remplissage et cache monde ; sensible à un ulp, au signe de zéro, à l'ordre dense ; indépendante de l'ordre d'enregistrement des types |
+| SIM-01 Pas fixe, systèmes | `include/orosmo/sim/simulation.hpp` (`Simulation::advance`, `step`, `run`, `addSystem`, `systemOrder`) | suite `sim/simulation` | nombre de pas égal au temps cumulé / pas pour trois découpages d'images ; `maxStepsPerFrame` ; ordre phase, ordre, nom ; pas d'ajout pendant un pas |
+| SIM-01 Entrées, rejeu | `Simulation::queueInput`, `inputLog`, `recording`, `play`, `Replay`, `replayToJson` | suite `sim/simulation` | entrées livrées à leur pas, dans l'ordre ; enregistrement rejoué (aussi via JSON) : même empreinte ; autre graine refusée |
+| SIM-01 Capture et restauration | `Simulation::capture`, `restore`, `saveState`, `loadState`, `Snapshot` | suites `sim/simulation`, `demo/simulation` | 500 agents, graine 42 : capture au pas 500 puis restauration, et état JSON/MessagePack rechargé dans une nouvelle simulation : même empreinte au pas 1000 |
+| SIM-01 Mode sans fenêtre de la démo | `apps/demo/src/Sim/agent_simulation.cpp` (`runSimulationMode`), options `--sim-agents`, `--seed`, `--sim-steps` | `apps/demo/bin/debug/main --sim-agents 500 --seed 42 --sim-steps 1000` | `Simulation: agents=500 seed=42 steps=1000 alive=500 fingerprint=0xa3f0f4166622ae05` en 84 ms, sans fenêtre ni GPU ; **même valeur en debug et en release**, figée par la suite `demo/simulation` (deux exécutions identiques, autre graine différente) |
+| Chemin rejoué déterministe | `tools/check_deterministic_math.py` (`make check`, CI), `-ffp-contract=off` (`mk/engine.mk`, `tools/engine-sdk/engine.mk`) | `make check` ; `python3 -m unittest discover -s tests/tools` | OK ; 5 tests du contrôle (refus de `sin`, `glm::angleAxis`, `rand`, `<random>`, horloge ; commentaires ignorés) |
+
+Vérifications (Linux x64, g++ 13.3, Intel Xe, Mesa) : `make all-debug` sans avertissement ; `make demo-test` **777 cas verts**
+(1 ignoré ; 16 nouveaux : 6 `scene/file`, 6 `sim/simulation`, 4 `demo/simulation`) ; `make demo-test-unit` 492 cas verts ;
+`make check` OK (114 en-têtes autonomes, 0 violation de couche, chemin rejoué propre) ; `python3 -m unittest discover -s
+tests/tools` 26 tests OK. ASan + UBSan (`-fsanitize=address,undefined -fno-sanitize-recover=all`, `-O1`) **sur les sources et
+tests du lot seulement** (`src/scene/`, `src/sim/`, `apps/demo/src/Sim/`, `launch_options.cpp`, suites `scene/*`, `sim/*`,
+`demo/simulation`, `core/serialization`, liés aux archives release du reste du moteur) : 43 cas verts, aucun message,
+empreinte figée retrouvée ; le `make demo-test SANITIZE=address,undefined` complet n'a pas été relancé (machine partagée, lot
+sans code GPU). Non formaté par `tools/format_sources.sh` (clang-format absent de la machine) : style du code voisin suivi à la
+main.
+
 ## M8 lot L2 : entités et transformations (A79, ECS-01, ECS-02)
 
 Branche `feat/M8-L2-ecs` (depuis `feat/M8-L1-fondations`). Nouveau module `scene` (`src/scene/README.md`), couche 6, archive
