@@ -1,9 +1,9 @@
 # engine.mk — C++ Game Engine integration file.
 #
 # ── Setup ─────────────────────────────────────────────────────────────────────
-# Download a release from GitHub and unpack it, then in your Makefile:
+# Install an engine version with `orosmo install <version>` (or unpack a release package), then in your Makefile:
 #
-#   ENGINE_DIR   := path/to/engine   # directory containing includes/ lib/ make/ tools/
+#   ENGINE_DIR   := path/to/engine   # directory containing includes/ lib/ deps/ make/ tools/ (`orosmo path <version>`)
 #   GAME_SRC_DIR := src              # directory with your .cpp and .cui files
 #   BUILD_TYPE   := debug            # debug | release
 #   include $(ENGINE_DIR)/make/engine.mk
@@ -17,10 +17,14 @@
 #   ENGINE_INCLUDES      — all -I flags needed to use the engine headers
 #   ENGINE_LIBS          — list of .a archive paths
 #   ENGINE_LINK_LIBS     — $(ENGINE_LIBS) wrapped in --start-group (use in link command)
-#   ENGINE_LDFLAGS       — -L and -l flags for all engine dependencies (vcpkg)
+#   ENGINE_LDFLAGS       — -L and -l flags for all engine dependencies (third-party libraries of ENGINE_DEPS_DIR)
+#   ENGINE_DEPS_DIR      — third-party libraries of the engine ({include,lib}/): $(ENGINE_DIR)/deps in a release package;
+#                          without deps/ (engine repository, older packages): $(ENGINE_DIR)/vcpkg_installed/<triplet>;
+#                          ENGINE_VCPKG_ROOT=<dir> forces <dir>/<triplet>
 #   GEN_CPP_SOURCES      — .gen.cpp files produced by the CUI precompiler
 #   GEN_REDIRECT_SOURCES — .cui redirect shims (must exist before compilation)
-#   ENGINE_GEN_DIR       — Generated/ directory (already included in ENGINE_INCLUDES)
+#   ENGINE_GEN_DIR       — output of the CUI precompiler, in the PROJECT (default: Generated, overridable; already included in
+#                          ENGINE_INCLUDES). Nothing is ever written under ENGINE_DIR: one installed engine serves every project.
 #
 # ── Minimal Makefile example ──────────────────────────────────────────────────
 #   ENGINE_DIR   := path/to/engine
@@ -173,19 +177,23 @@ else
 endif
 
 _ENG_INC_DIRS  := $(notdir $(wildcard $(_ENG_INC_BASE)/*))
-# Allow caller to set ENGINE_VCPKG_ROOT to redirect the vcpkg installation
-# (useful when the engine is installed into a project but vcpkg is shared elsewhere)
+# Third-party libraries, by priority: ENGINE_VCPKG_ROOT given (vcpkg shared elsewhere); deps/ of a release package (prebuilt
+# by the CI, static, no vcpkg needed); vcpkg_installed/<triplet> (engine repository, packages older than deps/).
 ifdef ENGINE_VCPKG_ROOT
-    _ENG_VCPKG_DIR := $(ENGINE_VCPKG_ROOT)/$(ENGINE_VCPKG_TRIPLET)
+    ENGINE_DEPS_DIR := $(ENGINE_VCPKG_ROOT)/$(ENGINE_VCPKG_TRIPLET)
+else ifneq ($(wildcard $(ENGINE_DIR)/deps/lib),)
+    ENGINE_DEPS_DIR := $(ENGINE_DIR)/deps
+    _ENG_DEPS_PACKAGED := 1
 else
-    _ENG_VCPKG_DIR := $(ENGINE_DIR)/vcpkg_installed/$(ENGINE_VCPKG_TRIPLET)
+    ENGINE_DEPS_DIR := $(ENGINE_DIR)/vcpkg_installed/$(ENGINE_VCPKG_TRIPLET)
 endif
-ENGINE_GEN_DIR := $(ENGINE_DIR)/Generated
+# CUI output: in the project, never in ENGINE_DIR (the installed engine is read-only and shared).
+ENGINE_GEN_DIR ?= Generated
 
 ENGINE_INCLUDES := \
     -I$(_ENG_INC_BASE) \
     $(foreach d,$(_ENG_INC_DIRS),-I$(_ENG_INC_BASE)/$(d)) \
-    -isystem $(_ENG_VCPKG_DIR)/include \
+    -isystem $(ENGINE_DEPS_DIR)/include \
     -I$(ENGINE_GEN_DIR) \
     -I$(GAME_SRC_DIR)
 
@@ -214,19 +222,25 @@ ENGINE_LINK_LIBS := $(_ENG_LD_START) $(ENGINE_LIBS) $(_ENG_LD_END)
 comma := ,
 # Assets (M6 lot G) : KTX2 (libktx, qui dépend d'astcenc et de zstd) et meshoptimizer. Le nom de l'archive astcenc dépend du jeu
 # d'instructions choisi par vcpkg (avx2, sse4.1, neon…) : on prend celle qui est installée.
-_ENG_ASTCENC_LIB := $(patsubst lib%.a,-l%,$(notdir $(firstword $(wildcard $(_ENG_VCPKG_DIR)/lib/libastcenc-*-static.a))))
+_ENG_ASTCENC_LIB := $(patsubst lib%.a,-l%,$(notdir $(firstword $(wildcard $(ENGINE_DEPS_DIR)/lib/libastcenc-*-static.a))))
 _ENG_ASSET_LIBS  := -lktx $(_ENG_ASTCENC_LIB) -lzstd -lmeshoptimizer
 
-ENGINE_LDFLAGS := -L$(_ENG_VCPKG_DIR)/lib $(_ENG_ASSET_LIBS) $(_ENG_VCPKG_LIBS) $(if $(_ENG_DARWIN),-Wl$(comma)-rpath$(comma)$(abspath $(_ENG_VCPKG_DIR))/lib)
+# macOS rpath to vcpkg's vulkan-loader dylib: only without deps/ (the Vulkan loader is never shipped in deps/: system install).
+ENGINE_LDFLAGS := -L$(ENGINE_DEPS_DIR)/lib $(_ENG_ASSET_LIBS) $(_ENG_VCPKG_LIBS) \
+    $(if $(and $(_ENG_DARWIN),$(if $(_ENG_DEPS_PACKAGED),,1)),-Wl$(comma)-rpath$(comma)$(abspath $(ENGINE_DEPS_DIR))/lib)
 
 # ── Missing archive error ─────────────────────────────────────────────────────
 # Archives must come from a GitHub release or be built with mk/engine.mk.
 $(ENGINE_LIBS):
-	$(error Missing engine archive: $@$(newline)Download a release at https://github.com/TimotheSandt/Orosmo/releases$(newline)or build locally: make -f path/to/engine/mk/engine.mk BUILD_TYPE=$(BUILD_TYPE))
+	$(error Missing engine archive: $@ -- install the engine with `orosmo install <version>` (releases: https://github.com/TimotheSandt/Orosmo/releases) or build it in the engine repository: make -f mk/engine.mk BUILD_TYPE=$(BUILD_TYPE))
 
 # ── CUI precompiler ───────────────────────────────────────────────────────────
 
-_ENG_CUI_SRCS    := $(shell find $(GAME_SRC_DIR) -type f -name "*.cui" 2>/dev/null)
+# Generated/ itself is skipped (its redirect shims are .cui files) when it lies under GAME_SRC_DIR (GAME_SRC_DIR := . or
+# ENGINE_GEN_DIR := src/Generated). ENGINE_GEN_DIR is relative to the project root, like the paths find prints (`src/…`, or
+# `./…` when GAME_SRC_DIR starts with `.`): both spellings are pruned.
+_ENG_GEN_PRUNE   := $(patsubst ./%,%,$(ENGINE_GEN_DIR))
+_ENG_CUI_SRCS    := $(shell find $(GAME_SRC_DIR) \( -path "$(_ENG_GEN_PRUNE)" -o -path "./$(_ENG_GEN_PRUNE)" \) -prune -o -type f -name "*.cui" -print 2>/dev/null)
 
 GEN_CPP_SOURCES      := $(patsubst $(GAME_SRC_DIR)/%.cui,$(ENGINE_GEN_DIR)/%.gen.cpp,$(_ENG_CUI_SRCS))
 GEN_REDIRECT_SOURCES := $(patsubst $(GAME_SRC_DIR)/%.cui,$(ENGINE_GEN_DIR)/%.cui,$(_ENG_CUI_SRCS))

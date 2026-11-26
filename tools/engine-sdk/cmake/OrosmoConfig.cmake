@@ -30,10 +30,17 @@ if(NOT DEFINED OROSMO_VCPKG_TRIPLET OR OROSMO_VCPKG_TRIPLET STREQUAL "")
     endif()
 endif()
 
-if(NOT DEFINED OROSMO_VCPKG_ROOT OR OROSMO_VCPKG_ROOT STREQUAL "")
-    set(OROSMO_VCPKG_ROOT "${_OROSMO_ROOT}/vcpkg_installed")
+# Third-party libraries, as in tools/engine-sdk/engine.mk: OROSMO_VCPKG_ROOT given; deps/ of a release package (prebuilt,
+# static); vcpkg_installed/<triplet> (engine repository, packages older than deps/).
+set(_OROSMO_DEPS_PACKAGED FALSE)
+if(DEFINED OROSMO_VCPKG_ROOT AND NOT OROSMO_VCPKG_ROOT STREQUAL "")
+    set(_OROSMO_VCPKG_DIR "${OROSMO_VCPKG_ROOT}/${OROSMO_VCPKG_TRIPLET}")
+elseif(EXISTS "${_OROSMO_ROOT}/deps/lib")
+    set(_OROSMO_VCPKG_DIR "${_OROSMO_ROOT}/deps")
+    set(_OROSMO_DEPS_PACKAGED TRUE)
+else()
+    set(_OROSMO_VCPKG_DIR "${_OROSMO_ROOT}/vcpkg_installed/${OROSMO_VCPKG_TRIPLET}")
 endif()
-set(_OROSMO_VCPKG_DIR "${OROSMO_VCPKG_ROOT}/${OROSMO_VCPKG_TRIPLET}")
 
 if(EXISTS "${_OROSMO_ROOT}/includes")
     set(_OROSMO_INC_BASE "${_OROSMO_ROOT}/includes")
@@ -44,7 +51,10 @@ endif()
 set(OROSMO_ROOT_DIR "${_OROSMO_ROOT}")
 set(OROSMO_SHADERS_DIR "${_OROSMO_ROOT}/shaders")
 set(OROSMO_RES_DIR "${_OROSMO_ROOT}/res")
-set(OROSMO_GEN_DIR "${_OROSMO_ROOT}/Generated")
+# CUI output: in the build tree of the project (orosmo_add_cui_views), never in the engine directory (read-only, shared).
+if(NOT DEFINED OROSMO_GEN_DIR OR OROSMO_GEN_DIR STREQUAL "")
+    set(OROSMO_GEN_DIR "${CMAKE_BINARY_DIR}/orosmo_generated")
+endif()
 
 if(WIN32)
     set(OROSMO_CUI_EXECUTABLE "${_OROSMO_ROOT}/tools/cui.exe")
@@ -146,7 +156,6 @@ if(NOT TARGET Orosmo::Orosmo)
     target_include_directories(Orosmo::Orosmo INTERFACE
         "${_OROSMO_INC_BASE}"
         "${_OROSMO_INC_BASE}/orosmo"
-        "${OROSMO_GEN_DIR}"
     )
     target_include_directories(Orosmo::Orosmo SYSTEM INTERFACE
         "${_OROSMO_VCPKG_DIR}/include"
@@ -161,9 +170,12 @@ if(NOT TARGET Orosmo::Orosmo)
             ${_OROSMO_IMPORTED_TARGETS}
             ${_OROSMO_ASSET_LIBS} ${_OROSMO_PLATFORM_LIBS}
         )
-        target_link_options(Orosmo::Orosmo INTERFACE
-            "-Wl,-rpath,${_OROSMO_VCPKG_DIR}/lib"
-        )
+        # rpath to vcpkg's vulkan-loader dylib: only without deps/ (the Vulkan loader is never shipped in deps/).
+        if(NOT _OROSMO_DEPS_PACKAGED)
+            target_link_options(Orosmo::Orosmo INTERFACE
+                "-Wl,-rpath,${_OROSMO_VCPKG_DIR}/lib"
+            )
+        endif()
     else()
         target_link_libraries(Orosmo::Orosmo INTERFACE
             -Wl,--start-group

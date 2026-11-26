@@ -305,3 +305,32 @@ Les modules spécialisés n'appartiennent pas au cœur distribué. Le procédura
 - **Aujourd'hui (M4)** : `dist/` et `orosmo-pkg-<plateforme>.zip` ne contiennent aucun module procédural (`libworld.a`, `libterrain_renderer.a`, `terrain_renderer.hpp`, `shaders/rhi/terrain.*` absents ; `make e2e-init` le vérifie). Les applications internes n'ont plus besoin de `ENGINE_EXTRA_MODULES` pour le terrain. Pour réutiliser le procédural, reprendre le code de la branche `archive/procedural-world` dans le projet du jeu (ou, plus tard, en addon).
 - **À terme (M11, `MOD-01` à `MOD-04`)** : un système de manifestes et de packaging permettra d'ajouter facilement tout module utilitaire, soit **intégré dans la release** (`bundled`), soit **distribué en addon séparé** (`orosmo addon add`), branché automatiquement par `engine.mk` sans modifier le cœur du moteur.
 - **Ensuite (M12, `MOD-05` à `MOD-08`)** : un **registre** d'addons (index et archives vérifiés par empreinte et signature) et un **gestionnaire** graphique pour les parcourir et les installer. C'est un produit à part, construit avec le moteur : il n'entre pas dans le cœur et ne dépend d'aucun backend.
+
+## 16. Distribution du SDK (décision A76, v0.6.2)
+
+Le développeur installe une fois l'outil `orosmo` et les moteurs précompilés ; un projet ne copie plus le moteur, il nomme sa version. Le jeu livré aux joueurs ne change pas : il est lié statiquement.
+
+**Disposition sur le disque.** Racine `OROSMO_HOME` (variable d'environnement prioritaire), sinon `~/.orosmo` (Linux, macOS) ou `%LOCALAPPDATA%\Orosmo` (Windows) :
+
+```
+$OROSMO_HOME/bin/orosmo[.exe]          outil (installeur, ou `orosmo self-update`)
+$OROSMO_HOME/engines/<x.y.z>/          contenu exact de orosmo-pkg-<plateforme>.zip, extrait tel quel
+    includes/  lib/{debug,release}/  deps/{include,lib}/  make/engine.mk  cmake/
+    tools/cui[.exe]  tools/build_progress.py  shaders/  res/  examples/  VERSION
+```
+
+`orosmo install` vérifie le paquet contre `SHA256SUMS` de la release quand la release publie ce fichier (une release qui n'en a pas, antérieure au contrat, donne un avertissement et s'installe ; un `SHA256SUMS` présent mais illisible est une erreur), l'extrait dans un dossier temporaire, refuse un paquet sans `make/engine.mk`, puis le renomme (une installation interrompue ou refusée ne laisse pas de moteur à moitié écrit). Téléchargements en HTTPS seulement, redirections comprises ; `OROSMO_DOWNLOAD_BASE` est un dossier local ou une URL `https://`. `deps/` contient les bibliothèques tierces du moteur, construites par la CI, statiques autant que possible (shaderc compris) ; il remplace `vcpkg_installed/<triplet>/`.
+
+**Résolution de `ENGINE_DIR`** (Makefile du gabarit, `apps/demo/Makefile`), par priorité :
+1. `ENGINE_DIR` donnée (ligne de commande, environnement, `config.local.mk`) ;
+2. dossier `orosmo/` du projet (anciens projets, `orosmo init --vendor`, la démo du dépôt) ;
+3. `orosmo path $(OROSMO_VERSION)`, avec `OROSMO_VERSION := x.y.z` dans `config.mk` (l'outil est cherché dans le `PATH`, puis dans `$OROSMO_HOME/bin`) ;
+4. sinon une erreur qui donne la commande à lancer (`orosmo install x.y.z`).
+
+`engine.mk` cherche ensuite les bibliothèques tierces dans `ENGINE_DEPS_DIR` : `ENGINE_VCPKG_ROOT/<triplet>` s'il est donné, sinon `$(ENGINE_DIR)/deps`, sinon `$(ENGINE_DIR)/vcpkg_installed/<triplet>` (dépôt du moteur, paquets antérieurs à `deps/`).
+
+**Rien n'écrit dans le moteur installé.** La sortie du compilateur `.cui` va dans `Generated/` du projet (`ENGINE_GEN_DIR`), les objets dans `obj/`, les binaires dans `bin/`. Un même moteur sert tous les projets ; `make e2e-init` compile un projet contre un paquet extrait en lecture seule. vcpkg reste possible pour les bibliothèques propres au jeu (`make add-dep`, installées dans `vcpkg_installed/` du projet), jamais pour le moteur.
+
+**Jamais embarqué** dans `deps/` (bibliothèques du système, chargées ou liées sur la machine) : chargeur Vulkan (`libvulkan`, `vulkan-1`), OpenGL, X11 et Wayland, libc. `make e2e-init` refuse un paquet dont `deps/` contient une bibliothèque partagée ou le chargeur Vulkan. Sous Linux, le paquet demande glibc ≥ 2.38 (Ubuntu 24.04 et plus récent, G217).
+
+Paquets natifs (`.deb`, Homebrew, winget) et signature des binaires : reportés (G218).

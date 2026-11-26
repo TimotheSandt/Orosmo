@@ -1,8 +1,10 @@
 # demo/Makefile — game project build system
 #
-# Works in two modes:
-#   Template mode  (standalone game project): ENGINE_DIR = orosmo (default)
-#   In-repo mode   (demo/ inside engine repo): override via config.local.mk
+# The engine is found in ENGINE_DIR, by priority:
+#   1. ENGINE_DIR given (command line, environment, config.local.mk);
+#   2. orosmo/ in the project (vendored engine: older projects, `orosmo init --vendor`, the demo in the engine repository);
+#   3. `orosmo path $(OROSMO_VERSION)`: the engine installed by `orosmo install <version>` (OROSMO_VERSION in config.mk);
+#   otherwise a clear error. Nothing is written into ENGINE_DIR: the CUI output goes to Generated/ in the project.
 #
 # ── Quick start ───────────────────────────────────────────────────────────────
 #   make debug        build debug binary
@@ -11,9 +13,10 @@
 #   make clean        remove objects + Generated/
 #   make fclean       remove objects, Generated/, and bin/
 #
-# ── Dependencies ──────────────────────────────────────────────────────────────
-#   make install-deps             install all vcpkg.json packages
-#   make add-dep DEP=nlohmann-json   add & install a package
+# ── Game dependencies (optional, vcpkg) ───────────────────────────────────────
+#   The engine's own libraries come prebuilt with the engine (ENGINE_DIR/deps): no vcpkg, no `make install` needed.
+#   make add-dep DEP=nlohmann-json   add & install a package for the game (vcpkg.json of the project)
+#   make install-deps                install the packages of the project's vcpkg.json
 #   make search-dep Q=json           search vcpkg catalog
 
 SHELL := sh
@@ -29,11 +32,20 @@ CLANG_TIDY   ?= clang-tidy
 VCPKG        ?= vcpkg
 
 # ── Engine integration ────────────────────────────────────────────────────────
-# Defaults for standalone (template) use. In-repo: override via config.local.mk
-#   ENGINE_DIR  ?= orosmo
-#   _ENGINE_MK  ?= $(ENGINE_DIR)/make/engine.mk
-#   _VCPKG_ROOT ?= vcpkg_installed
-ENGINE_DIR  ?= orosmo
+# ENGINE_DIR resolution (see the top of this file). The orosmo tool: in PATH, else $(OROSMO_HOME)/bin (default ~/.orosmo/bin,
+# %LOCALAPPDATA%/Orosmo/bin on Windows).
+OROSMO_TOOL ?= orosmo
+ifeq ($(strip $(ENGINE_DIR)),)
+    ifneq ($(wildcard orosmo/make/engine.mk),)
+        ENGINE_DIR := orosmo
+    else ifneq ($(strip $(OROSMO_VERSION)),)
+        _OROSMO_HOME := $(subst \,/,$(or $(OROSMO_HOME),$(if $(filter Windows_NT,$(OS)),$(LOCALAPPDATA)/Orosmo,$(HOME)/.orosmo)))
+        _OROSMO_BIN  := $(or $(shell command -v $(OROSMO_TOOL) 2>/dev/null),$(wildcard $(_OROSMO_HOME)/bin/orosmo$(if $(filter Windows_NT,$(OS)),.exe)))
+        _OROSMO_PATH := $(if $(_OROSMO_BIN),$(subst \,/,$(shell "$(_OROSMO_BIN)" path $(OROSMO_VERSION) 2>/dev/null)))
+        # make splits words on spaces: a path with one (and no 8.3 short form, see `orosmo path`) is refused below (G214).
+        ENGINE_DIR   := $(if $(word 2,$(_OROSMO_PATH)),,$(if $(wildcard $(_OROSMO_PATH)/make/engine.mk),$(_OROSMO_PATH)))
+    endif
+endif
 _ENGINE_MK  ?= $(ENGINE_DIR)/make/engine.mk
 _VCPKG_ROOT ?= vcpkg_installed
 
@@ -71,9 +83,19 @@ endif
 _ENGINE_MK_FOUND := $(wildcard $(_ENGINE_MK))
 
 ifeq ($(_ENGINE_MK_FOUND),)
-    _DEMO_ENGINELESS_GOALS := install install-deps search search-dep clean fclean info
+    _DEMO_ENGINELESS_GOALS := install install-deps add-dep search search-dep clean fclean info
     ifeq ($(filter $(_DEMO_ENGINELESS_GOALS),$(MAKECMDGOALS)),)
-        $(error Missing engine SDK at $(_ENGINE_MK). Run "make sync-demo" or "make install-demo" from the repository root first)
+        ifneq ($(strip $(ENGINE_DIR)),)
+            $(error Engine not found: $(_ENGINE_MK) does not exist. Check ENGINE_DIR=$(ENGINE_DIR) (in the Orosmo repository: run "make sync-demo" from the root first))
+        else ifeq ($(strip $(OROSMO_VERSION)),)
+            $(error Engine not found: no orosmo/ folder and OROSMO_VERSION is not set in config.mk (add OROSMO_VERSION := x.y.z, or pass ENGINE_DIR=/path/to/engine))
+        else ifeq ($(_OROSMO_BIN),)
+            $(error Orosmo $(OROSMO_VERSION) not found: the orosmo tool is not installed (not in PATH nor in $(_OROSMO_HOME)/bin). Install it, then run "orosmo install $(OROSMO_VERSION)" (or pass ENGINE_DIR=/path/to/engine))
+        else ifneq ($(word 2,$(_OROSMO_PATH)),)
+            $(error Orosmo $(OROSMO_VERSION) is installed in "$(_OROSMO_PATH)", but make cannot use a path with spaces: set OROSMO_HOME to a folder without spaces and run "orosmo install $(OROSMO_VERSION)" again (or pass ENGINE_DIR=/path/without/spaces))
+        else
+            $(error Orosmo $(OROSMO_VERSION) is not installed: run "orosmo install $(OROSMO_VERSION)" (or pass ENGINE_DIR=/path/to/engine))
+        endif
     endif
 
     _DEMO_UNAME := $(shell uname -s 2>/dev/null || echo Unknown)
@@ -122,10 +144,9 @@ else
     include $(_ENGINE_MK)
 endif
 
-# ── Game-specific vcpkg ───────────────────────────────────────────────────────
-# Game deps are installed to $(_VCPKG_ROOT)/ (separate from the engine's own
-# vcpkg_installed inside ENGINE_DIR). In template mode this is vcpkg_installed/
-# at the project root; in in-repo mode it is ../vcpkg_installed (shared).
+# ── Game-specific vcpkg (optional) ────────────────────────────────────────────
+# Game deps are installed to $(_VCPKG_ROOT)/ (vcpkg_installed/ at the project root), separate from the engine's
+# libraries (ENGINE_DIR/deps, read-only).
 _GAME_VCPKG_DIR       = $(_VCPKG_ROOT)/$(ENGINE_VCPKG_TRIPLET)
 _ADD_DEP_VCPKG_ROOT   = $(_VCPKG_ROOT)
 _ADD_DEP_VCPKG_LIBDIR = $(_VCPKG_ROOT)/$(ENGINE_VCPKG_TRIPLET)/lib
@@ -326,13 +347,15 @@ ifeq ($(ENGINE_OS),Windows)
 	@if [ -d "$(RES_DIR)" ]; then mkdir -p "$(BIN_DIR)/res"; powershell -NoProfile -Command "Copy-Item -Path '$(RES_DIR)/*' -Destination '$(BIN_DIR)/res' -Recurse -Force"; fi
 	@if [ -n "$(SHADER_DIR)" ] && [ -d "$(SHADER_DIR)" ]; then mkdir -p "$(BIN_DIR)/res/shader"; powershell -NoProfile -Command "Copy-Item -Path '$(SHADER_DIR)/*' -Destination '$(BIN_DIR)/res/shader' -Recurse -Force"; fi
 else
-	@if [ -d "$(RES_DIR)" ]; then mkdir -p "$(BIN_DIR)/res" && cp -r "$(RES_DIR)/." "$(BIN_DIR)/res/"; fi
-	@if [ -n "$(SHADER_DIR)" ] && [ -d "$(SHADER_DIR)" ]; then mkdir -p "$(BIN_DIR)/res/shader" && cp -r "$(SHADER_DIR)/." "$(BIN_DIR)/res/shader/"; fi
+	@# The engine (OROSMO_HOME/engines/<v>) may be read-only and cp keeps the source modes: the copies are made writable,
+	@# or the next build could not overwrite them.
+	@if [ -d "$(RES_DIR)" ]; then mkdir -p "$(BIN_DIR)/res" && cp -r "$(RES_DIR)/." "$(BIN_DIR)/res/" && chmod -R u+w "$(BIN_DIR)/res"; fi
+	@if [ -n "$(SHADER_DIR)" ] && [ -d "$(SHADER_DIR)" ]; then mkdir -p "$(BIN_DIR)/res/shader" && cp -r "$(SHADER_DIR)/." "$(BIN_DIR)/res/shader/" && chmod -R u+w "$(BIN_DIR)/res/shader"; fi
 endif
 
 copy_libs: | $(BIN_DIR)
-	@set -- "$(ENGINE_DIR)/vcpkg_installed/$(ENGINE_VCPKG_TRIPLET)/bin"/*.dll; \
-	 if [ -e "$$1" ]; then cp -f "$$@" "$(BIN_DIR)/" 2>/dev/null || :; fi
+	@$(if $(ENGINE_DEPS_DIR),set -- "$(ENGINE_DEPS_DIR)/bin"/*.dll; \
+	 if [ -e "$$1" ]; then cp -f "$$@" "$(BIN_DIR)/" 2>/dev/null || :; fi,:)
 	@set -- "$(_GAME_VCPKG_DIR)/bin"/*.dll; \
 	 if [ -e "$$1" ]; then cp -f "$$@" "$(BIN_DIR)/" 2>/dev/null || :; fi
 
@@ -340,13 +363,15 @@ copy_libs: | $(BIN_DIR)
 $(BIN_DIR) bin/tests bin/benchmark:
 	@mkdir -p "$@"
 
-# ── vcpkg dependency management ───────────────────────────────────────────────
-# install:   no args → install all vcpkg.json deps (incremental, skips installed)
+# ── vcpkg dependency management (game only, optional) ─────────────────────────
+# The engine's libraries are NOT installed here: they come prebuilt in ENGINE_DIR/deps.
+# install:   no args → install the project's vcpkg.json deps (incremental, skips installed; nothing without vcpkg.json)
 #            with args → add packages, install them, auto-detect linker flags
+# add-dep:   same as install with args: make add-dep DEP="fmt nlohmann-json"
 # search:    search the vcpkg catalog
 #
 # Usage:
-#   make install
+#   make add-dep DEP=fmt
 #   make install fmt nlohmann-json
 #   make install fmt LIBS="-lfmt"   # rare: manual linker flag override
 #   make search json
@@ -358,6 +383,9 @@ ifeq ($(firstword $(MAKECMDGOALS)),install)
     $(foreach _d,$(_INSTALL_ARGS),$(eval $(_d):;@true))
   endif
 endif
+ifeq ($(firstword $(MAKECMDGOALS)),add-dep)
+  _INSTALL_ARGS := $(DEP)
+endif
 ifeq ($(firstword $(MAKECMDGOALS)),search)
   _Q_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
   ifneq ($(_Q_ARGS),)
@@ -366,17 +394,11 @@ ifeq ($(firstword $(MAKECMDGOALS)),search)
   endif
 endif
 
-.PHONY: i install install-deps search search-dep
+.PHONY: i install install-deps add-dep search search-dep
 
-install install-deps:
+install install-deps add-dep:
+	@if [ "$@" = add-dep ] && [ -z "$(_INSTALL_ARGS)" ]; then printf "Usage: make add-dep DEP=<vcpkg package>\n"; exit 1; fi
 	@if [ -z "$(_INSTALL_ARGS)" ]; then \
-	    if [ -f "$(ENGINE_DIR)/vcpkg.json" ]; then \
-	        $(VCPKG) install \
-	            --triplet=$(ENGINE_VCPKG_TRIPLET) \
-	            --x-manifest-root=$(ENGINE_DIR) \
-	            --x-install-root=$(ENGINE_DIR)/vcpkg_installed \
-	            --no-print-usage || exit 1; \
-	    fi; \
 	    if [ -f vcpkg.json ]; then \
 	        $(VCPKG) install \
 	            --triplet=$(ENGINE_VCPKG_TRIPLET) \
@@ -403,11 +425,12 @@ install install-deps:
 	        fi; \
 	        b=$$(mktemp); a=$$(mktemp); \
 	        ls "$$LIBDIR/"*.a 2>/dev/null | sort > "$$b" || :; \
-	        $(VCPKG) install "$$dep" \
+	        $(VCPKG) install \
 	            --triplet=$(ENGINE_VCPKG_TRIPLET) \
 	            --x-manifest-root=. \
 	            --x-install-root=$(_ADD_DEP_VCPKG_ROOT) \
-	            --no-print-usage; \
+	            --no-print-usage \
+	            || { rm -f "$$b" "$$a"; printf "Error: vcpkg could not install the manifest (vcpkg.json, with %s)\n" "$$dep"; exit 1; }; \
 	        ls "$$LIBDIR/"*.a 2>/dev/null | sort > "$$a" || :; \
 	        if [ -n "$(LIBS)" ]; then \
 	            NEW="$(LIBS)"; \
@@ -493,13 +516,14 @@ lint:
 
 compile-commands:
 	@if [ -f "$(ENGINE_DIR)/tools/gen_compile_commands.py" ]; then \
-	    python3 "$(ENGINE_DIR)/tools/gen_compile_commands.py" --mode project --engine-dir "$(ENGINE_DIR)" --build-type "$(BUILD_TYPE)" --cxx "$(CXX)" --cc "$(CC)"; \
+	    python3 "$(ENGINE_DIR)/tools/gen_compile_commands.py" --mode project --engine-dir "$(ENGINE_DIR)" --gen-dir "$(ENGINE_GEN_DIR)" --build-type "$(BUILD_TYPE)" --cxx "$(CXX)" --cc "$(CC)"; \
 	else \
 	    echo "gen_compile_commands.py not found in $(ENGINE_DIR)/tools/ (update SDK)"; exit 1; \
 	fi
 
 info:
 	@echo "Project:      $(PROJECT_NAME)"
+	@echo "Engine:       $(or $(ENGINE_DIR),not found)$(if $(OROSMO_VERSION), (OROSMO_VERSION $(OROSMO_VERSION)))"
 	@echo "Build type:   $(BUILD_TYPE)"
 	@echo "Platform:     $(ENGINE_OS)"
 	@echo "Target:       $(TARGET)"
@@ -514,7 +538,7 @@ info:
 	@if command -v $(AR) >/dev/null 2>&1; then printf "  [ok] %s\n" "$(AR)"; \
 	    else printf "  [!!] %-24s -- scoop install mingw / brew install binutils / apt install binutils\n" "$(AR)"; fi
 	@if command -v $(VCPKG) >/dev/null 2>&1; then printf "  [ok] %s\n" "$(VCPKG)"; \
-	    else printf "  [!!] %-24s -- https://vcpkg.io/en/getting-started\n" "$(VCPKG)"; fi
+	    else printf "  [--] %-24s -- optional (make add-dep): https://vcpkg.io/en/getting-started\n" "$(VCPKG)"; fi
 
 # ── Dependency files ──────────────────────────────────────────────────────────
 -include $(wildcard $(ALL_OBJS:.o=.d))

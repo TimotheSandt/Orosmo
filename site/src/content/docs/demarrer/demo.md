@@ -7,7 +7,7 @@ sidebar:
 
 La démo (`apps/demo/`) est la seule application du dépôt. Elle montre le moteur et la bibliothèque d'interface ; son code
 (`apps/demo/src/Game/Game.cpp`) est aussi la meilleure source d'exemples. Il faut d'abord
-[compiler le moteur](/demarrer/installation/) ; la démo n'est pas dans le paquet d'une release.
+[compiler le moteur](/demarrer/compiler-le-moteur/) ; la démo n'est pas dans le paquet d'une release.
 
 ## Lancer
 

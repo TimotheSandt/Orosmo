@@ -1,12 +1,13 @@
 [package]
 name = "orosmo"
-version = "0.6.0"
+version = "0.6.2"
 edition = "2024"
 
 [dependencies]
 zip       = { version = "2", default-features = false, features = ["deflate"] }
 ureq      = { version = "2", features = ["json"] }
 serde_json = "1"
+ring       = { version = "0.17", default-features = false }  # SHA-256 ; déjà compilée pour rustls (ureq) : aucune crate nouvelle
 
 [build-dependencies]
 zip = { version = "2", default-features = false, features = ["deflate"] }

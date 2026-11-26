@@ -5,6 +5,32 @@
 > Première release utilisable : M3 (guide : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)). L'architecture évolue encore ;
 > les changements incompatibles sont listés dans [docs/releases/](docs/releases/). Spécification, checklist et plan : [docs/](docs/README.md). Règles de travail : [CLAUDE.md](CLAUDE.md).
 
+## Installer le SDK (écrire un jeu)
+
+Pour écrire un jeu, il n'y a rien à compiler du moteur. L'installeur installe les paquets système (après confirmation),
+l'outil `orosmo` dans `~/.orosmo/bin` (`%LOCALAPPDATA%\Orosmo\bin` sous Windows), l'ajoute au `PATH`, puis installe le
+moteur précompilé de la dernière release :
+
+```bash
+curl -fsSL https://github.com/TimotheSandt/Orosmo/releases/latest/download/install.sh | sh          # Linux, macOS
+```
+```powershell
+irm https://github.com/TimotheSandt/Orosmo/releases/latest/download/install.ps1 | iex              # Windows (PowerShell)
+```
+
+Options : `--yes` (sans questions), `--no-deps` (sans paquets système), `--version x.y.z` ; avec `curl … | sh`, elles
+passent après `sh -s --`. Le plus prudent est de télécharger le script, de le lire, puis de le lancer (`sh install.sh`).
+Ensuite :
+
+```bash
+orosmo init mygame && cd mygame         # config.mk nomme la version du moteur (OROSMO_VERSION)
+orosmo run                              # compile (make debug) puis lance bin/debug/main
+```
+
+Ni vcpkg ni `make install` : les bibliothèques tierces du moteur sont dans le paquet (`deps/`). Linux : glibc 2.39 ou plus
+récent (Ubuntu 24.04+) ; Windows et macOS ne sont pas vérifiés ([docs/GAPS.md](docs/GAPS.md), G214 à G220). Guide complet :
+[docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md). La suite de ce fichier concerne la compilation du dépôt du moteur.
+
 ## Prérequis
 
 - **Compilateur** : GCC 13+ ou Clang 17+ (testé : GCC 13.3, Linux), MSVC 2022 / MinGW sous Windows.
@@ -65,9 +91,9 @@ make all-debug
 | `make debug` / `make release` | Archives du moteur dans `lib/<type>/` |
 | `make all-debug` / `make all-release` | Moteur → `apps/demo/orosmo/` → démo |
 | `make sync-demo` | Copie le moteur construit dans `apps/demo/orosmo/` |
-| `make dist` / `make engine-tool` | Paquet du moteur / outil `orosmo init` |
+| `make dist` / `make engine-tool` | Paquet du moteur (`dist/orosmo-pkg-<plateforme>.zip`, avec `deps/`) / outil `orosmo` |
 | `make cui-test` | Tests du compilateur du langage d'interface (cargo test + entrées invalides de bout en bout) |
-| `make e2e-init` | De bout en bout depuis le paquet : `orosmo init`, compilation, lancement, exemple `minimal` (BLD-02) |
+| `make e2e-init` | De bout en bout depuis le paquet extrait en lecture seule : `orosmo init`, compilation sans vcpkg, lancement, exemple `minimal`, CMake (BLD-02) |
 | `make clean` / `make fclean` / `make demo-fclean` | Nettoyage |
 | `sh tools/check-repo.sh` | Contrôle d'hygiène du dépôt (binaires, casse, CRLF) |
 | `sh tools/format_sources.sh` | Formatage (`clang-format`) |
@@ -87,13 +113,13 @@ site/         site vitrine et wiki (Astro + Starlight, image Docker nginx ; M14)
 docs/         spécification, plan, rapports (voir docs/README.md)
 ```
 
-Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libassets.a`, `libanim.a`, `libui.a`, `libthirdparty.a`), distribuées dans `dist/orosmo-pkg-<plateforme>.zip` (`orosmo init`) et copiées dans `apps/demo/orosmo/` pour la démo du dépôt. *(Le code procédural `orosmo::world` / `TerrainRenderer` et les anciennes applications terrain ont été archivés dans la branche `archive/procedural-world`, décision A37.)*
+Le moteur compile en bibliothèques statiques, une par module (`libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`, `libassets.a`, `libanim.a`, `libui.a`, `libthirdparty.a`), distribuées dans `dist/orosmo-pkg-<plateforme>.zip` avec leurs bibliothèques tierces précompilées (`deps/`, installé par `orosmo install` dans `$OROSMO_HOME/engines/<version>`) et copiées dans `apps/demo/orosmo/` pour la démo du dépôt. *(Le code procédural `orosmo::world` / `TerrainRenderer` et les anciennes applications terrain ont été archivés dans la branche `archive/procedural-world`, décision A37.)*
 
 ## Documentation
 
 - Vision, checklist, architecture : [docs/](docs/README.md)
 - Couche graphique (RHI) : [docs/RHI.md](docs/RHI.md)
-- **Utiliser le moteur depuis une release** (`orosmo init`, paquet, projet minimal, stabilité de l'API) : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)
+- **Utiliser le moteur depuis une release** (installation, commandes `orosmo`, paquet, projet minimal, stabilité de l'API) : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)
 - Langage d'interface : [docs/UI_LANGUAGE.md](docs/UI_LANGUAGE.md) (cible `orosmo/ui`)
 - Nettoyage M00 : [docs/CLEANUP_PLAN.md](docs/CLEANUP_PLAN.md), [docs/releases/M00.md](docs/releases/M00.md)
 - Site vitrine et wiki (Astro, M14) : [site/](site/README.md) ; image Docker et publication : [docs/DEPLOIEMENT_SITE.md](docs/DEPLOIEMENT_SITE.md)
@@ -104,4 +130,4 @@ Orosmo a été **commencé par son auteur, avec OpenGL**. L'auteur a utilisé l'
 
 ## Licence
 
-À décider (Apache-2.0 envisagée). Aucun fichier `LICENSE` pour l'instant.
+[Apache-2.0](LICENSE). Les bibliothèques tierces gardent leurs propres licences.

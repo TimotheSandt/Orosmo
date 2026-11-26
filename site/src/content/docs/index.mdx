@@ -1,18 +1,44 @@
 ---
-title: Orosmo
-description: Moteur 3D et 2D générique en C++23. Rendu Vulkan et OpenGL derrière une même couche d'abstraction, interface écrite en .cui, thèmes JSON.
+title: Orosmo, moteur de jeu 2D et 3D en C++23
+description: "Orosmo, moteur de jeu 2D et 3D open source en C++23 : rendu Vulkan et OpenGL, Metal prévu, interface décrite en langage .cui. Licence Apache-2.0."
+head:
+  - tag: script
+    attrs:
+      type: application/ld+json
+    content: |
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Orosmo",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Linux, Windows, macOS",
+        "description": "Moteur de jeu 2D et 3D open source écrit en C++23. Rendu Vulkan et OpenGL 4.3 derrière une même couche d'abstraction ; backend Metal prévu, pas encore disponible. Interface décrite dans un langage maison, le .cui, compilé en C++.",
+        "url": "https://orosmo.gasshog.fr/",
+        "codeRepository": "https://github.com/TimotheSandt/Orosmo",
+        "programmingLanguage": "C++",
+        "license": "https://github.com/TimotheSandt/Orosmo/blob/main/LICENSE",
+        "author": {
+          "@type": "Person",
+          "name": "Timothé Sandt",
+          "url": "https://github.com/TimotheSandt"
+        }
+      }
 ---
 
 import { Image } from 'astro:assets';
 import ombres from '../../assets/captures/scene-ombres.webp';
 
-Orosmo est un moteur 3D et 2D générique écrit en C++23. Le rendu passe par une couche d'abstraction graphique (le RHI) qui
-a deux backends, Vulkan et OpenGL 4.3 ; Metal n'existe pas encore. L'interface s'écrit dans un langage maison, le `.cui`,
-compilé en C++ ; son apparence vient de thèmes JSON.
+Orosmo est un moteur de jeu 2D et 3D open source (Apache-2.0) écrit en C++23, développé par Timothé Sandt. Le rendu
+passe par une couche d'abstraction graphique (le RHI) qui a deux backends, Vulkan et OpenGL 4.3 ; un backend Metal est
+prévu et n'existe pas encore. L'interface s'écrit dans un langage maison, le `.cui`, compilé en C++ ; son apparence vient
+de thèmes JSON.
+
+[Installer](/demarrer/installation/) · [Code sur GitHub](https://github.com/TimotheSandt/Orosmo) ·
+[À propos](/projet/a-propos/) · [Fonctionnalités](/projet/fonctionnalites/)
 
 ## État
 
-La version courante est la 0.6.0. Le jalon M6 est livré : import glTF 2.0, matériaux PBR, éclairage par environnement,
+La version courante est la 0.6.2 : le moteur s'installe une fois par machine, avec une commande, sans vcpkg. Le jalon M6 est livré : import glTF 2.0, matériaux PBR, éclairage par environnement,
 animation par squelette et foules instanciées, en plus du cœur du rendu de M5 (graphe de passes, forward+, ombres,
 HDR, anticrénelage, culling GPU, 2D). L'API peut encore changer entre deux versions mineures.
 
@@ -29,12 +55,13 @@ les preuves, est sur la page [État du moteur](/projet/etat/).
 
 Pour écrire un jeu ou une application, lisez dans cet ordre :
 
-1. [Créer un projet](/demarrer/premier-projet/) : installer les dépendances, télécharger `orosmo`, compiler le projet de départ.
-2. [Lire la boucle d'une application](/demarrer/premiere-application/) : les pièces du projet de départ et les conventions des exemples.
-3. [Un jeu 3D de bout en bout](/demarrer/tutoriel-jeu-3d/) : un programme complet qui assemble glTF, caméra, ombres et menu.
-4. [Explorer la démo](/demarrer/demo/) : une commande par fonction du moteur.
+1. [Installer Orosmo](/demarrer/installation/) : une commande installe l'outil `orosmo` et le moteur précompilé.
+2. [Créer un projet](/demarrer/premier-projet/) : `orosmo init`, puis `orosmo run`.
+3. [Lire la boucle d'une application](/demarrer/premiere-application/) : les pièces du projet de départ et les conventions des exemples.
+4. [Un jeu 3D de bout en bout](/demarrer/tutoriel-jeu-3d/) : un programme complet qui assemble glTF, caméra, ombres et menu.
+5. [Explorer la démo](/demarrer/demo/) : une commande par fonction du moteur.
 
-Pour modifier le moteur lui-même, [compilez le dépôt](/demarrer/installation/).
+Pour modifier le moteur lui-même, [compilez le dépôt](/demarrer/compiler-le-moteur/).
 
 ## Je veux…
 

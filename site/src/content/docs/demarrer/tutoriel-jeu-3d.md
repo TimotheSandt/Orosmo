@@ -19,13 +19,14 @@ programme ni l'ombre d'un modèle animé.
 ## Préparer le projet
 
 ```bash
-./orosmo init monjeu && cd monjeu        # voir « Créer un projet avec orosmo init »
-cp -r orosmo/res res                     # garder la police et les thèmes du paquet dans res/
+orosmo init monjeu && cd monjeu          # voir « Créer un projet avec orosmo init »
+eng=$(ORS_NO_PROGRESS=1 make -s info | sed -n '/^Engine:/{s/^Engine: *//;s/ (OROSMO_VERSION.*//;p;}')   # moteur utilisé par make (OROSMO_VERSION de config.mk)
+[ -n "$eng" ] && test -d "$eng/res" && mkdir -p res && cp -R "$eng/res/." res/               # police et thèmes de ce moteur dans res/
 mkdir -p res/models                      # le personnage ira dans res/models/hero.glb (voir plus bas)
 rm src/HudView.cui src/hud_state.hpp     # le panneau du projet de démarrage est remplacé par le menu
 ```
 
-Pourquoi copier `orosmo/res` : dès que le projet a son propre dossier `res/`, c'est le seul copié à côté de l'exécutable
+Pourquoi copier le `res/` du moteur : dès que le projet a son propre dossier `res/`, c'est le seul copié à côté de l'exécutable
 (voir [Chemins des ressources](/demarrer/premiere-application/#chemins-des-ressources)).
 
 Il faut un modèle glTF avec une peau (skin) et au moins une animation. Le chemin est la constante `kHeroModel`, en haut
@@ -44,7 +45,7 @@ Licence : © 2017 Cesium, [Creative Commons Attribution 4.0](https://creativecom
 Si vous distribuez le modèle, citez « Cesium Man, © 2017 Cesium, CC-BY 4.0 » ; le logo Cesium de la texture est une
 marque, exclue de cette licence.
 
-Autre source, si vous avez compilé le dépôt du moteur (voir [Installer et compiler le moteur](/demarrer/installation/)) :
+Autre source, si vous avez compilé le dépôt du moteur (voir [Compiler le moteur](/demarrer/compiler-le-moteur/)) :
 `apps/demo/bin/debug/main --scene anim` écrit un personnage généré par le code, `figure.gltf`, `figure.bin` et
 `figure_albedo.png`, dans le dossier `orosmo-demo-anim` du dossier temporaire du système (`/tmp/orosmo-demo-anim/` sous
 Linux, vidé au redémarrage). Copiez les trois fichiers dans `res/models/` et donnez à `kHeroModel` la valeur

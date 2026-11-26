@@ -16,11 +16,14 @@
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
 #   dist/pkg-<platform>/          — staging, zipped into dist/orosmo-pkg-<platform>.zip
-#     (the zip is also embedded in the orosmo[.exe] tool)
+#     (downloaded by `orosmo install`, never embedded in the orosmo[.exe] tool)
 #       includes/   — public headers
 #       lib/        — debug + release archives
+#       deps/       — third-party libraries of the engine, prebuilt and static (include/, lib/, licenses/): tools/package-deps.sh
 #       make/       — engine.mk
 #       tools/      — CUI precompiler
+#       VERSION     — engine version (x.y.z)
+#       LICENSE     — Apache-2.0 (the engine's licence; third-party licences are in deps/licenses/)
 #
 # ── orosmo tool (make engine-tool) ───────────────────────────────────────────
 #   dist/orosmo-<platform>[.exe]  — scaffolding tool (orosmo init/update)
@@ -203,7 +206,12 @@ REPO_SLUG ?= $(_GIT_REPO_SLUG)
 # ── Rust tools workspace — variables only, rules come after main targets ───────
 TOOLS_WORKSPACE   := tools/Cargo.toml
 TOOLS_BUILD_RS    := $(wildcard tools/cui-rs/build.rs tools/engine-init-rs/build.rs)
+# Manifests and lock file: a dependency change (e.g. ureq) must rerun Cargo too.
+TOOLS_MANIFESTS   := $(wildcard tools/Cargo.lock tools/*/Cargo.toml)
 TOOLS_RS_SRCS     := $(shell find tools/cui-rs/src tools/engine-init-rs/src -type f -name "*.rs" 2>/dev/null) $(TOOLS_BUILD_RS)
+# Project template embedded in the orosmo tool by its build.rs: a change must rebuild the tool too.
+TOOLS_TEMPLATE    := $(wildcard apps/demo/Makefile apps/demo/config.mk apps/demo/.gitignore) \
+                     $(shell find tools/engine-sdk/template/src -type f 2>/dev/null)
 CARGO_TARGET_DIR  ?= build/cargo-tools
 
 ifeq ($(DETECTED_OS),Windows)
@@ -226,8 +234,6 @@ _CUI_INSTALLED := tools/$(notdir $(CUI_EXE))
 _DIST_STAGING    := dist/pkg-$(ENGINE_PLATFORM)
 DIST_PKG_DIR     := $(_DIST_STAGING)
 ENGINE_PKG_ZIP   := dist/orosmo-pkg-$(ENGINE_PLATFORM).zip
-ENGINE_PAYLOAD_DIR := build/engine-payload
-ENGINE_PAYLOAD_ZIP := $(ENGINE_PAYLOAD_DIR)/engine-$(ENGINE_PLATFORM)-$(shell date +%s%N 2>/dev/null || date +%s).zip
 
 ifeq ($(DETECTED_OS),Windows)
     ENGINE_TOOL_EXE := dist/orosmo-$(ENGINE_PLATFORM).exe
@@ -416,6 +422,10 @@ else
 	@cp -r res/fonts res/themes "$(DIST_PKG_DIR)/res/"
 	@cp tools/engine-sdk/examples/minimal/main.cpp tools/engine-sdk/examples/minimal/Makefile "$(DIST_PKG_DIR)/examples/minimal/"
 endif
+	@# deps/ : bibliothèques tierces du moteur (celles de ce build), statiques, sans chargeur Vulkan ni OpenGL (contrat A76).
+	@sh tools/package-deps.sh "$(VCPKG_INSTALLED_DIR)" "$(DIST_PKG_DIR)/deps"
+	@printf '%s\n' "$(ENGINE_VERSION)" > "$(DIST_PKG_DIR)/VERSION"
+	@cp LICENSE "$(DIST_PKG_DIR)/LICENSE"   # Apache-2.0 du moteur, à la racine du paquet
 	@echo "Engine package ready: $(DIST_PKG_DIR)/"
 
 # ── zip helper ────────────────────────────────────────────────────────────────
@@ -449,11 +459,16 @@ $(ENGINE_PKG_ZIP): dist
 	@echo "Zipped: $(ENGINE_PKG_ZIP)"
 
 # ── engine tool binary ────────────────────────────────────────────────────────
-# Embeds the engine package zip as an offline fallback via ENGINE_PAYLOAD_ZIP.
+# The engine package is NOT embedded in the tool (small binary): `orosmo install` downloads it, `--package <zip>` offline.
 # GITHUB_REPO is baked in at compile time so the URL is not hardcoded in source.
-$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) dist
-	@mkdir -p "$(ENGINE_PAYLOAD_DIR)"
-	$(call _DO_ZIP,$(ENGINE_PAYLOAD_ZIP))
+# ENGINE_VERSION, the identity and the release host are baked in by build.rs: a change (in mk/config.mk, or on the command
+# line: `make ENGINE_VERSION=…`) must rebuild the tool, without depending on `dist`. The stamp file holds the last values and
+# is rewritten only when they change, so Make reruns Cargo exactly then.
+_TOOL_PARAMS       := $(REPO_HOST)|$(REPO_SLUG)|$(ENGINE_NAME)|$(ENGINE_VERSION)|$(ENGINE_PUBLISHER)|$(ENGINE_AUTHOR)|$(ENGINE_EMAIL)|$(ENGINE_DESCRIPTION)|$(ENGINE_HOMEPAGE)
+_TOOL_PARAMS_STAMP := $(CARGO_TARGET_DIR)/orosmo-baked-params.txt
+_TOOL_PARAMS_Q     := $(subst ','\'',$(_TOOL_PARAMS))
+_TOOL_PARAMS_SYNC  := $(shell mkdir -p "$(CARGO_TARGET_DIR)" && { [ "$$(cat "$(_TOOL_PARAMS_STAMP)" 2>/dev/null)" = '$(_TOOL_PARAMS_Q)' ] || printf '%s\n' '$(_TOOL_PARAMS_Q)' > "$(_TOOL_PARAMS_STAMP)"; })
+$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_MANIFESTS) $(TOOLS_RS_SRCS) $(TOOLS_TEMPLATE) $(wildcard $(_MK_DIR)config.mk) $(_TOOL_PARAMS_STAMP)
 	REPO_HOST="$(REPO_HOST)" \
 	GITHUB_REPO="$(REPO_SLUG)" \
 	ENGINE_NAME="$(ENGINE_NAME)" \
@@ -463,9 +478,9 @@ $(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) dist
 	ENGINE_EMAIL="$(ENGINE_EMAIL)" \
 	ENGINE_DESCRIPTION="$(ENGINE_DESCRIPTION)" \
 	ENGINE_HOMEPAGE="$(ENGINE_HOMEPAGE)" \
-	ENGINE_PAYLOAD_ZIP="$(abspath $(ENGINE_PAYLOAD_ZIP))" \
 	CARGO_TARGET_DIR="$(abspath $(CARGO_TARGET_DIR))" \
 	    $(CARGO) build --release --manifest-path $(TOOLS_WORKSPACE) --bin orosmo
+	@touch "$@"
 	@echo "Built: $(ENGINE_INIT_EXE)"
 
 $(ENGINE_TOOL_EXE): $(ENGINE_INIT_EXE)
@@ -490,10 +505,12 @@ engine-tool: $(ENGINE_PKG_ZIP) $(ENGINE_TOOL_EXE)
 # Copies keep their dates (cp -p; Copy-Item keeps LastWriteTime on Windows): an unchanged header or archive does not make the
 # demo recompile or relink at every sync.
 # Faster than install-demo: no dist packaging step required.
-# vcpkg_installed/ is linked (not copied) to avoid duplicating hundreds of MB.
+# vcpkg_installed/ is linked (not copied) to avoid duplicating hundreds of MB. A deps/ left by install-demo is removed: it would
+# take priority over vcpkg_installed/ in engine.mk and could be older than the repository's dependencies.
 .PHONY: sync-demo
 sync-demo: $(ENGINE_LIBS) $(_CUI_INSTALLED)
 	@mkdir -p apps/demo/orosmo/lib/$(BUILD_TYPE) apps/demo/orosmo/make apps/demo/orosmo/tools
+	@rm -rf apps/demo/orosmo/deps
 ifeq ($(DETECTED_OS),Windows)
 	@mkdir -p apps/demo/orosmo/includes
 	@powershell -NoProfile -Command "Copy-Item -Path '$(INCLUDES_BASE)/*' -Destination 'apps/demo/orosmo/includes' -Recurse -Force"

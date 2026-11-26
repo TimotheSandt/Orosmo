@@ -1,121 +1,141 @@
 ---
 title: Créer un projet avec orosmo init
-description: Écrire un programme avec une release du moteur, sans compiler le moteur lui-même.
+description: Créer, compiler et lancer un projet, choisir la version du moteur, mettre à jour et migrer un ancien projet.
 sidebar:
-  order: 1
+  order: 2
+  label: Créer un projet
 ---
 
-Cette page est le point de départ pour écrire un jeu ou une application : vous téléchargez une release, vous ne compilez
-pas le moteur. Pour compiler le dépôt du moteur lui-même (démo, tests, modifications), voir
-[Compiler le moteur](/demarrer/installation/). Ordre de lecture : cette page, puis
-[Lire la boucle d'une application](/demarrer/premiere-application/) (le code du projet créé, et les conventions des
-exemples du wiki), puis [Explorer la démo](/demarrer/demo/) pour voir chaque fonction, puis les guides.
+Cette page suppose qu'Orosmo est installé (voir [Installer Orosmo](/demarrer/installation/)). Ordre de lecture : cette
+page, puis [Lire la boucle d'une application](/demarrer/premiere-application/) (le code du projet créé, et les conventions
+des exemples du wiki), puis [Explorer la démo](/demarrer/demo/) pour voir chaque fonction, puis les guides.
 
-Une release contient, pour chaque plateforme (`linux-x64`, `linux-arm64`, `windows-x64`, `macos-arm64`, `macos-x64`),
-l'outil en ligne de commande `orosmo-<plateforme>` et le paquet `orosmo-pkg-<plateforme>.zip` : en-têtes, bibliothèques
-statiques debug et release, `make/engine.mk`, `cmake/OrosmoConfig.cmake`, compilateur `cui`, shaders du RHI, police,
-thèmes, exemples et `vcpkg.json`. Ni Rust ni Python ne sont nécessaires.
-
-## Exemple minimal, sous Linux (x64)
+## Créer, compiler, lancer
 
 ```bash
-# 1. Paquets système (Ubuntu / Debian) : compilateur, make, bibliothèques de développement
-sudo apt install build-essential cmake python3 pkg-config autoconf autoconf-archive automake libtool \
-    libglm-dev libstb-dev libshaderc-dev glslc libfreetype-dev libvulkan-dev vulkan-validationlayers \
-    libgl-dev libx11-dev libwayland-dev libxkbcommon-dev wayland-protocols \
-    libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
-
-# 2. vcpkg (une fois) : il installe glad, msdfgen, GLFW, cgltf, ktx, meshoptimizer…
-git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
-
-# 3. L'outil orosmo, depuis les releases (la dernière version de https://github.com/TimotheSandt/Orosmo/releases)
-curl -L -o orosmo https://github.com/TimotheSandt/Orosmo/releases/latest/download/orosmo-linux-x64
-chmod +x orosmo
-
-# 4. Vérifier, créer, compiler, lancer
-./orosmo doctor
-./orosmo init mygame           # télécharge le paquet de la dernière release (ou utilise celui de l'outil hors ligne)
+orosmo init mygame      # crée le dossier mygame/ ; installe la dernière version du moteur si elle manque
 cd mygame
-make install VCPKG=~/vcpkg/vcpkg   # dépendances vcpkg du moteur, une fois
-make debug                         # compile -> bin/debug/main
-./bin/debug/main                   # lance le projet de démarrage
+orosmo build            # compile en debug -> bin/debug/main
+orosmo run              # compile si besoin, puis lance le programme
 ```
 
-Les paquets de l'étape 1 sont ceux de [Compiler le moteur](/demarrer/installation/#linux), moins `cargo` (inutile avec une
-release) et `doctest-dev` (tests du moteur). Ce parcours est vérifié par `make e2e-init` en CI Linux. Sous Windows et
-macOS, remplacez les étapes 1 et 3 par les outils de votre système (voir [Compiler le moteur](/demarrer/installation/)) ;
-ces plateformes ne sont pas vérifiées.
+Le projet de démarrage ouvre une fenêtre avec un cube coloré, une lumière et un petit panneau `.cui`. Ce parcours (création,
+compilation sans vcpkg, lancement sans fenêtre) est vérifié par `make e2e-init` en CI Linux.
 
-:::note
-`orosmo doctor` signale vcpkg comme facultatif, car `doctor` ne sert qu'à vérifier l'environnement, mais `make install` en a
-besoin : sans vcpkg, il n'y a pas de GLFW ni de glad à lier.
-:::
-
-## doctor
-
-`orosmo doctor [--json] [chemin]` contrôle l'environnement et sort avec une erreur si un prérequis obligatoire manque.
-
-| Contrôle | Obligatoire | Détail |
-|---|---|---|
-| Compilateur C++23 | oui | `$CXX`, sinon `g++` puis `clang++` ; GCC 13+, Clang 17+, Apple Clang 15+ |
-| GNU Make | oui | |
-| Archiveur `ar` | oui, sauf macOS | |
-| vcpkg | non | `$VCPKG`, `vcpkg` dans le `PATH`, ou `~/vcpkg` |
-| Python 3, CMake | non | |
-| Orosmo SDK, compilateur CUI | oui, dans un projet | cherche `orosmo/includes/orosmo`, `orosmo/lib/{debug,release}/libcore.a`, `orosmo/tools/cui` |
-| Dépendances du SDK, paquet CMake | non | `orosmo/vcpkg_installed/<triplet>`, `orosmo/cmake/OrosmoConfig.cmake` |
-| Affichage, Vulkan (Linux) | non | `DISPLAY` ou `WAYLAND_DISPLAY` ; `vulkaninfo` ou `libvulkan.so.1` |
-
-`--json` écrit le même rapport en JSON : `engineVersion`, `platform`, `vcpkgTriplet`, `ok` et un tableau `checks`
-(`name`, `required`, `status`, `detail`, `hint`). Voir [Commande orosmo](/reference/commande-orosmo/).
-
-## init
+`orosmo init` sans nom initialise le dossier courant, qui donne son nom au projet. Quand un nom est donné, le dossier ne doit
+pas exister.
 
 | Fichier créé | Rôle |
 |---|---|
-| `orosmo/` | le paquet du moteur |
 | `src/` | le projet de démarrage : `main.cpp`, `hud_state.hpp`, `HudView.cui` |
+| `config.mk` | nom, version du jeu, `OROSMO_VERSION` : à vous, à versionner |
+| `config.local.mk` | réglages de la machine (par exemple `ENGINE_DIR`), ignoré par git |
 | `Makefile`, `.gitignore` | modèles suivis par `orosmo update` |
-| `config.mk` | nom, version, paquets : à vous |
-| `config.local.mk` | chemins de la machine, à ne pas versionner |
 
-`orosmo init` sans argument initialise le dossier courant, qui donne son nom au projet. Un dossier existant est refusé
-quand un nom est donné. Hors ligne, ou si GitHub répond mal, l'outil utilise le paquet embarqué ; `--package <zip>` impose
-un paquet déjà téléchargé.
+Pendant la compilation apparaissent `Generated/` (code C++ produit par le compilateur `.cui`), `obj/` et `bin/`. Les trois
+sont ignorés par git. Rien n'est écrit dans le moteur installé.
 
-Cibles du `Makefile` du projet : `debug`, `dev`, `release`, `run`, `run-debug`, `run-release`, `install`, `test`, `benchmark`,
-`compile-commands` (écrit `compile_commands.json` pour clangd), `clean`, `fclean`. Le binaire debug est `bin/debug/main`,
-le binaire release `bin/release/<PROJECT_NAME>`. 
-Pour lancer le binaire avec des options, appelez-le directement (voir [Explorer la démo](/demarrer/demo/)). Le projet de démarrage accepte `--headless`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et `--help`.
-Son option `--api` n'accepte que `opengl` : il crée toujours un périphérique OpenGL (pour Vulkan, voir
+## Compiler avec make
+
+L'outil ne fait que lancer `make`. Les commandes suivantes donnent le même résultat :
+
+| Avec l'outil | Avec make |
+|---|---|
+| `orosmo build` | `make debug` |
+| `orosmo build --release` | `make release` (binaire `bin/release/<PROJECT_NAME>`) |
+| `orosmo run -- --headless` | `make debug && ./bin/debug/main --headless` |
+| `orosmo clean` | `make clean` |
+
+Les autres cibles du `Makefile` (`dev`, `test`, `benchmark`, `compile-commands`, `fclean`…) sont décrites dans
+[Compiler avec Make ou CMake](/reference/construction/#projet-créé-par-orosmo-init). Le projet de démarrage accepte
+`--headless`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et `--help`. Son option `--api` n'accepte que
+`opengl` : il crée toujours un périphérique OpenGL (pour Vulkan, voir
 [Choisir le backend graphique](/guides/application/peripherique/)).
 
-## update
+## Version du moteur
 
-```bash
-../orosmo update                 # dans le dossier du projet mygame, avec l'outil téléchargé plus haut (ou, depuis le dossier parent : ./orosmo update mygame)
+Le projet nomme sa version du moteur dans `config.mk` :
+
+```makefile title="config.mk"
+OROSMO_VERSION := 0.6.2
 ```
 
-`orosmo update` remplace `orosmo/` par la dernière release. `Makefile` et `.gitignore` sont réécrits s'ils n'ont pas été
-modifiés ; sinon l'outil demande confirmation (`y/N`). `config.mk` reçoit les nouveaux champs sans toucher aux vôtres,
-`config.local.mk` n'est pas écrasé, et un binaire `orosmo` placé dans le projet est mis à jour si la release est plus
-récente. Votre dossier `src/` n'est jamais modifié.
+Le `Makefile` demande son chemin à l'outil (`orosmo path 0.6.2`). Si cette version n'est pas installée, il s'arrête avec la
+commande à lancer :
+
+```text
+Orosmo 0.6.2 is not installed: run "orosmo install 0.6.2" (or pass ENGINE_DIR=/path/to/engine)
+```
+
+Deux projets peuvent utiliser deux versions différentes : chacune est installée une fois dans `~/.orosmo/engines/`. Pour
+essayer un autre moteur sans toucher à `config.mk`, donnez `ENGINE_DIR` (ligne de commande ou `config.local.mk`) :
+`make debug ENGINE_DIR=/chemin/vers/moteur`.
+
+## Mettre à jour le moteur du projet
+
+```bash
+orosmo update           # dans le dossier du projet ; ou : orosmo update chemin/du/projet
+```
+
+`orosmo update` installe la dernière version si besoin, écrit sa valeur dans `OROSMO_VERSION`, et réécrit `Makefile` et
+`.gitignore` s'ils n'ont pas été modifiés ; sinon l'outil demande confirmation (`y/N`). `config.mk` reçoit les nouveaux champs
+sans toucher aux vôtres, `config.local.mk` n'est pas écrasé et le dossier `src/` n'est jamais modifié. Les autres projets
+gardent leur version.
+
+Revenir à une version précise : changez `OROSMO_VERSION` à la main, puis `orosmo install <version>`.
+
+## Migrer un ancien projet
+
+Avant la `v0.6.2`, `orosmo init` copiait le moteur dans un dossier `orosmo/` du projet, et `make install` y installait les
+dépendances par vcpkg. Un tel projet compile toujours tel quel : le `Makefile` préfère `orosmo/` quand il existe. Pour passer
+au moteur installé :
+
+```bash
+orosmo migrate          # dans le dossier du projet
+```
+
+L'outil installe la même version que celle du dossier `orosmo/` (fichier `VERSION` du paquet), ou la dernière s'il ne la
+trouve pas, met à jour `Makefile`, `.gitignore` et `config.mk`, renomme `orosmo/` en `orosmo.old/`, puis compile avec le moteur
+installé. Si la compilation réussit, `orosmo.old/` est supprimé. Sinon la migration est annulée : `orosmo/`, `Makefile`,
+`.gitignore`, `config.mk` et `config.local.mk` reprennent leur état d'avant.
+
+## Garder le moteur dans le projet
+
+```bash
+orosmo init mygame --vendor
+```
+
+`--vendor` copie le moteur dans `orosmo/` comme avant : utile pour un projet qui doit compiler sans l'outil ni le réseau, ou
+dont le moteur est figé dans le dépôt. Dans ce mode, `orosmo update` écrit la nouvelle release par-dessus `orosmo/`.
 
 :::caution
-Les fichiers retirés d'une release restent dans `orosmo/`, car l'archive est écrite par-dessus. Pour repartir d'un SDK
-propre, videz `orosmo/` (en gardant `orosmo/vcpkg_installed`) avant `update`, puis relancez `make install`.
+En mode `--vendor`, les fichiers retirés d'une release restent dans `orosmo/`, car l'archive est écrite par-dessus. Pour un
+moteur identique à une installation neuve, videz `orosmo/` avant `orosmo update`.
 :::
+
+## Bibliothèques du jeu
+
+Le moteur n'a pas besoin de vcpkg. Pour ajouter une bibliothèque propre au jeu, le `Makefile` sait utiliser vcpkg (à
+installer vous-même) :
+
+```bash
+make add-dep DEP=nlohmann-json
+```
+
+Le paquet est ajouté au `vcpkg.json` du projet, installé dans `vcpkg_installed/` du projet, et ses options d'édition de liens
+dans `EXTRA_LDLIBS` de `config.mk`. Voir [Compiler avec Make ou CMake](/reference/construction/#bibliothèques-du-jeu).
 
 ## Sans l'outil
 
-Décompressez le paquet et pointez votre `Makefile` dessus (`ENGINE_DIR`), ou utilisez `find_package(Orosmo)` avec CMake :
-voir [Compiler avec Make ou CMake](/reference/construction/).
+Décompressez le paquet `orosmo-pkg-<plateforme>.zip` d'une release et pointez votre `Makefile` dessus (`ENGINE_DIR`), ou
+utilisez `find_package(Orosmo)` avec CMake : voir [Compiler avec Make ou CMake](/reference/construction/).
 
 ## Limites
 
 - Les versions sont `0.MINEUR.CORRECTIF` : tant que la majeure vaut 0, un changement mineur peut casser l'API (la liste est
   dans `docs/releases/` du dépôt) ; un correctif ne la casse pas.
-- Seul Linux est vérifié ; Windows et macOS sont construits par la CI mais pas observés.
-- Pas de système de modules ni d'addons : `orosmo` n'a que `init`, `update` et `doctor`.
+- Seul Linux est vérifié ; Windows et macOS sont construits par la CI mais pas essayés.
+- Pas de système de modules ni d'addons pour l'instant.
 
-Détails : [État du moteur](/projet/etat/).
+Toutes les commandes et options de l'outil : [Commande orosmo](/reference/commande-orosmo/). Détails :
+[État du moteur](/projet/etat/).
