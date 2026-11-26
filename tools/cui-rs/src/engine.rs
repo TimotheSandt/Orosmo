@@ -221,7 +221,7 @@ static COMPONENTS: &[Component] = &[
 ];
 
 const COMMON_MODIFIERS: &[&str] =
-    &["width", "height", "margin", "align", "span", "id", "tooltip", "visible", "enabled", "style", "variant", "overflow"];
+    &["width", "height", "margin", "align", "span", "id", "tooltip", "visible", "enabled", "style", "variant", "overflow", "tabIndex", "focusable"];
 
 // Propriétés du thème (orosmo/ui/theme.hpp) acceptées par `.style(...)`.
 const STYLE_PROPERTIES: &[(&str, &str)] = &[
@@ -835,6 +835,26 @@ impl<'a> Gen<'a> {
                     }
                 }
             }
+            "tabIndex" => {
+                if let Some(e) = one(self) {
+                    match e {
+                        Expr::Number(n) if n.fract() != 0.0 => self.err(line, col, "'.tabIndex' expects an integer"),
+                        Expr::StringLit(_) | Expr::Bool(_) => self.err(line, col, "'.tabIndex' expects an integer"),
+                        _ => match expr_cpp(e, &self.scope) {
+                            Ok(v) => self.emit(format!("{var}->setTabIndex(static_cast<int>({v}));")),
+                            Err(e) => self.err(line, col, e),
+                        },
+                    }
+                }
+            }
+            "focusable" => {
+                if let Some(e) = one(self) {
+                    match e {
+                        Expr::Bool(b) => self.emit(format!("{var}->setFocusable({b});")),
+                        _ => self.err(line, col, "'.focusable' expects true or false"),
+                    }
+                }
+            }
             "id" | "variant" => {
                 if let Some(e) = one(self) {
                     if !is_constant_text(e) {
@@ -1266,6 +1286,8 @@ fn modifier_doc(name: &str) -> &'static str {
         "margin" => "Outer margin: a number, or left:, top:, right:, bottom:, horizontal:, vertical:.",
         "align" => "Alignment in the parent's room: .start, .center, .end, .stretch; or x:, y:.",
         "span" => "Number of Grid columns covered.",
+        "tabIndex" => "Tab order: positive first (ascending), 0 (default) in tree order, negative out of the Tab order.",
+        "focusable" => "false: the widget never takes the focus (Tab, arrows, click).",
         "id" => "Identifier (Widget::find).",
         "tooltip" => "Tooltip text.",
         "visible" | "enabled" => "true / false, or a boolean expression re-read every frame.",

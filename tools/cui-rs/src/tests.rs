@@ -292,3 +292,22 @@ fn source_hash_changes_with_compiler_fingerprint_or_version() {
         )
     );
 }
+
+#[test]
+fn ui09_tab_index_and_focusable_describe_the_keyboard_order() {
+    let (_, source) = engine(
+        "view V {\n    VBox {\n        Button(\"a\").tabIndex(2)\n        Button(\"b\").tabIndex(-1)\n        Button(\"c\").focusable(false)\n    }\n}\n",
+    )
+    .unwrap();
+    assert!(source.contains("->setTabIndex(static_cast<int>(2.0));"), "{source}");
+    assert!(source.contains("->setTabIndex(static_cast<int>(-1.0));"), "{source}");
+    assert!(source.contains("->setFocusable(false);"), "{source}");
+    assert_eq!(
+        errors("view V {\n    Button(\"a\").tabIndex(1.5)\n}\n"),
+        vec!["v.cui:3:16: error: '.tabIndex' expects an integer".to_string()]
+    );
+    assert_eq!(
+        errors("view V {\n    Button(\"a\").focusable(\"no\")\n}\n"),
+        vec!["v.cui:3:16: error: '.focusable' expects true or false".to_string()]
+    );
+}

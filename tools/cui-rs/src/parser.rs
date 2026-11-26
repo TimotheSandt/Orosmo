@@ -368,6 +368,14 @@ impl Parser {
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        // Moins unaire (`.tabIndex(-1)`, `-x`) : un nombre devient négatif, une expression devient `0 - expr`.
+        if self.at(TokenType::Minus) {
+            self.advance();
+            return Ok(match self.parse_unary()? {
+                Expr::Number(n) => Expr::Number(-n),
+                e => Expr::Binary { op: "-".to_string(), left: Box::new(Expr::Number(0.0)), right: Box::new(e) },
+            });
+        }
         if self.at(TokenType::Dollar) {
             self.advance();
             let target = self.parse_postfix()?;
