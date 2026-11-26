@@ -84,25 +84,31 @@ const char *model  = GET_RESOURCE_PATH("models/casque.glb");   // un asset de vo
 Arborescence d'un projet créé par `orosmo init`, puis du dossier de l'exécutable après `make debug` :
 
 ```text
+~/.orosmo/engines/0.6.2/  le moteur installé (orosmo path 0.6.2) ; ne le modifiez pas, il sert à tous vos projets
+  res/fonts, res/themes     police et thèmes par défaut
+  shaders/                  shaders du RHI (shaders/rhi/…)
 mygame/
-  orosmo/                 le paquet du moteur ; ne le modifiez pas (orosmo update le remplace)
-    res/fonts, res/themes   police et thèmes par défaut
-    shaders/                shaders du RHI (shaders/rhi/…)
+  config.mk               OROSMO_VERSION := 0.6.2
   src/                    votre code et vos .cui
   res/                    (facultatif) vos ressources : voir ci-dessous
+  Generated/              code C++ produit à partir des .cui
   bin/debug/
     main
-    res/fonts, themes     copiés depuis res/ si ce dossier existe, sinon depuis orosmo/res/
-    res/shader/rhi        copiés depuis orosmo/shaders/
+    res/fonts, themes     copiés depuis res/ si ce dossier existe, sinon depuis le res/ du moteur
+    res/shader/rhi        copiés depuis les shaders/ du moteur
     res/models/…          vos assets, s'ils sont dans res/
 ```
 
+Un projet créé avec `orosmo init --vendor`, ou avant la `v0.6.2`, a le moteur dans `mygame/orosmo/` au lieu du dossier
+installé ; le reste est identique.
+
 :::caution
-Le `Makefile` copie **un seul** dossier vers `bin/<type>/res/` : `res/` du projet s'il existe, sinon `orosmo/res/`
+Le `Makefile` copie **un seul** dossier vers `bin/<type>/res/` : `res/` du projet s'il existe, sinon le `res/` du moteur
 (variable `RES_DIR`). Si vous créez `res/` pour y mettre un modèle, la police et les thèmes du paquet ne sont plus copiés :
 le texte ne s'affiche plus et un thème qui étend `dark.json` ne trouve plus son parent. Copiez d'abord ceux du paquet :
-`cp -r orosmo/res res`, puis ajoutez vos fichiers (`res/models/`, `res/textures/`…). Les shaders, eux, sont toujours copiés depuis
-`orosmo/shaders/`. Conséquence : `orosmo update` ne met plus à jour la police et les thèmes de votre `res/`.
+`cp -r "$(orosmo path 0.6.2)/res" res` (la version de `OROSMO_VERSION`), puis ajoutez vos fichiers (`res/models/`,
+`res/textures/`…). Les shaders, eux, sont toujours copiés depuis le moteur. Conséquence : `orosmo update` ne met plus à jour
+la police et les thèmes de votre `res/`.
 :::
 
 ## Fenêtre et périphérique

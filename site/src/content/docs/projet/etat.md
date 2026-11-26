@@ -1,11 +1,11 @@
 ---
 title: État du moteur
-description: Ce qui est livré, partiel ou absent dans la version 0.6.0, par section de la checklist, avec où trouver les preuves.
+description: Ce qui est livré, partiel ou absent dans la version 0.6.2, par section de la checklist, avec où trouver les preuves.
 sidebar:
   order: 1
 ---
 
-Cette page résume l'état au jalon M14, version 0.6.0 (M6 livré, 2026-11-24). La référence est le dépôt :
+Cette page résume l'état à la version 0.6.2 (M6 livré le 2026-11-24, M14, distribution du SDK le 2026-11-25). La référence est le dépôt :
 
 - [`docs/02-CHECKLIST_FONCTIONNALITES.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/02-CHECKLIST_FONCTIONNALITES.md) : un identifiant par fonction, avec son critère d'acceptation ;
 - [`docs/STATUS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/STATUS.md) : l'état de chaque identifiant et sa preuve (fichier, symbole, test) ;
@@ -55,6 +55,7 @@ sur une branche), Hors moteur (ne sera pas dans le moteur) et Incompatible (exis
 | M5 | cœur du rendu : graphe de passes, forward+, ombres, HDR, post-traitements, anticrénelage, culling GPU, 2D | `v0.5.0` |
 | M6 | import et export glTF 2.0, textures et KTX2, cuisson de maillages, matériaux PBR, éclairage par environnement, skinning GPU, machine à états, courbes, foules | `v0.6.0` |
 | M14 | ce site | |
+| SDK | installeur, outil `orosmo` (install, build, run, migrate…), moteur précompilé avec ses dépendances (`deps/`), installé une fois par machine (A76) | `v0.6.2` |
 
 Notes détaillées de chaque jalon : `docs/releases/`. Le jalon M7 a été supprimé (le moteur reste générique) et son numéro
 n'est pas réattribué.
@@ -72,7 +73,7 @@ Chaque ligne cite l'identifiant de la checklist.
   maillages (ASSET-04).
 - Animation : skinning GPU (ANIM-01), clips et machine à états (ANIM-02), courbes de propriétés (ANIM-03), foules (ANIM-04).
 - Interface : widgets, mise en page, vues `.cui` compilées en C++, thèmes JSON rechargés à chaud.
-- Outillage : `orosmo init`, `update`, `doctor`, paquet avec `engine.mk` et `OrosmoConfig.cmake`.
+- Outillage : installeurs, `orosmo install`, `init`, `update`, `migrate`, `build`, `run`, `doctor`, paquet avec `deps/`, `engine.mk` et `OrosmoConfig.cmake` (`make e2e-init`). Windows et macOS non essayés (G216).
 
 ## Partiel
 

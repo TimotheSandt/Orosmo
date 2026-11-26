@@ -1,12 +1,75 @@
 ---
 title: Compiler avec Make ou CMake
-description: Cibles du Makefile du dépôt, variables de engine.mk pour un projet Make, et find_package(Orosmo) pour CMake.
+description: Construire un projet (orosmo build ou make), résolution du moteur, variables de engine.mk, bibliothèques du jeu, find_package(Orosmo) pour CMake, cibles du dépôt.
 sidebar:
   order: 3
 ---
 
 Le moteur se construit avec Make. Un projet qui l'utilise peut le consommer avec Make (`engine.mk`) ou avec CMake
-(`OrosmoConfig.cmake`). Les deux fichiers sont dans `tools/engine-sdk/` et livrés dans le paquet.
+(`OrosmoConfig.cmake`). Les deux fichiers sont dans `tools/engine-sdk/` et livrés dans le paquet, donc dans chaque moteur
+installé (`$OROSMO_HOME/engines/<version>/make/engine.mk`, `cmake/`).
+
+## Projet créé par orosmo init
+
+`orosmo build` lance `make` ; `make` reste utilisable directement (il appelle seulement `orosmo path` pour trouver le moteur).
+
+| Commande | Équivalent make | Effet |
+|---|---|---|
+| `orosmo build` | `make debug` | `bin/debug/main` (`-O1 -g -DDEBUG`) |
+| `orosmo build --release` | `make release` | `bin/release/<PROJECT_NAME>` (`-O3 -DNDEBUG`) |
+| `orosmo run [-- args]` | `make run-debug` | compile si besoin, puis lance le programme |
+| `orosmo clean` | `make clean` | supprime `obj/` et `Generated/` |
+
+Autres cibles du `Makefile` : `dev` (`-O0 -g3`), `run` (le binaire le plus récent, debug ou release), `run-release`, `test`,
+`benchmark`, `compile-commands` (écrit `compile_commands.json` pour clangd), `fclean` (supprime aussi `bin/`), `info` (moteur
+trouvé, version, archives), `add-dep`, `install-deps`, `search-dep` (bibliothèques du jeu, plus bas). `orosmo build --json`
+donne la même compilation en événements JSON : voir [Commande orosmo](/reference/commande-orosmo/#format-de-build-json).
+
+### Trouver le moteur
+
+Le `Makefile` choisit `ENGINE_DIR` dans cet ordre :
+
+1. `ENGINE_DIR` donnée sur la ligne de commande, dans l'environnement ou dans `config.local.mk` ;
+2. le dossier `orosmo/` du projet, s'il existe (projets d'avant la `v0.6.2`, `orosmo init --vendor`, démo du dépôt) ;
+3. `orosmo path $(OROSMO_VERSION)`, avec `OROSMO_VERSION` lu dans `config.mk` ; l'outil est cherché dans le `PATH`, puis
+   dans `$OROSMO_HOME/bin` ;
+4. sinon, `make` s'arrête avec la commande à lancer (`orosmo install x.y.z`).
+
+| Variable | Défaut | Effet |
+|---|---|---|
+| `OROSMO_VERSION` | écrite par `orosmo init` dans `config.mk` | version du moteur du projet ; `orosmo update` la change |
+| `ENGINE_DIR` | résolue comme ci-dessus | dossier du moteur ; la donner court-circuite `orosmo/` et `OROSMO_VERSION` |
+| `OROSMO_HOME` | `~/.orosmo`, `%LOCALAPPDATA%\Orosmo` | racine des moteurs installés (variable d'environnement) |
+| `ENGINE_GEN_DIR` | `Generated` | sortie du compilateur `.cui`, dans le projet |
+| `ENGINE_DEPS_DIR` | `$(ENGINE_DIR)/deps` | bibliothèques tierces du moteur (fournie par `engine.mk`, à lire seulement) |
+| `RES_DIR`, `SHADER_DIR` | voir [Ressources](#ressources-à-lexécution) | dossiers copiés à côté de l'exécutable |
+
+```bash
+make debug ENGINE_DIR=$HOME/src/Orosmo/dist/pkg-linux-x64   # essayer un moteur construit depuis le dépôt
+make info                                                    # moteur trouvé et version
+```
+
+Rien n'est écrit dans `ENGINE_DIR` : la sortie de `cui` va dans `Generated/`, les objets dans `obj/`, les binaires dans
+`bin/`. Un même moteur installé sert tous les projets de cette version.
+
+### Bibliothèques du jeu
+
+Les bibliothèques tierces du moteur sont dans `deps/` du moteur : le projet n'installe rien pour elles. Pour une bibliothèque
+propre au jeu, le `Makefile` peut utiliser vcpkg (à installer soi-même ; `VCPKG` donne son chemin) :
+
+| Cible | Effet |
+|---|---|
+| `make add-dep DEP=<paquet>` | ajoute le paquet au `vcpkg.json` du projet, l'installe dans `vcpkg_installed/` du projet, ajoute ses `-l` à `EXTRA_LDLIBS` de `config.mk` |
+| `make install-deps` | installe les paquets du `vcpkg.json` du projet (rien sans `vcpkg.json`) |
+| `make search-dep Q=<mot>` | cherche dans le catalogue vcpkg |
+
+```bash
+make add-dep DEP=nlohmann-json VCPKG=~/vcpkg/vcpkg
+```
+
+Les en-têtes de `vcpkg_installed/<triplet>/include` et les archives de `vcpkg_installed/<triplet>/lib` sont ajoutés à la
+compilation et à l'édition de liens. `EXTRA_CXXFLAGS` et `EXTRA_LDLIBS` de `config.mk` restent modifiables à la main pour une
+bibliothèque installée autrement.
 
 ## Cibles du dépôt du moteur
 
@@ -22,13 +85,13 @@ Le moteur se construit avec Make. Un projet qui l'utilise peut le consommer avec
 | `demo-test-unit`, `demo-test-gpu` | tests sans GPU ni fenêtre / seulement l'intégration graphique |
 | `check` | `check-repo`, `check-layers`, `check-api`, `check-headers` : bloquants |
 | `cui-test` | tests du compilateur `.cui` |
-| `e2e-init` | paquet, `orosmo init`, compilation, lancement et exemple minimal |
+| `e2e-init` | paquet extrait en lecture seule, `orosmo init`, compilation sans vcpkg, lancement, exemple minimal, CMake |
 | `demo-capture` | captures hors écran de la démo, comparées aux références |
 | `demo-vulkan-check` | parité OpenGL / Vulkan et validation Vulkan à zéro message |
-| `dist` | paquet `dist/orosmo-pkg-<plateforme>.zip` |
+| `dist` | paquet `dist/orosmo-pkg-<plateforme>.zip`, avec `deps/` (bibliothèques tierces copiées par `tools/package-deps.sh`) et `VERSION` |
 | `engine-tool` | outil `orosmo` (`dist/orosmo-<plateforme>`) |
 | `compile-commands` | `compile_commands.json` pour clangd |
-| `install-deps`, `install-deps-demo`, `install-deps-all` | dépendances vcpkg |
+| `install-deps`, `install-deps-demo`, `install-deps-all` | dépendances vcpkg du dépôt (le dépôt en a besoin ; un projet de jeu, non) |
 | `clean`, `fclean`, `clean-all` | nettoyage (`clean-all` supprime aussi `vcpkg_installed/`) |
 | `info` | résumé de la configuration |
 
@@ -47,10 +110,10 @@ Le compilateur est lancé avec `-std=c++23 -Wall -Wextra -Wpedantic` (plus `-Wer
 
 ## Make : engine.mk
 
-Dans le `Makefile` du projet, après avoir décompressé le paquet :
+Pour écrire son propre `Makefile` (sans le gabarit d'`orosmo init`), avec un moteur installé ou un paquet décompressé :
 
 ```makefile
-ENGINE_DIR   := chemin/vers/engine-pkg      # le dossier décompressé
+ENGINE_DIR   := $(shell orosmo path 0.6.2)  # ou le dossier d'un paquet décompressé
 GAME_SRC_DIR := src                          # les .cui de ce dossier sont compilés automatiquement
 BUILD_TYPE   ?= release                      # debug | dev | release
 include $(ENGINE_DIR)/make/engine.mk
@@ -90,15 +153,16 @@ Variables fournies par `engine.mk` :
 | `ENGINE_INCLUDES` | tous les `-I` des en-têtes du moteur, des dépendances et de `Generated/` |
 | `ENGINE_LIBS` | archives : `libui`, `libcore`, `libplatform`, `librhi`, `librenderer`, `libassets`, `libanim`, `libthirdparty` |
 | `ENGINE_LINK_LIBS` | `ENGINE_LIBS` entre `--start-group` et `--end-group` : à utiliser à l'édition de liens |
-| `ENGINE_LDFLAGS` | `-L` et `-l` des dépendances (vcpkg, KTX, meshoptimizer, GLFW, `<stacktrace>`…) |
-| `ENGINE_GEN_DIR` | `$(ENGINE_DIR)/Generated` : sortie du compilateur `.cui` |
+| `ENGINE_LDFLAGS` | `-L` et `-l` des dépendances (`ENGINE_DEPS_DIR`, KTX, meshoptimizer, GLFW, shaderc, `<stacktrace>`…) et des bibliothèques du système (OpenGL, X11, chargeur Vulkan par volk) |
+| `ENGINE_DEPS_DIR` | bibliothèques tierces : `$(ENGINE_DIR)/deps` d'un paquet ; `$(ENGINE_DIR)/vcpkg_installed/<triplet>` sans `deps/` (dépôt du moteur, paquets plus anciens) ; `<ENGINE_VCPKG_ROOT>/<triplet>` si `ENGINE_VCPKG_ROOT` est donnée |
+| `ENGINE_GEN_DIR` | `Generated` (dans le projet, modifiable avant l'inclusion) : sortie du compilateur `.cui` |
 | `GEN_CPP_SOURCES`, `GEN_REDIRECT_SOURCES` | un `.gen.cpp` et un fichier de redirection par `.cui` de `GAME_SRC_DIR` ; à lister comme prérequis d'ordre des objets |
 | `ENGINE_EXTRA_MODULES` | archives supplémentaires de `lib/<type>/` à lier |
-| `ENGINE_VCPKG_ROOT` | dossier des paquets vcpkg si ce n'est pas `$(ENGINE_DIR)/vcpkg_installed` |
+| `ENGINE_VCPKG_ROOT` | à donner seulement pour lire les dépendances ailleurs que dans `deps/` (une installation vcpkg partagée) |
 
-Un `.cui` modifié régénère son `.gen.cpp` ; si une archive manque, `engine.mk` s'arrête avec un message qui renvoie vers la
-page des releases. Les dépendances tierces sont cherchées dans `$(ENGINE_DIR)/vcpkg_installed/<triplet>` ; `make install` d'un projet
-créé par `orosmo init` les y installe.
+Un `.cui` modifié régénère son `.gen.cpp` dans `ENGINE_GEN_DIR` ; si une archive manque, `engine.mk` s'arrête avec un message
+qui renvoie vers la page des releases. Les dépendances tierces sont lues dans `ENGINE_DEPS_DIR` ; elles viennent avec le
+moteur et ne s'installent pas à part. `engine.mk` n'écrit jamais dans `ENGINE_DIR`.
 
 ## CMake : find_package(Orosmo)
 
@@ -106,8 +170,7 @@ créé par `orosmo init` les y installe.
 cmake_minimum_required(VERSION 3.20)
 project(mygame LANGUAGES CXX)
 
-list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/orosmo")
-find_package(Orosmo REQUIRED)
+find_package(Orosmo REQUIRED)   # cmake -DCMAKE_PREFIX_PATH="$(orosmo path 0.6.2)" ...
 
 add_executable(mygame src/main.cpp)
 orosmo_add_cui_views(mygame src/HudView.cui)
@@ -121,10 +184,10 @@ compile les vues au moment du build et ajoute les sources générées à la cibl
 | Variable | Défaut | Effet |
 |---|---|---|
 | `OROSMO_VCPKG_TRIPLET` | selon la machine | triplet vcpkg |
-| `OROSMO_VCPKG_ROOT` | `<paquet>/vcpkg_installed` | dossier des dépendances vcpkg |
+| `OROSMO_VCPKG_ROOT` | vide : `<paquet>/deps` | dossier `<racine>/<triplet>` des dépendances, si elles ne sont pas dans `deps/` |
 | `OROSMO_SHADERS_DIR`, `OROSMO_RES_DIR` | `<paquet>/shaders`, `<paquet>/res` | à copier à côté de l'exécutable |
 | `OROSMO_CUI_EXECUTABLE` | `<paquet>/tools/cui` | compilateur `.cui` |
-| `OROSMO_GEN_DIR` | `<paquet>/Generated` | sortie générique du compilateur |
+| `OROSMO_GEN_DIR` | `<dossier de build>/orosmo_generated` | sortie du compilateur `.cui` (jamais dans le paquet) |
 
 Le moteur lui-même ne se construit pas avec CMake : cette consommation est facultative.
 
@@ -136,11 +199,12 @@ Un programme qui dessine charge les shaders du RHI (`shaders/rhi/` du paquet) ; 
 
 | Source | Destination | Choix |
 |---|---|---|
-| `RES_DIR` | `bin/<type>/res/` | `res/` du projet s'il existe, sinon `orosmo/res/` |
-| `SHADER_DIR` | `bin/<type>/res/shader/` | `orosmo/shaders/` |
+| `RES_DIR` | `bin/<type>/res/` | `res/` du projet s'il existe, sinon `$(ENGINE_DIR)/res/` |
+| `SHADER_DIR` | `bin/<type>/res/shader/` | `$(ENGINE_DIR)/shaders/` |
 
-Un seul dossier de ressources est copié : dès que le projet a un `res/`, celui de `orosmo/res/` est ignoré. Pour ajouter vos
-assets, copiez d'abord `orosmo/res/` dans `res/` : voir les
+Un seul dossier de ressources est copié : dès que le projet a un `res/`, celui du moteur est ignoré. Pour ajouter vos
+assets, copiez d'abord le `res/` du moteur dans le projet (`cp -r "$(orosmo path 0.6.2)/res" res`, avec la version de
+`OROSMO_VERSION`) : voir les
 [conventions des exemples](/demarrer/premiere-application/#chemins-des-ressources). Vous pouvez aussi fixer `RES_DIR` dans
 `config.mk`. Avec CMake, copiez vous-même `OROSMO_SHADERS_DIR` et `OROSMO_RES_DIR` à côté de l'exécutable. Les chemins sont
 ensuite écrits avec `GET_RESOURCE_PATH("x")` (`orosmo/core/paths.hpp`) ; le moteur reçoit le dossier des shaders par

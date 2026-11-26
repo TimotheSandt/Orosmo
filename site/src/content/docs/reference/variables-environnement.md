@@ -34,4 +34,14 @@ sous macOS, `%APPDATA%` sous Windows. La démo y place aussi le cache SPIR-V des
 
 Ce sont des variables de `make` (ligne de commande ou environnement) ; la liste est dans
 [Compiler avec Make ou CMake](/reference/construction/) : `BUILD_TYPE`, `WERROR`, `SANITIZE`, `V`, `ORS_NO_PROGRESS`,
-`VCPKG`, `CXX`, `E2E_RUN_GRAPHICS`. L'outil `orosmo doctor` lit `CXX` et `VCPKG`.
+`VCPKG`, `CXX`, `E2E_RUN_GRAPHICS`, et pour un projet `ENGINE_DIR`, `OROSMO_VERSION`, `ENGINE_GEN_DIR`.
+
+## Outil orosmo
+
+| Variable | Effet |
+|---|---|
+| `OROSMO_HOME` | racine des moteurs installés et de l'outil (`bin/`, `engines/<version>/`) ; défaut `~/.orosmo`, `%LOCALAPPDATA%\Orosmo` sous Windows. Lue par l'outil et par le `Makefile` d'un projet. |
+| `CXX` | compilateur contrôlé par `orosmo doctor` (sinon `g++`, puis `clang++`) |
+| `MAKE` | programme lancé par `orosmo build`, `run`, `clean`, `migrate` (sinon `make` ; sous Windows, `mingw32-make` puis `make`) |
+
+Voir [Commande orosmo](/reference/commande-orosmo/).

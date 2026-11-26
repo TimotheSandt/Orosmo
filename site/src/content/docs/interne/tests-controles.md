@@ -109,7 +109,7 @@ Les mesures de performance comparées se font avec `tools/perf_compare.py` ([Mes
 
 | Tâche | Contenu |
 | --- | --- |
-| Linux x64 | `make check`, build debug `-Werror`, `make demo-test` (Mesa llvmpipe et lavapipe sous Xvfb), `make cui-test`, capture et comparaison à la référence, capture sans fenêtre identique à la capture fenêtrée, tests Python, `make demo-capture`, `make e2e-init` (paquet, `orosmo init`, compilation, lancement). |
+| Linux x64 | `make check`, build debug `-Werror`, `make demo-test` (Mesa llvmpipe et lavapipe sous Xvfb), `make cui-test`, capture et comparaison à la référence, capture sans fenêtre identique à la capture fenêtrée, tests Python, `make demo-capture`, `make e2e-init` (paquet avec `deps/` extrait en lecture seule, `orosmo init`, compilation sans vcpkg, lancement). |
 | Linux arm64 | Build debug et `make demo-test`. |
 | Linux x64 ASan + UBSan | `make demo-test SANITIZE=address,undefined`. |
 | Windows x64 (MinGW), macOS arm64 | Build debug et `make demo-test` par vcpkg, `make e2e-init` sans lancement graphique (`E2E_RUN_GRAPHICS=0`) ; bloquants. Sans `ENGINE_TEST_REQUIRE_GPU`, un test GPU sans pilote y est sauté. |
