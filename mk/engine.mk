@@ -459,8 +459,14 @@ $(ENGINE_PKG_ZIP): dist
 # ── engine tool binary ────────────────────────────────────────────────────────
 # The engine package is NOT embedded in the tool (small binary): `orosmo install` downloads it, `--package <zip>` offline.
 # GITHUB_REPO is baked in at compile time so the URL is not hardcoded in source.
-# mk/config.mk : ENGINE_VERSION (and the identity) are baked in by build.rs; a change must rebuild the tool (not via `dist`).
-$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) $(TOOLS_TEMPLATE) $(wildcard $(_MK_DIR)config.mk)
+# ENGINE_VERSION, the identity and the release host are baked in by build.rs: a change (in mk/config.mk, or on the command
+# line: `make ENGINE_VERSION=…`) must rebuild the tool, without depending on `dist`. The stamp file holds the last values and
+# is rewritten only when they change, so Make reruns Cargo exactly then.
+_TOOL_PARAMS       := $(REPO_HOST)|$(REPO_SLUG)|$(ENGINE_NAME)|$(ENGINE_VERSION)|$(ENGINE_PUBLISHER)|$(ENGINE_AUTHOR)|$(ENGINE_EMAIL)|$(ENGINE_DESCRIPTION)|$(ENGINE_HOMEPAGE)
+_TOOL_PARAMS_STAMP := $(CARGO_TARGET_DIR)/orosmo-baked-params.txt
+_TOOL_PARAMS_Q     := $(subst ','\'',$(_TOOL_PARAMS))
+_TOOL_PARAMS_SYNC  := $(shell mkdir -p "$(CARGO_TARGET_DIR)" && { [ "$$(cat "$(_TOOL_PARAMS_STAMP)" 2>/dev/null)" = '$(_TOOL_PARAMS_Q)' ] || printf '%s\n' '$(_TOOL_PARAMS_Q)' > "$(_TOOL_PARAMS_STAMP)"; })
+$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) $(TOOLS_TEMPLATE) $(wildcard $(_MK_DIR)config.mk) $(_TOOL_PARAMS_STAMP)
 	REPO_HOST="$(REPO_HOST)" \
 	GITHUB_REPO="$(REPO_SLUG)" \
 	ENGINE_NAME="$(ENGINE_NAME)" \
@@ -472,6 +478,7 @@ $(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) $(TOOLS_TEMPLATE) $(wild
 	ENGINE_HOMEPAGE="$(ENGINE_HOMEPAGE)" \
 	CARGO_TARGET_DIR="$(abspath $(CARGO_TARGET_DIR))" \
 	    $(CARGO) build --release --manifest-path $(TOOLS_WORKSPACE) --bin orosmo
+	@touch "$@"
 	@echo "Built: $(ENGINE_INIT_EXE)"
 
 $(ENGINE_TOOL_EXE): $(ENGINE_INIT_EXE)

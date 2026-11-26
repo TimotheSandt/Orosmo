@@ -546,7 +546,10 @@ fn cmd_migrate(args: &[String]) -> Result<i32, String> {
             format!("{why}; rollback incomplete: {}", problems.join("; "))
         }
     };
-    if let Err(e) = update_template_files(&project_dir).and_then(|()| write_project_version(&project_dir, &version).map(drop)) {
+    if let Err(e) = update_template_files(&project_dir)
+        .and_then(|()| write_project_version(&project_dir, &version).map(drop))
+        .and_then(|()| disable_vendored_engine_dir(&project_dir))
+    {
         return Err(rollback(&e));
     }
     if let Err(e) = fs::rename(&vendored, &old_dir) {
@@ -555,7 +558,8 @@ fn cmd_migrate(args: &[String]) -> Result<i32, String> {
     println!("  [moved] orosmo/ -> orosmo.old/ (kept until the project builds with engine {version})");
 
     // Le build de validation utilise le moteur sélectionné, même si config.local.mk (ou l'environnement) fixe ENGINE_DIR.
-    let local_engine = fs::read_to_string(project_dir.join("config.local.mk")).ok().and_then(|c| project::read_var(&c, "ENGINE_DIR"));
+    let local_engine = fs::read_to_string(project_dir.join("config.local.mk")).ok().and_then(|c| project::read_var(&c, "ENGINE_DIR"))
+        .filter(|d| !points_to_vendored(d, &project_dir));
     let mut goals = build_goals(false);
     goals.extend(engine_override(&path));
     println!("Building with {}...", path.display());
@@ -574,6 +578,51 @@ fn cmd_migrate(args: &[String]) -> Result<i32, String> {
         }
         Err(e) => Err(rollback(&e)),
     }
+}
+
+/// `value` (valeur d'ENGINE_DIR) désigne le moteur vendorisé `<projet>/orosmo` ?
+fn points_to_vendored(value: &str, project_dir: &Path) -> bool {
+    let v = value.trim().trim_end_matches(['/', '\\']);
+    let v = v.strip_prefix("./").or_else(|| v.strip_prefix(".\\")).unwrap_or(v);
+    if v == "orosmo" {
+        return true;
+    }
+    let p = Path::new(v);
+    p.is_absolute()
+        && matches!((fs::canonicalize(p), fs::canonicalize(project_dir.join("orosmo"))), (Ok(a), Ok(b)) if a == b)
+}
+
+/// Avant la migration : une affectation persistante `ENGINE_DIR := orosmo` (config.mk, config.local.mk ; l'ancien gabarit la
+/// proposait) ferait chercher le dossier supprimé au build suivant. Elle est mise en commentaire (restaurée si la migration
+/// échoue). Une valeur qui désigne un autre moteur est gardée (note après la migration).
+fn disable_vendored_engine_dir(project_dir: &Path) -> Result<(), String> {
+    for name in ["config.mk", "config.local.mk"] {
+        let path = project_dir.join(name);
+        let Ok(content) = fs::read_to_string(&path) else { continue };
+        let mut changed = false;
+        let lines: Vec<String> = content.lines().map(|line| {
+            let t = line.trim_start();
+            let vendored = !t.starts_with('#')
+                && ["ENGINE_DIR", "_ENGINE_MK"].iter().any(|var| {
+                    project::eval_var(None, &[("", line)], var).is_some_and(|(v, _)| {
+                        if *var == "ENGINE_DIR" { points_to_vendored(&v, project_dir) } else { v.trim_start_matches("./").starts_with("orosmo/") }
+                    })
+                });
+            if vendored {
+                changed = true;
+                format!("# {line}   # disabled by `orosmo migrate`: the engine now comes from OROSMO_HOME")
+            } else {
+                line.to_string()
+            }
+        }).collect();
+        if changed {
+            let mut out = lines.join("\n");
+            out.push('\n');
+            fs::write(&path, out).map_err(|e| format!("failed to write {}: {e}", path.display()))?;
+            println!("  [updated] {} (ENGINE_DIR pointing to orosmo/ disabled)", path.display());
+        }
+    }
+    Ok(())
 }
 
 /// Fichiers du projet que `migrate` réécrit (`config.local.mk` : créé s'il manque).
@@ -723,7 +772,15 @@ fn cmd_self_update(args: &[String]) -> Result<(), String> {
 /// d'exécution, est d'abord renommé en `.old`).
 fn replace_binary(dest: &Path, bytes: &[u8]) -> Result<(), String> {
     let new = dest.with_extension("new");
-    fs::write(&new, bytes).map_err(|e| format!("failed to write {}: {e}", new.display()))?;
+    // Un `.new` déjà présent (peut-être un lien venu d'un dépôt cloné) est retiré : le lien lui-même, jamais sa cible. Puis le
+    // fichier est créé neuf (`create_new` refuse tout ce qui existe, lien compris).
+    if fs::symlink_metadata(&new).is_ok() {
+        fs::remove_file(&new).map_err(|e| format!("failed to remove {}: {e}", new.display()))?;
+    }
+    let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&new)
+        .map_err(|e| format!("failed to create {}: {e}", new.display()))?;
+    io::Write::write_all(&mut f, bytes).map_err(|e| format!("failed to write {}: {e}", new.display()))?;
+    drop(f);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -1326,6 +1383,40 @@ mod tests {
 
         let [e, mk] = engine_override(Path::new("/h/engines/0.6.2"));
         assert_eq!((e.as_str(), mk.as_str()), ("ENGINE_DIR=/h/engines/0.6.2", "_ENGINE_MK=/h/engines/0.6.2/make/engine.mk"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn replace_binary_does_not_write_through_a_planted_link() {
+        let dir = home::tests::temp_dir("replace");
+        let outside = dir.join("personal.txt");
+        fs::write(&outside, b"precious").unwrap();
+        let dest = dir.join("orosmo");
+        fs::write(&dest, b"old tool").unwrap();
+        std::os::unix::fs::symlink(&outside, dir.join("orosmo.new")).unwrap();
+        replace_binary(&dest, b"new tool").unwrap();
+        assert_eq!(fs::read(&outside).unwrap(), b"precious");
+        assert_eq!(fs::read(&dest).unwrap(), b"new tool");
+        assert!(!dir.join("orosmo.new").exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn migrate_disables_an_engine_dir_pointing_to_the_vendored_engine() {
+        let dir = home::tests::temp_dir("vendordir");
+        fs::create_dir_all(dir.join("orosmo")).unwrap();
+        fs::write(dir.join("config.local.mk"), "ENGINE_DIR := orosmo/\n_ENGINE_MK := orosmo/make/engine.mk\nCXX := g++-14\n").unwrap();
+        let abs = format!("ENGINE_DIR ?= {}\nENGINE_DIR := /opt/other\n", dir.join("orosmo").display());
+        fs::write(dir.join("config.mk"), &abs).unwrap();
+        disable_vendored_engine_dir(&dir).unwrap();
+        let local = fs::read_to_string(dir.join("config.local.mk")).unwrap();
+        assert_eq!(project::read_var(&local, "ENGINE_DIR"), None);
+        assert_eq!(project::read_var(&local, "_ENGINE_MK"), None);
+        assert_eq!(project::read_var(&local, "CXX").as_deref(), Some("g++-14"));
+        let cfg = fs::read_to_string(dir.join("config.mk")).unwrap();
+        assert!(cfg.lines().next().unwrap().starts_with("# ENGINE_DIR ?="));
+        assert_eq!(project::read_var(&cfg, "ENGINE_DIR").as_deref(), Some("/opt/other"), "another engine is kept");
         let _ = fs::remove_dir_all(&dir);
     }
 }

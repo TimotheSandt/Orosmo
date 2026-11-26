@@ -225,17 +225,25 @@ pub fn make_program() -> String {
         return m;
     }
     if cfg!(windows) {
+        // Chemin complet : `doctor` relance ce programme avec le PATH d'origine, qui n'a peut-être pas le dossier de MSYS2.
+        let path = windows_msys_path().unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
         for cand in ["mingw32-make", "make"] {
-            let mut probe = Command::new(cand);
-            if let Some(p) = windows_msys_path() {
-                probe.env("PATH", p);
-            }
+            let Some(full) = find_program(&path, ';', cand) else { continue };
+            let mut probe = Command::new(&full);
+            probe.env("PATH", &path);
             if probe.arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success()) {
-                return cand.to_string();
+                return full.display().to_string();
             }
         }
     }
     "make".to_string()
+}
+
+/// Premier `<dossier>/<name>` (ou `<name>.exe`) qui existe dans la liste `path` (séparateur `sep`).
+pub fn find_program(path: &str, sep: char, name: &str) -> Option<PathBuf> {
+    path.split(sep).filter(|d| !d.is_empty()).find_map(|d| {
+        [name.to_string(), format!("{name}.exe")].into_iter().map(|n| Path::new(d).join(n)).find(|p| p.is_file())
+    })
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -418,6 +426,19 @@ mod tests {
         assert!(parts[1].contains("usr"));
         assert_eq!(parts[2], "C:\\Windows\\system32");
         assert_eq!(msys_path(&root, Some("MINGW64"), "x"), None); // déjà dans un shell MSYS2
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn make_is_resolved_to_a_full_path() {
+        let root = std::env::temp_dir().join(format!("orosmo_findprog_{}", std::process::id()));
+        let (a, b) = (root.join("a"), root.join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(b.join("mingw32-make.exe"), b"").unwrap();
+        let path = format!("{};{}", a.display(), b.display());
+        assert_eq!(find_program(&path, ';', "mingw32-make"), Some(b.join("mingw32-make.exe")));
+        assert_eq!(find_program(&path, ';', "make"), None);
         let _ = std::fs::remove_dir_all(&root);
     }
 }

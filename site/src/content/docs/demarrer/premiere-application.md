@@ -105,11 +105,16 @@ installé ; le reste est identique.
 :::caution
 Le `Makefile` copie **un seul** dossier vers `bin/<type>/res/` : `res/` du projet s'il existe, sinon le `res/` du moteur
 (variable `RES_DIR`). Si vous créez `res/` pour y mettre un modèle, la police et les thèmes du paquet ne sont plus copiés :
-le texte ne s'affiche plus et un thème qui étend `dark.json` ne trouve plus son parent. Copiez d'abord ceux du paquet :
-`cp -r "$(orosmo path "$(sed -n 's/^OROSMO_VERSION *[:?]*= *//p' config.mk)")/res" res` (le moteur de `OROSMO_VERSION`,
-`config.mk`), ou `cp -r orosmo/res res` pour un projet dont le moteur est dans `orosmo/` (`--vendor`, ancien projet), puis
-ajoutez vos fichiers (`res/models/`,
-`res/textures/`…). Les shaders, eux, sont toujours copiés depuis le moteur. Conséquence : `orosmo update` ne met plus à jour
+le texte ne s'affiche plus et un thème qui étend `dark.json` ne trouve plus son parent. Copiez d'abord ceux du moteur
+que `make` utilise réellement (`make info` l'affiche : `ENGINE_DIR` donné, `orosmo/` d'un projet `--vendor`, ou
+`orosmo path $(OROSMO_VERSION)`), dans le dossier du projet :
+
+```bash
+eng=$(ORS_NO_PROGRESS=1 make -s info | sed -n '/^Engine:/{s/^Engine: *//;s/ (OROSMO_VERSION.*//;p;}')
+mkdir -p res && cp -R "$eng/res/." res/   # le contenu de res/ du moteur, même si res/ existe déjà
+```
+
+puis ajoutez vos fichiers (`res/models/`, `res/textures/`…). Les shaders, eux, sont toujours copiés depuis le moteur. Conséquence : `orosmo update` ne met plus à jour
 la police et les thèmes de votre `res/`.
 :::
 

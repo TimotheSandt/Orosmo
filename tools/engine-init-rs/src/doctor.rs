@@ -283,15 +283,13 @@ fn check_engine_dir(sdk_dir: &Path, repair: &str) -> Vec<CheckResult> {
 /// `ENGINE_DIR` imposé au Makefile du gabarit : `config.local.mk`, puis `config.mk`, puis l'environnement (une affectation dans
 /// un fichier inclus l'emporte sur l'environnement). Une valeur calculée (`$(…)`) n'est pas interprétée. Chemin relatif : au projet.
 fn engine_dir_override(project_dir: &Path) -> Option<(std::path::PathBuf, &'static str)> {
-    let from_file = |name: &'static str| {
-        std::fs::read_to_string(project_dir.join(name)).ok()
-            .and_then(|c| crate::project::read_var(&c, "ENGINE_DIR"))
-            .map(|v| (v, name))
-    };
-    let (value, from) = from_file("config.local.mk")
-        .or_else(|| from_file("config.mk"))
-        .or_else(|| std::env::var("ENGINE_DIR").ok().filter(|v| !v.trim().is_empty()).map(|v| (v, "environment")))?;
-    if value.contains("$(") {
+    // Ordre du gabarit : environnement, puis `-include config.mk`, puis `-include config.local.mk`, avec un état partagé.
+    let config = std::fs::read_to_string(project_dir.join("config.mk")).unwrap_or_default();
+    let local = std::fs::read_to_string(project_dir.join("config.local.mk")).unwrap_or_default();
+    let env = std::env::var("ENGINE_DIR").ok().map(|v| (v, "environment"));
+    let (value, from) = crate::project::eval_var(env, &[("config.mk", &config), ("config.local.mk", &local)], "ENGINE_DIR")?;
+    // Définie vide : le gabarit passe à orosmo/ puis à OROSMO_VERSION, comme sans ENGINE_DIR.
+    if value.trim().is_empty() || value.contains("$(") {
         return None;
     }
     Some((project_dir.join(value.trim()), from))
@@ -755,6 +753,17 @@ mod tests {
         let checks = check_project_layout(&project, "x64-linux", Some(&home));
         assert!(checks.iter().any(|c| c.name == "Project engine" && c.severity == Severity::Ok), "{:?}", checks.iter().map(|c| &c.name).collect::<Vec<_>>());
         assert!(!checks.iter().any(|c| c.severity == Severity::Error), "{:?}", checks.iter().map(|c| (&c.name, &c.detail)).collect::<Vec<_>>());
+        // `ENGINE_DIR :=` vide dans config.local.mk : la valeur de config.mk n'est pas reprise, résolution normale.
+        fs::write(project.join("config.mk"), "OROSMO_VERSION := 0.6.2\nENGINE_DIR := missing\n").unwrap();
+        fs::write(project.join("config.local.mk"), "ENGINE_DIR :=\n").unwrap();
+        let checks = check_project_layout(&project, "x64-linux", Some(&home));
+        assert!(!checks.iter().any(|c| c.detail.contains("missing")));
+        // `?=` local après `:=` de config.mk : config.mk gagne.
+        fs::write(project.join("config.mk"), format!("ENGINE_DIR := {}\n", sdk.display())).unwrap();
+        fs::write(project.join("config.local.mk"), "ENGINE_DIR ?= missing\n").unwrap();
+        let checks = check_project_layout(&project, "x64-linux", Some(&home));
+        assert!(checks.iter().any(|c| c.name == "Project engine" && c.severity == Severity::Ok));
+        fs::write(project.join("config.mk"), "OROSMO_VERSION := 0.6.2\n").unwrap();
         // ENGINE_DIR qui ne désigne pas un moteur : erreur qui nomme ENGINE_DIR.
         fs::write(project.join("config.local.mk"), "ENGINE_DIR := nowhere\n").unwrap();
         let checks = check_project_layout(&project, "x64-linux", Some(&home));

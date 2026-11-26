@@ -16,14 +16,23 @@ fn assignment<'a>(line: &'a str, var: &str) -> Option<(&'a str, &'a str)> {
 /// Valeur de `var` telle que GNU Make la voit : affectations dans l'ordre, la dernière gagne, sauf `?=` qui ne s'applique que si
 /// la variable n'est pas encore définie (même vide). Commentaire en fin de ligne retiré. None si absente ou vide.
 pub fn read_var(content: &str, var: &str) -> Option<String> {
-    let mut value: Option<String> = None;
-    for (op, v) in content.lines().filter(|l| !l.trim_start().starts_with('#')).filter_map(|l| assignment(l, var)) {
-        if op == "?=" && value.is_some() {
-            continue;
+    eval_var(None, &[("", content)], var).map(|(v, _)| v).filter(|v| !v.is_empty())
+}
+
+/// Comme Make qui inclut `sources` (nom, contenu) dans l'ordre, avec un état partagé : `initial` (variable d'environnement, par
+/// exemple) puis chaque affectation ; `?=` ne s'applique que si la variable n'est pas encore définie. Renvoie la valeur et le
+/// nom de sa source ; `Some(("", …))` : définie vide (ce n'est pas une absence).
+pub fn eval_var<'a>(initial: Option<(String, &'a str)>, sources: &[(&'a str, &str)], var: &str) -> Option<(String, &'a str)> {
+    let mut value = initial;
+    for (name, content) in sources {
+        for (op, v) in content.lines().filter(|l| !l.trim_start().starts_with('#')).filter_map(|l| assignment(l, var)) {
+            if op == "?=" && value.is_some() {
+                continue;
+            }
+            value = Some((v.split('#').next().unwrap_or("").trim().to_string(), *name));
         }
-        value = Some(v.split('#').next().unwrap_or("").trim().to_string());
     }
-    value.filter(|v| !v.is_empty())
+    value
 }
 
 /// Version du moteur nommée par le projet ; une valeur de gabarit non remplie (`{{…}}`, `$(…)`) ne compte pas.
@@ -94,5 +103,19 @@ mod tests {
         // OROSMO_VERSION_EXTRA n'est pas OROSMO_VERSION ; un gabarit non rempli n'est pas une version.
         assert_eq!(read_orosmo_version("OROSMO_VERSION_EXTRA := 1\n"), None);
         assert_eq!(read_orosmo_version("OROSMO_VERSION := {{OROSMO_VERSION}}\n"), None);
+    }
+
+    #[test]
+    fn evaluation_is_shared_across_files() {
+        let mk = |a: &'static str, b: &'static str| eval_var(None, &[("config.mk", a), ("config.local.mk", b)], "ENGINE_DIR");
+        // `?=` local après un `:=` de config.mk : config.mk gagne.
+        assert_eq!(mk("ENGINE_DIR := orosmo\n", "ENGINE_DIR ?= missing\n"), Some(("orosmo".to_string(), "config.mk")));
+        // `:=` vide local : définie vide, la valeur de config.mk n'est pas reprise.
+        assert_eq!(mk("ENGINE_DIR := missing\n", "ENGINE_DIR :=\n"), Some((String::new(), "config.local.mk")));
+        assert_eq!(mk("", ""), None);
+        // L'environnement est remplacé par `:=`, pas par `?=`.
+        let env = Some(("/env".to_string(), "environment"));
+        assert_eq!(eval_var(env.clone(), &[("config.mk", "ENGINE_DIR ?= x\n")], "ENGINE_DIR"), env);
+        assert_eq!(eval_var(env, &[("config.mk", "ENGINE_DIR := x # c\n")], "ENGINE_DIR"), Some(("x".to_string(), "config.mk")));
     }
 }

@@ -203,8 +203,8 @@ Un programme qui dessine charge les shaders du RHI (`shaders/rhi/` du paquet) ; 
 | `SHADER_DIR` | `bin/<type>/res/shader/` | `$(ENGINE_DIR)/shaders/` |
 
 Un seul dossier de ressources est copié : dès que le projet a un `res/`, celui du moteur est ignoré. Pour ajouter vos
-assets, copiez d'abord le `res/` du moteur dans le projet (`cp -r "$(orosmo path 0.6.2)/res" res`, avec la version de
-`OROSMO_VERSION`) : voir les
+assets, copiez d'abord le `res/` du moteur dans le projet (``mkdir -p res && cp -R "$eng/res/." res/``, où `eng` est le dossier
+`Engine:` de `make info`) : voir les
 [conventions des exemples](/demarrer/premiere-application/#chemins-des-ressources). Vous pouvez aussi fixer `RES_DIR` dans
 `config.mk`. Avec CMake, copiez vous-même `OROSMO_SHADERS_DIR` et `OROSMO_RES_DIR` à côté de l'exécutable. Les chemins sont
 ensuite écrits avec `GET_RESOURCE_PATH("x")` (`orosmo/core/paths.hpp`) ; le moteur reçoit le dossier des shaders par
