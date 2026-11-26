@@ -14,10 +14,11 @@ class GenCompileCommandsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
             (root / "orosmo" / "includes" / "orosmo").mkdir(parents=True)
-            (root / "orosmo" / "Generated").mkdir(parents=True)
+            (root / "orosmo" / "deps" / "include").mkdir(parents=True)
+            (root / "Generated").mkdir(parents=True)
             (root / "src").mkdir(parents=True)
             (root / "src" / "main.cpp").write_text("int main() { return 0; }\n", encoding="utf-8")
-            (root / "orosmo" / "Generated" / "HudView.gen.cpp").write_text("// gen\n", encoding="utf-8")
+            (root / "Generated" / "HudView.gen.cpp").write_text("// gen\n", encoding="utf-8")
 
             out = root / "compile_commands.json"
             rc = gccdb.main([
@@ -37,7 +38,9 @@ class GenCompileCommandsTests(unittest.TestCase):
                 self.assertIn("-std=c++23", args)
                 self.assertIn("-DDEBUG", args)
                 self.assertIn(f"-I{(root / 'orosmo' / 'includes').resolve()}", args)
-                self.assertIn(f"-I{(root / 'orosmo' / 'Generated').resolve()}", args)
+                # CUI output in the project (contract A76), third-party headers from the package's deps/.
+                self.assertIn(f"-I{(root / 'Generated').resolve()}", args)
+                self.assertIn(str((root / "orosmo" / "deps" / "include").resolve()), args)
 
     def test_repo_mode_generates_entries_for_engine_demo_and_tests(self):
         with tempfile.TemporaryDirectory() as tmp:

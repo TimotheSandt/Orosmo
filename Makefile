@@ -108,8 +108,9 @@ endif
 endif
 endif
 
-# In-repo layout: demo resources, shaders and tests live at the repository root.
-DEMO_ARGS  := RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico
+# In-repo layout: demo resources, shaders and tests live at the repository root; the engine is the SDK synced into
+# apps/demo/orosmo/ (sync-demo), never an installed version.
+DEMO_ARGS  := ENGINE_DIR=orosmo RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico
 
 # ── vcpkg ─────────────────────────────────────────────────────────────────────
 .PHONY: install-deps install-deps-demo install-deps-all
@@ -238,60 +239,92 @@ demo-capture: all-debug
 demo-vulkan-check: all-debug
 	python3 tools/demo_parity.py --bin $(DEMO_BIN) --out build/demo-parity $(if $(FULL),--full)
 
-# ── BLD-02 : de bout en bout depuis le paquet (sans les sources du moteur) ──
-#   make e2e-init   paquet + outil `orosmo` construits ; `orosmo init --package` d'un projet neuf dans build/e2e/<date>/mygame ;
-#                   vérification que le paquet ne contient aucun module procédural (world, terrain_renderer, shaders terrain) ;
-#                   compilation et lancement sans fenêtre (capture) ; exemple minimal compilé depuis le paquet.
-#   Chaque lancement a son dossier (rien n'est effacé). Les dépendances vcpkg du dépôt sont reliées au projet (équivalent de
-#   `make install` dans le projet, sans le réseau).
+# ── BLD-02 / A76 : de bout en bout depuis le paquet (sans les sources du moteur ni vcpkg), par le chemin de l'utilisateur ──
+#   make e2e-init   paquet + outil `orosmo` construits ; OROSMO_HOME isolé dans build/e2e/<date>/home ; l'outil y est copié dans
+#                   bin/ (comme install.sh) et mis en tête du PATH ;
+#                   `orosmo install --package <zip>` installe le moteur dans home/engines/<version>, mis ensuite en LECTURE
+#                   SEULE : rien ne doit y écrire ; contenu vérifié (deps/ sans bibliothèque partagée, VERSION, LICENSE,
+#                   aucun module procédural) ;
+#                   `orosmo init` d'un projet neuf (sans réseau : OROSMO_DOWNLOAD_BASE = un faux dossier de release avec
+#                   SHA256SUMS), `make debug` SANS ENGINE_DIR (le Makefile du projet trouve le moteur par `orosmo path`),
+#                   aucun vcpkg_installed, Generated/ dans le projet ; `orosmo build --json` ; `orosmo run -- --api opengl
+#                   --headless …` (capture) si E2E_RUN_GRAPHICS=1 ; exemple minimal copié hors du moteur et compilé ; CMake.
+#   Chaque lancement a son dossier (rien n'est effacé ; les droits d'écriture du moteur installé sont rendus à la fin).
 E2E_RUN      := build/e2e/$(shell date +%Y%m%d-%H%M%S)
 E2E_PLATFORM  = $(shell $(MAKE) -s -f $(ENGINE_MK) print-platform)
 E2E_EXE       = $(if $(filter Windows_NT,$(OS)),.exe)
 # 1 : e2e-init lance aussi le projet créé (OpenGL 4.3 requis : Linux, ou Mesa sous xvfb). 0 : seulement compiler et lier (macOS ≤ 4.1, Windows sans GPU).
 E2E_RUN_GRAPHICS ?= 1
-E2E_VCPKG    ?= $(abspath vcpkg_installed)
+E2E_HOME      = $(abspath $(E2E_RUN))/home
+E2E_PKG       = $(abspath dist)/orosmo-pkg-$(E2E_PLATFORM).zip
+E2E_TOOL      = $(E2E_HOME)/bin/orosmo$(E2E_EXE)
+# Environnement de l'utilisateur après install.sh : OROSMO_HOME, outil dans le PATH ; faux serveur de release (aucun réseau).
+# Les commandes `orosmo` partent d'un environnement de shell (sans les variables du make appelant) ; `$(MAKE)` garde son jobserver.
+# bin/ entre dans le PATH par `pwd` : sous MSYS2, un chemin D:/… casserait le PATH (séparé par « : »).
+E2E_VARS      = OROSMO_HOME="$(E2E_HOME)" OROSMO_DOWNLOAD_BASE="$(abspath $(E2E_RUN))/release" PATH="$$(cd "$(E2E_HOME)/bin" && pwd):$$PATH"
+E2E_ENV       = env -u ENGINE_DIR $(E2E_VARS)
+E2E_SH        = env -u ENGINE_DIR -u MAKEFLAGS -u MFLAGS -u MAKELEVEL $(E2E_VARS)
+# Dossier du moteur installé : écrit par `orosmo path` pendant la recette (lu par le shell, pas par make).
+E2E_ENGINE    = $$(cat "$(abspath $(E2E_RUN))/engine-dir")
 .PHONY: e2e-init
 e2e-init:
 	$(MAKE) -f $(ENGINE_MK) engine-tool
-	mkdir -p $(E2E_RUN)
-	cd $(E2E_RUN) && "$(abspath dist)/orosmo-$(E2E_PLATFORM)$(E2E_EXE)" init --package "$(abspath dist)/orosmo-pkg-$(E2E_PLATFORM).zip" mygame
-	test -f $(E2E_RUN)/mygame/orosmo/tools/build_progress.py   # barre de progression du projet (Makefile du modèle)
-	@test ! -e $(E2E_RUN)/mygame/orosmo/includes/orosmo/world
-	@test ! -e $(E2E_RUN)/mygame/orosmo/includes/orosmo/renderer/terrain_renderer.hpp
-	@test ! -e $(E2E_RUN)/mygame/orosmo/lib/debug/libworld.a
-	@test ! -e $(E2E_RUN)/mygame/orosmo/lib/release/libworld.a
-	@test ! -e $(E2E_RUN)/mygame/orosmo/lib/debug/libterrain_renderer.a
-	@test ! -e $(E2E_RUN)/mygame/orosmo/lib/release/libterrain_renderer.a
-	@test ! -e $(E2E_RUN)/mygame/orosmo/shaders/rhi/terrain.vert
-	@test ! -e $(E2E_RUN)/mygame/orosmo/shaders/rhi/terrain.frag
-	@test ! -e $(E2E_RUN)/mygame/orosmo/examples/terrain_gen
-	@test ! -e $(E2E_RUN)/mygame/orosmo/examples/terrain_viewer
-	ln -sfn "$(E2E_VCPKG)" $(E2E_RUN)/mygame/orosmo/vcpkg_installed
-	$(MAKE) -C $(E2E_RUN)/mygame debug
+	mkdir -p $(E2E_HOME)/bin $(E2E_RUN)/release $(E2E_RUN)/minimal
+	cp "$(abspath dist)/orosmo-$(E2E_PLATFORM)$(E2E_EXE)" "$(E2E_TOOL)"
+	cp "$(E2E_PKG)" $(E2E_RUN)/release/
+	cd $(E2E_RUN)/release && { sha256sum orosmo-pkg-$(E2E_PLATFORM).zip 2>/dev/null || shasum -a 256 orosmo-pkg-$(E2E_PLATFORM).zip; } > SHA256SUMS
+	$(E2E_SH) orosmo install --package "$(E2E_PKG)"
+	v=$$(ls "$(E2E_HOME)/engines") && $(E2E_SH) orosmo path "$$v" > "$(abspath $(E2E_RUN))/engine-dir"
+	@echo "e2e-init : moteur installé dans $(E2E_ENGINE)"
+	test -x "$(E2E_ENGINE)/tools/cui$(E2E_EXE)"
+	test -f "$(E2E_ENGINE)/tools/build_progress.py"   # barre de progression du projet (Makefile du modèle)
+	test -s "$(E2E_ENGINE)/VERSION" && test -s "$(E2E_ENGINE)/LICENSE"
+	test -d "$(E2E_ENGINE)/deps/include" && test -d "$(E2E_ENGINE)/deps/lib"
+	@test -z "$$(find "$(E2E_ENGINE)/deps" \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' -o -name '*.dll' -o -name 'libvulkan*' \) -print)" \
+	    || { echo "e2e-init : bibliothèque partagée ou chargeur Vulkan dans deps/"; exit 1; }
+	@e="$(E2E_ENGINE)"; for f in includes/orosmo/world includes/orosmo/renderer/terrain_renderer.hpp \
+	    lib/debug/libworld.a lib/release/libworld.a lib/debug/libterrain_renderer.a lib/release/libterrain_renderer.a \
+	    shaders/rhi/terrain.vert shaders/rhi/terrain.frag examples/terrain_gen examples/terrain_viewer; do \
+	    test ! -e "$$e/$$f" || { echo "e2e-init : module procédural dans le paquet : $$f"; exit 1; }; done
+	cp "$(E2E_ENGINE)/examples/minimal/main.cpp" "$(E2E_ENGINE)/examples/minimal/Makefile" $(E2E_RUN)/minimal/
+	chmod -R a-w "$(E2E_ENGINE)"
+	cd $(E2E_RUN) && $(E2E_SH) orosmo init mygame
+	test ! -e $(E2E_RUN)/mygame/vcpkg_installed && test ! -e $(E2E_RUN)/mygame/orosmo
+	grep -q "^OROSMO_VERSION *:= *$$(cat "$(E2E_ENGINE)/VERSION")" $(E2E_RUN)/mygame/config.mk
+	@# Sans ENGINE_DIR : le Makefile du projet appelle `orosmo path $(OROSMO_VERSION)` (outil trouvé dans le PATH).
+	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) debug
+	test -n "$$(find $(E2E_RUN)/mygame/Generated -name '*.gen.cpp')"   # sortie de cui dans le projet
+	@# 2e build (copy_res recopie les ressources du moteur en lecture seule : elles doivent rester inscriptibles, G220).
+	cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo build --json > ../build.json
+	grep -q '"event":"done"' $(E2E_RUN)/build.json
 	@if [ "$(E2E_RUN_GRAPHICS)" = 1 ]; then \
-	    echo "e2e-init : lancement du projet (OpenGL, sans fenêtre)"; \
-	    cd $(E2E_RUN)/mygame && ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3 \
+	    echo "e2e-init : orosmo run (OpenGL, sans fenêtre)"; \
+	    cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo run -- --api opengl --headless \
+	        --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3 \
 	      && test -s "$(abspath $(E2E_RUN))/capture/scene.png" && test -s "$(abspath $(E2E_RUN))/capture/ui.png"; \
 	  else \
 	    echo "e2e-init : lancement graphique sauté (E2E_RUN_GRAPHICS=0 : exécuteur sans OpenGL 4.3, projet seulement compilé et lié)"; \
 	  fi
-	$(MAKE) -C $(E2E_RUN)/mygame/orosmo/examples/minimal
-	$(E2E_RUN)/mygame/orosmo/examples/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
+	$(MAKE) -C $(E2E_RUN)/minimal ENGINE_DIR="$(E2E_ENGINE)"
+	$(E2E_RUN)/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
 	@echo "e2e-init : sortie de l'exemple minimal :"; cat $(E2E_RUN)/minimal.txt
 	grep -q 524800 $(E2E_RUN)/minimal.txt
-	"$(abspath dist)/orosmo-$(E2E_PLATFORM)$(E2E_EXE)" doctor "$(E2E_RUN)/mygame"
-	$(MAKE) -C $(E2E_RUN)/mygame compile-commands
+	@# doctor avec le même OROSMO_HOME que install/init (G219).
+	cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo doctor
+	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) compile-commands
 	test -s $(E2E_RUN)/mygame/compile_commands.json
 	@if command -v cmake >/dev/null 2>&1; then \
 	    mkdir -p $(E2E_RUN)/cmake-test && \
 	    printf 'cmake_minimum_required(VERSION 3.20)\nproject(orosmo_cmake_e2e LANGUAGES CXX)\nfind_package(Orosmo REQUIRED)\nadd_executable(minimal "%s")\ntarget_link_libraries(minimal PRIVATE Orosmo::Orosmo)\n' \
-	        "$(abspath $(E2E_RUN)/mygame/orosmo/examples/minimal/main.cpp)" > $(E2E_RUN)/cmake-test/CMakeLists.txt && \
-	    cmake -S $(E2E_RUN)/cmake-test -B $(E2E_RUN)/cmake-test/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(abspath $(E2E_RUN)/mygame/orosmo)" && \
+	        "$(abspath $(E2E_RUN)/minimal/main.cpp)" > $(E2E_RUN)/cmake-test/CMakeLists.txt && \
+	    cmake -S $(E2E_RUN)/cmake-test -B $(E2E_RUN)/cmake-test/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(E2E_ENGINE)" && \
 	    cmake --build $(E2E_RUN)/cmake-test/build && \
 	    $(E2E_RUN)/cmake-test/build/minimal$(E2E_EXE) > $(E2E_RUN)/cmake-minimal.txt && \
 	    grep -q 524800 $(E2E_RUN)/cmake-minimal.txt; \
 	fi
-	@echo "e2e-init : OK ($(E2E_RUN) : orosmo init/doctor, paquet cœur générique vérifié, Make + CMake, compile_commands.json, lancement, exemple minimal)"
+	@# Lecture seule tenue jusqu'ici ; droits rendus pour pouvoir effacer build/.
+	chmod -R u+w "$(E2E_ENGINE)"
+	@echo "e2e-init : OK ($(E2E_RUN) : orosmo install --package, moteur en lecture seule dans OROSMO_HOME, orosmo init, make sans ENGINE_DIR (orosmo path), orosmo build --json, orosmo run headless si E2E_RUN_GRAPHICS=1, doctor, Make + CMake, compile_commands.json, exemple minimal)"
 
 # ── UI-11 : tests du compilateur du langage d'interface ──
 #   make cui-test   tests unitaires (cargo test) + entrées invalides de bout en bout (binaire cui : messages fichier:ligne:colonne ;

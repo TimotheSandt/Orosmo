@@ -6,8 +6,9 @@ import starlight from '@astrojs/starlight';
 const repo = 'https://github.com/TimotheSandt/Orosmo';
 
 export default defineConfig({
-  // Adresse publique : à remplacer par le domaine choisi par l'auteur (SITE_URL au build, sinon une valeur locale).
-  site: process.env.SITE_URL || 'http://localhost:8080',
+  // Adresse publique (A74 : Cloudflare Pages, domaine de l'auteur). SITE_URL au build la remplace (test local, autre domaine).
+  // Starlight en tire la balise canonique de chaque page et le plan du site.
+  site: process.env.SITE_URL || 'https://orosmo.gasshog.fr',
   telemetry: false,
   // Anciennes adresses (avant la refonte du wiki).
   redirects: {
