@@ -59,6 +59,16 @@ Avec `curl … | sh`, les options passent après `sh -s --` :
 curl -fsSL https://github.com/TimotheSandt/Orosmo/releases/latest/download/install.sh | sh -s -- --yes --version 0.6.2
 ```
 
+Sous Windows, `irm … | iex` ne transmet pas d'options : utilisez les variables d'environnement `OROSMO_YES=1`,
+`OROSMO_NO_DEPS=1` et `OROSMO_VERSION=x.y.z`, ou lancez le script téléchargé avec ses paramètres
+`.\install.ps1 -Yes -NoDeps -Version 0.6.2`.
+
+```powershell
+$env:OROSMO_YES = "1"; irm https://github.com/TimotheSandt/Orosmo/releases/latest/download/install.ps1 | iex
+```
+
+Les deux scripts sont aussi servis par le site : `https://orosmo.gasshog.fr/install.sh` et `https://orosmo.gasshog.fr/install.ps1`.
+
 ## Ce que fait l'installeur
 
 1. Il détecte le gestionnaire de paquets : apt, dnf ou pacman sous Linux, Homebrew sous macOS, winget ou MSYS2 sous Windows.
