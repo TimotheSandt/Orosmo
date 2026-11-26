@@ -16,7 +16,7 @@
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
 #   dist/pkg-<platform>/          — staging, zipped into dist/orosmo-pkg-<platform>.zip
-#     (the zip is also embedded in the orosmo[.exe] tool)
+#     (downloaded by `orosmo install`, never embedded in the orosmo[.exe] tool)
 #       includes/   — public headers
 #       lib/        — debug + release archives
 #       deps/       — third-party libraries of the engine, prebuilt and static (include/, lib/, licenses/): tools/package-deps.sh
@@ -228,8 +228,6 @@ _CUI_INSTALLED := tools/$(notdir $(CUI_EXE))
 _DIST_STAGING    := dist/pkg-$(ENGINE_PLATFORM)
 DIST_PKG_DIR     := $(_DIST_STAGING)
 ENGINE_PKG_ZIP   := dist/orosmo-pkg-$(ENGINE_PLATFORM).zip
-ENGINE_PAYLOAD_DIR := build/engine-payload
-ENGINE_PAYLOAD_ZIP := $(ENGINE_PAYLOAD_DIR)/engine-$(ENGINE_PLATFORM)-$(shell date +%s%N 2>/dev/null || date +%s).zip
 
 ifeq ($(DETECTED_OS),Windows)
     ENGINE_TOOL_EXE := dist/orosmo-$(ENGINE_PLATFORM).exe
@@ -454,11 +452,9 @@ $(ENGINE_PKG_ZIP): dist
 	@echo "Zipped: $(ENGINE_PKG_ZIP)"
 
 # ── engine tool binary ────────────────────────────────────────────────────────
-# Embeds the engine package zip as an offline fallback via ENGINE_PAYLOAD_ZIP.
+# The engine package is NOT embedded in the tool (small binary): `orosmo install` downloads it, `--package <zip>` offline.
 # GITHUB_REPO is baked in at compile time so the URL is not hardcoded in source.
-$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) dist
-	@mkdir -p "$(ENGINE_PAYLOAD_DIR)"
-	$(call _DO_ZIP,$(ENGINE_PAYLOAD_ZIP))
+$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS)
 	REPO_HOST="$(REPO_HOST)" \
 	GITHUB_REPO="$(REPO_SLUG)" \
 	ENGINE_NAME="$(ENGINE_NAME)" \
@@ -468,7 +464,6 @@ $(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) dist
 	ENGINE_EMAIL="$(ENGINE_EMAIL)" \
 	ENGINE_DESCRIPTION="$(ENGINE_DESCRIPTION)" \
 	ENGINE_HOMEPAGE="$(ENGINE_HOMEPAGE)" \
-	ENGINE_PAYLOAD_ZIP="$(abspath $(ENGINE_PAYLOAD_ZIP))" \
 	CARGO_TARGET_DIR="$(abspath $(CARGO_TARGET_DIR))" \
 	    $(CARGO) build --release --manifest-path $(TOOLS_WORKSPACE) --bin orosmo
 	@echo "Built: $(ENGINE_INIT_EXE)"

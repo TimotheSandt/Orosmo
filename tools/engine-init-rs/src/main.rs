@@ -17,20 +17,13 @@ thread_local! {
     static LOCAL_PACKAGE: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
 }
 
-// ── Embedded payloads (set by build.rs) ──────────────────────────────────────
-// ENGINE_ZIP may be a zero-byte stub (dev build without ENGINE_PAYLOAD_ZIP).
-// Use has_embedded_engine() before relying on it; GitHub is always tried first.
+// ── Embedded templates (set by build.rs) ─────────────────────────────────────
+// The engine package itself is never embedded: `orosmo install` downloads it (or `--package <zip>` offline).
 
-const ENGINE_ZIP:    &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/engine_payload.zip"));
 const TPL_SRC_ZIP:   &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/templates/src.zip"));
 const TPL_MAKEFILE:  &str  = include_str!(concat!(env!("OUT_DIR"), "/templates/Makefile"));
 const TPL_CONFIG_MK: &str  = include_str!(concat!(env!("OUT_DIR"), "/templates/config.mk"));
 const TPL_GITIGNORE: &str  = include_str!(concat!(env!("OUT_DIR"), "/templates/gitignore"));
-
-fn has_embedded_engine() -> bool {
-    // A valid ZIP starts with the PK signature (0x50 0x4B).
-    ENGINE_ZIP.len() > 4 && ENGINE_ZIP[0] == 0x50 && ENGINE_ZIP[1] == 0x4B
-}
 
 // Written once, gitignored — not hash-tracked.
 const TPL_CONFIG_LOCAL_MK: &str = "\
@@ -43,6 +36,34 @@ const TPL_CONFIG_LOCAL_MK: &str = "\
 
 const HASH_TAG: &str = "# @engine-template-hash:";
 const SUMS_ASSET: &str = "SHA256SUMS";
+
+/// `OROSMO_DOWNLOAD_BASE` : dossier local (ou URL http(s)) qui contient les fichiers d'une release (`orosmo-pkg-<plateforme>.zip`,
+/// `SHA256SUMS`) ; remplace l'API du dépôt. Sert aux tests de bout en bout et aux miroirs ; install.sh lit la même variable.
+fn download_base() -> Option<String> {
+    std::env::var("OROSMO_DOWNLOAD_BASE").ok().map(|b| b.trim_end_matches('/').to_string()).filter(|b| !b.is_empty())
+}
+
+fn fetch_from_base(base: &str, name: &str) -> Result<Vec<u8>, String> {
+    if base.starts_with("http://") || base.starts_with("https://") {
+        return download_bytes(&format!("{base}/{name}"), name);
+    }
+    let dir = base.strip_prefix("file://").unwrap_or(base);
+    let path = Path::new(dir).join(name);
+    fs::read(&path).map_err(|e| format!("failed to read {}: {e}", path.display()))
+}
+
+/// Paquet du moteur pris dans `OROSMO_DOWNLOAD_BASE`, vérifié contre son `SHA256SUMS` s'il y en a un.
+fn package_from_base(base: &str) -> Result<Vec<u8>, String> {
+    let pkg_name = engine_pkg_name();
+    println!("  Downloading {pkg_name} from {base} (OROSMO_DOWNLOAD_BASE)...");
+    let bytes = fetch_from_base(base, &pkg_name)?;
+    let sums = fetch_from_base(base, SUMS_ASSET).ok().map(|b| String::from_utf8_lossy(&b).into_owned());
+    match verify_checksum(&bytes, &pkg_name, sums.as_deref())? {
+        Checksum::Verified => println!("  [ok] SHA-256 verified"),
+        Checksum::NoSumsFile => eprintln!("  Warning: no {SUMS_ASSET} in {base}; {pkg_name} is not verified"),
+    }
+    Ok(bytes)
+}
 
 // ── Engine identity (baked in from mk/config.mk via build.rs) ─────────
 
@@ -243,21 +264,26 @@ fn install_version(home: &Path, requested: Option<&str>, force: bool) -> Result<
         return Ok((v.clone(), p));
     }
 
+    if let Some(base) = download_base() {
+        let bytes = package_from_base(&base)?;
+        let version = normalize_version(&zip_version(&bytes)
+            .ok_or_else(|| format!("{} in {base} has no VERSION file", engine_pkg_name()))?)?;
+        if let Some(v) = &requested
+            && *v != version
+        {
+            return Err(format!("{base} holds engine {version}, not {v}"));
+        }
+        if !force && let Some(p) = engine_path(home, &version) {
+            println!("  Engine {version} already installed.");
+            return Ok((version, p));
+        }
+        return install_bytes(&engines, &version, &bytes, force);
+    }
+
     let release = match &requested {
         None => Release::fetch_latest(),
         Some(v) => Release::fetch_tag(v),
-    };
-    let release = match release {
-        Ok(r) => r,
-        Err(e) if has_embedded_engine() && requested.as_deref().is_none_or(|v| v == ENGINE_VERSION) => {
-            eprintln!("  Warning: cannot reach {REPO_HOST} ({e}); using the engine package embedded in this tool.");
-            if !force && let Some(p) = engine_path(home, ENGINE_VERSION) {
-                return Ok((ENGINE_VERSION.to_string(), p));
-            }
-            return install_bytes(&engines, ENGINE_VERSION, ENGINE_ZIP, force);
-        }
-        Err(e) => return Err(e),
-    };
+    }?;
     let version = normalize_version(&release.tag)?;
     if !force && let Some(p) = engine_path(home, &version) {
         println!("  Engine {version} already installed.");
@@ -609,17 +635,14 @@ fn replace_binary(dest: &Path, bytes: &[u8]) -> Result<(), String> {
 // ── GitHub release ────────────────────────────────────────────────────────────
 
 fn fetch_release_or_warn() -> Option<Release> {
-    if LOCAL_PACKAGE.with(|p| p.borrow().is_some()) {
-        return None; // paquet local : pas de réseau
+    if LOCAL_PACKAGE.with(|p| p.borrow().is_some()) || download_base().is_some() {
+        return None; // paquet local ou OROSMO_DOWNLOAD_BASE : pas d'API du dépôt
     }
     println!("Fetching latest engine release from {REPO_HOST}...");
     match Release::fetch_latest() {
         Ok(r) => Some(r),
         Err(e) => {
             eprintln!("  Warning: cannot reach {REPO_HOST} ({e})");
-            if has_embedded_engine() {
-                eprintln!("  Falling back to embedded engine package.");
-            }
             None
         }
     }
@@ -732,39 +755,26 @@ fn extract_engine(project_dir: &Path, release: Option<&Release>) -> Result<Strin
         let bytes = fs::read(&path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         return extract_vendored(project_dir, &bytes, None);
     }
-    // Try GitHub first if a release is available.
-    if let Some(r) = release {
-        let pkg_name = engine_pkg_name();
-        if let Some(url) = r.find_asset(&pkg_name) {
-            println!("  Downloading {} ({})...", pkg_name, r.tag);
-            match download_bytes(url, &pkg_name) {
-                Ok(bytes) => {
-                    check_download(r, &bytes, &pkg_name)?;
-                    return extract_vendored(project_dir, &bytes, Some(&r.tag));
-                }
-                Err(e) => eprintln!("  Warning: download failed ({e}), trying embedded package..."),
-            }
-        } else {
-            eprintln!("  Warning: release {} has no asset '{}', trying embedded package...",
-                r.tag, pkg_name);
-        }
+    if let Some(base) = download_base() {
+        let bytes = package_from_base(&base)?;
+        return extract_vendored(project_dir, &bytes, None);
     }
-
-    // Fallback: use the engine payload embedded at build time.
-    if has_embedded_engine() {
-        println!("  Using embedded engine package...");
-        return extract_vendored(project_dir, ENGINE_ZIP, Some(ENGINE_VERSION));
-    }
-
-    Err(format!(
-        "no engine package available: {REPO_HOST} unreachable and this binary has no embedded payload.\n\
-         Download orosmo-pkg-{}.zip from {REPO_HOST}/{GITHUB_REPO} and run 'orosmo update' when online.",
-        platform()
-    ))
+    let pkg_name = engine_pkg_name();
+    let Some(r) = release else {
+        return Err(format!(
+            "no engine package available: {REPO_HOST} unreachable.\n\
+             Download {pkg_name} from {REPO_HOST}/{GITHUB_REPO}/releases and pass it with --package <zip>."
+        ));
+    };
+    let url = r.find_asset(&pkg_name).ok_or_else(|| format!("release {} has no asset '{pkg_name}'", r.tag))?;
+    println!("  Downloading {} ({})...", pkg_name, r.tag);
+    let bytes = download_bytes(url, &pkg_name)?;
+    check_download(r, &bytes, &pkg_name)?;
+    extract_vendored(project_dir, &bytes, Some(&r.tag))
 }
 
 fn extract_vendored(project_dir: &Path, bytes: &[u8], tag: Option<&str>) -> Result<String, String> {
-    // Extraction par-dessus (pas de remplacement atomique) : un ancien projet garde orosmo/vcpkg_installed (`make install`).
+    // Extraction par-dessus (pas de remplacement atomique) : les fichiers propres à un ancien projet dans orosmo/ restent.
     let dest = project_dir.join("orosmo");
     let count = install::extract_zip_into(bytes, &dest)?;
     println!("  [ok] orosmo/ ({count} files)");
@@ -1033,6 +1043,7 @@ fn print_usage() {
     eprintln!("  orosmo self-update [--force]      replace this tool with the one of the latest release");
     eprintln!("  orosmo doctor [--json] [--fix] [path]  check compiler, system packages and engine; --fix proposes the install command");
     eprintln!("  --package <orosmo-pkg.zip>        (install, init, update) use this local package instead of downloading");
+    eprintln!("  OROSMO_DOWNLOAD_BASE=<dir|url>    take the release files (package, SHA256SUMS) from there instead of {REPO_HOST}");
     eprintln!();
     eprintln!("Engines live in $OROSMO_HOME/engines/<version> (default: ~/.orosmo, %LOCALAPPDATA%\\Orosmo on Windows).");
     eprintln!("A project names its engine in config.mk (OROSMO_VERSION := x.y.z); its Makefile finds it with `orosmo path`.");
@@ -1043,4 +1054,28 @@ fn print_usage() {
     eprintln!("`init --vendor` copies the engine into orosmo/ instead (old behaviour; `update` then replaces orosmo/).");
     eprintln!();
     eprintln!("build --json prints one JSON object per line: {{\"event\":\"begin|end|diagnostic|done\", ...}}; the exit code is make's.");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_template_gets_the_engine_version() {
+        assert!(TPL_CONFIG_MK.contains("{{OROSMO_VERSION}}"));
+        let out = render_version(TPL_CONFIG_MK, "mygame", "1.2.3");
+        assert!(!out.contains("{{"), "placeholder left in config.mk:\n{out}");
+        assert_eq!(project::read_orosmo_version(&out).as_deref(), Some("1.2.3"));
+    }
+
+    #[test]
+    fn release_files_from_a_local_directory() {
+        let dir = std::env::temp_dir().join(format!("orosmo_base_test_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("a.txt"), b"x").unwrap();
+        assert_eq!(fetch_from_base(dir.to_str().unwrap(), "a.txt").unwrap(), b"x");
+        assert_eq!(fetch_from_base(&format!("file://{}", dir.display()), "a.txt").unwrap(), b"x");
+        assert!(fetch_from_base(dir.to_str().unwrap(), "missing").is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
