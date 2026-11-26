@@ -135,7 +135,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | TER-13 | Lancer de rayon sur le terrain | Archivé (A37) | `raycastTerrain`, cohérent avec la profondeur rendue. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | UI-04 | Outils de debug | Absent | Absent. | M8 |
 | UI-08 | Rechargement à chaud de l'interface | Absent | Absent. | M8 |
-| UI-09 | Navigation et accessibilité de base | Absent | Absent. | M8 |
+| UI-09 | Navigation et accessibilité de base | Fait (M8 L9) | Ordre de tabulation (`tabIndex`, `.focusable`), flèches entre voisins, manette, anneau de focus du thème. Reste : défilement vers le widget focalisé (G222). Preuve : `docs/STATUS.md`, section « M8 lot L9 ». | — |
 | UI-10 | Inspecteur d'interface | Absent | Absent. | M8 |
 | UI-12 | Paramètres réfléchis → curseurs | Fait (M3) | `reflectedPanel`, `ParamPanel` du langage. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 
@@ -148,7 +148,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | ASSET-06 | OBJ | Absent | Absent. | Après M10 (P2) |
 | EXT-01 | Plugin de rendu voxel | Absent | Absent (pas de graphe de passes, voir REN-01). | M10 |
 | EXT-02 | Tracé de rayons logiciel sur voxels | Absent | Absent. | Après M10 (P2) |
-| PLAT-03 | Manettes | Absent | Aucune manette. | Après M10 (P2) ; UI-09 la demande en M8 |
+| PLAT-03 | Manettes | Partiel (M8 L9) | Sous-ensemble pour UI-09 (`platform::Gamepads` : boutons, axes, branchement à chaud, manettes à disposition standard). **Manque** : vibrations, remappage, joysticks sans disposition connue, événements par rappel (G223). | Après M10 (P2) |
 | REN-09 | Ombres avancées | Absent | Absent. | Après M10 (P2) |
 | REN-12 | Extensions de matériaux | Absent | Absent. | Après M10 (P2) |
 | REN-15 | Réflexions et GI | Absent | Absent. | Après M10 (P2) |
@@ -552,3 +552,10 @@ Numéros pris à partir de G240 pour ne pas croiser ceux des lots M8 menés en p
 | G241 | Passe « upscale » non renommée « present » (A75.7) | `endFrame(rhi::TextureHandle)` lit le format et la taille de la sortie ; la copie finale garde le nom de passe « upscale » (clés du Profiler `RenderGraph/upscale`, tests, `tools/perf_compare.py`). Le renommage est reporté avec les sous-objets de réglages d'A75.17. | M10 |
 | G242 | Défaut `Mesh::setCullMode` inchangé (A75.15) | Le défaut reste `kNone` pour l'existant ; `kBack` vient de `Mesh::setMaterial` (et de `assets::RenderModel` depuis M6) ; `MeshBuilder` produit des faces anti-horaires vues de l'extérieur, mais un maillage sans matériau reste à `kNone`. | M10 (changement incompatible annoncé) |
 | G243 | `drawMesh(Mesh &)` : résolution par disposition limitée | Sans programme ni matériau, seule la disposition kColored (trois `vec3`, sans instance) reçoit un programme par défaut ; les dispositions texturée (`mesh_textured.vert`) et instanciée gardent `setProgram`. | M10 |
+
+## Ajouts de M8 lot L9 (G222, G223)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G222 | Focus hors de la vue d'une `ScrollView` | Tab ou une flèche peut donner le focus à un widget défilé hors de sa `ScrollView` : la vue ne défile pas vers lui (l'anneau de focus est découpé comme le widget, donc invisible). Les flèches choisissent le voisin par géométrie, y compris hors de la zone visible. | M10 |
+| G223 | Manettes : reste de PLAT-03 | `platform::Gamepads` ne lit que les manettes à disposition standard reconnues par GLFW, par scrutation à chaque image ; ni vibration, ni remappage, ni joystick quelconque, ni deuxième stick ou gâchettes dans la navigation de l'interface. Aucune manette réelle essayée (tests par `Gamepads::simulate`) ; Windows et macOS non vérifiés. | Après M10 (P2) |

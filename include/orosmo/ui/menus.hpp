@@ -67,6 +67,7 @@ class MenuItem : public Widget
     bool focusOnClick() const override { return false; }
     void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
     void onKey(Ui &ui, int key) override;
+    bool usesArrowKey(int key, bool fromGamepad) const override;
     bool onShortcut(Ui &ui, std::string_view shortcut) override;
 
   protected:
@@ -95,6 +96,7 @@ class Menu : public Widget
     bool focusOnClick() const override { return false; }
     void onPress(Ui &ui, glm::vec2 mouse) override;
     void onKey(Ui &ui, int key) override;
+    bool usesArrowKey(int key, bool fromGamepad) const override;
     void onHoverChanged(Ui &ui, bool hovered) override;
 
   protected:

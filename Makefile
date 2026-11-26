@@ -233,6 +233,14 @@ demo-capture: all-debug
 	if [ $$rc -eq 0 ]; then echo "demo-capture : les captures dark et light sont identiques"; exit 1; \
 	elif [ $$rc -eq 1 ] && printf '%s\n' "$$out" | grep -q '^DIFFERENT'; then echo "demo-capture : OK (dark != light)"; \
 	else echo "demo-capture : erreur du comparateur (code $$rc) : $$out"; exit 1; fi
+	@# UI-09 : focus clavier sur un bouton radio de l'onglet Contrôles, anneau de focus du thème comparé à sa référence, et absent sans focus.
+	./$(DEMO_BIN) --api opengl --headless --ui full --theme dark --tab controls --focus detailMedium --capture build/demo-capture/dark-controls-focus --capture-frames 5
+	python3 tools/compare_png.py docs/BASELINE/reference/ui-opengl-controls-focus-1280x720.png build/demo-capture/dark-controls-focus/ui.png \
+	    --tolerance 8 --max-diff-percent 2
+	@out=$$(python3 tools/compare_png.py build/demo-capture/dark-controls/ui.png build/demo-capture/dark-controls-focus/ui.png); rc=$$?; \
+	if [ $$rc -eq 0 ]; then echo "demo-capture : l'anneau de focus n'est pas dessiné"; exit 1; \
+	elif [ $$rc -eq 1 ] && printf '%s\n' "$$out" | grep -q '^DIFFERENT'; then echo "demo-capture : OK (anneau de focus)"; \
+	else echo "demo-capture : erreur du comparateur (code $$rc) : $$out"; exit 1; fi
 
 # M4 : la démo donne la même image dans la tolérance en Vulkan et en OpenGL, et les couches de validation Vulkan (synchronisation
 # comprise) restent silencieuses (0 message). `make demo-vulkan-check FULL=1` ajoute tous les onglets de demo-capture.

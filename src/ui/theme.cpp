@@ -664,7 +664,8 @@ Theme Theme::fallback()
             "textField": {"background": "control"},
             "dropdown": {"background": "control"},
             "popup": {"background": "control"},
-            "tooltip": {"background": "control", "padding": 4}
+            "tooltip": {"background": "control", "padding": 4},
+            "focusRing": {"border": "accent", "borderWidth": 2, "radius": 4, "padding": 2}
         }
     })";
     auto theme = parse(kJson, {}, "fallback");
