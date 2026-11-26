@@ -145,10 +145,39 @@ $Tool = "orosmo-windows-x64.exe"
 $Tmp = Join-Path ([IO.Path]::GetTempPath()) ("orosmo-install-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $Tmp | Out-Null
 
+# Redirects are followed by hand, HTTPS only: Windows PowerShell 5.1 (.NET Framework HttpWebRequest) would follow an
+# HTTPS -> HTTP redirect, and the tool and SHA256SUMS would then travel in clear text.
+function Get-HttpsFile([string]$Url, [string]$Dest) {
+    for ($hop = 0; $hop -lt 10; $hop++) {
+        if ($Url -notmatch '^https://') { throw "refusing $Url (redirect away from HTTPS)" }
+        $req = [Net.HttpWebRequest]::Create($Url)
+        $req.AllowAutoRedirect = $false
+        $req.UserAgent = "orosmo-install"
+        $resp = $req.GetResponse()   # 4xx/5xx: WebException, reported by the caller
+        try {
+            $code = [int]$resp.StatusCode
+            if ($code -ge 300 -and $code -lt 400) {
+                $location = $resp.Headers["Location"]
+                if (-not $location) { throw "HTTP $code without Location for $Url" }
+                $Url = (New-Object Uri((New-Object Uri($Url)), $location)).AbsoluteUri
+                continue
+            }
+            if ($code -ne 200) { throw "HTTP $code for $Url" }
+            $in = $resp.GetResponseStream()
+            $out = [IO.File]::Create($Dest)
+            try { $in.CopyTo($out) } finally { $out.Dispose(); $in.Dispose() }
+            return
+        } finally {
+            $resp.Close()
+        }
+    }
+    throw "too many redirects for $Url"
+}
+
 function Get-ReleaseFile([string]$Name, [string]$Dest) {
     if ($Base -match '^https://') {
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri "$Base/$Name" -OutFile $Dest -UseBasicParsing
+        Get-HttpsFile "$Base/$Name" $Dest
     } else {
         Copy-Item -Path (Join-Path ($Base -replace '^file://', '') $Name) -Destination $Dest
     }
