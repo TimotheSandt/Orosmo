@@ -323,6 +323,8 @@ void disableForwardPlus(SceneRenderer &renderer)
     renderer.setDepthPrepass(false);
 }
 
+std::vector<Define> ForwardPlusLighting::shaderDefines() const { return forwardPlusDefines(); }
+
 std::vector<Define> forwardPlusDefines(bool clusterDebug)
 {
     std::vector<Define> defines{{"OROSMO_FORWARD_PLUS", "1"}};

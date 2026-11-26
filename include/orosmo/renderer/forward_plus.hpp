@@ -107,6 +107,8 @@ class ForwardPlusLighting final : public RenderFeature
     std::string name() const override { return kName; }
     bool supports(const rhi::Capabilities &capabilities) const noexcept override { return supportedBy(capabilities); }
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
+    // A75.3 : variante OROSMO_FORWARD_PLUS des maillages (`forwardPlusDefines()`), lue par `SceneRenderer::shaderDefines()`.
+    std::vector<Define> shaderDefines() const override;
 
     // Nouveaux réglages (tampons recréés à la prochaine image) ; refusés (kInvalidArgument) s'ils ne sont pas valides.
     core::Result<> setSettings(const ForwardPlusSettings &settings);
