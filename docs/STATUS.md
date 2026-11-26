@@ -62,7 +62,7 @@ Sur `feat/M8-L12a-api-contenus` (A79), fondé sur L11. Preuves sous Linux x64 (g
 
 Non-régression : `--scene anim` capturée avant (anciens `anim_scene.*` de `dcbadf8` sur le même moteur) puis après, OpenGL et Vulkan, à 30 images et à 240 images (4 s : le fondu de 3 s vers « wave » est passé) : les 4 `scene.png` identiques au pixel près (`tools/compare_png.py --tolerance 0`) ; couches de validation Vulkan : 0 message.
 
-Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 726 cas, 726 verts, 1 ignoré ; ASan + UBSan sur les suites `anim/*`, `assets/*` et `apps/demo-anim` : 83 cas verts, aucun rapport ; `make check` : OK. Non vérifié : Windows et macOS (compilés par la CI au push) ; `clang-format` absent de la machine (formatage non appliqué).
+Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 726 cas verts avant la fusion de `origin/dev`, 736 cas verts (1 ignoré) après ; ASan + UBSan sur les suites `anim/*`, `assets/*` et `apps/demo-anim` : 83 cas verts, aucun rapport ; `make check` : OK. Non vérifié : Windows et macOS (compilés par la CI au push) ; `clang-format` absent de la machine (formatage non appliqué).
 
 
 ## M8 lot L0 : `--shadow-quality` de la démo
