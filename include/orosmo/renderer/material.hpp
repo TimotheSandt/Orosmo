@@ -12,6 +12,7 @@
 #include "orosmo/core/error.hpp"
 #include "orosmo/renderer/blend_mode.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/shader_library.hpp"
 #include "orosmo/renderer/texture.hpp"
 #include "orosmo/rhi/device.hpp"
@@ -24,6 +25,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace orosmo::renderer
@@ -159,6 +161,8 @@ class PbrShaderCache
         : library_(&library), shaderDirectory_(std::move(shaderDirectory))
     {
     }
+    // A75.4 : depuis un `RenderContext` (sa bibliothèque et son dossier de shaders).
+    explicit PbrShaderCache(const RenderContext &context) : PbrShaderCache(context.library(), context.shaderDirectory()) {}
     core::Result<std::shared_ptr<ShaderProgram>> program(std::uint32_t features, const std::vector<Define> &extraDefines = {});
     std::size_t size() const noexcept { return programs_.size(); }
 

@@ -17,6 +17,7 @@
 #include "orosmo/core/error.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/scene_renderer.hpp"
 #include "orosmo/renderer/shader_library.hpp"
 #include "orosmo/rhi/device.hpp"
@@ -61,6 +62,12 @@ class CrowdRenderer
     static core::Result<std::unique_ptr<CrowdRenderer>> create(rhi::Device &device, renderer::ShaderLibrary &library, renderer::PipelineCache &pipelines,
                                                                const std::filesystem::path &shaderDirectory, const assets::Model &model,
                                                                const assets::RenderModel &render, const CrowdOptions &options = {});
+    // A75.4 : même fabrique depuis un `renderer::RenderContext`.
+    static core::Result<std::unique_ptr<CrowdRenderer>> create(const renderer::RenderContext &context, const assets::Model &model,
+                                                               const assets::RenderModel &render, const CrowdOptions &options = {})
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory(), model, render, options);
+    }
     ~CrowdRenderer();
     CrowdRenderer(const CrowdRenderer &) = delete;
     CrowdRenderer &operator=(const CrowdRenderer &) = delete;

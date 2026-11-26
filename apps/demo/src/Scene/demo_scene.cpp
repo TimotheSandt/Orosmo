@@ -455,14 +455,12 @@ std::vector<orosmo::renderer::Light> DemoScene::pointLightField(std::uint32_t co
 }
 
 orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
-                                       const std::filesystem::path &shaderDirectory, bool forwardPlus, std::uint32_t pointLights,
-                                       const std::vector<orosmo::renderer::Define> &aovDefines)
+                                       const std::filesystem::path &shaderDirectory, std::uint32_t pointLights,
+                                       const std::vector<orosmo::renderer::Define> &meshDefines)
 {
     destroy();
 
-    // Variante forward+ (REN-04) et sorties auxiliaires (REN-21) : leurs macros s'additionnent.
-    std::vector<orosmo::renderer::Define> meshDefines = forwardPlus ? orosmo::renderer::forwardPlusDefines() : std::vector<orosmo::renderer::Define>{};
-    meshDefines.insert(meshDefines.end(), aovDefines.begin(), aovDefines.end());
+    // Variante forward+ (REN-04) et sorties auxiliaires (REN-21) : rassemblées par SceneRenderer::shaderDefines (A75.3).
     auto program = shaders.loadGraphics(shaderDirectory / "mesh.vert", shaderDirectory / "mesh.frag", meshDefines);
     if (!program)
     {
@@ -986,24 +984,24 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
         ++shadowFrames_;
     }
     meshDraws_ = 0;
-    if (auto r = renderer.drawMesh(groundMesh_, camera); !r)
+    if (auto r = renderer.drawMesh(groundMesh_); !r)
     {
         return r;
     }
     ++meshDraws_;
-    if (auto r = renderer.drawMesh(structureMesh_, camera); !r)
+    if (auto r = renderer.drawMesh(structureMesh_); !r)
     {
         return r;
     }
     ++meshDraws_;
-    if (auto r = renderer.drawMesh(heroMesh_, camera); !r)
+    if (auto r = renderer.drawMesh(heroMesh_); !r)
     {
         return r;
     }
     ++meshDraws_;
     for (auto &orbit : orbitMeshes_)
     {
-        if (auto r = renderer.drawMesh(orbit, camera); !r)
+        if (auto r = renderer.drawMesh(orbit); !r)
         {
             return r;
         }
