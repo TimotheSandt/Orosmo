@@ -183,6 +183,7 @@ int main(int argc, char **argv)
             game.setInitialTheme(launchOptions.theme);
             game.setInitialTab(launchOptions.tab);
             game.setCaptureInteraction(launchOptions.hoverId, launchOptions.clickId);
+            game.setCaptureFocus(launchOptions.focusId);
             game.setFramePacing(demo::framePacingFor(launchOptions));
             game.setGpuTimings(launchOptions.gpuTimings);
             game.setDirectPresentation(launchOptions.directPresentation);
