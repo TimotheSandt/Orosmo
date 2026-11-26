@@ -344,8 +344,10 @@ ifeq ($(ENGINE_OS),Windows)
 	@if [ -d "$(RES_DIR)" ]; then mkdir -p "$(BIN_DIR)/res"; powershell -NoProfile -Command "Copy-Item -Path '$(RES_DIR)/*' -Destination '$(BIN_DIR)/res' -Recurse -Force"; fi
 	@if [ -n "$(SHADER_DIR)" ] && [ -d "$(SHADER_DIR)" ]; then mkdir -p "$(BIN_DIR)/res/shader"; powershell -NoProfile -Command "Copy-Item -Path '$(SHADER_DIR)/*' -Destination '$(BIN_DIR)/res/shader' -Recurse -Force"; fi
 else
-	@if [ -d "$(RES_DIR)" ]; then mkdir -p "$(BIN_DIR)/res" && cp -r "$(RES_DIR)/." "$(BIN_DIR)/res/"; fi
-	@if [ -n "$(SHADER_DIR)" ] && [ -d "$(SHADER_DIR)" ]; then mkdir -p "$(BIN_DIR)/res/shader" && cp -r "$(SHADER_DIR)/." "$(BIN_DIR)/res/shader/"; fi
+	@# The engine (OROSMO_HOME/engines/<v>) may be read-only and cp keeps the source modes: the copies are made writable,
+	@# or the next build could not overwrite them.
+	@if [ -d "$(RES_DIR)" ]; then mkdir -p "$(BIN_DIR)/res" && cp -r "$(RES_DIR)/." "$(BIN_DIR)/res/" && chmod -R u+w "$(BIN_DIR)/res"; fi
+	@if [ -n "$(SHADER_DIR)" ] && [ -d "$(SHADER_DIR)" ]; then mkdir -p "$(BIN_DIR)/res/shader" && cp -r "$(SHADER_DIR)/." "$(BIN_DIR)/res/shader/" && chmod -R u+w "$(BIN_DIR)/res/shader"; fi
 endif
 
 copy_libs: | $(BIN_DIR)

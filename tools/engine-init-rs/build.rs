@@ -72,23 +72,7 @@ fn main() {
     println!("cargo:rustc-env=GITHUB_REPO={github_repo}");
     println!("cargo:rerun-if-env-changed=REPO_HOST");
     println!("cargo:rerun-if-env-changed=GITHUB_REPO");
-
-    // Engine payload zip — embedded as offline fallback.
-    // If ENGINE_PAYLOAD_ZIP is not set (dev build), an empty stub is written so
-    // include_bytes! still compiles; the runtime detects the stub and skips fallback.
-    println!("cargo:rerun-if-env-changed=ENGINE_PAYLOAD_ZIP");
-    let zip_dst = out_dir.join("engine_payload.zip");
-    match env::var("ENGINE_PAYLOAD_ZIP") {
-        Ok(zip_src) => {
-            fs::copy(&zip_src, &zip_dst)
-                .unwrap_or_else(|e| panic!("failed to copy engine payload from {zip_src}: {e}"));
-            println!("cargo:rerun-if-changed={zip_src}");
-        }
-        Err(_) => {
-            // No payload provided — write a zero-byte stub; GitHub will be used at runtime.
-            fs::write(&zip_dst, b"").expect("failed to create stub engine_payload.zip");
-        }
-    }
+    // Le paquet du moteur n'est PAS embarqué dans l'outil : `orosmo install` le télécharge (ou `--package <zip>` hors ligne).
 }
 
 fn zip_dir(

@@ -236,8 +236,8 @@ jobs:
         run: TRIPLET=${{ matrix.triplet }} sh tools/setup-linux-deps.sh
 
       # ── Build dist package + engine tool ───────────────────────────────────────
-      # 'engine-tool' builds debug+release archives, packages the dist/ into a zip,
-      # and compiles the orosmo tool (downloads the pkg from GitHub at runtime).
+      # 'engine-tool' builds debug+release archives, packages the dist/ into a zip (with LICENSE),
+      # and compiles the orosmo tool (small: the package is downloaded at run time, never embedded).
       # The package carries deps/ (tools/package-deps.sh): the engine's third-party libraries from ./vcpkg_installed, static;
       # on Linux plus the static archives of the apt packages installed above (libshaderc_combined.a, glslang, SPIRV-Tools,
       # freetype, png16, brotli). Never the Vulkan loader, OpenGL, X11/Wayland or libc.
@@ -272,14 +272,129 @@ jobs:
             dist/orosmo-pkg-${{ matrix.platform }}.zip
           retention-days: 7
 
+  # ── Fresh machine: what a new user does, from the files of this build ────────────────────────
+  # install.sh (or install.ps1) installs ONLY what it installs for a user (system packages, the tool, the engine), from the
+  # artifacts of this run served as a local release directory (OROSMO_DOWNLOAD_BASE, with its SHA256SUMS): no vcpkg, no
+  # engine sources, no network for Orosmo's files. Then orosmo init, orosmo build and, on Linux, orosmo run headless (Mesa
+  # llvmpipe under Xvfb, as ci.yml). Linux is blocking (the release waits for it); macOS and Windows are not proven yet.
+  fresh-linux:
+    name: Fresh machine (ubuntu:24.04, install.sh)
+    needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: orosmo-linux-x64
+          path: /tmp/release
+      - name: Local release directory (SHA256SUMS)
+        working-directory: /tmp/release
+        run: sha256sum -- * > SHA256SUMS && cat SHA256SUMS
+      # Root in the container: --allow-root (no sudo there); a user runs it without, and is asked before sudo.
+      # SHELL=/bin/sh: the PATH line goes to ~/.profile (checked below).
+      - name: install.sh --yes
+        env:
+          OROSMO_DOWNLOAD_BASE: /tmp/release
+          SHELL: /bin/sh
+        run: sh site/public/install.sh --yes --allow-root
+      # A desktop has a display and a GPU driver; the container gets Xvfb and Mesa's software rasterizer instead.
+      - name: Display and OpenGL driver (test only)
+        run: apt-get install -y --no-install-recommends xvfb xauth libgl1-mesa-dri
+      - name: orosmo init, build, run (headless)
+        shell: bash
+        env:
+          OROSMO_DOWNLOAD_BASE: /tmp/release
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          set -eux
+          grep -F '.orosmo/bin' "$HOME/.profile"           # the PATH line written by install.sh
+          . "$HOME/.profile"
+          command -v orosmo
+          orosmo list
+          cd /tmp && orosmo init mygame && cd mygame
+          orosmo build
+          xvfb-run -a -s "-screen 0 1280x720x24" \
+            orosmo run -- --api opengl --headless --capture /tmp/capture --capture-frames 3
+          test -s /tmp/capture/scene.png && test -s /tmp/capture/ui.png
+          orosmo doctor
+
+  fresh-macos:
+    name: Fresh machine (macOS arm64, install.sh)
+    needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: macos-latest
+    continue-on-error: true   # not proven yet; macOS OpenGL stops at 4.1: build only, no run (as e2e-init in ci.yml)
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: orosmo-macos-arm64
+          path: ${{ runner.temp }}/release
+      - name: Local release directory (SHA256SUMS)
+        working-directory: ${{ runner.temp }}/release
+        run: shasum -a 256 -- * > SHA256SUMS && cat SHA256SUMS
+      - name: install.sh --yes, orosmo init, build
+        env:
+          OROSMO_DOWNLOAD_BASE: ${{ runner.temp }}/release
+        run: |
+          set -eux
+          sh site/public/install.sh --yes
+          export PATH="$HOME/.orosmo/bin:$PATH"
+          cd "$RUNNER_TEMP" && orosmo init mygame && cd mygame
+          orosmo build
+
+  fresh-windows:
+    name: Fresh machine (Windows x64, install.ps1)
+    needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: windows-latest
+    continue-on-error: true   # not proven yet (MSYS2 is preinstalled on the runner: install.ps1 only adds its packages)
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: orosmo-windows-x64
+          path: ${{ runner.temp }}/release
+      - name: Local release directory (SHA256SUMS)
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          Get-ChildItem -File | ForEach-Object { "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower(), $_.Name } |
+            Set-Content -Encoding ascii SHA256SUMS
+          Get-Content SHA256SUMS
+      # The runner's shell is elevated: -AllowAdmin (a user runs it without).
+      - name: install.ps1 -Yes
+        shell: pwsh
+        env:
+          OROSMO_DOWNLOAD_BASE: ${{ runner.temp }}/release
+        run: ./site/public/install.ps1 -Yes -AllowAdmin
+      - name: orosmo init, build (MSYS2 MinGW64 shell)
+        shell: C:\msys64\usr\bin\bash.exe --login -eo pipefail {0}
+        env:
+          MSYSTEM: MINGW64
+          CHERE_INVOKING: "1"
+          OROSMO_DOWNLOAD_BASE: ${{ runner.temp }}/release
+        run: |
+          set -x
+          export PATH="$(cygpath "$LOCALAPPDATA")/Orosmo/bin:$PATH"
+          cd "$(cygpath "$RUNNER_TEMP")" && orosmo init mygame && cd mygame
+          orosmo build
+
   # ── GitHub Release ─────────────────────────────────────────────────────────────
   release:
-    needs: [reuse, build]
+    needs: [reuse, build, fresh-linux]
     runs-on: ubuntu-latest
-    # Packages from this run's build, or reused from main's build of the same commit (build skipped).
+    # Packages from this run's build (proven on a fresh Linux machine), or reused from main's build of the same commit
+    # (build and fresh-linux skipped: main's run proved them).
     if: >-
       ${{ !cancelled() && startsWith(github.ref, 'refs/tags/') &&
-          (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.reuse.outputs.run_id != '')) }}
+          ((needs.build.result == 'success' && needs.fresh-linux.result == 'success') ||
+           (needs.build.result == 'skipped' && needs.reuse.outputs.run_id != '')) }}
     permissions:
       contents: write
       actions: read   # download the artifacts of another run (main's build)
@@ -322,13 +437,12 @@ jobs:
           ls -l dist/
           test "$(ls dist/ | wc -l)" -eq 10   # 5 platforms x (orosmo tool + package)
 
-      # Installers (site/public/, when present) are attached too; SHA256SUMS covers every release file (`orosmo install`
-      # checks the package against it). Format of sha256sum: "<hash>  <file name>".
-      - name: Installers and SHA256SUMS
+      # The installers (site/public/, also served by the site) and the engine's LICENSE (Apache-2.0, next to the tools) are
+      # attached too; SHA256SUMS covers every release file (install.sh / install.ps1 check the tool against it, `orosmo
+      # install` the package). Format of sha256sum: "<hash>  <file name>".
+      - name: Installers, LICENSE and SHA256SUMS
         run: |
-          for f in site/public/install.sh site/public/install.ps1; do
-            if [ -f "$f" ]; then cp "$f" dist/; fi
-          done
+          cp site/public/install.sh site/public/install.ps1 LICENSE dist/
           cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS
 
       - name: Create GitHub Release
@@ -347,6 +461,16 @@ jobs:
             | Linux arm64         | `orosmo-linux-arm64`     | `orosmo-pkg-linux-arm64.zip` |
             | macOS arm64 (M1+)   | `orosmo-macos-arm64`     | `orosmo-pkg-macos-arm64.zip` |
             | macOS x64 (Intel)   | `orosmo-macos-x64`       | `orosmo-pkg-macos-x64.zip`   |
+
+            **Install** (system packages after confirmation, the `orosmo` tool in `~/.orosmo/bin`, then the latest engine):
+            ```sh
+            # Linux, macOS
+            curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh | sh
+            ```
+            ```powershell
+            # Windows (PowerShell)
+            irm https://github.com/${{ github.repository }}/releases/latest/download/install.ps1 | iex
+            ```
 
             **Orosmo tool** (`orosmo`) — downloads the engine package automatically from this release.
             ```sh

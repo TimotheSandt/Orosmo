@@ -16,13 +16,14 @@
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
 #   dist/pkg-<platform>/          — staging, zipped into dist/orosmo-pkg-<platform>.zip
-#     (the zip is also embedded in the orosmo[.exe] tool)
+#     (downloaded by `orosmo install`, never embedded in the orosmo[.exe] tool)
 #       includes/   — public headers
 #       lib/        — debug + release archives
 #       deps/       — third-party libraries of the engine, prebuilt and static (include/, lib/, licenses/): tools/package-deps.sh
 #       make/       — engine.mk
 #       tools/      — CUI precompiler
 #       VERSION     — engine version (x.y.z)
+#       LICENSE     — Apache-2.0 (the engine's licence; third-party licences are in deps/licenses/)
 #
 # ── orosmo tool (make engine-tool) ───────────────────────────────────────────
 #   dist/orosmo-<platform>[.exe]  — scaffolding tool (orosmo init/update)
@@ -206,6 +207,9 @@ REPO_SLUG ?= $(_GIT_REPO_SLUG)
 TOOLS_WORKSPACE   := tools/Cargo.toml
 TOOLS_BUILD_RS    := $(wildcard tools/cui-rs/build.rs tools/engine-init-rs/build.rs)
 TOOLS_RS_SRCS     := $(shell find tools/cui-rs/src tools/engine-init-rs/src -type f -name "*.rs" 2>/dev/null) $(TOOLS_BUILD_RS)
+# Project template embedded in the orosmo tool by its build.rs: a change must rebuild the tool too.
+TOOLS_TEMPLATE    := $(wildcard apps/demo/Makefile apps/demo/config.mk apps/demo/.gitignore) \
+                     $(shell find tools/engine-sdk/template/src -type f 2>/dev/null)
 CARGO_TARGET_DIR  ?= build/cargo-tools
 
 ifeq ($(DETECTED_OS),Windows)
@@ -228,8 +232,6 @@ _CUI_INSTALLED := tools/$(notdir $(CUI_EXE))
 _DIST_STAGING    := dist/pkg-$(ENGINE_PLATFORM)
 DIST_PKG_DIR     := $(_DIST_STAGING)
 ENGINE_PKG_ZIP   := dist/orosmo-pkg-$(ENGINE_PLATFORM).zip
-ENGINE_PAYLOAD_DIR := build/engine-payload
-ENGINE_PAYLOAD_ZIP := $(ENGINE_PAYLOAD_DIR)/engine-$(ENGINE_PLATFORM)-$(shell date +%s%N 2>/dev/null || date +%s).zip
 
 ifeq ($(DETECTED_OS),Windows)
     ENGINE_TOOL_EXE := dist/orosmo-$(ENGINE_PLATFORM).exe
@@ -421,6 +423,7 @@ endif
 	@# deps/ : bibliothèques tierces du moteur (celles de ce build), statiques, sans chargeur Vulkan ni OpenGL (contrat A76).
 	@sh tools/package-deps.sh "$(VCPKG_INSTALLED_DIR)" "$(DIST_PKG_DIR)/deps"
 	@printf '%s\n' "$(ENGINE_VERSION)" > "$(DIST_PKG_DIR)/VERSION"
+	@cp LICENSE "$(DIST_PKG_DIR)/LICENSE"   # Apache-2.0 du moteur, à la racine du paquet
 	@echo "Engine package ready: $(DIST_PKG_DIR)/"
 
 # ── zip helper ────────────────────────────────────────────────────────────────
@@ -454,11 +457,9 @@ $(ENGINE_PKG_ZIP): dist
 	@echo "Zipped: $(ENGINE_PKG_ZIP)"
 
 # ── engine tool binary ────────────────────────────────────────────────────────
-# Embeds the engine package zip as an offline fallback via ENGINE_PAYLOAD_ZIP.
+# The engine package is NOT embedded in the tool (small binary): `orosmo install` downloads it, `--package <zip>` offline.
 # GITHUB_REPO is baked in at compile time so the URL is not hardcoded in source.
-$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) dist
-	@mkdir -p "$(ENGINE_PAYLOAD_DIR)"
-	$(call _DO_ZIP,$(ENGINE_PAYLOAD_ZIP))
+$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) $(TOOLS_TEMPLATE)
 	REPO_HOST="$(REPO_HOST)" \
 	GITHUB_REPO="$(REPO_SLUG)" \
 	ENGINE_NAME="$(ENGINE_NAME)" \
@@ -468,7 +469,6 @@ $(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) dist
 	ENGINE_EMAIL="$(ENGINE_EMAIL)" \
 	ENGINE_DESCRIPTION="$(ENGINE_DESCRIPTION)" \
 	ENGINE_HOMEPAGE="$(ENGINE_HOMEPAGE)" \
-	ENGINE_PAYLOAD_ZIP="$(abspath $(ENGINE_PAYLOAD_ZIP))" \
 	CARGO_TARGET_DIR="$(abspath $(CARGO_TARGET_DIR))" \
 	    $(CARGO) build --release --manifest-path $(TOOLS_WORKSPACE) --bin orosmo
 	@echo "Built: $(ENGINE_INIT_EXE)"
