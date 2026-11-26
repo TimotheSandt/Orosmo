@@ -552,3 +552,12 @@ Numéros pris à partir de G240 pour ne pas croiser ceux des lots M8 menés en p
 | G241 | Passe « upscale » non renommée « present » (A75.7) | `endFrame(rhi::TextureHandle)` lit le format et la taille de la sortie ; la copie finale garde le nom de passe « upscale » (clés du Profiler `RenderGraph/upscale`, tests, `tools/perf_compare.py`). Le renommage est reporté avec les sous-objets de réglages d'A75.17. | M10 |
 | G242 | Défaut `Mesh::setCullMode` inchangé (A75.15) | Le défaut reste `kNone` pour l'existant ; `kBack` vient de `Mesh::setMaterial` (et de `assets::RenderModel` depuis M6) ; `MeshBuilder` produit des faces anti-horaires vues de l'extérieur, mais un maillage sans matériau reste à `kNone`. | M10 (changement incompatible annoncé) |
 | G243 | `drawMesh(Mesh &)` : résolution par disposition limitée | Sans programme ni matériau, seule la disposition kColored (trois `vec3`, sans instance) reçoit un programme par défaut ; les dispositions texturée (`mesh_textured.vert`) et instanciée gardent `setProgram`. | M10 |
+
+## Ajouts du lot M8-L12a, API des contenus (G250 et G251)
+
+Numéros pris à partir de G250 (L0/L9 : G222-G223, L11 : G240-G243, L1 en cours).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G250 | `AnimatedModel` : un maillage skinné partagé par plusieurs nœuds | Comme `SkinnedModel` (G198) : le repli CPU déforme le maillage GPU pour le premier nœud skinné qui le dessine. Sans compute, `RenderModel` n'est pas créé `skinnable` : les nœuds skinnés qui partagent une primitive partagent aussi son tampon (et un nœud statique qui dessine la même primitive la verrait déformée). | M10 |
+| G251 | `AnimatedModel` : pas d'événements de clip | Le lecteur (`play`, `crossFade`) ne rend pas les événements des clips (`Clip::collectEvents`) ; pour eux, piloter le modèle par une `StateMachine` et `setPose`. | M10 |
