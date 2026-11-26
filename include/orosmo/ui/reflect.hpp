@@ -21,7 +21,9 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -217,5 +219,21 @@ template <core::Reflected T> std::unique_ptr<Widget> reflectedPanel(T &object, s
         core::Reflect<T>::fields());
     return grid;
 }
+
+// Variante À L'EXÉCUTION (UI-04, inspecteur d'entités, A79 lot L10) : le type C++ n'est pas connu (composant d'une bibliothèque de
+// jeu enregistré par nom, `scene::ComponentDesc`) ; les champs viennent de leur description (`core::FieldDesc` : type, plage,
+// décalage, taille, sous-champs). `locate` rend l'adresse de l'objet décrit à chaque lecture et écriture (nulle : l'objet n'existe
+// plus, rien n'est lu ni écrit) : un composant peut changer d'adresse entre deux images. Lectures et écritures par `memcpy`
+// (aucune hypothèse d'alignement). Mêmes widgets que la version typée, avec ces différences :
+//   kBool                → Checkbox (un octet, 0 ou 1)
+//   kInt, kUInt, kEnum   → Slider (plage d'entiers) ou NumberField entier, d'après `size` (1, 2, 4 ou 8 octets) ; kEnum est lu
+//                          comme un entier signé (le nom des valeurs n'est pas décrit)
+//   kFloat, kDouble      → Slider (plage) ou NumberField
+//   kVec2..4, kQuat      → un NumberField par composante (ColorPicker pour kVec3 / kVec4 dont le nom contient « color ») ;
+//   kDVec3, kDQuat       → composantes en double
+//   kStruct              → Section (sous-champs) ; structure opaque (sans sous-champ) : libellé « N bytes »
+//   kString, kArray, taille incohérente → libellé en lecture seule
+using ObjectLocator = std::function<void *()>;
+std::unique_ptr<Widget> reflectedPanel(ObjectLocator locate, std::span<const core::FieldDesc> fields, std::string_view idPrefix = {});
 
 } // namespace orosmo::ui
