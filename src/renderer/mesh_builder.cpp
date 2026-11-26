@@ -39,7 +39,7 @@ MeshBuilder &MeshBuilder::addBox(const glm::vec3 &halfExtents, const glm::vec4 &
         glm::vec3 u;
         glm::vec3 v;
     };
-    static constexpr std::array<Face, 6> kFaces{{
+    static const std::array<Face, 6> kFaces{{
         {{1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
         {{-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},
         {{0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}},
