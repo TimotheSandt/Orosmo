@@ -20,6 +20,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/render_feature.hpp"
@@ -131,6 +132,11 @@ class IblFeature final : public RenderFeature
     // Crée les ressources (environnement noir par défaut, table BRDF). kUnsupported sans compute.
     static core::Result<std::unique_ptr<IblFeature>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                             std::filesystem::path shaderDirectory, IblSettings settings = {});
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<IblFeature>> create(const RenderContext &context, IblSettings settings = {})
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory(), settings);
+    }
     ~IblFeature() override;
     IblFeature(const IblFeature &) = delete;
     IblFeature &operator=(const IblFeature &) = delete;

@@ -13,6 +13,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/blend_mode.hpp"
 #include "orosmo/renderer/mesh.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
@@ -58,6 +59,11 @@ class TransparentFeature final : public RenderFeature
     // `shaderDirectory` : shaders/rhi (mesh.vert, mesh.frag).
     static core::Result<std::unique_ptr<TransparentFeature>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                                     const std::filesystem::path &shaderDirectory);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<TransparentFeature>> create(const RenderContext &context)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory());
+    }
 
     std::string name() const override { return kName; }
     core::Result<> prepare(const FrameData &frame) override;

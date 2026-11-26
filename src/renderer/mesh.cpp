@@ -1,5 +1,7 @@
 #include "orosmo/renderer/mesh.hpp"
 
+#include "orosmo/renderer/material.hpp"
+
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -356,9 +358,22 @@ void Mesh::reset() noexcept
     indexCount_ = 0;
     instanceCount_ = 1;
     program_.reset();
+    material_.reset();
     pushConstants_.clear();
     device_ = nullptr;
 }
+
+void Mesh::setMaterial(std::shared_ptr<PbrMaterial> material)
+{
+    material_ = std::move(material);
+    if (material_ != nullptr)
+    {
+        cull_ = material_->doubleSided() ? rhi::CullMode::kNone : rhi::CullMode::kBack; // A75.15 : contenu glTF
+        aovMaterial_.blend = material_->blend();
+    }
+}
+
+rhi::BindGroupHandle Mesh::textureGroup() const noexcept { return material_ != nullptr ? material_->group() : textureGroup_; }
 
 void Mesh::swap(Mesh &other) noexcept
 {
@@ -376,6 +391,7 @@ void Mesh::swap(Mesh &other) noexcept
     std::swap(indexCount_, other.indexCount_);
     std::swap(instanceCount_, other.instanceCount_);
     std::swap(program_, other.program_);
+    std::swap(material_, other.material_);
     std::swap(pushConstants_, other.pushConstants_);
     std::swap(position_, other.position_);
     std::swap(rotation_, other.rotation_);

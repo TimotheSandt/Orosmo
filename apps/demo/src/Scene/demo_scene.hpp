@@ -65,12 +65,12 @@ class DemoScene
     static glm::vec3 defaultCameraPosition();
     static glm::vec3 defaultCameraOrientation();
 
-    // `forwardPlus` (REN-04) : variante forward+ de mesh.frag (le plugin ForwardPlusLighting doit être installé sur le renderer) ;
+    // `meshDefines` (A75.3) : définitions des programmes de maillage de la scène (`SceneRenderer::shaderDefines()` : variante
+    // forward+ du plugin ForwardPlusLighting, AOV actifs), vides en forward sans AOV ;
     // `pointLights` (--lights N) : N lumières ponctuelles déterministes au-dessus de la cour, en plus du soleil.
     orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &shaders,
-                                const std::filesystem::path &shaderDirectory, bool forwardPlus = false, std::uint32_t pointLights = 0,
-                                const std::vector<orosmo::renderer::Define> &aovDefines = {});
-    // `aovDefines` (REN-21) : macros des AOV actifs (SceneRenderer::aovShaderDefines), vides sans AOV.
+                                const std::filesystem::path &shaderDirectory, std::uint32_t pointLights = 0,
+                                const std::vector<orosmo::renderer::Define> &meshDefines = {});
     // REN-35 : mode « lod » (couleur par niveau) et gel du frustum de culling des objets instanciés.
     void setDebugOptions(orosmo::renderer::DebugView view, bool freezeFrustum) noexcept
     {

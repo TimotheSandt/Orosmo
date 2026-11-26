@@ -36,6 +36,30 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | `debug_draw.hpp` | `DebugDraw` (REN-34) : lignes, boîtes, sphères, repères en coordonnées monde ; désactivé par défaut hors debug (chaque appel revient au premier test) ; dessiné par `SceneRenderer::drawDebug` dans la passe de scène, test de profondeur au choix (shaders `debug_line.*` chargés au premier appel) |
 | `shaders/rhi/` | `mesh.vert` / `mesh.frag` (éclairage identique à l'ancien), `blit.vert` / `blit.frag` : GLSL 450 (`set`/`binding`, push constants) |
 
+### API simplifiée (M8-L11 : A75.3 à A75.7, A75.15)
+
+Moins de code pour l'usage courant ; les anciennes signatures restent jusqu'à M10 (choix 10 d'A79) et sont encore exercées par les tests.
+
+| En-tête | Rôle |
+| --- | --- |
+| `render_context.hpp` | `RenderContext` (A75.4) : périphérique, `ShaderLibrary`, `PipelineCache` et dossier des shaders. `RenderContext::create(device, dir)` possède la bibliothèque et le cache ; le constructeur référence des objets existants. Surcharges `create(const RenderContext &, ...)` sur `SceneRenderer`, `CanvasRenderer`, `FullscreenBlit`, `Renderer2D`, `InstanceRenderer`, `TransparentFeature`, `ShadowFeature`, `ForwardPlusLighting` (et `enableForwardPlus`), `IblFeature`, `GpuDrivenFeature` (et `enableGpuDriven`), `PostContext`, `SceneView`, `ViewsFeature`, `Layer2DFeature`, `PbrShaderCache`, `anim::SkinnedModel`, `anim::CrowdRenderer` |
+| `mesh_builder.hpp` | `MeshBuilder` (A75.5) : sommets (`MeshVertex` : position, normale, uv, couleur), triangles, quadrilatères, `addBox`, `addPlane` ; disposition `MeshLayout::kPbr` (tangentes calculées, `computeTangents` : Gram-Schmidt, signe glTF) ou `kColored` (programme par défaut de la scène) ; `build` → `MeshData`, `create` → `Mesh` |
+| `scene_renderer.hpp` | `shaderDefines()` (définitions des plugins, `RenderFeature::shaderDefines`, puis des AOV actifs) et `revision()` (A75.3) ; `drawMesh(Mesh &)` sans caméra et `setWireframe` (A75.6) ; `drawMesh(Mesh &)` résout le programme au dessin quand le maillage n'en impose pas (l'ancienne `drawMesh(mesh, camera)` exige toujours `setProgram`) : celui du matériau (`PbrShaderCache` interne) ou `mesh.vert`/`mesh.frag` pour la disposition kColored, compilés avec `shaderDefines()` et recompilés à la révision suivante (lue à `beginFrame`) ; `endFrame(rhi::TextureHandle)` lit format et taille de la sortie (A75.7) |
+| `mesh.hpp` | `Mesh::setMaterial(std::shared_ptr<PbrMaterial>)` (A75.5) : le maillage garde le matériau vivant, suit son groupe 1 (même après `PbrMaterial::rebuild`), règle les faces éliminées (`kBack`, `kNone` en double face : A75.15) et le mode de fusion des AOV. Défaut `setCullMode` inchangé (`kNone`) pour l'existant ; `assets::RenderModel` met `kBack` depuis M6 |
+| `forward_plus.hpp` | `ForwardPlusLighting::shaderDefines()` renvoie `forwardPlusDefines()` : la variante forward+ n'est plus propagée à la main |
+
+Exemple (cube PBR, sans programme ni groupe à relier) :
+
+```cpp
+auto context = rd::RenderContext::create(*device, shaderDir);
+auto scene = rd::SceneRenderer::create(*context);
+auto cube = rd::MeshBuilder().addBox({0.5f, 0.5f, 0.5f}).create(*device);
+cube->setMaterial(*rd::PbrMaterial::create(*device, desc, *rd::PbrDefaults::create(*device)));
+// image : beginFrame, setCamera, drawMesh(*cube), endFrame(backbuffer)
+```
+
+Tests : `tests/renderer/render_api_tests.cpp` (suites `renderer/render-api`, `renderer/mesh-builder`).
+
 ### Graphe de passes, plugins et données par image (M5 : REN-01, REN-03)
 
 | En-tête | Rôle |

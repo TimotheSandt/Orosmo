@@ -4,6 +4,8 @@
 #include "orosmo/renderer/image.hpp"
 
 #include <algorithm>
+#include <string>
+#include <utility>
 #include <cstring>
 #include <limits>
 #include <vector>
@@ -54,6 +56,7 @@ core::Result<std::unique_ptr<SceneRenderer>> SceneRenderer::create(rhi::Device &
     }
     renderer->meshProgram_ = *program;
     renderer->shaderDirectory_ = config.shaderDirectory;
+    renderer->pbrShaders_ = std::make_unique<PbrShaderCache>(library, config.shaderDirectory);
     // Anneau des données par image : FrameData à 0 (FrameResources::buffer la lit là), la caméra et les tranches du modèle après,
     // chacune alignée pour un tampon uniforme (décalages dynamiques du groupe 2).
     const std::uint64_t alignment = std::max<std::uint64_t>(device.capabilities().minUniformAlignment, 1);
@@ -98,6 +101,95 @@ SceneRenderer::~SceneRenderer()
     }
 }
 
+core::Result<std::unique_ptr<SceneRenderer>> SceneRenderer::create(const RenderContext &context, SceneRendererConfig config)
+{
+    if (config.shaderDirectory.empty())
+    {
+        config.shaderDirectory = context.shaderDirectory();
+    }
+    return create(context.device(), context.library(), context.pipelines(), config);
+}
+
+std::vector<Define> SceneRenderer::shaderDefines() const
+{
+    std::vector<Define> defines;
+    for (const std::unique_ptr<RenderFeature> &feature : features_)
+    {
+        const std::vector<Define> wanted = feature->shaderDefines();
+        defines.insert(defines.end(), wanted.begin(), wanted.end());
+    }
+    const std::vector<Define> aov = aovShaderDefines();
+    defines.insert(defines.end(), aov.begin(), aov.end());
+    return defines;
+}
+
+std::uint64_t SceneRenderer::revision() const
+{
+    std::vector<Define> defines = shaderDefines();
+    if (revision_ == 0 || defines != lastDefines_)
+    {
+        lastDefines_ = std::move(defines);
+        ++revision_;
+    }
+    return revision_;
+}
+
+core::Result<std::shared_ptr<ShaderProgram>> SceneRenderer::resolveProgram(const Mesh &mesh)
+{
+    if (mesh.program() != nullptr)
+    {
+        return mesh.program(); // programme imposé (ancien chemin)
+    }
+    // Révision lue une fois par image (beginFrame) : tous les dessins de l'image ont les mêmes définitions.
+    if (mesh.material() != nullptr)
+    {
+        const std::uint32_t features = mesh.material()->features();
+        if (auto found = pbrPrograms_.find(features); found != pbrPrograms_.end())
+        {
+            return found->second;
+        }
+        auto program = pbrShaders_->program(features, resolvedDefines_);
+        if (!program)
+        {
+            return std::unexpected(program.error());
+        }
+        pbrPrograms_.emplace(features, *program);
+        return *program;
+    }
+    // Disposition kColored (MeshBuilder) : position, normale, couleur (trois vec3), sans instance : mesh.vert / mesh.frag.
+    const std::vector<rhi::VertexAttribute> &attributes = mesh.vertexAttributes();
+    const bool colored = !mesh.instanced() && attributes.size() == 3 &&
+                         std::ranges::all_of(attributes, [](const rhi::VertexAttribute &a)
+                                             { return a.binding == 0 && a.location < 3 && a.format == rhi::VertexFormat::kFloat3; });
+    if (!colored)
+    {
+        return makeError(ErrorCode::kInvalidArgument,
+                         "SceneRenderer::drawMesh: the mesh has no program, no material and not the default (colored) vertex layout");
+    }
+    if (defaultProgram_ == nullptr)
+    {
+        if (resolvedDefines_.empty())
+        {
+            defaultProgram_ = meshProgram_;
+        }
+        else if (auto found = defaultPrograms_.find(resolvedDefines_); found != defaultPrograms_.end())
+        {
+            defaultProgram_ = found->second;
+        }
+        else
+        {
+            auto program = library_.loadGraphics(shaderDirectory_ / "mesh.vert", shaderDirectory_ / "mesh.frag", resolvedDefines_);
+            if (!program)
+            {
+                return std::unexpected(program.error());
+            }
+            defaultPrograms_.emplace(resolvedDefines_, *program); // gardé : les pipelines des images en vol le référencent
+            defaultProgram_ = *program;
+        }
+    }
+    return defaultProgram_;
+}
+
 core::Result<RenderFeature *> SceneRenderer::addFeature(std::unique_ptr<RenderFeature> feature)
 {
     if (feature == nullptr)
@@ -126,6 +218,13 @@ core::Result<RenderFeature *> SceneRenderer::addFeature(std::unique_ptr<RenderFe
 
 void SceneRenderer::removeFeature(const std::string &name)
 {
+    if (frameOpen_ || executing_)
+    {
+        // Image en cours : les définitions des programmes (figées à beginFrame) et les liaisons du groupe 0 (déclarées à endFrame)
+        // doivent rester celles des mêmes plugins ; le retrait est appliqué à la fin de l'image (EndOfFrame).
+        pendingRemovals_.push_back(name);
+        return;
+    }
     std::erase_if(features_, [&](const std::unique_ptr<RenderFeature> &f) { return f->name() == name; });
     featureFrameBindings_.clear(); // les liaisons d'un plugin retiré ne doivent plus entrer dans le groupe 0 (redéclarées à chaque image)
 }
@@ -425,6 +524,14 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
     encoder_ = &encoder;
     frameOpen_ = true;
     ++frameSerial_;
+    // A75.3 : définitions des programmes résolus au dessin, une fois par image ; une nouvelle révision les fait recompiler.
+    if (const std::uint64_t current = revision(); current != resolvedRevision_)
+    {
+        resolvedRevision_ = current;
+        resolvedDefines_ = lastDefines_;
+        pbrPrograms_.clear(); // les programmes restent dans pbrShaders_ (images en vol)
+        defaultProgram_.reset();
+    }
     return {};
 }
 
@@ -435,6 +542,7 @@ core::Result<> SceneRenderer::setCamera(Camera &camera)
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::setCamera: not created");
     }
     camera.setJitter(currentJitter_);
+    cameraWireframe_ = camera.wireframe();
     cameraOrigin_ = cameraRelative_ ? camera.position() : glm::vec3(0.0f);
     // Données par image (REN-03) : mêmes matrices que le tampon de la caméra.
     cameraView_ = cameraRelative_ ? camera.relativeViewMatrix() : camera.viewMatrix();
@@ -444,7 +552,7 @@ core::Result<> SceneRenderer::setCamera(Camera &camera)
     return {};
 }
 
-core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t modelOffset)
+core::Result<> SceneRenderer::record(Mesh &mesh, const ShaderProgram &drawProgram, bool lines, std::uint32_t modelOffset)
 {
     GraphicsState state;
     state.vertexBuffers = mesh.vertexBuffers();
@@ -468,7 +576,7 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t model
     const bool textured = !mesh.textureGroup().isNull() &&
                           std::ranges::any_of(mesh.vertexAttributes(), [](const rhi::VertexAttribute &a)
                                               { return a.location == 2 && a.binding == 0 && a.format == rhi::VertexFormat::kFloat2; });
-    const ShaderProgram &program = !replacesMeshProgram() || !debugViewProgram_ ? *mesh.program()
+    const ShaderProgram &program = !replacesMeshProgram() || !debugViewProgram_ ? drawProgram
                                    : textured && debugViewTexturedProgram_     ? *debugViewTexturedProgram_
                                                                                : *debugViewProgram_;
     // REN-21 / REN-41 : un AOV n'est écrit que s'il est actif, si le matériau le veut (un transparent n'en écrit aucun par défaut) et
@@ -493,7 +601,7 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t model
             t.writeMask = rhi::ColorWriteMask::kNone; // mêmes attachements que la scène, aucune écriture de couleur
         }
         depthOnly.debugName += ".prepass";
-        auto prepassPipeline = pipelines_.graphics(*mesh.program(), depthOnly);
+        auto prepassPipeline = pipelines_.graphics(drawProgram, depthOnly);
         if (!prepassPipeline)
         {
             return std::unexpected(prepassPipeline.error());
@@ -528,13 +636,27 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t model
     return {};
 }
 
-core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
+// Ancienne signature : comportement d'avant M8 (programme imposé obligatoire), fil de fer de la caméra donnée.
+core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera) { return drawMeshWith(mesh, camera.wireframe() || wireframe_, false); }
+
+core::Result<> SceneRenderer::drawMesh(Mesh &mesh) { return drawMeshWith(mesh, cameraWireframe_ || wireframe_, true); }
+
+core::Result<> SceneRenderer::drawMeshWith(Mesh &mesh, bool wireframe, bool resolve)
 {
     if (!frameOpen_)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: no frame is open");
     }
-    if (!mesh.valid() || !mesh.program() || mesh.program()->isCompute())
+    if (!mesh.valid() || (!resolve && mesh.program() == nullptr))
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: the mesh is empty or has no graphics program");
+    }
+    auto program = resolveProgram(mesh);
+    if (!program)
+    {
+        return std::unexpected(program.error());
+    }
+    if (*program == nullptr || (*program)->isCompute())
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: the mesh is empty or has no graphics program");
     }
@@ -554,11 +676,11 @@ core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
     {
         return std::unexpected(slice.error());
     }
-    if (auto r = record(mesh, false, *slice); !r)
+    if (auto r = record(mesh, **program, false, *slice); !r)
     {
         return r;
     }
-    return camera.wireframe() || debugView_ == DebugView::kWireframe ? record(mesh, true, *slice) : core::Result<>{};
+    return wireframe || debugView_ == DebugView::kWireframe ? record(mesh, **program, true, *slice) : core::Result<>{};
 }
 
 core::Result<std::uint32_t> SceneRenderer::recordModelSlice(const Mesh &mesh)
@@ -986,7 +1108,9 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
                     input.motionVectors = aovLayout_.set().has(Aov::kMotion) ? sceneTarget_.color(1) : rhi::TextureHandle{};
                     input.historyColor = previous;
                     input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
-                    input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+                    // Taille de la texture de sortie (celle que le mode écrit), comme l'adaptateur `upscale()` : elle peut différer
+                    // de `setOutputResolution` (`endFrame(rhi::TextureHandle)` étire la scène sur la texture).
+                    input.outputResolution = {static_cast<float>(output.size.width), static_cast<float>(output.size.height)};
                     input.jitter = currentJitter_;
                     input.deltaTimeSeconds = deltaTime_;
                     input.resetHistory = resetHistory;
@@ -1016,7 +1140,7 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
     if (frameGenMode_ != nullptr)
     {
         auto generation = graph_.addPass("frame-generation", PassType::kGeneric,
-                                         [this, previous, resetHistory](RenderPassContext &ctx) -> core::Result<>
+                                         [this, output, previous, resetHistory](RenderPassContext &ctx) -> core::Result<>
                                          {
                                              FrameContext context{device_, ctx.encoder(), *blit_};
                                              FrameGenerationInput input;
@@ -1026,7 +1150,7 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
                                              input.motionVectors =
                                                  aovLayout_.set().has(Aov::kMotion) ? sceneTarget_.color(1) : rhi::TextureHandle{};
                                              input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
-                                             input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+                                             input.outputResolution = {static_cast<float>(output.size.width), static_cast<float>(output.size.height)};
                                              input.jitter = currentJitter_;
                                              input.deltaTimeSeconds = deltaTime_;
                                              input.resetHistory = resetHistory;
@@ -1114,6 +1238,17 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
     return {};
 }
 
+core::Result<> SceneRenderer::endFrame(rhi::TextureHandle output)
+{
+    auto desc = device_.textureDesc(output);
+    if (!desc)
+    {
+        // L'image ouverte est fermée comme par un endFrame qui échoue : les dessins ne passent pas à l'image suivante.
+        return endFrame(UpscaleTarget{output, rhi::Format::kRGBA8Unorm, {}});
+    }
+    return endFrame(UpscaleTarget{output, desc->format, {desc->size.width, desc->size.height}});
+}
+
 core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
 {
     if (!frameOpen_)
@@ -1149,9 +1284,19 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
             // les redéclare (revue CodeRabbit PR #12).
             self.featureFrameBindings_.clear();
             self.executing_ = false;
+            for (const std::string &name : std::exchange(self.pendingRemovals_, {}))
+            {
+                self.removeFeature(name); // retraits demandés pendant l'image
+            }
         }
     } endOfFrame{*this};
 
+    // Sortie nulle (ou texture inconnue de `endFrame(rhi::TextureHandle)`) : refusée avant le graphe, quel que soit le mode (à
+    // échelle réduite sans mode, aucune passe ne la lirait et l'image passerait pour réussie). endOfFrame ferme l'image.
+    if (output.texture.isNull())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::endFrame: the output texture is null or unknown");
+    }
     if (auto r = updateFrameData(); !r)
     {
         return r;

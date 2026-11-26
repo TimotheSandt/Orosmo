@@ -15,6 +15,7 @@
 #include "orosmo/core/error.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/shader_library.hpp"
 #include "orosmo/rhi/device.hpp"
 
@@ -47,6 +48,11 @@ class SkinnedModel
     // déformé pour le premier d'entre eux (docs/GAPS.md).
     static core::Result<SkinnedModel> create(rhi::Device &device, renderer::ShaderLibrary &library, renderer::PipelineCache &pipelines,
                                              const std::filesystem::path &shaderDirectory, const assets::Model &model, assets::RenderModel &render);
+    // A75.4 : même fabrique depuis un `renderer::RenderContext`.
+    static core::Result<SkinnedModel> create(const renderer::RenderContext &context, const assets::Model &model, assets::RenderModel &render)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory(), model, render);
+    }
 
     // Pose (une transformation par nœud du modèle) → matrices monde du `RenderModel` et palettes envoyées (copie ordonnée : la
     // prochaine soumission les voit).

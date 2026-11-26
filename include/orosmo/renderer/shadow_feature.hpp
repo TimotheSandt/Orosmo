@@ -10,6 +10,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/culling.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/instance_batch.hpp"
@@ -127,6 +128,11 @@ class ShadowFeature : public RenderFeature
     // `shaderDirectory` : shaders/rhi (shadow_*.vert/frag, mesh.vert/frag pour les variantes réceptrices).
     static core::Result<std::unique_ptr<ShadowFeature>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                                const std::filesystem::path &shaderDirectory, const ShadowSettings &settings = {});
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<ShadowFeature>> create(const RenderContext &context, const ShadowSettings &settings = {})
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory(), settings);
+    }
     ~ShadowFeature() override;
     ShadowFeature(const ShadowFeature &) = delete;
     ShadowFeature &operator=(const ShadowFeature &) = delete;
