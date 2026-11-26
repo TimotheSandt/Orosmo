@@ -44,7 +44,12 @@ réalisation sous A79 « L2 ». Linux seulement en local (g++ 13.3) ; macOS et W
 | Réflexion avec décalages | `include/orosmo/core/reflection.hpp` (`FieldDesc::offset`, `size`, `fields`, `kDVec3`, `kQuat`, `kDQuat`) | suite `core/reflection` | décalages et tailles égaux à `offsetof` / `sizeof`, sous-champs, type sans constructeur par défaut |
 | ECS-02 Hiérarchie, transformations | `transform.hpp` (`Transform`, `composeWorld`, `relativeMatrix`), `World::setParent`, `updateTransforms` | suite `scene/hierarchy` | ordre des enfants, changement de parent, cycle refusé, destruction du sous-arbre ; propagation (rotation, échelle, ancêtre sans `Transform`) ; seules les entités sales et leurs descendants recalculées ; **précision à 10^7 m : erreur < 1 mm relative à la caméra** ; 100 000 entités en hiérarchie |
 
-Vérifications : VERIF_A_REMPLIR
+Vérifications (Linux, g++ 13.3, Intel Xe, Mesa) : `make all-debug` sans avertissement ; `make demo-test` **757 cas verts**
+(1 ignoré ; 30 cas dans les suites `scene/*`, `core/reflection` et `core/serialization`, dont 18 nouveaux pour `scene` et 3 pour la
+réflexion) ; `make check` OK (110 en-têtes autonomes, 0 violation de couche) ; ASan + UBSan (`-fsanitize=address,undefined
+-fno-sanitize-recover=all`, debug) **sur les tests du lot seulement** (sources `src/scene/` et tests `tests/scene/`,
+`tests/core/reflection_layout_tests.cpp`, `serialization_tests.cpp`, liés à `libcore.a`) : 30 cas verts, aucun message ; le
+`make demo-test SANITIZE=address,undefined` complet n'a pas été relancé (machine partagée, lot sans code GPU).
 
 ## M8 lot L1 : fondations (A79)
 
