@@ -18,6 +18,7 @@
 #include <orosmo/renderer/render_feature.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
 #include <orosmo/renderer/shadow_feature.hpp>
+#include <orosmo/renderer/upscaling.hpp>
 
 #include <glm/glm.hpp>
 
@@ -52,6 +53,27 @@ class DefineFeature final : public rd::RenderFeature
 
   private:
     std::string define_;
+};
+
+// Mode de mise à l'échelle avancé qui note la taille de sortie reçue (revue de la PR #19).
+class RecordingAdvancedMode final : public rd::IAdvancedUpscaleMode
+{
+  public:
+    explicit RecordingAdvancedMode(glm::vec2 *seen) : seen_(seen) { desc_.name = "test.advanced"; }
+    std::string name() const noexcept override { return desc_.name; }
+    const rd::UpscaleModeDesc &description() const noexcept override { return desc_; }
+    bool isSupported(const orosmo::rhi::Capabilities &) const noexcept override { return true; }
+    bool initialize(orosmo::rhi::Device &) override { return true; }
+    void shutdown() override {}
+    orosmo::core::Result<> execute(rd::FrameContext &, const rd::UpscaleInput &input, rd::UpscaleOutput &) override
+    {
+        *seen_ = input.outputResolution;
+        return {};
+    }
+
+  private:
+    rd::UpscaleModeDesc desc_;
+    glm::vec2 *seen_;
 };
 
 // Scène 16x16 sur un contexte qui possède sa bibliothèque et son cache (RenderContext::create).
@@ -440,6 +462,48 @@ TEST_SUITE("renderer/render-api")
                     CHECK(scene.renderer->beginFrame(e).has_value()); // l'image refusée est fermée
                     CHECK(scene.renderer->endFrame(newOut).has_value());
                 });
+            scene.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("Review PR #19: a feature removed during a frame leaves at its end; a null output is refused even when scaled; advanced modes get the output texture size")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            ApiScene scene(backend);
+            REQUIRE(scene.gpu.device);
+            rd::SceneRenderer &r = *scene.renderer;
+            REQUIRE(r.addFeature(std::make_unique<DefineFeature>("OROSMO_TEST_B")).has_value());
+            const TextureHandle out = scene.output();
+            scene.frame(out, [&] {
+                r.removeFeature("test.define.OROSMO_TEST_B");
+                CHECK(hasDefine(r.shaderDefines(), "OROSMO_TEST_B")); // différé : les dessins de l'image gardent ses définitions
+                CHECK(r.featureNames().size() == 1);
+            });
+            CHECK(r.featureNames().empty());
+            CHECK_FALSE(hasDefine(r.shaderDefines(), "OROSMO_TEST_B"));
+
+            // Échelle réduite sans mode : aucune passe ne lirait la sortie ; une sortie nulle est quand même refusée.
+            r.setUpscalingEnabled(true);
+            r.setRenderScale(0.5f);
+            REQUIRE(r.setActiveUpscaleMode("disabled"));
+            scene.gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    REQUIRE(r.beginFrame(e).has_value());
+                    CHECK((tests::errorOf(r.endFrame(TextureHandle{})) == ErrorCode::kInvalidArgument));
+                    CHECK(r.beginFrame(e).has_value()); // l'image refusée est fermée
+                    CHECK(r.endFrame(out).has_value());
+                });
+
+            // Mode avancé : la taille de sortie est celle de la texture (32x32), pas celle de setOutputResolution (16x16).
+            glm::vec2 seen{0.0f};
+            r.registerUpscaleMode(std::make_unique<RecordingAdvancedMode>(&seen));
+            REQUIRE(r.setActiveUpscaleMode("test.advanced"));
+            const TextureHandle big = scene.gpu.target(Format::kRGBA8Unorm, {32, 32}, "big");
+            scene.frame(big, [] {}, true);
+            CHECK(seen.x == doctest::Approx(32.0f));
+            CHECK(seen.y == doctest::Approx(32.0f));
             scene.gpu.expectNoValidationErrors();
         }
     }

@@ -125,6 +125,7 @@ class Slider : public Widget
     void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
     bool onSecondaryClick(Ui &ui, glm::vec2 mouse) override;
     void onKey(Ui &ui, int key) override;
+    bool usesArrowKey(int key, bool fromGamepad) const override;
     // Distance (pixels) au-delà de laquelle un appui devient un glissement.
     static constexpr float kDragThreshold = 3.0f;
 
@@ -163,6 +164,7 @@ class Dropdown : public Widget
     bool focusable() const override { return true; }
     void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
     void onKey(Ui &ui, int key) override;
+    bool usesArrowKey(int key, bool fromGamepad) const override;
     // Choix d'une option (clic dans la liste) : écrit la valeur, ferme la liste, émet onChange.
     void choose(Ui &ui, int index);
 
@@ -238,6 +240,7 @@ class TextField : public Widget
     void onPress(Ui &ui, glm::vec2 mouse) override;
     void onDrag(Ui &ui, glm::vec2 mouse) override;
     void onKey(Ui &ui, int key) override;
+    bool usesArrowKey(int key, bool fromGamepad) const override;
     void onText(Ui &ui, std::string_view text) override;
     void onFocusChanged(Ui &ui, bool focused) override;
 

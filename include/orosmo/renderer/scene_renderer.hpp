@@ -160,6 +160,8 @@ class SceneRenderer
     // Enregistre un plugin : ses passes sont ajoutées au graphe à chaque `endFrame`, dans l'ordre d'enregistrement. Refusé
     // (kUnsupported) si `supports` est faux, (kAlreadyExists) si un plugin du même nom existe. Renvoie le plugin (non possédé).
     core::Result<RenderFeature *> addFeature(std::unique_ptr<RenderFeature> feature);
+    // Retire un plugin. Pendant une image (entre beginFrame et la fin d'endFrame), le retrait est différé à la fin de l'image : ses
+    // définitions de shader et ses liaisons du groupe 0 restent cohérentes avec les dessins déjà enregistrés.
     void removeFeature(const std::string &name);
     std::vector<std::string> featureNames() const;
     // Graphe de la dernière image (ordre d'exécution, passes écartées, ressources transitoires).
@@ -348,6 +350,7 @@ class SceneRenderer
 
     RenderGraph graph_;
     std::vector<std::unique_ptr<RenderFeature>> features_;
+    std::vector<std::string> pendingRemovals_; // removeFeature pendant une image : appliqués à sa fin
     std::vector<SceneDraw> draws_;
     FrameOptions frameOptions_;
 
