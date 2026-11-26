@@ -23,7 +23,7 @@ installé (`$OROSMO_HOME/engines/<version>/make/engine.mk`, `cmake/`).
 Autres cibles du `Makefile` : `dev` (`-O0 -g3`), `run` (le binaire le plus récent, debug ou release), `run-release`, `test`,
 `benchmark`, `compile-commands` (écrit `compile_commands.json` pour clangd), `fclean` (supprime aussi `bin/`), `info` (moteur
 trouvé, version, archives), `add-dep`, `install-deps`, `search-dep` (bibliothèques du jeu, plus bas). `orosmo build --json`
-donne la même compilation en événements JSON : voir [Commande orosmo](/reference/commande-orosmo/#format-de-build---json).
+donne la même compilation en événements JSON : voir [Commande orosmo](/reference/commande-orosmo/#format-de-build-json).
 
 ### Trouver le moteur
 
