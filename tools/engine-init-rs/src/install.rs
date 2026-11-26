@@ -183,6 +183,11 @@ pub fn install_tree_atomic(bytes: &[u8], dest: &Path, replace: bool) -> Result<u
     Ok(count)
 }
 
+/// Le paquet contient-il `rel` (chemin sous le dossier de tête) ?
+pub fn zip_has_file(bytes: &[u8], rel: &str) -> bool {
+    ZipArchive::new(Cursor::new(bytes)).is_ok_and(|a| a.file_names().any(|n| strip_top_dir(n) == rel))
+}
+
 /// Contenu du fichier `VERSION` à la racine du paquet, s'il existe.
 pub fn zip_version(bytes: &[u8]) -> Option<String> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).ok()?;
