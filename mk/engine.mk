@@ -207,6 +207,9 @@ REPO_SLUG ?= $(_GIT_REPO_SLUG)
 TOOLS_WORKSPACE   := tools/Cargo.toml
 TOOLS_BUILD_RS    := $(wildcard tools/cui-rs/build.rs tools/engine-init-rs/build.rs)
 TOOLS_RS_SRCS     := $(shell find tools/cui-rs/src tools/engine-init-rs/src -type f -name "*.rs" 2>/dev/null) $(TOOLS_BUILD_RS)
+# Project template embedded in the orosmo tool by its build.rs: a change must rebuild the tool too.
+TOOLS_TEMPLATE    := $(wildcard apps/demo/Makefile apps/demo/config.mk apps/demo/.gitignore) \
+                     $(shell find tools/engine-sdk/template/src -type f 2>/dev/null)
 CARGO_TARGET_DIR  ?= build/cargo-tools
 
 ifeq ($(DETECTED_OS),Windows)
@@ -456,7 +459,7 @@ $(ENGINE_PKG_ZIP): dist
 # ── engine tool binary ────────────────────────────────────────────────────────
 # The engine package is NOT embedded in the tool (small binary): `orosmo install` downloads it, `--package <zip>` offline.
 # GITHUB_REPO is baked in at compile time so the URL is not hardcoded in source.
-$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS)
+$(ENGINE_INIT_EXE): $(TOOLS_WORKSPACE) $(TOOLS_RS_SRCS) $(TOOLS_TEMPLATE)
 	REPO_HOST="$(REPO_HOST)" \
 	GITHUB_REPO="$(REPO_SLUG)" \
 	ENGINE_NAME="$(ENGINE_NAME)" \
