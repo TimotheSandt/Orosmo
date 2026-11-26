@@ -277,10 +277,10 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | M11 | MOD-01 à MOD-04, MOD-09 |
 | M12 | MOD-05 à MOD-08 |
 | M13 | REN-23, REN-24, REN-25, REN-26, REN-27, REN-14, REN-33, REN-38 |
-| M8 | ECS-01, ECS-02, ECS-03, GAME-01, GAME-02, GAME-03, GAME-04, GAME-05, GAME-06, GAME-07, SIM-01, SIM-02, UI-04, UI-08, UI-09, UI-10 |
+| M8 | ECS-01, ECS-02, ECS-03, GAME-01, GAME-02, GAME-03, GAME-04, GAME-05, GAME-06, GAME-07, SIM-01, UI-04, UI-08, UI-09, UI-10 (SIM-02 hors moteur, A39) |
 | M9 | RHI-13 |
 | M10 | EXT-01 |
-| Après M10 | ANIM-05, ANIM-06, ASSET-06, EXT-02, EXT-04, EXT-05, PLAT-03, R2D-07, REN-09, REN-12, REN-15, REN-16, REN-20, REN-40, RHI-19, SIM-03, TER-14 |
+| Après M10 | ANIM-05, ANIM-06, ASSET-06, EXT-02, EXT-04, EXT-05, PLAT-03, R2D-07, REN-09, REN-12, REN-15, REN-16, REN-20, REN-40, RHI-19, TER-14 |
 | Continu | GIT-01 |
 
 ## Ajouts de M1 bis (G61 à G63)
@@ -456,7 +456,7 @@ Constatés pendant M5 (`docs/releases/M5.md`) ; chaque ligne a été vérifiée 
 | G162 | Référence `scene-opengl-demo-1280x720.png` | Diffère déjà de 1 250 pixels à la tolérance 0 sur la machine de mesure (G139 en comptait 12 hors tolérance 8) ; 332 pixels sur une autre mesure ; les deux restent dans la tolérance de la CI. `make demo-vulkan-check` : `dark-scene` / `ui` à 0,58 % des pixels au-delà de la tolérance 8, accepté par l'outil, antérieur à M5 | M5 |
 | G163 | Build : copies datées d'origine | `sync-demo` copie avec `cp -p` (`mk/engine.mk`) : un en-tête modifié pendant une compilation de référence laisse des `.o` périmés (SIGSEGV constaté dans `debug_draw_tests`). Contournement : supprimer `apps/demo/obj/release/tests/renderer/*.o` | M5 |
 | G164 | Windows, macOS, arm64 et formatage | Code de M5 non vérifié sous Windows, macOS ni arm64 (la CI le dira) ; `clang-format` non installé : fichiers neufs non formatés (comme G135) | M5 |
-| G165 | UI-13 : cache par couche | Le cache par couche de l'interface (un conteneur inchangé n'est ni remis en page ni redessiné) n'est pas fait ; proposition : le reporter à M6 (A54) | M6 |
+| G165 | UI-13 : cache par couche | Le cache par couche de l'interface (un conteneur inchangé n'est ni remis en page ni redessiné) n'est pas fait ; proposition : le reporter à M6 (A54) ; non fait en M6, reporté de M8 à M10 par la validation d'A79 (à confirmer par l'auteur) | M10 |
 | G166 | REN-05 : types de lumières | Pas de lumières de surface (P2) ; un projecteur est testé comme une sphère dans les clusters (plus large que son cône) | M6 |
 | G167 | REN-31 : imposteurs | LOD par distance et fondu tramé faits ; pas d'imposteurs automatiques pour la végétation lointaine | M6 |
 | G168 | REN-22 : atmosphère | La boîte à outils n'a pas d'include d'atmosphère (le bloc `FrameData` en porte les paramètres) ; l'atmosphère est le module REN-24 (A39) ; critère de REN-22 à amender (A56) | M13 |
