@@ -1,0 +1,2 @@
+# Cloudflare Pages : adresse courante du plan du site (Astro écrit sitemap-index.xml).
+/sitemap.xml /sitemap-index.xml 301
