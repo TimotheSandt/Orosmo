@@ -319,7 +319,7 @@ $OROSMO_HOME/engines/<x.y.z>/          contenu exact de orosmo-pkg-<plateforme>.
     tools/cui[.exe]  tools/build_progress.py  shaders/  res/  examples/  VERSION
 ```
 
-`orosmo install` vérifie le paquet contre `SHA256SUMS` de la release, l'extrait dans un dossier temporaire puis le renomme (une installation interrompue ne laisse pas de moteur à moitié écrit). `deps/` contient les bibliothèques tierces du moteur, construites par la CI, statiques autant que possible (shaderc compris) ; il remplace `vcpkg_installed/<triplet>/`.
+`orosmo install` vérifie le paquet contre `SHA256SUMS` de la release quand la release publie ce fichier (une release qui n'en a pas, antérieure au contrat, donne un avertissement et s'installe ; un `SHA256SUMS` présent mais illisible est une erreur), l'extrait dans un dossier temporaire, refuse un paquet sans `make/engine.mk`, puis le renomme (une installation interrompue ou refusée ne laisse pas de moteur à moitié écrit). Téléchargements en HTTPS seulement, redirections comprises ; `OROSMO_DOWNLOAD_BASE` est un dossier local ou une URL `https://`. `deps/` contient les bibliothèques tierces du moteur, construites par la CI, statiques autant que possible (shaderc compris) ; il remplace `vcpkg_installed/<triplet>/`.
 
 **Résolution de `ENGINE_DIR`** (Makefile du gabarit, `apps/demo/Makefile`), par priorité :
 1. `ENGINE_DIR` donnée (ligne de commande, environnement, `config.local.mk`) ;

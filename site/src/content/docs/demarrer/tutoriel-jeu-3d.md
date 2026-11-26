@@ -20,7 +20,8 @@ programme ni l'ombre d'un modèle animé.
 
 ```bash
 orosmo init monjeu && cd monjeu          # voir « Créer un projet avec orosmo init »
-cp -r "$(orosmo path 0.6.2)/res" res     # police et thèmes du moteur dans res/ (version de OROSMO_VERSION, config.mk)
+v=$(sed -n 's/^OROSMO_VERSION *[:?]*= *//p' config.mk)   # version choisie par le projet (OROSMO_VERSION, config.mk)
+cp -r "$(orosmo path "$v")/res" res      # police et thèmes de ce moteur dans res/
 mkdir -p res/models                      # le personnage ira dans res/models/hero.glb (voir plus bas)
 rm src/HudView.cui src/hud_state.hpp     # le panneau du projet de démarrage est remplacé par le menu
 ```
