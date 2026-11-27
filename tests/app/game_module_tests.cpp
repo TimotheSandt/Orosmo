@@ -471,7 +471,7 @@ template <bool kInvalid> bool tuningInit(app::GameContext *context)
 {
     scene::ComponentDesc desc = scene::describeComponent<CounterV3>("tuning");
     if constexpr (kInvalid)
-        desc.defaultValue.resize(1);
+        desc.defaultValue.erase(desc.defaultValue.begin() + 1, desc.defaultValue.end()); // pas resize : faux positif GCC 16 (MinGW)
     return context->registerParams("tuning", std::move(desc), "tuning.json").has_value();
 }
 constexpr OrosmoGameApi kTuningValid{app::kGameAbiVersion, "tuning valid", &tuningInit<false>, nullptr, nullptr, nullptr};

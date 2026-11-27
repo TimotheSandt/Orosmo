@@ -195,9 +195,10 @@ TEST_SUITE("renderer/mesh-builder")
         const auto degenerate = rd::MeshBuilder::computeTangents(positions, normals, std::vector<glm::vec2>(3, glm::vec2(0.0f)), tri);
         CHECK(std::fabs(glm::dot(glm::vec3(degenerate[0]), normals[0])) < 1e-6f);
         CHECK(glm::length(glm::vec3(degenerate[0])) == doctest::Approx(1.0f));
-        // Revue PR #37 : tangente de très grande norme (arête 1e10, delta uv 1e-10 : |t| ≈ 1e20, dot(t, t) déborde) : unitaire.
-        const std::vector<glm::vec3> huge{{0, 0, 0}, {1e10f, 0, 0}, {0, 1e10f, 0}};
-        const auto large = rd::MeshBuilder::computeTangents(huge, normals, std::vector<glm::vec2>{{0, 0}, {1e-10f, 0}, {0, 1e-10f}}, tri);
+        // Revue PR #37 : tangente de très grande norme (arête 1e16, delta uv 1e-4 : |t| ≈ 1e20, dot(t, t) déborde) : unitaire.
+        // Le déterminant uv (1e-8) reste au-dessus du seuil des uv dégénérés.
+        const std::vector<glm::vec3> huge{{0, 0, 0}, {1e16f, 0, 0}, {0, 1e16f, 0}};
+        const auto large = rd::MeshBuilder::computeTangents(huge, normals, std::vector<glm::vec2>{{0, 0}, {1e-4f, 0}, {0, 1e-4f}}, tri);
         CHECK(large[0].x == doctest::Approx(1.0f));
         CHECK(glm::length(glm::vec3(large[0])) == doctest::Approx(1.0f));
 
