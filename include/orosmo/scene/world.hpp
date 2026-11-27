@@ -16,6 +16,7 @@
 
 #include <orosmo/core/error.hpp>
 #include <orosmo/scene/component.hpp>
+#include <orosmo/scene/component_migration.hpp>
 #include <orosmo/scene/component_pool.hpp>
 #include <orosmo/scene/entity.hpp>
 #include <orosmo/scene/transform.hpp>
@@ -105,6 +106,12 @@ class World
     // (kBusy) : la table des types ne change pas sous un parcours.
     // Retire le type et ses données de toutes les entités ; ses identifiants deviennent invalides. « Transform » est refusé.
     core::Result<> unregisterComponent(std::string_view name);
+    // GAME-03 (lot L6) : remplace la disposition d'un type déjà enregistré par `desc` et migre ses données
+    // (`migrateComponentValue`, par nom de champ, dans l'ordre dense gardé). Le type garde son emplacement mais change de
+    // génération : les anciens identifiants (et `View`, `ComponentType<T>`) sont refusés. Même disposition : comme
+    // `registerComponent`. Erreurs : kNotFound (type inconnu), kInvalidArgument (description invalide, « Transform »), kBusy
+    // (pendant un parcours).
+    core::Result<ComponentMigration> migrateComponent(ComponentDesc desc);
 
     // kNotFound si aucun type ne porte ce nom.
     core::Result<ComponentId> componentId(std::string_view name) const;

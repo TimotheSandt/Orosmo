@@ -240,7 +240,7 @@ TEST_MODULE      := $(if $(TEST_MODULE_SRCS),bin/tests/test_module$(ENGINE_MODUL
 # (OROSMO_GAME_STATIC) liée dans bin/tests/test_game_static, lancée par `make test`.
 TEST_GAME_DIR       := $(TEST_DIR)/app/game_module
 TEST_GAME_SRC       := $(wildcard $(TEST_GAME_DIR)/game.cpp)
-TEST_GAME_VARIANTS  := v1 v2 badabi failinit
+TEST_GAME_VARIANTS  := v1 v2 v3 badabi failinit
 TEST_GAMELIB_OBJS   := $(if $(TEST_GAME_SRC),$(foreach v,$(TEST_GAME_VARIANTS),$(OBJ_DIR)/tests/app/game_module/game_$(v).o))
 TEST_GAMES          := $(if $(TEST_GAME_SRC),$(foreach v,$(TEST_GAME_VARIANTS),bin/tests/test_game_$(v)$(ENGINE_MODULE_EXT)))
 TEST_GAME_STATIC_OBJS := $(if $(TEST_GAME_SRC),$(OBJ_DIR)/tests/app/game_module/static_game.o $(OBJ_DIR)/tests/app/game_module/static_main.o)

@@ -210,6 +210,43 @@ Result<> World::unregisterComponent(std::string_view name)
     return {};
 }
 
+Result<ComponentMigration> World::migrateComponent(ComponentDesc desc)
+{
+    if (auto ok = validateComponentDesc(desc); !ok)
+        return std::unexpected(ok.error());
+    if (desc.name == kTransformName)
+        return core::makeError(ErrorCode::kInvalidArgument, "the engine component Transform cannot be migrated");
+    auto existing = componentId(desc.name);
+    if (!existing)
+        return std::unexpected(existing.error());
+    Slot &slot = slots_[existing->index];
+    ComponentMigration report;
+    report.name = desc.name;
+    report.fromVersion = slot.pool.desc().version;
+    report.toVersion = desc.version;
+    report.values = slot.pool.size();
+    if (slot.pool.desc().sameLayout(desc))
+    {
+        slot.pool.setDesc(std::move(desc));
+        report.id = *existing;
+        return report;
+    }
+    if (iterating_ > 0)
+        return core::makeError(ErrorCode::kBusy, "component " + desc.name + ": cannot be migrated during an iteration");
+    const ComponentDesc &old = slot.pool.desc();
+    report.kind = classifyMigration(old.fields, desc.fields);
+    ComponentPool migrated(std::move(desc));
+    for (std::size_t i = 0; i < slot.pool.size(); ++i)
+    {
+        void *target = migrated.set(slot.pool.entities()[i], nullptr); // valeur par défaut de la nouvelle disposition
+        migrateComponentValue(old, slot.pool.at(i), migrated.desc(), target, report.warnings);
+    }
+    slot.pool = std::move(migrated);
+    ++slot.generation;
+    report.id = ComponentId{existing->index, slot.generation};
+    return report;
+}
+
 Result<ComponentId> World::componentId(std::string_view name) const
 {
     for (std::uint32_t i = 0; i < slots_.size(); ++i)
