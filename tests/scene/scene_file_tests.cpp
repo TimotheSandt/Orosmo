@@ -5,14 +5,18 @@
 #include <orosmo/scene/scene_file.hpp>
 
 #include <bit>
+#include <chrono>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <string>
+#include <system_error>
 #include <vector>
 
 using namespace orosmo;
@@ -27,6 +31,33 @@ template <typename T> core::ErrorCode errorOf(const core::Result<T> &result)
     REQUIRE(!result);
     return result.error().code;
 }
+
+// Répertoire temporaire propre à ce cas (deux exécutions simultanées ne se gênent pas), supprimé à la sortie, même si un
+// REQUIRE échoue.
+struct TempDir
+{
+    std::filesystem::path path;
+    TempDir()
+    {
+        const auto base = std::filesystem::temp_directory_path();
+        const auto stamp = static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count());
+        for (unsigned attempt = 0;; ++attempt)
+        {
+            path = base / ("orosmo-scene-" + std::to_string(stamp) + "-" + std::to_string(attempt));
+            std::error_code ec;
+            if (std::filesystem::create_directory(path, ec))
+                return;
+            REQUIRE(attempt < 1000);
+        }
+    }
+    ~TempDir()
+    {
+        std::error_code ignored;
+        std::filesystem::remove_all(path, ignored);
+    }
+    TempDir(const TempDir &) = delete;
+    TempDir &operator=(const TempDir &) = delete;
+};
 
 enum class Mood : std::int16_t
 {
@@ -198,16 +229,17 @@ TEST_SUITE("scene/file")
         CHECK(core::dumpJson(saveScene(loaded)) == core::dumpJson(saveScene(original)));
         CHECK(bytes.size() < core::dumpJson(saveScene(original), -1).size());
 
-        const std::filesystem::path dir = std::filesystem::temp_directory_path();
+        const TempDir temp;
+        const std::filesystem::path &dir = temp.path;
         for (const char *name : {"orosmo_scene_test.json", "orosmo_scene_test.oscene"})
         {
             const auto path = dir / name;
             REQUIRE(saveSceneFile(original, path));
+            CHECK_FALSE(std::filesystem::exists(dir / (std::string(name) + ".tmp")));
             World fromFile;
             REQUIRE(fromFile.registerComponent<Agent>("Agent"));
             REQUIRE(loadSceneFile(fromFile, path));
             CHECK(fingerprint(fromFile) == fingerprint(original));
-            std::filesystem::remove(path);
         }
         World other;
         CHECK((errorOf(loadSceneFile(other, dir / "orosmo_absent_scene.json")) == core::ErrorCode::kIo));
@@ -234,9 +266,14 @@ TEST_SUITE("scene/file")
             value.erase("hp");
             return {};
         };
-        // Sans migration : refusé, monde inchangé.
+        // Sans migration : refusé, monde inchangé (document entier comparé : entités, composants, hiérarchie).
         const Entity untouched = v2.create();
+        const Entity child = v2.create();
+        REQUIRE(v2.setParent(child, untouched));
+        v2.add(child, health2, HealthV2{1.f, 2.f});
+        const std::string before = core::dumpJson(saveScene(v2));
         CHECK((errorOf(loadScene(v2, saved)) == core::ErrorCode::kVersionMismatch));
+        CHECK(core::dumpJson(saveScene(v2)) == before);
         CHECK(v2.alive(untouched));
 
         auto report = loadScene(v2, saved, migrations);
@@ -282,9 +319,11 @@ TEST_SUITE("scene/file")
         CHECK(fingerprint(w) == fingerprint(original));
 
         const Entity marker = w.create();
+        const std::string before = core::dumpJson(saveScene(w));
         const auto expectError = [&](core::Json doc, core::ErrorCode code) {
             CHECK((errorOf(loadScene(w, doc)) == code));
             CHECK(w.alive(marker));
+            CHECK(core::dumpJson(saveScene(w)) == before); // composants et hiérarchie compris
         };
         expectError(core::Json::array(), core::ErrorCode::kParse);
         core::Json bad = saved;
@@ -305,6 +344,15 @@ TEST_SUITE("scene/file")
         bad = saved;
         bad["data"]["components"][1]["entities"][0] = 2; // indice libre
         expectError(bad, core::ErrorCode::kParse);
+        bad = saved;
+        bad["data"]["components"][1]["entities"][1] = bad["data"]["components"][1]["entities"][0]; // deux valeurs, une entité
+        expectError(bad, core::ErrorCode::kParse);
+        bad = saved;
+        bad["data"]["components"].push_back(core::Json{{"name", "Ghost"}, {"version", "invalid"}, {"entities", core::Json::array()}, {"values", core::Json::array()}});
+        expectError(bad, core::ErrorCode::kParse); // type inconnu, mais version mal formée
+        bad = saved;
+        bad["data"]["components"].push_back(core::Json{{"name", "Ghost"}, {"version", 4}, {"entities", core::Json::array()}, {"values", core::Json::array()}});
+        CHECK(loadScene(w, bad)); // type inconnu, version bien formée : ignoré (avertissement)
         CHECK((errorOf(loadSceneBinary(w, std::vector<std::uint8_t>{0xc1})) == core::ErrorCode::kParse));
     }
 
@@ -357,9 +405,12 @@ TEST_SUITE("scene/file")
         a.get(e3, type)->speed = std::bit_cast<float>(0xFFC00001u); // NaN négatif à charge non canonique
         a.get(e3, type)->stats.weight = -std::numeric_limits<double>::quiet_NaN();
         World loaded;
-        REQUIRE(loaded.registerComponent<Agent>("Agent"));
+        auto loadedType = loaded.registerComponent<Agent>("Agent"); // identifiant propre à ce monde (G390)
+        REQUIRE(loadedType);
         REQUIRE(loadScene(loaded, core::Json::parse(core::dumpJson(saveScene(a)))));
-        CHECK(std::isnan(loaded.get(e3, type)->speed));
+        const Agent *reloaded = loaded.get(e3, *loadedType);
+        REQUIRE(reloaded != nullptr);
+        CHECK(std::isnan(reloaded->speed));
         CHECK(fingerprint(loaded) == fingerprint(a));
         // -0 et +0 restent distincts (voir le cas précédent) ; un NaN diffère d'un nombre.
         World b = a;
@@ -371,10 +422,66 @@ TEST_SUITE("scene/file")
     {
         ComponentType<Agent> type;
         const World world = makeWorld(type);
-        const std::filesystem::path full = "/dev/full"; // Linux : chaque écriture échoue avec ENOSPC, à la vidange du tampon
+        const std::filesystem::path full = "/dev/full"; // Linux : /dev/full.tmp ne peut pas être créé ; kIo, /dev/full intact
         if (!std::filesystem::exists(full))
             return;
         CHECK((errorOf(saveSceneFile(world, full)) == core::ErrorCode::kIo));
+    }
+
+    TEST_CASE("Scene: a failed saveSceneFile keeps the previous save and removes its temporary file")
+    {
+        ComponentType<Agent> type;
+        const World world = makeWorld(type);
+        const TempDir temp;
+        const auto path = temp.path / "save.json";
+        REQUIRE(saveSceneFile(world, path));
+        const auto readAll = [](const std::filesystem::path &p) {
+            std::ifstream in(p, std::ios::binary);
+            return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        };
+        const std::string previous = readAll(path);
+        REQUIRE_FALSE(previous.empty());
+
+        World changed = world;
+        changed.create();
+        // Le temporaire ne peut pas être créé (un répertoire porte son nom) : la dernière sauvegarde reste intacte.
+        const auto tmp = temp.path / "save.json.tmp";
+        REQUIRE(std::filesystem::create_directory(tmp));
+        CHECK((errorOf(saveSceneFile(changed, path)) == core::ErrorCode::kIo));
+        CHECK(readAll(path) == previous);
+        std::filesystem::remove(tmp);
+
+        // Le remplacement échoue (la destination est un répertoire non vide) : le temporaire écrit est supprimé.
+        const auto dirTarget = temp.path / "dir.json";
+        REQUIRE(std::filesystem::create_directory(dirTarget));
+        { std::ofstream(dirTarget / "keep") << "x"; }
+        CHECK((errorOf(saveSceneFile(changed, dirTarget)) == core::ErrorCode::kIo));
+        CHECK_FALSE(std::filesystem::exists(temp.path / "dir.json.tmp"));
+        CHECK(std::filesystem::exists(dirTarget / "keep"));
+    }
+
+    TEST_CASE("Scene: componentFromJson leaves the value and the warnings unchanged on error")
+    {
+        World world;
+        auto type = world.registerComponent<Agent>("Agent");
+        REQUIRE(type);
+        const ComponentDesc *desc = world.componentDesc(type->id);
+        REQUIRE(desc != nullptr);
+        Agent value;
+        value.speed = 4.f;
+        value.stats.level = 5;
+        std::vector<std::string> warnings;
+        // `speed` (valide) est décodé avant `stats.level` (hors plage) : rien ne doit rester écrit.
+        const core::Json bad{{"speed", 9.0}, {"stats", {{"level", 100}}}, {"extra", 1}};
+        CHECK((errorOf(componentFromJson(*desc, &value, bad, warnings)) == core::ErrorCode::kOutOfRange));
+        CHECK(value.speed == 4.f);
+        CHECK(value.stats.level == 5);
+        CHECK(warnings.empty());
+        const core::Json good{{"speed", 9.0}, {"extra", 1}};
+        REQUIRE(componentFromJson(*desc, &value, good, warnings));
+        CHECK(value.speed == 9.f);
+        CHECK(value.stats.level == 5); // absent : gardé
+        CHECK(warnings.size() == 1);
     }
 
     TEST_CASE("Entity table: reset recreates identifiers and the free stack, refuses invalid tables")
@@ -388,12 +495,17 @@ TEST_SUITE("scene/file")
         CHECK(table.freeIndices == std::vector<std::uint32_t>{0});
 
         World other;
-        REQUIRE(other.setTransform(other.create(), {}));
+        const Entity first = other.create();
+        const Entity second = other.create(); // même indice et même génération que `b`
+        REQUIRE(second == b);
+        REQUIRE(other.setTransform(first, {}));
+        REQUIRE(other.setTransform(second, {}));
+        REQUIRE(other.transform(b) != nullptr);
         REQUIRE(other.resetEntities(table));
         CHECK(other.alive(b));
         CHECK(!other.alive(a));
         CHECK(other.entityCount() == 1);
-        CHECK(other.transform(b) == nullptr);
+        CHECK(other.transform(b) == nullptr); // composant de l'indice 1 retiré
         CHECK(other.create() == w.create());
         CHECK((errorOf(other.resetEntities({{0, 0}, {0, 0}})) == core::ErrorCode::kInvalidArgument));
         CHECK((errorOf(other.resetEntities({{0}, {1}})) == core::ErrorCode::kInvalidArgument));
