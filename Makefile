@@ -52,8 +52,8 @@ else
 # ferait disparaître les en-têtes sous la compilation de l'autre.
 .NOTPARALLEL:
 
-.PHONY: check check-repo check-layers check-api check-headers check-determinism compile-commands
-check: check-repo check-layers check-api check-headers check-determinism
+.PHONY: check check-repo check-layers check-api check-headers check-determinism check-game-static compile-commands
+check: check-repo check-layers check-api check-headers check-determinism check-game-static
 
 compile-commands:
 	@python3 tools/gen_compile_commands.py --build-type $(BUILD_TYPE) --cxx "$(CXX)" --cc "$(CC)"
@@ -73,6 +73,10 @@ check-headers:
 # SIM-01 (A79 L3) : ni fonction transcendante, ni rand(), ni horloge dans le chemin rejoué de la simulation.
 check-determinism:
 	@python3 tools/check_deterministic_math.py
+
+# GAME-02 (A79 L5, règle 13) : aucun état modifiable dans la bibliothèque de jeu, vérifié sur le binaire (nm).
+check-game-static:
+	@python3 tools/check_game_static.py
 
 # ── Combined ──────────────────────────────────────────────────────────────────
 #   make all-debug             engine debug → sync → demo debug
@@ -310,6 +314,13 @@ e2e-init:
 	@# Sans ENGINE_DIR : le Makefile du projet appelle `orosmo path $(OROSMO_VERSION)` (outil trouvé dans le PATH).
 	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) debug
 	test -n "$$(find $(E2E_RUN)/mygame/Generated -name '*.gen.cpp')"   # sortie de cui dans le projet
+	@# A79 L5 : `make debug` construit la logique de jeu (src/game/) en bibliothèque rechargeable, à côté de l'exécutable.
+	test -n "$$(find $(E2E_RUN)/mygame/bin/debug \( -name 'game.so' -o -name 'game.dylib' -o -name 'game.dll' \) -print)"
+	@# `make release` la lie statiquement, sans code de rechargement (GAME-07).
+	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) release
+	@syms=$$(nm -C $(E2E_RUN)/mygame/bin/release/mygame$(E2E_EXE)) || { echo "e2e-init : nm a échoué, contrôle GAME-07 impossible"; exit 1; }; \
+	    ! printf '%s\n' "$$syms" | grep -E 'orosmo::platform::DynamicLibrary|GameModule::load\(|DynamicReloader' \
+	    || { echo "e2e-init : code de rechargement dans la version finale"; exit 1; }
 	@# 2e build (copy_res recopie les ressources du moteur en lecture seule : elles doivent rester inscriptibles, G220).
 	cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo build --json > ../build.json
 	@# Motif sans guillemets doubles : sous mingw32-make (Windows), '"…"' arrive à grep avec des barres obliques inverses.

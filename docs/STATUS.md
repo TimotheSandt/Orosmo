@@ -46,6 +46,27 @@ les 16 `scene.png` identiques au pixel près (`tools/compare_png.py`, tolérance
 
 Vérifications : `make all-debug` sans avertissement ; `make demo-test` (après fusion d'`origin/dev`, L3) : 830 cas, 830 verts, 1 ignoré ; `make check` vert ; démo debug Vulkan et OpenGL (`--ui full --scene mixed --shadows on`, `--frames-in-flight 1` et `3`, hors écran, et Vulkan fenêtré avec 1, 2, 3) : validation Vulkan 0 message, aucune erreur GL_KHR_debug ; ASan + UBSan (`make fclean && make demo-fclean && make demo-test SANITIZE=address,undefined TEST_ARGS='--test-suite=*frames-in-flight*,renderer/*,rhi/backend*'`) : 249 cas verts, aucun rapport. Démo : `apps/demo/bin/debug/main --frames-in-flight 3 --graph-cache on` (journal « Perf: framesInFlight=3 graphBuilds=… »). Windows et macOS non vérifiés (G343).
 
+## M8 lot L5 : module de jeu rechargeable, version finale statique (A79, GAME-01, GAME-02, GAME-07)
+
+Branche `feat/M8-L5-jeu-rechargeable` (depuis `feat/M8-L3-sauvegarde-simulation`). Nouveau module `app` (niveau `app` de
+`tools/layers.json`, A79 choix 3, provisoire), archive `libapp.a` (`src/app/README.md`). Choix de réalisation sous A79 « L5 ».
+Linux x64 seulement en local (g++ 13.3) ; Windows et macOS par la CI (G310, G311).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| GAME-01 Interface C | `include/orosmo/app/game_api.hpp` (`OrosmoGameApi`, `orosmoGameApi`, `kGameAbiVersion`, `OROSMO_GAME_EXPORT`) | suite `app/game_module` | table lue par son nom ; `abiVersion` différente refusée au chargement et au rechargement (`kVersionMismatch`, ancienne version gardée) |
+| GAME-01 Chargement et rechargement | `include/orosmo/app/game_module.hpp` (`GameModule::load`, `update`, `reload`), `src/app/game_reloader.cpp` | suite `app/game_module` avec `tests/app/game_module/game.cpp` construit en v1, v2, badabi, failinit | v1 puis v2 copiée sur le fichier surveillé : rechargée à l'`update` suivant, comportement changé (+1 → +10 par pas), état du composant intact (5 → 25), `onReload` appelé ; copie de la v1 effacée ; `init` qui échoue après avoir écrit dans le monde, fichier tronqué : ancienne version active, enregistrements remis, empreinte de la simulation identique (monde et générateur remis) |
+| GAME-02 État côté moteur | `include/orosmo/app/game_context.hpp` (`GameContext::registerComponent`, `addSystem`, `addAction`) | suite `app/game_module` | systèmes et actions de l'ancienne version absents après rechargement (`Simulation::systemOrder`, `ActionRegistry::contains`) ; `stop` : `shutdown`, plus aucun système ni action, données des composants gardées ; nom déjà pris par l'hôte refusé |
+| GAME-02 Règle 13 sur le binaire | `tools/check_game_static.py` (`make check`, CI, après chaque édition de liens d'une bibliothèque de jeu) | `make check` | auto-test : six formes d'état refusées (global `.bss`/`.data`, `thread_local` `.tbss`/`.tdata`, `static` local et `static` d'une fonction `inline`), constantes et vtables acceptées ; bibliothèque de test v1 et v2 sans état |
+| GAME-07 Version finale | `GameModule::fromApi`, `OROSMO_GAME_STATIC` ; `bin/tests/test_game_static` (`tests/app/game_module/static_main.cpp`) | `make demo-test` (lien + `nm` + exécution) | aucun symbole `platform::DynamicLibrary`, `GameModule::load(` ni `DynamicReloader` dans l'exécutable ; `test_game_static: OK` |
+| Gabarit | `apps/demo/Makefile` (`GAME_MODULE_DIR`, `GAME_MODULE`, `.DEFAULT_GOAL := all`), `tools/engine-sdk/template/src/game/` (`Spin`, système `spin`), `main.cpp` (`startGame`) | `make e2e-init` | `make debug` : `bin/debug/game.so` (contrôle de la règle 13 après l'édition de liens) ; `orosmo run -- --headless` : `game: started, version 1` puis `game: stopped` ; `make release` : jeu lié, aucun symbole de rechargement (`nm`) ; à la main, programme lancé puis `src/game/game.cpp` modifié et `make debug` : `game: reloaded, version 2` (un premier essai sur le fichier à moitié écrit a échoué proprement, G315) |
+
+Vérifications (Linux x64, g++ 13.3, Intel Xe, Mesa ; machine chargée par d'autres agents) : `make all-debug` sans avertissement ;
+`make demo-test` **793 cas verts** (1 ignoré ; 8 nouveaux, suite `app/game_module`) ; après la revue de la PR #28 (fusion de `dev`) : **827 cas verts**, 9 dans `app/game_module`, 31 tests Python puis `test_game_static: OK` ;
+`make demo-test-unit` 500 cas verts ; `make check` OK (119 en-têtes autonomes, 0 violation de couche, `check_game_static` OK) ;
+`make e2e-init` OK ; ASan + UBSan (`make fclean && make demo-test-unit SANITIZE=address,undefined`) : suite `app/game_module` 8 / 8 et `test_game_static` sans aucun message ; le passage complet s'arrête sur une erreur **antérieure au lot** (`alloc-dealloc-mismatch` dans `libshaderc` du système, appelé par le test de foule `anim` qui crée un périphérique graphique alors qu'il est dans `demo-test-unit`), et le passage complet avec `ASAN_OPTIONS=alloc_dealloc_mismatch=0` n'a pas fini en 15 min sur la machine chargée. Pas de rendu touché (démo inchangée). Non formaté par `tools/format_sources.sh`
+(clang-format absent de la machine) : style du code voisin suivi à la main.
+
 ## M8 lot L10 : outils de debug et inspecteur (A79, UI-04, UI-10)
 
 Branche `feat/M8-L10-inspecteur-console` (depuis `feat/M8-L2-ecs`). Outils construits sur `orosmo::ui`, sans Dear ImGui (A79
