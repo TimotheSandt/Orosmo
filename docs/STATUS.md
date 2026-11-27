@@ -48,6 +48,12 @@ touchée (elle garde l'API bas niveau) ; le gabarit et le tutoriel passent à la
 | A75.2 Dispatch compute | `SceneRenderSystem::dispatch`, appelé par `Application::frame` avant `beginFrame` | cas « Draw modes » | skinning enregistré hors passe ; 0 message de validation |
 | Ombres et HDR | `ApplicationSettings::shadows`, `hdr` ; casters des composants | cas « Shadows and HDR » | un caster par maillage `castShadows`, oublié quand le maillage est retiré ; lumière `kDynamic` |
 
+Vérifications (Linux x64, g++ 13.3, Intel Arc, Mesa ; après fusion de `dev` avec L4 et L16) : `make all-debug` sans
+avertissement ; `make check` vert ; tests **879 / 879** (1 ignoré, 372 174 assertions) et `test_game_static: OK` ; ASan +
+UBSan sur les suites `app/*`, `scene/*`, `sim/*` (66 cas, 212 514 assertions, avant la fusion) sans signalement ; démo
+inchangée, `--headless --capture` en Vulkan (validation : 0 message) et en OpenGL sans erreur. Non vérifié : Windows,
+macOS (G350), `clang-format` absent de la machine.
+
 ## M8 lot L16 : performances décidées pour M8 (A61 G et C)
 
 Branche `feat/M8-L16-perf-a61` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa 26.1.6, Intel Arc, OpenGL et Vulkan). Aucune ligne
