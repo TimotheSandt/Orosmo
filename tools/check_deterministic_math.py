@@ -32,13 +32,15 @@ PATTERNS = [
      "<random> engine or distribution"),
     (re.compile(r"\b(?:steady_clock|system_clock|high_resolution_clock)::now\b|(?<![\w.:>])(?:std::|::)?time\s*\("), "clock read"),
 ]
-STRIP = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'', re.S)
+# Les chaînes brutes (R"x(...)x") passent avant les chaînes ordinaires : un guillemet intérieur y est permis.
+STRIP = re.compile(r'//[^\n]*|/\*.*?\*/|(?<!\w)(?:u8|[uUL])?R"(?P<delim>[^ ()\\\s"]{0,16})\(.*?\)(?P=delim)"'
+                   r'|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'', re.S)
 SOURCE_EXT = (".hpp", ".h", ".cpp", ".cc", ".inl", ".inc")
 
 
 def strip(text):
-    # Commentaires et chaînes remplacés par autant de lignes vides (numéros de ligne gardés).
-    return STRIP.sub(lambda m: "\n" * m.group(0).count("\n") if m.group(0)[0] in "/" else '""', text)
+    # Un commentaire devient un espace (séparateur, comme en C++), une chaîne "" ; les sauts de ligne sont gardés.
+    return STRIP.sub(lambda m: (" " if m.group(0)[0] == "/" else '""') + "\n" * m.group(0).count("\n"), text)
 
 
 def scan_text(text):

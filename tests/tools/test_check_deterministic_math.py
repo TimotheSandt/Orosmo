@@ -40,6 +40,13 @@ class ScanTextTest(unittest.TestCase):
         self.assertEqual(self.labels('// std::sin(x)\nconst char *s = "cos(x)";\n/* exp(1)\n pow(2, 3) */'), [])
         self.assertEqual(cdm.scan_text("/* a\nb */ std::sin(x)")[0][0], 2)
 
+    def test_a_comment_separates_tokens(self):
+        self.assertEqual(self.labels("return/* note */rand();"), ["rand()/srand()"])
+
+    def test_ignores_raw_strings(self):
+        self.assertEqual(self.labels('auto s = R"(text " rand())";\nauto t = u8R"x( )" sin(1) )x";'), [])
+        self.assertEqual(cdm.scan_text('R"(a\nb)";\nrand();')[0][0], 3)
+
     def test_repository_is_clean(self):
         self.assertEqual(cdm.main(["check", cdm.ROOT]), 0)
 
