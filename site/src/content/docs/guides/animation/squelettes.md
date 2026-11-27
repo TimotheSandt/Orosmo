@@ -8,7 +8,35 @@ sidebar:
 
 Les noms des variables (`device`, `renderer`…) et les chemins de ressources des extraits sont expliqués dans les [conventions des exemples](/demarrer/premiere-application/#conventions-des-exemples).
 
-Animer un personnage glTF demande plusieurs objets qui se référencent entre eux. Aucun objet ne les regroupe : il faut créer la chaîne complète soi-même, dans l'ordre ci-dessous, puis appeler trois choses chaque image dans un ordre précis. Cette page donne la chaîne, puis détaille chaque pièce.
+Animer un personnage glTF demande plusieurs objets qui se référencent entre eux. Depuis M8, `anim::AnimatedModel` les
+regroupe (section suivante) ; la chaîne complète, détaillée ensuite, reste disponible pour ce qu'il ne couvre pas
+(machine à états, couches, masques).
+
+## En cinq lignes : AnimatedModel
+
+```cpp
+#include <orosmo/anim/animated_model.hpp>
+namespace an = orosmo::anim;
+
+auto context = rd::RenderContext::create(device, shaderDir);
+auto hero = an::AnimatedModel::create(*context, GET_RESOURCE_PATH("models/hero.gltf"));
+if (!hero) { /* hero.error().message */ }
+if (auto played = (*hero)->play("walk"); !played) { /* clip inconnu */ }
+
+// chaque image
+if (auto r = (*hero)->update(dt); !r) { /* ... */ }        // avance le lecteur, envoie la pose
+if (auto r = (*hero)->dispatch(*encoder); !r) { /* ... */ } // hors passe, avant renderer.beginFrame (skinning GPU)
+if (auto r = (*hero)->draw(renderer, camera); !r) { /* ... */ } // entre setCamera et endFrame
+```
+
+- `crossFade(clip, secondes)` passe d'un clip à l'autre en fondu (même calcul que `StateMachine`) ; `setPose` impose une
+  pose calculée ailleurs (machine à états, couches).
+- Skinning en compute si le périphérique le permet, sinon repli sur le CPU (`skinningPath()`, même résultat à 1e-4 près) ;
+  `AnimatedModelOptions::forceCpuSkinning` force le repli.
+- Un `assets::ModelLoader` partagé (autre surcharge de `create`) met en commun textures et programmes entre modèles.
+- Pas d'événements de clip (G251). Avec la façade : `Application::loadAnimatedModel` et le composant
+  `AnimatedModelComponent` ([La façade app::Application](/guides/application/facade/)).
+
 
 ## La chaîne complète
 

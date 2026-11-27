@@ -38,12 +38,14 @@ de thèmes JSON.
 
 ## État
 
-La version courante est la 0.6.2 : le moteur s'installe une fois par machine, avec une commande, sans vcpkg. Le jalon M6 est livré : import glTF 2.0, matériaux PBR, éclairage par environnement,
-animation par squelette et foules instanciées, en plus du cœur du rendu de M5 (graphe de passes, forward+, ombres,
-HDR, anticrénelage, culling GPU, 2D). L'API peut encore changer entre deux versions mineures.
+La version courante est la 0.7.0 : le moteur s'installe une fois par machine, avec une commande, sans vcpkg. Le jalon M8
+est livré : scène à entités, simulation à pas fixe rejouable, logique de jeu et vues `.cui` rechargées à chaud sans perdre
+l'état, façade `app::Application`, navigation au clavier et à la manette, outils de debug ; en plus de M6 (glTF 2.0,
+matériaux PBR, éclairage par environnement, animation, foules) et du cœur du rendu de M5 (graphe de passes, forward+,
+ombres, HDR, anticrénelage, culling GPU, 2D). L'API peut encore changer entre deux versions mineures.
 
 Linux est la seule plateforme vérifiée. Windows et macOS sont compilés par la CI mais n'ont pas été observés pour le code
-récent. Il n'y a pas de scène à entités, pas de logique de jeu rechargeable, pas de manettes. La liste complète, avec
+récent. La liste complète, avec
 les preuves, est sur la page [État du moteur](/projet/etat/).
 
 <figure>
