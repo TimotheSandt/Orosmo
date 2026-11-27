@@ -1,5 +1,5 @@
-// --scene anim de la démo (M6, lot H) : le personnage généré passe par l'aller-retour glTF (saveGltf puis loadGltf), est joué par
-// la machine à états et déformé en compute ; mille agents tiennent en un draw call par primitive skinnée ; réécrire la texture sur
+// --scene anim de la démo (M6, lot H ; M8-L12a) : le personnage généré passe par l'aller-retour glTF (saveGltf puis ModelLoader),
+// est joué par un `anim::AnimatedModel` (fondus entre ses clips) et déformé en compute ; mille agents tiennent en un draw call par primitive skinnée ; réécrire la texture sur
 // le disque la recharge (reloadChanged == 1). Sans erreur de validation, sur chaque backend.
 // Mesure (ignorée par défaut, `--no-skip`) : coût GPU du skinning et de la foule pour un modèle d'environ 10 000 sommets.
 #include <doctest/doctest.h>
@@ -189,8 +189,8 @@ TEST_SUITE("apps/demo-anim")
             CHECK(f.scene.model().skins.size() == 1);
             CHECK(f.scene.model().animations.size() == 2);
             CHECK(f.scene.heroSkinned() == an::SkinnedModel::supportedBy(f.gpu->capabilities()));
-            REQUIRE(f.scene.stateMachine() != nullptr);
-            CHECK(f.scene.stateMachine()->current() == "sway");
+            REQUIRE(f.scene.hero() != nullptr);
+            CHECK(f.scene.hero()->current() == "sway");
 
             const std::size_t batches = skinnedPrimitives(f.scene.model());
             CHECK(f.scene.agentCount() == 1000);
@@ -213,12 +213,12 @@ TEST_SUITE("apps/demo-anim")
             }
             CHECK(lit > 200); // la foule et le personnage couvrent une bonne part de l'image
 
-            // Après 3 s, la machine passe à « wave » (fondu de 0,5 s).
+            // Après 3 s, le personnage passe à « wave » (fondu de 0,5 s).
             for (int i = 0; i < 4 * 60; ++i)
             {
                 REQUIRE(f.scene.update(1.0f / 60.0f).has_value());
             }
-            CHECK(f.scene.stateMachine()->current() == "wave");
+            CHECK(f.scene.hero()->current() == "wave");
 
             // Rechargement à chaud : rien n'a changé, puis la texture est réécrite (même taille, autres couleurs).
             CHECK(f.scene.reloadChanged() == 0);
