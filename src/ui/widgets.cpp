@@ -923,7 +923,7 @@ void Tabs::clearChildren()
 void Tabs::saveRetained(RetainedState &state) const
 {
     if (!selected_.get)
-        state.selected = local_;
+        state.selected = selected(); // l'onglet montré (un indice hors des pages est borné)
 }
 
 void Tabs::restoreRetained(Ui &, const RetainedState &state)

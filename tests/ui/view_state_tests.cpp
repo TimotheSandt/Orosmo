@@ -145,6 +145,39 @@ TEST_SUITE("ui/view_state")
         CHECK(dynamic_cast<Tabs *>(h.ui.root())->selected() == 0);
     }
 
+    TEST_CASE("only the first widget of an id gives its state, even when it has none")
+    {
+        tests::UiHarness h;
+        auto root = std::make_unique<VBox>();
+        root->emplace<Label>("first").setId("x");
+        auto &section = root->emplace<Section>("Second", true);
+        section.setId("x");
+        h.ui.setRoot(std::move(root));
+        h.frame();
+        CHECK_FALSE(captureViewState(h.ui).widgets.contains("x"));
+    }
+
+    TEST_CASE("the tab kept is the one shown, not a stale index")
+    {
+        tests::UiHarness h;
+        auto build = [](int pages) {
+            auto tabs = std::make_unique<Tabs>();
+            tabs->setId("tabs");
+            for (int i = 0; i < pages; ++i)
+                tabs->addPage("P" + std::to_string(i), std::make_unique<Label>("page"));
+            return tabs;
+        };
+        h.ui.setRoot(build(3));
+        h.frame();
+        dynamic_cast<Tabs *>(h.ui.root())->select(h.ui, 2);
+        std::unique_ptr<Widget> one = build(1);
+        REQUIRE(replaceRoot(h.ui, one).has_value());
+        CHECK(dynamic_cast<Tabs *>(h.ui.root())->selected() == 0);
+        std::unique_ptr<Widget> three = build(3);
+        REQUIRE(replaceRoot(h.ui, three).has_value());
+        CHECK(dynamic_cast<Tabs *>(h.ui.root())->selected() == 0);
+    }
+
     TEST_CASE("replaceRoot during Ui::update is refused and the new tree is given back")
     {
         tests::UiHarness h;

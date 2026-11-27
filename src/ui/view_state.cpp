@@ -3,6 +3,8 @@
 
 #include "orosmo/ui/ui.hpp"
 
+#include <set>
+#include <string>
 #include <utility>
 
 namespace orosmo::ui
@@ -31,8 +33,9 @@ ViewState captureViewState(const Ui &ui)
     state.focusVisible = ui.focusVisible();
     if (Widget *root = ui.root())
     {
+        std::set<std::string, std::less<>> seen; // premier widget de chaque identifiant, même sans état à garder
         forEachWidget(*root, [&](Widget &w) {
-            if (w.id().empty() || state.widgets.contains(w.id()))
+            if (w.id().empty() || !seen.insert(w.id()).second)
                 return;
             RetainedState retained;
             w.saveRetained(retained);
