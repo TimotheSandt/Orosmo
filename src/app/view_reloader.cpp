@@ -80,8 +80,13 @@ class DevReloader final : public ViewHost::Reloader
 {
   public:
     explicit DevReloader(const ViewHostSettings &settings)
-        : settleDelay_(settings.settleDelay), command_(settings.buildCommand), directory_(settings.buildDirectory)
+        : settleDelay_(settings.settleDelay), command_(settings.buildCommand), directory_(settings.buildDirectory),
+          startBuild_(settings.startBuild)
     {
+        if (!startBuild_)
+            startBuild_ = [](const std::string &command, const std::filesystem::path &directory) {
+                return std::async(std::launch::async, [command, directory] { return platform::runCommand(command, directory); });
+            };
         if (!settings.sources.empty() && !command_.empty())
         {
             watcher_.setPollInterval(settings.pollInterval);
@@ -107,16 +112,10 @@ class DevReloader final : public ViewHost::Reloader
     {
         watcher_.poll();
         finishBuild(impl);
-        if (pending_ && !build_.valid() && std::chrono::steady_clock::now() - changedAt_ >= settleDelay_)
-        {
-            pending_ = false;
-            ++impl.builds;
-            LOG_INFO("ui view: .cui changed, running `" + command_ + "`");
-            build_ = std::async(std::launch::async,
-                                [command = command_, directory = directory_] { return platform::runCommand(command, directory); });
-        }
+        // Pendant une construction, la bibliothèque peut déjà être liée et chargée sans que la construction ait réussi : on
+        // attend sa fin avant de recréer l'arbre.
         GameModule *game = impl.settings.game;
-        if (game != nullptr && game->running() && game->version() != impl.builtVersion)
+        if (!build_.valid() && game != nullptr && game->running() && game->version() != impl.builtVersion)
         {
             if (auto rebuilt = buildFromLibrary(impl); rebuilt)
             {
@@ -127,6 +126,13 @@ class DevReloader final : public ViewHost::Reloader
             else if (rebuilt.error().code != ErrorCode::kBusy)
                 impl.fail(rebuilt.error());
         }
+        if (pending_ && !build_.valid() && std::chrono::steady_clock::now() - changedAt_ >= settleDelay_)
+        {
+            pending_ = false;
+            ++impl.builds;
+            LOG_INFO("ui view: .cui changed, running `" + command_ + "`");
+            build_ = startBuild_(command_, directory_);
+        }
     }
 
   private:
@@ -135,14 +141,21 @@ class DevReloader final : public ViewHost::Reloader
         if (!build_.valid() || build_.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
             return;
         core::Result<platform::CommandResult> result = build_.get();
+        // Échec : la version du jeu chargée pendant la construction ne remplace pas la vue.
+        const auto rejectLoadedVersion = [&impl] {
+            if (const GameModule *game = impl.settings.game; game != nullptr && game->running())
+                impl.builtVersion = game->version();
+        };
         if (!result)
         {
+            rejectLoadedVersion();
             impl.fail(result.error());
             return;
         }
         impl.lastBuildOutput = std::move(result->output);
         if (result->exitCode != 0)
         {
+            rejectLoadedVersion();
             LOG_WARNING("ui view: build output:\n" + impl.lastBuildOutput);
             impl.fail(core::makeError(ErrorCode::kCancelled, "ui build failed, previous view kept:\n" + errorSummary(impl.lastBuildOutput))
                           .error());
@@ -155,6 +168,7 @@ class DevReloader final : public ViewHost::Reloader
     std::chrono::milliseconds settleDelay_;
     std::string command_;
     std::filesystem::path directory_;
+    decltype(ViewHostSettings::startBuild) startBuild_;
     core::FileWatcher watcher_;
     bool pending_ = false;
     std::chrono::steady_clock::time_point changedAt_{};
@@ -171,7 +185,9 @@ core::Result<> ViewHost::mountFromLibrary(const char *name, std::uint64_t bindin
     if (impl.settings.game == nullptr || !impl.settings.game->running())
         return core::makeError(ErrorCode::kInvalidArgument, std::string("view ") + name +
                                                                 ": compiled into the game library, but no game module is running");
-    // Vue précédente gardée jusqu'au nouvel arbre, et remise si la nouvelle ne se construit pas.
+    // Vue précédente gardée jusqu'au nouvel arbre, et remise si la nouvelle ne se construit pas. Sans vue précédente, la vue
+    // demandée reste retenue : une version suivante de la bibliothèque la montera.
+    const std::uint32_t previousBuiltVersion = impl.builtVersion;
     std::shared_ptr<const void> previous = std::exchange(impl.view, std::move(view));
     std::string previousName = std::exchange(impl.name, name);
     const std::uint64_t previousBindings = std::exchange(impl.bindings, bindings);
@@ -181,10 +197,14 @@ core::Result<> ViewHost::mountFromLibrary(const char *name, std::uint64_t bindin
     auto built = buildFromLibrary(impl);
     if (!built)
     {
-        impl.view = std::move(previous);
-        impl.name = std::move(previousName);
-        impl.bindings = previousBindings;
-        impl.size = previousSize;
+        if (!previousName.empty())
+        {
+            impl.view = std::move(previous);
+            impl.name = std::move(previousName);
+            impl.bindings = previousBindings;
+            impl.size = previousSize;
+            impl.builtVersion = previousBuiltVersion;
+        }
         impl.fail(built.error());
     }
     return built;

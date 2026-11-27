@@ -20,10 +20,12 @@
 #include <orosmo/ui/widgets.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <string>
-#include <thread>
+#include <utility>
 
 using namespace orosmo;
 using core::ErrorCode;
@@ -86,19 +88,53 @@ bool hasErrorNotification(const ui::Ui &ui, const std::string &part)
     return false;
 }
 
-// Appelle `views.update()` jusqu'à la fin de la construction lancée (au plus `seconds`).
-void waitForBuild(app::ViewHost &views, std::uint32_t failuresBefore, double seconds = 20.0)
+// Construction pilotée par le test : ni processus, ni thread, ni horloge (le processus réel est vu par tools/e2e_view_reload.py).
+struct FakeBuild
 {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(seconds);
-    while (std::chrono::steady_clock::now() < deadline)
+    std::promise<core::Result<platform::CommandResult>> promise;
+    std::uint32_t started = 0;
+    std::string command;
+
+    app::ViewHostSettings settings(app::GameModule &game, const fs::path &sources)
     {
-        views.update();
-        if (views.builds() > 0 && !views.building())
-            return;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return {.game = &game,
+                .sources = sources,
+                .buildCommand = "make game",
+                .settleDelay = std::chrono::milliseconds(0),
+                .pollInterval = std::chrono::milliseconds(0),
+                .startBuild = [this](const std::string &line, const fs::path &) {
+                    ++started;
+                    command = line;
+                    promise = {};
+                    return promise.get_future();
+                }};
     }
-    FAIL("build not finished (failures " << views.failures() << ", before " << failuresBefore << ")");
-}
+    void finish(int exitCode, std::string output)
+    {
+        promise.set_value(platform::CommandResult{.exitCode = exitCode, .output = std::move(output)});
+    }
+};
+
+// Un .cui observé ; `touch` change sa taille (vu au prochain `update`, sans dépendre de la date du fichier).
+struct Sources
+{
+    fs::path dir;
+    fs::path cui;
+
+    explicit Sources(const ViewFolder &folder) : dir(folder.dir / "src"), cui(dir / "HotView.cui")
+    {
+        fs::create_directories(dir);
+        std::ofstream(cui) << "view HotView {}\n";
+    }
+    void touch() const { std::ofstream(cui, std::ios::app) << "// edited, longer\n"; }
+};
+
+// Vue de même nom que HotView mais d'une autre structure : refusée par toute bibliothèque de test.
+struct OtherStructureView
+{
+    static constexpr const char *cui_name = "HotView";
+    static constexpr std::uint64_t cui_bindings = 1;
+};
 
 } // namespace
 
@@ -202,29 +238,27 @@ TEST_SUITE("app/view_host")
     {
         ViewFolder folder("build");
         folder.install("v1");
-        const fs::path sources = folder.dir / "src";
-        fs::create_directories(sources);
-        const fs::path cui = sources / "HotView.cui";
-        std::ofstream(cui) << "view HotView {}\n";
+        const Sources sources(folder);
         Host host;
         auto game = host.load(folder.library);
         REQUIRE(game.has_value());
         ui::Ui &ui = host.harness.ui;
-        app::ViewHost views(ui, {.game = &*game,
-                                 .sources = sources,
-                                 .buildCommand = "echo HotView.cui:3:5: error: unknown component Lable && exit 3",
-                                 .buildDirectory = folder.dir,
-                                 .settleDelay = std::chrono::milliseconds(0),
-                                 .pollInterval = std::chrono::milliseconds(0)});
+        FakeBuild build;
+        app::ViewHost views(ui, build.settings(*game, sources.dir));
         REQUIRE(views.setRoot(cui::HotView{.state = &host.state}).has_value());
         const ui::Widget *before = ui.root();
         views.update();
         CHECK(views.builds() == 0); // rien n'a changé
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        std::ofstream(cui, std::ios::app) << "// edited, longer\n";
-        waitForBuild(views, 0);
+        sources.touch();
+        views.update();
         CHECK(views.builds() == 1);
+        CHECK(build.started == 1);
+        CHECK(build.command == "make game");
+        CHECK(views.building());
+        build.finish(3, "HotView.cui:3:5: error: unknown component Lable\n");
+        views.update();
+        CHECK_FALSE(views.building());
         CHECK(views.failures() == 1);
         REQUIRE(views.lastError().has_value());
         CHECK(views.lastError()->message.find("error: unknown component Lable") != std::string::npos);
@@ -234,26 +268,60 @@ TEST_SUITE("app/view_host")
         CHECK(views.rebuilds() == 0);
     }
 
+    TEST_CASE("a library loaded while a build that fails is running does not replace the view")
+    {
+        ViewFolder folder("build-race");
+        folder.install("v1");
+        const Sources sources(folder);
+        Host host;
+        auto game = host.load(folder.library);
+        REQUIRE(game.has_value());
+        ui::Ui &ui = host.harness.ui;
+        FakeBuild build;
+        app::ViewHost views(ui, build.settings(*game, sources.dir));
+        REQUIRE(views.setRoot(cui::HotView{.state = &host.state}).has_value());
+        const ui::Widget *before = ui.root();
+        sources.touch();
+        views.update();
+        REQUIRE(views.building());
+
+        folder.install("v2"); // liée par la commande, qui échoue ensuite
+        REQUIRE(game->reload().has_value());
+        views.update();
+        CHECK(views.rebuilds() == 0);
+        CHECK(ui.root() == before);
+        build.finish(2, "check: error\n");
+        views.update();
+        views.update();
+        CHECK(views.failures() == 1);
+        CHECK(views.rebuilds() == 0);
+        CHECK(ui.root() == before);
+
+        sources.touch(); // la construction suivante réussit : sa bibliothèque est prise
+        views.update();
+        REQUIRE(views.building());
+        REQUIRE(game->reload().has_value());
+        build.finish(0, "built\n");
+        views.update();
+        CHECK(views.rebuilds() == 1);
+        CHECK(ui.find("added") != nullptr);
+    }
+
     TEST_CASE("a successful build only waits for the game library reload")
     {
         ViewFolder folder("build-ok");
         folder.install("v1");
-        const fs::path sources = folder.dir / "src";
-        fs::create_directories(sources);
-        const fs::path cui = sources / "HotView.cui";
-        std::ofstream(cui) << "view HotView {}\n";
+        const Sources sources(folder);
         Host host;
         auto game = host.load(folder.library);
         REQUIRE(game.has_value());
-        app::ViewHost views(host.harness.ui, {.game = &*game,
-                                              .sources = sources,
-                                              .buildCommand = "echo built",
-                                              .settleDelay = std::chrono::milliseconds(0),
-                                              .pollInterval = std::chrono::milliseconds(0)});
+        FakeBuild build;
+        app::ViewHost views(host.harness.ui, build.settings(*game, sources.dir));
         REQUIRE(views.setRoot(cui::HotView{.state = &host.state}).has_value());
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        std::ofstream(cui, std::ios::app) << "// edited, longer\n";
-        waitForBuild(views, 0);
+        sources.touch();
+        views.update();
+        build.finish(0, "built\n");
+        views.update();
         CHECK(views.failures() == 0);
         CHECK(views.lastBuildOutput().find("built") != std::string::npos);
         CHECK(views.rebuilds() == 0); // la bibliothèque n'a pas changé
@@ -262,6 +330,49 @@ TEST_SUITE("app/view_host")
         REQUIRE(game->reload().has_value());
         views.update();
         CHECK(views.rebuilds() == 1);
+    }
+
+    TEST_CASE("a failed setRoot leaves the previous view following the game library")
+    {
+        ViewFolder folder("restore-version");
+        folder.install("v1");
+        Host host;
+        auto game = host.load(folder.library);
+        REQUIRE(game.has_value());
+        ui::Ui &ui = host.harness.ui;
+        app::ViewHost views(ui, {.game = &*game});
+        REQUIRE(views.setRoot(cui::HotView{.state = &host.state}).has_value());
+        folder.install("v2");
+        REQUIRE(game->reload().has_value());
+        auto other = views.setRoot(OtherStructureView{}); // avant le prochain update
+        REQUIRE_FALSE(other.has_value());
+        CHECK((other.error().code == ErrorCode::kVersionMismatch));
+        views.update();
+        CHECK(views.rebuilds() == 1);
+        CHECK(ui.find("added") != nullptr);
+    }
+
+    TEST_CASE("a first view that cannot be built is mounted by a later library version")
+    {
+        ViewFolder folder("first-mount");
+        folder.install("v3"); // autre structure que celle de l'hôte
+        Host host;
+        auto game = host.load(folder.library);
+        REQUIRE(game.has_value());
+        ui::Ui &ui = host.harness.ui;
+        app::ViewHost views(ui, {.game = &*game});
+        REQUIRE_FALSE(views.setRoot(cui::HotView{.state = &host.state}).has_value());
+        CHECK(ui.root() == nullptr);
+        views.update();
+        CHECK(views.failures() == 1); // une fois par version
+
+        folder.install("v1");
+        REQUIRE(game->reload().has_value());
+        views.update();
+        CHECK(views.failures() == 1);
+        CHECK(views.rebuilds() == 1);
+        REQUIRE(ui.root() != nullptr);
+        CHECK(ui.find("press") != nullptr);
     }
 
     TEST_CASE("without a running game module, a view compiled into the library cannot be built")

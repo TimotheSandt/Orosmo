@@ -16,6 +16,8 @@
 //     ouvertes par identifiant de widget (`ui::replaceRoot`). Le même arbre est recréé après tout rechargement du jeu.
 //     Échec (erreur de `cui` ou du compilateur, vue absente, structure de la vue changée) : l'ancienne vue reste, l'erreur est
 //     journalisée, gardée (`lastError`) et affichée par `Ui::notify` (un widget `Notifications` de l'arbre la montre).
+//     Pendant une construction, l'arbre n'est pas recréé ; si elle échoue, la version du jeu chargée entre-temps est ignorée.
+//     Premier montage en échec (aucune vue précédente) : la vue demandée est retenue et montée par une version suivante.
 //
 // L'état lié (`@Mutable var state`) et la structure de la vue vivent côté hôte, et survivent donc au rechargement. Une structure
 // qui change (champ `@Mutable` / `@Snapshot` ajouté, bloc `@cui-cpp` modifié) ne peut pas être lue par l'exécutable compilé avant :
@@ -26,11 +28,14 @@
 #pragma once
 
 #include <orosmo/core/error.hpp>
+#include <orosmo/platform/process.hpp>
 
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <future>
 #include <memory>
 #include <optional>
 #include <string>
@@ -61,6 +66,11 @@ struct ViewHostSettings
     std::chrono::milliseconds pollInterval{100};
     // Erreurs aussi affichées par `Ui::notify` (kError).
     bool notify = true;
+    // Lance la construction et rend son résultat à venir. Vide : `platform::runCommand` sur un autre thread. Les tests le
+    // remplacent pour piloter la fin de la construction (sans processus ni horloge).
+    std::function<std::future<core::Result<platform::CommandResult>>(const std::string &command,
+                                                                     const std::filesystem::path &directory)>
+        startBuild{};
 };
 
 class ViewHost
