@@ -18,6 +18,7 @@ import re
 import sys
 
 FENCE = re.compile(r'^```(\w+)(.*)$')
+CLOSING = re.compile(r"^```+[ \t]*$")
 TITLE = re.compile(r'title="([^"]+)"')
 CONTINUED = " (suite)"
 LANGUAGES = ("cpp", "text")
@@ -47,7 +48,7 @@ def extract(markdown):
                 else:
                     files[current] = ""
             lines = []
-        elif line.startswith("```"):
+        elif CLOSING.match(line):  # une clôture ne porte que des espaces après ses marqueurs
             if current:
                 files[current] += "".join(l + "\n" for l in lines)
             current = None
@@ -57,7 +58,8 @@ def extract(markdown):
         raise ValueError("unterminated code block")
     for path in files:
         p = pathlib.PurePosixPath(path)
-        if p.is_absolute() or ".." in p.parts:
+        w = pathlib.PureWindowsPath(path)  # lecteur et séparateurs Windows : la page est aussi extraite sous Windows
+        if p.is_absolute() or w.drive or w.root or ".." in p.parts or ".." in w.parts:
             raise ValueError(f"{path}: the path must be relative, without ..")
     return files
 

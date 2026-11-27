@@ -440,6 +440,11 @@ TEST_SUITE("app/view_host")
         CHECK(host.harness.ui.root() == nullptr);
     }
 
+}
+
+// Suite séparée : crée un périphérique (GPU_TEST_SUITES, Makefile).
+TEST_SUITE("app/view_host/gpu")
+{
     TEST_CASE("Application::setView (A79 L14, G365): view built by the game library and rebuilt after its reload; linked without it")
     {
         for (const rhi::Backend backend : tests::backendsToRun())
@@ -471,6 +476,22 @@ TEST_SUITE("app/view_host")
                 CHECK(a.device().validationErrorCount() == 0);
             } // l'arbre part avant la bibliothèque qui l'a construit (sinon : code déchargé appelé à la destruction)
 
+            { // jeu lié statiquement : pas de bibliothèque d'où recharger, la vue liée aussi
+                static constexpr OrosmoGameApi kStatic{app::kGameAbiVersion, "static", [](app::GameContext *) { return true; },
+                                                            nullptr, nullptr, nullptr};
+                auto settings = uiSettings(backend);
+                settings.game = app::GameSource::fromApi(&kStatic);
+                settings.game->required = true;
+                auto created = app::Application::create(settings);
+                REQUIRE_MESSAGE(created.has_value(), created.error().describe());
+                app::Application &a = **created;
+                REQUIRE(a.game() != nullptr);
+                auto mounted = a.setView(LinkedHotView{.state = &state});
+                REQUIRE_MESSAGE(mounted.has_value(), mounted.error().describe());
+                CHECK_FALSE(a.views().reloadable());
+                CHECK(a.ui().find("linked") != nullptr);
+            }
+
             auto settings = uiSettings(backend); // sans bibliothèque de jeu : la vue liée dans l'exécutable
             auto created = app::Application::create(settings);
             REQUIRE_MESSAGE(created.has_value(), created.error().describe());
@@ -484,6 +505,10 @@ TEST_SUITE("app/view_host")
         }
     }
 
+}
+
+TEST_SUITE("app/view_host")
+{
     TEST_CASE("defaultViews and defaultSettings (A79 L14): the .cui of <project>/src rebuilt by make game in <project>")
     {
         const fs::path bin = core::system::executablePath().parent_path(); // bin/tests

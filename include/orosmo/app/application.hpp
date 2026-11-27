@@ -32,9 +32,11 @@
 // Erreurs : `std::expected` (règle 10). Un rappel `onRender` qui échoue, ou une image qui échoue (y compris `beginFrame` ou
 // `present` du périphérique, perte comprise ; seul kBusy est toléré), arrête `run` (code d'échec). À la destruction, les rappels
 // (et leurs captures) sont libérés avant le module de jeu et le périphérique.
-// Ordre de vie : un état lié par l'interface (`setView(cui::Vue{.state = &state})`, `cui::build...(ui, state)`) doit vivre plus
-// longtemps que l'application (le déclarer avant elle) ou être retiré par `ui().setRoot(nullptr)`. L'hôte de la vue est détruit
-// avant le module de jeu (dont la bibliothèque a pu construire l'arbre) et avant l'interface.
+// Ordre de vie : un état lié par l'interface doit vivre plus longtemps que l'application (le déclarer avant elle). Pour une vue
+// installée par `setView(cui::Vue{.state = &state})`, rien d'autre ne suffit : l'hôte la reconstruit après un rechargement,
+// même si `ui().setRoot(nullptr)` l'a retirée. Pour une vue construite à la main (`cui::build...(ui, state)`),
+// `ui().setRoot(nullptr)` permet de libérer l'état plus tôt. L'hôte de la vue est détruit avant le module de jeu (dont la
+// bibliothèque a pu construire l'arbre) et avant l'interface.
 #pragma once
 
 #include <orosmo/app/game_api.hpp>
@@ -343,7 +345,8 @@ template <class View> core::Result<> Application::setView(View view)
     if (!hasUi())
         return core::makeError(core::ErrorCode::kUnsupported, "Application::setView: created with settings.ui = false");
 #if defined(OROSMO_CUI_RELOADABLE)
-    if (game() == nullptr) // développement sans bibliothèque de jeu : rien d'où recharger, la vue liée dans l'exécutable
+    // Sans jeu, ou jeu lié statiquement (`GameSource::fromApi`) : rien d'où recharger, la vue liée dans l'exécutable.
+    if (game() == nullptr || !game()->hotReloadable())
         return views().setLinkedRoot(std::move(view));
 #endif
     return views().setRoot(std::move(view));

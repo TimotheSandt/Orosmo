@@ -46,6 +46,15 @@ class ExtractDocCodeTests(unittest.TestCase):
         self.assertNotIn("make debug", "".join(files.values()))
         self.assertNotIn("not a file", "".join(files.values()))
 
+    def test_a_marker_followed_by_text_does_not_close_the_block(self):
+        page = '```cpp title="a.cpp"\n```suffix\nint x;\n```  \n'
+        self.assertEqual(edc.extract(page)["a.cpp"], "```suffix\nint x;\n")
+
+    def test_windows_paths_are_refused(self):
+        for path in ("C:/temp/a.cpp", "C:a.cpp", "\\\\server\\share\\a.cpp", "..\\a.cpp", "\\a.cpp"):
+            with self.assertRaises(ValueError, msg=path):
+                edc.extract(f'```cpp title="{path}"\nx\n```\n')
+
     def test_errors(self):
         with self.assertRaisesRegex(ValueError, "before the start"):
             edc.extract('```cpp title="a.cpp (suite)"\nx\n```\n')

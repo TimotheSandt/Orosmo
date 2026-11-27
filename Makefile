@@ -193,7 +193,7 @@ demo-test:
 
 # Tests sans GPU ni fenêtre (unitaires) / seulement ceux qui en demandent un (intégration graphique : contexte OpenGL hors écran,
 # fenêtre). `make demo-test` exécute les deux. ENGINE_TEST_REQUIRE_GPU=1 fait échouer (au lieu d'ignorer) un test GPU sans pilote.
-GPU_TEST_SUITES := rhi/opengl*,rhi/vulkan*,rhi/backend*,renderer/*,platform/window,ui/render
+GPU_TEST_SUITES := rhi/opengl*,rhi/vulkan*,rhi/backend*,renderer/*,platform/window,ui/render,app/view_host/gpu
 .PHONY: demo-test-unit demo-test-gpu
 demo-test-unit:
 	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
