@@ -30,6 +30,24 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L14 : programme de départ et tutoriel 3D avec la façade (A79, A77)
+
+Branche `feat/M8-L14-depart-tutoriel` (depuis `feat/M8-L8-cui-rechargement`, qui contient `dev` avec L13). Choix de
+réalisation : `docs/QUESTIONS.md`, A79, « Lot L14 ». Linux x64 seulement en local (g++ 13.3, Intel Arc, Mesa).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| A77 Mesure | `tools/engine-sdk/template/src/`, `site/src/content/docs/demarrer/tutoriel-jeu-3d.md` | commandes de `docs/releases/M8.md` | programme de départ **403 → 59** lignes (≤ 80) ; tutoriel 3D **459 → 170** (≤ 180) |
+| G365 Hôte de la vue dans la façade | `Application::setView`, `views()`, `ApplicationSettings::views`, `ViewHost::setLinkedRoot` | `make demo-test` : cas « View host (A79 L14, G365) » (forme liée), « Application::setView (A79 L14, G365) » (bibliothèque de jeu de test `test_view_v1` puis `v2`) | vue installée ; construite par la bibliothèque puis recréée après son rechargement (`rebuilds() == 1`) ; sans bibliothèque : vue liée ; sans interface : `kUnsupported` ; 0 message de validation (OpenGL, Vulkan) |
+| Réglages du projet | `defaultViews()`, `defaultSettings(titre)` (`include/orosmo/app/default_game.hpp`) | cas « defaultViews and defaultSettings » | `.cui` de `<projet>/src`, `make game BUILD_TYPE=<type>` dans `<projet>` ; validation et `logs/log.log` en debug |
+| Pause du tutoriel | `Application::pauseAnimations` | cas « pauseAnimations (A79 L14) » | lecteur `kSingle` figé, simulation continue ; repart après |
+| Sol PBR | `Application::addMesh(constructeur, matériau)`, `createMaterial` | cas « addMesh(builder, material) » | matériau gardé, récepteur d'ombres (`kPbrShadows`) ; disposition colorée refusée |
+| Cube aux faces colorées | `renderer::MeshBuilder::addBox(demi-côtés, six couleurs)` | cas « MeshBuilder::addBox with one color per face » | même géométrie, couleur par face (+X, −X, +Y, −Y, +Z, −Z) |
+| Programme de départ | `tools/engine-sdk/template/src/main.cpp`, `game/game.cpp` | `make e2e-init` | vert de bout en bout : projet créé compilé (debug, release sans code de rechargement), lancé sans fenêtre (capture, puis sans bibliothèque de jeu : HUD lié) ; GAME-06 : modification → code rechargé **1,91 s** (≤ 5 s) ; `.cui` enregistré → vue recréée **2,67 s**. À la main : `--api opengl` et `--api vulkan --headless --capture` : captures identiques (0/255), cube tourné et éclairé, HUD ; Vulkan : 0 message de validation |
+| Tutoriel compilé par un test | `tools/extract_doc_code.py` ; étape de `make e2e-init` | `python3 -m unittest discover -s tests/tools` ; `make e2e-init` | 3 tests Python verts ; `make e2e-init` extrait `menu_state.hpp`, `MenuView.cui`, `main.cpp` et compile le projet (`-Werror`). À la main, avec `figure.gltf` de la démo : OpenGL et Vulkan sans fenêtre, personnage animé, sol, ombre, ciel ; Vulkan : 0 message de validation ; lancement non automatisé (G370) |
+
+Vérifications : `make all-debug` sans avertissement ; `make check` vert ; `make demo-test` **924 / 924** (1 ignoré) et `test_game_static: OK` ; `make fclean && make demo-test SANITIZE=address,undefined` : 923 / 924, **aucun signalement** ASan ni UBSan ; le seul cas rouge est le cas de fenêtre `PLAT-01` (taille du tampon d'image), instable et connu (non touché par L14), vert 2 fois sur 3 relancé seul. Non vérifié : Windows, macOS (clang `-Werror`), `clang-format` absent de la machine, boucle fenêtrée (G374).
+
 ## M8 lot L8 : interface rechargée à chaud (A79, UI-08)
 
 Branche `feat/M8-L8-cui-rechargement` (depuis `feat/M8-L7-build-incremental`). Linux x64 seulement en local (g++ 13.3) ;
