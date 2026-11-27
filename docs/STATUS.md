@@ -52,6 +52,12 @@ fenêtre : code 0, « Vulkan validation: 0 error/warning » ; outils fermés : `
 identique pixel pour pixel à `docs/BASELINE/reference/ui-opengl-controls-focus-1280x720.png` ; ASan + UBSan (`make fclean`, `make demo-test-unit SANITIZE=address,undefined`) : 487 cas verts sans GPU (dont les 10 nouveaux), aucun message ; le `make demo-test` complet sous sanitizers n'a pas été relancé (lot sans code GPU).
 `make demo-capture` ajoute les quatre captures des outils. `clang-format` absent de la machine : sources non reformatées.
 
+Revue de la PR #26 (CI MinGW et CodeRabbit, après fusion de `dev`) : `Result` ignoré corrigé dans les tests (libstdc++ 15 ;
+reproduit sous g++ 13.3 avec une copie de `<expected>` marquée `[[nodiscard]]`) ; `Console` non copiable, état des commandes gardé
+(« a console command keeps its state… ») ; surlignage gardé lié au widget (« the pinned highlight follows its widget… ») ;
+direction de caméra parallèle à `up` refusée (suite `apps/demo-debug-world`) ; plein écran des builds debug déplacé de F12 à F10
+(`static_assert` dans `Game/debug_world.hpp`). `make all-debug`, `make demo-test` (**806 cas verts**, 1 ignoré) et `make check` OK.
+
 
 ## M8 lot L2 : entités et transformations (A79, ECS-01, ECS-02)
 
