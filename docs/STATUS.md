@@ -30,6 +30,36 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L10 : outils de debug et inspecteur (A79, UI-04, UI-10)
+
+Branche `feat/M8-L10-inspecteur-console` (depuis `feat/M8-L2-ecs`). Outils construits sur `orosmo::ui`, sans Dear ImGui (A79
+choix 6) ; `ui` dépend désormais de `scene` (couche inférieure) pour l'inspecteur d'entités. Décisions : `docs/QUESTIONS.md`,
+A79, « Lot L10 » ; limites G295 à G299. Démo : `apps/demo/bin/debug/main` puis F12, ou `--debug-tools [--debug-tab
+console|widgets|entities|profiler]`.
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| UI-04 Console | `include/orosmo/ui/debug_console.hpp` (`debug::Console::add`, `execute`, `pollLog`, `splitCommandLine`) ; `core::Logger::RecordsSince`, `LastSequence` | suite `ui/debug` (« console runs a registered command… », « console mirrors the engine log », « the console input runs the typed line ») ; `Logger` (« RecordsSince… ») | commande exécutée par nom avec arguments entre guillemets ; commande inconnue : `kNotFound` et ligne d'erreur ; journal recopié (avertissement, erreur) ; saisie + Entrée exécute et vide le champ |
+| UI-04 Inspecteur d'entités | `include/orosmo/ui/reflect.hpp` (`reflectedPanel(ObjectLocator, span<const FieldDesc>)`), `debug_tools.hpp` (`entityPanel`, `describeEntity`) | « the runtime reflected panel edits fields… », « the entity inspector modifies a component » | entier, double, uint8 (hors plage refusé), booléen modifiés par l'interface aux bons décalages ; composant modifié dans le `World`, y compris après déplacement de son stockage ; panneau refait à la destruction |
+| UI-04 Profileur | `include/orosmo/ui/frame_history.hpp` (`FrameHistory`, `FpsStats`, repris de la démo), `core::Profiler::Names`, onglet Profiler | « frame history computes the frame rate », `Profiler` (« Names lists… »), suite `apps/demo_performance` (inchangée) | FPS moyenne / min / max identiques au calcul de la démo |
+| UI-10 Inspecteur d'interface | `debug_tools.hpp` (`describeWidgetTree`, `describeWidget`, `DebugTools::widgetTree`, `highlight`) | « the widget inspector lists the tree with the layout sizes » | arbre dans l'ordre, rectangles égaux à ceux de la mise en page (bouton 120×30 en 5,5), widget masqué signalé ; survol d'une ligne = surlignage du widget |
+| UI-13 Rien quand fermé | `DebugTools::update`, `draw` | « closed debug tools neither lay out nor draw » | fermés : liste de dessin vide, aucune mise en page ; F12 ouvre et ferme |
+
+Vérifications (Linux, g++ 13.3, Intel Xe, Mesa) : `make all-debug` sans avertissement ; `make demo-test` **772 cas verts** (1
+ignoré ; 10 nouveaux : 8 dans `ui/debug`, 1 `Logger`, 1 `Profiler`) ; `make check` OK (113 en-têtes autonomes, 0 violation de
+couche, 0 appel d'API graphique hors zone) ; captures `--debug-tab widgets|console|entities|profiler` en OpenGL et Vulkan sans
+fenêtre : code 0, « Vulkan validation: 0 error/warning » ; outils fermés : `ui.png` de `--tab controls --focus detailMedium`
+identique pixel pour pixel à `docs/BASELINE/reference/ui-opengl-controls-focus-1280x720.png` ; ASan + UBSan (`make fclean`, `make demo-test-unit SANITIZE=address,undefined`) : 487 cas verts sans GPU (dont les 10 nouveaux), aucun message ; le `make demo-test` complet sous sanitizers n'a pas été relancé (lot sans code GPU).
+`make demo-capture` ajoute les quatre captures des outils. `clang-format` absent de la machine : sources non reformatées.
+
+Revue de la PR #26 (CI MinGW et CodeRabbit, après fusion de `dev`) : `Result` ignoré corrigé dans les tests (libstdc++ 15 ;
+reproduit sous g++ 13.3 avec une copie de `<expected>` marquée `[[nodiscard]]`) ; `Console` non copiable, état des commandes gardé
+(« a console command keeps its state… ») ; surlignage gardé lié au widget (« the pinned highlight follows its widget… ») ;
+direction de caméra parallèle à `up` refusée (suite `apps/demo-debug-world`) ; plein écran des builds debug déplacé de F12 à F10
+(`static_assert` dans `Game/debug_world.hpp`). `make all-debug`, `make demo-test` (**806 cas verts**, 1 ignoré) et `make check` OK.
+Après fusion de `dev` (PR #25, lot L3) : faux positif `-Warray-bounds` de GCC 16 (MinGW) désactivé dans `debug_tools_tests.cpp`
+(G34 ; non reproductible sous g++ 13.3, à confirmer par la CI) ; `make demo-test` **832 cas verts**, 1 ignoré, `make check` OK.
+
 ## M8 lot L3 : sauvegarde de scène et boucle à pas fixe (A79, ECS-03, SIM-01)
 
 Branche `feat/M8-L3-sauvegarde-simulation` (depuis `feat/M8-L2-ecs`). Sauvegarde et empreinte dans `scene`

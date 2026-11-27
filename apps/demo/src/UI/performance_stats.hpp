@@ -7,6 +7,8 @@
 
 #include "launch_options.hpp"
 
+#include <orosmo/ui/frame_history.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -89,7 +91,7 @@ std::optional<double> processResidentMiB();
 struct PerformanceStats
 {
     static constexpr float kRefreshSeconds = 0.25f;
-    static constexpr std::size_t kHistorySize = 240;
+    static constexpr std::size_t kHistorySize = orosmo::ui::FrameHistory::kSize;
 
     demo::HudLevel level = demo::HudLevel::kFull;
     PerformanceSample shown;              // dernière mesure
@@ -104,10 +106,12 @@ struct PerformanceStats
     // Une image : temps CPU de travail (attente exclue), temps GPU (0 : inconnu), intervalle depuis le début de la précédente
     // (0 pour la première) et attente (GPU, vsync), en ms.
     void pushFrame(float cpuMs, float gpuMs, float intervalMs, float waitMs = 0.0f);
-    std::size_t historySize() const noexcept { return count_; }
+    std::size_t historySize() const noexcept { return history_.size(); }
     // Historique de la plus ancienne à la plus récente (lu par les graphes à chaque image : copie de kHistorySize flottants).
-    std::vector<float> cpuHistory() const { return ordered(cpu_); }
-    std::vector<float> gpuHistory() const { return ordered(gpu_); }
+    std::vector<float> cpuHistory() const { return history_.cpu(); }
+    std::vector<float> gpuHistory() const { return history_.gpu(); }
+    // Anneau du moteur (orosmo::ui::FrameHistory, A79 lot L10), lu aussi par le profileur des outils de debug (F12).
+    const orosmo::ui::FrameHistory &history() const noexcept { return history_; }
     // FPS de l'historique (intervalles) : moyenne, 1 % bas, min, max ; zéros sans intervalle.
     void fpsFromHistory(PerformanceSample &sample) const;
     // Temps CPU de travail et attente moyens de l'historique (ms).
@@ -122,11 +126,5 @@ struct PerformanceStats
     const std::string &passLine(int i) const { return text.passes[static_cast<std::size_t>(std::clamp(i, 0, 2))]; }
 
   private:
-    std::vector<float> ordered(const std::array<float, kHistorySize> &ring) const;
-    std::array<float, kHistorySize> cpu_{};
-    std::array<float, kHistorySize> gpu_{};
-    std::array<float, kHistorySize> interval_{};
-    std::array<float, kHistorySize> wait_{};
-    std::size_t next_ = 0;
-    std::size_t count_ = 0;
+    orosmo::ui::FrameHistory history_;
 };

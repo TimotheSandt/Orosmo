@@ -52,6 +52,7 @@ class Logger
         int line;
 #endif
         int errorCode = 0; // 0 = no error
+        std::uint64_t sequence = 0; // numéro d'ordre du message (RecordsSince), hors comparaison des doublons
         std::string message;
 #ifdef DEBUG
         std::string stackTrace;
@@ -70,6 +71,17 @@ class Logger
     };
 
   public:
+    // Copie publique d'un message gardé (console de développement, UI-04) : `sequence` croît à chaque nouveau message (un doublon
+    // regroupé garde le sien et augmente `repetition`).
+    struct Record
+    {
+        LogLevel level;
+        std::uint64_t sequence = 0;
+        std::size_t repetition = 1;
+        int errorCode = 0;
+        std::string message;
+    };
+
     // Messages gardés en mémoire au plus (au-delà, les plus anciens sont écrits dans le fichier puis oubliés) et profondeur de la
     // recherche d'un doublon (messages identiques regroupés).
     static constexpr size_t kMaxKeptLogs = 8192;
@@ -82,6 +94,11 @@ class Logger
     static void SetMinimumLevel(LogLevel level);
     static LogLevel GetMinimumLevel();
     static void FlushToFile() noexcept;
+    // Messages gardés dont le numéro d'ordre dépasse `after`, du plus ancien au plus récent, les `max` derniers au plus. Les
+    // messages déjà oubliés (au-delà de kMaxKeptLogs, ou après Clear) ne reviennent pas.
+    static std::vector<Record> RecordsSince(std::uint64_t after, std::size_t max = kMaxKeptLogs);
+    // Numéro d'ordre du dernier message ajouté (0 : aucun).
+    static std::uint64_t LastSequence();
 
     template <typename... Args>
     static void Log(LogLevel level,
@@ -121,6 +138,7 @@ class Logger
     static std::unique_ptr<std::ofstream> logFile;
     static bool isLoggingToFile;
     static size_t lastFlushedIndex;
+    static std::uint64_t nextSequence;
 };
 
 template <typename... Args>

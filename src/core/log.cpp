@@ -18,6 +18,7 @@ std::mutex Logger::logMutex;
 std::unique_ptr<std::ofstream> Logger::logFile;
 bool Logger::isLoggingToFile = false;
 size_t Logger::lastFlushedIndex = 0;
+std::uint64_t Logger::nextSequence = 1;
 #ifdef DEBUG
 LogLevel Logger::lLevelPrinted = LogLevel::L_DEBUGGING;
 #else
@@ -132,6 +133,31 @@ void Logger::FlushToFile() noexcept
     {
         std::fputs("Logger::FlushToFile failed\n", stderr);
     }
+}
+
+std::vector<Logger::Record> Logger::RecordsSince(std::uint64_t after, std::size_t max)
+{
+    std::lock_guard<std::mutex> lock(logMutex);
+    // Numéros croissants dans `logs` : recherche du premier message plus récent que `after`.
+    auto first = std::upper_bound(logs.begin(), logs.end(), after, [](std::uint64_t s, const LogMessage &m) { return s < m.sequence; });
+    const auto available = static_cast<std::size_t>(logs.end() - first);
+    if (available > max)
+    {
+        first += static_cast<std::ptrdiff_t>(available - max);
+    }
+    std::vector<Record> out;
+    out.reserve(static_cast<std::size_t>(logs.end() - first));
+    for (auto it = first; it != logs.end(); ++it)
+    {
+        out.push_back(Record{it->level, it->sequence, it->repetition, it->errorCode, it->message});
+    }
+    return out;
+}
+
+std::uint64_t Logger::LastSequence()
+{
+    std::lock_guard<std::mutex> lock(logMutex);
+    return nextSequence - 1;
 }
 
 size_t Logger::KeptLogCount()
@@ -401,6 +427,7 @@ void Logger::AddLog(LogMessage &&log)
     }
     else
     {
+        log.sequence = nextSequence++;
         logs.push_back(std::move(log));
         PrintLog(logs.back());
 
