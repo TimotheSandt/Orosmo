@@ -22,15 +22,51 @@ core::Result<GameRegistrations *> GameContext::recording(std::string_view what)
     return recording_;
 }
 
+bool detail::ReloadJournal::ownsComponent(std::string_view name) const
+{
+    return (previous != nullptr && std::ranges::find(previous->components, name) != previous->components.end()) ||
+           (orphans != nullptr && std::ranges::find(*orphans, name) != orphans->end());
+}
+
 core::Result<scene::ComponentId> GameContext::registerComponent(scene::ComponentDesc desc)
 {
     auto record = recording("registerComponent");
     if (!record)
         return std::unexpected(std::move(record.error()));
     std::string name = desc.name;
-    auto id = targets_.world->registerComponent(std::move(desc));
-    if (!id)
-        return id;
+    scene::World &world = *targets_.world;
+    scene::ComponentId id;
+    const auto existing = world.componentId(name);
+    if (existing && journal_ != nullptr && journal_->ownsComponent(name) && !world.componentDesc(*existing)->sameLayout(desc))
+    {
+        // GAME-03 : type d'une version précédente, autre disposition : migration par le moteur (descriptions copiées). Le
+        // monde est copié avant la première migration du passage, pour être remis si cet `init` échoue.
+        if (!journal_->backup)
+            journal_->backup.emplace(world);
+        auto migrated = world.migrateComponent(std::move(desc));
+        if (!migrated)
+            return std::unexpected(std::move(migrated.error()));
+        std::string message = "game module: component '" + name + "' migrated (" + scene::migrationKindName(migrated->kind) +
+                              ", version " + std::to_string(migrated->fromVersion) + " -> " +
+                              std::to_string(migrated->toVersion) + ", " + std::to_string(migrated->values) + " values)";
+        if (migrated->warnings.empty())
+            LOG_INFO(message);
+        else
+        {
+            LOG_WARNING(message);
+            for (const std::string &warning : migrated->warnings)
+                LOG_WARNING("game module: " + warning);
+        }
+        id = migrated->id;
+        journal_->migrations.push_back(std::move(*migrated));
+    }
+    else
+    {
+        auto registered = world.registerComponent(std::move(desc));
+        if (!registered)
+            return registered;
+        id = *registered;
+    }
     auto &names = (*record)->components;
     if (std::ranges::find(names, name) == names.end())
         names.push_back(std::move(name));
@@ -64,6 +100,36 @@ core::Result<> GameContext::addAction(std::string name, ActionHandler handler)
     targets_.actions->add(name, handler);
     (*record)->actions.emplace_back(std::move(name), std::move(handler));
     return {};
+}
+
+core::Result<const ParamsFile *> GameContext::registerParams(std::string name, scene::ComponentDesc desc, std::filesystem::path path)
+{
+    auto record = recording("registerParams");
+    if (!record)
+        return std::unexpected(std::move(record.error()));
+    if (name.empty())
+        return core::makeError(ErrorCode::kInvalidArgument, "registerParams: empty name");
+    auto &params = (*record)->params;
+    if (std::ranges::find(params, name, &std::pair<std::string, std::shared_ptr<ParamsFile>>::first) != params.end())
+        return core::makeError(ErrorCode::kAlreadyExists, "registerParams(" + name + "): name already taken");
+    if (path.is_relative() && !targets_.paramsDirectory.empty())
+        path = targets_.paramsDirectory / path;
+    desc.name = name;
+    // Même fichier et même disposition qu'à la version précédente : le même objet (valeur et observation gardées).
+    if (journal_ != nullptr && journal_->previous != nullptr)
+        for (const auto &[previousName, file] : journal_->previous->params)
+            if (previousName == name && file->path() == path && file->desc().sameLayout(desc))
+            {
+                params.emplace_back(name, file);
+                return file.get();
+            }
+    auto opened = ParamsFile::open(std::move(path), std::move(desc), targets_.params);
+    if (!opened)
+        return std::unexpected(std::move(opened.error()));
+    auto file = std::make_shared<ParamsFile>(std::move(*opened));
+    const ParamsFile *raw = file.get();
+    params.emplace_back(std::move(name), std::move(file));
+    return raw;
 }
 
 // ── Enregistrements d'une version ────────────────────────────────────────────
@@ -126,12 +192,25 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
     Access::version(context) = version + 1;
     Access::reloading(context) = replacing;
 
-    // L6 : la migration des composants dont la disposition change se branchera ici (avant l'`init` de la nouvelle version).
-    if (!next->init(&context))
+    // GAME-03 : les composants que la nouvelle version enregistre avec une autre disposition sont migrés pendant son `init`
+    // (`GameContext::registerComponent`) ; le journal garde la copie du monde pour le retour en arrière.
+    detail::ReloadJournal journal;
+    journal.previous = replacing ? &previous : nullptr;
+    journal.orphans = &orphans;
+    Access::journal(context) = &journal;
+    const bool started = next->init(&context);
+    Access::journal(context) = nullptr;
+    if (!started)
     {
         // Retour à l'ancienne version : ses noms reprennent leur place ; les fonctions de la nouvelle sont détruites ici, avant que
         // l'appelant ne décharge sa bibliothèque.
         detach(Access::targets(context), active);
+        if (journal.backup)
+        {
+            // Migrations annulées : le monde reprend son état d'avant l'`init` (données, identifiants des types).
+            *Access::targets(context).world = std::move(*journal.backup);
+            LOG_WARNING("game module: component migrations undone, world restored");
+        }
         active = std::move(previous);
         attach(Access::targets(context), active);
         Access::recording(context) = replacing ? &active : nullptr;
@@ -160,6 +239,21 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
 
     api = next;
     ++version;
+    lastMigrations = std::move(journal.migrations);
+    // GAME-04 : noms demandés par l'interface (`ActionRegistry::bind`, `.onClick(nom)`) qu'aucune action ne porte après ce
+    // passage (gestionnaire renommé ou retiré) : journalisés, l'appel reste sans effet ni plantage.
+    missingActions.clear();
+    if (const GameTargets &targets = Access::targets(context); targets.actions != nullptr)
+    {
+        missingActions = targets.actions->missing();
+        if (!missingActions.empty())
+        {
+            std::string list;
+            for (const std::string &name : missingActions)
+                list += (list.empty() ? "" : ", ") + name;
+            LOG_WARNING(apiName(next) + ": actions used by the interface but not registered: " + list);
+        }
+    }
     LOG_INFO(apiName(next) + (replacing ? ": reloaded, version " : ": started, version ") + std::to_string(version));
     return {};
     // `previous` (fonctions de l'ancienne version) est détruit ici, avant le déchargement de son code par l'appelant.
@@ -216,6 +310,9 @@ void GameModule::update(double dt)
 {
     if (!impl_)
         return;
+    if (impl_->api != nullptr)
+        for (const auto &param : impl_->active.params)
+            (void)param.second->poll(); // fichier invalide : dernière valeur gardée, erreur journalisée
     if (impl_->reloader && impl_->api != nullptr)
         impl_->reloader->poll(*impl_);
     if (impl_->api != nullptr && impl_->api->update != nullptr)
@@ -229,6 +326,20 @@ core::Result<> GameModule::reload()
     if (!impl_->reloader)
         return core::makeError(ErrorCode::kUnsupported, "game module: static build, no hot reload");
     return impl_->reloader->reloadNow(*impl_);
+}
+
+core::Result<> GameModule::replace(const OrosmoGameApi *api)
+{
+    if (!impl_ || impl_->api == nullptr)
+        return core::makeError(ErrorCode::kInvalidArgument, "game module: not running");
+    if (impl_->reloader)
+        return core::makeError(ErrorCode::kUnsupported, "game module: dynamic library loaded, use reload()");
+    if (auto switched = impl_->switchTo(api); !switched)
+    {
+        impl_->recordFailure(switched.error());
+        return switched;
+    }
+    return {};
 }
 
 void GameModule::stop()
@@ -275,6 +386,42 @@ std::vector<std::string> GameModule::actions() const
     if (impl_)
         for (const auto &action : impl_->active.actions)
             names.push_back(action.first);
+    return names;
+}
+
+std::size_t GameModule::removeOrphanComponents()
+{
+    if (!impl_)
+        return 0;
+    std::size_t removed = 0;
+    for (const std::string &name : impl_->orphans)
+        if (Access::targets(impl_->context).world->unregisterComponent(name))
+        {
+            LOG_INFO("game module: orphan component type '" + name + "' removed with its data");
+            ++removed;
+        }
+    impl_->orphans.clear();
+    return removed;
+}
+
+const std::vector<scene::ComponentMigration> &GameModule::lastMigrations() const noexcept
+{
+    static const std::vector<scene::ComponentMigration> kNone;
+    return impl_ ? impl_->lastMigrations : kNone;
+}
+
+const std::vector<std::string> &GameModule::missingActions() const noexcept
+{
+    static const std::vector<std::string> kNone;
+    return impl_ ? impl_->missingActions : kNone;
+}
+
+std::vector<std::string> GameModule::params() const
+{
+    std::vector<std::string> names;
+    if (impl_)
+        for (const auto &param : impl_->active.params)
+            names.push_back(param.first);
     return names;
 }
 
