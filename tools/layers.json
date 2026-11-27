@@ -25,6 +25,7 @@
     ["src/sim/*", "sim"],
     ["include/orosmo/app/*", "app"],
     ["src/app/*", "app"],
+    ["include/orosmo/game.hpp", "game"],
     ["game/*", "game"],
     ["src/ThirdParty/*", "core"],
     ["apps/*", "apps"]
