@@ -8,8 +8,9 @@ sidebar:
 
 Un plugin de rendu (`RenderFeature`) ajoute des passes au graphe de l'image sans modifier le cœur du renderer. Les ombres,
 les post-traitements, l'anticrénelage, le 2D mélangé et le rendu piloté par GPU en sont. À chaque `SceneRenderer::endFrame`,
-le renderer déclare ses passes (scène, mise à l'échelle, historique), puis appelle `prepare` et `declarePasses` de chaque plugin
-dans l'ordre d'enregistrement, puis ses post-traitements, et enfin `frameEnded`.
+le renderer appelle `prepare` de chaque plugin ; quand le graphe doit être reconstruit, il déclare ses passes (scène, mise à
+l'échelle, historique), puis `declarePasses` de chaque plugin dans l'ordre d'enregistrement, puis ses post-traitements. Il
+exécute le graphe et appelle enfin `frameEnded`.
 
 ## Exemple minimal
 
@@ -74,7 +75,28 @@ l'utiliser ensuite.
 | `requiredAovs()` | aucun | AOV que le plugin lit ; ils sont ajoutés à la passe de scène tant qu'il est enregistré. |
 | `wantsJitter()` | `false` | Vrai : caméra décalée d'un sous-pixel à chaque image (TAA). |
 | `postProcessesScene()` | `false` | Vrai : le plugin modifie ou échantillonne la couleur de scène après la passe de scène. |
+| `passSignature()` | aucune | Résumé de ce que `declarePasses` déclarerait à cette image (voir ci-dessous). Sans signature, le graphe est reconstruit à chaque image. |
 | `frameEnded()` | rien | Fin de chaque `endFrame`, réussi ou non : oublier ce qui ne valait que pour l'image. |
+
+## Garder le graphe d'une image à l'autre
+
+Le renderer garde le graphe compilé tant que rien de sa structure ne change : plugins, cibles, tailles, et la
+`passSignature()` de chaque plugin, lue après `prepare`. Pendant ce temps, `declarePasses` n'est **pas** rappelé : les passes
+déjà déclarées s'exécutent de nouveau. Pour qu'un plugin en profite :
+
+- ses passes lisent l'état de l'image au moment de l'exécution (membres du plugin, `ctx.texture(...)`, `ctx.frame()`), jamais
+  une valeur de l'image copiée dans la capture du lambda ;
+- `declarePasses` ne fait aucun travail par image (envoi de données, création de groupes) : c'est le rôle de `prepare` ou de la
+  passe elle-même ;
+- la signature change dès que les passes, leurs accès, les ressources importées (et leurs handles) ou les liaisons
+  `addFrameBinding` changeraient. `mixPassSignature(graine, valeur)` mêle des entiers et des handles.
+
+```cpp
+std::optional<std::uint64_t> passSignature() const override
+{
+    return orosmo::renderer::mixPassSignature(enabled_ ? 1 : 0, texture_); // handle importé par declarePasses
+}
+```
 
 ## Ce que le graphe fournit
 

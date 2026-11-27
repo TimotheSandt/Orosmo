@@ -1,7 +1,8 @@
 // REN-01 : plugins de rendu (docs/03 §11, « render features »). Un plugin ajoute ses passes au graphe de l'image sans modifier le
 // cœur du renderer : ombres, post-traitements, interface, et plus tard voxels ou ray tracing (règle 14). `SceneRenderer` appelle,
-// à chaque `endFrame`, `prepare` puis `declarePasses` de chaque plugin enregistré, APRÈS avoir déclaré ses propres passes (scène,
-// mise à l'échelle, génération d'images, historique) et AVANT ses `IPostProcessPass`, puis `frameEnded` de chacun.
+// à chaque `endFrame`, `prepare` de chaque plugin enregistré, puis (quand le graphe est reconstruit, A61 C : voir `passSignature`)
+// `declarePasses` de chacun, APRÈS avoir déclaré ses propres passes (scène, mise à l'échelle, génération d'images, historique) et
+// AVANT ses `IPostProcessPass`, puis `frameEnded` de chacun.
 #pragma once
 
 #include "orosmo/core/error.hpp"
@@ -13,6 +14,8 @@
 #include "orosmo/rhi/types.hpp"
 
 #include <array>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -104,6 +107,20 @@ class RenderGraphBuilder
     std::vector<rhi::BindGroupEntry> *frameBindings_ = nullptr;
 };
 
+// A61 C : mélange une valeur dans une signature de passes (`RenderFeature::passSignature`) ; même suite, même résultat.
+constexpr std::uint64_t mixPassSignature(std::uint64_t seed, std::uint64_t value) noexcept
+{
+    std::uint64_t z = seed ^ (value + 0x9E3779B97F4A7C15ull + (seed << 6) + (seed >> 2));
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull; // finaliseur de splitmix64
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+    return z ^ (z >> 31);
+}
+template <typename Handle> constexpr std::uint64_t mixPassSignature(std::uint64_t seed, Handle handle) noexcept
+    requires requires { handle.index; handle.generation; }
+{
+    return mixPassSignature(mixPassSignature(seed, std::uint64_t{handle.index}), std::uint64_t{handle.generation});
+}
+
 class RenderFeature
 {
   public:
@@ -137,6 +154,15 @@ class RenderFeature
     }
     // Ajoute ses passes et ses ressources au graphe de l'image.
     virtual core::Result<> declarePasses(RenderGraphBuilder &builder) = 0;
+    // A61 C : graphe de passes gardé d'une image à l'autre. Résumé de ce que `declarePasses` déclarerait à cette image (passes et
+    // accès, ressources importées ET leurs ressources GPU, liaisons `addFrameBinding`), lu après `prepare`. Tant que chaque plugin
+    // rend la même valeur qu'à l'image précédente (et que plugins, cibles et tailles du renderer ne changent pas), le renderer
+    // garde le graphe : `declarePasses` n'est PAS rappelé, les passes déjà déclarées s'exécutent de nouveau. Leurs fonctions lisent
+    // donc l'état de l'image au moment de l'exécution (membres du plugin, `ctx.texture`, `ctx.frame()`), jamais une valeur de
+    // l'image de déclaration copiée dans la capture, et `declarePasses` ne fait aucun travail par image (envoi, création d'un
+    // groupe : dans `prepare` ou dans la passe). `std::nullopt` (défaut, plugins d'avant M8) : pas de cache, le graphe entier est
+    // reconstruit à chaque image. Voir `mixPassSignature`.
+    virtual std::optional<std::uint64_t> passSignature() const { return std::nullopt; }
     // Fin de chaque `SceneRenderer::endFrame`, réussi ou non (après l'exécution du graphe, ou après l'échec qui l'a empêchée) : le
     // plugin oublie ce qui ne valait que pour cette image (dépôts, placements), pour que rien ne survive à l'image. Rien par défaut.
     virtual void frameEnded() noexcept {}

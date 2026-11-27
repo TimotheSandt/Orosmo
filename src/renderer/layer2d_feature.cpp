@@ -32,6 +32,17 @@ core::Result<> Layer2DFeature::prepare(const FrameData &frame)
     return {};
 }
 
+std::optional<std::uint64_t> Layer2DFeature::passSignature() const
+{
+    std::uint64_t signature = mixPassSignature(0, static_cast<std::uint64_t>(mode_));
+    if (mode_ == Layer2DMode::kTexture)
+    {
+        signature = mixPassSignature(signature, texture());
+        signature = mixPassSignature(signature, target_.valid() ? (std::uint64_t{target_.width()} << 32) | target_.height() : 0);
+    }
+    return signature;
+}
+
 core::Result<> Layer2DFeature::setTextureSize(std::uint32_t width, std::uint32_t height)
 {
     if (width == 0 || height == 0)

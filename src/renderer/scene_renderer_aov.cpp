@@ -29,6 +29,8 @@ class DebugViewFeature final : public RenderFeature
 
     std::string name() const override { return "debug.view"; }
     AovSet requiredAovs() const override { return {aov_}; }
+    // A61 C : une seule passe, toujours la même ; son groupe suit la texture lue à l'exécution.
+    std::optional<std::uint64_t> passSignature() const override { return static_cast<std::uint64_t>(aov_); }
 
     core::Result<> declarePasses(RenderGraphBuilder &builder) override
     {

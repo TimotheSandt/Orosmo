@@ -53,7 +53,7 @@ static void reportPerformance(std::chrono::steady_clock::duration elapsed, const
         LOG_INFO("Perf: frames=", frameMs.size(), " median frame ", frame, " ms = CPU work ", work, " ms + waiting ", wait,
                  " ms (GPU, vsync); ~", work > 0.0f ? 1000.0f / work : 0.0f, " FPS if the CPU were the only limit");
     }
-    for (const char *name : {"Render", "RenderGraph/depth-prepass", "RenderGraph/forwardplus.clusters", "RenderGraph/gpudriven.cull",
+    for (const char *name : {"Render", "CPU/Graph", "CPU/Submit", "RenderGraph/depth-prepass", "RenderGraph/forwardplus.clusters", "RenderGraph/gpudriven.cull",
                              "RenderGraph/gpudriven.hiz", "RenderGraph/scene", "RenderGraph/upscale",
                              "RenderGraph/ui", "RenderGraph/present", "SwapBuffers"})
     {
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
 
         int exitCode = EXIT_SUCCESS;
         {
-            auto created = Game::create(launchOptions.headless, launchOptions.width, launchOptions.height, selectedApi);
+            auto created = Game::create(launchOptions.headless, launchOptions.width, launchOptions.height, selectedApi, launchOptions.framesInFlight);
             if (!created && created.error().code == orosmo::core::ErrorCode::kUnsupported && selectedApi == orosmo::rhi::Backend::kVulkan)
             {
                 // Vulkan ne démarre pas (pas de chargeur, pas de GPU 1.3...) : le Game raté a déjà détruit sa fenêtre ; le suivant
@@ -171,7 +171,7 @@ int main(int argc, char **argv)
                 LOG_WARNING(decision.message);
                 std::cerr << decision.message << '\n';
                 selectedApi = decision.backend;
-                created = Game::create(launchOptions.headless, launchOptions.width, launchOptions.height, selectedApi);
+                created = Game::create(launchOptions.headless, launchOptions.width, launchOptions.height, selectedApi, launchOptions.framesInFlight);
             }
             if (!created)
             {
@@ -197,6 +197,7 @@ int main(int argc, char **argv)
             game.setFramePacing(demo::framePacingFor(launchOptions));
             game.setGpuTimings(launchOptions.gpuTimings);
             game.setDirectPresentation(launchOptions.directPresentation);
+            game.setRenderGraphCaching(launchOptions.graphCache);
             game.setInstanceCount(launchOptions.instances);
             game.setGpuDriven(launchOptions.gpuDriven);
             game.setDebugView(launchOptions.debugView, launchOptions.freezeFrustum);
@@ -221,6 +222,9 @@ int main(int argc, char **argv)
                 const auto runStart = std::chrono::steady_clock::now();
                 game.run();
                 reportPerformance(std::chrono::steady_clock::now() - runStart, game.frameTimes(), game.frameWaitTimes());
+                // A61 G et C : réglages mesurés par tools/perf_compare.py (images en vol, reconstructions du graphe de passes).
+                LOG_INFO("Perf: framesInFlight=", game.framesInFlightCount(), " graphBuilds=", game.graphBuildCount(),
+                         " frames=", game.frameTimes().size());
                 LOG_INFO("Game stopped");
                 if (!game.headlessSucceeded())
                 {
