@@ -314,9 +314,9 @@ La caméra de l'application part un peu au-dessus du sol, regard vers -Z (la dir
 ```cpp title="src/main.cpp (suite)"
     return app::Application::main(argc, argv, settings, [&](app::Application &a) -> orosmo::core::Result<> {
         // ── 6. La scène et le menu
-        if (auto added = addHero(app); !added)
+        if (auto added = addHero(a); !added)
             return added;
-        if (auto added = addGround(app); !added)
+        if (auto added = addGround(a); !added)
             return added;
         a.spawn(app::LightComponent{.type = rd::LightType::kAmbient, .color = {0.75f, 0.85f, 1.0f}, .intensity = 0.3f});
         a.spawn(app::LightComponent{.color = {1.0f, 0.95f, 0.85f}, .intensity = 2.5f, .direction = {-0.4f, -0.8f, -0.3f}, .castShadows = true});
