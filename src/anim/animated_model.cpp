@@ -1,6 +1,7 @@
 #include "orosmo/anim/animated_model.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 
@@ -165,6 +166,7 @@ core::Result<> AnimatedModel::buildRender()
         skinned_.emplace(std::move(*skinned));
     }
     cpu_ = std::move(cpu);
+    installedTextures_ = textureHandles(*render_);
     return applyPose();
 }
 
@@ -172,15 +174,11 @@ core::Result<> AnimatedModel::rebuild() { return buildRender(); }
 
 core::Result<std::size_t> AnimatedModel::reloadChanged()
 {
-    const std::vector<rhi::TextureHandle> before = textureHandles(*render_);
     const std::size_t reloaded = loader_->reloadChanged();
-    if (reloaded == 0)
+    if (texturesStale())
     {
-        return reloaded;
-    }
-    if (textureHandles(*render_) != before)
-    {
-        // Texture recréée : les groupes des matériaux lient encore l'ancienne (images en vol comprises).
+        // Texture recréée (par cet appel ou par un autre modèle du même chargeur) : les groupes des matériaux lient encore
+        // l'ancienne (images en vol comprises).
         context_->device().waitIdle();
         if (auto rebuilt = buildRender(); !rebuilt)
         {
@@ -189,6 +187,8 @@ core::Result<std::size_t> AnimatedModel::reloadChanged()
     }
     return reloaded;
 }
+
+bool AnimatedModel::texturesStale() const { return render_ && textureHandles(*render_) != installedTextures_; }
 
 int AnimatedModel::clipIndex(std::string_view name) const noexcept
 {
@@ -227,6 +227,10 @@ std::size_t AnimatedModel::skinnedVertexCount() const noexcept
 
 core::Result<> AnimatedModel::play(std::string_view clip, PlayOptions options)
 {
+    if (!std::isfinite(options.speed))
+    {
+        return makeError(ErrorCode::kInvalidArgument, "AnimatedModel::play: the speed is not finite");
+    }
     const int index = clipIndex(clip);
     if (index < 0)
     {
@@ -252,6 +256,10 @@ core::Result<> AnimatedModel::crossFade(std::string_view clip, float seconds, Pl
     {
         return makeError(ErrorCode::kNotFound, "AnimatedModel::crossFade: no clip named '" + std::string(clip) + "'");
     }
+    if (!std::isfinite(seconds) || !std::isfinite(options.speed))
+    {
+        return makeError(ErrorCode::kInvalidArgument, "AnimatedModel::crossFade: the duration or the speed is not finite");
+    }
     if (currentClip_ < 0 || !(seconds > 0.0f))
     {
         return play(clip, options);
@@ -272,6 +280,10 @@ core::Result<> AnimatedModel::crossFade(std::string_view clip, float seconds, Pl
 
 core::Result<> AnimatedModel::update(float dt)
 {
+    if (!std::isfinite(dt))
+    {
+        return makeError(ErrorCode::kInvalidArgument, "AnimatedModel::update: the time step is not finite");
+    }
     dt = std::max(dt, 0.0f);
     if (currentClip_ >= 0)
     {
@@ -363,7 +375,11 @@ core::Result<> AnimatedModel::applyPose()
 
 core::Result<> AnimatedModel::dispatch(rhi::CommandEncoder &encoder) { return skinned_ ? skinned_->dispatch(encoder) : core::Result<>{}; }
 
-core::Result<> AnimatedModel::draw(renderer::SceneRenderer &scene, const renderer::Camera &camera) { return render_->draw(scene, camera); }
+core::Result<> AnimatedModel::draw(renderer::SceneRenderer &scene, const renderer::Camera &camera)
+{
+    // Groupes liés à une texture remplacée : ne pas dessiner avant la reconstruction.
+    return texturesStale() ? core::Result<>{} : render_->draw(scene, camera);
+}
 
 void AnimatedModel::setTransform(const glm::mat4 &world) noexcept
 {

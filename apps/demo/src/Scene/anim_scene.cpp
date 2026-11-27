@@ -324,7 +324,6 @@ Result<> AnimScene::init(orosmo::rhi::Device &device, rd::ShaderLibrary &library
     {
         return built;
     }
-    rememberAlbedo();
     if (auto posed = update(0.0f); !posed)
     {
         return posed;
@@ -354,13 +353,6 @@ Result<> AnimScene::buildCrowd()
         LOG_WARNING("Anim scene: no crowd on this device (storage buffers read by the vertex shader required)");
     }
     return {};
-}
-
-void AnimScene::rememberAlbedo()
-{
-    const auto &maps = hero_->renderModel().materials().front()->desc().maps;
-    const auto &albedo = maps[static_cast<std::size_t>(rd::PbrMap::kBaseColor)];
-    albedoHandle_ = albedo ? albedo->handle() : orosmo::rhi::TextureHandle{};
 }
 
 Result<> AnimScene::update(float dt)
@@ -416,7 +408,9 @@ Result<> AnimScene::render(rd::SceneRenderer &renderer, const rd::Camera &camera
         return r;
     }
     crowdStats_ = {};
-    if (crowd_)
+    // Reconstruction en attente : le personnage (AnimatedModel::draw) et la foule ne dessinent pas avec des groupes liés à une
+    // texture remplacée.
+    if (crowd_ && !rebuildPending_ && !hero_->texturesStale())
     {
         auto drawn = crowd_->draw(renderer, camera.wireframe());
         if (!drawn)
@@ -449,18 +443,14 @@ std::size_t AnimScene::reloadChanged()
     {
         retry = ++retryCountdown_ >= kRetryFrames;
     }
-    if (reloaded == 0 && !retry)
+    if (reloaded == 0 && !retry && (rebuildPending_ || !hero_->texturesStale()))
     {
         return reloaded;
     }
     retryCountdown_ = 0;
-    bool rebuild = rebuildPending_;
-    if (!rebuild)
-    {
-        const auto &albedo = hero_->renderModel().materials().front()->desc().maps[static_cast<std::size_t>(rd::PbrMap::kBaseColor)];
-        rebuild = albedo && !(albedo->handle() == albedoHandle_);
-    }
-    if (rebuild)
+    // Texture recréée (taille ou format changé) : `texturesStale` compare aux textures du modèle installé, ce qui couvre aussi un
+    // rechargement fait par un autre utilisateur du chargeur.
+    if (rebuildPending_ || hero_->texturesStale())
     {
         // Taille changée : la texture partagée a été recréée ; les groupes des matériaux et des lots de la foule la lient encore. Le
         // personnage garde son lecteur (même pose) ; la foule est recréée depuis lui.
@@ -478,7 +468,6 @@ std::size_t AnimScene::reloadChanged()
         else
         {
             rebuildPending_ = false;
-            rememberAlbedo();
             if (auto posed = update(0.0f); !posed)
             {
                 LOG_ERROR(1, "Anim scene: ", posed.error().message);

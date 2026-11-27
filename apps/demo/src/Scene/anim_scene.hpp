@@ -83,7 +83,8 @@ class AnimScene
     // Entre `SceneRenderer::setCamera` (et ses lumières) et `endFrame`.
     orosmo::core::Result<> render(orosmo::renderer::SceneRenderer &renderer, const orosmo::renderer::Camera &camera);
     // ASSET-05 : relit la texture si le fichier a changé ; renvoie le nombre de textures rechargées. Si sa taille change (texture
-    // recréée), les modèles et la foule sont reconstruits pour lier la nouvelle texture.
+    // recréée), les modèles et la foule sont reconstruits pour lier la nouvelle texture ; tant que la reconstruction est en attente
+    // (échec, retentée), ni le personnage ni la foule ne sont dessinés.
     std::size_t reloadChanged();
     void destroy();
 
@@ -103,7 +104,6 @@ class AnimScene
 
   private:
     orosmo::core::Result<> buildCrowd();
-    void rememberAlbedo();
     orosmo::core::Result<> updateCrowd();
 
     AnimSceneOptions options_;
@@ -115,7 +115,6 @@ class AnimScene
     std::unique_ptr<orosmo::assets::ModelLoader> loader_;
     std::unique_ptr<orosmo::anim::AnimatedModel> hero_;
     std::unique_ptr<orosmo::anim::CrowdRenderer> crowd_;
-    orosmo::rhi::TextureHandle albedoHandle_;
     bool rebuildPending_ = false; // la reconstruction a échoué après un rechargement : à retenter (modification du fichier ou délai)
     int retryCountdown_ = 0;
 

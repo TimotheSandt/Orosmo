@@ -70,7 +70,8 @@ class CrowdRenderer
     {
         return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory(), model, render, options);
     }
-    // A75.11 : foule d'un modèle animé. Crée son propre `RenderModel` au repos (même chargeur, donc mêmes textures ; définitions
+    // A75.11 : foule d'un modèle animé. Crée son propre `RenderModel` au repos (même chargeur : les images externes sont partagées,
+    // les images incluses dans le fichier ont une clé propre à la foule et donc une seconde texture ; définitions
     // `options.extraDefines`, clé `<clé du modèle>.crowd`) et copie les clips, pour `setAgents(worlds, clips, times)`. `context` et
     // le chargeur de `model` doivent survivre à l'objet ; `model` peut être détruit ensuite.
     static core::Result<std::unique_ptr<CrowdRenderer>> create(const renderer::RenderContext &context, const AnimatedModel &model,
@@ -90,7 +91,8 @@ class CrowdRenderer
     // Agents de l'image : une matrice monde et une pose par agent (palettes calculées ici, sur le CPU, déterministe).
     core::Result<> setAgents(std::span<const core::Mat4> worlds, std::span<const Pose> poses);
     // A75.11 : agents qui jouent chacun un clip du modèle (`clips[i]` : indice dans `AnimatedModel::clips()`) au temps `times[i]`
-    // (secondes, bouclé sur la durée du clip). Seulement pour une foule créée depuis un `AnimatedModel` (sinon kInvalidArgument).
+    // (secondes, bouclé sur la durée du clip ; non fini : kInvalidArgument). Seulement pour une foule créée depuis un
+    // `AnimatedModel` (sinon kInvalidArgument).
     core::Result<> setAgents(std::span<const core::Mat4> worlds, std::span<const std::uint32_t> clips, std::span<const float> times);
     // Variante bas niveau : palettes déjà calculées (`worlds.size() × jointCount()` matrices, agent par agent), ex. partagées par
     // des agents à la même pose ou calculées sur plusieurs fils.

@@ -13,13 +13,16 @@
 #include <orosmo/anim/crowd.hpp>
 #include <orosmo/anim/state_machine.hpp>
 #include <orosmo/assets/model_loader.hpp>
+#include <orosmo/renderer/image.hpp>
 #include <orosmo/renderer/light.hpp>
 #include <orosmo/renderer/render_context.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <cmath>
+#include <chrono>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -104,6 +107,40 @@ as::Model makeArm()
     m.scenes.push_back({"s", {0, 1}});
     m.defaultScene = 0;
     return m;
+}
+
+// Code et message d'un résultat qui doit être une erreur (échec propre du test sinon, pas d'accès à `.error()` d'un succès).
+template <typename R> ErrorCode errorOf(const R &result)
+{
+    REQUIRE_FALSE(result.has_value());
+    return result.error().code;
+}
+template <typename R> std::string messageOf(const R &result)
+{
+    REQUIRE_FALSE(result.has_value());
+    return result.error().message;
+}
+
+// Image de couleur unie `size`×`size` (PNG).
+void writeTexture(const fs::path &path, std::uint32_t size)
+{
+    rd::Image image;
+    image.width = size;
+    image.height = size;
+    image.rgba.assign(static_cast<std::size_t>(size) * size * 4, 220);
+    REQUIRE(rd::savePng(image, path).has_value());
+}
+
+// Bras dont le matériau prend sa couleur d'une image externe (partagée par le cache du chargeur).
+fs::path writeTexturedArm(const fs::path &dir, const fs::path &texture)
+{
+    as::Model m = makeArm();
+    m.images.push_back({.name = "arm_albedo", .path = texture, .encoded = {}, .mimeType = "image/png"});
+    m.textures.push_back({.image = 0, .sampler = -1});
+    m.materials[0].baseColor.texture = 0;
+    const fs::path path = dir / "textured_arm.gltf";
+    REQUIRE(as::saveGltf(m, path).has_value());
+    return path;
 }
 
 fs::path writeArm(const fs::path &dir)
@@ -251,9 +288,9 @@ TEST_SUITE("anim/animated-model")
             CHECK((*arm)->skinningPath() == (an::SkinnedModel::supportedBy(s.gpu->capabilities()) ? an::SkinningPath::kGpu : an::SkinningPath::kCpu));
             CHECK_FALSE(((*arm)->pose().nodes[2].rotation == an::restPose((*arm)->model()).nodes[2].rotation));
             CHECK(litPixels(image) > 0);
-            CHECK((((*arm)->play("absent").error().code) == ErrorCode::kNotFound));
-            CHECK((((*arm)->crossFade("absent", 0.2f).error().code) == ErrorCode::kNotFound));
-            CHECK(an::AnimatedModel::create(*s.context, dir.path / "absent.gltf").error().message.find("absent.gltf") != std::string::npos);
+            CHECK((errorOf((*arm)->play("absent")) == ErrorCode::kNotFound));
+            CHECK((errorOf((*arm)->crossFade("absent", 0.2f)) == ErrorCode::kNotFound));
+            CHECK(messageOf(an::AnimatedModel::create(*s.context, dir.path / "absent.gltf")).find("absent.gltf") != std::string::npos);
             CHECK(s.gpu->validationErrorCount() == 0);
         }
     }
@@ -368,7 +405,19 @@ TEST_SUITE("anim/animated-model")
         CHECK((*arm)->current().empty());
         REQUIRE((*arm)->update(1.0f).has_value());
         CHECK(((*arm)->pose().nodes[2].rotation == pose.nodes[2].rotation));
-        CHECK((((*arm)->setPose(an::Pose{}).error().code) == ErrorCode::kInvalidArgument));
+        CHECK((errorOf((*arm)->setPose(an::Pose{})) == ErrorCode::kInvalidArgument));
+        // Temps non finis refusés (un NaN irait jusqu'à l'échantillonnage du clip).
+        const float nan = std::numeric_limits<float>::quiet_NaN();
+        const float inf = std::numeric_limits<float>::infinity();
+        REQUIRE((*arm)->play("bend").has_value());
+        CHECK((errorOf((*arm)->update(nan)) == ErrorCode::kInvalidArgument));
+        CHECK((errorOf((*arm)->update(inf)) == ErrorCode::kInvalidArgument));
+        CHECK((errorOf((*arm)->play("bend", {.speed = nan})) == ErrorCode::kInvalidArgument));
+        CHECK((errorOf((*arm)->crossFade("twist", inf)) == ErrorCode::kInvalidArgument));
+        CHECK((errorOf((*arm)->crossFade("twist", 0.2f, {.speed = nan})) == ErrorCode::kInvalidArgument));
+        CHECK((*arm)->current() == "bend"); // lecteur inchangé
+        REQUIRE((*arm)->update(0.25f).has_value());
+        CHECK((*arm)->currentTime() == doctest::Approx(0.25f));
     }
 
     TEST_CASE("a crowd created from an animated model plays its clips and draws like a hand-built crowd")
@@ -417,9 +466,51 @@ TEST_SUITE("anim/animated-model")
             CHECK(litPixels(fromModel) > 0);
             CHECK((fromModel == byHand));
 
-            CHECK((((*crowd)->setAgents(worlds, std::vector<std::uint32_t>{0, 2, 0}, times).error().code) == ErrorCode::kOutOfRange));
-            CHECK((((*crowd)->setAgents(worlds, clips, std::vector<float>{0.0f}).error().code) == ErrorCode::kInvalidArgument));
-            CHECK((((*reference)->setAgents(worlds, clips, times).error().code) == ErrorCode::kInvalidArgument)); // pas de clips
+            CHECK((errorOf((*crowd)->setAgents(worlds, std::vector<std::uint32_t>{0, 2, 0}, times)) == ErrorCode::kOutOfRange));
+            CHECK((errorOf((*crowd)->setAgents(worlds, clips, std::vector<float>{0.0f})) == ErrorCode::kInvalidArgument));
+            CHECK((errorOf((*reference)->setAgents(worlds, clips, times)) == ErrorCode::kInvalidArgument)); // pas de clips
+            CHECK((errorOf((*crowd)->setAgents(worlds, clips, std::vector<float>{0.0f, std::numeric_limits<float>::quiet_NaN(), 0.0f})) ==
+                   ErrorCode::kInvalidArgument));
+            CHECK(s.gpu->validationErrorCount() == 0);
+        }
+    }
+
+    TEST_CASE("a texture recreated through a shared loader is rebuilt in every model; a stale model draws nothing")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            tests::TempDir dir("animated_model");
+            const fs::path texture = dir.path / "arm_albedo.png";
+            writeTexture(texture, 4);
+            const fs::path path = writeTexturedArm(dir.path, texture);
+            Stage s(backend);
+            auto loader = as::ModelLoader::create(*s.context);
+            REQUIRE(loader.has_value());
+            auto a = an::AnimatedModel::create(*s.context, *loader, path);
+            auto b = an::AnimatedModel::create(*s.context, *loader, path);
+            REQUIRE(a.has_value());
+            REQUIRE(b.has_value());
+            CHECK_FALSE((*a)->texturesStale());
+            CHECK_FALSE((*b)->texturesStale());
+            auto drawB = [&] { return s.frame([&](CommandEncoder &e) { REQUIRE((*b)->dispatch(e).has_value()); }, [&] { REQUIRE((*b)->draw(*s.renderer, s.camera).has_value()); }); };
+            CHECK(litPixels(drawB()) > 0);
+
+            // Taille changée : le cache recrée la texture. A la relit et se reconstruit ; B, qui partage le chargeur, voit que sa
+            // texture a été remplacée alors que le cache n'a plus rien à relire.
+            writeTexture(texture, 8);
+            fs::last_write_time(texture, fs::last_write_time(texture) + std::chrono::seconds(2));
+            auto reloadedA = (*a)->reloadChanged();
+            REQUIRE(reloadedA.has_value());
+            CHECK(*reloadedA == 1);
+            CHECK_FALSE((*a)->texturesStale());
+            CHECK((*b)->texturesStale());
+            CHECK(litPixels(drawB()) == 0); // B ne dessine pas avec des groupes liés à l'ancienne texture
+
+            auto reloadedB = (*b)->reloadChanged();
+            REQUIRE(reloadedB.has_value());
+            CHECK(*reloadedB == 0); // rien à relire, mais B se reconstruit quand même
+            CHECK_FALSE((*b)->texturesStale());
+            CHECK(litPixels(drawB()) > 0);
             CHECK(s.gpu->validationErrorCount() == 0);
         }
     }

@@ -187,6 +187,10 @@ core::Result<> CrowdRenderer::setAgents(std::span<const core::Mat4> worlds, std:
             return makeError(ErrorCode::kOutOfRange, "CrowdRenderer::setAgents: agent " + std::to_string(a) + " plays clip " + std::to_string(clips[a]) +
                                                          " of " + std::to_string(clips_.size()));
         }
+        if (!std::isfinite(times[a]))
+        {
+            return makeError(ErrorCode::kInvalidArgument, "CrowdRenderer::setAgents: agent " + std::to_string(a) + " has a non-finite time");
+        }
         const Clip &clip = clips_[clips[a]];
         float t = clip.duration() > 0.0f ? std::fmod(times[a], clip.duration()) : 0.0f;
         if (t < 0.0f)

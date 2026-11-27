@@ -81,6 +81,7 @@ class AnimatedModel
     // Fondu enchaîné de `seconds` secondes vers `clip` (0 : comme `play`). Sans clip en cours, comme `play`. kNotFound.
     core::Result<> crossFade(std::string_view clip, float seconds, PlayOptions options = {});
     // Avance le lecteur de `dt` secondes (temps fourni : déterministe) et envoie la pose. Sans clip joué : pose de repos.
+    // kInvalidArgument pour un `dt` non fini (comme une vitesse ou une durée de fondu non finie dans `play` / `crossFade`).
     core::Result<> update(float dt);
     // Impose une pose (une transformation par nœud du modèle) ; le lecteur est arrêté (le prochain `play` le relance).
     core::Result<> setPose(const Pose &pose);
@@ -88,13 +89,19 @@ class AnimatedModel
     // Skinning GPU : enregistre les dispatchs (hors passe de rendu), à soumettre avant les dessins. Rien en repli CPU.
     core::Result<> dispatch(rhi::CommandEncoder &encoder);
     // Un dessin par (nœud, primitive) ; entre `SceneRenderer::setCamera` et `endFrame`.
+    // Rien n'est dessiné tant que `texturesStale()` (une texture liée a été remplacée et le modèle pas encore reconstruit).
     core::Result<> draw(renderer::SceneRenderer &scene, const renderer::Camera &camera);
     // Place tout le modèle dans le monde.
     void setTransform(const glm::mat4 &world) noexcept;
 
-    // ASSET-05 : relit les textures modifiées sur le disque ; si une texture du modèle a été recréée (taille changée), le modèle
-    // dessinable est reconstruit (le lecteur garde son état). Renvoie le nombre de textures relues.
+    // ASSET-05 : relit les textures modifiées sur le disque ; si une texture du modèle a été recréée (taille ou format changé),
+    // le modèle dessinable est reconstruit (le lecteur garde son état). La reconstruction suit `texturesStale()`, pas le compte du
+    // cache : un modèle qui partage son chargeur est reconstruit même si un autre a déjà relu le fichier, et une reconstruction
+    // qui a échoué est retentée à l'appel suivant. Renvoie le nombre de textures relues par cet appel.
     core::Result<std::size_t> reloadChanged();
+    // Vrai si une texture liée par les matériaux n'est plus celle du dernier modèle dessinable installé (texture recréée par le
+    // cache) : à reconstruire (`rebuild` ou `reloadChanged`) avant de dessiner.
+    bool texturesStale() const;
     // Recrée le modèle dessinable et le skinning (même pose, même lecteur), ex. après un changement de textures ou d'ombres.
     core::Result<> rebuild();
 
@@ -160,6 +167,7 @@ class AnimatedModel
     std::unique_ptr<assets::RenderModel> render_;
     std::optional<SkinnedModel> skinned_;
     std::vector<CpuEntry> cpu_;
+    std::vector<rhi::TextureHandle> installedTextures_; // textures liées par le modèle dessinable installé
 };
 
 } // namespace orosmo::anim
