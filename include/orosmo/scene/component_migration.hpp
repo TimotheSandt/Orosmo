@@ -2,14 +2,20 @@
 // partir des descriptions copiées à l'enregistrement (`ComponentDesc`), jamais par la bibliothèque qui définit le type : elle
 // marche même si l'ancienne version a échoué ou est déjà déchargée.
 //
-// Un seul chemin : chaque valeur est écrite champ par champ avec l'ANCIENNE description (`componentToJson`, comme la
-// sauvegarde de scène), puis relue PAR NOM DE CHAMP dans la valeur par défaut de la NOUVELLE description.
+// Migration PAR NOM DE CHAMP, chaque champ (et chaque sous-champ d'une structure réfléchie) indépendamment, dans la valeur par
+// défaut de la NOUVELLE description :
+//   - champ de même nom, même type et même taille : valeur copiée à l'identique (la plage de la nouvelle version n'est pas
+//     réappliquée : la valeur est conservée) ;
+//   - structure réfléchie des deux côtés : ses sous-champs suivent ces mêmes règles (un sous-champ incompatible ne fait pas
+//     perdre ses voisins) ;
+//   - type changé : la valeur est écrite avec l'ANCIENNE description (`componentToJson`, comme la sauvegarde de scène) puis
+//     relue avec la nouvelle, plage comprise (entier vers réel…) ; illisible : valeur par défaut et avertissement ;
+//   - champ retiré : valeur perdue, avertissement (aussi pour un sous-champ).
+// Le compte rendu classe la migration :
 //   - kCopied (« migration par réflexion ») : chaque ancien champ existe encore, même nom, même type et même taille (des champs
-//     ont été ajoutés, déplacés, ou seule la version change). Champs communs copiés à l'identique, nouveaux à leur valeur par
-//     défaut ; aucune perte.
-//   - kRestored (« repli sauvegarde/restauration ») : un champ a été retiré ou a changé de type. La valeur sauvegardée est
-//     restaurée champ par champ : champ retiré ignoré, champ dont le type change converti si sa valeur se relit dans le
-//     nouveau type (entier vers réel…), sinon laissé à sa valeur par défaut ; chaque perte est un avertissement.
+//     ont été ajoutés, déplacés, ou seule la version change). Aucune perte.
+//   - kRestored (« repli sauvegarde/restauration ») : un champ a été retiré ou a changé de type, ou une structure opaque est
+//     devenue réfléchie (ou l'inverse : la valeur hexadécimale ne se relit pas en objet). Chaque perte est un avertissement.
 #pragma once
 
 #include <orosmo/core/reflection.hpp>
