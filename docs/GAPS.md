@@ -578,7 +578,7 @@ Numéros pris à partir de G250 (L0/L9 : G222-G223, L11 : G240-G243, L1 en cours
 
 | ID | Sujet | Détail | Jalon |
 | --- | --- | --- | --- |
-| G250 | `AnimatedModel` : un maillage skinné partagé par plusieurs nœuds | Comme `SkinnedModel` (G198) : le repli CPU déforme le maillage GPU pour le premier nœud skinné qui le dessine. Sans compute, `RenderModel` n'est pas créé `skinnable` : les nœuds skinnés qui partagent une primitive partagent aussi son tampon (et un nœud statique qui dessine la même primitive la verrait déformée). | M10 |
+| G250 | `AnimatedModel` : un maillage skinné partagé par plusieurs nœuds | Comme `SkinnedModel` (G198) : le repli CPU déforme le maillage GPU pour le premier nœud skinné qui le dessine. Sans compute, `RenderModel` n'est pas créé `skinnable` : les nœuds skinnés qui partagent une primitive partagent aussi son tampon (et un nœud statique qui dessine la même primitive la verrait déformée). Correction prévue : une sortie CPU par nœud skinné dans `RenderModel::create` et `AnimatedModel::applyPose`, sans exiger `kStorage`. | M10 |
 | G251 | `AnimatedModel` : pas d'événements de clip | Le lecteur (`play`, `crossFade`) ne rend pas les événements des clips (`Clip::collectEvents`) ; pour eux, piloter le modèle par une `StateMachine` et `setPose`. | M10 |
 
 ## Ajouts hors lot (G290)
