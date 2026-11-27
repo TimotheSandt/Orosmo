@@ -1,6 +1,8 @@
 // ECS-03 (A79 lot L3), interne au module : lecture et écriture des champs décrits d'un composant (`core::FieldDesc`, décalage
-// et taille) en JSON, et hachage de leurs valeurs. Jamais les octets bruts de la structure : le remplissage n'est ni écrit ni
-// haché, et une donnée hors de toute description (cache monde de `Transform`) non plus.
+// et taille) en JSON, et hachage de leurs valeurs. Jamais les octets bruts de la structure : le remplissage ENTRE champs
+// décrits n'est ni écrit ni haché, et une donnée hors de toute description (cache monde de `Transform`) non plus. Exception :
+// un champ opaque (structure non réfléchie, forme inconnue) est écrit (`opaqueToJson`, hexadécimal) et haché (`hashField`)
+// octet par octet sur ses `f.size` octets, remplissage interne compris : ce remplissage entre dans les empreintes.
 #pragma once
 
 #include <orosmo/core/error.hpp>

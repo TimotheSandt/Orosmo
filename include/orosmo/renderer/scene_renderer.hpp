@@ -118,6 +118,7 @@ class SceneRenderer
     std::vector<std::string> registeredUpscaleModes() const;
     UpscaleRequirements activeUpscaleModeRequirements() const noexcept;
     void addPostProcessPass(std::unique_ptr<IPostProcessPass> pass);
+    // Pendant l'exécution du graphe (depuis une passe ou un post-traitement), le retrait est différé à la fin d'endFrame.
     void removePostProcessPass(const std::string &name);
     // Remplace le mode de génération d'images (nul : aucun). Un mode non supporté ou qui ne s'initialise pas est refusé
     // (kUnsupported) et le mode actif est conservé.
@@ -164,7 +165,8 @@ class SceneRenderer
 
     // ── Plugins de rendu (REN-01) ───────────────────────────────────────────────────────────────────────────────────
     // Enregistre un plugin : ses passes sont ajoutées au graphe à chaque `endFrame`, dans l'ordre d'enregistrement. Refusé
-    // (kUnsupported) si `supports` est faux, (kAlreadyExists) si un plugin du même nom existe. Renvoie le plugin (non possédé).
+    // (kUnsupported) si `supports` est faux, (kAlreadyExists) si un plugin du même nom existe, (kBusy) pendant une image (entre
+    // beginFrame et la fin d'endFrame). Renvoie le plugin (non possédé).
     core::Result<RenderFeature *> addFeature(std::unique_ptr<RenderFeature> feature);
     // Retire un plugin. Pendant une image (entre beginFrame et la fin d'endFrame), le retrait est différé à la fin de l'image : ses
     // définitions de shader et ses liaisons du groupe 0 restent cohérentes avec les dessins déjà enregistrés.
@@ -209,6 +211,7 @@ class SceneRenderer
     // Mode d'affichage de debug (REN-35) ; kNone (défaut) : aucun effet, aucune allocation. kNormals et kMotion demandent leur AOV
     // (le programme de maillage doit être compilé avec `aovShaderDefines()` APRÈS cet appel) ; kAlbedo, kOverdraw et kWireframe
     // remplacent le programme des maillages par un programme de debug ; kLod n'a d'effet que via `VisibilityOptions::lodColors`.
+    // kBusy pendant une image (entre beginFrame et la fin d'endFrame) : rien n'est changé.
     core::Result<> setDebugView(DebugView view);
     DebugView debugView() const noexcept { return debugView_; }
 
@@ -262,6 +265,10 @@ class SceneRenderer
     // sont lus sur le périphérique ; la scène y est copiée, étirée si la sortie n'a pas la résolution de `setOutputResolution`.
     // kInvalidArgument si la texture est inconnue.
     core::Result<> endFrame(rhi::TextureHandle output);
+    // Abandonne l'image ouverte (revue PR #37) : ferme l'enregistrement sans exécuter le graphe, comme un endFrame qui échoue avant
+    // le graphe (dessins, segments de debug et dépôts des plugins retirés, retraits différés appliqués, historique invalidé). Sans
+    // image ouverte (ou pendant endFrame), ne fait rien. Pour l'appelant dont une étape échoue entre beginFrame et endFrame.
+    void abortFrame();
 
     // Outil de copie plein écran partagé (présentation, mises à l'échelle de l'application).
     FullscreenBlit &blit() noexcept { return *blit_; }
@@ -281,6 +288,7 @@ class SceneRenderer
         std::vector<std::byte> pushConstants;
         LightManager *lights = nullptr;
         rhi::BindGroupHandle textureGroup;
+        std::shared_ptr<const PbrMaterial> material; // garde le groupe 1 du matériau jusqu'à endFrame (Mesh::setMaterial après le dessin)
         std::uint32_t modelOffset = 0; // tranche du modèle de CE dessin (recordModelSlice), décalage dynamique du groupe 2
         rhi::BufferHandle vertexBuffer;
         rhi::BufferHandle instanceBuffer;
@@ -418,6 +426,7 @@ class SceneRenderer
     std::uint32_t passNextHistory_ = 0;
     std::vector<std::unique_ptr<RenderFeature>> features_;
     std::vector<std::string> pendingRemovals_; // removeFeature pendant une image : appliqués à sa fin
+    std::vector<std::string> pendingPostRemovals_; // removePostProcessPass pendant endFrame : appliqués à sa fin
     std::vector<SceneDraw> draws_;
     FrameOptions frameOptions_;
 

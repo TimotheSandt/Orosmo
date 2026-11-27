@@ -7,13 +7,17 @@
 //     une référence `Entity` dans un composant reste valide, et les `create` suivants rendent les mêmes indices.
 //   - Hiérarchie : paires dans l'ordre des enfants (ordre des frères gardé).
 //   - Composants : par type, dans l'ordre dense du stockage (gardé au chargement : l'ordre de parcours, donc le résultat d'une
-//     simulation rejouée, ne change pas). Chaque valeur est un objet {champ: valeur} écrit à partir de la description des
-//     champs (`ComponentDesc::fields`), jamais les octets bruts. Réels écrits au plus court qui se relit à l'identique ; NaN et
-//     infinis en chaînes "nan", "inf", "-inf".
+//     simulation rejouée, ne change pas). Chaque valeur est un objet {champ: valeur} écrit champ par champ à partir de la
+//     description des champs (`ComponentDesc::fields`) : le remplissage entre champs décrits n'est pas écrit. Exception : un
+//     champ OPAQUE (membre de structure non réfléchie, ou forme que le codec ne connaît pas) est écrit en hexadécimal à partir
+//     de sa représentation mémoire (`f.size` octets, son remplissage interne compris) ; il n'est donc pas portable si sa
+//     disposition change. Réels écrits au plus court qui se relit à l'identique ; NaN et infinis en chaînes "nan", "inf",
+//     "-inf".
 //
 // Chargement : par NOM de type, dans un monde où les types sont déjà enregistrés (le moteur ou la bibliothèque de jeu les
 // enregistre d'abord). Champ manquant : valeur par défaut du type ; champ inconnu ou type de composant non enregistré : ignoré,
-// avec un avertissement (journal et `SceneLoadReport`). Version de composant plus ancienne : migrations du type
+// avec un avertissement (journal et `SceneLoadReport`) ; la version d'un type inconnu doit être un entier positif ou nul.
+// Deux valeurs du même type pour une même entité : kParse. Version de composant plus ancienne : migrations du type
 // (`SceneMigrations::components`), appliquées à chaque valeur ; plus récente, ou migration absente : kVersionMismatch. Tout
 // ou rien : en cas d'erreur, le monde est inchangé. Le cache monde de `Transform` (non décrit) est recalculé à la fin.
 #pragma once
@@ -55,12 +59,15 @@ core::Result<SceneLoadReport> loadScene(World &world, const core::Json &document
 std::vector<std::uint8_t> saveSceneBinary(const World &world);
 core::Result<SceneLoadReport> loadSceneBinary(World &world, std::span<const std::uint8_t> bytes, const SceneMigrations &migrations = {});
 
-// Fichier : JSON si l'extension est « .json », MessagePack sinon. kIo si le fichier ne s'ouvre pas.
+// Fichier : JSON si l'extension est « .json », MessagePack sinon. kIo si le fichier ne s'ouvre pas. La sauvegarde écrit
+// `<path>.tmp`, le ferme et le vérifie, puis le renomme sur `path` : en cas d'échec, `path` (la dernière sauvegarde) reste
+// intact et le temporaire est supprimé.
 core::Result<> saveSceneFile(const World &world, const std::filesystem::path &path);
 core::Result<SceneLoadReport> loadSceneFile(World &world, const std::filesystem::path &path, const SceneMigrations &migrations = {});
 
 // Composant seul (inspecteur, migration) : objet {champ: valeur} écrit à partir de la description, et lecture dans `data`
-// (`desc.size` octets ; les champs absents gardent la valeur en place).
+// (`desc.size` octets ; les champs absents gardent la valeur en place). Tout ou rien : en cas d'erreur, `data` et `warnings`
+// sont inchangés.
 core::Json componentToJson(const ComponentDesc &desc, const void *data);
 core::Result<> componentFromJson(const ComponentDesc &desc, void *data, const core::Json &value, std::vector<std::string> &warnings);
 

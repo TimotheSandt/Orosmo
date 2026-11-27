@@ -23,11 +23,17 @@ bool isPowerOfTwo(std::size_t v) { return v != 0 && (v & (v - 1u)) == 0; }
 
 Result<> validateFields(const std::vector<FieldDesc> &fields, std::size_t enclosingSize, const std::string &path)
 {
-    for (const FieldDesc &f : fields)
+    for (std::size_t i = 0; i < fields.size(); ++i)
     {
+        const FieldDesc &f = fields[i];
         const std::string name = path + "." + f.name;
         if (f.name.empty())
             return core::makeError(ErrorCode::kInvalidArgument, "component field without a name in " + path);
+        // Sauvegarde et restauration par nom : deux champs du même niveau ne peuvent pas porter le même nom (deux structures
+        // distinctes, si).
+        for (std::size_t j = 0; j < i; ++j)
+            if (fields[j].name == f.name)
+                return core::makeError(ErrorCode::kInvalidArgument, "component field " + name + " is declared twice");
         if (f.type == FieldType::kString || f.type == FieldType::kArray)
             return core::makeError(ErrorCode::kInvalidArgument,
                                    "component field " + name + " is a string or a dynamic array: components must be trivially copyable");
@@ -63,6 +69,8 @@ Result<> validateComponentDesc(const ComponentDesc &desc)
         return core::makeError(ErrorCode::kInvalidArgument, "component without a name");
     if (!isPowerOfTwo(desc.alignment) || desc.alignment > ComponentDesc::kMaxAlignment)
         return core::makeError(ErrorCode::kInvalidArgument, "component " + desc.name + ": invalid alignment");
+    if (desc.version < 0)
+        return core::makeError(ErrorCode::kInvalidArgument, "component " + desc.name + ": negative version");
     if (desc.size > ComponentDesc::kMaxSize)
         return core::makeError(ErrorCode::kInvalidArgument, "component " + desc.name + ": size above ComponentDesc::kMaxSize");
     if (desc.size == 0 || desc.size % desc.alignment != 0)

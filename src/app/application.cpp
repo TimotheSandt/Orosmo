@@ -195,6 +195,7 @@ struct Application::Impl
     std::unique_ptr<ViewHost> views; // après le jeu et l'interface : détruit avant eux
 
     renderer::RenderTarget composed;
+    renderer::RenderTarget resized; // image en cours à une nouvelle taille : devient `composed` si elle réussit (revue PR #37)
     renderer::Camera camera;
     core::SteadyClock steadyClock;
     std::optional<core::FrameTimer> timer;
@@ -207,6 +208,7 @@ struct Application::Impl
     bool paused = false;
     bool animationsPaused = false;
     bool captureOk = true;
+    bool captureAttempted = false; // la capture demandée a été tentée (réussie ou non)
     std::uint64_t frame = 0;
     rhi::Extent2D outputSize{};
 
@@ -228,6 +230,7 @@ struct Application::Impl
         resources.animatedModels.clear();
         resources.meshes.clear();
         loader.reset();
+        resized.reset();
         composed.reset();
         canvas.reset();
         scene.reset();
@@ -377,17 +380,30 @@ struct Application::Impl
         return {};
     }
 
-    core::Result<> ensureComposed(rhi::Extent2D size)
+    // Cible de l'image : `composed` à la même taille ; à une nouvelle taille, `resized`, publiée par `publishComposed` après une
+    // image réussie : si elle échoue, `readOutput` lit encore la dernière image composée, à la taille de `outputSize`.
+    core::Result<renderer::RenderTarget *> ensureComposed(rhi::Extent2D size)
     {
-        if (!composed.valid())
+        if (composed.valid() && composed.width() == size.width && composed.height() == size.height)
+            return &composed;
+        if (!resized.valid())
         {
             auto target = renderer::RenderTarget::create(*device, {.size = size, .depth = false, .debugName = "app.composed"});
             if (!target)
                 return std::unexpected(target.error());
-            composed = std::move(*target);
-            return {};
+            resized = std::move(*target);
         }
-        return composed.resize(size.width, size.height);
+        else if (auto r = resized.resize(size.width, size.height); !r)
+            return std::unexpected(r.error());
+        return &resized;
+    }
+
+    void publishComposed(const renderer::RenderTarget *target)
+    {
+        if (target != &resized)
+            return;
+        composed = std::move(resized);
+        resized.reset();
     }
 };
 
@@ -497,6 +513,15 @@ bool Application::run()
             break;
     }
     impl_->device->waitIdle();
+    // Boucle arrêtée (fenêtre fermée) avant l'image de la capture demandée : échec, comme une limite d'images trop basse.
+    if (ok && impl_->captureOk && !impl_->settings.captureDirectory.empty() && !impl_->captureAttempted)
+    {
+        const std::string message = "capture not written: the loop stopped after " + std::to_string(impl_->frame) +
+                                    " frames, before captureFrames (" + std::to_string(impl_->settings.captureFrames) + ")";
+        LOG_ERROR(1, message);
+        std::cerr << message << '\n';
+        impl_->captureOk = false;
+    }
     return ok && impl_->captureOk;
 }
 
@@ -580,8 +605,10 @@ core::Result<bool> Application::frame()
         return true;
     }
     const rhi::Extent2D size{static_cast<std::uint32_t>(pixelW), static_cast<std::uint32_t>(pixelH)};
-    if (auto target = s.ensureComposed(size); !target)
+    auto target = s.ensureComposed(size);
+    if (!target)
         return makeError(target.error().code, "output target: " + target.error().message);
+    renderer::RenderTarget &composed = **target;
 
     s.camera.setAspect(size.width, size.height);
     s.scene->setOutputResolution(pixelW, pixelH);
@@ -606,17 +633,19 @@ core::Result<bool> Application::frame()
         RenderFrame render{*s.scene, s.camera, *encoder, size};
         ok = s.onRender(*this, render);
     }
-    const renderer::UpscaleTarget output{s.composed.color(0), rhi::Format::kRGBA8Unorm, size};
+    const renderer::UpscaleTarget output{composed.color(0), rhi::Format::kRGBA8Unorm, size};
     if (ok)
         ok = s.scene->endFrame(output);
+    else
+        s.scene->abortFrame(); // une étape a échoué après beginFrame : l'image est fermée, le prochain frame() peut l'ouvrir
     if (ok && s.ui)
     {
         renderer::DrawList list;
         s.ui->draw(list);
-        ok = s.canvas->render(*encoder, list, {s.composed.color(0), rhi::Format::kRGBA8Unorm, size}, true);
+        ok = s.canvas->render(*encoder, list, {composed.color(0), rhi::Format::kRGBA8Unorm, size}, true);
     }
     if (ok)
-        ok = s.scene->blit().copy(*encoder, s.composed.color(0), s.scene->blit().linearSampler(), *backbuffer, rhi::Format::kRGBA8Unorm,
+        ok = s.scene->blit().copy(*encoder, composed.color(0), s.scene->blit().linearSampler(), *backbuffer, rhi::Format::kRGBA8Unorm,
                                   "app.present");
     auto submitted = s.device->submit(std::move(encoder));
     if (!ok || !submitted)
@@ -625,11 +654,13 @@ core::Result<bool> Application::frame()
             LOG_WARNING("present after a failed frame: ", presented.error().message);
         return std::unexpected(!ok ? ok.error() : submitted.error());
     }
+    s.publishComposed(&composed);
     s.outputSize = size;
     ++s.frame;
 
     if (capturing && s.frame >= cfg.captureFrames)
     {
+        s.captureAttempted = true;
         if (auto captured = s.capture(); !captured)
         {
             LOG_ERROR(1, captured.error().message);

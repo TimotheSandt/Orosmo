@@ -574,6 +574,30 @@ TEST_SUITE("renderer/scene")
             CHECK(counting->calls == 2); // exécutée à chaque image
             scene.renderer->removePostProcessPass("count");
             frame(); // plus appelée : l'objet est détruit, le test ne le relit pas (aucun accès invalide ne doit être signalé par ASan)
+
+            // Revue PR #37 : un post-traitement qui se retire pendant son exécution n'est détruit qu'à la fin de l'image.
+            struct SelfRemovingPass final : rd::IPostProcessPass
+            {
+                rd::SceneRenderer *renderer = nullptr;
+                int *calls = nullptr;
+                std::string name() const noexcept override { return "self-removing"; }
+                orosmo::core::Result<> process(rd::FrameContext &, rd::RenderTarget &) override
+                {
+                    ++*calls;
+                    renderer->removePostProcessPass("self-removing");
+                    CHECK(name() == "self-removing"); // l'objet vit encore (ASan)
+                    return {};
+                }
+            };
+            int selfCalls = 0;
+            auto self = std::make_unique<SelfRemovingPass>();
+            self->renderer = scene.renderer.get();
+            self->calls = &selfCalls;
+            scene.renderer->addPostProcessPass(std::move(self));
+            frame();
+            CHECK(selfCalls == 1);
+            frame();
+            CHECK(selfCalls == 1); // retiré à la fin de l'image précédente
             scene.gpu.expectNoValidationErrors();
         }
     }

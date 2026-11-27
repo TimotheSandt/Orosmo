@@ -10,6 +10,7 @@
 #include "support/test_support.hpp"
 
 #include <orosmo/renderer/camera.hpp>
+#include <orosmo/renderer/frame_ring.hpp>
 #include <orosmo/renderer/pipeline_cache.hpp>
 #include <orosmo/renderer/render_feature.hpp>
 #include <orosmo/renderer/render_graph.hpp>
@@ -311,6 +312,14 @@ TEST_SUITE("renderer/frames-in-flight")
                 auto deeper = rd::SceneRenderer::create(*gpu.device, library, pipelines, {.shaderDirectory = shaderDir(), .framesInFlight = n + 1});
                 REQUIRE(deeper.has_value());
                 CHECK((*deeper)->framesInFlight() == n + 1);
+                // Revue PR #37 : même règle pour un FrameRing construit à la main.
+                rd::FrameRing ring(orosmo::rhi::BufferUsage::kUniform, "test.ring", n);
+                CHECK(ring.reserve(*gpu.device, 256).has_value());
+                if (n > 1)
+                {
+                    rd::FrameRing shallow(orosmo::rhi::BufferUsage::kUniform, "test.ring", n - 1);
+                    CHECK((tests::errorOf(shallow.reserve(*gpu.device, 256)) == ErrorCode::kInvalidArgument));
+                }
             }
         }
     }

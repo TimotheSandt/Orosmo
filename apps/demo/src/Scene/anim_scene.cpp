@@ -487,6 +487,8 @@ void AnimScene::destroy()
     hero_.reset();
     loader_.reset();
     context_.reset();
+    rebuildPending_ = false; // un nouvel init repart sans reconstruction en attente (revue PR #37)
+    retryCountdown_ = 0;
 }
 
 } // namespace demo

@@ -215,6 +215,12 @@ void Ui::setRoot(std::unique_ptr<Widget> root)
     root_ = std::move(root);
 }
 
+void Ui::retainUntilRootReplaced(std::shared_ptr<const void> keep)
+{
+    if (updating_ && keep)
+        retained_.push_back(std::move(keep));
+}
+
 Widget *Ui::find(std::string_view id) const noexcept
 {
     if (root_)
@@ -1009,7 +1015,7 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
             focusNext(false); // sans focus : le premier widget de l'ordre de tabulation
             focusVisible_ = true;
         }
-        else if (arrow && focused_ != nullptr && !focused_->usesArrowKey(key, true) && !inAnyPopup(focused_))
+        else if (arrow && focused_ != nullptr && !focused_->usesArrowKey(key, true) && !inAnyPopup(focused_) && !popupOpenFor(*focused_))
         {
             if (moveFocus(key))
                 focusVisible_ = true;
@@ -1052,6 +1058,8 @@ void Ui::update(const InputFrame &input, glm::vec2 viewport)
         hasPendingRoot_ = false;
         setRoot(std::move(pendingRoot_));
     }
+    while (!retained_.empty())
+        retained_.pop_back(); // l'ancien arbre est détruit : ce qui le retenait peut partir
     layout(viewport);
 }
 

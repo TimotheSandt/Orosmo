@@ -3,12 +3,14 @@
 #include "game_module_impl.hpp"
 
 #include <orosmo/core/log.hpp>
+#include <orosmo/scene/component.hpp>
 #include <orosmo/ui/ui.hpp>
 
 #include <algorithm>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace orosmo::app
 {
@@ -117,6 +119,9 @@ core::Result<const ParamsFile *> GameContext::registerParams(std::string name, s
     if (path.is_relative() && !targets_.paramsDirectory.empty())
         path = targets_.paramsDirectory / path;
     desc.name = name;
+    // Description vérifiée AVANT la réutilisation (revue PR #37) : refusée à chaud comme à froid (`ParamsFile::open`).
+    if (auto valid = scene::validateComponentDesc(desc); !valid)
+        return std::unexpected(std::move(valid.error()));
     // Même fichier et même disposition qu'à la version précédente : le même objet (valeur et observation gardées).
     if (journal_ != nullptr && journal_->previous != nullptr)
         for (const auto &[previousName, file] : journal_->previous->params)
@@ -200,8 +205,12 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
     const GameTargets &targets = Access::targets(context);
     scene::World savedWorld = *targets.world;
     std::optional<core::Random> savedRandom;
+    std::vector<sim::Input> savedPending; // revue PR #37 : entrées mises en file par un `init` rejeté retirées
     if (targets.simulation != nullptr)
+    {
         savedRandom = targets.simulation->random();
+        savedPending = targets.simulation->pendingInputs();
+    }
 
     // GAME-03 : les composants que la nouvelle version enregistre avec une autre disposition sont migrés pendant son `init`
     // (`GameContext::registerComponent`).
@@ -216,6 +225,13 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
         *targets.world = std::move(savedWorld);
         if (savedRandom)
             targets.simulation->random() = *savedRandom;
+        if (targets.simulation != nullptr && targets.simulation->pendingInputs() != savedPending)
+        {
+            // `init` a mis des entrées en file : seule `restore` remet la file (les entrées déjà en attente restent). Effets de
+            // bord de ce cas seulement : le temps accumulé par `advance` repart de zéro, les événements non repris sont perdus.
+            sim::Simulation &simulation = *targets.simulation;
+            simulation.restore(sim::Snapshot{simulation.world(), simulation.random(), simulation.stepIndex(), std::move(savedPending)});
+        }
         // Retour à l'ancienne version : ses noms reprennent leur place ; les fonctions de la nouvelle sont détruites ici, avant que
         // l'appelant ne décharge sa bibliothèque.
         detach(Access::targets(context), active);

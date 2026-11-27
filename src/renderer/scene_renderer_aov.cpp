@@ -131,6 +131,11 @@ core::Result<> SceneRenderer::setDebugView(DebugView view)
     {
         return {};
     }
+    if (frameOpen_ || executing_)
+    {
+        // Revue PR #37 : l'ancien plugin `debug.view` resterait (retrait différé) et le nouveau serait refusé ; rien n'est changé.
+        return makeError(ErrorCode::kBusy, "SceneRenderer::setDebugView: refused during a frame (between beginFrame and the end of endFrame)");
+    }
     std::shared_ptr<ShaderProgram> program;
     std::shared_ptr<ShaderProgram> texturedProgram;
     std::unique_ptr<RenderFeature> feature;

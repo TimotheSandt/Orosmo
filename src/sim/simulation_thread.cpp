@@ -239,9 +239,17 @@ void SimulationThread::sync()
     done_.wait(lock, [&] { return syncDone_ >= ticket || exited_; });
 }
 
+bool SimulationThread::running() const noexcept
+{
+    if (!thread_.joinable())
+        return false;
+    std::lock_guard lock(mutex_);
+    return !exited_;
+}
+
 bool SimulationThread::pushInput(Input input)
 {
-    if (!thread_.joinable()) // arrêté : aucun thread ne la livrerait
+    if (!running()) // arrêté, ou sorti sur une erreur : aucun thread ne la livrerait
         return false;
     return inputs_.tryPush(std::move(input));
 }
@@ -274,11 +282,14 @@ void SimulationThread::drainInputs()
     while (auto input = inputs_.tryPop())
     {
         const std::uint64_t step = input->step;
-        if (!simulation_.queueInput(std::move(*input)))
+        if (auto queued = simulation_.queueInput(std::move(*input)); !queued)
         {
             rejectedInputs_.fetch_add(1, std::memory_order_relaxed);
-            LOG_WARNING("SimulationThread: input for step ", step, " arrived after that step was played (now ", simulation_.stepIndex(),
-                        "); date inputs at stepIndex() + latency");
+            if (step < simulation_.stepIndex())
+                LOG_WARNING("SimulationThread: input for step ", step, " arrived after that step was played (now ",
+                            simulation_.stepIndex(), "); date inputs at stepIndex() + latency");
+            else
+                LOG_WARNING("SimulationThread: input refused: ", queued.error().describe());
         }
     }
 }

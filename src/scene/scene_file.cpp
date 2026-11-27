@@ -7,9 +7,12 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace orosmo::scene
@@ -98,6 +101,10 @@ Result<> loadComponents(World &world, const std::vector<std::uint32_t> &generati
             !entry.contains("entities") || !entry.contains("values"))
             return core::makeError(ErrorCode::kParse, where + ": expected {name, version, entities, values}");
         const std::string &name = entry["name"].get_ref<const std::string &>();
+        // Version lue avant le type : une version mal formée est refusée même pour un type inconnu.
+        auto version = readVersion(entry["version"], "component " + name);
+        if (!version)
+            return std::unexpected(version.error());
         auto id = world.componentId(name);
         if (!id)
         {
@@ -105,9 +112,6 @@ Result<> loadComponents(World &world, const std::vector<std::uint32_t> &generati
             continue;
         }
         const ComponentDesc &desc = *world.componentDesc(*id);
-        auto version = readVersion(entry["version"], "component " + name);
-        if (!version)
-            return std::unexpected(version.error());
         if (*version > desc.version)
             return core::makeError(ErrorCode::kVersionMismatch, "component " + name + ": version " + std::to_string(*version) +
                                                                     " is newer than registered version " + std::to_string(desc.version));
@@ -136,7 +140,10 @@ Result<> loadComponents(World &world, const std::vector<std::uint32_t> &generati
                 return r;
             if (index >= generations.size())
                 return core::makeError(ErrorCode::kParse, path + ": entity index outside the entity table");
-            if (auto added = world.add(Entity{index, generations[index]}, *id, buffer.data()); !added)
+            const Entity entity{index, generations[index]};
+            if (world.has(entity, *id))
+                return core::makeError(ErrorCode::kParse, path + ": two values for the same entity");
+            if (auto added = world.add(entity, *id, buffer.data()); !added)
                 return core::makeError(ErrorCode::kParse, path + ": the entity is not alive");
             ++report.components;
         }
@@ -153,7 +160,18 @@ Json componentToJson(const ComponentDesc &desc, const void *data)
 
 Result<> componentFromJson(const ComponentDesc &desc, void *data, const Json &value, std::vector<std::string> &warnings)
 {
-    return detail::decodeFields(desc.fields, static_cast<std::byte *>(data), value, desc.name, warnings);
+    // Tout ou rien : décodage dans une copie de la valeur courante (les champs absents la gardent), recopiée seulement en cas
+    // de succès ; les avertissements aussi.
+    std::vector<std::byte> scratch(desc.size);
+    if (desc.size != 0)
+        std::memcpy(scratch.data(), data, desc.size);
+    std::vector<std::string> pending;
+    if (auto r = detail::decodeFields(desc.fields, scratch.data(), value, desc.name, pending); !r)
+        return r;
+    if (desc.size != 0)
+        std::memcpy(data, scratch.data(), desc.size);
+    warnings.insert(warnings.end(), std::make_move_iterator(pending.begin()), std::make_move_iterator(pending.end()));
+    return {};
 }
 
 Json saveScene(const World &world)
@@ -269,19 +287,37 @@ Result<SceneLoadReport> loadSceneBinary(World &world, std::span<const std::uint8
 
 Result<> saveSceneFile(const World &world, const std::filesystem::path &path)
 {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out)
-        return core::makeError(ErrorCode::kIo, "saveSceneFile: cannot open " + path.string());
-    if (path.extension() == ".json")
-        out << core::dumpJson(saveScene(world));
-    else
+    // Écriture dans un fichier temporaire du même répertoire, fermé et vérifié, puis renommé sur la destination : un échec
+    // (disque plein…) laisse la dernière sauvegarde intacte et supprime le temporaire.
+    std::filesystem::path temporary = path;
+    temporary += ".tmp";
     {
-        const std::vector<std::uint8_t> bytes = saveSceneBinary(world);
-        out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+        if (!out)
+            return core::makeError(ErrorCode::kIo, "saveSceneFile: cannot open " + temporary.string());
+        if (path.extension() == ".json")
+            out << core::dumpJson(saveScene(world));
+        else
+        {
+            const std::vector<std::uint8_t> bytes = saveSceneBinary(world);
+            out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        }
+        out.close(); // vidange du tampon : une erreur d'écriture (disque plein) peut n'apparaître qu'ici
+        if (!out)
+        {
+            std::error_code ignored;
+            std::filesystem::remove(temporary, ignored);
+            return core::makeError(ErrorCode::kIo, "saveSceneFile: cannot write " + temporary.string());
+        }
     }
-    out.close(); // vidange du tampon : une erreur d'écriture (disque plein) peut n'apparaître qu'ici
-    if (!out)
-        return core::makeError(ErrorCode::kIo, "saveSceneFile: cannot write " + path.string());
+    std::error_code ec;
+    std::filesystem::rename(temporary, path, ec); // remplace la destination (POSIX rename, MoveFileExW sous Windows)
+    if (ec)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        return core::makeError(ErrorCode::kIo, "saveSceneFile: cannot replace " + path.string() + ": " + ec.message());
+    }
     return {};
 }
 

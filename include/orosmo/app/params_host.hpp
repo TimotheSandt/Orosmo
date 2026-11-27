@@ -48,7 +48,9 @@ class ParamsFile
     ParamsFile &operator=(const ParamsFile &) = delete;
     ~ParamsFile();
 
-    // Relit le fichier s'il a changé depuis le dernier appel ; vrai si une nouvelle valeur est installée.
+    // Relit le fichier s'il a changé depuis le dernier appel ; vrai si une nouvelle valeur est installée. Non synchronisé avec
+    // les lectures (`Params<T>::get`) : à appeler sur le thread qui fait tourner les systèmes qui lisent la valeur, ou quand ils
+    // ne tournent pas (simulation sur `sim::SimulationThread` : G401).
     bool poll();
     // Relit le fichier tout de suite ; en cas d'erreur, la dernière valeur valide est gardée.
     core::Result<> reload();

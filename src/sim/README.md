@@ -39,25 +39,36 @@ auto replay = sim.recording();                               // Result<Replay> :
 - **Systèmes** : enregistrés par nom (règle 13), exécutés par phase (`kInput`, `kUpdate`, `kPostUpdate`), puis ordre, puis
   nom : l'ordre ne dépend pas de l'ordre d'enregistrement. Pas d'ajout ni de retrait pendant un pas (refusé), ni de pas
   imbriqué : `step`, `run`, `advance`, `restore` appelés depuis un système sont ignorés (avertissement journalisé),
-  `play` et `loadState` rendent `kInvalidArgument`. Un système qui lève une exception ne laisse pas la simulation « dans un pas ».
+  `play` et `loadState` rendent `kInvalidArgument`. Un système qui lève une exception ne laisse pas la simulation « dans un pas » :
+  le pas n'est pas compté, ses entrées reviennent en tête de file sans être journalisées (un nouvel `step()` le rejoue avec
+  elles) ; les modifications du monde déjà faites par les systèmes précédents ne sont **pas** annulées.
 - **Entrées** : datées par pas, livrées dans l'ordre d'ajout à `StepContext::inputs`, enregistrées dans `inputLog()`. Une entrée
   d'un pas déjà joué est refusée, comme une entrée du pas en cours mise en file par un système (ses entrées sont déjà
   prélevées) ; les pas suivants restent ouverts. La charge (`core::Json`) ne contient ni infini ni NaN (`dump()` les écrit
-  `null` : type changé au rechargement, charges confondues dans l'empreinte) : refusée par `queueInput`, `play`, `loadState`.
+  `null` : type changé au rechargement, charges confondues dans l'empreinte), ni valeur binaire (relue comme un objet
+  `{bytes, subtype}`), ni chaîne ou clé hors UTF-8 (`dump()` lèverait) ; le nom est aussi en UTF-8 : refusée par
+  `queueInput`, `play`, `loadState`.
   Les entiers positifs signés (document construit en C++) et non signés (document relu) sont acceptés partout.
-- **Capture** : `Snapshot` est une copie profonde (le monde est copiable). `restore` garde le journal des entrées d'avant le
-  pas restauré et remet à zéro le temps accumulé. Les systèmes ne font pas partie de l'état. `saveState` / `loadState` : même
+- **Capture** : `Snapshot` est une copie profonde (le monde est copiable). Seul un état pris **entre deux pas** se restaure :
+  `capture()` / `saveState()` appelés par un système pendant un pas donnent un état partiel (`Snapshot::partial`,
+  `"partial": true`), refusé par `restore` (avertissement) et `loadState` (`kInvalidArgument`). `restore` garde le journal des
+  entrées d'avant le pas restauré s'il le couvre (retour en arrière dans le préfixe connu) ; sinon (pas antérieur au journal,
+  ou postérieur au pas courant) le journal repart du pas restauré. Il remet à zéro le temps accumulé. Les systèmes ne font pas partie de l'état. `saveState` / `loadState` : même
   état en JSON (scène par `scene_file.hpp`, générateur par `state`/`increment`), tout ou rien ; une entrée en attente
   antérieure au pas sauvegardé est refusée (`kParse`). `loadState` vide le journal (autre partie) : `firstLoggedStep()`
   devient le pas chargé.
 - **Rejeu** : `recording(first)` rend `kInvalidArgument` si `first` précède `firstLoggedStep()` (entrées inconnues : le
-  rejeu serait faux) ou dépasse le pas courant. `play` valide tout le lot avant d'insérer (entrées dans `[firstStep,
-  lastStep)`, charges finies) et, dans cet intervalle, remplace les entrées déjà en attente (venues d'un instantané) au lieu
-  de les doubler ; celles d'après `lastStep` restent.
+  rejeu serait faux) ou dépasse le pas courant. Un `Replay` porte aussi la durée du pas (`stepNanoseconds`) et le flux du
+  générateur (`stream`) ; `play` refuse un rejeu enregistré avec d'autres réglages (durée à 0 : rejeu écrit à la main, non
+  vérifiée), valide tout le lot avant d'insérer (entrées dans `[firstStep, lastStep)`, charges acceptées par `queueInput`)
+  et, dans cet intervalle, fait foi : il remplace les entrées déjà en attente (venues d'un instantané) et ignore celles
+  qu'un système remet en file pendant le rejeu (le journal les contient déjà, dans leur ordre de livraison) ; celles d'après
+  `lastStep` restent.
 - **Empreinte** : `fingerprint()` = `scene::hashWorld` (champs décrits, ordre dense, table des entités) + état du générateur +
   pas + entrées en attente (tout NaN d'un champ haché comme le NaN canonique : même empreinte après un aller-retour JSON).
-- **Déterminisme** (règle 9) : même graine, mêmes systèmes, mêmes entrées, mêmes réglages de simulation (le pas `dt`) et même
-  état au pas de départ => même empreinte, sur toutes les plateformes, si les
+- **Déterminisme** (règle 9) : même graine, mêmes réglages (durée du pas, donc `ctx.dt`, et flux du générateur ; `play` les
+  vérifie), mêmes systèmes, mêmes entrées et état de départ équivalent au pas de départ => même empreinte, sur toutes les
+  plateformes, si les
   systèmes n'utilisent ni horloge, ni `rand()`, ni fonction transcendante (`sin`, `exp`, `pow`… diffèrent entre glibc, macOS et
   MinGW) et sont compilés avec `-ffp-contract=off` (moteur, démo et gabarit : `mk/engine.mk`, `tools/engine-sdk/engine.mk`,
   `OrosmoConfig.cmake`). `make check` (`tools/check_deterministic_math.py`) le vérifie sur `src/sim`, `src/scene` et le
@@ -80,7 +91,9 @@ auto replay = sim.recording();                               // Result<Replay> :
   entrée datée d'un pas déjà joué à son arrivée est refusée et comptée (`rejectedInputs`) : dater à `stepIndex() + latence`.
   Aucun événement n'est perdu (arriéré côté simulation si la file est pleine, repassé dans la file à chaque tour, même sans
   pas). `stop()` joue d'abord le lot accepté par le dernier `frame()` ; après l'arrêt, `pushInput` rend faux. Un système qui
-  lève sur le thread l'arrête sans terminer le processus : `status()` rend l'erreur. `RenderSnapshot::read<T>` contrôle la
+  lève sur le thread l'arrête sans terminer le processus : `status()` rend l'erreur, `running()` devient faux et `pushInput`
+  rend faux dès la sortie du thread (avant même `stop()`, qui le rejoint). Une entrée refusée par `queueInput` à son arrivée
+  est journalisée avec sa vraie cause (pas déjà joué ou charge refusée). `RenderSnapshot::read<T>` contrôle la
   disposition enregistrée (taille, alignement, champs si T est réfléchi) ; `readBytes` copie les octets. Côté rendu, un seul thread appelle les
   méthodes de `SimulationThread`. Même graine et mêmes entrées : même empreinte qu'en mono-thread.
 
