@@ -470,6 +470,60 @@ TEST_SUITE("renderer/render_graph")
         }
     }
 
+    TEST_CASE("RenderGraph (A61 C): a compiled graph runs again without recompiling; an imported resource can be rebound in place")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            GraphGpu g(backend);
+            REQUIRE(g.gpu.device);
+            const TextureHandle a = g.gpu.target(Format::kRGBA8Unorm, {4, 4}, "out.a");
+            const TextureHandle b = g.gpu.target(Format::kRGBA8Unorm, {4, 4}, "out.b");
+            const BufferHandle buffer = g.gpu.buffer(BufferUsage::kStorage, {}, 64);
+            rd::RenderGraph graph(*g.gpu.device);
+            const rd::RgTexture out = graph.importTexture("out", a, {.size = {4, 4}});
+            const rd::RgBuffer data = graph.importBuffer("data", buffer, {.size = 64});
+            const rd::RgTexture scratch = graph.createTexture("scratch", {.size = {4, 4}});
+            TextureHandle seen;
+            std::vector<std::string> log;
+            graph.addPass("clear", rd::PassType::kRaster, [](rd::RenderPassContext &) -> core::Result<> { return {}; })
+                .writeColor(scratch, LoadOp::kClear, {0, 0, 1, 1});
+            graph
+                .addPass("copy", rd::PassType::kGeneric,
+                         [&](rd::RenderPassContext &ctx)
+                         {
+                             seen = ctx.texture(out);
+                             return g.blit->copy(ctx.encoder(), ctx.texture(scratch), g.blit->nearestSampler(), ctx.texture(out), Format::kRGBA8Unorm);
+                         })
+                .read(scratch)
+                .read(data)
+                .write(out);
+            CHECK(graph.compileCount() == 0);
+            g.gpu.run([&](CommandEncoder &e) { REQUIRE(graph.execute(e).has_value()); });
+            CHECK(graph.compileCount() == 1);
+            CHECK(seen == a);
+            REQUIRE(graph.setImportedTexture(out, b).has_value());
+            REQUIRE(graph.setImportedBuffer(data, buffer).has_value());
+            g.gpu.run([&](CommandEncoder &e) { REQUIRE(graph.execute(e).has_value()); });
+            CHECK(graph.compileCount() == 1); // rien de déclaré depuis : ni recompilation ni nouvelle transitoire
+            CHECK(graph.transientTexturesCreated() == 1);
+            CHECK(seen == b);
+            CHECK(rgba(g.gpu.pixel(b, 1, 1)) == std::array<std::uint8_t, 4>{0, 0, 255, 255});
+            // Refus : transitoire, handle hors du graphe, ressource nulle.
+            CHECK((tests::errorOf(graph.setImportedTexture(scratch, a)) == ErrorCode::kInvalidArgument));
+            CHECK((tests::errorOf(graph.setImportedTexture({}, a)) == ErrorCode::kInvalidArgument));
+            CHECK((tests::errorOf(graph.setImportedTexture({42}, a)) == ErrorCode::kInvalidArgument));
+            CHECK((tests::errorOf(graph.setImportedTexture(out, TextureHandle{})) == ErrorCode::kInvalidArgument));
+            CHECK((tests::errorOf(graph.setImportedBuffer({}, buffer)) == ErrorCode::kInvalidArgument));
+            CHECK((tests::errorOf(graph.setImportedBuffer(data, BufferHandle{})) == ErrorCode::kInvalidArgument));
+            // Une déclaration de plus : compilé de nouveau à la prochaine exécution.
+            graph.addPass("late", rd::PassType::kGeneric, note(log, "late")).sideEffect();
+            g.gpu.run([&](CommandEncoder &e) { REQUIRE(graph.execute(e).has_value()); });
+            CHECK(graph.compileCount() == 2);
+            CHECK(log == std::vector<std::string>{"late"});
+            g.gpu.expectNoValidationErrors();
+        }
+    }
+
     TEST_CASE("RenderGraph (REN-01): every executed pass is timed by the Profiler with a GPU timer; a culled pass is not")
     {
         FOR_EACH_BACKEND(backend)

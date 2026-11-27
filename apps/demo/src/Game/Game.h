@@ -44,8 +44,10 @@ class Game
   public:
     // `headless` (PLAT-04) : aucune fenêtre ; périphérique hors écran, pas de temps fixe, pas d'entrées. Les échecs normaux
     // (pas d'affichage, pas d'OpenGL 4.3, shaders absents) reviennent en `Result`, pas en exception.
+    // `framesInFlight` (A61 G, --frames-in-flight) : images en vol du périphérique (rhi::DeviceDesc::framesInFlight).
     static orosmo::core::Result<std::unique_ptr<Game>> create(bool headless = false, int width = 1280, int height = 720,
-                                                              orosmo::rhi::Backend backend = orosmo::rhi::Backend::kOpenGL);
+                                                              orosmo::rhi::Backend backend = orosmo::rhi::Backend::kOpenGL,
+                                                              std::uint32_t framesInFlight = orosmo::rhi::kDefaultFramesInFlight);
     ~Game();
     Game(const Game &) = delete;
     Game &operator=(const Game &) = delete;
@@ -111,6 +113,10 @@ class Game
     void setGpuTimings(demo::GpuTimingsMode mode);
     // Dessin direct dans l'image de la fenêtre (Vulkan, G185) ; voir rhi::DeviceDesc::directPresentation.
     void setDirectPresentation(bool enabled);
+    // A61 C (--graph-cache on|off) : graphe de passes gardé d'une image à l'autre (SceneRenderer::setRenderGraphCaching).
+    void setRenderGraphCaching(bool enabled);
+    std::uint64_t graphBuildCount() const noexcept;
+    std::uint32_t framesInFlightCount() const noexcept { return this->device ? this->device->framesInFlight() : this->framesInFlight; }
     demo::GpuTimingsMode gpuTimings() const noexcept { return gpuTimingsMode; }
     // Faux si une capture était demandée et n'a pas été faite, ou si une image de la capture a été refusée par le périphérique.
     bool captureSucceeded() const noexcept { return !captureFailed && (captureDirectory.empty() || captureDone); }
@@ -233,6 +239,7 @@ class Game
     std::optional<orosmo::core::Error> sceneError;
     bool uiFailed = false;
     bool headless = false;
+    std::uint32_t framesInFlight = orosmo::rhi::kDefaultFramesInFlight;
     std::vector<float> frameTimesMs;
     std::vector<float> frameWaitMs;
     std::chrono::steady_clock::duration frameWait{}; // attente de l'image en cours (beginFrame + present du périphérique)

@@ -57,9 +57,10 @@ Game::Game(bool headlessMode, int width, int height, rhi::Backend backend)
 {
 }
 
-orosmo::core::Result<std::unique_ptr<Game>> Game::create(bool headless, int width, int height, rhi::Backend backend)
+orosmo::core::Result<std::unique_ptr<Game>> Game::create(bool headless, int width, int height, rhi::Backend backend, std::uint32_t framesInFlight)
 {
     std::unique_ptr<Game> game(new Game(headless, width, height, backend));
+    game->framesInFlight = framesInFlight;
     if (auto r = game->createGraphics(); !r)
     {
         return std::unexpected(r.error());
@@ -74,6 +75,7 @@ orosmo::core::Result<> Game::createGraphics()
     LOG_TRACE("Initializing window");
     rhi::DeviceDesc desc;
     desc.backend = this->selectedBackend;
+    desc.framesInFlight = this->framesInFlight;
 #ifdef DEBUG
     desc.validation = true;
 #else
@@ -170,6 +172,16 @@ void Game::setGpuTimings(demo::GpuTimingsMode mode)
     this->uiState.gpuTimings = static_cast<int>(mode);
     this->applyGpuTimings();
 }
+
+void Game::setRenderGraphCaching(bool enabled)
+{
+    if (this->sceneRenderer)
+    {
+        this->sceneRenderer->setRenderGraphCaching(enabled);
+    }
+}
+
+std::uint64_t Game::graphBuildCount() const noexcept { return this->sceneRenderer ? this->sceneRenderer->graphBuildCount() : 0; }
 
 void Game::setDirectPresentation(bool enabled)
 {

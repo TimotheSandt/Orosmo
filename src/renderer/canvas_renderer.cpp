@@ -293,6 +293,7 @@ core::Result<std::unique_ptr<CanvasRenderer>> CanvasRenderer::create(rhi::Device
                                                                      const std::filesystem::path &shaderDirectory)
 {
     std::unique_ptr<CanvasRenderer> canvas(new CanvasRenderer(device, pipelines));
+    canvas->arena_ = BatchArena(device.framesInFlight()); // A61 G : une zone par image en vol du périphérique
     auto rect = library.loadGraphics(shaderDirectory / "ui_rect.vert", shaderDirectory / "ui_rect.frag");
     auto glyph = library.loadGraphics(shaderDirectory / "ui_glyph.vert", shaderDirectory / "ui_glyph.frag");
     auto layer = library.loadGraphics(shaderDirectory / "ui_layer.vert", shaderDirectory / "ui_layer.frag");

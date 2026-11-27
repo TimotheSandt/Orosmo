@@ -552,6 +552,29 @@ core::Result<> IblFeature::prepare(const FrameData &frame)
         shaderOrigin_ = origin;
         paramsDirty_ = paramsDirty_ || !probes_.probes().empty(); // sans sonde, rien ne dépend de l'origine
     }
+    return uploadParams(); // A61 C : à chaque image, même quand le graphe est gardé (declarePasses n'est alors pas rappelé)
+}
+
+std::optional<std::uint64_t> IblFeature::passSignature() const
+{
+    std::uint64_t signature = mixPassSignature(0, cube_);
+    signature = mixPassSignature(signature, cubeSampler_);
+    signature = mixPassSignature(signature, lut_);
+    signature = mixPassSignature(signature, lutSampler_);
+    return mixPassSignature(signature, params_.handle());
+}
+
+core::Result<> IblFeature::uploadParams()
+{
+    if (paramsDirty_)
+    {
+        const GpuIblBlock block = gpuBlock();
+        if (auto r = params_.update(0, std::as_bytes(std::span(&block, 1))); !r)
+        {
+            return r;
+        }
+        paramsDirty_ = false;
+    }
     return {};
 }
 

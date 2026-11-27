@@ -32,8 +32,13 @@ auto done = (*device)->submit(std::move(encoder));   // renvoie la première err
 
 ## Règles appliquées (docs/03 §3)
 
+- **Images en vol (A61 G, M8)** : `DeviceDesc::framesInFlight`, de 1 à `kMaxFramesInFlight` (3), défaut `kDefaultFramesInFlight`
+  (2) ; une autre valeur est refusée par `createDevice` (kInvalidArgument) ; `Device::framesInFlight()` la rend. Contrat commun
+  aux deux backends : quand `beginFrame` de l'image k rend la main, l'image k − N est terminée par le GPU, et une ressource
+  détruite pendant l'image k est libérée après N présentations. Tests : `tests/rhi/frames_in_flight_tests.cpp` (suites
+  `rhi/frames-in-flight` sans GPU, `rhi/backend/frames-in-flight` sur chaque backend).
 - **Handles opaques**, destruction **différée** : `destroy` rend le handle périmé tout de suite ; l'objet GL n'est libéré qu'une
-  fois 2 images présentées après celle de sa destruction **et** la clôture GPU de cette image franchie (`glFenceSync` posée par
+  fois `framesInFlight()` images présentées après celle de sa destruction **et** la clôture GPU de cette image franchie (`glFenceSync` posée par
   `present()`, attendue au besoin). `DeviceStats::pendingDestruction` compte ces libérations en attente.
 - **État implicite contenu** : les opérations du périphérique (création, envoi, mips) lient leur texture sur une unité réservée
   (24, `kScratchTextureUnit`) et n'écrasent jamais une texture liée par `setBindGroup` ; les liaisons de tampons de sommets et

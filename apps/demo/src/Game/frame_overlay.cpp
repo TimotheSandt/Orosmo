@@ -27,6 +27,12 @@ void FrameOverlay::beginFrame(rhi::TextureHandle backbuffer, FrameComposition co
     presented = false;
 }
 
+std::optional<std::uint64_t> FrameOverlay::passSignature() const
+{
+    std::uint64_t signature = rd::mixPassSignature(std::uint64_t{ui_}, static_cast<std::uint64_t>(composition_));
+    return composition_ == FrameComposition::kComposedTarget ? rd::mixPassSignature(signature, backbuffer_) : signature;
+}
+
 orosmo::core::Result<> FrameOverlay::declarePasses(rd::RenderGraphBuilder &builder)
 {
     rd::RenderGraph &graph = builder.graph();

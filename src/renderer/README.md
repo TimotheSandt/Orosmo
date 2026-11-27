@@ -12,7 +12,7 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | --- | --- |
 | `gpu_buffer.hpp` | `GpuBuffer` : tampon RAII (`create`, `update`, `read`, `resize`) |
 | `batch_arena.hpp` | `BatchArena` : tampon de sommets partagé ; une plage distincte par envoi tant que l'encodeur est le même (deux `render` avant `submit` gardent chacun leurs données sur Vulkan) ; une zone `kUpload` par image en vol (un nouvel encodeur passe à la zone suivante : celle de l'image précédente n'est jamais réécrite) |
-| `frame_ring.hpp` | `FrameRing` : anneau de tampons `kUpload`, un par image en vol (`kDefaultFramesInFlight` = 2, paramètre) ; l'image `n` écrit la zone `n % framesInFlight` ; `alignUp` |
+| `frame_ring.hpp` | `FrameRing` : anneau de tampons `kUpload`, un par image en vol (`kDefaultFramesInFlight` = `rhi::kDefaultFramesInFlight` = 2, paramètre) ; l'image `n` écrit la zone `n % framesInFlight` ; `alignUp` |
 | `texture.hpp` | `Texture` : texture 2D RAII + échantillonneur, mips selon `FilterMode`, `upload`, `resize`, `readback`, `fromFile` (stb, RGBA8, retournée comme l'ancien chargeur ; le retournement est fait ici, le réglage global de stb n'est jamais modifié) |
 | `render_target.hpp` | `RenderTarget` : cibles couleur (MRT) + profondeur (lisible ou non), `passDesc` (description de passe), `resize`/`reconfigure` (sans fuite, la cible reste valide si la recréation échoue), `readPixelUInt` / `readPixelRgba8` (origine en haut à gauche) ; un format de profondeur parmi les formats couleur est refusé |
 | `shader_library.hpp` | `ShaderLibrary` (explicite, pas de singleton) et `ShaderProgram` : GLSL 450 depuis des fichiers ou des sources, réflexion fusionnée des étages, cache SPIR-V disque, **rechargement à chaud** (`pollHotReload`) : les étages modifiés d'un programme dans un même poll sont validés puis installés ensemble, et si l'un ne compile pas aucun n'est installé (après un échec, la modification suivante recompile tous les étages depuis leurs fichiers) ; un échec reste dans `lastError()` même si un autre programme se recharge dans le même poll ; les fichiers d'un programme libéré (ou d'un chargement en échec) ne sont plus surveillés (`watchedStageCount`). Identifiant de programme unique dans le processus |
@@ -64,8 +64,8 @@ Tests : `tests/renderer/render_api_tests.cpp` (suites `renderer/render-api`, `re
 
 | En-tête | Rôle |
 | --- | --- |
-| `render_graph.hpp` | `RenderGraph` : ressources nommées (textures et tampons, importés ou transitoires), passes `kRaster` (le graphe ouvre la passe de rendu sur les attachements déclarés) ou `kGeneric` (la passe enregistre ce qu'elle veut), ordre déduit, passes inutiles écartées, cycle refusé (`compile` : kInvalidArgument avec le chemin des passes), réserve de transitoires (réutilisées d'une image à l'autre, partagées entre ressources de vies disjointes et de même description, libérées après `kTransientKeepFrames` images sans usage), une mesure du `Profiler` par passe exécutée (`RenderGraph/<passe>`, clé précalculée par passe, minuterie GPU si un `ProfilerGpuTimerFactory` est installé avec l'encodeur de l'image), groupe de débogage par passe (RenderDoc). Les barrières restent au RHI |
-| `render_feature.hpp` | `RenderFeature` (plugin : `supports`, `prepare(FrameData)`, `declarePasses(RenderGraphBuilder&)`) et `RenderGraphBuilder` (graphe de l'image + ressources connues : `sceneColor`, `sceneDepth`, `motionVectors`, `output`, tailles ; `addSceneInput` pour une texture ou un tampon ; `addFrameBinding` : liaison 3 à 7 ajoutée au groupe 0 de l'image) |
+| `render_graph.hpp` | `RenderGraph` : ressources nommées (textures et tampons, importés ou transitoires), passes `kRaster` (le graphe ouvre la passe de rendu sur les attachements déclarés) ou `kGeneric` (la passe enregistre ce qu'elle veut), ordre déduit, passes inutiles écartées, cycle refusé (`compile` : kInvalidArgument avec le chemin des passes), graphe compilé réexécuté sans recompilation (`compileCount`) et ressource importée remplacée en place (`setImportedTexture`, `setImportedBuffer`, A61 C), réserve de transitoires (réutilisées d'une image à l'autre, partagées entre ressources de vies disjointes et de même description, libérées après `kTransientKeepFrames` images sans usage), une mesure du `Profiler` par passe exécutée (`RenderGraph/<passe>`, clé précalculée par passe, minuterie GPU si un `ProfilerGpuTimerFactory` est installé avec l'encodeur de l'image), groupe de débogage par passe (RenderDoc). Les barrières restent au RHI |
+| `render_feature.hpp` | `RenderFeature` (plugin : `supports`, `prepare(FrameData)`, `declarePasses(RenderGraphBuilder&)`, `passSignature()` pour le graphe gardé, A61 C, avec `mixPassSignature`) et `RenderGraphBuilder` (graphe de l'image + ressources connues : `sceneColor`, `sceneDepth`, `motionVectors`, `output`, tailles ; `addSceneInput` pour une texture ou un tampon ; `addFrameBinding` : liaison 3 à 7 ajoutée au groupe 0 de l'image) |
 | `frame_data.hpp` | `FrameData` (docs/03 §10, std140, 640 octets, `static_assert` sur tailles et offsets), `FrameEnvironment`, `splitDouble`, `frameNoiseSeed` ; côté GLSL : `shaders/rhi/frame_data.glsl` (`#include "frame_data.glsl"`, groupe 0 binding 2) |
 
 **Règles de dépendance** (par ressource ; l'ordre de déclaration ne compte qu'entre les accès à une même ressource) :
@@ -123,8 +123,9 @@ dans `TransparentFeature`) plusieurs fois dans l'image garde chaque pose.
 debug de l'image partent dans **une seule** écriture (`updateBuffer`), à `endFrame`, dans la zone `frameSerial() % framesInFlight()`
 d'un `FrameRing` (tampons `rhi::MemoryKind::kUpload`, usage uniforme + sommets) : `[FrameData à 0][CameraData][tranches][lignes]`.
 La zone réécrite a été lue `framesInFlight` images plus tôt : le RHI (`beginFrame` / `present`) a attendu cette image, aucune plage
-lue par une image en vol n'est réécrite. `SceneRendererConfig::framesInFlight` (défaut 2, celui des deux backends) règle la
-profondeur ; un groupe 0 et un groupe 2 par zone (le tampon change d'une zone à l'autre). `setCamera` ne fait plus que garder les
+lue par une image en vol n'est réécrite. `SceneRendererConfig::framesInFlight` règle la profondeur : 0 (défaut, A61 G) prend celle
+du périphérique (`rhi::Device::framesInFlight`, 2 par défaut, réglable de 1 à 3) ; une valeur plus petite est refusée
+(kInvalidArgument). `Renderer2D` et `CanvasRenderer` font de même pour leur `BatchArena` ; un groupe 0 et un groupe 2 par zone (le tampon change d'une zone à l'autre). `setCamera` ne fait plus que garder les
 données (envoyées à `endFrame` ; la dernière caméra sert aux images suivantes). `FrameResources::buffer` est le tampon de la zone
 de l'image (FrameData à l'offset 0) : il change d'une image à l'autre. Mesures et compteurs : rapport perf M5 ; tests
 `tests/renderer/frame_ring_tests.cpp` (suite `renderer/frame-ring`).
@@ -143,6 +144,20 @@ plugin (dépôts des transparents, placements des vues). L'historique temporel n
 et le graphe entier réussissent ; un échec l'invalide (réinitialisation signalée à l'image suivante). Avec des liaisons de plugins au
 groupe 0 (clusters du forward+), tous les dessins de l'image doivent utiliser le `LightManager` actif à `endFrame` : sinon
 `endFrame` refuse l'image (kUnsupported) au lieu de lire les clusters d'autres lumières.
+
+**Graphe gardé d'une image à l'autre (A61 C, M8).** `endFrame` ne redéclare le graphe que si sa structure peut avoir changé : clé
+`GraphKey` (révision des plugins et post-traitements, modes de mise à l'échelle et de génération, format et taille de sortie,
+taille de rendu, format de scène, AOV, profondeur, scène dans la sortie, pré-passe, options d'effacement, vue de debug, historique,
+et `RenderFeature::passSignature()` de chaque plugin, lue après son `prepare`). Clé égale à l'image précédente : le graphe compilé
+resert tel quel, ses ressources importées (sortie, cible de scène, AOV, profondeur, historique en double tampon) reçoivent les
+ressources GPU de l'image (`RenderGraph::setImportedTexture`), les liaisons du groupe 0 des plugins sont reprises, et les passes du
+renderer lisent les valeurs de l'image à l'exécution (`passOutput_`, historique). Un plugin sans signature (`std::nullopt`, défaut,
+plugins d'avant M8), une image en échec, `setRenderGraphCaching(false)` (`SceneRendererConfig::cacheRenderGraph`) : graphe
+reconstruit. `prepare` de chaque plugin est appelé à chaque image, tous avant les `declarePasses` d'une reconstruction. Plugins du
+moteur avec signature : ombres, forward+, IBL, couche 2D, transparents, vue de debug des AOV ; sans (reconstruit à chaque image,
+G340) : post-traitements, GPU-driven, vues. Compteurs : `graphBuildCount()`, `graphReused()`, `RenderGraph::compileCount()`.
+Tests : `tests/renderer/graph_cache_tests.cpp` (suites `renderer/graph-cache`, `renderer/frames-in-flight`) et le cas A61 C de
+`render_graph_tests.cpp`.
 
 **Ajouter une passe d'ombre (REN-06 à 08).** C'est ce que fait `ShadowFeature` (voir « Ombres » plus bas) : atlas persistant importé
 (`graph.importTexture`), passes `kGeneric` qui l'écrivent, puis `builder.addSceneInput(atlas)` : elles s'exécutent avant `scene` et ne

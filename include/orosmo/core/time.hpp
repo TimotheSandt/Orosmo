@@ -2,6 +2,7 @@
 // La simulation ne lit jamais l'horloge murale : elle reçoit des deltas, donc un test peut la rejouer à l'identique.
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 
@@ -23,15 +24,16 @@ class SteadyClock final : public IClock
     Nanoseconds now() const override;
 };
 
-// Horloge pilotée à la main : tests déterministes.
+// Horloge pilotée à la main : tests déterministes. Lisible depuis un autre thread que celui qui l'avance (thread de
+// simulation, M8 lot L4) : valeur atomique, `advance` publie (release) ce que `now` lit (acquire).
 class ManualClock final : public IClock
 {
   public:
-    Nanoseconds now() const override { return mNow; }
-    void advance(Nanoseconds d) { mNow += d; }
+    Nanoseconds now() const override { return Nanoseconds(mNow.load(std::memory_order_acquire)); }
+    void advance(Nanoseconds d) { mNow.fetch_add(d.count(), std::memory_order_acq_rel); }
 
   private:
-    Nanoseconds mNow{0};
+    std::atomic<Nanoseconds::rep> mNow{0};
 };
 
 // Delta variable (rendu). Le premier tick renvoie 0 ; un delta plus grand que maxDelta (pause du débogueur,

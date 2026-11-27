@@ -142,3 +142,48 @@ Réserves : sur OpenGL, les horodatages qui encadrent seulement un dispatch de c
 crédible pour 10 000 sommets) : le pilote Iris ne sérialise pas l'horodatage avec le compute ; la mesure Vulkan (barrières
 comprises) est la référence. Les palettes des agents sont calculées sur le CPU (`CrowdRenderer::setAgents`, G199) : ce coût CPU
 n'est pas dans ce tableau.
+
+## M8 : images en vol et graphe gardé (A61 G et C, lot L16, 2026-11-26)
+
+Même machine (Intel Arc Graphics Meteor Lake-P, Mesa 26.1.6 : ANV Vulkan 1.4.354, Iris OpenGL 4.6). Binaires **release** :
+« avant » = `origin/dev` à `850cdf7f` ; « après » = branche `feat/M8-L16-perf-a61`, par défaut (2 images en vol, graphe
+gardé), `--graph-cache off` (graphe reconstruit à chaque image, comportement d'avant dans le même binaire) et
+`--frames-in-flight 3`. 7 exécutions de 600 images par configuration (plus une de chauffe écartée), `--vsync off`.
+Charge de la machine (moyenne sur 1 min) entre 1,6 et 3,9 pendant les mesures (d'autres agents compilaient avant ; mesures
+lancées une fois la charge retombée). Scène « légère » : démo par défaut, `--ui off` ; « lourde » : `--ui full --scene mixed
+--shadows on` (plugins ombres, transparents, couche 2D du monde, interface, tous gardables).
+
+```bash
+python3 tools/perf_compare.py --runs 7 --frames 600 --modes headless,windowed --extra="--vsync off"                  # avant / après
+python3 tools/perf_compare.py --runs 7 --frames 600 --modes headless,windowed --extra="--vsync off --graph-cache off"
+python3 tools/perf_compare.py --runs 7 --frames 600 --modes headless,windowed --extra="--vsync off --frames-in-flight 3"
+python3 tools/perf_compare.py --runs 7 --frames 600 --modes headless,windowed --ui full --extra="--vsync off --scene mixed --shadows on"   # scène lourde
+```
+
+Médianes (ms par image ; `CPU/Graph` = temps processeur de `SceneRenderer::endFrame`, absent du binaire « avant ») :
+
+| Scène, mode, API | Avant : image | Après : image | Après : CPU/Graph | Graphe reconstruit : image / CPU/Graph | 3 images en vol : image |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| légère, hors écran, OpenGL | 0,578 | 0,579 | 0,067 | 0,579 / 0,066 | 0,506 |
+| légère, hors écran, Vulkan | 0,364 | 0,362 | 0,053 | 0,316 / 0,051 | 0,363 |
+| légère, fenêtre, OpenGL | 0,421 | 0,525 | 0,069 | 0,514 / 0,064 | 0,384 |
+| légère, fenêtre, Vulkan | 0,474 | 0,478 | 0,094 | 0,470 / 0,099 | 0,426 |
+| lourde, hors écran, OpenGL | 1,604 | 1,632 | 0,496 | 1,637 / 0,599 | 1,606 |
+| lourde, hors écran, Vulkan | 0,883 | 0,865 | 0,573 | 0,888 / 0,589 | 0,856 |
+| lourde, fenêtre, OpenGL | 1,504 | 1,438 | 0,617 | 1,620 / 0,354 | 1,450 |
+| lourde, fenêtre, Vulkan | 1,034 | 1,203 | 0,431 | 1,206 / 0,424 | 1,183 |
+
+Reconstructions du graphe sur 600 images : 2 à 3 avec le graphe gardé (première image, cache d'ombres qui s'établit, capture
+finale), 600 sans. Lecture :
+
+- **Graphe gardé (A61 C)** : gain réel mais petit, au plus ~0,1 ms de processeur par image sur la scène lourde (OpenGL hors
+  écran : 0,599 → 0,496 ms pour `CPU/Graph`), rien de mesurable sur la scène légère (graphe de 3 à 4 passes). La durée d'une
+  image est limitée par le GPU et par l'attente : elle ne change pas au-delà du bruit. Gardé activé par défaut (aucune
+  régression mesurée, captures identiques).
+- **Trois images en vol (A61 G)** : pas de gain stable. Les écarts (−0,07 ms ou +0,1 ms selon la configuration) sont du même
+  ordre que la différence entre deux séries identiques (par exemple « après » et « graphe reconstruit » en scène lourde
+  fenêtrée Vulkan : 1,203 et 1,206 contre 1,034 pour « avant ») ; les distributions sont bimodales (fréquence du GPU intégré,
+  gouverneur `powersave`), voir min/max des JSON. **Deux images restent le défaut** (A79, L16), trois sont disponibles par
+  `DeviceDesc::framesInFlight` et `--frames-in-flight 3`.
+
+Réserves : un seul GPU (intégré) ; aucune mesure de latence d'entrée (G344) ; Windows et macOS non mesurés (G343).

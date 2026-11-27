@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <optional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -44,8 +45,13 @@ struct SceneRendererConfig
     // qui prend un `RenderContext` : celui du contexte.
     std::filesystem::path shaderDirectory;
     // Images en vol (perf M5) : profondeur de l'anneau des données par image (FrameData, caméra, tranches de modèle, lignes de
-    // debug). Au moins celle du RHI (2) ; 3 si le périphérique en garde 3 d'avance.
-    std::uint32_t framesInFlight = kDefaultFramesInFlight;
+    // debug). 0 (défaut, A61 G) : celle du périphérique (`rhi::Device::framesInFlight`). Une valeur plus petite que celle du
+    // périphérique est refusée par `create` (kInvalidArgument : une zone serait réécrite pendant que le GPU la lit) ; plus grande,
+    // elle reste juste.
+    std::uint32_t framesInFlight = 0;
+    // A61 C : graphe de passes gardé d'une image à l'autre tant que les plugins, les cibles et les tailles ne changent pas (voir
+    // `RenderFeature::passSignature`). Faux : reconstruit à chaque image (comportement d'avant M8, pour mesurer).
+    bool cacheRenderGraph = true;
 };
 
 // Dessin externe joué dans la passe « scene » (REN-28, `SceneRenderer::drawCustom`) : la cible et l'origine du rendu relatif à la
@@ -164,6 +170,17 @@ class SceneRenderer
     // définitions de shader et ses liaisons du groupe 0 restent cohérentes avec les dessins déjà enregistrés.
     void removeFeature(const std::string &name);
     std::vector<std::string> featureNames() const;
+
+    // A61 C : graphe de passes gardé d'une image à l'autre. `endFrame` le reconstruit seulement quand un plugin, un post-traitement,
+    // un mode (mise à l'échelle, génération d'images, debug), une cible (format, AOV, profondeur, historique) ou une taille change,
+    // ou qu'un plugin rend une autre `RenderFeature::passSignature` (un plugin sans signature : reconstruit à chaque image). Les
+    // `prepare` des plugins sont appelés à chaque image, tous avant les `declarePasses` d'une reconstruction.
+    void setRenderGraphCaching(bool enabled) noexcept;
+    bool renderGraphCaching() const noexcept { return graphCaching_; }
+    // Reconstructions du graphe depuis la création (une image qui réutilise le graphe n'en ajoute pas).
+    std::uint64_t graphBuildCount() const noexcept { return graphBuilds_; }
+    // Vrai si la dernière image (endFrame) a réutilisé le graphe de l'image précédente.
+    bool graphReused() const noexcept { return graphReused_; }
     // Graphe de la dernière image (ordre d'exécution, passes écartées, ressources transitoires).
     const RenderGraph &renderGraph() const noexcept { return graph_; }
 
@@ -298,6 +315,8 @@ class SceneRenderer
     core::Result<> updateFrameData();
     core::Result<> ensureHistory(RenderTarget &target, bool &fresh);
     core::Result<> buildGraph(const UpscaleTarget &output, bool hadHistory);
+    core::Result<> declareGraph(const UpscaleTarget &output, bool intoOutput);
+    core::Result<> refreshGraphImports(const UpscaleTarget &output);
     // Mélange et profondeur du matériau (REN-41) puis effets du mode de debug, sur les cibles déjà préparées.
     void configureMaterialState(GraphicsState &state, BlendMode blend, bool lines) const;
     bool replacesMeshProgram() const noexcept
@@ -349,6 +368,54 @@ class SceneRenderer
     FrameResources frameResources_;
 
     RenderGraph graph_;
+    // A61 C : ce dont dépend la structure du graphe ; égale à l'image précédente (et toutes les signatures présentes) : graphe gardé.
+    struct GraphKey
+    {
+        std::uint64_t plugins = 0; // pluginsRevision_
+        const IUpscaleMode *upscaleMode = nullptr;
+        const IFrameGenerationMode *frameGeneration = nullptr;
+        rhi::Format outputFormat = rhi::Format::kRGBA8Unorm;
+        rhi::Extent2D outputSize{};
+        rhi::Extent2D renderSize{};
+        rhi::Format sceneFormat = rhi::Format::kRGBA8Unorm;
+        AovSet aovs;
+        bool depth = false;
+        bool intoOutput = false;
+        bool prepass = false;
+        bool clearDepth = true;
+        std::array<float, 4> clearColor{};
+        DebugView debugView = DebugView::kNone;
+        bool runsMode = false;
+        bool scaledFrame = false;
+        bool history = false;
+        bool previousHistory = false;
+        std::vector<std::optional<std::uint64_t>> signatures; // une par plugin, dans l'ordre d'enregistrement
+        bool operator==(const GraphKey &) const = default;
+    };
+    // Ressources importées par le renderer, recopiées à chaque image d'un graphe gardé (leur ressource GPU peut changer).
+    struct GraphImports
+    {
+        RgTexture output;
+        RgTexture sceneColor;
+        RgTexture sceneDepth;
+        RgTexture previousHistory;
+        RgTexture nextHistory;
+        std::array<RgTexture, kAovCount> aovs{};
+    };
+    bool graphCaching_ = true;
+    bool graphValid_ = false; // le graphe déclaré correspond à graphKey_ et peut resservir
+    bool graphReused_ = false;
+    std::uint64_t graphBuilds_ = 0;
+    std::uint64_t pluginsRevision_ = 0; // plugins, post-traitements : change à chaque ajout ou retrait
+    GraphKey graphKey_;
+    GraphKey frameKey_; // clé de l'image en cours (réutilise sa mémoire)
+    GraphImports graphImports_;
+    std::vector<rhi::BindGroupEntry> graphFrameBindings_; // liaisons des plugins déclarées avec le graphe gardé
+    // Valeurs de l'image lues par les passes du renderer À L'EXÉCUTION (un graphe gardé ne recopie rien à la déclaration).
+    UpscaleTarget passOutput_{};
+    rhi::TextureHandle passPreviousHistory_;
+    bool passResetHistory_ = false;
+    std::uint32_t passNextHistory_ = 0;
     std::vector<std::unique_ptr<RenderFeature>> features_;
     std::vector<std::string> pendingRemovals_; // removeFeature pendant une image : appliqués à sa fin
     std::vector<SceneDraw> draws_;
