@@ -9,7 +9,7 @@ Toute l'interface se parcourt sans souris : Tab et Maj+Tab suivent l'ordre de ta
 leur direction, Entrée active et Échap annule. Une manette fait la même chose. Après une navigation au clavier ou à la
 manette, un anneau de focus entoure le widget, avec l'apparence du thème.
 
-En-têtes : `orosmo/ui/ui.hpp`, `orosmo/ui/widget.hpp`, `orosmo/ui/gamepad_navigation.hpp`, `orosmo/platform/gamepad.hpp`.
+En-têtes : `orosmo/ui/ui.hpp`, `orosmo/ui/widget.hpp`, `orosmo/ui/gamepad_navigation.hpp`, `orosmo/ui/window_input.hpp`, `orosmo/platform/gamepad.hpp`.
 
 ## Ordre de tabulation
 

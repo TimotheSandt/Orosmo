@@ -59,8 +59,10 @@ if (!render) { /* ... */ }
 ```
 
 Le contexte doit vivre plus longtemps que le chargeur, et le chargeur plus longtemps que les `RenderModel` qu'il a créés.
-`loader->reloadChanged()` relit les textures modifiées sur le disque. Avec la façade, `Application::loadAnimatedModel` et
-`modelLoader()` le font pour vous ([La façade app::Application](/guides/application/facade/)).
+`loader->reloadChanged()` relit les textures modifiées sur le disque ; rien n'est relu sans cet appel. Avec la façade,
+`Application::loadAnimatedModel` et `modelLoader()` créent le chargeur pour vous, mais la relecture reste à demander : pour un
+modèle animé, `animatedModel(handle)->reloadChanged()`, qui le reconstruit au besoin
+([La façade app::Application](/guides/application/facade/)).
 
 ## Lire le contenu d'un Model
 

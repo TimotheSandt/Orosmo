@@ -39,8 +39,8 @@ de thèmes JSON.
 ## État
 
 La version courante est la 0.7.0 : le moteur s'installe une fois par machine, avec une commande, sans vcpkg. Le jalon M8
-est livré : scène à entités, simulation à pas fixe rejouable, logique de jeu et vues `.cui` rechargées à chaud sans perdre
-l'état, façade `app::Application`, navigation au clavier et à la manette, outils de debug ; en plus de M6 (glTF 2.0,
+est livré : scène à entités, simulation à pas fixe rejouable, logique de jeu et vues `.cui` rechargées à chaud sans redémarrage
+(le monde est conservé ; pour l'interface, voir [ce qui est gardé](/guides/interface/rechargement-vues/)), façade `app::Application`, navigation au clavier et à la manette, outils de debug ; en plus de M6 (glTF 2.0,
 matériaux PBR, éclairage par environnement, animation, foules) et du cœur du rendu de M5 (graphe de passes, forward+,
 ombres, HDR, anticrénelage, culling GPU, 2D). L'API peut encore changer entre deux versions mineures.
 

@@ -39,6 +39,7 @@ template <> struct orosmo::core::Reflect<game::Spin> {
 La logique (`src/game/game.cpp`) : un point d'entrée C, une fonction `init` qui enregistre le composant et un système.
 
 ```cpp
+#include "game/spin.hpp"
 #include <orosmo/game.hpp>
 
 namespace {
@@ -85,7 +86,7 @@ facultatives sauf `init` :
 | `bool init(GameContext *)` | au chargement et à chaque rechargement ; rendre `false` refuse la version |
 | `void update(GameContext *, double dt)` | à chaque `GameModule::update` |
 | `void onReload(GameContext *)` | après l'`init` d'une version qui en remplace une autre |
-| `void shutdown(GameContext *)` | avant le déchargement |
+| `void shutdown(GameContext *)` | à l'arrêt définitif (`GameModule::stop`, destruction), jamais au rechargement |
 
 `GameContext` donne `world()`, `simulation()`, `actions()`, `version()` (1, puis +1 à chaque rechargement réussi),
 `reloading()`, et les enregistrements par nom : `registerComponent`, `addSystem`, `addAction`, `registerParams`.
@@ -118,7 +119,10 @@ journalisé une fois, sans plantage, et listé par `missingActions()`.
 ```cpp
 struct Tuning { float speed = 35.0f; };          // réfléchi comme un composant
 auto tuning = context->registerParams<Tuning>("tuning", "params/tuning.json");   // Result<Params<Tuning>>
-// dans un système (poignée capturée par valeur) : tuning->speed
+if (!tuning)
+    return false;                                // dans init
+const app::Params<Tuning> params = *tuning;      // poignée à capturer par valeur dans un système
+// dans le système : params->speed
 ```
 
 Le fichier est un objet JSON plat (`{"speed": 50}`), relu par le moteur à chaque `GameModule::update` quand il change, sans

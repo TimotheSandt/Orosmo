@@ -45,6 +45,12 @@ auto added = tools.console().add("spawn", "spawn <n> : add n enemies",
 tools.handleToggle(input);                             // F12
 tools.frames().push(cpuMs, gpuMs, intervalMs);         // onglet Profiler
 tools.update(input, viewport);
+if (tools.wantsKeyboard()) {                          // la saisie dans la console ne va pas à l'application
+    input.text.clear();
+    input.keys.clear();
+    input.events.clear();
+    input.shortcuts.clear();
+}
 if (!tools.wantsMouse())
     appUi.update(input, viewport);                     // la souris va aux outils quand ils la veulent
 appUi.draw(list);

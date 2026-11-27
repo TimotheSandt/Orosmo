@@ -33,7 +33,7 @@ Les valeurs de `--api`, `--ui`, `--hud`, `--theme`, `--tab`, `--post`, `--aa`, `
 | `--direct-present` | `on`, `off` | `on` | Vulkan dessine directement dans l'image de la fenêtre. `off` revient à la copie. Sans effet sur OpenGL et avec `--headless`. |
 | `--gpu-timings` | `auto`, `on`, `off` | `auto` | Minuteries GPU. `auto` : seulement quand le panneau de performances affiche des temps GPU (`--hud full` ou `graph`). |
 | `--frames-in-flight` | 1 à 3 | `2` | Nombre d'images que le processeur prépare d'avance sur le GPU. |
-| `--graph-cache` | `on`, `off` | `on` | Garde le graphe de passes d'une image à l'autre tant que plugins, cibles et tailles ne changent pas ; `off` le reconstruit à chaque image. |
+| `--graph-cache` | `on`, `off` | `on` | Garde le graphe de passes d'une image à l'autre tant que plugins, signatures de leurs passes, cibles, tailles et modes de rendu ne changent pas (un plugin sans signature, comme les post-traitements, le GPU-driven et les vues, le fait reconstruire à chaque image) ; `off` le reconstruit à chaque image. |
 
 ## Capture et mode sans fenêtre
 

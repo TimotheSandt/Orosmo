@@ -28,7 +28,8 @@ Les suites GPU sont listées dans `GPU_TEST_SUITES` du `Makefile` : `rhi/opengl*
 `renderer/*`, `platform/window`, `ui/render`, `app/application-gpu`, `anim/animated-model`, `anim/crowd`, `assets/texture`
 et toute suite qui finit par `/gpu`. Une nouvelle suite qui ouvre un périphérique doit y être ajoutée ; dans une suite qui
 n'a pas besoin de GPU, un cas qui en ouvre un passe dans `<suite>/gpu` par `TEST_CASE("…" * doctest::test_suite("<suite>/gpu"))`.
-`make demo-test-unit` pose `ENGINE_TEST_NO_GPU=1` : les aides de test qui créent un périphérique y échouent.
+`make demo-test-unit` pose `ENGINE_TEST_NO_GPU=1` : les aides de test qui créent un périphérique y échouent
+(un appel direct à `rhi::createDevice` n'est pas gardé).
 
 Les options de doctest passent par `TEST_ARGS`, par exemple pour lancer une seule suite :
 
@@ -40,7 +41,7 @@ make demo-test TEST_ARGS='--test-suite=core/config'
 | --- | --- |
 | `ENGINE_TEST_BACKENDS=opengl,vulkan` | Backends testés par les suites communes ; sans elle, tous ceux qui sont compilés. |
 | `ENGINE_TEST_REQUIRE_GPU=1` | Un test GPU sans pilote échoue au lieu d'être sauté (utilisé en CI). |
-| `ENGINE_TEST_NO_GPU=1` | Un test qui crée un périphérique échoue (posée par `make demo-test-unit`). |
+| `ENGINE_TEST_NO_GPU=1` | Une aide de test qui crée un périphérique échoue (posée par `make demo-test-unit`). |
 | `LIBGL_ALWAYS_SOFTWARE=1` | Force le rendu logiciel de Mesa (llvmpipe), comme en CI. |
 
 Sous Linux sans affichage, les tests GPU tournent sous Xvfb :

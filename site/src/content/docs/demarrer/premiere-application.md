@@ -104,7 +104,8 @@ exemples du wiki utilisent les références ci-dessus, plus lisibles.
 
 **Déballer un `Result`.** Les fabriques renvoient `core::Result<T>` (`std::expected<T, core::Error>`). Dans un exemple,
 `if (!r) return …;` veut dire : écrire `r.error().message` et sortir, ou propager avec `return std::unexpected(r.error());`.
-Un commentaire `// …` marque du code omis. Pour un `Result<T>` par valeur (`Mesh`, `LightManager`), on déréférence une fois
+Un commentaire `// …` marque du code omis. Un bloc `if (!r) { /* … */ }` qui ne contient qu'un commentaire vaut de même : le code
+omis quitte la fonction, et la suite de l'exemple suppose le succès. Pour un `Result<T>` par valeur (`Mesh`, `LightManager`), on déréférence une fois
 (`*lightsResult`) ; pour un `Result<std::unique_ptr<T>>` (`SceneRenderer`, `CanvasRenderer`, `Device`), deux fois.
 
 ### Chemins des ressources

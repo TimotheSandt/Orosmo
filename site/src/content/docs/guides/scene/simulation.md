@@ -115,7 +115,7 @@ if (!thread)
 const sim::RenderSnapshot &snapshot = (*thread)->acquire();   // inchangé jusqu'au prochain acquire
 const double alpha = snapshot.alpha(clock.now());
 for (std::size_t i = 0; i < snapshot.entities.size(); ++i)
-    draw(orosmo::scene::relativeMatrix(snapshot.transformAt(i, alpha), cameraPosition));
+    draw(sim::relativeMatrix(snapshot.transformAt(i, alpha), cameraPosition));
 while (auto event = (*thread)->popEvent())
     play(*event);
 (*thread)->stop();                                            // la simulation revient au thread appelant
