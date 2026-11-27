@@ -30,6 +30,34 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L13 : façade d'application et rendu de scène (A79, A75.1, reste d'A75.9, A73 point 3)
+
+Branche `feat/M8-L13-application` (depuis `dev` avec L3, L5, L10, L12a, L12b). Module `app` (`src/app/README.md`) :
+`Application`, composants de rendu définis par le moteur et leur système. Décisions sous A79 « Lot L13 ». Linux x64 seulement
+en local (g++ 13.3, Intel Arc, Mesa, OpenGL et Vulkan) ; Windows et macOS par la CI (G350). La démo `apps/demo` n'est pas
+touchée (elle garde l'API bas niveau) ; le gabarit et le tutoriel passent à la façade en L14.
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| A75.1 Façade d'application | `include/orosmo/app/application.hpp` (`Application::create`, `main`, `run`, `frame`, `spawn`, `addMesh`, `loadAnimatedModel`, `ApplicationSettings`, `parseArguments`) | `make demo-test` (suite `app/application-gpu`, cas « Application without a window renders the same image ») | sur OpenGL et Vulkan, l'image d'une application sans fenêtre (cube, ambiante, directionnelle, caméra en composants) est **identique** (tolérance 1/255, 0 pixel hors tolérance) à la même scène construite avec `SceneRenderer`, `LightManager`, `Mesh` et `Camera` ; 0 message de validation |
+| A75.1 Repli de backend | `Application::Impl::createGraphics`, `ApplicationSettings::backendFallback`, `createDevice` | cas « Backend fallback » | Vulkan qui échoue : OpenGL (`fellBack()`, deux essais) ; `--strict-backend` : `kUnsupported` qui cite l'erreur, un essai ; pas de repli depuis OpenGL |
+| A75.1 Ordre des rappels | `onUpdate`, `onUi`, `onRender`, `RenderFrame` | cas « Callbacks » | `update`, `ui`, `render` à chaque image ; jeu lié (`GameSource::fromApi`) : système et action enregistrés, 3 pas en 3 images ; pause : 0 pas ; un `onRender` qui échoue rend l'erreur |
+| A75.9 (reste) Temps fourni | `FrameTime` (`dt`, `fixedStep`, `steps`, `alpha`, `simulationStep`), `maxFrameDelta`, `settings.clock` | cas « Time (A75.9) » | horloge manuelle : 0, 40 ms (2 pas), 1 s ramenée à 250 ms (8 pas, plafond) ; sans fenêtre : `dt` = un pas fixe |
+| Composants de rendu | `include/orosmo/app/render_components.hpp` (`MeshRenderer`, `LightComponent`, `CameraComponent`, `AnimatedModelComponent`), `registerRenderComponents`, `ResourcePool` (`core::Handle<T>`) | suite `app/application` (sans GPU) | trivialement copiables, enregistrés par nom, sauvegardés et rechargés avec l'état de la simulation (même empreinte) ; poignée retirée jamais réutilisée |
+| A73 point 3 Mode de dessin | `DrawMode`, `SceneRenderSystem::draw` | cas « Draw modes » | 3 cubes `kSingle` = 3 dessins ; `kInstanced` = 1 lot de 3, même image (tolérance 2) ; poignée périmée ignorée ; modèle animé `kSingle` (lecteur avancé) et foule `kCrowd` (2 agents, clip absent ignoré) |
+| A75.2 Dispatch compute | `SceneRenderSystem::dispatch`, appelé par `Application::frame` avant `beginFrame` | cas « Draw modes » | skinning enregistré hors passe ; 0 message de validation |
+| Ombres et HDR | `ApplicationSettings::shadows`, `hdr` ; casters des composants | cas « Shadows and HDR » | un caster par maillage `castShadows`, oublié quand le maillage est retiré ; lumière `kDynamic` ; caster retiré aussi quand aucune entité ne le demande (cas « Shadow casters ») |
+| Revue PR #32 : arrêt et erreurs | `Application::Impl::~Impl`, `Application::frame` | cas « Destruction », « beginFrame », « present », « Capture without a window » (`tests::CountingDevice` injecte les erreurs) | rappels libérés avant le jeu et le périphérique ; erreurs de `beginFrame`/`present` propagées (kBusy toléré) ; capture au-delà de 3 images écrite ; limite avant la capture = échec |
+
+Vérifications (Linux x64, g++ 13.3, Intel Arc, Mesa ; après fusion de `dev` avec L4 et L16) : `make all-debug` sans
+avertissement ; `make check` vert ; tests **879 / 879** (1 ignoré, 372 174 assertions) et `test_game_static: OK` ; ASan +
+UBSan sur les suites `app/*`, `scene/*`, `sim/*` (66 cas, 212 514 assertions, avant la fusion) sans signalement ; démo
+inchangée, `--headless --capture` en Vulkan (validation : 0 message) et en OpenGL sans erreur. Non vérifié : Windows,
+macOS (G350), `clang-format` absent de la machine.
+
+Après la revue de la PR #32 et la fusion de `dev` avec L6 : `make all-debug`, `make check` verts, tests **898 / 898**
+(1 ignoré, 372 554 assertions), `test_game_static: OK` (sanitizers non relancés).
+
 ## M8 lot L6 : migration d'état, gestionnaires par nom, paramètres JSON (A79, GAME-03, GAME-04, GAME-05)
 
 Branche `feat/M8-L6-migration-parametres` (depuis `feat/M8-L5-jeu-rechargeable`, `origin/dev` fusionné). Choix de réalisation
