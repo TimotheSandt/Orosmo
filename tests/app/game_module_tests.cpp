@@ -543,7 +543,12 @@ TEST_SUITE("app/game_module")
         Host host;
         auto game = app::GameModule::fromApi(&kMoverV1, {.simulation = &host.simulation});
         REQUIRE(game.has_value());
+        // Système de l'hôte qui émet un événement par pas : les événements non repris survivent au refus (revue PR #37, G405).
+        REQUIRE(host.simulation.addSystem({"host.ping", sim::Phase::kPostUpdate, 0, [](sim::StepContext &ctx) { ctx.emit("ping"); }}));
         host.simulation.run(3); // hp = 10
+        REQUIRE(host.simulation.advance(host.simulation.settings().step / 2) == 0); // demi-pas accumulé, gardé lui aussi
+        const double alphaBefore = host.simulation.alpha();
+        REQUIRE(alphaBefore > 0.0);
         scene::World &world = host.simulation.world();
         const auto oldType = world.componentType<MoverV1>("Mover");
         REQUIRE(oldType.has_value());
@@ -556,6 +561,8 @@ TEST_SUITE("app/game_module")
         REQUIRE_FALSE(failed.has_value());
         REQUIRE(host.simulation.pendingInputs().size() == 1);
         CHECK(host.simulation.pendingInputs().front().name == "host");
+        CHECK(host.simulation.events().size() == 3);
+        CHECK(host.simulation.alpha() == doctest::Approx(alphaBefore));
         CHECK((failed.error().code == ErrorCode::kCancelled));
         CHECK(game->version() == 1);
         CHECK(game->failedReloads() == 1);

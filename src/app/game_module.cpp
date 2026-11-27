@@ -227,10 +227,11 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
             targets.simulation->random() = *savedRandom;
         if (targets.simulation != nullptr && targets.simulation->pendingInputs() != savedPending)
         {
-            // `init` a mis des entrées en file : seule `restore` remet la file (les entrées déjà en attente restent). Effets de
-            // bord de ce cas seulement : le temps accumulé par `advance` repart de zéro, les événements non repris sont perdus.
-            sim::Simulation &simulation = *targets.simulation;
-            simulation.restore(sim::Snapshot{simulation.world(), simulation.random(), simulation.stepIndex(), std::move(savedPending)});
+            // `init` a mis des entrées en file : seule la file est remise (les entrées déjà en attente restent) ; événements non
+            // repris et temps accumulé par `advance` inchangés. La file sauvegardée venait de la simulation : refus impossible
+            // (hors pas, mêmes pas, mêmes charges), journalisé par prudence.
+            if (auto restored = targets.simulation->restorePending(std::move(savedPending)); !restored)
+                LOG_ERROR(static_cast<int>(restored.error().code), "game module: cannot restore the pending inputs: " + restored.error().describe());
         }
         // Retour à l'ancienne version : ses noms reprennent leur place ; les fonctions de la nouvelle sont détruites ici, avant que
         // l'appelant ne décharge sa bibliothèque.
