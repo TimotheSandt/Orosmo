@@ -11,6 +11,10 @@ class ReservedOptions(unittest.TestCase):
         self.assertEqual(reserved_options(["--capture-frames", "60"]), ["--capture-frames"])
         self.assertEqual(reserved_options(["--capture-frames=60", "--ui", "full"]), ["--capture-frames=60", "--ui"])
 
+    def test_refuses_the_alias_of_api(self):
+        self.assertEqual(reserved_options(["--backend", "vulkan"]), ["--backend"])
+        self.assertEqual(reserved_options(["--backend=vulkan"]), ["--backend=vulkan"])
+
     def test_accepts_measured_options(self):
         self.assertEqual(reserved_options(["--vsync", "off", "--graph-cache", "off", "--frames-in-flight", "3", "--scene", "mixed"]), [])
 

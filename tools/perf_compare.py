@@ -37,7 +37,7 @@ METRICS = ["frameCpuMs", "frameMedian", "workMedian", "waitMedian", "graphBuilds
 
 
 # Options posées par l'outil : les redéfinir dans --extra fausserait le calcul ou l'en-tête du rapport.
-RESERVED = ("--api", "--ui", "--capture", "--capture-frames", "--headless")
+RESERVED = ("--api", "--backend", "--ui", "--capture", "--capture-frames", "--headless")
 
 
 def reserved_options(extra):

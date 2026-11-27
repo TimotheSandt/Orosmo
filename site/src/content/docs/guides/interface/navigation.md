@@ -31,7 +31,7 @@ En C++ : `ui.focus(widget)`, `ui.focusNext()` (et `focusNext(true)` pour revenir
 Une flèche que le widget focalisé n'utilise pas lui-même passe le focus au widget le plus proche dans sa direction
 (`Ui::moveFocus`), sans boucler. Au clavier, un curseur garde les quatre flèches, un champ de texte Gauche et Droite, une
 liste déroulante Haut et Bas, une zone de texte et les menus toutes ; à la manette, un curseur laisse Haut et Bas à la
-navigation. Sans focus, les flèches ne font rien : l'application peut s'en servir pour autre chose. Les menus se parcourent
+navigation, comme une liste déroulante fermée (ouverte, Haut et Bas changent l'option). Sans focus, les flèches ne font rien : l'application peut s'en servir pour autre chose. Les menus se parcourent
 aux flèches, Entrée et Échap.
 
 ## Manette

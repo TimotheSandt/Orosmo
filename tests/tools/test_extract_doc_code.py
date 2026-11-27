@@ -50,10 +50,20 @@ class ExtractDocCodeTests(unittest.TestCase):
         page = '```cpp title="a.cpp"\n```suffix\nint x;\n```  \n'
         self.assertEqual(edc.extract(page)["a.cpp"], "```suffix\nint x;\n")
 
+    def test_examples_inside_a_longer_or_tilde_fence_are_ignored(self):
+        inner = '```cpp title="a.cpp"\nnot extracted\n```\n'
+        for outer in ("````", "~~~"):
+            page = f'{outer}markdown\n{inner}{outer}\n```cpp title="a.cpp"\nint x;\n```\n'
+            self.assertEqual(edc.extract(page), {"a.cpp": "int x;\n"}, outer)
+
     def test_windows_paths_are_refused(self):
         for path in ("C:/temp/a.cpp", "C:a.cpp", "\\\\server\\share\\a.cpp", "..\\a.cpp", "\\a.cpp"):
             with self.assertRaises(ValueError, msg=path):
                 edc.extract(f'```cpp title="{path}"\nx\n```\n')
+
+    def test_backticks_after_the_marker_do_not_open_a_block(self):
+        page = '``` `not a fence\n```cpp title="a.cpp"\nint x;\n```\n'
+        self.assertEqual(edc.extract(page)["a.cpp"], "int x;\n")
 
     def test_errors(self):
         with self.assertRaisesRegex(ValueError, "before the start"):

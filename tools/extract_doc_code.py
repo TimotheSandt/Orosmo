@@ -17,8 +17,8 @@ import pathlib
 import re
 import sys
 
-FENCE = re.compile(r'^```(\w+)(.*)$')
-CLOSING = re.compile(r"^```+[ \t]*$")
+# Clôtures CommonMark : trois accents graves ou tildes au moins ; la fin reprend le même caractère, au moins aussi long.
+FENCE = re.compile(r'^(`{3,}|~{3,})[ \t]*([^\s`]*)(.*)$')
 TITLE = re.compile(r'title="([^"]+)"')
 CONTINUED = " (suite)"
 LANGUAGES = ("cpp", "text")
@@ -32,10 +32,12 @@ def extract(markdown):
     for number, line in enumerate(markdown.splitlines(), start=1):
         if current is None:
             fence = FENCE.match(line)
-            if not fence:
+            # Une clôture en accents graves n'en porte pas dans ses informations (CommonMark).
+            if not fence or (fence.group(1)[0] == "`" and "`" in line[len(fence.group(1)):]):
                 continue
-            title = TITLE.search(fence.group(2))
-            if fence.group(1) not in LANGUAGES or not title:
+            marker = fence.group(1)
+            title = TITLE.search(fence.group(3))
+            if fence.group(2) not in LANGUAGES or not title:
                 current = ""  # bloc ignoré, lu jusqu'à sa fin
             else:
                 current = title.group(1)
@@ -48,7 +50,7 @@ def extract(markdown):
                 else:
                     files[current] = ""
             lines = []
-        elif CLOSING.match(line):  # une clôture ne porte que des espaces après ses marqueurs
+        elif re.match(rf"^{marker[0]}{{{len(marker)},}}[ \t]*$", line):  # seuls des espaces suivent les marqueurs
             if current:
                 files[current] += "".join(l + "\n" for l in lines)
             current = None

@@ -65,7 +65,7 @@ Vulkan sans message de validation, captures identiques ; site : build, liens et 
 ## Non prouvé
 
 Windows (MinGW) et macOS (clang `-Werror`) : par la CI de cette MR seulement ; un seul GPU (Intel, Mesa) ; boucle fenêtrée
-de la façade essayée à la main (G350, G374) ; tutoriel 3D compilé mais pas lancé par un test (G370) ; job `site.yml` non
+de la façade non essayée (G350, G374) ; tutoriel 3D compilé mais pas lancé par un test (G370) ; job `site.yml` non
 observé sur les pages neuves (G383).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
