@@ -20,6 +20,14 @@ using namespace orosmo::scene;
 
 namespace
 {
+// Code d'erreur d'un résultat qui DOIT être une erreur : REQUIRE avant `.error()` (un succès inattendu est signalé, sans
+// appeler `.error()` sur une valeur).
+template <typename T> core::ErrorCode errorOf(const core::Result<T> &result)
+{
+    REQUIRE(!result);
+    return result.error().code;
+}
+
 enum class Mood : std::int16_t
 {
     kCalm = -3,
@@ -107,9 +115,9 @@ World makeWorld(ComponentType<Agent> &agentType)
     REQUIRE(world.setParent(e[3], e[0]));
     REQUIRE(world.setParent(e[4], e[1]));
     REQUIRE(world.setParent(e[2], e[0])); // ordre des enfants de e0 : 1, 3, (5)
-    world.setTransform(e[0], {.position = {1.0e7 + 0.123456789, -2.5, 3.0}, .rotation = {0.5, 0.5, 0.5, 0.5}, .scale = {2.0, 1.0, 1.0}});
-    world.setTransform(e[1], {.position = {0.1, 0.2, 0.3}});
-    world.setTransform(e[4], {.position = {-0.0, 1e-300, 4.9e-324}});
+    REQUIRE(world.setTransform(e[0], {.position = {1.0e7 + 0.123456789, -2.5, 3.0}, .rotation = {0.5, 0.5, 0.5, 0.5}, .scale = {2.0, 1.0, 1.0}}));
+    REQUIRE(world.setTransform(e[1], {.position = {0.1, 0.2, 0.3}}));
+    REQUIRE(world.setTransform(e[4], {.position = {-0.0, 1e-300, 4.9e-324}}));
 
     Agent a;
     a.speed = std::nextafter(0.1f, 1.f);
@@ -202,7 +210,7 @@ TEST_SUITE("scene/file")
             std::filesystem::remove(path);
         }
         World other;
-        CHECK((loadSceneFile(other, dir / "orosmo_absent_scene.json").error().code == core::ErrorCode::kIo));
+        CHECK((errorOf(loadSceneFile(other, dir / "orosmo_absent_scene.json")) == core::ErrorCode::kIo));
     }
 
     TEST_CASE("Scene: component migration v1 -> v2, missing field = default, unknown field and type ignored with a warning")
@@ -228,7 +236,7 @@ TEST_SUITE("scene/file")
         };
         // Sans migration : refusé, monde inchangé.
         const Entity untouched = v2.create();
-        CHECK((loadScene(v2, saved).error().code == core::ErrorCode::kVersionMismatch));
+        CHECK((errorOf(loadScene(v2, saved)) == core::ErrorCode::kVersionMismatch));
         CHECK(v2.alive(untouched));
 
         auto report = loadScene(v2, saved, migrations);
@@ -244,7 +252,7 @@ TEST_SUITE("scene/file")
         core::Json v2saved = saveScene(v2);
         World old;
         REQUIRE(old.registerComponent<HealthV1>("Health"));
-        CHECK((loadScene(old, v2saved).error().code == core::ErrorCode::kVersionMismatch));
+        CHECK((errorOf(loadScene(old, v2saved)) == core::ErrorCode::kVersionMismatch));
     }
 
     TEST_CASE("Scene: format migration and invalid documents (world unchanged)")
@@ -257,7 +265,7 @@ TEST_SUITE("scene/file")
         future["version"] = kSceneFormatVersion + 1;
         World w;
         REQUIRE(w.registerComponent<Agent>("Agent"));
-        CHECK((loadScene(w, future).error().code == core::ErrorCode::kVersionMismatch));
+        CHECK((errorOf(loadScene(w, future)) == core::ErrorCode::kVersionMismatch));
 
         // Format v0 (hypothétique) : migration fournie par l'appelant.
         core::Json old = saved;
@@ -275,7 +283,7 @@ TEST_SUITE("scene/file")
 
         const Entity marker = w.create();
         const auto expectError = [&](core::Json doc, core::ErrorCode code) {
-            CHECK((loadScene(w, doc).error().code == code));
+            CHECK((errorOf(loadScene(w, doc)) == code));
             CHECK(w.alive(marker));
         };
         expectError(core::Json::array(), core::ErrorCode::kParse);
@@ -297,7 +305,7 @@ TEST_SUITE("scene/file")
         bad = saved;
         bad["data"]["components"][1]["entities"][0] = 2; // indice libre
         expectError(bad, core::ErrorCode::kParse);
-        CHECK((loadSceneBinary(w, std::vector<std::uint8_t>{0xc1}).error().code == core::ErrorCode::kParse));
+        CHECK((errorOf(loadSceneBinary(w, std::vector<std::uint8_t>{0xc1})) == core::ErrorCode::kParse));
     }
 
     TEST_CASE("Fingerprint: hashes described fields only, not padding nor the world cache; sensitive to values and order")
@@ -341,6 +349,34 @@ TEST_SUITE("scene/file")
         CHECK(fingerprint(d) == fingerprint(a));
     }
 
+    TEST_CASE("Fingerprint: every NaN hashes alike, so a JSON round trip keeps the fingerprint (NaN saved as \"nan\")")
+    {
+        ComponentType<Agent> type;
+        World a = makeWorld(type);
+        const Entity e3 = Entity{3, 0};
+        a.get(e3, type)->speed = std::bit_cast<float>(0xFFC00001u); // NaN négatif à charge non canonique
+        a.get(e3, type)->stats.weight = -std::numeric_limits<double>::quiet_NaN();
+        World loaded;
+        REQUIRE(loaded.registerComponent<Agent>("Agent"));
+        REQUIRE(loadScene(loaded, core::Json::parse(core::dumpJson(saveScene(a)))));
+        CHECK(std::isnan(loaded.get(e3, type)->speed));
+        CHECK(fingerprint(loaded) == fingerprint(a));
+        // -0 et +0 restent distincts (voir le cas précédent) ; un NaN diffère d'un nombre.
+        World b = a;
+        b.get(e3, type)->speed = 0.f;
+        CHECK(fingerprint(b) != fingerprint(a));
+    }
+
+    TEST_CASE("Scene: saveSceneFile reports a write error detected when the file is closed (full disk)")
+    {
+        ComponentType<Agent> type;
+        const World world = makeWorld(type);
+        const std::filesystem::path full = "/dev/full"; // Linux : chaque écriture échoue avec ENOSPC, à la vidange du tampon
+        if (!std::filesystem::exists(full))
+            return;
+        CHECK((errorOf(saveSceneFile(world, full)) == core::ErrorCode::kIo));
+    }
+
     TEST_CASE("Entity table: reset recreates identifiers and the free stack, refuses invalid tables")
     {
         World w;
@@ -352,14 +388,14 @@ TEST_SUITE("scene/file")
         CHECK(table.freeIndices == std::vector<std::uint32_t>{0});
 
         World other;
-        other.setTransform(other.create(), {});
+        REQUIRE(other.setTransform(other.create(), {}));
         REQUIRE(other.resetEntities(table));
         CHECK(other.alive(b));
         CHECK(!other.alive(a));
         CHECK(other.entityCount() == 1);
         CHECK(other.transform(b) == nullptr);
         CHECK(other.create() == w.create());
-        CHECK((other.resetEntities({{0, 0}, {0, 0}}).error().code == core::ErrorCode::kInvalidArgument));
-        CHECK((other.resetEntities({{0}, {1}}).error().code == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(other.resetEntities({{0, 0}, {0, 0}})) == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(other.resetEntities({{0}, {1}})) == core::ErrorCode::kInvalidArgument));
     }
 }
