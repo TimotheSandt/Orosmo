@@ -7,8 +7,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -16,7 +18,17 @@
 #include <string>
 #include <system_error>
 #include <utility>
-#include <version>
+
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <process.h>
+#include <share.h>
+#include <sys/stat.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace orosmo::scene
 {
@@ -27,6 +39,44 @@ using core::Result;
 
 namespace
 {
+
+// Identifiant du processus : départage les noms temporaires de deux processus (la création reste exclusive de toute façon).
+int processId()
+{
+#ifdef _WIN32
+    return _getpid();
+#else
+    return static_cast<int>(::getpid());
+#endif
+}
+
+// Crée `path` s'il n'existe pas (jamais d'ouverture d'un fichier existant ni de lien suivi à sa place) : 0, ou le code errno.
+int createExclusive(const std::filesystem::path &path)
+{
+#ifdef _WIN32
+    int fd = -1;
+    const errno_t error = _wsopen_s(&fd, path.c_str(), _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY, _SH_DENYNO, _S_IREAD | _S_IWRITE);
+    if (error != 0)
+        return error;
+    _close(fd);
+    return 0;
+#else
+    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
+    if (fd < 0)
+        return errno;
+    ::close(fd);
+    return 0;
+#endif
+}
+
+// Unité qui continue un caractère : octet de suite UTF-8, ou second mot d'une paire UTF-16 (`wchar_t` sous Windows).
+template <class Char> bool isContinuation(Char c)
+{
+    if constexpr (sizeof(Char) == 1)
+        return (static_cast<unsigned char>(c) & 0xC0u) == 0x80u;
+    else
+        return (static_cast<std::uint32_t>(c) & 0xFC00u) == 0xDC00u;
+}
 
 Result<int> readVersion(const Json &j, const std::string &what)
 {
@@ -292,35 +342,38 @@ Result<> saveSceneFile(const World &world, const std::filesystem::path &path)
 {
     // Écriture dans un fichier temporaire du même répertoire, fermé et vérifié, puis renommé sur la destination : un échec
     // (disque plein…) laisse la dernière sauvegarde intacte et supprime le temporaire.
-    // Nom unique, créé sans écraser : un fichier existant (autre sauvegarde nommée `<dest>.tmp…`, temporaire d'un autre appel)
-    // n'est jamais ouvert ni tronqué. Création exclusive (`noreplace`, C++23) quand la bibliothèque l'offre, sinon test
-    // d'existence juste avant.
-    static std::atomic<std::uint64_t> counter{0};
+    // Temporaire créé de façon exclusive (O_EXCL, `_wsopen_s` sous Windows) : un fichier existant, même créé au même instant par
+    // un autre processus, n'est jamais ouvert ni tronqué (nouvel essai sous un autre nom). Nom : celui de la destination dont la
+    // fin est remplacée par `~<8 chiffres hexadécimaux>` (processus et compteur), donc pas plus long que la destination (au
+    // moins 9 caractères) : il tient sous MAX_PATH (Windows) et la limite de 255 octets si la destination y tient.
+    static std::atomic<std::uint32_t> counter{static_cast<std::uint32_t>(processId()) * 2654435761u};
     std::filesystem::path temporary;
-    std::ofstream out;
-    for (int attempt = 0; attempt < 64 && !out.is_open(); ++attempt)
+    bool created = false;
+    for (int attempt = 0; attempt < 64 && !created; ++attempt)
     {
-        // Nom de la destination raccourci (sur une limite de caractère UTF-8) : le temporaire reste sous la limite du système
-        // de fichiers (255) même quand la destination l'approche.
+        char tag[16];
+        std::snprintf(tag, sizeof tag, "~%08x", static_cast<unsigned>(counter.fetch_add(1, std::memory_order_relaxed)));
         auto name = path.filename().native();
-        if (name.size() > 200)
-        {
-            std::size_t cut = 200;
-            while (cut > 0 && (static_cast<unsigned>(name[cut]) & 0xC0u) == 0x80u)
-                --cut;
-            name.resize(cut);
-        }
+        std::size_t keep = name.size() > std::strlen(tag) ? name.size() - std::strlen(tag) : 0;
+        while (keep > 0 && isContinuation(name[keep])) // coupe sur une limite de caractère (UTF-8, ou UTF-16 sous Windows)
+            --keep;
+        name.resize(keep);
         temporary = path.parent_path() / name;
-        temporary += ".orosmo-tmp-" + std::to_string(counter.fetch_add(1, std::memory_order_relaxed));
-        std::error_code exists;
-        if (std::filesystem::exists(temporary, exists) || exists)
-            continue;
-        // MinGW : libstdc++ traduit `noreplace` en mode "x", que la bibliothèque C de Windows refuse (toute ouverture échoue).
-#if defined(__cpp_lib_ios_noreplace) && !defined(_WIN32)
-        out.open(temporary, std::ios::binary | std::ios::out | std::ios::noreplace); // sans trunc : refusé par libstdc++ 13
-#else
-        out.open(temporary, std::ios::binary | std::ios::trunc);
-#endif
+        temporary += tag;
+        const int error = createExclusive(temporary);
+        created = error == 0;
+        if (!created && error != EEXIST)
+            break; // répertoire absent, droits… : un autre nom n'y changerait rien
+    }
+    std::ofstream out;
+    if (created)
+    {
+        out.open(temporary, std::ios::binary | std::ios::trunc); // vide, créé par cet appel : rien d'autre n'est tronqué
+        if (!out.is_open())
+        {
+            std::error_code ignored;
+            std::filesystem::remove(temporary, ignored);
+        }
     }
     {
         if (!out.is_open())

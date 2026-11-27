@@ -368,10 +368,11 @@ void StepContext::emit(std::string name, core::Json data) { events.push_back(Eve
 
 bool Simulation::refuseNested(const char *what) const
 {
-    if (!stepping_)
-        return false;
-    LOG_WARNING("Simulation::", what, ": called from a system during a step (refused, state unchanged)");
-    return true;
+    if (frozen_)
+        LOG_WARNING("Simulation::", what, ": called while a game module initialises (refused, state unchanged)");
+    else if (stepping_)
+        LOG_WARNING("Simulation::", what, ": called from a system during a step (refused, state unchanged)");
+    return frozen_ || stepping_;
 }
 
 void Simulation::step()
@@ -442,7 +443,7 @@ Snapshot Simulation::capture() const
 {
     if (stepping_)
         LOG_WARNING("Simulation::capture: called during a step, the snapshot is partial and cannot be restored");
-    return Snapshot{world_, random_, step_, pending_, stepping_};
+    return Snapshot{world_, random_, step_, pending_, replayEnd_, stepping_};
 }
 
 void Simulation::restore(const Snapshot &snapshot)
@@ -469,7 +470,7 @@ void Simulation::restore(const Snapshot &snapshot)
     std::erase_if(log_, [&](const Input &input) { return input.step >= step_; });
     stepper_ = core::FixedStepper(settings_.step, settings_.maxStepsPerFrame);
     events_.clear();
-    replayEnd_ = 0; // un rejeu interrompu ne s'applique plus à l'état restauré
+    replayEnd_ = snapshot.replayEnd; // rejeu interrompu à la capture : la reprise filtre comme une reprise directe
 }
 
 std::vector<Event> Simulation::takeEvents()
@@ -491,6 +492,8 @@ Json Simulation::saveState() const
               {"random", Json{{"state", random_.state()}, {"increment", random_.increment()}}},
               {"pending", std::move(pending)},
               {"scene", scene::saveScene(world_)}};
+    if (replayEnd_ > step_) // rejeu interrompu qui filtre encore (absent sinon : document inchangé)
+        data["replayEnd"] = replayEnd_;
     if (stepping_)
     {
         LOG_WARNING("Simulation::saveState: called during a step, the state is partial and cannot be loaded");
@@ -501,8 +504,8 @@ Json Simulation::saveState() const
 
 Result<scene::SceneLoadReport> Simulation::loadState(const Json &state, const scene::SceneMigrations &migrations)
 {
-    if (stepping_)
-        return core::makeError(ErrorCode::kInvalidArgument, "loadState: not allowed during a step");
+    if (stepping_ || frozen_)
+        return core::makeError(ErrorCode::kInvalidArgument, "loadState: not allowed during a step or a game module init");
     if (!state.is_object() || !state.contains("version") || !state["version"].is_number_integer() || !state.contains("data") ||
         !state["data"].is_object())
         return core::makeError(ErrorCode::kParse, "simulation state must be {\"version\": int, \"data\": {...}}");
@@ -522,6 +525,14 @@ Result<scene::SceneLoadReport> Simulation::loadState(const Json &state, const sc
         return std::unexpected(!rngState ? rngState.error() : rngIncrement.error());
     if (!data.contains("pending") || !data.contains("scene"))
         return core::makeError(ErrorCode::kParse, "state: missing pending or scene");
+    std::uint64_t replayEnd = 0;
+    if (data.contains("replayEnd"))
+    {
+        auto end = readU64(data, "replayEnd", "state");
+        if (!end)
+            return std::unexpected(end.error());
+        replayEnd = *end;
+    }
     auto pending = inputsFromJson(data["pending"], "state.pending");
     if (!pending)
         return std::unexpected(pending.error());
@@ -539,7 +550,7 @@ Result<scene::SceneLoadReport> Simulation::loadState(const Json &state, const sc
     if (!report)
         return std::unexpected(report.error());
     sortByStep(*pending);
-    restore(Snapshot{std::move(world), core::Random::fromState(*rngState, *rngIncrement), *step, std::move(*pending)});
+    restore(Snapshot{std::move(world), core::Random::fromState(*rngState, *rngIncrement), *step, std::move(*pending), replayEnd});
     // Autre partie : le journal d'avant ne la décrit pas. Un rejeu ne peut commencer qu'au pas chargé.
     log_.clear();
     logStart_ = *step;
@@ -562,8 +573,8 @@ Result<Replay> Simulation::recording(std::uint64_t firstStep) const
 
 Result<> Simulation::play(const Replay &replay)
 {
-    if (stepping_)
-        return core::makeError(ErrorCode::kInvalidArgument, "play: not allowed during a step");
+    if (stepping_ || frozen_)
+        return core::makeError(ErrorCode::kInvalidArgument, "play: not allowed during a step or a game module init");
     if (replay.seed != settings_.seed)
         return core::makeError(ErrorCode::kInvalidArgument, "play: the replay was recorded with another seed");
     if (replay.stream && *replay.stream != settings_.stream)

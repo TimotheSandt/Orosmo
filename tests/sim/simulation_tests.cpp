@@ -753,9 +753,18 @@ TEST_SUITE("sim/simulation")
         build(copy, armedAgain);
         CHECK_THROWS_AS((void)copy.play(*replay), std::runtime_error);
         CHECK(copy.stepIndex() == 1);
+        // Revue PR #37 (3) : le filtre du rejeu fait partie de l'état ; reprendre après restore ou loadState ne double rien.
+        bool off = false;
+        Simulation loaded;
+        build(loaded, off);
+        REQUIRE(loaded.loadState(copy.saveState()));
+        copy.restore(copy.capture());
         copy.run(2); // reprise : le hit du pas 2 vient du rejeu, celui que le système remet en file est ignoré
         CHECK(copy.inputLog() == live.inputLog());
         CHECK(copy.fingerprint() == live.fingerprint());
+        loaded.run(2);
+        CHECK(loaded.fingerprint() == live.fingerprint());
+        CHECK_FALSE(live.saveState()["data"].contains("replayEnd")); // absent quand rien ne filtre : document inchangé
     }
 
     TEST_CASE("Simulation: restorePending replaces the queue only; loadState sorts many inputs by step, stable")

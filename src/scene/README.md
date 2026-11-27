@@ -104,8 +104,10 @@ if (const auto *t = world.transform(ship))
 - **Empreinte** : FNV-1a 64 bits (`core/hash.hpp`) de la table des entités, de la hiérarchie et des valeurs des champs décrits
   des types non vides, par nom de type croissant, dans l'ordre dense ; réels par motif de bits, sauf NaN (tous hachés comme
   le NaN silencieux canonique, relu de `"nan"` : l'aller-retour JSON garde l'empreinte). `saveSceneFile` écrit un temporaire
-  `<chemin>.orosmo-tmp-<n>` au nom unique, créé sans ouvrir ni tronquer un fichier existant (`std::ios::noreplace` quand
-  la bibliothèque l'offre, sinon test d'existence juste avant), le ferme et le vérifie (une erreur de vidange, disque plein, rend `kIo`), puis le renomme sur la destination : un échec
+  créé de façon exclusive (`O_EXCL`, `_wsopen_s(_O_CREAT | _O_EXCL)` sous Windows : un fichier existant, même créé au même
+  instant par un autre processus, n'est jamais ouvert ni tronqué, nouvel essai sous un autre nom), nommé comme la destination
+  dont la fin est remplacée par `~<8 chiffres hexadécimaux>` (identifiant du processus et compteur) : jamais plus long que la
+  destination dès qu'elle a 9 caractères, il tient sous `MAX_PATH` (260, Windows) et 255 octets si elle y tient ; le ferme et le vérifie (une erreur de vidange, disque plein, rend `kIo`), puis le renomme sur la destination : un échec
   laisse la dernière sauvegarde intacte et supprime le temporaire. Un pointeur dans un composant n'est pas refusé et
   rendrait l'empreinte dépendante d'une adresse (G289).
 

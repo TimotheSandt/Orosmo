@@ -235,7 +235,7 @@ TEST_SUITE("scene/file")
             const auto path = dir / name;
             REQUIRE(saveSceneFile(original, path));
             for (const auto &entry : std::filesystem::directory_iterator(dir)) // aucun temporaire laissé
-                CHECK(entry.path().filename().string().find(".orosmo-tmp") == std::string::npos);
+                CHECK(entry.path().filename().string().find('~') == std::string::npos); // temporaire `…~<hex>`
             World fromFile;
             REQUIRE(fromFile.registerComponent<Agent>("Agent"));
             REQUIRE(loadSceneFile(fromFile, path));
@@ -457,6 +457,40 @@ TEST_SUITE("scene/file")
     }
 #endif
 
+    TEST_CASE("Scene: a destination whose full path reaches the system limit can still be saved (temporary not longer)")
+    {
+        // Limite d'un chemin complet, zéro final compris : MAX_PATH sous Windows, PATH_MAX ailleurs (revue PR #37). Seul un
+        // temporaire plus long que la destination la dépasserait (ancien `<dest>.orosmo-tmp-<n>`).
+#if defined(_WIN32)
+        constexpr std::size_t kLimit = 260;
+#elif defined(__APPLE__)
+        constexpr std::size_t kLimit = 1024;
+#else
+        constexpr std::size_t kLimit = 4096;
+#endif
+        constexpr std::size_t kName = 20; // « nnnnnnnnnnnnnnn.json »
+        ComponentType<Agent> type;
+        const World world = makeWorld(type);
+        const TempDir temp;
+        // Chemin résolu : sous macOS /var est un lien vers /private/var, et la limite porte sur le chemin résolu.
+        std::filesystem::path parent = std::filesystem::canonical(temp.path);
+        const std::size_t total = kLimit - 1;
+        REQUIRE(parent.native().size() + 1 + kName + 2 <= total);
+        while (parent.native().size() + 1 + kName < total) // répertoires d'au plus 200 caractères
+        {
+            const std::size_t room = total - parent.native().size() - 1 - kName - 1; // séparateur du dossier suivant
+            REQUIRE(room > 0);
+            parent /= std::string(room > 200 ? 150 : room, 'd'); // 150 : le reste ne tombe jamais à zéro
+            std::error_code ec;
+            std::filesystem::create_directory(parent, ec);
+            REQUIRE_MESSAGE(!ec, ec.message());
+        }
+        const auto path = parent / (std::string(kName - 5, 'n') + ".json");
+        REQUIRE(path.native().size() == total);
+        REQUIRE(saveSceneFile(world, path));
+        CHECK(std::filesystem::exists(path));
+    }
+
     TEST_CASE("Scene: a failed saveSceneFile keeps the previous save and removes its temporary file")
     {
         ComponentType<Agent> type;
@@ -484,7 +518,7 @@ TEST_SUITE("scene/file")
         { std::ofstream(dirTarget / "keep") << "x"; }
         CHECK((errorOf(saveSceneFile(changed, dirTarget)) == core::ErrorCode::kIo));
         for (const auto &entry : std::filesystem::directory_iterator(temp.path))
-            CHECK(entry.path().filename().string().find(".orosmo-tmp") == std::string::npos);
+            CHECK(entry.path().filename().string().find('~') == std::string::npos); // temporaire `…~<hex>`
         CHECK(std::filesystem::exists(dirTarget / "keep"));
     }
 
