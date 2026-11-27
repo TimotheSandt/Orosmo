@@ -4,6 +4,7 @@
 // du composant (seul, instancié, foule). Tests GPU ignorés sans périphérique (`tests::backendsToRun()`).
 #include <doctest/doctest.h>
 
+#include "renderer/counting_device.hpp"
 #include "renderer/repo_paths.hpp"
 #include "rhi/backends.hpp"
 #include "support/result_support.hpp"
@@ -22,6 +23,7 @@
 #include <orosmo/renderer/camera.hpp>
 #include <orosmo/renderer/image.hpp>
 #include <orosmo/renderer/light.hpp>
+#include <orosmo/renderer/mesh.hpp>
 #include <orosmo/renderer/mesh_builder.hpp>
 #include <orosmo/renderer/render_target.hpp>
 #include <orosmo/renderer/scene_renderer.hpp>
@@ -131,6 +133,47 @@ bool counterInit(app::GameContext *ctx)
 }
 
 constexpr OrosmoGameApi kCounterGame{orosmo::app::kGameAbiVersion, "counter", &counterInit, nullptr, nullptr, nullptr};
+
+// ── Destruction : les rappels et leurs captures partent avant le jeu et le périphérique ───────────────────────────
+
+int gAliveCaptures = 0;
+int gAliveCapturesAtGameShutdown = -1;
+
+bool lifetimeInit(app::GameContext *) { return true; }
+void lifetimeShutdown(app::GameContext *) { gAliveCapturesAtGameShutdown = gAliveCaptures; }
+
+constexpr OrosmoGameApi kLifetimeGame{orosmo::app::kGameAbiVersion, "lifetime", &lifetimeInit, nullptr, nullptr, &lifetimeShutdown};
+
+// Ressource du périphérique tenue par la capture d'un rappel.
+std::shared_ptr<rd::Mesh> capturedMesh(app::Application &a)
+{
+    auto mesh = coloredCube().create(a.device());
+    REQUIRE(mesh.has_value());
+    ++gAliveCaptures;
+    return std::shared_ptr<rd::Mesh>(new rd::Mesh(std::move(*mesh)), [](rd::Mesh *m) {
+        --gAliveCaptures;
+        delete m;
+    });
+}
+
+// Application dont le périphérique peut faire échouer beginFrame / present.
+std::unique_ptr<app::Application> createSpied(rhi::Backend backend, std::uint32_t frames, tests::CountingDevice *&spy)
+{
+    auto settings = headlessSettings(backend);
+    settings.frames = frames;
+    settings.createDevice = [&spy](const rhi::DeviceDesc &desc) -> orosmo::core::Result<std::unique_ptr<rhi::Device>>
+    {
+        auto real = rhi::createDevice(desc);
+        if (!real)
+            return std::unexpected(real.error());
+        auto counting = std::make_unique<tests::CountingDevice>(std::move(*real));
+        spy = counting.get();
+        return std::unique_ptr<rhi::Device>(std::move(counting));
+    };
+    auto application = createApp(settings);
+    REQUIRE(spy != nullptr);
+    return application;
+}
 
 // Bras à deux os et deux clips (comme tests/anim/animated_model_tests.cpp).
 orosmo::assets::Model makeArm()
@@ -645,6 +688,183 @@ TEST_SUITE("app/application-gpu")
             REQUIRE(a.resources().meshes.remove(*cube));
             REQUIRE(a.frame().has_value());
             CHECK(a.sceneSystem().stats().shadowCasters == 0);
+            CHECK(a.device().validationErrorCount() == 0);
+        }
+    }
+
+    TEST_CASE("Destruction: callbacks (and the device resources they capture) are released before the game and the device")
+    {
+        for (const rhi::Backend backend : tests::backendsToRun())
+        {
+            CAPTURE(tests::backendName(backend));
+            gAliveCaptures = 0;
+            gAliveCapturesAtGameShutdown = -1;
+            {
+                auto settings = headlessSettings(backend);
+                settings.game = app::GameSource::fromApi(&kLifetimeGame);
+                settings.game->required = true;
+                auto application = createApp(settings);
+                app::Application &a = *application;
+                a.onUpdate([mesh = capturedMesh(a)](app::Application &, const app::FrameTime &) {});
+                a.onUi([mesh = capturedMesh(a)](app::Application &, const app::FrameTime &) {});
+                a.onRender([mesh = capturedMesh(a)](app::Application &, app::RenderFrame &) -> orosmo::core::Result<> { return {}; });
+                REQUIRE(a.run());
+                CHECK(gAliveCaptures == 3);
+            }
+            CHECK(gAliveCaptures == 0);
+            CHECK(gAliveCapturesAtGameShutdown == 0);
+        }
+    }
+
+    TEST_CASE("beginFrame: only kBusy skips the frame; any other error is propagated and stops run")
+    {
+        for (const rhi::Backend backend : tests::backendsToRun())
+        {
+            CAPTURE(tests::backendName(backend));
+            tests::CountingDevice *spy = nullptr;
+            auto application = createSpied(backend, 1, spy);
+            app::Application &a = *application;
+
+            spy->beginFrameError = ErrorCode::kBusy;
+            auto skipped = a.frame();
+            REQUIRE(skipped.has_value());
+            CHECK(*skipped);
+            CHECK(a.frameIndex() == 0);
+
+            spy->beginFrameError = ErrorCode::kDeviceLost;
+            auto lost = a.frame();
+            REQUIRE_FALSE(lost.has_value());
+            CHECK((lost.error().code == ErrorCode::kDeviceLost));
+            CHECK_FALSE(a.run());
+        }
+    }
+
+    TEST_CASE("present: an error is propagated (also on the last frame); kBusy is not an error")
+    {
+        for (const rhi::Backend backend : tests::backendsToRun())
+        {
+            CAPTURE(tests::backendName(backend));
+            tests::CountingDevice *spy = nullptr;
+            auto application = createSpied(backend, 0, spy);
+            app::Application &a = *application;
+
+            spy->presentError = ErrorCode::kBusy;
+            auto busy = a.frame();
+            REQUIRE(busy.has_value());
+            CHECK(*busy);
+            CHECK(a.frameIndex() == 1);
+
+            spy->presentError = ErrorCode::kDeviceLost;
+            auto lost = a.frame();
+            REQUIRE_FALSE(lost.has_value());
+            CHECK((lost.error().code == ErrorCode::kDeviceLost));
+
+            tests::CountingDevice *lastSpy = nullptr;
+            auto last = createSpied(backend, 1, lastSpy);
+            lastSpy->presentError = ErrorCode::kDeviceLost;
+            CHECK_FALSE(last->run());
+        }
+    }
+
+    TEST_CASE("Capture without a window: the implicit frame limit does not cut it; an explicit limit that does is a failure")
+    {
+        for (const rhi::Backend backend : tests::backendsToRun())
+        {
+            CAPTURE(tests::backendName(backend));
+            tests::TempDir dir("orosmo_app_capture_limit");
+            auto settings = headlessSettings(backend);
+            settings.frames = 0;
+            settings.captureDirectory = dir.path / "late";
+            settings.captureFrames = app::ApplicationSettings::kDefaultHeadlessFrames + 2;
+            {
+                auto application = createApp(settings);
+                REQUIRE(application->run());
+                CHECK(application->frameIndex() == settings.captureFrames);
+                CHECK(fs::exists(dir.path / "late" / "scene.png"));
+                CHECK(fs::exists(dir.path / "late" / "ui.png"));
+            }
+
+            settings.captureDirectory = dir.path / "never";
+            settings.frames = 2;
+            auto application = createApp(settings);
+            CHECK_FALSE(application->run());
+            CHECK(application->frameIndex() == 2);
+            CHECK_FALSE(fs::exists(dir.path / "never" / "scene.png"));
+        }
+    }
+
+    TEST_CASE("Shadow casters: removed when the entity is destroyed, hidden, stops casting or leaves kSingle")
+    {
+        for (const rhi::Backend backend : tests::backendsToRun())
+        {
+            CAPTURE(tests::backendName(backend));
+            auto settings = headlessSettings(backend);
+            settings.shadows = true;
+            settings.frames = 0;
+            auto application = createApp(settings);
+            app::Application &a = *application;
+            auto cube = a.addMesh(coloredCube());
+            REQUIRE(cube.has_value());
+            REQUIRE_FALSE(a.spawn(app::LightComponent{.direction = {-0.4f, -1.0f, -0.2f}, .castShadows = true}).isNull());
+            const scn::Entity e = a.spawn(app::MeshRenderer{.mesh = *cube, .castShadows = true});
+            REQUIRE_FALSE(e.isNull());
+            const auto casters = [&a]
+            {
+                REQUIRE(a.frame().has_value());
+                return a.sceneSystem().stats().shadowCasters;
+            };
+            const auto component = [&a, e] { return a.world().get(e, a.components().mesh); };
+            CHECK(casters() == 1);
+            component()->castShadows = false;
+            CHECK(casters() == 0);
+            component()->castShadows = true;
+            CHECK(casters() == 1);
+            component()->visible = false;
+            CHECK(casters() == 0);
+            component()->visible = true;
+            CHECK(casters() == 1);
+            REQUIRE(a.world().destroy(e));
+            CHECK(casters() == 0);
+
+            auto arm = a.addAnimatedModel(makeArm());
+            REQUIRE(arm.has_value());
+            const scn::Entity m = a.spawn(app::AnimatedModelComponent{.model = *arm, .castShadows = true});
+            REQUIRE_FALSE(m.isNull());
+            const auto model = [&a, m] { return a.world().get(m, a.components().animatedModel); };
+            CHECK(casters() == 1);
+            model()->mode = app::DrawMode::kCrowd; // les foules ne projettent pas (G353)
+            CHECK(casters() == 0);
+            model()->mode = app::DrawMode::kSingle;
+            CHECK(casters() == 1);
+            REQUIRE(a.world().destroy(m));
+            CHECK(casters() == 0);
+            CHECK(a.device().validationErrorCount() == 0);
+        }
+    }
+
+    TEST_CASE("Shadow casters: an instanced mesh that casts follows the instance transform")
+    {
+        for (const rhi::Backend backend : tests::backendsToRun())
+        {
+            CAPTURE(tests::backendName(backend));
+            auto settings = headlessSettings(backend);
+            settings.shadows = true;
+            settings.frames = 0;
+            auto application = createApp(settings);
+            app::Application &a = *application;
+            auto cube = a.addMesh(coloredCube());
+            REQUIRE(cube.has_value());
+            const scn::Entity e = a.spawn(app::MeshRenderer{.mesh = *cube, .mode = app::DrawMode::kInstanced, .castShadows = true},
+                                          {.position = {1.0, 2.0, 3.0}});
+            REQUIRE_FALSE(e.isNull());
+            REQUIRE(a.frame().has_value());
+            REQUIRE(a.sceneSystem().stats().instances == 1);
+            CHECK(a.mesh(*cube)->modelMatrix()[3].x == doctest::Approx(1.0f));
+            CHECK(a.mesh(*cube)->modelMatrix()[3].y == doctest::Approx(2.0f));
+            REQUIRE(a.world().setTransform(e, {.position = {-2.0, 0.5, 0.0}}).has_value());
+            REQUIRE(a.frame().has_value());
+            CHECK(a.mesh(*cube)->modelMatrix()[3].x == doctest::Approx(-2.0f));
+            CHECK(a.mesh(*cube)->modelMatrix()[3].y == doctest::Approx(0.5f));
             CHECK(a.device().validationErrorCount() == 0);
         }
     }

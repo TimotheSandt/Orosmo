@@ -26,7 +26,9 @@
 //      composants, `onRender(app, image)` (dessins en plus, dans la passe de la scène), `endFrame`, interface, présentation.
 // Les rappels reçoivent le pas de temps borné et le pas fixe (`FrameTime`, reste d'A75.9).
 //
-// Erreurs : `std::expected` (règle 10). Un rappel `onRender` qui échoue, ou une image qui échoue, arrête `run` (code d'échec).
+// Erreurs : `std::expected` (règle 10). Un rappel `onRender` qui échoue, ou une image qui échoue (y compris `beginFrame` ou
+// `present` du périphérique, perte comprise ; seul kBusy est toléré), arrête `run` (code d'échec). À la destruction, les rappels
+// (et leurs captures) sont libérés avant le module de jeu et le périphérique.
 // Ordre de vie : un état lié par l'interface (`cui::build...(ui, state)`) doit vivre plus longtemps que l'application (le
 // déclarer avant elle) ou être retiré par `ui().setRoot(nullptr)`.
 #pragma once
@@ -168,9 +170,11 @@ struct ApplicationSettings
     core::Nanoseconds maxFrameDelta = std::chrono::milliseconds(250);
     const core::IClock *clock = nullptr;
 
-    // Arrêt de `run` : après `frames` images (0 : jusqu'à la fermeture de la fenêtre ; sans fenêtre : `kDefaultHeadlessFrames`).
+    // Arrêt de `run` : après `frames` images (0 : jusqu'à la fermeture de la fenêtre ; sans fenêtre et sans capture :
+    // `kDefaultHeadlessFrames`).
     std::uint32_t frames = 0;
     // Capture : après `captureFrames` images, scene.png (scène seule) et ui.png (image composée) dans ce dossier, puis arrêt.
+    // Un `frames` non nul plus petit que `captureFrames` arrête sans capture : `run` rend faux.
     std::filesystem::path captureDirectory;
     std::uint32_t captureFrames = 3;
 

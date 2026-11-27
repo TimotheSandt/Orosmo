@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
+#include <string>
 #include <system_error>
 #include <utility>
 
@@ -204,7 +205,6 @@ struct Application::Impl
     bool quit = false;
     bool paused = false;
     bool captureOk = true;
-    bool presentWarned = false;
     std::uint64_t frame = 0;
     rhi::Extent2D outputSize{};
 
@@ -213,6 +213,10 @@ struct Application::Impl
         // Ordre explicite : rien ne doit survivre au périphérique ni à ce qu'il référence.
         if (device)
             device->waitIdle();
+        // Les rappels d'abord : leurs captures peuvent tenir des ressources du périphérique.
+        onRender = nullptr;
+        onUi = nullptr;
+        onUpdate = nullptr;
         game.reset(); // retire ses actions de l'interface et ses systèmes de la simulation
         ui.reset();
         font.reset();
@@ -547,10 +551,14 @@ core::Result<bool> Application::frame()
     // 5. Rendu.
     auto backbuffer = s.device->beginFrame();
     if (!backbuffer)
-        return true; // image sautée (fenêtre réduite, surface à recréer)
+    {
+        if (backbuffer.error().code == ErrorCode::kBusy)
+            return true; // image sautée (fenêtre réduite)
+        return std::unexpected(backbuffer.error());
+    }
     if (pixelW <= 0 || pixelH <= 0)
     {
-        if (auto presented = s.device->present(); !presented)
+        if (auto presented = s.device->present(); !presented && presented.error().code != ErrorCode::kBusy)
             return std::unexpected(presented.error());
         return true;
     }
@@ -613,16 +621,23 @@ core::Result<bool> Application::frame()
         }
         s.quit = true;
     }
-    const std::uint32_t limit = cfg.frames != 0 ? cfg.frames : (s.window ? 0u : ApplicationSettings::kDefaultHeadlessFrames);
+    // La limite implicite sans fenêtre ne coupe pas une capture ; une limite demandée avant elle est un échec de la capture.
+    const std::uint32_t limit = cfg.frames != 0 ? cfg.frames : (s.window || capturing ? 0u : ApplicationSettings::kDefaultHeadlessFrames);
     if (limit != 0 && s.frame >= limit)
-        s.quit = true;
-
-    if (auto presented = s.device->present(); !presented)
     {
-        if (!s.presentWarned)
-            LOG_WARNING("present failed: ", presented.error().message);
-        s.presentWarned = true;
+        if (capturing && s.frame < cfg.captureFrames)
+        {
+            const std::string message = "capture not written: stopped after " + std::to_string(s.frame) + " frames, before captureFrames (" +
+                                        std::to_string(cfg.captureFrames) + ")";
+            LOG_ERROR(1, message);
+            std::cerr << message << '\n';
+            s.captureOk = false;
+        }
+        s.quit = true;
     }
+
+    if (auto presented = s.device->present(); !presented && presented.error().code != ErrorCode::kBusy)
+        return std::unexpected(presented.error());
     return !s.quit;
 }
 

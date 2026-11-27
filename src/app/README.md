@@ -47,6 +47,10 @@ Ordre d'une image : événements, temps (delta borné ou pas fixe sans fenêtre)
 `setCamera`, dessins des composants, `onRender`, `endFrame`, interface, présentation. Options de la ligne de commande :
 `--api`, `--strict-backend`, `--headless`, `--size`, `--frames`, `--capture`, `--capture-frames` (`usage`).
 
+Arrêt et erreurs : une erreur de `beginFrame` ou `present` (perte du périphérique) fait échouer `run` (kBusy toléré) ; la
+limite implicite sans fenêtre ne coupe pas une capture, et un `--frames` plus petit que `--capture-frames` est un échec. Les
+rappels et leurs captures sont libérés avant le module de jeu et le périphérique.
+
 Modes de dessin : `MeshRenderer` `kSingle` (un `drawMesh` par entité) ou `kInstanced` (un dessin instancié par maillage) ;
 `AnimatedModelComponent` `kSingle` (lecteur du modèle, avancé une fois par image) ou `kCrowd` (une foule par modèle, clip et
 temps par entité, avancés par le jeu). Limites : G350 à G356.
