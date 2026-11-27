@@ -202,7 +202,7 @@ jobs:
         run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-capture
 
       - name: End to end from the package (BLD-02; orosmo init, build, run, examples)
-        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" e2e-init
+        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" e2e-init E2E_RELOAD_MAX=60
 
       - name: ccache statistics
         if: always()
@@ -582,7 +582,7 @@ jobs:
 
       - name: End to end from the package (Unix)
         if: runner.os != 'Windows'
-        run: make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0
+        run: make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0 E2E_RELOAD_MAX=60
 
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
@@ -598,7 +598,7 @@ jobs:
         shell: msys2 {0}
         run: |
           if [ -d /mingw64/lib/ccache/bin ]; then export PATH="/mingw64/lib/ccache/bin:$PATH"; fi
-          mingw32-make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0
+          mingw32-make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0 E2E_RELOAD_MAX=60
 
       - name: ccache statistics (Unix)
         if: always() && runner.os != 'Windows'
