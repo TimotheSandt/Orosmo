@@ -195,7 +195,7 @@ int runApp(const LaunchOptions &opts)
     }
     else
     {
-        if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
+        if (!window.init([&] { (void)rhi::prepareWindowHints(desc); }))
         {
             // --headless cache seulement la fenêtre : le contexte OpenGL demande quand même un affichage (sous Linux sans serveur X :
             // xvfb-run, comme la CI).
@@ -276,7 +276,7 @@ int runApp(const LaunchOptions &opts)
     {
         if (!opts.headless && !window.newFrame())
         {
-            continue;
+            break; // fenêtre inutilisable (A75.16)
         }
 
         const bool fixedSize = opts.headless || capturing;
@@ -290,7 +290,7 @@ int runApp(const LaunchOptions &opts)
         }
 
         const float dt = fixedSize ? kFixedStep : static_cast<float>(1.0 / std::max(window.getFPS(), 1.0));
-        if (!opts.headless && platform::InputManager::getInstance(window.getWindow()).isKeyJustPressed(platform::KeyButton::kEscape))
+        if (!opts.headless && window.input().isKeyJustPressed(platform::KeyButton::kEscape))
         {
             window.requestClose();
         }

@@ -14,6 +14,7 @@
 #include <orosmo/renderer/scene_renderer.hpp>
 
 #include <glm/glm.hpp>
+#include <glm/trigonometric.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -373,6 +374,40 @@ void main()
             const auto order = f.renderer->renderGraph().executionOrder();
             CHECK(std::find(order.begin(), order.end(), "depth-prepass") < std::find(order.begin(), order.end(), "scene"));
             requireSameImage(lit, prepassed, 1);
+            f.gpu.expectNoValidationErrors();
+        }
+    }
+
+    TEST_CASE("A75.10 descriptor light factories give the same image as the old ones with the equivalent values")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Fixture f(backend);
+            REQUIRE(f.gpu.device);
+            f.lights->setAmbientLight({1, 1, 1}, 0.05f);
+            const rd::Light spot = rd::spotLight({.position = {3, 3, 0},
+                                                  .direction = {0, -1, 0.2f},
+                                                  .color = {0, 1, 0},
+                                                  .intensity = 1.0f,
+                                                  .range = 100.0f, // portée = seuil de 1/256 : à 3 m, encore ~75 % de la lumière
+                                                  .outerAngleDegrees = 35.0f,
+                                                  .innerAngleDegrees = 20.0f});
+            const rd::Light point = rd::pointLight({.position = {-3, 0.5f, 0}, .color = {1, 0, 0}, .intensity = 0.8f, .range = 4.0f});
+            // Anciennes fabriques : direction vers la lumière pour le soleil, coefficients, cônes en cosinus.
+            f.lights->addLight(rd::directionalLight({0.3f, 1.0f, 0.2f}, {0.4f, 0.4f, 0.5f}, 0.4f));
+            f.lights->addLight(rd::pointLight({-3, 0.5f, 0}, {1, 0, 0}, 0.8f, point.a, 0.0f));
+            f.lights->addLight(rd::spotLight({3, 3, 0}, {0, -1, 0.2f}, {0, 1, 0}, 1.0f, std::cos(glm::radians(35.0f)), std::cos(glm::radians(20.0f)),
+                                             spot.a, 0.0f));
+            const rd::Image before = f.render(f.forward);
+            CHECK(maxChannel(before, 0) > 60); // la ponctuelle rouge éclaire le sol
+            CHECK(maxChannel(before, 1) > 60); // le projecteur vert aussi
+
+            const rd::Light sun = rd::directionalLight({.direction = {-0.3f, -1.0f, -0.2f}, .color = {0.4f, 0.4f, 0.5f}, .intensity = 0.4f});
+            REQUIRE(f.lights->setLight(0, sun).has_value());
+            REQUIRE(f.lights->setLight(1, point).has_value());
+            REQUIRE(f.lights->setLight(2, spot).has_value());
+            const rd::Image after = f.render(f.forward);
+            requireSameImage(before, after, 0);
             f.gpu.expectNoValidationErrors();
         }
     }
