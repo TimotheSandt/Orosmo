@@ -89,6 +89,15 @@ git). La sortie du compilateur `.cui` va dans `Generated/` du projet (ignoré pa
 Le `Makefile` trouve le moteur (`ENGINE_DIR`) dans cet ordre : `ENGINE_DIR` donnée (ligne de commande, `config.local.mk`) ; dossier
 `orosmo/` du projet ; `orosmo path $(OROSMO_VERSION)` ; sinon il s'arrête avec la commande à lancer (`orosmo install x.y.z`).
 
+### Logique de jeu (`src/game/`) et reconstruction rapide
+
+`src/game/*.cpp` est compilé en bibliothèque rechargée à chaud (debug). Programme lancé, après une modification :
+`orosmo build --game` (ou `make game`). Seule la bibliothèque est refaite ; `ccache` est utilisé s'il est installé
+(`make CCACHE=` le désactive). Incluez `<orosmo/game.hpp>` : composants, systèmes, actions et types mathématiques, sans le
+rendu ni `glm` complet. Un en-tête partagé avec `src/main.cpp` (`src/game/spin.hpp`) dont on change les données demande un
+`orosmo build` complet et un redémarrage. `core/reflection.hpp` et `scene/transform.hpp` ne tirent plus que les types de
+`glm` : pour `glm::normalize`, les matrices de projection, etc., incluez `<orosmo/core/math.hpp>` ou `<glm/glm.hpp>`.
+
 ### Commandes de l'outil
 
 | Commande | Effet |
@@ -100,6 +109,7 @@ Le `Makefile` trouve le moteur (`ENGINE_DIR`) dans cet ordre : `ENGINE_DIR` donn
 | `orosmo update [chemin]` | (projet Orosmo : `orosmo/`, `OROSMO_VERSION` dans `config.mk` ou `Makefile` d'`orosmo init`) passe le projet à la dernière version (`OROSMO_VERSION`), met à jour `Makefile` et `.gitignore` s'ils sont intacts (sinon confirmation `y/N`), ajoute à `config.mk` les champs nouveaux |
 | `orosmo migrate [chemin]` | ancien projet avec `orosmo/` → moteur partagé ; `orosmo/` renommé `orosmo.old/`, supprimé seulement si le build (avec le moteur installé) réussit, sinon la migration est annulée |
 | `orosmo build [--release] [--json] [-C dir]` | `make -jN debug` (ou `release`) ; `--json` : une ligne JSON par événement |
+| `orosmo build --game [--json] [-C dir]` | `make -jN game` : ne reconstruit que la bibliothèque de jeu (`src/game/`), que le programme en cours recharge |
 | `orosmo run [--release] [-C dir] [-- args…]` | build, puis lance le programme avec `args` |
 | `orosmo clean [-C dir]` | `make clean` |
 | `orosmo self-update [--force]` | remplace l'outil par celui de la dernière release (empreinte vérifiée) |

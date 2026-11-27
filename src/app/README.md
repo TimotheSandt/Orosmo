@@ -17,8 +17,7 @@ Dépend de `sim` (systèmes), `scene` (composants), `ui` (`ActionRegistry`), `pl
 
 ```cpp
 // game/game.cpp — compilé en bibliothèque (make / make debug) ou lié dans l'exécutable (make release, OROSMO_GAME_STATIC)
-#include <orosmo/app/game_api.hpp>
-#include <orosmo/app/game_context.hpp>
+#include <orosmo/game.hpp> // en-tête léger : interface C, contexte, monde, systèmes, types mathématiques
 
 namespace {
 bool init(orosmo::app::GameContext *ctx)
@@ -88,7 +87,18 @@ construite en quatre versions (`v1`, `v2`, `badabi`, `failinit`) ; `bin/tests/te
 - **L6** : migration d'un composant dont la disposition change (point d'accroche : `GameModule::Impl::switchTo`, avant
   l'`init` de la nouvelle version) ; journal de `ActionRegistry::missing()` après chaque rechargement ; décision sur
   `orphanComponents`.
-- **L7** : cible qui ne reconstruit que la bibliothèque de jeu, en-tête léger `orosmo/game.hpp` (`game_context.hpp` inclut
-  aujourd'hui `sim/simulation.hpp`, donc `scene` et la sérialisation).
+
+## Construction incrémentale (GAME-06, L7)
+
+- **`orosmo/game.hpp`** : seul en-tête à inclure dans la bibliothèque de jeu. Il ne tire ni `renderer`, `rhi`, `platform`,
+  `ui`, ni `sim::Simulation`, ni `nlohmann/json`, ni `glm/glm.hpp` (`tools/check_headers.py`, `LIGHT_HEADERS`). Les systèmes
+  viennent de `sim/system.hpp` (`StepContext::inputs` est une vue ; pour lire le contenu d'une `Input`, inclure
+  `sim/simulation.hpp`, plus lourd), les types mathématiques de `core/math_types.hpp`. `game_context.hpp` n'inclut plus
+  `sim/simulation.hpp` ; c'est `game_module.hpp` (côté hôte) qui le fait.
+- **`make game`** (gabarit, `apps/demo/Makefile`) : ne refait que la bibliothèque ; **`orosmo build --game`** l'appelle.
+  `ccache` est utilisé s'il est dans le `PATH` (`make CCACHE=` pour s'en passer).
+- **Mesure** : `make e2e-init` modifie `src/game/game.cpp` d'un programme lancé (`tools/e2e/reload_host.cpp`,
+  `tools/e2e_reload.py`), reconstruit et vérifie le code rechargé en moins de `E2E_RELOAD_MAX` secondes (5 par défaut) ;
+  valeurs dans `docs/BASELINE/game-reload-M8-L7.txt`.
 
 Limites : `docs/GAPS.md` (G310 et suivants).
