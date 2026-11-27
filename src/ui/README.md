@@ -5,7 +5,7 @@ dessin (`orosmo::renderer::DrawList`, UI-02) et ne connaît ni le RHI ni le back
 son `Ui` (l'interface héritée `UI::`, son singleton `UI::Manager` et `src/ui/legacy/` ont été supprimés le 2026-11-20, la démo
 utilise ce module).
 
-- **Couche** : `ui` (`docs/03` §1) ; dépend de `core` et de `renderer` (liste de dessin, texte).
+- **Couche** : `ui` (`docs/03` §1) ; dépend de `core`, de `renderer` (liste de dessin, texte) et, pour l'inspecteur d'entités seulement (`debug_tools.cpp`), de `scene` (couche 6, en dessous).
 - **Image** : `ui.update(input, viewport)` (rechargement du thème ; entrées appliquées à la mise en page AFFICHÉE ; écritures des
   liaisons puis événements, dans l'ordre ; nouvelle mise en page), puis `ui.draw(list)` et `CanvasRenderer::render(list)`.
 - **API publique** : `include/orosmo/ui/`.
@@ -25,7 +25,10 @@ utilise ce module).
 | `font.hpp` | `Font` ; `FixedFont` (tests, sans GPU) ; `TextRendererFont` (adapte `TextRenderer` à `Font`) |
 | `text_renderer.hpp` | `TextRenderer` : polices FreeType, atlas MSDF construit à la demande (ASCII, puis Latin-1 / Latin étendu A au premier texte qui en contient) ; un atlas par taille de police, glyphes MTSDF calculés en parallèle (`core::TaskSystem`, FreeType reste séquentiel), mesure, mise en page (retour à la ligne, alignement, débordement), séries de glyphes ajoutées à la `DrawList` donnée par `setDrawListSink` |
 | `nine_slice.hpp` | UI-07 : fonds en neuf parties (`ImageStyle` du thème : coins fixes, bords et centre étirés, répétés ou supprimés) → `DrawImage` |
-| `reflect.hpp` | UI-12 : `reflectedPanel(objet)` : une structure `core::Reflect<T>` en widgets adaptés au type et à la plage ; `fieldLabel` ; `core::EnumNames<E>` pour les listes |
+| `reflect.hpp` | UI-12 : `reflectedPanel(objet)` : une structure `core::Reflect<T>` en widgets adaptés au type et à la plage ; `fieldLabel` ; `core::EnumNames<E>` pour les listes ; variante à l'exécution `reflectedPanel(locate, fields)` sur `core::FieldDesc` (type C++ inconnu : composants par nom, A79 L10) |
+| `debug_tools.hpp` | UI-04, UI-10 : `debug::DebugTools` (outils de debug, F12) : console, inspecteur d'interface (`describeWidgetTree`, tailles calculées, surlignage), inspecteur d'entités (`entityPanel` sur un `scene::World`), profileur ; rien quand ils sont fermés |
+| `debug_console.hpp` | UI-04 : `debug::Console` : commandes enregistrées par nom (`add`, `execute`, `core::Result`), journal du moteur recopié (`pollLog`), `splitCommandLine` |
+| `frame_history.hpp` | UI-04 : `FrameHistory` (anneau des temps d'image, `FpsStats`), repris du panneau de la démo |
 
 Thèmes livrés : `res/themes/base.json` (structure : chaque propriété de chaque widget renvoie à un jeton), `dark.json` et
 `light.json` (jetons seulement), `framed.json` (hérite de `dark.json` et ajoute des cadres en neuf parties, `res/themes/images/`),
@@ -94,3 +97,36 @@ Limites (docs/GAPS.md) : une `ScrollView` ne défile pas vers le widget focalis�
   l'élimine s'il ne rencontre pas l'intersection de la fenêtre et des zones de découpage des ancêtres (`clipsChildren`/`childClip`,
   `overflow(.hidden)`). Une liste de 1000 lignes dans un `ScrollView` ne produit que les lignes visibles.
 - Cache par couche : non livré (voir `docs/GAPS.md`).
+
+## Outils de debug (UI-04, UI-10 ; A79 lot L10)
+
+Construits sur `orosmo::ui`, sans Dear ImGui (A79 choix 6) : un `Ui` propre aux outils, les styles `debug*` du thème
+(`res/themes/base.json` : `debugPanel`, `debugRow`, `debugRowSelected`, `debugText`, `debugInput`, `debugInputLine`,
+`debugWarning`, `debugError`, `debugHighlight`), le lot 2D habituel.
+
+```cpp
+orosmo::ui::debug::DebugTools tools(font);
+tools.ui().themes().load("res/themes/dark.json");
+tools.inspect(&appUi);                 // UI-10 : arbre des widgets de cette interface
+tools.inspectWorld(&world);            // UI-04 : entités et composants (champs décrits à l'exécution, modifiables)
+tools.console().add("hud", "hud <level>", [&](std::span<const std::string> args) -> orosmo::core::Result<std::string> { ... });
+// chaque image :
+tools.handleToggle(input);             // F12
+tools.update(input, viewport);         // fermés : rien
+if (tools.wantsMouse()) { /* ne pas donner la souris à l'application */ }
+appUi.draw(list); tools.draw(list);    // fermés : aucune commande
+tools.frames().push(cpuMs, gpuMs, intervalMs, waitMs);   // profileur
+```
+
+- **Console** : `Console::execute("nom arg \"arg 2\"")` ; commande inconnue : `kNotFound` et ligne d'erreur ; `help`, `clear`
+  intégrées ; les messages du `core::Logger` arrivés depuis l'ouverture s'y ajoutent (`Logger::RecordsSince`).
+- **Widgets** : une ligne par widget (`describeWidget` : « Button #play [button] 5,5 120x30 », type, identifiant, style, rectangle
+  de la dernière mise en page) ; survol d'une ligne = surlignage du widget dans l'interface inspectée, clic = surlignage gardé ;
+  sinon le widget survolé de l'interface inspectée.
+- **Entities** : liste des entités (200 au plus) ; l'entité choisie montre ses composants par `reflectedPanel(locate, fields)` ;
+  l'adresse du composant est relue à chaque accès (`World::get`), le panneau est refait quand ses composants changent.
+- **Profiler** : historique `FrameHistory` (graphe) et mesures nommées de `core::Profiler` (`Profiler::Names`), rafraîchis 4 fois
+  par seconde.
+- Démo : F12, `--debug-tools`, `--debug-tab console|widgets|entities|profiler` ; commandes `hud`, `ui`, `camera`, `quit`.
+
+Limites : `docs/GAPS.md` G295 à G299.
