@@ -445,6 +445,7 @@ TEST_SUITE("scene/file")
         }
     }
 
+#ifndef _WIN32 // sous Windows, le chemin complet dépasserait MAX_PATH (260) : la destination elle-même est refusée
     TEST_CASE("Scene: a destination name close to the file system limit can still be saved")
     {
         ComponentType<Agent> type;
@@ -454,6 +455,7 @@ TEST_SUITE("scene/file")
         REQUIRE(saveSceneFile(world, path));
         CHECK(std::filesystem::exists(path));
     }
+#endif
 
     TEST_CASE("Scene: a failed saveSceneFile keeps the previous save and removes its temporary file")
     {
