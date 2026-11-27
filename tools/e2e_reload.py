@@ -28,6 +28,12 @@ def main():
     if BEFORE.encode() not in code:
         sys.exit(f"e2e_reload : « {BEFORE} » introuvable dans {source}")
 
+    def build_game():
+        build = subprocess.run([a.tool, "build", "--game", "-C", project], capture_output=True, text=True, errors="replace")
+        if build.returncode != 0:
+            sys.exit(f"e2e_reload : `orosmo build --game` a échoué ({build.returncode})\n{build.stdout}{build.stderr}")
+
+    build_game()  # la bibliothèque correspond à la source, même si le script a déjà tourné sur ce projet
     program = subprocess.Popen([exe], cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                errors="replace")
     lines = queue.Queue()
@@ -60,10 +66,8 @@ def main():
         start = time.monotonic()
         with open(source, "wb") as f:
             f.write(code.replace(BEFORE.encode(), AFTER.encode()))
-        build = subprocess.run([a.tool, "build", "--game", "-C", project], capture_output=True, text=True, errors="replace")
+        build_game()
         built = time.monotonic()
-        if build.returncode != 0:
-            sys.exit(f"e2e_reload : `orosmo build --game` a échoué ({build.returncode})\n{build.stdout}{build.stderr}")
         expect("reloaded", 60)
         reloaded = time.monotonic()
         if program.wait(timeout=60) != 0:
