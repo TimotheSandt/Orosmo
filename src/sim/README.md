@@ -76,7 +76,10 @@ auto replay = sim.recording();                               // Result<Replay> :
   (position et échelle linéaires, rotation nlerp ; le rendu a un pas de retard, sans extrapolation).
 - **Files** : entrées du rendu vers la simulation et événements de la simulation vers le rendu par `core::SpscQueue` ; une
   entrée datée d'un pas déjà joué à son arrivée est refusée et comptée (`rejectedInputs`) : dater à `stepIndex() + latence`.
-  Aucun événement n'est perdu (arriéré côté simulation si la file est pleine). Côté rendu, un seul thread appelle les
+  Aucun événement n'est perdu (arriéré côté simulation si la file est pleine, repassé dans la file à chaque tour, même sans
+  pas). `stop()` joue d'abord le lot accepté par le dernier `frame()` ; après l'arrêt, `pushInput` rend faux. Un système qui
+  lève sur le thread l'arrête sans terminer le processus : `status()` rend l'erreur. `RenderSnapshot::read<T>` contrôle la
+  disposition enregistrée (taille, alignement, champs si T est réfléchi) ; `readBytes` copie les octets. Côté rendu, un seul thread appelle les
   méthodes de `SimulationThread`. Même graine et mêmes entrées : même empreinte qu'en mono-thread.
 
 Exemple (thread) :
