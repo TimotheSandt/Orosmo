@@ -16,6 +16,7 @@
 
 #include <orosmo/core/log.hpp>
 #include <orosmo/game.hpp> // GAME-06 : l'en-tête léger suffit à écrire un jeu
+#include <orosmo/sim/simulation.hpp> // seulement pour context->simulation()->random() (hors de l'en-tête léger)
 #include <orosmo/ui/ui.hpp>
 
 #include <cstdint>
