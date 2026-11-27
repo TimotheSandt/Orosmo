@@ -38,6 +38,14 @@ struct Thrower
 {
     std::int64_t armed = 0;
 };
+
+// Code d'erreur d'un résultat qui DOIT être une erreur : REQUIRE avant `.error()` (un succès inattendu est signalé, sans
+// appeler `.error()` sur une valeur).
+template <typename T> core::ErrorCode errorOf(const core::Result<T> &result)
+{
+    REQUIRE_FALSE(result);
+    return result.error().code;
+}
 } // namespace
 
 template <> struct orosmo::core::Reflect<Mover>
@@ -196,13 +204,13 @@ TEST_SUITE("sim/thread")
         core::Config bad;
         declareSimulationConfig(bad);
         bad.set("sim.cadence", "sometimes");
-        CHECK((readSimulationConfig(bad).error().code == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(readSimulationConfig(bad)) == core::ErrorCode::kInvalidArgument));
         bad.set("sim.cadence", "frame");
         bad.set("sim.stepsPerFrame", 0);
-        CHECK((readSimulationConfig(bad).error().code == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(readSimulationConfig(bad)) == core::ErrorCode::kInvalidArgument));
         bad.set("sim.stepsPerFrame", 1);
         bad.set("sim.rateHz", 0.0);
-        CHECK((readSimulationConfig(bad).error().code == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(readSimulationConfig(bad)) == core::ErrorCode::kInvalidArgument));
 
         CHECK(stepForRate(20.0) == 50ms);
         CHECK(stepForRate(50.0) == 20ms);
@@ -213,7 +221,7 @@ TEST_SUITE("sim/thread")
         core::Config tiny;
         declareSimulationConfig(tiny);
         tiny.set("sim.rateHz", 1e-12);
-        CHECK((readSimulationConfig(tiny).error().code == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(readSimulationConfig(tiny)) == core::ErrorCode::kInvalidArgument));
         CHECK(parseCadence(cadenceName(Cadence::kStepsPerFrame)) == Cadence::kStepsPerFrame);
         CHECK(parseCadence(cadenceName(Cadence::kFixedRate)) == Cadence::kFixedRate);
     }
@@ -285,9 +293,9 @@ TEST_SUITE("sim/thread")
     {
         Simulation sim({.step = 10ms});
         core::ManualClock clock;
-        CHECK((SimulationThread::start(sim, clock, {.cadence = Cadence::kStepsPerFrame, .stepsPerFrame = 0}).error().code ==
+        CHECK((errorOf(SimulationThread::start(sim, clock, {.cadence = Cadence::kStepsPerFrame, .stepsPerFrame = 0})) ==
                core::ErrorCode::kInvalidArgument));
-        CHECK((SimulationThread::start(sim, clock, {.cadence = Cadence::kStepsPerFrame, .stepsPerFrame = 65}).error().code ==
+        CHECK((errorOf(SimulationThread::start(sim, clock, {.cadence = Cadence::kStepsPerFrame, .stepsPerFrame = 65})) ==
                core::ErrorCode::kInvalidArgument));
         CHECK_FALSE(SimulationThread::start(sim, clock, {.inputCapacity = 0}));
         CHECK_FALSE(SimulationThread::start(sim, clock, {.eventCapacity = 0}));
@@ -609,6 +617,9 @@ TEST_SUITE("sim/thread")
         auto status = (*thread)->status();
         REQUIRE_FALSE(status);
         CHECK(status.error().message.find("boom") != std::string::npos);
+        // Sorti sur l'erreur, pas encore rejoint : ne joue plus, et refuse les entrées qu'il ne livrerait pas.
+        CHECK_FALSE((*thread)->running());
+        CHECK_FALSE((*thread)->pushInput({10, "late", 1}));
         (*thread)->stop();
         CHECK_FALSE((*thread)->running());
         CHECK(sim.stepIndex() == 2); // le pas 2 a levé : non compté, non rejoué
@@ -663,7 +674,13 @@ TEST_SUITE("sim/thread")
                 if (snapshot.step < lastSeen || snapshot.entities.size() != kEntities)
                     torn = true;
                 lastSeen = snapshot.step;
-                for (std::size_t i = 0; i < snapshot.entities.size(); ++i)
+                // Colonnes de même longueur que `entities` avant toute lecture : un instantané incohérent est signalé sans
+                // accès hors limites.
+                const bool columnsOk = snapshot.transforms.size() == snapshot.entities.size() &&
+                                       (snapshot.step == 0 || snapshot.previous.size() == snapshot.entities.size());
+                if (!columnsOk)
+                    torn = true;
+                for (std::size_t i = 0; columnsOk && i < snapshot.entities.size(); ++i)
                 {
                     if (snapshot.transforms[i].position.x != static_cast<double>(snapshot.step) ||
                         snapshot.transforms[i].position.y != static_cast<double>(i))
