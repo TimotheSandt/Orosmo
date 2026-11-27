@@ -4,6 +4,7 @@
 #include <orosmo/rhi/device.hpp>
 
 #include <array>
+#include <cstdint>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -570,6 +571,33 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(3, bad).has_value(), "--direct-present maybe is refused");
         const char *missing[] = {"Orosmo", "--direct-present"};
         Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--direct-present needs a value");
+    }
+
+    TEST_CASE("launch options: --frames-in-flight 1 to 3 (default 2) and --graph-cache on|off (default on), A61 G and C")
+    {
+        const char *none[] = {"Orosmo"};
+        const auto defaults = demo::parseLaunchOptions(1, none);
+        Assert(defaults.has_value() && defaults->framesInFlight == 2 && defaults->graphCache, "two frames in flight and the graph cache by default");
+        for (const char *count : {"1", "2", "3"})
+        {
+            const char *args[] = {"Orosmo", "--frames-in-flight", count};
+            const auto parsed = demo::parseLaunchOptions(3, args);
+            Assert(parsed.has_value() && parsed->framesInFlight == static_cast<std::uint32_t>(count[0] - '0'), "--frames-in-flight N");
+        }
+        for (const char *bad : {"0", "4", "two", "-1"})
+        {
+            const char *args[] = {"Orosmo", "--frames-in-flight", bad};
+            Assert(!demo::parseLaunchOptions(3, args).has_value(), "--frames-in-flight out of range is refused");
+        }
+        const char *missing[] = {"Orosmo", "--frames-in-flight"};
+        Assert(!demo::parseLaunchOptions(2, missing).has_value(), "--frames-in-flight needs a value");
+        const char *off[] = {"Orosmo", "--graph-cache=off"};
+        const auto uncached = demo::parseLaunchOptions(2, off);
+        Assert(uncached.has_value() && !uncached->graphCache, "--graph-cache=off");
+        const char *on[] = {"Orosmo", "--graph-cache", "on"};
+        Assert(demo::parseLaunchOptions(3, on)->graphCache, "--graph-cache on");
+        const char *wrong[] = {"Orosmo", "--graph-cache", "maybe"};
+        Assert(!demo::parseLaunchOptions(3, wrong).has_value(), "--graph-cache maybe is refused");
     }
 
     TEST_CASE("launch options: --fps-limit selects the limited mode")
