@@ -79,7 +79,7 @@ make all-debug
 
 | Commande | Effet |
 | --- | --- |
-| `make run` | Construit si besoin puis lance la démo unique (`apps/demo/bin/<type>/` ; `Escape` ouvre/ferme l'UI, `Ctrl+F` fait défiler les niveaux du panneau de performances, bouton `Quit` ou `File > Quit` pour quitter) |
+| `make run` | Construit si besoin puis lance la démo unique (`apps/demo/bin/<type>/` ; `Escape` ouvre/ferme l'UI, `Ctrl+F` fait défiler les niveaux du panneau de performances, `F12` ouvre les outils de debug, `F10` bascule le plein écran dans les builds debug, bouton `Quit` ou `File > Quit` pour quitter) |
 | `make demo-capture` | Capture hors écran de la démo unifiée (scène 3D, thèmes `dark`/`light`/`framed`, onglets UI) |
 | `make demo-test` | Construit et lance les tests (`tests/`, doctest ; filtres : `-ts=<suite>`, `-tc=<cas>`) |
 | `make demo-test SANITIZE=address,undefined` | Idem sous ASan + UBSan (arbre propre : `make fclean` avant) |

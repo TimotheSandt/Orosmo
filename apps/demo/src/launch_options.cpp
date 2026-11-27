@@ -754,6 +754,7 @@ void printUsage(std::ostream &out)
     out << "          measurement), graph (full + CPU/GPU frame time history in the bottom right corner). Ctrl+F cycles the levels.\n";
     out << "Tools   : F12 (or --debug-tools) opens the engine debug tools: console (log, commands: help, hud, camera),\n";
     out << "          widget inspector (tree, computed sizes, hover highlight), entity inspector, profiler. --debug-tab picks the tab.\n";
+    out << "          Debug builds: F11 toggles borderless, F10 fullscreen.\n";
     out << "Debug   : --debug-view shows normals, albedo, overdraw, LOD colors (needs --instances), wireframe or motion vectors;\n";
     out << "          --freeze-frustum freezes the culling frustum of the instanced objects (needs --instances) and draws it.\n";
     out << "Instances: --instances N adds N instanced objects around the courtyard (frustum culling, distance LOD); the draw\n";

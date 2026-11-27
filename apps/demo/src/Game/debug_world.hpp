@@ -7,11 +7,17 @@
 #include <orosmo/core/error.hpp>
 #include <orosmo/core/math.hpp>
 #include <orosmo/core/reflection.hpp>
+#include <orosmo/platform/input_manager.hpp>
 #include <orosmo/renderer/camera.hpp>
 #include <orosmo/scene/world.hpp>
 
 namespace demo
 {
+
+// F12 est réservé aux outils de debug ; le plein écran (builds DEBUG) est sur F10 pour ne pas basculer sur le même appui.
+inline constexpr orosmo::platform::KeyButton kDebugToolsKey = orosmo::platform::KeyButton::kF12;
+inline constexpr orosmo::platform::KeyButton kFullscreenKey = orosmo::platform::KeyButton::kF10;
+static_assert(kDebugToolsKey != kFullscreenKey);
 
 struct DemoCamera
 {

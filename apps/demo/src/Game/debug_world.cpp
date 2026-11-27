@@ -2,6 +2,8 @@
 
 #include <glm/geometric.hpp>
 
+#include <cmath>
+
 namespace demo
 {
 
@@ -43,10 +45,16 @@ bool DebugWorld::push(orosmo::renderer::Camera &camera) const
         camera.setPosition(c->position);
         changed = true;
     }
-    if (c->direction != pulled_.direction && glm::length(c->direction) > 1.0e-6f)
+    // Refusées : direction nulle (ou non finie) et direction parallèle à `up` (vue indéfinie, voir `Camera::setForward`).
+    const float length = glm::length(c->direction);
+    if (c->direction != pulled_.direction && length > 1.0e-6f && std::isfinite(length))
     {
-        camera.setOrientation(glm::normalize(c->direction));
-        changed = true;
+        const glm::vec3 direction = c->direction / length;
+        if (glm::length(glm::cross(direction, glm::normalize(camera.up()))) > 1.0e-4f)
+        {
+            camera.setOrientation(direction);
+            changed = true;
+        }
     }
     return changed;
 }

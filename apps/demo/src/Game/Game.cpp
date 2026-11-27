@@ -757,7 +757,7 @@ void Game::processInput(bool toggleUiJustPressed)
         this->window.toggleBorderless();
     }
 #ifdef DEBUG
-    if (!uiWantsKeyboard && inputManager.isKeyJustPressed(platform::KeyButton::kF12))
+    if (!uiWantsKeyboard && inputManager.isKeyJustPressed(demo::kFullscreenKey))
     {
         this->window.toggleFullscreen();
     }
@@ -832,7 +832,7 @@ void Game::update()
             // Outils de debug (F12) : ils gardent la souris et le clavier qu'ils utilisent (état de l'image précédente).
             const bool toolsHaveMouse = this->debugTools && this->debugTools->wantsMouse();
             const bool toolsHaveKeyboard = this->debugTools && this->debugTools->wantsKeyboard();
-            if (this->debugTools && inputManager.isKeyJustPressed(platform::KeyButton::kF12))
+            if (this->debugTools && inputManager.isKeyJustPressed(demo::kDebugToolsKey))
             {
                 this->debugTools->toggle();
             }
