@@ -10,6 +10,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace orosmo::app
@@ -114,7 +115,11 @@ core::Result<GameModule> GameModule::load(GameModuleSettings settings)
         return core::makeError(ErrorCode::kInvalidArgument, "game module: no world in the targets");
     if (settings.path.empty())
         return core::makeError(ErrorCode::kInvalidArgument, "game module: empty library path");
-    settings.path = std::filesystem::absolute(settings.path);
+    std::error_code ec;
+    std::filesystem::path absolute = std::filesystem::absolute(settings.path, ec); // sans exception (règle 10)
+    if (ec)
+        return core::makeError(ErrorCode::kIo, "game module: cannot resolve " + settings.path.string() + ": " + ec.message());
+    settings.path = std::move(absolute);
 
     auto loaded = loadGame(settings.path);
     if (!loaded)

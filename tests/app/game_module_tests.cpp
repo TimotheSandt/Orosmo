@@ -12,6 +12,7 @@
 #include <orosmo/ui/ui.hpp>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -230,18 +231,27 @@ TEST_SUITE("app/game_module")
         Host host;
         auto game = app::GameModule::load(host.settings(folder.library));
         REQUIRE(game.has_value());
+        host.simulation.run(2);
+        const std::uint64_t before = host.simulation.fingerprint();
+        const std::size_t entities = host.simulation.world().entityCount();
 
+        // La v « failinit » écrit 999 dans le compteur, crée une entité, enregistre un type et tire un nombre, puis échoue.
         folder.install("failinit");
         auto result = game->reload();
         REQUIRE_FALSE(result.has_value());
         CHECK((result.error().code == ErrorCode::kCancelled));
         CHECK(game->version() == 1);
+        // État du moteur remis tel quel (monde, générateur) : la version active reprend inchangée.
+        CHECK(host.simulation.fingerprint() == before);
+        CHECK(host.simulation.world().entityCount() == entities);
+        CHECK_FALSE(host.simulation.world().componentId("FailInitOnly").has_value());
+        CHECK(host.counter().value == 2);
         CHECK_FALSE(host.simulation.hasSystem("failinit.system"));
         CHECK(host.simulation.systemOrder() == std::vector<std::string>{"count", "v1.only"});
         CHECK(game->actions() == std::vector<std::string>{"game.v1", "game.version"});
         CHECK(host.actions.contains("game.v1"));
         host.simulation.run(3);
-        CHECK(host.counter().value == 3);
+        CHECK(host.counter().value == 5);
 
         // Une version valide passe ensuite normalement.
         folder.install("v2");
@@ -270,6 +280,23 @@ TEST_SUITE("app/game_module")
         CHECK(game->version() == 1);
         CHECK(host.simulation.hasSystem("count"));
     }
+
+#if !defined(_WIN32)
+    TEST_CASE("GameModule: a relative path that cannot be resolved (current directory removed) is kIo, not an exception")
+    {
+        // Windows refuse d'effacer le dossier courant : cas propre à POSIX.
+        const fs::path previous = fs::current_path();
+        const fs::path gone = core::system::executablePath().parent_path() / "game_module_tests" / "gone";
+        fs::create_directories(gone);
+        fs::current_path(gone);
+        fs::remove(gone);
+        Host host;
+        auto game = app::GameModule::load(host.settings("game" + std::string(platform::DynamicLibrary::extension())));
+        fs::current_path(previous);
+        REQUIRE_FALSE(game.has_value());
+        CHECK((game.error().code == ErrorCode::kIo));
+    }
+#endif
 
     TEST_CASE("GameModule: stop calls shutdown, removes systems and actions, keeps component data")
     {
@@ -304,6 +331,9 @@ TEST_SUITE("app/game_module")
         CHECK((game.error().code == ErrorCode::kCancelled));
         CHECK(host.actions.contains("game.v1")); // celle de l'hôte, gardée
         CHECK(host.simulation.systemOrder().empty());
+        // Le monde est remis à son état d'avant l'`init` refusé : ni type « Counter » ni entité créée.
+        CHECK_FALSE(host.simulation.world().componentId("Counter").has_value());
+        CHECK(host.simulation.world().entityCount() == 0);
     }
 
     TEST_CASE("GameModule::fromApi (static build): starts a linked table, no hot reload")

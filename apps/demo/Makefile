@@ -310,7 +310,7 @@ $(GAME_MODULE): $(GAME_MODULE_OBJS) $(if $(filter Windows,$(ENGINE_OS)),$(TARGET
 	$(call ors_link,LD game)
 	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(GAME_MODULE_OBJS) $(call engine_module_ldflags,$(TARGET)) $(GAME_LDFLAGS) -o $@
 	$(ors_end)
-	$(if $(_GAME_STATIC_CHECK_TOOL),@python3 "$(_GAME_STATIC_CHECK_TOOL)" --quiet $(if $(filter Windows,$(ENGINE_OS)),$(GAME_MODULE_OBJS),$@))
+	$(if $(_GAME_STATIC_CHECK_TOOL),@python3 "$(_GAME_STATIC_CHECK_TOOL)" --quiet $(if $(filter Windows,$(ENGINE_OS)),$(GAME_MODULE_OBJS),$@) || { rm -f $@; exit 1; })
 	@echo "Compiled: $@"
 
 $(OBJ_DIR)/gamelib/%.o: $(SRC_DIR)/%.cpp
@@ -387,9 +387,10 @@ $(TEST_GAMES): bin/tests/test_game_%$(ENGINE_MODULE_EXT): $(OBJ_DIR)/tests/app/g
 	$(call ors_link,LD)
 	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $< $(call engine_module_ldflags,$(TEST_TARGET)) -o $@
 	$(ors_end)
-	$(if $(filter Linux,$(ENGINE_OS)),@! nm -DC --defined-only $@ | grep -E ' [TDBR] orosmo::' \
-	    || { echo "$@ : le moteur est copié dans la bibliothèque (symboles orosmo:: définis ci-dessus)"; exit 1; })
-	$(if $(_GAME_STATIC_CHECK),@python3 "$(_GAME_STATIC_CHECK)" --quiet $(if $(filter Windows,$(ENGINE_OS)),$<,$@))
+	$(if $(filter Linux,$(ENGINE_OS)),@syms=$$(nm -DC --defined-only $@) || { rm -f $@; exit 1; }; \
+	    ! printf '%s\n' "$$syms" | grep -E ' [TDBR] orosmo::' \
+	    || { echo "$@ : le moteur est copié dans la bibliothèque (symboles orosmo:: définis ci-dessus)"; rm -f $@; exit 1; })
+	$(if $(_GAME_STATIC_CHECK),@python3 "$(_GAME_STATIC_CHECK)" --quiet $(if $(filter Windows,$(ENGINE_OS)),$<,$@) || { rm -f $@; exit 1; })
 
 $(TEST_GAMELIB_OBJS): $(OBJ_DIR)/tests/app/game_module/game_%.o: $(TEST_GAME_DIR)/game.cpp
 	@mkdir -p "$(dir $@)"
@@ -410,8 +411,10 @@ $(TEST_GAME_STATIC): $(TEST_GAME_STATIC_OBJS) $(ENGINE_LIBS) | bin/tests
 	$(call ors_link,LD)
 	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(TEST_GAME_STATIC_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
 	$(ors_end)
-	@! nm -C $@ | grep -E 'orosmo::platform::DynamicLibrary|orosmo::app::GameModule::load\(|DynamicReloader' \
-	    || { echo "$@ : code de rechargement lié dans la version statique (symboles ci-dessus)"; exit 1; }
+	@# Échec de nm (outil absent, binaire illisible) = échec du contrôle ; exécutable refusé = effacé.
+	@syms=$$(nm -C $@) || { echo "$@ : nm a échoué, contrôle GAME-07 impossible"; rm -f $@; exit 1; }; \
+	    ! printf '%s\n' "$$syms" | grep -E 'orosmo::platform::DynamicLibrary|GameModule::load\(|DynamicReloader' \
+	    || { echo "$@ : code de rechargement lié dans la version statique (symboles ci-dessus)"; rm -f $@; exit 1; }
 
 # Les tests incluent aussi les vues générées de la démo (UI/Views/*.gen.h) : elles doivent exister avant leur compilation.
 $(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp | $(TEST_GEN_CPP) $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)

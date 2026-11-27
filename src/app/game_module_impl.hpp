@@ -21,8 +21,6 @@ struct detail::ReloadJournal
     // qu'un changement de disposition migre (un type de l'hôte reste refusé, kAlreadyExists).
     const GameRegistrations *previous = nullptr;
     const std::vector<std::string> *orphans = nullptr;
-    // Copie du monde prise avant la PREMIÈRE migration : remise si l'`init` échoue (état intact, mêmes identifiants).
-    std::optional<scene::World> backup;
     std::vector<scene::ComponentMigration> migrations;
 
     bool ownsComponent(std::string_view name) const;

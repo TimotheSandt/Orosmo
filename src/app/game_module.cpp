@@ -6,6 +6,7 @@
 #include <orosmo/ui/ui.hpp>
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -39,10 +40,8 @@ core::Result<scene::ComponentId> GameContext::registerComponent(scene::Component
     const auto existing = world.componentId(name);
     if (existing && journal_ != nullptr && journal_->ownsComponent(name) && !world.componentDesc(*existing)->sameLayout(desc))
     {
-        // GAME-03 : type d'une version précédente, autre disposition : migration par le moteur (descriptions copiées). Le
-        // monde est copié avant la première migration du passage, pour être remis si cet `init` échoue.
-        if (!journal_->backup)
-            journal_->backup.emplace(world);
+        // GAME-03 : type d'une version précédente, autre disposition : migration par le moteur (descriptions copiées). Si cet
+        // `init` échoue, `switchTo` remet la copie du monde prise avant lui (G319, G321).
         auto migrated = world.migrateComponent(std::move(desc));
         if (!migrated)
             return std::unexpected(std::move(migrated.error()));
@@ -192,8 +191,17 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
     Access::version(context) = version + 1;
     Access::reloading(context) = replacing;
 
+    // `init` peut écrire dans le monde (et tirer des nombres) avant d'échouer : copie de l'état du moteur, remise en cas d'échec,
+    // pour que la version active reprenne inchangée (copie profonde du monde à chaque chargement : G319). Cette copie sert aussi
+    // au retour en arrière des migrations (GAME-03, L6) : pas de seconde copie.
+    const GameTargets &targets = Access::targets(context);
+    scene::World savedWorld = *targets.world;
+    std::optional<core::Random> savedRandom;
+    if (targets.simulation != nullptr)
+        savedRandom = targets.simulation->random();
+
     // GAME-03 : les composants que la nouvelle version enregistre avec une autre disposition sont migrés pendant son `init`
-    // (`GameContext::registerComponent`) ; le journal garde la copie du monde pour le retour en arrière.
+    // (`GameContext::registerComponent`).
     detail::ReloadJournal journal;
     journal.previous = replacing ? &previous : nullptr;
     journal.orphans = &orphans;
@@ -202,15 +210,12 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
     Access::journal(context) = nullptr;
     if (!started)
     {
+        *targets.world = std::move(savedWorld);
+        if (savedRandom)
+            targets.simulation->random() = *savedRandom;
         // Retour à l'ancienne version : ses noms reprennent leur place ; les fonctions de la nouvelle sont détruites ici, avant que
         // l'appelant ne décharge sa bibliothèque.
         detach(Access::targets(context), active);
-        if (journal.backup)
-        {
-            // Migrations annulées : le monde reprend son état d'avant l'`init` (données, identifiants des types).
-            *Access::targets(context).world = std::move(*journal.backup);
-            LOG_WARNING("game module: component migrations undone, world restored");
-        }
         active = std::move(previous);
         attach(Access::targets(context), active);
         Access::recording(context) = replacing ? &active : nullptr;

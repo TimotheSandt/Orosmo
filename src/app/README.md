@@ -52,7 +52,8 @@ auto game = orosmo::app::GameModule::load({.path = exeDir / "game.so", .targets 
 - **Règle 13 (GAME-02)** : la bibliothèque n'a aucun état (ni global modifiable, ni `static` local, ni `thread_local`).
   `tools/check_game_static.py` le vérifie sur le binaire (`nm`) : symboles définis en `.data`/`.bss`/`.tdata`/`.tbss` (ELF),
   `.data`/`.bss`/`.tls` (PE), `__DATA,__data|__bss|__common|__thread_*` (Mach-O) refusés ; constantes et tables en lecture seule
-  (`constexpr`, `.rodata`, `.data.rel.ro`) permises ; liste blanche des symboles du démarrage C/C++ commentée dans le script.
+  (`constexpr`, `.rodata`, `.data.rel.ro`) permises ; liste blanche des symboles du démarrage C/C++ commentée dans le script (symboles de section COFF ignorés). Un binaire refusé
+  est effacé par le Makefile (sinon il resterait « à jour ») ; un échec de `nm` fait échouer le contrôle.
   Lancé par `make check` (auto-test + bibliothèque de test) et après chaque édition de liens de la bibliothèque de test
   (`apps/demo/Makefile`).
 - **Enregistrement par nom** : tout passe par `GameContext` ; le module note ce que chaque version a enregistré. Composants
@@ -63,7 +64,8 @@ auto game = orosmo::app::GameModule::load({.path = exeDir / "game.so", .targets 
   sous un nom unique ; contrôle de `abiVersion` ; retrait des systèmes et actions de l'ancienne version (copies gardées) ;
   `init` de la nouvelle ; puis `onReload`. Succès : les fonctions de l'ancienne version sont détruites, PUIS sa bibliothèque est
   déchargée et sa copie effacée. Échec (fichier illisible, symbole absent, ABI, `init` faux) : les enregistrements de la nouvelle
-  sont détruits, ceux de l'ancienne remis, la nouvelle déchargée ; `failedReloads`, `lastError`, message au journal.
+  sont détruits, ceux de l'ancienne remis, le monde et le générateur de la simulation remis à leur état d'avant l'`init`
+  (copie, G319), la nouvelle déchargée ; `failedReloads`, `lastError`, message au journal.
 - **État** : les composants et leurs données restent dans le monde au rechargement et à l'arrêt (GAME-02). Un type que la
   nouvelle version n'enregistre plus est gardé (`orphanComponents`, avertissement ; décision L6 : gardé par défaut,
   `removeOrphanComponents()` le retire sur demande).
@@ -73,7 +75,7 @@ auto game = orosmo::app::GameModule::load({.path = exeDir / "game.so", .targets 
   Champ ajouté : champs communs copiés, nouveau à sa valeur par défaut (`kCopied`). Champ retiré ou type changé : repli
   sauvegarde/restauration (`kRestored`) : champ retiré ignoré, type changé converti si la valeur JSON se relit, sinon défaut ;
   un avertissement par champ perdu. Compte rendu : `lastMigrations()` et journal. Le type change de génération (anciens
-  identifiants refusés). Avant la première migration d'un passage, le monde est copié ; si l'`init` échoue ensuite, il est remis
+  identifiants refusés). Le monde copié par `switchTo` avant chaque `init` (G319) sert aussi au retour en arrière : si l'`init` échoue après une migration, il est remis
   (données, identifiants, entités) et l'ancienne version reprend avec ses systèmes. Un type de l'hôte n'est jamais migré.
 - **Gestionnaires (GAME-04)** : l'interface appelle les actions par nom (`ActionRegistry::bind`, `.onClick(nom)`) ; celles de
   l'ancienne version sont retirées, celles de la nouvelle ajoutées ; après chaque passage réussi, les noms liés mais absents
