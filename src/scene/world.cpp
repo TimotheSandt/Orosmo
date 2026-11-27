@@ -19,7 +19,7 @@ Result<> checkComponentType(const ComponentDesc &desc, std::size_t size, std::si
     if (desc.size != size || desc.alignment != alignment)
         return core::makeError(ErrorCode::kInvalidArgument,
                                "component " + desc.name + ": the C++ type does not match the registered size or alignment");
-    if (fields != nullptr && *fields != desc.fields)
+    if (fields != nullptr && !sameFieldLayout(*fields, desc.fields))
         return core::makeError(ErrorCode::kInvalidArgument, "component " + desc.name + ": the C++ type does not match the registered fields");
     return {};
 }
@@ -129,12 +129,14 @@ bool World::destroy(Entity entity)
     assertNotIterating();
     if (!alive(entity))
         return false;
-    detach(entity.index);
-    // Descendants en largeur, dans l'ordre des enfants : ordre de libération des indices déterministe.
+    // Allocations d'abord (descendants, place dans la liste libre), modifications ensuite : un échec d'allocation laisse le
+    // monde inchangé. Descendants en largeur, dans l'ordre des enfants : ordre de libération des indices déterministe.
     std::vector<std::uint32_t> doomed{entity.index};
     for (std::size_t i = 0; i < doomed.size(); ++i)
         for (std::uint32_t c = records_[doomed[i]].firstChild; c != kNone; c = records_[c].nextSibling)
             doomed.push_back(c);
+    freeIndices_.reserve(freeIndices_.size() + doomed.size());
+    detach(entity.index);
     for (std::uint32_t index : doomed)
     {
         for (Slot &slot : slots_)
@@ -171,6 +173,7 @@ Result<ComponentId> World::registerComponent(ComponentDesc desc)
         return std::unexpected(ok.error());
     if (auto existing = componentId(desc.name))
     {
+        // Même type : la table ne change pas de forme, permis pendant un parcours.
         ComponentPool &p = slots_[existing->index].pool;
         if (!p.desc().sameLayout(desc))
             return core::makeError(ErrorCode::kAlreadyExists,
@@ -178,6 +181,8 @@ Result<ComponentId> World::registerComponent(ComponentDesc desc)
         p.setDesc(std::move(desc));
         return *existing;
     }
+    if (iterating_ > 0)
+        return core::makeError(ErrorCode::kBusy, "component " + desc.name + ": a new type cannot be registered during an iteration");
     std::uint32_t index = 0;
     while (index < slots_.size() && slots_[index].used)
         ++index;
@@ -191,7 +196,8 @@ Result<ComponentId> World::registerComponent(ComponentDesc desc)
 
 Result<> World::unregisterComponent(std::string_view name)
 {
-    assertNotIterating();
+    if (iterating_ > 0)
+        return core::makeError(ErrorCode::kBusy, "a component type cannot be unregistered during an iteration");
     if (name == kTransformName)
         return core::makeError(ErrorCode::kInvalidArgument, "the engine component Transform cannot be unregistered");
     auto id = componentId(name);
@@ -290,12 +296,11 @@ void World::forEachComponent(Entity entity, const std::function<void(ComponentId
 {
     if (!alive(entity))
         return;
-    ++iterating_;
+    const IterationGuard guard(iterating_);
     for (std::uint32_t i = 0; i < slots_.size(); ++i)
         if (slots_[i].used)
             if (void *data = slots_[i].pool.find(entity.index))
                 fn(ComponentId{i, slots_[i].generation}, data);
-    --iterating_;
 }
 
 void World::forEach(std::span<const ComponentId> ids, const std::function<void(Entity, std::span<void *const>)> &fn)
@@ -315,7 +320,7 @@ void World::forEach(std::span<const ComponentId> ids, const std::function<void(E
         pools.push_back(p);
     }
     std::vector<void *> data(pools.size(), nullptr);
-    ++iterating_;
+    const IterationGuard guard(iterating_);
     const ComponentPool &leader = *pools[lead];
     const std::span<const Entity> entities = leader.entities();
     for (std::size_t i = 0; i < entities.size(); ++i)
@@ -329,7 +334,6 @@ void World::forEach(std::span<const ComponentId> ids, const std::function<void(E
         if (all)
             fn(entities[i], std::span<void *const>(data));
     }
-    --iterating_;
 }
 
 // ── Hiérarchie ────────────────────────────────────────────────────────────────
@@ -364,6 +368,7 @@ Result<> World::setParent(Entity child, Entity parent)
                 return core::makeError(ErrorCode::kInvalidArgument, "setParent: the parent is the child itself or one of its descendants");
     if (records_[child.index].parent == (parent.isNull() ? kNone : parent.index))
         return {};
+    dirty_.reserve(dirty_.size() + 1u); // place pour le marquage avant de toucher aux liens
     detach(child.index);
     if (!parent.isNull())
     {
@@ -413,8 +418,8 @@ void World::markDirty(std::uint32_t index)
     EntityRecord &r = records_[index];
     if (r.dirty)
         return;
+    dirty_.push_back(index); // inscrit avant de marquer : un échec ne laisse pas d'entité sale hors de la file
     r.dirty = true;
-    dirty_.push_back(index);
 }
 
 void World::markTransformDirty(Entity entity)
@@ -459,7 +464,8 @@ void World::recomputeSubtree(std::uint32_t root, const Transform *parentWorld, s
         const auto [index, above] = stack_.back();
         stack_.pop_back();
         EntityRecord &r = records_[index];
-        r.dirty = false;
+        if (index != root)
+            r.dirty = false;
         const Transform *passed = above;
         if (void *data = transforms.find(index))
         {
@@ -472,6 +478,38 @@ void World::recomputeSubtree(std::uint32_t root, const Transform *parentWorld, s
         for (std::uint32_t c = r.lastChild; c != kNone; c = records_[c].prevSibling)
             stack_.emplace_back(c, passed);
     }
+    // Racine propre seulement après le parcours complet : un échec en cours de route la laisse dans la file, tout son
+    // sous-arbre sera repris.
+    records_[root].dirty = false;
+}
+
+bool World::coveredByDirtyAncestor(std::uint32_t index)
+{
+    // Vrai si un ancêtre strict est sale. Résultat mémorisé pour toute la remontée pendant cette passe : chaque chaîne
+    // d'ancêtres propre n'est parcourue qu'une fois, quel que soit le nombre de feuilles sales en dessous.
+    path_.clear();
+    bool covered = false;
+    for (std::uint32_t a = records_[index].parent; a != kNone; a = records_[a].parent)
+    {
+        const EntityRecord &r = records_[a];
+        if (r.dirty)
+        {
+            covered = true;
+            break;
+        }
+        if (r.coverPass == coverPass_)
+        {
+            covered = r.coveredByDirty;
+            break;
+        }
+        path_.push_back(a);
+    }
+    for (std::uint32_t a : path_)
+    {
+        records_[a].coverPass = coverPass_;
+        records_[a].coveredByDirty = covered;
+    }
+    return covered;
 }
 
 std::size_t World::updateTransforms()
@@ -479,17 +517,25 @@ std::size_t World::updateTransforms()
     assertNotIterating();
     std::size_t count = 0;
     ComponentPool &transforms = slots_[transformType_.id.index].pool;
-    // dirty_ peut contenir des entités détruites depuis (r.dirty remis à faux) : ignorées.
-    for (std::size_t i = 0; i < dirty_.size(); ++i)
+    stack_.reserve(16);
+    // Phase 1 : racines à recalculer = entités sales sans ancêtre sale (toute entité sale est dans dirty_). Les drapeaux ne
+    // changent pas pendant cette phase, la mémoire des remontées reste donc exacte.
+    ++coverPass_;
+    if (coverPass_ == 0) // rebouclage : effacer les marques
     {
-        const std::uint32_t index = dirty_[i];
-        if (!records_[index].alive || !records_[index].dirty)
+        for (EntityRecord &r : records_)
+            r.coverPass = 0;
+        coverPass_ = 1;
+    }
+    std::vector<std::uint32_t> roots;
+    for (const std::uint32_t index : dirty_)
+        if (records_[index].alive && records_[index].dirty && !coveredByDirtyAncestor(index))
+            roots.push_back(index);
+    // Phase 2 : sous-arbres disjoints (aucune racine n'est descendante d'une autre).
+    for (const std::uint32_t top : roots)
+    {
+        if (!records_[top].dirty) // doublon de la file déjà traité
             continue;
-        // Plus haut ancêtre sale : son sous-arbre couvre celui-ci. Au-dessus, tout est à jour.
-        std::uint32_t top = index;
-        for (std::uint32_t a = records_[index].parent; a != kNone; a = records_[a].parent)
-            if (records_[a].dirty)
-                top = a;
         const Transform *above = nullptr;
         for (std::uint32_t a = records_[top].parent; a != kNone && above == nullptr; a = records_[a].parent)
             if (const void *data = transforms.find(a))

@@ -375,7 +375,7 @@ actives qu'en debug.
 #ifdef DEBUG
     desc.validation = true;
 #endif
-    if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
+    if (!window.init([&] { (void)rhi::prepareWindowHints(desc); }))
     {
         std::cerr << "Window: no display?\n";
         return EXIT_FAILURE;

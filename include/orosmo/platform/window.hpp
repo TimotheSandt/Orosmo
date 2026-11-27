@@ -8,6 +8,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 
+#include "orosmo/core/error.hpp"
 #include "orosmo/core/fps_counter.hpp"
 
 namespace orosmo::platform
@@ -72,9 +73,20 @@ class Window
     ~Window();
 
     // Crée la fenêtre. `beforeCreate` (facultatif) pose les attributs de contexte du graphique juste avant la création (RHI :
-    // `rhi::prepareWindowHints`) : la fenêtre elle-même ne connaît aucune API graphique.
-    int init(const std::function<void()> &beforeCreate = {});
+    // `rhi::prepareWindowHints`) : la fenêtre elle-même ne connaît aucune API graphique. Erreurs (A75.8) : kInvalidArgument
+    // (largeur ou hauteur ≤ 0, rien n'est ouvert), kAlreadyExists (fenêtre déjà créée, gardée telle quelle), kUnsupported (GLFW
+    // ne démarre pas ou refuse la fenêtre : pas d'affichage, contexte demandé indisponible).
+    core::Result<> init(const std::function<void()> &beforeCreate = {});
+    // A75.16 : lit les événements du système (GLFW) et met à jour les entrées de cette fenêtre (`input().update()`), rien d'autre.
+    // Faux sans fenêtre. Pour une boucle qui gère elle-même cadence et mesures.
+    bool pollEvents();
+    // Une image de la boucle principale : la lecture des événements de `pollEvents`, plus `core::Profiler::Process()` (fin de la
+    // mesure de l'image précédente), le compteur d'images (FPS) et le limiteur de cadence (`setMaxFPS` : peut attendre). Faux
+    // sans fenêtre utilisable : la boucle doit alors s'arrêter (`shouldClose()` est vrai), pas recommencer.
     bool newFrame();
+    // Entrées de cette fenêtre : la même instance que `InputManager::getInstance(getWindow())` (A79 choix 9, A10). Seulement
+    // après un `init` réussi et avant `close`.
+    InputManager &input() const;
     void close();
     // Termine GLFW (à la fin du programme, après la destruction de toutes les fenêtres et du périphérique graphique).
     static void terminate();
