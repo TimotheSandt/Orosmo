@@ -31,7 +31,8 @@ donne la même compilation en événements JSON : voir [Commande orosmo](/refere
 Les sources de `src/game/` sont compilées en une bibliothèque que le programme (build debug ou dev) recharge à chaud.
 Programme lancé, après une modification, `orosmo build --game` (ou `make game`) ne refait qu'elle. Incluez
 `<orosmo/game.hpp>`, qui ne tire ni le rendu ni `glm/glm.hpp`. Si `ccache` est installé, le `Makefile` l'utilise
-(`make CCACHE=` le désactive). Si un en-tête partagé avec `src/main.cpp` change les données d'un composant, reconstruisez tout
+(`make CCACHE=` le désactive). Pour un programme lancé par `make dev`, la commande est
+`make game BUILD_TYPE=dev` (`make game` seul refait la bibliothèque debug, que ce programme ne charge pas). Si un en-tête partagé avec `src/main.cpp` change les données d'un composant, reconstruisez tout
 et relancez le programme. `make release` lie le jeu statiquement.
 
 ### Trouver le moteur

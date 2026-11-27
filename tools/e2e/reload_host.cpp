@@ -44,6 +44,7 @@ int main()
     simulation.step();
     if (!(angleOf(simulation) > before))
         return fail("the first version does not increase the angle");
+    const float kept = angleOf(simulation); // aucun pas jusqu'au rechargement : la valeur ne doit pas changer
     std::cout << "ready" << std::endl;
 
     const auto deadline = std::chrono::steady_clock::now() + 120s;
@@ -55,7 +56,7 @@ int main()
         if (game->version() >= 2)
         {
             before = angleOf(simulation); // l'état (angle) est resté dans le monde
-            if (before == 0.0f)
+            if (before != kept)
                 return fail("component data lost by the reload");
             simulation.step();
             if (!(angleOf(simulation) < before))

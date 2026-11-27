@@ -118,6 +118,7 @@ l'exécutable des tests (`replace`) pour le type changé et l'`init` qui échoue
   `sim/simulation.hpp`, plus lourd), les types mathématiques de `core/math_types.hpp`. `game_context.hpp` n'inclut plus
   `sim/simulation.hpp` ; c'est `game_module.hpp` (côté hôte) qui le fait.
 - **`make game`** (gabarit, `apps/demo/Makefile`) : ne refait que la bibliothèque ; **`orosmo build --game`** l'appelle.
+  Pour un programme `make dev` : `make game BUILD_TYPE=dev`.
   `ccache` est utilisé s'il est dans le `PATH` (`make CCACHE=` pour s'en passer).
 - **Mesure** : `make e2e-init` modifie `src/game/game.cpp` d'un programme lancé (`tools/e2e/reload_host.cpp`,
   `tools/e2e_reload.py`), reconstruit et vérifie le code rechargé en moins de `E2E_RELOAD_MAX` secondes (5 par défaut) ;

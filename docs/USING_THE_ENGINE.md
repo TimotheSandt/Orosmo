@@ -93,7 +93,7 @@ Le `Makefile` trouve le moteur (`ENGINE_DIR`) dans cet ordre : `ENGINE_DIR` donn
 
 `src/game/*.cpp` est compilé en bibliothèque rechargée à chaud (debug). Programme lancé, après une modification :
 `orosmo build --game` (ou `make game`). Seule la bibliothèque est refaite ; `ccache` est utilisé s'il est installé
-(`make CCACHE=` le désactive). Incluez `<orosmo/game.hpp>` : composants, systèmes, actions et types mathématiques, sans le
+(`make CCACHE=` le désactive). Après `make dev` : `make game BUILD_TYPE=dev`. Incluez `<orosmo/game.hpp>` : composants, systèmes, actions et types mathématiques, sans le
 rendu ni `glm` complet. Un en-tête partagé avec `src/main.cpp` (`src/game/spin.hpp`) dont on change les données demande un
 `orosmo build` complet et un redémarrage. `core/reflection.hpp` et `scene/transform.hpp` ne tirent plus que les types de
 `glm` : pour `glm::normalize`, les matrices de projection, etc., incluez `<orosmo/core/math.hpp>` ou `<glm/glm.hpp>`.

@@ -310,7 +310,8 @@ $(TARGET): $(ALL_OBJS) $(ENGINE_LIBS) | $(BIN_DIR) copy_res $(COPY_EXTRA)
 # Bibliothèque de jeu (développement). Sous Windows, elle se lie à la bibliothèque d'import de l'exécutable : elle vient après lui.
 # GAME-06 : `make game` ne reconstruit QUE la bibliothèque. Sous Windows, avec ce but, l'exécutable (peut-être en cours
 # d'exécution, donc verrouillé) n'est pas refait dès que sa bibliothèque d'import existe.
-_GAME_ONLY_LINK = $(and $(filter game,$(MAKECMDGOALS)),$(wildcard $(call engine_host_implib,$(TARGET))))
+# Avec d'autres buts, l'exécutable reste un prérequis : sinon `make -j` lierait les deux en même temps.
+_GAME_ONLY_LINK = $(if $(filter-out game,$(MAKECMDGOALS)),,$(and $(filter game,$(MAKECMDGOALS)),$(wildcard $(call engine_host_implib,$(TARGET)))))
 _GAME_HOST_DEP  = $(if $(filter Windows,$(ENGINE_OS)),$(if $(_GAME_ONLY_LINK),,$(TARGET)))
 .PHONY: game
 game: $(GAME_MODULE)
