@@ -81,7 +81,8 @@ struct SimulationConfig
 void declareSimulationConfig(core::Config &config);
 // kInvalidArgument si une valeur est hors de sa plage ou si la cadence est inconnue ; kParse si un type est faux.
 core::Result<SimulationConfig> readSimulationConfig(const core::Config &config);
-// Durée d'un pas pour une fréquence en Hz, arrondie à la nanoseconde (120 Hz : 8 333 333 ns).
+// Durée d'un pas pour une fréquence en Hz, arrondie à la nanoseconde (120 Hz : 8 333 333 ns) ; 0 si la fréquence n'est pas
+// positive ou si la durée ne tient pas dans `Nanoseconds`.
 core::Nanoseconds stepForRate(double hz) noexcept;
 
 // Transformation monde d'une entité dans un instantané (cache monde de `scene::Transform`).
@@ -102,6 +103,7 @@ struct RenderComponentColumn
 {
     std::string name;
     std::size_t size = 0; // 0 : type inconnu du monde au moment de l'instantané
+    scene::ComponentDesc desc; // description enregistrée (taille, alignement, champs) : contrôle de `read<T>`
     std::vector<std::byte> bytes;
     std::vector<std::uint8_t> present; // 1 si l'entité a le composant
 };
@@ -123,16 +125,35 @@ struct RenderSnapshot
     double alpha(core::Nanoseconds now) const noexcept;
     RenderTransform transformAt(std::size_t index, double alpha) const { return interpolate(previous[index], transforms[index], alpha); }
     std::optional<std::size_t> column(std::string_view name) const noexcept;
-    // Copie la valeur du composant de l'entité `index` dans `out` ; faux si absente, ou si la taille de T diffère.
-    template <typename T> bool read(std::size_t columnIndex, std::size_t index, T &out) const noexcept
+    // Copie la valeur du composant de l'entité `index` dans `out`. Faux si elle est absente, ou si T ne correspond pas au type
+    // enregistré : taille et alignement, et champs (nom, type, décalage) si T est réfléchi, comme `World::componentType<T>`.
+    // Un T non réfléchi n'est contrôlé que par taille et alignement : préférer un type réfléchi (ou `readBytes`).
+    template <typename T>
+        requires scene::ComponentData<T>
+    bool read(std::size_t columnIndex, std::size_t index, T &out) const
     {
-        static_assert(std::is_trivially_copyable_v<T>, "RenderSnapshot::read: T must be trivially copyable");
         if (columnIndex >= components.size() || index >= entities.size())
             return false;
         const RenderComponentColumn &c = components[columnIndex];
-        if (c.size != sizeof(T) || c.present[index] == 0u)
+        if (c.size == 0 || c.present[index] == 0u)
+            return false;
+        std::vector<core::FieldDesc> fields;
+        if constexpr (core::Reflected<T>)
+            fields = core::describeFields<T>();
+        if (!scene::detail::checkComponentType(c.desc, sizeof(T), alignof(T), core::Reflected<T> ? &fields : nullptr))
             return false;
         std::memcpy(&out, c.bytes.data() + index * c.size, sizeof(T));
+        return true;
+    }
+    // Copie les `size` octets du composant (taille enregistrée exigée) ; faux si absent ou si la taille diffère.
+    bool readBytes(std::size_t columnIndex, std::size_t index, void *out, std::size_t size) const noexcept
+    {
+        if (columnIndex >= components.size() || index >= entities.size())
+            return false;
+        const RenderComponentColumn &c = components[columnIndex];
+        if (c.size == 0 || c.size != size || c.present[index] == 0u)
+            return false;
+        std::memcpy(out, c.bytes.data() + index * c.size, size);
         return true;
     }
 };
@@ -140,18 +161,23 @@ struct RenderSnapshot
 class SimulationThread
 {
   public:
-    // Démarre le thread sur `simulation` (qui doit survivre au thread, comme `clock`). Publie tout de suite l'instantané de
-    // l'état présent. kInvalidArgument : `stepsPerFrame` hors de [1, 64], capacité nulle, pas de durée nulle.
+    // Démarre le thread sur `simulation` (qui doit survivre au thread, comme `clock`). Met à jour le cache monde
+    // (`updateTransforms`) et publie tout de suite l'instantané de l'état présent. kInvalidArgument : `stepsPerFrame` hors de
+    // [1, 64], capacité nulle, pas de durée nulle ; kBusy : le système refuse un thread de plus (rester en mono-thread).
     static core::Result<std::unique_ptr<SimulationThread>> start(Simulation &simulation, const core::IClock &clock,
                                                                   ThreadSettings settings = {});
     ~SimulationThread();
     SimulationThread(const SimulationThread &) = delete;
     SimulationThread &operator=(const SimulationThread &) = delete;
 
-    // Arrête et rejoint le thread (idempotent). Les entrées encore en file sont remises à la simulation (`pendingInputs`) ;
+    // Arrête et rejoint le thread (idempotent). En kStepsPerFrame, le lot accepté par le dernier `frame()` est joué avant
+    // l'arrêt (aucun pas demandé n'est perdu). Les entrées encore en file sont remises à la simulation (`pendingInputs`) ;
     // les événements non lus restent lisibles par `popEvent`. Le propriétaire peut ensuite reprendre la simulation.
     void stop();
     bool running() const noexcept { return thread_.joinable(); }
+    // Erreur du thread : un système a levé une exception (le thread s'est arrêté, `frame` et `sync` ne bloquent plus ; le pas
+    // interrompu n'est pas rejoué). Sans erreur : succès.
+    core::Result<> status() const;
 
     // ── Côté rendu ────────────────────────────────────────────────────────────
     // kStepsPerFrame : attend la fin des pas demandés à l'image précédente, puis demande `stepsPerFrame` pas (sans attendre
@@ -161,7 +187,7 @@ class SimulationThread
     // horloge relue et pas dus joués (kFixedRate), instantané publié. Tests et mode sans fenêtre.
     void sync();
     // Entrée datée par pas (voir `Simulation::queueInput`), livrée au thread avant son prochain pas. Faux si la file est
-    // pleine (rien n'est ajouté). Une entrée d'un pas déjà joué quand le thread la reçoit est refusée et comptée
+    // pleine ou le thread arrêté (rien n'est ajouté). Une entrée d'un pas déjà joué quand le thread la reçoit est refusée et comptée
     // (`rejectedInputs`, avertissement au journal) : dater au moins à `stepIndex() + latence`.
     bool pushInput(Input input);
     // Dernier instantané publié, inchangé jusqu'au prochain `acquire`.
@@ -190,6 +216,8 @@ class SimulationThread
 
     SimulationThread(Simulation &simulation, const core::IClock &clock, ThreadSettings settings);
     void run();
+    void loop();
+    void fail(std::string message);
     void drainInputs();
     void playSteps(std::uint64_t count);
     void playStep();
@@ -215,7 +243,8 @@ class SimulationThread
     core::Nanoseconds lastSample_{0};
 
     // Commande (sous `mutex_`).
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
+    std::optional<core::Error> failure_;
     std::condition_variable work_; // vers le thread de simulation
     std::condition_variable done_; // vers le rendu
     std::uint64_t requested_ = 0;  // kStepsPerFrame : pas demandés depuis le départ

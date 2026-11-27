@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -28,6 +29,15 @@ struct Tint
 {
     float r = 0.f, g = 0.f, b = 0.f, a = 1.f;
 };
+struct NotTint // même taille et alignement que Tint, autres champs
+{
+    std::uint32_t id = 0;
+    float x = 0.f, y = 0.f, z = 0.f;
+};
+struct Thrower
+{
+    std::int64_t armed = 0;
+};
 } // namespace
 
 template <> struct orosmo::core::Reflect<Mover>
@@ -35,6 +45,13 @@ template <> struct orosmo::core::Reflect<Mover>
     static constexpr auto fields()
     {
         return std::make_tuple(field("vx", &Mover::vx), field("vy", &Mover::vy), field("bounces", &Mover::bounces));
+    }
+};
+template <> struct orosmo::core::Reflect<NotTint>
+{
+    static constexpr auto fields()
+    {
+        return std::make_tuple(field("id", &NotTint::id), field("x", &NotTint::x), field("y", &NotTint::y), field("z", &NotTint::z));
     }
 };
 template <> struct orosmo::core::Reflect<Tint>
@@ -190,6 +207,13 @@ TEST_SUITE("sim/thread")
         CHECK(stepForRate(20.0) == 50ms);
         CHECK(stepForRate(50.0) == 20ms);
         CHECK(stepForRate(120.0) == 8'333'333ns);
+        // Durée qui ne tient pas dans Nanoseconds (1e21 ns) : 0, et refusée par la configuration (pas de conversion indéfinie).
+        CHECK(stepForRate(1e-12) == 0ns);
+        CHECK(stepForRate(0.0) == 0ns);
+        core::Config tiny;
+        declareSimulationConfig(tiny);
+        tiny.set("sim.rateHz", 1e-12);
+        CHECK((readSimulationConfig(tiny).error().code == core::ErrorCode::kInvalidArgument));
         CHECK(parseCadence(cadenceName(Cadence::kStepsPerFrame)) == Cadence::kStepsPerFrame);
         CHECK(parseCadence(cadenceName(Cadence::kFixedRate)) == Cadence::kFixedRate);
     }
@@ -217,6 +241,11 @@ TEST_SUITE("sim/thread")
         CHECK(half.linear[0][1] == doctest::Approx(s));
         CHECK(half.linear[1][0] == doctest::Approx(-s));
         CHECK(half.linear[2][2] == doctest::Approx(1.0));
+
+        // Cisaillement (parent à échelle non uniforme) : gardé tel quel, pas transformé en rotation et échelle.
+        const RenderTransform shear{.position = {}, .linear = core::DMat3(1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0)};
+        CHECK(interpolate(shear, shear, 0.5) == shear);
+        CHECK(interpolate(shear, shear, 0.25) == shear);
 
         RenderSnapshot snapshot;
         CHECK(snapshot.alpha(123ms) == 1.0); // non daté : état courant
@@ -398,7 +427,7 @@ TEST_SUITE("sim/thread")
         REQUIRE(sim.world().setTransform(a, {.position = {1.0, 0.0, 0.0}}));
         REQUIRE(sim.world().setTransform(b, {.position = {0.0, 2.0, 0.0}, .scale = {3.0, 3.0, 3.0}}));
         sim.world().add(a, tint, Tint{1.f, 0.5f, 0.25f, 1.f});
-        sim.world().updateTransforms();
+        // Pas d'updateTransforms ici : start() met le cache monde à jour avant le premier instantané.
         REQUIRE(sim.addSystem({"slide", Phase::kUpdate, 0, [](StepContext &ctx) {
                                    ctx.world.view(ctx.world.transformType()).each([&](scene::Entity e, scene::Transform &t) {
                                        t.position.x += 1.0;
@@ -416,6 +445,8 @@ TEST_SUITE("sim/thread")
         CHECK(initial.step == 0);
         REQUIRE(initial.entities.size() == 2);
         CHECK(initial.previous == initial.transforms);
+        CHECK(initial.transforms[0].position.x == 1.0);
+        CHECK(initial.transforms[1].position.y == 2.0);
 
         REQUIRE((*thread)->pushInput({.step = 1, .name = "spawn", .data = {}}));
         (*thread)->frame();
@@ -438,8 +469,13 @@ TEST_SUITE("sim/thread")
         REQUIRE(snapshot.read(*tintColumn, 0, value));
         CHECK(value.g == 0.5f);
         CHECK_FALSE(snapshot.read(*tintColumn, 1, value)); // b n'a pas de Tint
-        double wrongSize = 0.0;
-        CHECK_FALSE(snapshot.read(*tintColumn, 0, wrongSize));
+        NotTint other; // même taille et alignement, autres champs : refusé (pas de lecture d'un type incompatible)
+        static_assert(sizeof(NotTint) == sizeof(Tint) && alignof(NotTint) == alignof(Tint));
+        CHECK_FALSE(snapshot.read(*tintColumn, 0, other));
+        Tint bytes;
+        CHECK(snapshot.readBytes(*tintColumn, 0, &bytes, sizeof bytes));
+        CHECK(bytes.b == 0.25f);
+        CHECK_FALSE(snapshot.readBytes(*tintColumn, 0, &bytes, sizeof bytes - 1));
         auto missing = snapshot.column("Missing");
         REQUIRE(missing);
         CHECK(snapshot.components[*missing].size == 0);
@@ -496,16 +532,90 @@ TEST_SUITE("sim/thread")
             (*thread)->sync();
             drainEvents(**thread, events); // au plus 4 par tour : le reste attend, en ordre
         }
-        for (int i = 0; i < 100; ++i) // encore quelques tours pour vider l'arriéré
-            (*thread)->sync(), drainEvents(**thread, events);
-        (*thread)->stop();
-        drainEvents(**thread, events);
+        // Plus aucun pas : chaque sync() doit encore passer l'arriéré dans la file (thread en marche, rien après stop).
+        for (int i = 0; i < 100 && events.size() < 400; ++i)
+        {
+            (*thread)->sync();
+            drainEvents(**thread, events);
+        }
         REQUIRE(events.size() == 400);
         for (std::size_t i = 0; i < events.size(); ++i)
             CHECK(events[i].data.get<std::uint64_t>() == i);
+        (*thread)->stop();
+        CHECK_FALSE((*thread)->popEvent());
     }
 
-    // Test concurrent : la simulation tourne à 1000 Hz (horloge réelle) ou en N pas par image pendant que ce thread joue le
+    TEST_CASE("SimulationThread: after stop the events still in the backlog are read, inputs are refused")
+    {
+        Simulation sim({.step = 1ms, .seed = 9});
+        REQUIRE(sim.addSystem({"burst", Phase::kUpdate, 0, [](StepContext &ctx) {
+                                   for (int i = 0; i < 5; ++i)
+                                       ctx.emit("e", static_cast<std::int64_t>(ctx.step * 5 + static_cast<std::uint64_t>(i)));
+                               }}));
+        core::ManualClock clock;
+        auto thread = SimulationThread::start(sim, clock, {.cadence = Cadence::kStepsPerFrame, .stepsPerFrame = 8, .eventCapacity = 4});
+        REQUIRE(thread);
+        (*thread)->frame();
+        (*thread)->stop(); // le lot demandé est joué avant l'arrêt : 8 pas, 40 événements dont 36 en arriéré
+        CHECK(sim.stepIndex() == 8);
+        std::vector<Event> events;
+        drainEvents(**thread, events);
+        REQUIRE(events.size() == 40);
+        for (std::size_t i = 0; i < events.size(); ++i)
+            CHECK(events[i].data.get<std::uint64_t>() == i);
+        CHECK_FALSE((*thread)->pushInput({.step = 100, .name = "late", .data = {}}));
+        (*thread)->stop();
+        CHECK(sim.pendingInputs().empty());
+    }
+
+    TEST_CASE("SimulationThread: stop() plays the batch accepted by frame() first (N steps per frame)")
+    {
+        for (int perFrame : {1, 4, 64})
+        {
+            CAPTURE(perFrame);
+            Simulation sim({.step = 1ms, .seed = 2});
+            setupMovers(sim, 3);
+            core::ManualClock clock;
+            auto thread = SimulationThread::start(sim, clock, {.cadence = Cadence::kStepsPerFrame, .stepsPerFrame = perFrame});
+            REQUIRE(thread);
+            (*thread)->frame();
+            (*thread)->frame(); // attend le premier lot, accepte le second
+            (*thread)->stop();
+            CHECK(sim.stepIndex() == static_cast<std::uint64_t>(2 * perFrame));
+        }
+        // Sans demande en attente : l'arrêt ne joue aucun pas.
+        Simulation idle({.step = 1ms, .seed = 2});
+        core::ManualClock clock;
+        auto thread = SimulationThread::start(idle, clock, {.cadence = Cadence::kStepsPerFrame, .stepsPerFrame = 4});
+        REQUIRE(thread);
+        (*thread)->stop();
+        CHECK(idle.stepIndex() == 0);
+    }
+
+    TEST_CASE("SimulationThread: a system that throws stops the thread with an error instead of terminating")
+    {
+        Simulation sim({.step = 1ms, .seed = 2});
+        REQUIRE(sim.addSystem({"explode", Phase::kUpdate, 0, [](StepContext &ctx) {
+                                   if (ctx.step == 2)
+                                       throw std::runtime_error("boom");
+                               }}));
+        core::ManualClock clock;
+        auto thread = SimulationThread::start(sim, clock, {.cadence = Cadence::kStepsPerFrame, .stepsPerFrame = 4});
+        REQUIRE(thread);
+        CHECK((*thread)->status());
+        (*thread)->frame();
+        (*thread)->sync();  // ne bloque pas : le thread s'est arrêté
+        (*thread)->frame(); // non plus
+        auto status = (*thread)->status();
+        REQUIRE_FALSE(status);
+        CHECK(status.error().message.find("boom") != std::string::npos);
+        (*thread)->stop();
+        CHECK_FALSE((*thread)->running());
+        CHECK(sim.stepIndex() == 2); // le pas 2 a levé : non compté, non rejoué
+        CHECK_THROWS_AS(sim.step(), std::runtime_error); // le propriétaire a repris la simulation : même pas, même erreur
+    }
+
+    // Test concurrent : la simulation tourne à 1000 Hz (ManualClock avancée par ce thread) ou en N pas par image pendant que ce thread joue le
     // rôle du rendu (lit les instantanés, vide les événements, pousse des entrées) ; aucun GPU (Mesa sous TSan donnerait des
     // faux positifs). Un instantané déchiré, un événement perdu ou une course (TSan) font échouer le test.
     TEST_CASE("SimulationThread: concurrent simulation and snapshot reader (TSan)")
@@ -531,7 +641,7 @@ TEST_SUITE("sim/thread")
                                        });
                                        ctx.emit("tick", ctx.step);
                                    }}));
-            core::SteadyClock clock;
+            core::ManualClock clock; // horloge pilotée par ce thread (« rendu ») : test sans horloge murale
             auto started = SimulationThread::start(sim, clock, {.cadence = cadence, .stepsPerFrame = 3, .inputCapacity = 64, .eventCapacity = 256});
             REQUIRE(started);
             SimulationThread &thread = **started;
@@ -541,10 +651,14 @@ TEST_SUITE("sim/thread")
             std::uint64_t pushed = 0;
             bool torn = false;
             bool lostEvent = false;
-            const auto deadline = std::chrono::steady_clock::now() + 20s;
-            while (thread.stepIndex() < 400 && std::chrono::steady_clock::now() < deadline)
+            // Sans sync() avant chaque lecture : le thread publie pendant que ce thread lit. Un sync() tous les 64 tours garantit
+            // la progression (fin du test) même si le thread de simulation manque de temps processeur (TSan).
+            for (std::uint64_t turn = 0; thread.stepIndex() < 400; ++turn)
             {
+                clock.advance(1ms);
                 thread.frame();
+                if (turn % 64 == 63)
+                    thread.sync();
                 const RenderSnapshot &snapshot = thread.acquire();
                 if (snapshot.step < lastSeen || snapshot.entities.size() != kEntities)
                     torn = true;

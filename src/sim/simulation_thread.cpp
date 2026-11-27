@@ -7,6 +7,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <exception>
+#include <limits>
+#include <system_error>
 #include <utility>
 
 namespace orosmo::sim
@@ -34,8 +37,12 @@ Nanoseconds stepForRate(double hz) noexcept
 {
     if (!(hz > 0.0))
         return Nanoseconds{0};
-    // Arrondi au plus proche sans fonction de la bibliothèque C (règle 9, `make check`) : + 0,5 puis troncature.
-    return Nanoseconds(static_cast<Nanoseconds::rep>(1.0e9 / hz + 0.5));
+    // Arrondi au plus proche sans fonction de la bibliothèque C (règle 9, `make check`) : + 0,5 puis troncature. Une durée qui
+    // ne tient pas dans le compteur (fréquence infime) rend 0 au lieu d'une conversion indéfinie.
+    const double ns = 1.0e9 / hz + 0.5;
+    if (!(ns < static_cast<double>(std::numeric_limits<Nanoseconds::rep>::max())))
+        return Nanoseconds{0};
+    return Nanoseconds(static_cast<Nanoseconds::rep>(ns));
 }
 
 void declareSimulationConfig(core::Config &config)
@@ -70,6 +77,8 @@ Result<SimulationConfig> readSimulationConfig(const core::Config &config)
     SimulationConfig out;
     out.threaded = *threaded;
     out.step = stepForRate(*rate);
+    if (out.step.count() <= 0)
+        return core::makeError(ErrorCode::kInvalidArgument, "sim.rateHz: step duration out of range");
     out.thread.cadence = *parsed;
     out.thread.stepsPerFrame = *perFrame;
     return out;
@@ -96,6 +105,11 @@ bool decompose(const core::DMat3 &linear, core::DVec3 &scale, core::DQuat &rotat
     if (glm::determinant(linear) <= 0.0)
         return false;
     const core::DMat3 pure(linear[0] / scale[0], linear[1] / scale[1], linear[2] / scale[2]);
+    // Cisaillement (parent à échelle non uniforme, A79 L2) : colonnes non orthogonales, que quaternion et échelles ne rendent pas.
+    constexpr double kOrthogonal = 1e-9;
+    if (glm::abs(glm::dot(pure[0], pure[1])) > kOrthogonal || glm::abs(glm::dot(pure[0], pure[2])) > kOrthogonal ||
+        glm::abs(glm::dot(pure[1], pure[2])) > kOrthogonal)
+        return false;
     rotation = glm::quat_cast(pure);
     return true;
 }
@@ -156,13 +170,22 @@ Result<std::unique_ptr<SimulationThread>> SimulationThread::start(Simulation &si
     if (simulation.settings().step.count() <= 0)
         return core::makeError(ErrorCode::kInvalidArgument, "SimulationThread: the simulation step must be positive");
     std::unique_ptr<SimulationThread> thread(new SimulationThread(simulation, clock, std::move(settings)));
+    // Cache monde à jour (un `setTransform` du propriétaire n'est appliqué qu'au prochain `updateTransforms`).
+    simulation.world().updateTransforms();
     // Premier instantané et départ de l'horloge sur ce thread, avant celui de simulation (sa création synchronise).
     thread->captureState(thread->currentState_);
     thread->previousState_ = thread->currentState_;
     thread->lastSample_ = clock.now();
     thread->publish(thread->lastSample_);
     thread->stepIndex_.store(simulation.stepIndex(), std::memory_order_release);
-    thread->thread_ = std::thread([raw = thread.get()] { raw->run(); });
+    try
+    {
+        thread->thread_ = std::thread([raw = thread.get()] { raw->run(); });
+    }
+    catch (const std::system_error &e) // plus de thread disponible : l'appelant reste en mono-thread
+    {
+        return core::makeError(ErrorCode::kBusy, std::string("SimulationThread: cannot create the thread: ") + e.what());
+    }
     return thread;
 }
 
@@ -216,7 +239,20 @@ void SimulationThread::sync()
     done_.wait(lock, [&] { return syncDone_ >= ticket || exited_; });
 }
 
-bool SimulationThread::pushInput(Input input) { return inputs_.tryPush(std::move(input)); }
+bool SimulationThread::pushInput(Input input)
+{
+    if (!thread_.joinable()) // arrêté : aucun thread ne la livrerait
+        return false;
+    return inputs_.tryPush(std::move(input));
+}
+
+core::Result<> SimulationThread::status() const
+{
+    std::lock_guard lock(mutex_);
+    if (failure_)
+        return std::unexpected(*failure_);
+    return {};
+}
 
 std::optional<Event> SimulationThread::popEvent()
 {
@@ -333,6 +369,7 @@ void SimulationThread::publish(Nanoseconds time)
         RenderComponentColumn &column = s.components[c];
         column.name = settings_.renderComponents[c];
         column.size = 0;
+        column.desc = {};
         column.present.assign(current.entities.size(), 0u);
         column.bytes.clear();
         auto id = world.componentId(column.name);
@@ -340,6 +377,11 @@ void SimulationThread::publish(Nanoseconds time)
         if (desc == nullptr)
             continue;
         column.size = desc->size;
+        column.desc.name = desc->name;
+        column.desc.size = desc->size;
+        column.desc.alignment = desc->alignment;
+        column.desc.version = desc->version;
+        column.desc.fields = desc->fields;
         column.bytes.assign(current.entities.size() * column.size, std::byte{0});
         for (std::size_t i = 0; i < current.entities.size(); ++i)
             if (const void *data = std::as_const(world).get(current.entities[i], *id))
@@ -352,6 +394,36 @@ void SimulationThread::publish(Nanoseconds time)
 }
 
 void SimulationThread::run()
+{
+    // Un système qui lève ne termine pas le processus : l'erreur est gardée pour `status()`, les attentes sont réveillées et
+    // `stop()` rejoint le thread. Le pas interrompu n'est pas rejoué (le monde a pu changer).
+    try
+    {
+        loop();
+    }
+    catch (const std::exception &e)
+    {
+        fail(std::string("SimulationThread: a system threw: ") + e.what());
+    }
+    catch (...)
+    {
+        fail("SimulationThread: a system threw an unknown exception");
+    }
+    {
+        std::lock_guard lock(mutex_);
+        exited_ = true;
+    }
+    done_.notify_all();
+}
+
+void SimulationThread::fail(std::string message)
+{
+    LOG(::orosmo::core::L_ERROR, message);
+    std::lock_guard lock(mutex_);
+    failure_ = core::makeError(ErrorCode::kUnknown, std::move(message)).error();
+}
+
+void SimulationThread::loop()
 {
     const Nanoseconds step = simulation_.settings().step;
     Nanoseconds wait = step;
@@ -367,8 +439,8 @@ void SimulationThread::run()
                 work_.wait(lock, ready);
             else
                 work_.wait_for(lock, wait, ready);
-            if (stop_)
-                break;
+            if (stop_ && !(perFrame_ && requested_ > completed))
+                break; // un lot accepté par frame() est joué avant l'arrêt
             wake_ = false;
             target = requested_;
             ticket = syncRequested_;
@@ -395,8 +467,11 @@ void SimulationThread::run()
             const auto elapsed = static_cast<Nanoseconds::rep>(stepper_.alpha() * static_cast<double>(step.count()) + 0.5);
             if (count > 0)
                 publish(now - Nanoseconds(elapsed));
-            wait = std::clamp(step - Nanoseconds(elapsed), Nanoseconds{0}, step);
+            // Prochain pas dû à `now + step - elapsed` : le temps passé à jouer et publier est retranché de l'attente.
+            const Nanoseconds spent = clock_.now() - now;
+            wait = std::clamp(step - Nanoseconds(elapsed) - spent, Nanoseconds{0}, step);
         }
+        flushEvents(); // l'arriéré passe dans la file même sans nouveau pas (rendu qui a vidé la file puis sync())
 
         {
             std::lock_guard lock(mutex_);
@@ -405,11 +480,6 @@ void SimulationThread::run()
         }
         done_.notify_all();
     }
-    {
-        std::lock_guard lock(mutex_);
-        exited_ = true;
-    }
-    done_.notify_all();
 }
 
 } // namespace orosmo::sim
