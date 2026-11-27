@@ -98,12 +98,12 @@ TEST_SUITE("core/reflection")
         CHECK(d[0].fields.empty()); // un champ simple n'a pas de sous-champ
     }
 
-    TEST_CASE("offsets of a type without default constructor; descriptions compare by value")
+    TEST_CASE("a type without default constructor has unknown offsets (no member address taken on an unbuilt object)")
     {
         const auto d = describeFields<NoDefault>();
         REQUIRE(d.size() == 2u);
-        CHECK(d[0].offset == 0u);
-        CHECK(d[1].offset >= sizeof(int));
+        CHECK(d[0].offset == FieldDesc::kUnknownOffset);
+        CHECK(d[1].offset == FieldDesc::kUnknownOffset);
         CHECK(d[1].size == sizeof(std::string));
         CHECK(describeFields<Outer>() == describeFields<Outer>());
         auto changed = describeFields<Outer>();

@@ -36,12 +36,16 @@ namespace orosmo::scene
 
 class World;
 
-// Parcours typé de toutes les entités qui ont les composants T... (voir `World::view`).
-template <typename... T> class View
+// Parcours typé de toutes les entités qui ont les composants T... (voir `World::view`). La vue garde les identifiants des
+// types, pas leurs stockages : elle reste utilisable après l'enregistrement d'autres types, et devient invalide (sans
+// danger) si l'un de ses types est retiré. Elle ne doit pas survivre à son `World`.
+template <typename... T>
+    requires(sizeof...(T) > 0)
+class View
 {
   public:
     // Faux si l'un des types n'est pas (ou plus) enregistré : `each` ne fait alors rien.
-    bool valid() const noexcept { return world_ != nullptr; }
+    bool valid() const noexcept;
 
     // fn(Entity, T &...) pour chaque entité qui a tous les composants, dans l'ordre dense du plus petit stockage.
     template <typename Fn> void each(Fn &&fn) const;
@@ -49,10 +53,10 @@ template <typename... T> class View
 
   private:
     friend class World;
-    View(World *world, std::array<ComponentPool *, sizeof...(T)> pools) : world_(world), pools_(pools) {}
+    View(World *world, std::array<ComponentId, sizeof...(T)> ids) : world_(world), ids_(ids) {}
 
     World *world_ = nullptr;
-    std::array<ComponentPool *, sizeof...(T)> pools_{};
+    std::array<ComponentId, sizeof...(T)> ids_{};
 };
 
 class World
@@ -83,6 +87,8 @@ class World
     template <core::Reflected T>
         requires ComponentData<T>
     core::Result<ComponentType<T>> registerComponent(std::string name);
+    // Pendant un parcours (`each`, `forEach`, `forEachComponent`), enregistrer un NOUVEAU type ou en retirer un est refusé
+    // (kBusy) : la table des types ne change pas sous un parcours.
     // Retire le type et ses données de toutes les entités ; ses identifiants deviennent invalides. « Transform » est refusé.
     core::Result<> unregisterComponent(std::string_view name);
 
@@ -119,7 +125,9 @@ class World
     template <typename T> const T *get(Entity entity, ComponentType<T> type) const noexcept;
     template <typename T> bool remove(Entity entity, ComponentType<T> type) { return remove(entity, type.id); }
     template <typename T> bool has(Entity entity, ComponentType<T> type) const noexcept { return has(entity, type.id); }
-    template <typename... T> View<T...> view(ComponentType<T>... types);
+    template <typename... T>
+        requires(sizeof...(T) > 0)
+    View<T...> view(ComponentType<T>... types);
 
     // ── Hiérarchie ────────────────────────────────────────────────────────────
     // Rattache `child` à `parent` (en dernier enfant), ou le détache si `parent` est nul. Refuse une entité morte
@@ -144,7 +152,19 @@ class World
     std::size_t dirtyTransformCount() const noexcept { return dirty_.size(); }
 
   private:
-    template <typename... T> friend class View;
+    template <typename... T>
+        requires(sizeof...(T) > 0)
+    friend class View;
+
+    // Compte les parcours en cours, y compris quand un rappel sort par une exception.
+    struct IterationGuard
+    {
+        explicit IterationGuard(int &counter) noexcept : counter_(counter) { ++counter_; }
+        ~IterationGuard() { --counter_; }
+        IterationGuard(const IterationGuard &) = delete;
+        IterationGuard &operator=(const IterationGuard &) = delete;
+        int &counter_;
+    };
 
     static constexpr std::uint32_t kNone = 0xFFFFFFFFu;
 
@@ -158,6 +178,9 @@ class World
         std::uint32_t lastChild = kNone;
         std::uint32_t nextSibling = kNone;
         std::uint32_t prevSibling = kNone;
+        // updateTransforms : passe où `coveredByDirty` a été calculé (vrai si un ancêtre strict est sale).
+        std::uint32_t coverPass = 0;
+        bool coveredByDirty = false;
     };
 
     struct Slot
@@ -173,6 +196,7 @@ class World
     void detach(std::uint32_t index) noexcept;
     void markDirty(std::uint32_t index);
     void recomputeSubtree(std::uint32_t root, const Transform *parentWorld, std::size_t &count);
+    bool coveredByDirtyAncestor(std::uint32_t index);
     void assertNotIterating() const noexcept;
 
     std::vector<EntityRecord> records_;
@@ -182,6 +206,8 @@ class World
     ComponentType<Transform> transformType_;
     std::vector<std::uint32_t> dirty_;
     std::vector<std::pair<std::uint32_t, const Transform *>> stack_; // parcours de updateTransforms, réutilisé
+    std::vector<std::uint32_t> path_;                                 // remontée des ancêtres de updateTransforms, réutilisée
+    std::uint32_t coverPass_ = 0;
     int iterating_ = 0;
 };
 
@@ -245,31 +271,48 @@ template <typename T> const T *World::get(Entity entity, ComponentType<T> type) 
     return p ? detail::componentCast<T>(p) : nullptr;
 }
 
-template <typename... T> View<T...> World::view(ComponentType<T>... types)
+template <typename... T>
+    requires(sizeof...(T) > 0)
+View<T...> World::view(ComponentType<T>... types)
 {
-    std::array<ComponentPool *, sizeof...(T)> pools{pool(types.id)...};
-    for (ComponentPool *p : pools)
-        if (p == nullptr)
-            return View<T...>(nullptr, {});
-    return View<T...>(this, pools);
+    return View<T...>(this, std::array<ComponentId, sizeof...(T)>{types.id...});
 }
 
-template <typename... T> template <typename Fn> void View<T...>::each(Fn &&fn) const
+template <typename... T>
+    requires(sizeof...(T) > 0)
+bool View<T...>::valid() const noexcept
 {
     if (world_ == nullptr)
+        return false;
+    for (const ComponentId id : ids_)
+        if (world_->pool(id) == nullptr)
+            return false;
+    return true;
+}
+
+template <typename... T>
+    requires(sizeof...(T) > 0)
+template <typename Fn>
+void View<T...>::each(Fn &&fn) const
+{
+    if (!valid())
         return;
+    // Stockages résolus à chaque parcours ; la table des types ne change pas pendant le parcours (kBusy).
+    std::array<ComponentPool *, sizeof...(T)> pools{};
+    for (std::size_t k = 0; k < pools.size(); ++k)
+        pools[k] = world_->pool(ids_[k]);
     std::size_t lead = 0;
-    for (std::size_t k = 1; k < pools_.size(); ++k)
-        if (pools_[k]->size() < pools_[lead]->size())
+    for (std::size_t k = 1; k < pools.size(); ++k)
+        if (pools[k]->size() < pools[lead]->size())
             lead = k;
-    ComponentPool &leader = *pools_[lead];
-    ++world_->iterating_;
+    ComponentPool &leader = *pools[lead];
+    const World::IterationGuard guard(world_->iterating_);
     const std::span<const Entity> entities = leader.entities();
     [&]<std::size_t... I>(std::index_sequence<I...>) {
         for (std::size_t i = 0; i < entities.size(); ++i)
         {
             const Entity e = entities[i];
-            std::array<void *, sizeof...(T)> data{(I == lead ? leader.at(i) : pools_[I]->find(e.index))...};
+            std::array<void *, sizeof...(T)> data{(I == lead ? leader.at(i) : pools[I]->find(e.index))...};
             bool all = true;
             for (void *d : data)
                 all = all && d != nullptr;
@@ -277,10 +320,11 @@ template <typename... T> template <typename Fn> void View<T...>::each(Fn &&fn) c
                 fn(e, *detail::componentCast<T>(data[I])...);
         }
     }(std::index_sequence_for<T...>{});
-    --world_->iterating_;
 }
 
-template <typename... T> std::size_t View<T...>::count() const
+template <typename... T>
+    requires(sizeof...(T) > 0)
+std::size_t View<T...>::count() const
 {
     std::size_t n = 0;
     each([&n](Entity, T &...) { ++n; });

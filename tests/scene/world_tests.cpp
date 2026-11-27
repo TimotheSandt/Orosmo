@@ -3,11 +3,12 @@
 
 #include <orosmo/scene/world.hpp>
 
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <span>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,15 @@ struct alignas(64) Wide
 struct Tag
 {
 };
+
+struct NoDefaultData
+{
+    explicit NoDefaultData(int v) : value(v) {}
+    int value;
+};
+
+template <typename W>
+concept CanViewNothing = requires(W &w) { w.view(); };
 } // namespace
 
 template <> struct orosmo::core::Reflect<Position>
@@ -49,6 +59,10 @@ template <> struct orosmo::core::Reflect<Velocity>
 template <> struct orosmo::core::Reflect<Wide>
 {
     static constexpr auto fields() { return std::make_tuple(field("a", &Wide::a)); }
+};
+template <> struct orosmo::core::Reflect<NoDefaultData>
+{
+    static constexpr auto fields() { return std::make_tuple(field("value", &NoDefaultData::value)); }
 };
 template <> struct orosmo::core::Reflect<Tag>
 {
@@ -291,7 +305,7 @@ TEST_SUITE("scene/world")
         CHECK(moved.get(e, *pos)->value.z == 3.f);
     }
 
-    TEST_CASE("World: iterating 100 000 entities (time noted in src/scene/README.md)")
+    TEST_CASE("World: iterating 100 000 entities (time measured by apps/demo/benchmark, scene-view)")
     {
         constexpr int kCount = 100000;
         World world;
@@ -307,24 +321,125 @@ TEST_SUITE("scene/world")
                 world.add(e, *vel);
         }
         CHECK(world.entityCount() == static_cast<std::size_t>(kCount));
-        const auto t0 = std::chrono::steady_clock::now();
         std::size_t n = 0;
         world.view(*pos).each([&](Entity, Position &p) {
             p.value.x += 1.f;
             ++n;
         });
-        const auto t1 = std::chrono::steady_clock::now();
         std::size_t moved = 0;
         world.view(*pos, *vel).each([&](Entity, Position &p, const Velocity &v) {
             p.value += v.value * 0.5f;
             ++moved;
         });
-        const auto t2 = std::chrono::steady_clock::now();
         CHECK(n == static_cast<std::size_t>(kCount));
         CHECK(moved == static_cast<std::size_t>(kCount / 2));
         CHECK(world.get(Entity{0, 0}, *pos)->value.x == 1.5f);
         CHECK(world.get(Entity{1, 0}, *pos)->value.x == 1.f);
-        const auto us = [](auto d) { return std::chrono::duration_cast<std::chrono::microseconds>(d).count(); };
-        MESSAGE("100000 entities: view<Position> " << us(t1 - t0) << " us, view<Position, Velocity> (50000) " << us(t2 - t1) << " us");
+    }
+
+    TEST_CASE("World: adding a component whose value lies in the same full storage (regression: copy before growing)")
+    {
+        World world;
+        auto pos = world.registerComponent<Position>("Position");
+        REQUIRE(pos);
+        std::vector<Entity> es;
+        for (int i = 0; i < 16; ++i) // capacité initiale : 16
+        {
+            es.push_back(world.create());
+            REQUIRE(world.add(es.back(), *pos, Position{{static_cast<float>(i) + 0.5f, 1.f, 2.f}}) != nullptr);
+        }
+        const Entity extra = world.create();
+        const Position *source = world.get(es[3], *pos);
+        Position *added = world.add(extra, *pos, *source); // le stockage s'agrandit : `source` est libéré pendant l'ajout
+        REQUIRE(added != nullptr);
+        CHECK(added->value.x == 3.5f);
+        CHECK(added->value.z == 2.f);
+        CHECK(world.get(es[3], *pos)->value.x == 3.5f);
+    }
+
+    TEST_CASE("World: a view keeps component ids; it survives new registrations and becomes invalid on unregistration")
+    {
+        World world;
+        auto pos = world.registerComponent<Position>("Position");
+        auto vel = world.registerComponent<Velocity>("Velocity");
+        REQUIRE(pos);
+        REQUIRE(vel);
+        const Entity e = world.create();
+        world.add(e, *pos);
+        world.add(e, *vel);
+        auto view = world.view(*pos, *vel);
+        // Beaucoup de nouveaux types : la table des types est réallouée.
+        for (int i = 0; i < 64; ++i)
+            REQUIRE(world.registerComponent<Tag>("Tag" + std::to_string(i)));
+        CHECK(view.valid());
+        CHECK(view.count() == 1u);
+        REQUIRE(world.unregisterComponent("Velocity"));
+        CHECK_FALSE(view.valid());
+        CHECK(view.count() == 0u);
+    }
+
+    TEST_CASE("World: no new type registered or removed during an iteration; the guard survives an exception")
+    {
+        World world;
+        auto pos = world.registerComponent<Position>("Position");
+        REQUIRE(pos);
+        world.add(world.create(), *pos);
+        int calls = 0;
+        world.view(*pos).each([&](Entity, Position &) {
+            ++calls;
+            auto refused = world.registerComponent<Velocity>("Velocity");
+            REQUIRE_FALSE(refused);
+            CHECK((refused.error().code == core::ErrorCode::kBusy));
+            CHECK(world.registerComponent<Position>("Position")); // même type, même disposition : permis
+            CHECK_FALSE(world.unregisterComponent("Position"));
+        });
+        CHECK(calls == 1);
+        CHECK(world.registerComponent<Velocity>("Velocity")); // parcours terminé
+        const ComponentId ids[] = {pos->id};
+        bool thrown = false;
+        try
+        {
+            world.forEach(ids, [](Entity, std::span<void *const>) { throw std::runtime_error("callback failure"); });
+        }
+        catch (const std::runtime_error &)
+        {
+            thrown = true;
+        }
+        CHECK(thrown);
+        CHECK(world.registerComponent<Wide>("Wide")); // le compteur de parcours est revenu à zéro
+    }
+
+    TEST_CASE("World: help texts and ranges are not part of the layout")
+    {
+        World world;
+        REQUIRE(world.registerComponent<Velocity>("Velocity"));
+        ComponentDesc d = describeComponent<Velocity>("Velocity");
+        d.fields[1].description = "air drag";
+        d.fields[1].range = core::range(0.0, 1.0);
+        auto again = world.registerComponent(d);
+        REQUIRE(again);
+        CHECK(world.componentDesc(*again)->fields[1].description == "air drag");
+        CHECK(world.componentType<Velocity>("Velocity")); // le type C++ reste accepté
+    }
+
+    TEST_CASE("World: oversized components and types without default constructor are refused")
+    {
+        World world;
+        ComponentDesc huge = describeComponent<Wide>("Huge");
+        huge.size = std::size_t{1} << 60;
+        huge.defaultValue.clear();
+        huge.fields.clear();
+        CHECK_FALSE(world.registerComponent(huge));
+        huge.size = ComponentDesc::kMaxSize + 64u;
+        CHECK_FALSE(world.registerComponent(huge));
+        // Décalages inconnus (core::FieldDesc::kUnknownOffset) : refusé.
+        auto noDefault = world.registerComponent<NoDefaultData>("NoDefault");
+        REQUIRE_FALSE(noDefault);
+        CHECK((noDefault.error().code == core::ErrorCode::kInvalidArgument));
+    }
+
+    TEST_CASE("World: a view needs at least one component type")
+    {
+        CHECK_FALSE(CanViewNothing<World>);
     }
 }

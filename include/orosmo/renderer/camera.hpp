@@ -27,7 +27,12 @@ class Camera
     Camera() = default;
 
     void setPosition(const glm::vec3 &position) { position_ = position; }
+    // Direction du regard telle quelle (attendue normalisée). Préférer `setForward` ou `lookAt` (A75.12).
     void setOrientation(const glm::vec3 &orientation) { orientation_ = orientation; }
+    // A75.12 : regarde dans la direction donnée (normalisée ici ; un vecteur nul est ignoré) ou vers un point (ignoré s'il est à
+    // la position de la caméra). Une direction parallèle à `up()` rend la vue indéfinie : changer `setUp` d'abord.
+    void setForward(const glm::vec3 &forward);
+    void lookAt(const glm::vec3 &target) { setForward(target - position_); }
     void setUp(const glm::vec3 &up) { up_ = up; }
     void setFovDegrees(float degrees) { fovDegrees_ = degrees; }
     void setNearPlane(float nearPlane) { nearPlane_ = nearPlane; }
@@ -65,6 +70,7 @@ class Camera
 
     const glm::vec3 &position() const noexcept { return position_; }
     const glm::vec3 &orientation() const noexcept { return orientation_; }
+    const glm::vec3 &forward() const noexcept { return orientation_; }
     const glm::vec3 &up() const noexcept { return up_; }
     glm::vec3 right() const { return glm::normalize(glm::cross(orientation_, up_)); }
     float fovDegrees() const noexcept { return fovDegrees_; }

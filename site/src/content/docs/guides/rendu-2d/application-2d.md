@@ -54,7 +54,7 @@ int main()
     platform::Window window("jeu2d", 1280, 720, platform::WindowState::kWindowed);
     rhi::DeviceDesc desc;
     desc.backend = rhi::Backend::kOpenGL;
-    if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
+    if (!window.init([&] { (void)rhi::prepareWindowHints(desc); }))
     {
         std::cerr << "Pas de fenêtre (pas d'affichage ?)\n";
         return EXIT_FAILURE;

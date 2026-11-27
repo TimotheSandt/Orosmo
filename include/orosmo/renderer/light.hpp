@@ -43,11 +43,56 @@ struct Light
     bool operator==(const Light &other) const;
 };
 
+// Fabriques d'origine (gardées, A79 choix 10). Attention : `direction` est le sens VERS la lumière pour une directionnelle et le
+// sens du faisceau pour un projecteur (c'est ce que lit `mesh.frag`) ; `a`, `b` : atténuation 1 / (a d² + b d + 1) ; cônes en
+// cosinus. Préférer les fabriques à descripteur ci-dessous.
 Light directionalLight(const glm::vec3 &direction, const glm::vec3 &color, float strength);
 Light pointLight(const glm::vec3 &position, const glm::vec3 &color, float strength, float a, float b);
 Light spotLight(const glm::vec3 &position, const glm::vec3 &direction, const glm::vec3 &color, float strength, float outerCone, float innerCone,
                 float a, float b);
 Light ambientLight(const glm::vec3 &color, float strength);
+
+// A75.10 : une seule convention et des unités lisibles. `direction` est toujours le sens de PROPAGATION de la lumière (du soleil
+// vers le sol, du projecteur vers ce qu'il éclaire) ; la portée (m) remplace les coefficients d'atténuation ; les angles sont en
+// degrés. Elles rendent une `Light` ordinaire (même tampon GPU, même image que l'ancienne fabrique aux valeurs équivalentes).
+// Usage : `directionalLight({.direction = {0, -1, 0.3f}, .intensity = 2})`, `pointLight({.position = p, .range = 8})`.
+struct DirectionalLightDesc
+{
+    glm::vec3 direction{0.0f, -1.0f, 0.0f}; // sens de propagation (défaut : soleil au zénith)
+    glm::vec3 color{1.0f};
+    float intensity = 1.0f;
+};
+
+struct PointLightDesc
+{
+    glm::vec3 position{0.0f};
+    glm::vec3 color{1.0f};
+    float intensity = 1.0f;
+    // Distance (m) où la lumière s'éteint (`lightRange`) : atténuation en carré inverse, ramenée à 0 à la portée. Infinie : sans
+    // atténuation (NaN aussi). Une portée finie est bornée à [1 mm, kLightMaxRange]. Elle dépend de la couleur et de l'intensité : changer l'une ensuite change la portée.
+    float range = 10.0f;
+};
+
+struct SpotLightDesc
+{
+    glm::vec3 position{0.0f};
+    glm::vec3 direction{0.0f, -1.0f, 0.0f}; // sens de propagation (axe du faisceau)
+    glm::vec3 color{1.0f};
+    float intensity = 1.0f;
+    float range = 10.0f; // comme PointLightDesc::range
+    // Demi-angles depuis l'axe, en degrés, dans [0, 180] : pleine lumière jusqu'à `innerAngleDegrees`, rien au-delà de
+    // `outerAngleDegrees`, fondu entre les deux. Un angle intérieur plus grand que l'extérieur est ramené à l'extérieur (bord net).
+    float outerAngleDegrees = 30.0f;
+    float innerAngleDegrees = 25.0f;
+};
+
+Light directionalLight(const DirectionalLightDesc &desc);
+Light pointLight(const PointLightDesc &desc);
+Light spotLight(const SpotLightDesc &desc);
+
+// Sens de propagation de la lumière, quelle que soit la fabrique : -direction pour une directionnelle, direction pour un
+// projecteur, (0, 0, 0) pour une ambiante ou une ponctuelle.
+glm::vec3 lightDirection(const Light &light) noexcept;
 
 // Disposition GPU (std430) : écrite champ par champ, sans `glm::vec3` (qui n'a pas la même taille qu'un vec3 GLSL).
 struct GpuLight
