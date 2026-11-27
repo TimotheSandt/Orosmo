@@ -910,6 +910,30 @@ core::Result<> ShadowFeature::uploadFrame()
 
 // ── Passes (GPU) ───────────────────────────────────────────────────────────────────────────────────────────────────
 
+bool ShadowFeature::staticWorkPlanned() const noexcept
+{
+    return cacheFresh_ || std::any_of(planned_.begin(), planned_.end(), [](const PlannedView &p) { return p.action == Action::kStaticCopy; });
+}
+
+bool ShadowFeature::copiesPlanned() const noexcept
+{
+    return std::any_of(planned_.begin(), planned_.end(), [](const PlannedView &p) { return p.action == Action::kStaticCopy || p.action == Action::kCopy; });
+}
+
+std::optional<std::uint64_t> ShadowFeature::passSignature() const
+{
+    if (atlas_.isNull())
+    {
+        return 0;
+    }
+    std::uint64_t signature = mixPassSignature(1, atlas_);
+    signature = mixPassSignature(signature, cache_);
+    signature = mixPassSignature(signature, std::uint64_t{settings_.atlasSize});
+    signature = mixPassSignature(signature, std::uint64_t{staticWorkPlanned()});
+    signature = mixPassSignature(signature, std::uint64_t{copiesPlanned()});
+    return mixPassSignature(signature, std::uint64_t{atlasFresh_ || !planned_.empty()});
+}
+
 core::Result<> ShadowFeature::declarePasses(RenderGraphBuilder &builder)
 {
     if (atlas_.isNull())
@@ -919,8 +943,8 @@ core::Result<> ShadowFeature::declarePasses(RenderGraphBuilder &builder)
     RenderGraph &graph = builder.graph();
     const RgTextureDesc desc{.format = kShadowFormat, .size = {settings_.atlasSize, settings_.atlasSize}, .usage = rhi::TextureUsage::kRenderTarget | rhi::TextureUsage::kSampled};
     const RgTexture atlas = graph.importTexture("shadow.atlas", atlas_, desc);
-    const bool staticWork = cacheFresh_ || std::any_of(planned_.begin(), planned_.end(), [](const PlannedView &p) { return p.action == Action::kStaticCopy; });
-    const bool copies = std::any_of(planned_.begin(), planned_.end(), [](const PlannedView &p) { return p.action == Action::kStaticCopy || p.action == Action::kCopy; });
+    const bool staticWork = staticWorkPlanned();
+    const bool copies = copiesPlanned();
     RgTexture cache;
     if (staticWork || copies)
     {

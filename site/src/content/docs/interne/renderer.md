@@ -56,6 +56,13 @@ s'exécutent après tout plugin qui réécrit la couleur de scène. Le cycle de 
 (exécution ; un `beginFrame` y est refusé), puis nettoyage, que l'image réussisse ou non : dessins vidés,
 `RenderFeature::frameEnded` de chaque plugin. Chaque passe est mesurée par le `Profiler` sous `RenderGraph/<passe>`.
 
+Ces déclarations ne sont faites que lorsque le graphe doit être reconstruit. Le renderer garde le graphe compilé d'une image à
+l'autre tant que sa clé ne change pas : plugins et post-traitements, modes de mise à l'échelle et de génération, formats et
+tailles, AOV, profondeur, options d'effacement, état de l'historique et `RenderFeature::passSignature()` de chaque plugin. Les
+ressources importées reçoivent alors les ressources GPU de l'image (`RenderGraph::setImportedTexture`). Un plugin sans
+signature, une image en échec ou `setRenderGraphCaching(false)` font reconstruire le graphe ; `graphBuildCount()` compte les
+reconstructions.
+
 ## Le graphe de passes
 
 `RenderGraph` connaît des ressources nommées (textures et tampons, importés ou transitoires) et des passes `kRaster` (le
@@ -156,9 +163,10 @@ liaison 2.
 
 Les données réécrites à chaque image (`FrameData`, caméra, tranches de modèle, lignes de debug) partent en une seule
 écriture, à `endFrame`, dans un `FrameRing` : un tampon `rhi::MemoryKind::kUpload` par image en vol
-(`kDefaultFramesInFlight` = 2, celui des deux backends). L'image `n` écrit la zone `n % framesInFlight` ; cette zone a été
-lue par l'image `n - framesInFlight`, que le RHI a déjà attendue dans `beginFrame` / `present`. Aucune écriture ne vise donc
-une plage que le GPU lit encore. `SceneRendererConfig::framesInFlight` règle la profondeur (au moins 2).
+(autant que le périphérique : `rhi::Device::framesInFlight()`, 2 par défaut, de 1 à 3 par `DeviceDesc::framesInFlight`).
+L'image `n` écrit la zone `n % framesInFlight` ; cette zone a été lue par l'image `n - framesInFlight`, que le RHI a déjà
+attendue dans `beginFrame` / `present`. Aucune écriture ne vise donc une plage que le GPU lit encore.
+`SceneRendererConfig::framesInFlight` peut rendre l'anneau plus profond, jamais moins que le périphérique.
 
 `FrameRing::reserve` rend `true` quand le tampon de la zone a été recréé : les groupes de liaison qui le visent sont à
 refaire. L'ancien tampon est détruit par destruction différée.

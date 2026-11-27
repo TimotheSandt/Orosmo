@@ -195,6 +195,19 @@ core::Result<> ForwardPlusLighting::ensureBuffers()
     return {};
 }
 
+core::Result<> ForwardPlusLighting::prepare(const FrameData &frame)
+{
+    (void)frame;
+    return ensureBuffers();
+}
+
+std::optional<std::uint64_t> ForwardPlusLighting::passSignature() const
+{
+    std::uint64_t signature = mixPassSignature(0, grid_.handle());
+    signature = mixPassSignature(signature, lightLists_.handle());
+    return mixPassSignature(signature, std::uint64_t{settings_.clusterCount()});
+}
+
 core::Result<> ForwardPlusLighting::declarePasses(RenderGraphBuilder &builder)
 {
     if (auto r = ensureBuffers(); !r)

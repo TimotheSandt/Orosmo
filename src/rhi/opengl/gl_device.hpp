@@ -24,7 +24,6 @@ namespace orosmo::rhi::gl
 // Emplacement plat des liaisons : (groupe, binding) -> groupe * kBindingsPerGroup + binding (docs/03 §4, RHI-07).
 // Les shaders OpenGL écrits à la main utilisent ces numéros dans `layout(binding = N)` ; le pipeline de shaders (lot B)
 // convertit `set`/`binding` du GLSL 450 commun vers cet emplacement.
-inline constexpr std::uint32_t kFramesInFlight = 2;
 // Unité de texture réservée aux opérations du périphérique (création, envoi, mips) : juste après les emplacements du modèle
 // de liaison, elle n'écrase jamais une texture liée par `setBindGroup` (unités 0 à 23).
 inline constexpr GLuint kScratchTextureUnit = kGroupCount * kBindingsPerGroup;
@@ -122,6 +121,7 @@ class GlDevice final : public Device
 
     static Result<std::unique_ptr<GlDevice>> create(const DeviceDesc &desc);
 
+    std::uint32_t framesInFlight() const noexcept override { return framesInFlight_; }
     const Capabilities &capabilities() const noexcept override { return caps_; }
 
     Result<BufferHandle> createBuffer(const BufferDesc &desc, std::span<const std::byte> initial) override;
@@ -242,6 +242,7 @@ class GlDevice final : public Device
     Extent2D backbufferSize_{1, 1};
     TextureHandle backbuffer_;
     std::uint64_t frame_ = 0;
+    std::uint32_t framesInFlight_ = kDefaultFramesInFlight; // A61 G : DeviceDesc::framesInFlight
     std::atomic<std::uint64_t> validationErrors_{0};
     std::mutex informationalMutex_;
     std::unordered_set<GLuint> informationalSeen_;
@@ -261,7 +262,7 @@ class GlDevice final : public Device
     };
     std::vector<Pending> pending_;
     // Une clôture par image présentée : une ressource détruite pendant l'image N n'est libérée qu'une fois les
-    // kFramesInFlight images suivantes présentées ET la clôture de l'image N franchie par le GPU (docs/03 §3, règle 2).
+    // framesInFlight() images suivantes présentées ET la clôture de l'image N franchie par le GPU (docs/03 §3, règle 2).
     struct FrameFence
     {
         std::uint64_t frame;

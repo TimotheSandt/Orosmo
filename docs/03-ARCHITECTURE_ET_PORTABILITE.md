@@ -129,7 +129,7 @@ std::expected<std::unique_ptr<Device>, Error> createDevice(const DeviceDesc&, Wi
 ### Règles du RHI
 
 1. **Barrières et transitions de layout : le RHI les calcule.** Les couches hautes déclarent l'usage des ressources (lecture shader, cible de rendu, stockage, copie) ; le backend Vulkan en déduit les barrières ; OpenGL les traduit en `glMemoryBarrier` ; Metal les ignore au besoin. Aucune barrière manuelle dans le code du moteur.
-2. **Destruction différée.** `destroy` n'est effectif qu'une fois les images en vol terminées.
+2. **Destruction différée.** `destroy` n'est effectif qu'une fois les images en vol terminées. Leur nombre est réglé à la création du périphérique (`DeviceDesc::framesInFlight`, 1 à 3, défaut 2 : A61 G, M8).
 3. **Pas d'état implicite.** Chaque passe déclare ses attachements ; chaque pipeline porte tout son état fixe.
 4. **Les fonctionnalités optionnelles passent par `Capabilities`.** Le moteur demande, il ne suppose pas. Si une fonction est absente, le renderer choisit un chemin de repli ou refuse proprement avec un message clair.
 5. **Un seul modèle de liaison** (voir §4).
@@ -216,7 +216,7 @@ Règles :
 
 ## 11. Rendu : plugins, MRT, AOV, 2D
 
-**Plugins de rendu (render features).** Le renderer ne connaît que l'interface `RenderFeature` : `declarePasses(RenderGraphBuilder&)`, `prepare(const FrameData&)`, `declareAov()`. Maillages, terrain, 2D, et plus tard voxels et ray tracing sont des plugins. Un plugin accède aux capacités optionnelles via `Capabilities` et se désactive proprement si elles manquent.
+**Plugins de rendu (render features).** Le renderer ne connaît que l'interface `RenderFeature` : `declarePasses(RenderGraphBuilder&)`, `prepare(const FrameData&)`, `declareAov()`. Maillages, terrain, 2D, et plus tard voxels et ray tracing sont des plugins. Un plugin accède aux capacités optionnelles via `Capabilities` et se désactive proprement si elles manquent. *Graphe gardé (A61 C, M8, à confirmer) : le graphe compilé est réutilisé tant que plugins, cibles, tailles et `RenderFeature::passSignature()` ne changent pas ; un plugin sans signature le fait reconstruire à chaque image.*
 
 **Sorties multiples (MRT) et AOV.**
 - `RenderPassDesc` accepte jusqu'à `Capabilities::maxColorAttachments` cibles couleur (au moins 4 attendues) plus la profondeur, chacune avec format, `loadOp`, `storeOp`.

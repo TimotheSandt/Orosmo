@@ -161,6 +161,11 @@ class RenderGraph
     // Ressource transitoire : allouée à l'exécution si une passe gardée l'utilise, rendue à la réserve après sa dernière utilisation.
     RgTexture createTexture(std::string name, const RgTextureDesc &desc);
     RgBuffer createBuffer(std::string name, const RgBufferDesc &desc);
+    // A61 C (graphe gardé d'une image à l'autre) : change la ressource GPU d'une ressource IMPORTÉE sans toucher aux déclarations
+    // ni à la compilation (image de la fenêtre, historique en double tampon...). Refusé (kInvalidArgument) : handle hors du graphe,
+    // ressource transitoire, ressource GPU nulle. La description importée reste celle de la déclaration.
+    core::Result<> setImportedTexture(RgTexture texture, rhi::TextureHandle handle);
+    core::Result<> setImportedBuffer(RgBuffer buffer, rhi::BufferHandle handle);
     RgTexture findTexture(std::string_view name) const noexcept;
     RgBuffer findBuffer(std::string_view name) const noexcept;
     PassBuilder addPass(std::string name, PassType type, PassExecute execute);
@@ -191,6 +196,8 @@ class RenderGraph
     std::vector<std::string> executionOrder() const;
     std::vector<std::string> culledPasses() const;
     std::size_t passCount() const noexcept { return passes_.size(); }
+    // Compilations réussies depuis la construction : une exécution d'un graphe déjà compilé (rien de déclaré depuis) n'en ajoute pas.
+    std::uint64_t compileCount() const noexcept { return compileCount_; }
     // Ressource GPU d'une transitoire à la dernière exécution (nulle si elle a été écartée).
     rhi::TextureHandle physicalTexture(RgTexture texture) const;
     rhi::BufferHandle physicalBuffer(RgBuffer buffer) const;
@@ -285,6 +292,7 @@ class RenderGraph
     std::vector<PassKey> passKeys_;
 
     bool compiled_ = false;
+    std::uint64_t compileCount_ = 0;
     std::vector<std::uint32_t> order_; // passes gardées, dans l'ordre d'exécution
     std::vector<bool> kept_;
 
