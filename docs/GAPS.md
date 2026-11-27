@@ -616,6 +616,15 @@ Numéros pris à partir de G240 pour ne pas croiser ceux des lots M8 menés en p
 | G222 | Focus hors de la vue d'une `ScrollView` | Tab ou une flèche peut donner le focus à un widget défilé hors de sa `ScrollView` : la vue ne défile pas vers lui (l'anneau de focus est découpé comme le widget, donc invisible). Les flèches choisissent le voisin par géométrie, y compris hors de la zone visible. | M10 |
 | G223 | Manettes : reste de PLAT-03 | `platform::Gamepads` ne lit que les manettes à disposition standard reconnues par GLFW, par scrutation à chaque image ; ni vibration, ni remappage, ni joystick quelconque, ni deuxième stick ou gâchettes dans la navigation de l'interface. Aucune manette réelle essayée (tests par `Gamepads::simulate`) ; Windows et macOS non vérifiés. | Après M10 (P2) |
 
+## Ajouts du lot M8-L12a, API des contenus (G250 et G251)
+
+Numéros pris à partir de G250 (L0/L9 : G222-G223, L11 : G240-G243, L1 en cours).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G250 | `AnimatedModel` : un maillage skinné partagé par plusieurs nœuds | Comme `SkinnedModel` (G198) : le repli CPU déforme le maillage GPU pour le premier nœud skinné qui le dessine. Sans compute, `RenderModel` n'est pas créé `skinnable` : les nœuds skinnés qui partagent une primitive partagent aussi son tampon (et un nœud statique qui dessine la même primitive la verrait déformée). Correction prévue : une sortie CPU par nœud skinné dans `RenderModel::create` et `AnimatedModel::applyPose`, sans exiger `kStorage`. | M10 |
+| G251 | `AnimatedModel` : pas d'événements de clip | Le lecteur (`play`, `crossFade`) ne rend pas les événements des clips (`Clip::collectEvents`) ; pour eux, piloter le modèle par une `StateMachine` et `setPose`. | M10 |
+
 ## Ajouts hors lot (G290)
 
 | ID | Sujet | Détail | Jalon |
