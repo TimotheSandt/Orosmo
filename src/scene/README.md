@@ -88,7 +88,7 @@ auto model = relativeMatrix(*world.transform(ship), cameraPosition); // float, r
   avant de conclure (une erreur de vidange, disque plein, rend `kIo`). Un pointeur dans un composant n'est pas refusé et
   rendrait l'empreinte dépendante d'une adresse (G289).
 
-## Pour les lots suivants (non faits ici)
+## Pour les lots suivants (notes de L2, faites depuis)
 
 - **L3, sauvegarde** : fait (section ci-dessus).
 - **L5, bibliothèque de jeu** : enregistrement par `registerComponent(ComponentDesc)` (rien ne pointe dans la bibliothèque) ;
@@ -112,8 +112,9 @@ de grandeur, pas une référence.
 ## Tests
 
 `tests/scene/world_tests.cpp`, `tests/scene/hierarchy_tests.cpp`, `tests/core/reflection_layout_tests.cpp` (décalages et
-tailles de `FieldDesc`) ; `make demo-test-unit` (sans GPU ni fenêtre). Pas encore de démo : la scène sera rendue par la façade
-d'application (lot L13).
+tailles de `FieldDesc`) ; `make demo-test-unit` (sans GPU ni fenêtre). Démo : la scène est rendue par la façade
+`app::Application` (lot L13 ; projet d'`orosmo init`) et simulée sans fenêtre par `apps/demo --sim-agents` (lot L3).
+Guides du site : `site/src/content/docs/guides/scene/` ; architecture : `site/src/content/docs/interne/scene-sim-app.md`.
 
 Limites : voir `docs/GAPS.md` (G260 à G264, G280 à G288).
 

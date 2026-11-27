@@ -278,6 +278,7 @@ Chaque matériau porte un `BlendMode`. L'ordre de rendu dans la passe principale
 - **Thèmes** : jetons nommés, états des widgets, variantes ; chargement à chaud. Un widget ne contient jamais de couleur ou de taille en dur sauf surcharge explicite et locale.
 - **Rendu** : l'interface produit des listes de dessin (rectangles, texte, images, découpage, ordre `z`) ; elle ne connaît ni le RHI ni le backend.
 - **Rechargement à chaud** : en développement, le même arbre est interprété (ou chargé en bibliothèque dynamique) et mis à jour à l'enregistrement du fichier ; en version finale, le C++ généré est lié directement.
+  - **Réalisé en M8 (A79 choix 5, à confirmer par l'auteur)** : forme « bibliothèque dynamique », pas d'interpréteur. En debug et dev, le C++ généré des vues est compilé dans la bibliothèque de jeu ; `app::ViewHost` observe les `.cui`, lance `make game`, retrouve la vue par `orosmoCuiView_<Vue>` dans la version rechargée et recrée l'arbre en gardant focus, défilement et sections (`ui::replaceRoot`). Une erreur garde l'ancienne vue. Un changement des champs liés demande un redémarrage (G361). L'état lié aux vues vit côté programme.
 - **Documentation** : `docs/UI_LANGUAGE.md` (grammaire, exemples, limites, messages d'erreur), écrite à partir du code existant et validée par des tests de compilation.
 
 ## 13. Logique de jeu rechargeable
@@ -287,6 +288,7 @@ Chaque matériau porte un `BlendMode`. L'ordre de rendu dans la passe principale
 - Les systèmes s'enregistrent **par nom** à `init` et se désenregistrent au déchargement. Le moteur ne conserve ni pointeur vers du code de la bibliothèque, ni `std::function`, ni variable `static` définie dedans.
 - Changement du corps d'une fonction : rechargé sans perte. Ajout d'un champ : migration par réflexion. Changement de hiérarchie ou de fonctions virtuelles : sauvegarde de l'état, rechargement, restauration.
 - Windows : copie sous un nom unique avant chargement (le fichier d'origine reste libre). Linux et macOS : `dlopen` d'un chemin unique.
+  - **Réalisé en M8 (A79)** : copie sous un nom unique sur les trois systèmes (`platform::DynamicLibrary`). La bibliothèque ne contient pas de copie du moteur : l'exécutable exporte ses symboles (`-rdynamic` sous Linux, `-undefined dynamic_lookup` pour la bibliothèque sous macOS, `--export-all-symbols` et bibliothèque d'import sous MinGW). Module `app` (`GameModule`, `GameContext`, `OrosmoGameApi`), niveau `app` de `tools/layers.json` (choix 3, à confirmer). Changement de hiérarchie ou de type d'un champ : repli « sauvegarde/restauration » par nom de champ (`scene::World::migrateComponent`) ; `init` en échec : monde remis par copie et ancienne version gardée. Règle « aucun état dans la bibliothèque » vérifiée sur le binaire (`tools/check_game_static.py`).
 - Les paramètres de gameplay vivent en JSON rechargés instantanément.
 - Version finale : la logique est liée statiquement ; aucun code de rechargement n'est compilé.
 - Alternative écartée pour l'instant : un langage de script embarqué (Lua). À réévaluer si le C++ rechargé se révèle trop lent à compiler.
