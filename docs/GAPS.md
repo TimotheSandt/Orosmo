@@ -134,7 +134,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | TER-09 | Planètes sphériques | Absent | Absent. | Hors moteur (A39) |
 | TER-13 | Lancer de rayon sur le terrain | Archivé (A37) | `raycastTerrain`, cohérent avec la profondeur rendue. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 | UI-04 | Outils de debug | Fait (limites) | `ui::debug::DebugTools` (M8 L10) : console, profileur, inspecteur d'entités ; limites G295, G297, G298, G299. Preuve : `docs/STATUS.md`, « M8 lot L10 » (fichiers, suites `ui/debug`, résultats). | M10 |
-| UI-08 | Rechargement à chaud de l'interface | Fait | Développement : vues `.cui` compilées dans la bibliothèque de jeu, reconstruites à l'enregistrement et recréées (focus, défilement, sections gardés) par `app::ViewHost` ; version finale liée. G360 à G366. | — |
+| UI-08 | Rechargement à chaud de l'interface | Fait | Développement : vues `.cui` compilées dans la bibliothèque de jeu, reconstruites à l'enregistrement et recréées (focus, défilement, sections gardés) par `app::ViewHost` ; version finale liée. G360 à G367. Preuve (fichiers, tests, résultats) : `docs/STATUS.md`, « M8 lot L8 ». | — |
 | UI-09 | Navigation et accessibilité de base | Fait (M8 L9) | Ordre de tabulation (`tabIndex`, `.focusable`), flèches entre voisins, manette, anneau de focus du thème. Reste : défilement vers le widget focalisé (G222). Preuve : `docs/STATUS.md`, section « M8 lot L9 ». | — |
 | UI-10 | Inspecteur d'interface | Fait (limites) | Onglet Widgets de `DebugTools` (M8 L10) ; fenêtres détachées absentes (G296). Preuve : `docs/STATUS.md`, « M8 lot L10 » (fichiers, suites `ui/debug`, résultats). | M10 |
 | UI-12 | Paramètres réfléchis → curseurs | Fait (M3) | `reflectedPanel`, `ParamPanel` du langage. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
@@ -725,7 +725,7 @@ Numéros pris à partir de G340 pour ne pas croiser ceux des lots M8 menés en p
 | G343 | Images en vol : vérifications manquantes (A61 G) | Tests automatiques hors écran seulement (`tests/rhi/frames_in_flight_tests.cpp`) ; la chaîne d'échange avec 1 ou 3 images en vol n'est vérifiée que par la démo fenêtrée sous Linux (Mesa, Intel Arc) ; Windows, macOS (MoltenVK) et Metal natif non vérifiés. Le nombre ne change pas à chaud (il faut recréer le périphérique). | M10 |
 | G344 | Images en vol : pas de réglage de la latence de présentation (A61 G) | `framesInFlight` borne l'avance du processeur sur le GPU ; le nombre d'images de la chaîne d'échange Vulkan (`minImageCount`) et le `glfwSwapInterval` restent ceux d'avant. Aucune mesure de latence entrée → affichage (seulement la durée des images). | M10 |
 
-## Ajouts de M8 lot L8, interface rechargée à chaud (G360 à G366)
+## Ajouts de M8 lot L8, interface rechargée à chaud (G360 à G367)
 
 UI-08 : vues `.cui` compilées dans la bibliothèque de jeu en développement (`app::ViewHost`, `ui::replaceRoot`,
 `orosmoCuiView_<Vue>`), `make e2e-init` (`tools/e2e_view_reload.py`).
@@ -739,3 +739,4 @@ UI-08 : vues `.cui` compilées dans la bibliothèque de jeu en développement (`
 | G364 | Message affiché par une notification | L'erreur est montrée par `Ui::notify`, donc seulement si l'arbre a un widget `Notifications` (ajouté au gabarit) ; sinon, journal et sortie seulement. Résumé : les lignes contenant « error » (au plus 4). | — |
 | G365 | `Application` sans `ViewHost` | `app::Application` (L13) ne possède pas encore de `ViewHost` : un programme écrit avec la façade le crée lui-même et appelle `update` dans `onUpdate`. À brancher avec le programme de départ réécrit (L14). | M8 L14 |
 | G366 | Vues liées deux fois en développement | En debug/dev, les objets des vues sont liés dans la bibliothèque ET dans l'exécutable (compatibilité d'un `main.cpp` qui appelle `cui::build<Vue>` directement, sans rechargement) ; `make game` les recompile, l'exécutable n'est relié qu'au `make` suivant. `CUI_IN_GAME=0` revient aux vues seulement dans l'exécutable. Chaque vue ajoute un symbole exporté (limite PE de 65 535, G231). | — |
+| G367 | Version chargée après une construction en échec | Pendant une construction l'arbre n'est pas recréé, et la version du jeu chargée avant la fin d'un échec est ignorée (même celle d'une construction réussie juste avant, chargée pendant la suivante). Une bibliothèque liée par une commande en échec mais chargée APRÈS la fin (délai de `GameModule`) serait prise : `make game` l'efface quand le contrôle échoue, une commande personnalisée doit faire de même. | M10 |
