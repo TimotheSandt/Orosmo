@@ -308,7 +308,7 @@ all debug dev release: $(TARGET) $(GAME_MODULE)
 # run-debug / run-dev / run-release: build the requested variant if needed, then run it.
 # BUILD_TYPE is set at parse time via the findstring block above, so $(TARGET) already
 # points to the correct binary (bin/debug/main or bin/release/<name>).
-run-debug run-dev: $(TARGET)
+run-debug run-dev: $(TARGET) $(GAME_MODULE)
 	@./$(TARGET)
 
 run-release: $(TARGET)
