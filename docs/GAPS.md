@@ -580,8 +580,23 @@ Sauvegarde de scène et boucle de simulation à pas fixe (A79 lot L3, ECS-03, SI
 | G284 | Temps accumulé non capturé | `Snapshot` et `saveState` gardent monde, générateur, pas et entrées en attente, pas l'accumulateur de `FixedStepper` (sans accesseur) : après `restore`, la fraction `alpha()` repart de 0 (l'état simulé est exact ; seule l'interpolation de la première image diffère). | L4 |
 | G285 | Empreinte sensible à l'ordre dense | Deux mondes de même contenu mais d'ordre de stockage différent ont des empreintes différentes (voulu : l'ordre de parcours change le résultat d'une simulation). Pas d'empreinte « contenu seul ». | Plus tard si besoin |
 | G286 | Chargement en copie | `loadScene` (tout ou rien) construit une copie du monde avant d'échanger : mémoire doublée pendant le chargement ; recherche d'un type par nom linéaire. Pas de chargement en flux ni partiel (sous-arbre, préfabriqué). | Plus tard (L12a contenus ?) |
-| G287 | Thread de simulation | `Simulation` est mono-thread : pas de thread dédié, pas d'instantané immuable en double tampon pour le rendu, pas de cadence configurable (`Config`). | M8 L4 |
+| G287 | Thread de simulation | **Traité par le lot L4** (`sim/simulation_thread.hpp`, G300 et suivants). Avant : `Simulation` mono-thread, sans thread dédié, instantané en double tampon ni cadence configurable. | M8 L4 (fait) |
 | G288 | Entrées en JSON | `Input::data` est un `core::Json` libre, haché par son texte (`dump()`) : un réel d'entrée est exact (écrit au plus court) mais une entrée lourde coûte une allocation par pas. Pas de format binaire de rejeu (le JSON du `Replay` passe par `core::toBinary` si besoin). | Plus tard |
+
+## Ajouts de M8 lot L4 (G300 à G306)
+
+Thread de simulation optionnel (A79 lot L4, extension de SIM-01) : `sim/simulation_thread.hpp`, `sim/snapshot_buffer.hpp`
+(`src/sim/README.md`). G287 est traité par ce lot.
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G300 | Pas de commande pendant que le thread tourne | Ajouter ou retirer un système, capturer, restaurer, sauvegarder ou rejouer demande `stop()` puis un nouveau `SimulationThread::start` : aucune file de commandes vers le thread. Le rechargement de la bibliothèque de jeu (L5) devra arrêter puis relancer le thread. | L5 / L6 |
+| G301 | Instantané complet à chaque publication | L'instantané copie toutes les transformations (et les composants listés) à chaque lot de pas, plus deux captures d'état par lot : coût linéaire en nombre d'entités, pas de copie des seules entités modifiées. Mesuré seulement sur 64 entités (tests). | M10 (performances) |
+| G302 | Interpolation approchée avec cisaillement | `interpolate` décompose la partie linéaire en échelle par colonne et rotation (nlerp) : exacte pour rotation + échelle, approchée si un parent à échelle non uniforme crée un cisaillement ; réflexion ou échelle nulle : interpolation terme à terme. Les autres composants de l'instantané ne sont pas interpolés. | Plus tard |
+| G303 | Attente réglée sur l'horloge murale | En `kFixedRate`, le thread attend (`condition_variable::wait_for`) la durée restante du pas lue sur l'`IClock` : avec une horloge qui ne suit pas le temps réel (`ManualClock`), il faut `frame()` ou `sync()` pour le réveiller. Pas de réglage de priorité ni d'affinité du thread. | Plus tard |
+| G304 | Entrées refusées seulement comptées | Une entrée qui arrive après son pas est refusée (rejeu préservé), comptée et journalisée ; le jeu doit la dater avec une marge (`stepIndex() + latence`). Pas de report automatique au pas suivant. | L13 (entrées du jeu) |
+| G305 | Démo sans mode thread | `apps/demo` n'a pas d'option pour le thread de simulation (`--sim-agents` reste mono-thread) ; la preuve est dans les tests (`sim/thread`), dont le test concurrent sous TSan (job CI `tsan`). Les réglages `sim.*` de `core::Config` ne sont lus par aucune application. | L13 / L14 |
+| G306 | Changement de `SANITIZE` sans reconstruire les tests | `make fclean` ne nettoie que le moteur : les objets des tests de `apps/demo/obj` gardent l'ancienne instrumentation (une première passe TSan a lié des tests non instrumentés et signalé de fausses courses sur `TaskSystem` et l'instantané). Il faut aussi `make demo-fclean` avant `SANITIZE=...` ; le job CI part d'un arbre propre et n'est pas touché. En local, TSan tourne avec `setarch -R` (G233), sans changer `vm.mmap_rnd_bits`. | Outillage, plus tard |
 
 ## Ajouts du lot M8-L11, API de rendu simplifiée (G240 à G243)
 
