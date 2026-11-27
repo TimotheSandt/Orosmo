@@ -50,7 +50,9 @@ auto model = relativeMatrix(*world.transform(ship), cameraPosition); // float, r
   Description invalide (champ hors de la structure, chaîne ou tableau dynamique, alignement…) : `kInvalidArgument` qui nomme le
   champ. `componentType<T>(nom)` vérifie taille, alignement et champs de T contre la description enregistrée.
 - **Pointeurs** : un pointeur de composant reste valide jusqu'au prochain ajout ou retrait du même type. Aucun changement de
-  structure pendant un `each` / `forEach` (ENGINE_ASSERT en debug).
+  structure pendant un `each` / `forEach` (ENGINE_ASSERT en debug) ; enregistrer un nouveau type ou en retirer un y rend
+  `kBusy`. Une `View` garde les identifiants de ses types : valable après d'autres enregistrements, invalide (`valid()`
+  faux, `each` sans effet) si l'un de ses types est retiré.
 - **Ordre** : l'ordre de parcours est l'ordre dense du plus petit stockage, fixé par la suite des ajouts et retraits
   (déterministe) ; indices libérés réutilisés du dernier libéré au premier.
 - **Hiérarchie** : enfants dans l'ordre d'ajout ; `destroy` détruit les descendants ; cycle refusé. Une entité sans
@@ -76,16 +78,16 @@ auto model = relativeMatrix(*world.transform(ship), cameraPosition); // float, r
 
 ## Mesures
 
-`tests/scene/world_tests.cpp` (« iterating 100 000 entities ») et `tests/scene/hierarchy_tests.cpp` (« updating 100 000
-entities ») affichent leur temps (`MESSAGE`). Mesure du 2026-11-26, build release des tests (`-O3`, g++ 13.3, Linux x64, Intel
-Xe), machine chargée par d'autres compilations (charge ~25) : ordre de grandeur, pas une référence.
+Hors de la suite doctest (aucune horloge dans les tests) : scénarios `scene-view` et `scene-transforms` de
+`apps/demo/benchmark/scene_benchmarks.hpp`, lancés par `make -C apps/demo ENGINE_DIR=orosmo TEST_DIR=../../tests benchmark`
+(rapport `apps/demo/benchmark_report.json`). Les tests vérifient seulement les comptes et les valeurs (100 000 entités).
+Mesure du 2026-11-26 (build release `-O3`, g++ 13.3, Linux x64, Intel Xe), machine chargée par d'autres compilations : ordre
+de grandeur, pas une référence.
 
 | Mesure | Temps |
 | --- | --- |
-| `view<Position>` sur 100 000 entités (lecture + écriture) | 177 µs |
-| `view<Position, Velocity>` (50 000 sur 100 000, parcours du plus petit stockage) | 330 µs |
-| `updateTransforms`, 100 000 entités (1 000 racines × 99 enfants, toutes sales) | 7 à 10 ms |
-| `updateTransforms` après la modification d'une racine (100 entités) | non mesuré séparément (vérifié : 100 recalculs) |
+| `scene-view` : `view<Position>` sur 100 000 entités puis `view<Position, Velocity>` sur 50 000 | 0,47 ms (moyenne, 6 382 échantillons) |
+| `scene-transforms` : `updateTransforms`, 100 000 entités (1 000 racines × 99 enfants, toutes sales) | 3,3 ms (moyenne, 918 échantillons) |
 
 ## Tests
 

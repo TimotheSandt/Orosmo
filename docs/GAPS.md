@@ -96,8 +96,8 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | CORE-08 | Événements | Absent | Pas de bus d'événements typé. | M3 (proposé : premier usage, événements de l'interface) |
 | CORE-12 | Sérialisation et réflexion | Absent | Ni sérialisation, ni réflexion, ni versionnage. | M1 |
 | CORE-13 | Observateur de fichiers | Absent | Aucun observateur de fichiers. | M1 |
-| ECS-01 | Entités et composants | Fait | Module `scene` (M8 L2), ECS maison (A79 choix 1) ; limites G260 à G264. | — |
-| ECS-02 | Transformations hiérarchiques | Fait | `scene::Transform`, `World::updateTransforms` (M8 L2) ; G260, G262. Le rendu des entités (`Mesh` garde sa transformation) vient en L13. | — |
+| ECS-01 | Entités et composants | Fait | Module `scene` (M8 L2), ECS maison (A79 choix 1) ; preuve : `docs/STATUS.md`, « M8 lot L2 » (`include/orosmo/scene/world.hpp` `World`, suite doctest `scene/world`, verte dans `make demo-test`) ; limites G260 à G264. | — |
+| ECS-02 | Transformations hiérarchiques | Fait | `scene::Transform`, `World::updateTransforms` (M8 L2) ; preuve : `docs/STATUS.md`, « M8 lot L2 » (suite doctest `scene/hierarchy`, verte, dont la précision à 10^7 m) ; G260, G262. Le rendu des entités (`Mesh` garde sa transformation) vient en L13. | — |
 | ECS-03 | Chargement et sauvegarde de scène | Absent | Absent. | M8 |
 | GAME-01 | Module de jeu rechargeable | Absent | Absent. | M8 |
 | GAME-02 | État côté moteur | Absent | Absent. | M8 |

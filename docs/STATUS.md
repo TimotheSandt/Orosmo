@@ -51,6 +51,15 @@ réflexion) ; `make check` OK (110 en-têtes autonomes, 0 violation de couche) ;
 `tests/core/reflection_layout_tests.cpp`, `serialization_tests.cpp`, liés à `libcore.a`) : 30 cas verts, aucun message ; le
 `make demo-test SANITIZE=address,undefined` complet n'a pas été relancé (machine partagée, lot sans code GPU).
 
+Après la revue de la PR #22 (CodeRabbit) : décalages mesurés sur un objet construit (`FieldDesc::kUnknownOffset` sinon),
+vues par `ComponentId`, `kBusy` pour un nouveau type pendant un parcours, garde de parcours sûre face aux exceptions, copie de
+la valeur avant agrandissement du stockage, taille bornée (`ComponentDesc::kMaxSize`), textes d'aide hors de la disposition,
+remontée des ancêtres mémorisée dans `updateTransforms`, valeur par défaut sans `resize` + `memcpy` (faux positif
+`-Warray-bounds` de GCC 16 sous MinGW) ; 7 cas de régression. Horloges retirées des tests : mesures dans `apps/demo/benchmark`
+(`scene-view`, `scene-transforms`, `make -C apps/demo ENGINE_DIR=orosmo TEST_DIR=../../tests benchmark`). Vérifications :
+`make all-debug` sans avertissement, `make demo-test` **776 cas verts** (1 ignoré), `make check` OK, ASan + UBSan sur les tests
+du lot (37 cas) sans message.
+
 ## M8 lot L1 : fondations (A79)
 
 Branche `feat/M8-L1-fondations`. Aucune ligne de `docs/02` ne change d'état : ce lot prépare GAME-01, UI-08 (chargement
