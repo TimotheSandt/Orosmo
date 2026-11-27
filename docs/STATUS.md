@@ -48,6 +48,11 @@ Vérifications (Linux x64, g++ 13.3) : `make all-debug` sans avertissement ; `ma
 `make e2e-init` OK ; `make cui-test` vert. ASan + UBSan sur arbre propre (`make demo-test-unit SANITIZE=address,undefined`, `ASAN_OPTIONS=alloc_dealloc_mismatch=0` comme en L7) : 599 cas verts, `test_game_static` sans message. Rendu non touché (aucune capture refaite).
 Site : `reference/construction` complété. Non vérifié : Windows, macOS (G360) ; `clang-format` absent de la machine.
 
+Revue CodeRabbit de la PR #34 : les 11 remarques retenues (constantes d'une vue à `@cui-cpp` dans `cui_bindings`, version
+chargée pendant une construction en échec ignorée, G367, estampille `CUI_IN_GAME`, HUD lié sans bibliothèque de jeu, tests de
+`app/view_host` sans processus ni pause). Après revue : `make -j6 all-debug`, `make -j6 demo-test` (918 cas verts, 1 ignoré),
+`make check`, `make cui-test`, `make -j6 e2e-init` verts ; sanitizers non relancés.
+
 ## M8 lot L7 : construction incrémentale de la bibliothèque de jeu (A79, GAME-06)
 
 Branche `feat/M8-L7-build-incremental` (depuis `feat/M8-L5-jeu-rechargeable`). Linux x64 seulement en local (g++ 13.3) ;
