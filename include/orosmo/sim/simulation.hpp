@@ -1,11 +1,14 @@
 // SIM-01 (A79 lot L3) : boucle de simulation à pas fixe, déterministe et rejouable, découplée du rendu.
 //
-//   - Pas fixe : `advance(deltaImage)` passe par `core::FixedStepper` et joue 0..maxStepsPerFrame pas ; le nombre de pas ne
-//     dépend que du temps cumulé, pas du découpage en images. `step()` joue exactement un pas (tests, mode sans fenêtre).
+//   - Pas fixe : `advance(deltaImage)` passe par `core::FixedStepper` et joue 0..maxStepsPerFrame pas ; tant qu'aucun appel
+//     n'atteint ce plafond (le surplus est alors abandonné), le nombre de pas ne dépend que du temps cumulé, pas du découpage
+//     en images. `step()` joue exactement un pas (tests, mode sans fenêtre).
 //   - Systèmes enregistrés PAR NOM (règle 13 : rien ne garde l'identité d'une fonction de la bibliothèque de jeu), avec une
 //     phase et un ordre ; ordre d'exécution : phase, puis ordre, puis nom (indépendant de l'ordre d'enregistrement).
 //   - Entrées datées par pas : `queueInput({.step = n, ...})` est livrée au pas n (dans l'ordre d'ajout), et enregistrée dans
-//     `inputLog()` ; un `Replay` (graine, pas, entrées) rejoue la même partie.
+//     `inputLog()` ; un `Replay` (graine, pas, entrées) rejoue la même partie. La charge est un JSON sans réel infini ni NaN.
+//   - Pas imbriqués : un système qui appelle `step`, `run`, `advance`, `restore`, `loadState` ou `play` sur sa simulation est
+//     refusé (erreur journalisée ou rendue, état inchangé).
 //   - Capture et restauration : `Snapshot` = monde (copie), générateur `core::Random`, numéro de pas, entrées en attente.
 //     `saveState` / `loadState` l'écrivent en JSON (scène par `scene/scene_file.hpp`).
 //   - Empreinte : `fingerprint()` hache le monde (`scene::fingerprint`), l'état du générateur, le pas et les entrées en attente.
@@ -122,11 +125,16 @@ class Simulation
     std::vector<std::string> systemOrder() const;
 
     // ── Entrées ───────────────────────────────────────────────────────────────
-    // kInvalidArgument si `input.step` est déjà joué (< stepIndex()).
+    // kInvalidArgument si `input.step` est déjà joué (< stepIndex(), ou == stepIndex() pendant le pas, dont les entrées sont
+    // déjà prélevées) ou si la charge contient un réel infini ou NaN (non représentable en JSON texte).
     core::Result<> queueInput(Input input);
-    // Entrées livrées depuis la création (ou depuis le pas de la dernière restauration), dans l'ordre de livraison.
+    // Entrées livrées depuis `firstLoggedStep()`, dans l'ordre de livraison (une restauration retire celles du pas restauré et
+    // d'après).
     const std::vector<Input> &inputLog() const noexcept { return log_; }
     const std::vector<Input> &pendingInputs() const noexcept { return pending_; }
+    // Premier pas couvert par le journal : 0, ou le pas chargé par `loadState` (le journal d'une autre partie est vidé), ou
+    // le pas d'un instantané antérieur restauré.
+    std::uint64_t firstLoggedStep() const noexcept { return logStart_; }
 
     // ── Pas ───────────────────────────────────────────────────────────────────
     void step();
@@ -145,14 +153,18 @@ class Simulation
     void restore(const Snapshot &snapshot);
     // État en JSON : {"version", "data": {"step", "random": {"state", "increment"}, "pending": [...], "scene": <scène>}}.
     core::Json saveState() const;
-    // Les types de composants doivent être enregistrés dans le monde. Tout ou rien.
+    // Les types de composants doivent être enregistrés dans le monde. Tout ou rien ; kParse si une entrée en attente précède le
+    // pas sauvegardé. Le journal des entrées est vidé (il décrivait une autre partie) : `firstLoggedStep()` = pas chargé.
     core::Result<scene::SceneLoadReport> loadState(const core::Json &state, const scene::SceneMigrations &migrations = {});
 
     // ── Rejeu et empreinte ────────────────────────────────────────────────────
-    // Partie jouée depuis le pas `firstStep` jusqu'à maintenant, avec les entrées du journal.
-    Replay recording(std::uint64_t firstStep = 0) const;
-    // Met en file les entrées du rejeu puis joue jusqu'à `lastStep`. kInvalidArgument si la simulation n'est pas au pas
-    // `firstStep` ou si la graine diffère.
+    // Partie jouée depuis le pas `firstStep` jusqu'à maintenant, avec les entrées du journal. kInvalidArgument si `firstStep`
+    // précède `firstLoggedStep()` (entrées inconnues) ou dépasse `stepIndex()`.
+    core::Result<Replay> recording(std::uint64_t firstStep = 0) const;
+    // Met en file les entrées du rejeu puis joue jusqu'à `lastStep`. Dans [firstStep, lastStep), le rejeu fait foi : les
+    // entrées déjà en attente dans cet intervalle (venues d'un instantané) sont remplacées, pas doublées. kInvalidArgument
+    // (file intacte) si la simulation n'est pas au pas `firstStep`, si la graine diffère, si une entrée sort de l'intervalle
+    // ou a une charge infinie ou NaN.
     core::Result<> play(const Replay &replay);
     std::uint64_t fingerprint() const;
 
@@ -165,6 +177,9 @@ class Simulation
         SystemFn run;
     };
 
+    void insertPending(Input input);
+    bool refuseNested(const char *what) const;
+
     SimulationSettings settings_;
     double dt_;
     core::FixedStepper stepper_;
@@ -174,6 +189,7 @@ class Simulation
     std::vector<System> systems_; // triés : phase, ordre, nom
     std::vector<Input> pending_;  // triées par pas (ordre d'ajout gardé à pas égal)
     std::vector<Input> log_;
+    std::uint64_t logStart_ = 0; // premier pas couvert par log_
     std::vector<Input> current_;
     bool stepping_ = false;
 };

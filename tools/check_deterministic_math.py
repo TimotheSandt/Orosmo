@@ -27,10 +27,10 @@ PATTERNS = [
     (re.compile(r"(?<![\w.:>])(?:std::|::)?(?:" + TRANSCENDENTAL + r")[fl]?\s*\("), "transcendental libc function"),
     (re.compile(r"\bglm::(?:" + TRANSCENDENTAL + r"|angleAxis|slerp|eulerAngles|eulerAngleXYZ|yaw|pitch|roll|angle|axis|rotate|"
                 r"perspective|lookAt|sphericalRand|linearRand|gaussRand)\s*\("), "glm function built on transcendental functions"),
-    (re.compile(r"(?<![\w.:>])(?:std::)?s?rand\s*\("), "rand()/srand()"),
+    (re.compile(r"(?<![\w.:>])(?:std::|::)?s?rand\s*\("), "rand()/srand()"),
     (re.compile(r"\bstd::(?:random_device|mt19937(?:_64)?|minstd_rand0?|default_random_engine|ranlux\w*|knuth_b|\w+_distribution)\b"),
      "<random> engine or distribution"),
-    (re.compile(r"\b(?:steady_clock|system_clock|high_resolution_clock)::now\b|\btime\s*\(\s*(?:nullptr|NULL|0)?\s*\)"), "clock read"),
+    (re.compile(r"\b(?:steady_clock|system_clock|high_resolution_clock)::now\b|(?<![\w.:>])(?:std::|::)?time\s*\("), "clock read"),
 ]
 STRIP = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'', re.S)
 SOURCE_EXT = (".hpp", ".h", ".cpp", ".cc", ".inl", ".inc")
@@ -43,12 +43,18 @@ def strip(text):
 
 def scan_text(text):
     """Liste de (ligne, motif, extrait) pour un texte source."""
+    # Motifs appliqués au texte entier (un appel peut couper la ligne entre le nom et la parenthèse) ; le numéro de ligne
+    # vient de la position du résultat. Un même motif n'est compté qu'une fois par ligne.
+    cleaned = strip(text)
     found = []
-    for number, line in enumerate(strip(text).split("\n"), 1):
-        for pattern, label in PATTERNS:
-            m = pattern.search(line)
-            if m:
-                found.append((number, label, m.group(0).strip()))
+    for pattern, label in PATTERNS:
+        seen = set()
+        for m in pattern.finditer(cleaned):
+            number = cleaned.count("\n", 0, m.start()) + 1
+            if number not in seen:
+                seen.add(number)
+                found.append((number, label, " ".join(m.group(0).split())))
+    found.sort(key=lambda item: item[0])
     return found
 
 

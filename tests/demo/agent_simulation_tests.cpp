@@ -81,8 +81,19 @@ TEST_SUITE("demo/simulation")
         // Rejoué depuis l'enregistrement : même état.
         orosmo::sim::Simulation replayed({.seed = 42});
         REQUIRE(demo::setupAgentSimulation(replayed, 100));
-        REQUIRE(replayed.play(pushed.recording()));
+        auto recorded = pushed.recording();
+        REQUIRE(recorded);
+        REQUIRE(replayed.play(*recorded));
         CHECK(replayed.fingerprint() == pushed.fingerprint());
+
+        // Impulsion mal formée (élément non numérique, mauvaise taille) : ignorée sans exception, le pas continue.
+        orosmo::sim::Simulation malformed({.seed = 42});
+        REQUIRE(demo::setupAgentSimulation(malformed, 100));
+        REQUIRE(malformed.queueInput({10, "agents.push", orosmo::core::Json::array({"x", 0.0, 0.0})}));
+        REQUIRE(malformed.queueInput({11, "agents.push", orosmo::core::Json::array({1.0, 0.0})}));
+        CHECK_NOTHROW(malformed.run(1000));
+        CHECK(malformed.stepIndex() == 1000);
+        CHECK(malformed.fingerprint() == simulation.fingerprint());
     }
 
     TEST_CASE("Simulation mode options: --sim-agents, --seed, --sim-steps, refused combinations, output")

@@ -1,25 +1,23 @@
 // --scene anim (M6, démo d'ANIM-01 à 04 et d'ASSET-01/05) : un personnage skinné et animé, généré par le code (A70 : aucun gros
-// binaire), écrit en glTF (`assets::saveGltf`) puis relu (`assets::loadGltf`) pour passer par le chemin d'import réel ; il est joué
-// par une `anim::StateMachine` (deux clips, fondus) et déformé en compute (`anim::SkinnedModel`). Mille agents du même modèle, chacun
-// à sa phase, sont dessinés par un `anim::CrowdRenderer` : un draw call instancié par primitive skinnée (un lot). La texture de
-// couleur est un PNG écrit à côté du glTF et chargé par le `assets::TextureCache` : le modifier sur le disque met à jour les deux
-// modèles en direct (`reloadChanged`).
+// binaire), écrit en glTF (`assets::saveGltf`) puis relu (`assets::ModelLoader`) pour passer par le chemin d'import réel ; c'est un
+// `anim::AnimatedModel` (M8-L12a, A75.2) qui alterne ses deux clips par fondus (`crossFade`) et se déforme en compute. Mille agents du
+// même modèle, chacun à sa phase, sont dessinés par un `anim::CrowdRenderer` créé depuis le modèle (A75.11) : un draw call instancié
+// par primitive skinnée (un lot). La texture de couleur est un PNG écrit à côté du glTF et chargé par le cache de textures du
+// chargeur : le modifier sur le disque met à jour les deux modèles en direct (`reloadChanged`).
 //
-// Capacités (règle 11) : sans compute ni tampons de stockage, le personnage n'est pas déformé (pose de repos, message dans le
-// journal) ; sans tampons de stockage lus par le vertex shader, la foule est absente (message dans le journal).
+// Capacités (règle 11) : sans compute ni tampons de stockage, le personnage est déformé sur le CPU (repli d'`AnimatedModel`) ; sans
+// tampons de stockage lus par le vertex shader, la foule est absente (message dans le journal).
 #pragma once
 
-#include "orosmo/anim/clip.hpp"
+#include "orosmo/anim/animated_model.hpp"
 #include "orosmo/anim/crowd.hpp"
-#include "orosmo/anim/skinning.hpp"
-#include "orosmo/anim/state_machine.hpp"
 #include "orosmo/assets/model.hpp"
-#include "orosmo/assets/render_model.hpp"
-#include "orosmo/assets/texture_cache.hpp"
+#include "orosmo/assets/model_loader.hpp"
 #include "orosmo/core/error.hpp"
 #include "orosmo/renderer/camera.hpp"
 #include "orosmo/renderer/material.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/scene_renderer.hpp"
 #include "orosmo/renderer/shader_library.hpp"
 
@@ -74,63 +72,55 @@ class AnimScene
     AnimScene(const AnimScene &) = delete;
     AnimScene &operator=(const AnimScene &) = delete;
 
-    // Écrit puis relit le glTF, crée les modèles, la machine à états, le skinning et la foule. `device`, `library` et `pipelines`
+    // Écrit puis relit le glTF, crée le modèle animé et la foule. `device`, `library` et `pipelines`
     // doivent survivre à l'objet.
     orosmo::core::Result<> init(orosmo::rhi::Device &device, orosmo::renderer::ShaderLibrary &library, orosmo::renderer::PipelineCache &pipelines,
                                 const std::filesystem::path &shaderDirectory, AnimSceneOptions options);
-    // Avance la machine à états et les poses des agents de `dt` secondes (temps fourni : déterministe).
+    // Avance le modèle animé (fondu entre ses clips toutes les 3 s) et les poses des agents de `dt` secondes (temps fourni : déterministe).
     orosmo::core::Result<> update(float dt);
     // Skinning en compute du personnage, hors passe : à enregistrer avant `SceneRenderer::beginFrame`, dans la même soumission.
     orosmo::core::Result<> dispatch(orosmo::rhi::CommandEncoder &encoder);
     // Entre `SceneRenderer::setCamera` (et ses lumières) et `endFrame`.
     orosmo::core::Result<> render(orosmo::renderer::SceneRenderer &renderer, const orosmo::renderer::Camera &camera);
     // ASSET-05 : relit la texture si le fichier a changé ; renvoie le nombre de textures rechargées. Si sa taille change (texture
-    // recréée), les modèles et la foule sont reconstruits pour lier la nouvelle texture.
+    // recréée), les modèles et la foule sont reconstruits pour lier la nouvelle texture ; tant que la reconstruction est en attente
+    // (échec, retentée), ni le personnage ni la foule ne sont dessinés.
     std::size_t reloadChanged();
     void destroy();
 
-    const orosmo::assets::Model &model() const noexcept { return model_; }
+    const orosmo::assets::Model &model() const noexcept { return hero_->model(); }
     const std::filesystem::path &modelPath() const noexcept { return modelPath_; }
     const std::filesystem::path &texturePath() const noexcept { return texturePath_; }
-    bool heroSkinned() const noexcept { return skinned_.has_value(); }
+    // Personnage déformé en compute (sinon : repli CPU).
+    bool heroSkinned() const noexcept { return hero_ && hero_->skinningPath() == orosmo::anim::SkinningPath::kGpu; }
     bool crowdActive() const noexcept { return crowd_ != nullptr; }
     std::size_t agentCount() const noexcept { return crowd_ ? crowd_->agentCount() : 0; }
     // Primitives skinnées dessinées par la foule (un lot, donc un draw call, chacune).
     std::size_t crowdBatchCount() const noexcept { return crowd_ ? crowd_->batchCount() : 0; }
     // Compteurs du dernier `render`.
     const orosmo::anim::CrowdDrawStats &crowdStats() const noexcept { return crowdStats_; }
-    std::size_t heroDraws() const noexcept { return hero_ ? hero_->drawCount() : 0; }
-    const orosmo::anim::StateMachine *stateMachine() const noexcept { return machine_ ? &*machine_ : nullptr; }
+    std::size_t heroDraws() const noexcept { return hero_ ? hero_->renderModel().drawCount() : 0; }
+    const orosmo::anim::AnimatedModel *hero() const noexcept { return hero_.get(); }
 
   private:
-    orosmo::core::Result<> buildModels();
+    orosmo::core::Result<> buildCrowd();
     orosmo::core::Result<> updateCrowd();
 
-    orosmo::rhi::Device *device_ = nullptr;
-    orosmo::renderer::ShaderLibrary *library_ = nullptr;
-    orosmo::renderer::PipelineCache *pipelines_ = nullptr;
-    std::filesystem::path shaderDirectory_;
     AnimSceneOptions options_;
     std::filesystem::path modelPath_;
     std::filesystem::path texturePath_;
 
-    orosmo::assets::Model model_;
-    std::unique_ptr<orosmo::assets::TextureCache> textures_;
-    std::unique_ptr<orosmo::renderer::PbrShaderCache> pbrShaders_;
-    std::shared_ptr<orosmo::renderer::PbrDefaults> defaults_;
-    std::vector<orosmo::anim::Clip> clips_;
-    std::optional<orosmo::anim::StateMachine> machine_;
-    // Ordre de destruction : skinning et foule avant les modèles qu'ils référencent.
-    std::unique_ptr<orosmo::assets::RenderModel> hero_;
-    std::unique_ptr<orosmo::assets::RenderModel> crowdModel_;
-    std::optional<orosmo::anim::SkinnedModel> skinned_;
+    // Ordre de destruction : foule et personnage avant le chargeur (ses textures), le chargeur avant le contexte.
+    std::unique_ptr<orosmo::renderer::RenderContext> context_;
+    std::unique_ptr<orosmo::assets::ModelLoader> loader_;
+    std::unique_ptr<orosmo::anim::AnimatedModel> hero_;
     std::unique_ptr<orosmo::anim::CrowdRenderer> crowd_;
-    orosmo::rhi::TextureHandle albedoHandle_;
-    bool rebuildPending_ = false; // buildModels a échoué après un rechargement : à retenter (modification du fichier ou délai)
+    bool rebuildPending_ = false; // la reconstruction a échoué après un rechargement : à retenter (modification du fichier ou délai)
     int retryCountdown_ = 0;
 
     std::vector<glm::mat4> agentWorlds_;
-    std::vector<orosmo::anim::Pose> agentPoses_;
+    std::vector<std::uint32_t> agentClips_;
+    std::vector<float> agentTimes_;
     std::vector<float> agentPhase_;
     std::vector<float> agentSpeed_;
     float time_ = 0.0f;
