@@ -8,8 +8,12 @@
 #include <doctest/doctest.h>
 
 #include "tests/app/view_module/v1/HotView.gen.h" // structure de la vue telle que l'hôte la connaît (v1)
+#include "renderer/repo_paths.hpp"
+#include "rhi/backends.hpp"
 #include "ui/ui_harness.hpp"
 
+#include <orosmo/app/application.hpp>
+#include <orosmo/app/default_game.hpp>
 #include <orosmo/app/game_module.hpp>
 #include <orosmo/app/view_host.hpp>
 #include <orosmo/core/system.hpp>
@@ -128,6 +132,39 @@ struct Sources
     }
     void touch() const { std::ofstream(cui, std::ios::app) << "// edited, longer\n"; }
 };
+
+// Même structure que cui::HotView (nom, empreinte, disposition), mais construite par le test : la forme liée de
+// `Application::setView` (bibliothèque de jeu absente) appelle ce `build`, la forme rechargeable celui de la bibliothèque. Le C++
+// généré de HotView n'est pas lié dans l'exécutable des tests (il définirait les mêmes symboles que les bibliothèques v2, v3).
+struct LinkedHotView
+{
+    static constexpr const char *cui_name = cui::HotView::cui_name;
+    static constexpr std::uint64_t cui_bindings = cui::HotView::cui_bindings;
+    HotState *state = nullptr;
+
+    std::unique_ptr<ui::Widget> build(ui::Ui &) const
+    {
+        auto label = std::make_unique<ui::Label>("linked");
+        label->setId("linked");
+        return label;
+    }
+};
+static_assert(sizeof(LinkedHotView) == sizeof(cui::HotView));
+
+app::ApplicationSettings uiSettings(rhi::Backend backend)
+{
+    const fs::path repo = tests::repoRoot(__FILE__);
+    app::ApplicationSettings s;
+    s.width = 64;
+    s.height = 64;
+    s.backend = backend;
+    s.backendFallback = false;
+    s.headless = true;
+    s.resourceDirectory = repo / "res";
+    s.shaderDirectory = repo / "shaders" / "rhi";
+    s.frames = 0;
+    return s;
+}
 
 // Vue de même nom que HotView mais d'une autre structure : refusée par toute bibliothèque de test.
 struct OtherStructureView
@@ -401,5 +438,71 @@ TEST_SUITE("app/view_host")
             host.harness.frame(); // l'arbre construit par la bibliothèque arrêtée fonctionne encore
         }
         CHECK(host.harness.ui.root() == nullptr);
+    }
+
+    TEST_CASE("Application::setView (A79 L14, G365): view built by the game library and rebuilt after its reload; linked without it")
+    {
+        for (const rhi::Backend backend : tests::backendsToRun())
+        {
+            CAPTURE(tests::backendName(backend));
+            ViewFolder folder("application");
+            folder.install("v1");
+            HotState state; // lié par la vue : vit plus longtemps que l'application
+            {
+                auto settings = uiSettings(backend);
+                settings.game = app::GameSource::fromLibrary(folder.library, false);
+                settings.game->required = true;
+                settings.views.game = nullptr; // remplacé par le module de l'application
+                auto created = app::Application::create(settings);
+                REQUIRE_MESSAGE(created.has_value(), created.error().describe());
+                app::Application &a = **created;
+                REQUIRE(a.game() != nullptr);
+                auto mounted = a.setView(LinkedHotView{.state = &state});
+                REQUIRE_MESSAGE(mounted.has_value(), mounted.error().describe());
+                CHECK(a.views().reloadable());
+                CHECK(a.ui().find("press") != nullptr); // construite par la bibliothèque, pas par LinkedHotView::build
+                CHECK(a.ui().find("linked") == nullptr);
+
+                folder.install("v2"); // un widget de plus ; rechargée, puis l'arbre est recréé par l'image suivante
+                REQUIRE(a.game()->reload().has_value());
+                REQUIRE(a.frame().has_value());
+                CHECK(a.views().rebuilds() == 1);
+                CHECK(a.ui().find("press") != nullptr);
+                CHECK(a.device().validationErrorCount() == 0);
+            } // l'arbre part avant la bibliothèque qui l'a construit (sinon : code déchargé appelé à la destruction)
+
+            auto settings = uiSettings(backend); // sans bibliothèque de jeu : la vue liée dans l'exécutable
+            auto created = app::Application::create(settings);
+            REQUIRE_MESSAGE(created.has_value(), created.error().describe());
+            app::Application &a = **created;
+            REQUIRE(a.game() == nullptr);
+            auto mounted = a.setView(LinkedHotView{.state = &state});
+            REQUIRE_MESSAGE(mounted.has_value(), mounted.error().describe());
+            CHECK_FALSE(a.views().reloadable());
+            CHECK(a.ui().find("linked") != nullptr);
+            REQUIRE(a.frame().has_value());
+        }
+    }
+
+    TEST_CASE("defaultViews and defaultSettings (A79 L14): the .cui of <project>/src rebuilt by make game in <project>")
+    {
+        const fs::path bin = core::system::executablePath().parent_path(); // bin/tests
+        const app::ViewHostSettings views = app::defaultViews();
+        CHECK(views.sources == bin.parent_path().parent_path() / "src");
+        CHECK(views.buildCommand == "make game BUILD_TYPE=" + bin.filename().string());
+        CHECK(views.buildDirectory == bin.parent_path().parent_path());
+        CHECK(views.game == nullptr);
+
+        const app::ApplicationSettings settings = app::defaultSettings("Starter");
+        CHECK(settings.title == "Starter");
+        CHECK(settings.game.has_value());
+        CHECK(settings.views.buildCommand == views.buildCommand);
+#if defined(DEBUG)
+        CHECK(settings.validation);
+        CHECK(settings.logFile == fs::path("logs/log.log"));
+#else
+        CHECK_FALSE(settings.validation);
+        CHECK(settings.logFile.empty());
+#endif
     }
 }

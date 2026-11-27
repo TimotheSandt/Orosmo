@@ -86,6 +86,10 @@ class ViewHost
     // Développement : kInvalidArgument sans module de jeu, erreurs de `GameModule::findSymbol`, kVersionMismatch si la
     // bibliothèque a été construite avec une autre structure de la vue.
     template <class View> core::Result<> setRoot(View view);
+    // Forme liée dans tous les cas : la vue liée dans l'exécutable est construite directement, rien n'est observé ni reconstruit
+    // (ex. hôte de développement lancé sans sa bibliothèque de jeu : `Application::setView`). Ne pas mélanger avec `setRoot` sur
+    // le même hôte en développement. kBusy pendant `Ui::update`.
+    template <class View> core::Result<> setLinkedRoot(View view);
 
     // Une image (hors de `Ui::update`) : observe les `.cui`, lance et suit la construction, recrée l'arbre après un rechargement
     // de la bibliothèque de jeu. Sans effet en version finale.
@@ -122,6 +126,12 @@ template <class View> core::Result<> ViewHost::setRoot(View view)
 #else
     return mountLinked(std::move(shared), [](const void *v, ui::Ui &ui) { return static_cast<const View *>(v)->build(ui); });
 #endif
+}
+
+template <class View> core::Result<> ViewHost::setLinkedRoot(View view)
+{
+    return mountLinked(std::make_shared<const View>(std::move(view)),
+                       [](const void *v, ui::Ui &ui) { return static_cast<const View *>(v)->build(ui); });
 }
 
 } // namespace orosmo::app

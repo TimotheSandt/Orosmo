@@ -192,6 +192,7 @@ struct Application::Impl
     std::unique_ptr<ui::TextRendererFont> font;
     std::unique_ptr<ui::Ui> ui;
     std::optional<GameModule> game;
+    std::unique_ptr<ViewHost> views; // après le jeu et l'interface : détruit avant eux
 
     renderer::RenderTarget composed;
     renderer::Camera camera;
@@ -204,6 +205,7 @@ struct Application::Impl
 
     bool quit = false;
     bool paused = false;
+    bool animationsPaused = false;
     bool captureOk = true;
     std::uint64_t frame = 0;
     rhi::Extent2D outputSize{};
@@ -217,7 +219,8 @@ struct Application::Impl
         onRender = nullptr;
         onUi = nullptr;
         onUpdate = nullptr;
-        game.reset(); // retire ses actions de l'interface et ses systèmes de la simulation
+        views.reset(); // l'arbre de la vue part avant la bibliothèque de jeu qui a pu le construire
+        game.reset();  // retire ses actions de l'interface et ses systèmes de la simulation
         ui.reset();
         font.reset();
         text.reset();
@@ -247,7 +250,9 @@ struct Application::Impl
         }
         else
         {
-            window = std::make_unique<platform::Window>(settings.title, settings.width, settings.height);
+            window = settings.windowed ? std::make_unique<platform::Window>(settings.title, settings.width, settings.height,
+                                                                            platform::WindowState::kWindowed)
+                                       : std::make_unique<platform::Window>(settings.title, settings.width, settings.height);
             if (auto opened = window->init([&] { (void)rhi::prepareWindowHints(desc); }); !opened)
             {
                 window.reset();
@@ -421,6 +426,13 @@ core::Result<std::unique_ptr<Application>> Application::create(ApplicationSettin
     if (auto started = impl->startGame(); !started)
         return std::unexpected(started.error());
 
+    if (impl->ui)
+    {
+        ViewHostSettings views = s.views;
+        views.game = impl->game ? &*impl->game : nullptr;
+        impl->views = std::make_unique<ViewHost>(*impl->ui, std::move(views));
+    }
+
     impl->timer.emplace(s.clock != nullptr ? *s.clock : impl->steadyClock, s.maxFrameDelta);
     return std::unique_ptr<Application>(new Application(std::move(impl)));
 }
@@ -440,7 +452,10 @@ int Application::main(int argc, char **argv, ApplicationSettings settings, const
         return EXIT_SUCCESS;
     }
     core::setWorkingDirectoryToExecutable();
-    SET_LOG_FILE_DEFAULT;
+    if (settings.logFile.empty())
+        SET_LOG_FILE_DEFAULT;
+    else
+        SET_LOG_FILE(settings.logFile.string());
 
     int code = EXIT_FAILURE;
     {
@@ -533,6 +548,8 @@ core::Result<bool> Application::frame()
 
     // 4. Interface.
     const float dt = static_cast<float>(time.dt);
+    if (s.views)
+        s.views->update(); // développement : vue reconstruite après un .cui enregistré (hors de Ui::update)
     if (s.ui)
     {
         ui::InputFrame input = s.window ? ui::readWindowInput(*s.window, dt) : ui::InputFrame{};
@@ -569,7 +586,7 @@ core::Result<bool> Application::frame()
     s.camera.setAspect(size.width, size.height);
     s.scene->setOutputResolution(pixelW, pixelH);
     s.scene->setDeltaTime(dt);
-    if (auto updated = s.system->update(dt); !updated)
+    if (auto updated = s.system->update(s.animationsPaused ? 0.0f : dt); !updated)
         return std::unexpected(updated.error());
     (void)s.system->applyCamera(s.camera); // sans caméra dans la scène : celle de l'application
 
@@ -648,6 +665,8 @@ void Application::onUi(UiCallback callback) { impl_->onUi = std::move(callback);
 void Application::onRender(RenderCallback callback) { impl_->onRender = std::move(callback); }
 void Application::pauseSimulation(bool paused) noexcept { impl_->paused = paused; }
 bool Application::simulationPaused() const noexcept { return impl_->paused; }
+void Application::pauseAnimations(bool paused) noexcept { impl_->animationsPaused = paused; }
+bool Application::animationsPaused() const noexcept { return impl_->animationsPaused; }
 
 scene::World &Application::world() noexcept { return impl_->simulation->world(); }
 sim::Simulation &Application::simulation() noexcept { return *impl_->simulation; }
@@ -704,6 +723,28 @@ core::Result<core::Handle<renderer::Mesh>> Application::addMesh(const renderer::
     auto mesh = builder.create(*impl_->device);
     if (!mesh)
         return std::unexpected(mesh.error());
+    return addMesh(std::move(*mesh));
+}
+
+core::Result<std::shared_ptr<renderer::PbrMaterial>> Application::createMaterial(const renderer::PbrMaterialDesc &desc)
+{
+    auto loader = modelLoader();
+    if (!loader)
+        return std::unexpected(loader.error());
+    return renderer::PbrMaterial::create(*impl_->device, desc, (*loader)->defaults(), impl_->shadows);
+}
+
+core::Result<core::Handle<renderer::Mesh>> Application::addMesh(const renderer::MeshBuilder &builder, const renderer::PbrMaterialDesc &material)
+{
+    if (builder.layout() != renderer::MeshLayout::kPbr)
+        return makeError(ErrorCode::kInvalidArgument, "Application::addMesh: a material needs the PBR layout (MeshLayout::kPbr)");
+    auto created = createMaterial(material);
+    if (!created)
+        return std::unexpected(created.error());
+    auto mesh = builder.create(*impl_->device);
+    if (!mesh)
+        return std::unexpected(mesh.error());
+    mesh->setMaterial(std::move(*created));
     return addMesh(std::move(*mesh));
 }
 
@@ -774,6 +815,11 @@ ui::Ui &Application::ui() noexcept
 {
     ENGINE_ASSERT(impl_->ui != nullptr, "Application::ui: created with settings.ui = false");
     return *impl_->ui;
+}
+ViewHost &Application::views() noexcept
+{
+    ENGINE_ASSERT(impl_->views != nullptr, "Application::views: created with settings.ui = false");
+    return *impl_->views;
 }
 platform::Window *Application::window() noexcept { return impl_->window.get(); }
 GameModule *Application::game() noexcept { return impl_->game ? &*impl_->game : nullptr; }
