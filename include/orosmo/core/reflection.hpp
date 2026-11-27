@@ -107,9 +107,13 @@ template <typename T> constexpr FieldType fieldTypeOf()
 // (UI-12), et depuis M8 (A79 lot L2) stockage des composants par nom (`scene::ComponentDesc`), sauvegarde et inspecteur à
 // l'exécution. `offset` et `size` : position et taille du champ dans la structure décrite ; `fields` : sous-champs d'une
 // structure réfléchie (type kStruct), décalages relatifs à cette sous-structure. Une structure non réfléchie (kStruct sans
-// sous-champ) est opaque : seuls `offset` et `size` la décrivent.
+// sous-champ) est opaque : seuls `offset` et `size` la décrivent. Un type sans constructeur par défaut a `offset ==
+// kUnknownOffset` : le décalage se mesure sur un objet construit (prendre l'adresse d'un membre d'un objet non construit est
+// un comportement indéfini), et `scene` refuse une telle description.
 struct FieldDesc
 {
+    static constexpr std::size_t kUnknownOffset = static_cast<std::size_t>(-1);
+
     std::string name;
     FieldType type = FieldType::kStruct;
     Range range;
@@ -121,45 +125,47 @@ struct FieldDesc
     friend bool operator==(const FieldDesc &, const FieldDesc &) = default;
 };
 
-namespace detail
-{
-// Décalage d'un membre sans construire l'objet (type non constructible par défaut, constructeur coûteux) : l'adresse du membre
-// est prise dans un stockage non initialisé, jamais lu. `offsetof` ne prend pas de pointeur de membre.
-template <typename T, typename M, typename C> std::size_t memberOffset(M C::*member) noexcept
-{
-    union Storage
-    {
-        unsigned char none;
-        T object;
-        Storage() noexcept : none{} {}
-        ~Storage() {}
-    };
-    Storage storage;
-    const auto *base = reinterpret_cast<const unsigned char *>(std::addressof(storage.object));
-    const auto *at = reinterpret_cast<const unsigned char *>(std::addressof(storage.object.*member));
-    return static_cast<std::size_t>(at - base);
-}
-} // namespace detail
-
 template <Reflected T> std::vector<FieldDesc> describeFields();
 
 namespace detail
 {
-template <typename T, typename F> FieldDesc describeField(const F &f)
+// Décalage d'un membre, mesuré sur un objet vivant (`offsetof` ne prend pas de pointeur de membre).
+template <typename T, typename M, typename C> std::size_t memberOffset(const T *object, M C::*member) noexcept
+{
+    if (object == nullptr)
+        return FieldDesc::kUnknownOffset;
+    const auto *base = reinterpret_cast<const unsigned char *>(std::addressof(*object));
+    const auto *at = reinterpret_cast<const unsigned char *>(std::addressof(object->*member));
+    return static_cast<std::size_t>(at - base);
+}
+
+template <typename T, typename F> FieldDesc describeField(const T *object, const F &f)
 {
     using M = typename F::Member;
-    FieldDesc d{f.name, fieldTypeOf<M>(), f.range, f.description, memberOffset<T>(f.member), sizeof(M), {}};
+    FieldDesc d{f.name, fieldTypeOf<M>(), f.range, f.description, memberOffset(object, f.member), sizeof(M), {}};
     if constexpr (Reflected<M>)
         d.fields = describeFields<M>();
     return d;
 }
-} // namespace detail
 
-template <Reflected T> std::vector<FieldDesc> describeFields()
+template <typename T> std::vector<FieldDesc> describeFieldsOf(const T *object)
 {
     std::vector<FieldDesc> out;
-    std::apply([&](const auto &...f) { (out.push_back(detail::describeField<T>(f)), ...); }, Reflect<T>::fields());
+    std::apply([&](const auto &...f) { (out.push_back(describeField(object, f)), ...); }, Reflect<T>::fields());
     return out;
+}
+} // namespace detail
+
+// Construit un T (valeur par défaut) pour mesurer les décalages ; sans constructeur par défaut : décalages inconnus.
+template <Reflected T> std::vector<FieldDesc> describeFields()
+{
+    if constexpr (std::is_default_constructible_v<T>)
+    {
+        const T object{};
+        return detail::describeFieldsOf<T>(&object);
+    }
+    else
+        return detail::describeFieldsOf<T>(nullptr);
 }
 
 // Appelle fn(name, valeur&, plage) sur chaque champ.

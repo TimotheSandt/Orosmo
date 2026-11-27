@@ -63,7 +63,7 @@ bool initializeGlfw()
         glfwSetErrorCallback([](int errorCode, const char *description) { LOG_ERROR(errorCode, "GLFW Error: ", description); });
         if (!glfwInit())
         {
-            LOG_FATAL(-1, "Failed to initialize GLFW");
+            LOG_ERROR(-1, "Failed to initialize GLFW"); // A75.8 : Window::init renvoie kUnsupported (LOG_FATAL quittait le processus)
             return false;
         }
         return true;
@@ -167,11 +167,22 @@ void Window::swap(Window &other) noexcept
     }
 }
 
-int Window::init(const std::function<void()> &beforeCreate)
+orosmo::core::Result<> Window::init(const std::function<void()> &beforeCreate)
 {
+    using orosmo::core::ErrorCode;
+    using orosmo::core::makeError;
+    if (this->window)
+    {
+        return makeError(ErrorCode::kAlreadyExists, "Window::init: the window is already created");
+    }
+    if (this->parameters.width <= 0 || this->parameters.height <= 0)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "Window::init: invalid size " + std::to_string(this->parameters.width) + "x" +
+                                                          std::to_string(this->parameters.height));
+    }
     if (!initializeGlfw())
     {
-        return -1;
+        return makeError(ErrorCode::kUnsupported, "Window::init: GLFW could not be initialized (no display?)");
     }
     glfwDefaultWindowHints();
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
@@ -189,7 +200,7 @@ int Window::init(const std::function<void()> &beforeCreate)
     if (!this->window)
     {
         LOG_ERROR(1, "Failed to create GLFW window");
-        return -1;
+        return makeError(ErrorCode::kUnsupported, "Window::init: GLFW could not create the window (no display, or context unavailable?)");
     }
     this->cursorModeValue = -1; // nouvelle fenêtre : le premier setCursorMode la configure
 
@@ -209,8 +220,10 @@ int Window::init(const std::function<void()> &beforeCreate)
     this->changeWindowState(this->parameters.windowState);
     this->inputManager = &InputManager::getInstance(this->window);
 
-    return 0;
+    return {};
 }
+
+InputManager &Window::input() const { return InputManager::getInstance(this->window); }
 
 void Window::close()
 {
@@ -316,8 +329,23 @@ void Window::setCursorPosition(glm::dvec2 position)
     }
 }
 
+bool Window::pollEvents()
+{
+    if (!this->window || !this->inputManager)
+    {
+        return false;
+    }
+    glfwPollEvents();
+    this->inputManager->update();
+    return true;
+}
+
 bool Window::newFrame()
 {
+    if (!this->window || !this->inputManager)
+    {
+        return false; // jamais créée ou fermée : rien à lire (pollEvents)
+    }
     // Clés du Profiler calculées une fois (pas de std::string ni de recherche de table à chaque image).
     static const orosmo::core::Profiler::Key pollEventsKey = orosmo::core::Profiler::MakeKey("PollEvents");
     static const orosmo::core::Profiler::Key healthCheckKey = orosmo::core::Profiler::MakeKey("HealthCheck");

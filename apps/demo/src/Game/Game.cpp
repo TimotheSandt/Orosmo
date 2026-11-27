@@ -81,7 +81,7 @@ orosmo::core::Result<> Game::createGraphics()
     }
     else
     {
-        if (this->window.init([&]() { (void)rhi::prepareWindowHints(desc); }) != 0)
+        if (!this->window.init([&]() { (void)rhi::prepareWindowHints(desc); }))
         {
             return makeError(ErrorCode::kUnsupported, "Failed to initialize the window (no display?)");
         }

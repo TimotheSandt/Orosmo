@@ -126,7 +126,7 @@ rhi::DeviceDesc desc;
 desc.backend = rhi::Backend::kOpenGL;
 desc.validation = true;                 // le starter le met à true en debug seulement
 
-if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0) { /* pas d'affichage ? */ }
+if (!window.init([&] { (void)rhi::prepareWindowHints(desc); })) { /* pas d'affichage ? */ }
 desc.surface.nativeWindow = window.getWindow();
 
 auto created = rhi::createDevice(desc);  // core::Result<std::unique_ptr<rhi::Device>>

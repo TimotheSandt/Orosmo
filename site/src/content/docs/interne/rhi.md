@@ -38,7 +38,7 @@ externe (`SceneRenderer::drawCustom`). Voir [Quel niveau une application utilise
 
 rhi::DeviceDesc desc;                                  // backend = kOpenGL par défaut, validation = true
 desc.backend = rhi::Backend::kVulkan;
-if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0) { /* pas d'affichage */ }
+if (!window.init([&] { (void)rhi::prepareWindowHints(desc); })) { /* pas d'affichage */ }
 desc.surface.nativeWindow = window.getWindow();        // nul : périphérique hors écran de taille surface.size
 
 auto created = rhi::createDevice(desc);                // kUnsupported, avec la raison, si le backend manque
