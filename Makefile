@@ -193,8 +193,13 @@ demo-test:
 
 # Tests sans GPU ni fenêtre (unitaires) / seulement ceux qui en demandent un (intégration graphique : contexte OpenGL hors écran,
 # fenêtre). `make demo-test` exécute les deux. ENGINE_TEST_REQUIRE_GPU=1 fait échouer (au lieu d'ignorer) un test GPU sans pilote.
-GPU_TEST_SUITES := rhi/opengl*,rhi/vulkan*,rhi/backend*,renderer/*,platform/window,ui/render,app/view_host/gpu
+# Un cas qui crée un périphérique va dans une suite de cette liste : suite entière, ou « <suite>/gpu » donnée au cas par
+# `* doctest::test_suite("<suite>/gpu")` quand le reste de la suite n'a pas besoin de GPU. `demo-test-unit` pose
+# ENGINE_TEST_NO_GPU=1 : les aides de création de périphérique des tests (tests/rhi/backends.hpp, gpu_fixture.hpp,
+# tests/app/application_tests.cpp) y échouent au lieu d'ouvrir un pilote (A79 L15).
+GPU_TEST_SUITES := rhi/opengl*,rhi/vulkan*,rhi/backend*,renderer/*,platform/window,ui/render,*/gpu,app/application-gpu,anim/animated-model,anim/crowd,assets/texture
 .PHONY: demo-test-unit demo-test-gpu
+demo-test-unit: export ENGINE_TEST_NO_GPU := 1
 demo-test-unit:
 	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release

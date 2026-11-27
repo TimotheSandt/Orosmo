@@ -161,7 +161,8 @@ using namespace render_model_test;
 
 TEST_SUITE("assets/render_model")
 {
-    TEST_CASE("pbrMaterialDesc: texture, image and sampler indices out of range are errors, never reads")
+    TEST_CASE("pbrMaterialDesc: texture, image and sampler indices out of range are errors, never reads"
+              * doctest::test_suite("assets/render_model/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -222,7 +223,7 @@ TEST_SUITE("assets/render_model")
         CHECK(!as::flatShaded(withNormals).has_value()); // normales explicites gardées
     }
 
-    TEST_CASE("RenderModel: GPU meshes of a primitive without NORMAL are flat-shaded")
+    TEST_CASE("RenderModel: GPU meshes of a primitive without NORMAL are flat-shaded" * doctest::test_suite("assets/render_model/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -242,7 +243,8 @@ TEST_SUITE("assets/render_model")
         }
     }
 
-    TEST_CASE("RenderModel: embedded images of two models in one cache do not collide; one image referenced twice is shared")
+    TEST_CASE("RenderModel: embedded images of two models in one cache do not collide; one image referenced twice is shared"
+              * doctest::test_suite("assets/render_model/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -276,7 +278,8 @@ TEST_SUITE("assets/render_model")
         }
     }
 
-    TEST_CASE("RenderModel: two skinned nodes on one primitive get their own GPU mesh; static nodes share theirs, at rest")
+    TEST_CASE("RenderModel: two skinned nodes on one primitive get their own GPU mesh; static nodes share theirs, at rest"
+              * doctest::test_suite("assets/render_model/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -320,7 +323,7 @@ TEST_SUITE("assets/render_model")
         }
     }
 
-    TEST_CASE("Mesh: each history slot keeps its own previous model matrix")
+    TEST_CASE("Mesh: each history slot keeps its own previous model matrix" * doctest::test_suite("assets/render_model/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -354,7 +357,7 @@ TEST_SUITE("assets/render_model")
         }
     }
 
-    TEST_CASE("Mesh: a mirrored transform turns the front face clockwise")
+    TEST_CASE("Mesh: a mirrored transform turns the front face clockwise" * doctest::test_suite("assets/render_model/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -376,7 +379,7 @@ TEST_SUITE("assets/render_model")
         }
     }
 
-    TEST_CASE("RenderModel: a mirrored node with a single-sided material is still drawn")
+    TEST_CASE("RenderModel: a mirrored node with a single-sided material is still drawn" * doctest::test_suite("assets/render_model/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -393,7 +396,8 @@ TEST_SUITE("assets/render_model")
         }
     }
 
-    TEST_CASE("RenderModel: a mirrored node keeps its normal map's green axis (lit the same from +Y)")
+    TEST_CASE("RenderModel: a mirrored node keeps its normal map's green axis (lit the same from +Y)"
+              * doctest::test_suite("assets/render_model/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -427,7 +431,8 @@ TEST_SUITE("assets/render_model")
         }
     }
 
-    TEST_CASE("RenderModel::rebuildMaterials: new groups reach every mesh; the variant follows shadow reception")
+    TEST_CASE("RenderModel::rebuildMaterials: new groups reach every mesh; the variant follows shadow reception"
+              * doctest::test_suite("assets/render_model/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
