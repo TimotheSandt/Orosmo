@@ -23,6 +23,7 @@
 #include <orosmo/core/time.hpp>
 #include <orosmo/scene/scene_file.hpp>
 #include <orosmo/scene/world.hpp>
+#include <orosmo/sim/system.hpp> // Phase, StepContext, SystemDesc (en-tête léger, A79 lot L7)
 
 #include <cstdint>
 #include <functional>
@@ -35,15 +36,6 @@
 namespace orosmo::sim
 {
 
-enum class Phase : std::uint8_t
-{
-    kInput,      // lecture des entrées du pas
-    kUpdate,     // logique
-    kPostUpdate, // conséquences (collisions, nettoyage)
-};
-std::string_view phaseName(Phase phase) noexcept;
-std::optional<Phase> parsePhase(std::string_view name) noexcept;
-
 // Entrée datée : livrée au pas `step`. `data` : charge libre (JSON, sauvegardée telle quelle dans un rejeu).
 struct Input
 {
@@ -51,25 +43,6 @@ struct Input
     std::string name;
     core::Json data;
     friend bool operator==(const Input &, const Input &) = default;
-};
-
-struct StepContext
-{
-    scene::World &world;
-    core::Random &random;
-    std::uint64_t step; // numéro du pas joué (0 pour le premier)
-    double dt;          // durée d'un pas en secondes
-    std::span<const Input> inputs; // entrées de ce pas, dans l'ordre d'ajout
-};
-
-using SystemFn = std::function<void(StepContext &)>;
-
-struct SystemDesc
-{
-    std::string name;
-    Phase phase = Phase::kUpdate;
-    int order = 0;
-    SystemFn run;
 };
 
 struct SimulationSettings

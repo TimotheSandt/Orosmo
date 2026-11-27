@@ -2,7 +2,7 @@
 // Components are plain data (trivially copyable, reflected): the engine keeps them across hot reloads.
 #pragma once
 
-#include <orosmo/core/reflection.hpp>
+#include <orosmo/core/reflection.hpp> // light: types only
 
 #include <tuple>
 

@@ -12,9 +12,8 @@
 // vérifie sur le binaire ; les constantes ci-dessous (`constexpr`) sont en lecture seule.
 #include "app/game_module/test_game.hpp"
 
-#include <orosmo/app/game_api.hpp>
-#include <orosmo/app/game_context.hpp>
 #include <orosmo/core/log.hpp>
+#include <orosmo/game.hpp> // GAME-06 : l'en-tête léger suffit à écrire un jeu
 #include <orosmo/ui/ui.hpp>
 
 #include <cstdint>

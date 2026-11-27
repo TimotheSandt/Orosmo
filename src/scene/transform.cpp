@@ -1,6 +1,8 @@
 // ECS-02 (A79 lot L2) : composition des transformations en double.
 #include <orosmo/scene/transform.hpp>
 
+#include <orosmo/core/math.hpp> // toLocal, normalize
+
 #include <glm/gtc/quaternion.hpp>
 
 namespace orosmo::scene

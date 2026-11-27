@@ -184,7 +184,7 @@ void Simulation::step()
     current_.assign(std::make_move_iterator(pending_.begin()), std::make_move_iterator(pending_.begin() + static_cast<std::ptrdiff_t>(due)));
     pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(due));
 
-    StepContext context{world_, random_, step_, dt_, current_};
+    StepContext context{world_, random_, step_, dt_, {current_.data(), current_.size()}};
     stepping_ = true;
     for (System &system : systems_)
         system.run(context);

@@ -4,7 +4,9 @@
 #include <orosmo/sim/simulation.hpp>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -234,4 +236,24 @@ TEST_SUITE("sim/simulation")
         CHECK((advanced.play(replay).error().code == core::ErrorCode::kInvalidArgument));
         CHECK((replayFromJson(core::Json{{"version", 1}, {"data", core::Json::object()}}).error().code == core::ErrorCode::kParse));
     }
+}
+
+TEST_CASE("sim : StepContext::inputs, vue des entrées du pas (type léger de sim/system.hpp, GAME-06)")
+{
+    Simulation sim;
+    std::size_t seen = 0;
+    std::string names;
+    REQUIRE(sim.addSystem({"read", Phase::kInput, 0, [&](StepContext &ctx) {
+                               const std::span<const Input> span = ctx.inputs; // conversion vers std::span
+                               seen = span.size();
+                               for (std::size_t i = 0; i < ctx.inputs.size(); ++i)
+                                   names += ctx.inputs[i].name;
+                           }}));
+    sim.step();
+    CHECK(seen == 0);
+    REQUIRE(sim.queueInput({.step = 1, .name = "a", .data = {}}));
+    REQUIRE(sim.queueInput({.step = 1, .name = "b", .data = {}}));
+    sim.step();
+    CHECK(seen == 2);
+    CHECK(names == "ab");
 }
