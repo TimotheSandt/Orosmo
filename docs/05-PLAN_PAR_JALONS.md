@@ -220,6 +220,8 @@ Une branche `feat/M8-L<n>-…` par lot, créée depuis `dev`, une PR vers `dev` 
 **Démo** : on modifie un fichier de logique pendant que le programme tourne, on compile, et le comportement change sans redémarrage ni perte d'état ; on modifie un fichier d'interface et l'écran se met à jour ; un petit programme de simulation (quelques centaines d'agents évoluant dans une scène de test) tourne sans fenêtre, rejouable avec la même graine.
 **Terminé** : cas de rechargement testés (changement de corps de fonction, ajout de champ, changement de hiérarchie avec repli sur sauvegarde/restauration) ; boucle à pas fixe testée ; rejouabilité vérifiée ; cadence de simulation réglable testée (pas par image et fréquence fixe) et échange simulation/rendu propre sous TSan ; les trois niveaux de `--shadow-quality` testés avec `high` vérifié égal aux défauts du moteur.
 
+**Documentation du site et du wiki (exigé par l'auteur le 2026-11-26)** : M8 n'est terminé que si `site/` (site vitrine et wiki) couvre toutes ses fonctionnalités, côté utilisation et côté architecture interne, sans page périmée ; fait dans le lot L15 (`docs/QUESTIONS.md` A79). **Ne modifier que le nécessaire** (auteur, 2026-11-26) : seulement les pages concernées par un changement de M8 et les pages manquantes ; pas de réécriture, de réorganisation ni de retouche de style du reste.
+
 ## M9 · macOS et Metal
 
 - Valider Vulkan via MoltenVK, régler les différences.

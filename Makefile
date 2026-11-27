@@ -52,8 +52,8 @@ else
 # ferait disparaître les en-têtes sous la compilation de l'autre.
 .NOTPARALLEL:
 
-.PHONY: check check-repo check-layers check-api check-headers compile-commands
-check: check-repo check-layers check-api check-headers
+.PHONY: check check-repo check-layers check-api check-headers check-determinism compile-commands
+check: check-repo check-layers check-api check-headers check-determinism
 
 compile-commands:
 	@python3 tools/gen_compile_commands.py --build-type $(BUILD_TYPE) --cxx "$(CXX)" --cc "$(CC)"
@@ -69,6 +69,10 @@ check-api:
 
 check-headers:
 	@python3 tools/check_headers.py --strict
+
+# SIM-01 (A79 L3) : ni fonction transcendante, ni rand(), ni horloge dans le chemin rejoué de la simulation.
+check-determinism:
+	@python3 tools/check_deterministic_math.py
 
 # ── Combined ──────────────────────────────────────────────────────────────────
 #   make all-debug             engine debug → sync → demo debug

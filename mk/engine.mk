@@ -12,7 +12,7 @@
 #
 # ── Output ────────────────────────────────────────────────────────────────────
 #   lib/<build>/libui.a  lib/<build>/libcore.a  lib/<build>/libplatform.a
-#   lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libassets.a  lib/<build>/libanim.a  lib/<build>/libscene.a  lib/<build>/libthirdparty.a
+#   lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libassets.a  lib/<build>/libanim.a  lib/<build>/libscene.a  lib/<build>/libsim.a  lib/<build>/libthirdparty.a
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
 #   dist/pkg-<platform>/          — staging, zipped into dist/orosmo-pkg-<platform>.zip
@@ -159,11 +159,12 @@ LIB_RENDERER   := $(LIB_DIR)/$(BUILD_TYPE)/librenderer.a
 LIB_ASSETS     := $(LIB_DIR)/$(BUILD_TYPE)/libassets.a
 LIB_ANIM       := $(LIB_DIR)/$(BUILD_TYPE)/libanim.a
 LIB_SCENE      := $(LIB_DIR)/$(BUILD_TYPE)/libscene.a
+LIB_SIM        := $(LIB_DIR)/$(BUILD_TYPE)/libsim.a
 LIB_THIRDPARTY := $(LIB_DIR)/$(BUILD_TYPE)/libthirdparty.a
 
-ENGINE_LIB_NAMES := libui.a libcore.a libplatform.a librhi.a librenderer.a libassets.a libanim.a libscene.a libthirdparty.a
+ENGINE_LIB_NAMES := libui.a libcore.a libplatform.a librhi.a librenderer.a libassets.a libanim.a libscene.a libsim.a libthirdparty.a
 
-ENGINE_LIBS := $(LIB_UI) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_ASSETS) $(LIB_ANIM) $(LIB_SCENE) $(LIB_THIRDPARTY)
+ENGINE_LIBS := $(LIB_UI) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_ASSETS) $(LIB_ANIM) $(LIB_SCENE) $(LIB_SIM) $(LIB_THIRDPARTY)
 
 # ── Per-subsystem sources ─────────────────────────────────────────────────────
 UI_SRCS         := $(shell find $(LIBRARIES_SRC_DIR)/ui         -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
@@ -174,6 +175,7 @@ Renderer_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/renderer   -type f \( -name
 Assets_SRCS     := $(shell find $(LIBRARIES_SRC_DIR)/assets     -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Anim_SRCS       := $(shell find $(LIBRARIES_SRC_DIR)/anim       -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Scene_SRCS      := $(shell find $(LIBRARIES_SRC_DIR)/scene      -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+Sim_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/sim        -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 ThirdParty_SRCS := $(shell find $(LIBRARIES_SRC_DIR)/ThirdParty -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 
 obj_from_src = \
@@ -188,9 +190,10 @@ Renderer_OBJS   := $(call obj_from_src,$(Renderer_SRCS))
 Assets_OBJS     := $(call obj_from_src,$(Assets_SRCS))
 Anim_OBJS       := $(call obj_from_src,$(Anim_SRCS))
 Scene_OBJS      := $(call obj_from_src,$(Scene_SRCS))
+Sim_OBJS        := $(call obj_from_src,$(Sim_SRCS))
 ThirdParty_OBJS := $(call obj_from_src,$(ThirdParty_SRCS))
 
-ALL_ENGINE_OBJS := $(UI_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(Assets_OBJS) $(Anim_OBJS) $(Scene_OBJS) $(ThirdParty_OBJS)
+ALL_ENGINE_OBJS := $(UI_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(Assets_OBJS) $(Anim_OBJS) $(Scene_OBJS) $(Sim_OBJS) $(ThirdParty_OBJS)
 
 # ── Git remote detection ──────────────────────────────────────────────────────
 # Reads the 'origin' remote and extracts the host and owner/repo slug.
@@ -340,6 +343,13 @@ $(LIB_SCENE): $(Scene_OBJS) mk/engine.mk
 	$(ORS_Q)rm -f $@
 	$(call ors_link,AR [$(BUILD_TYPE)])
 	$(ORS_Q)$(AR) rcs $@ $(Scene_OBJS)
+	$(ors_end)
+
+$(LIB_SIM): $(Sim_OBJS) mk/engine.mk
+	@mkdir -p "$(dir $@)"
+	$(ORS_Q)rm -f $@
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $(Sim_OBJS)
 	$(ors_end)
 
 $(LIB_THIRDPARTY): $(ThirdParty_OBJS)

@@ -80,6 +80,20 @@ class World
     // Entités vivantes par indice croissant.
     std::vector<Entity> entities() const;
 
+    // ── Table des entités (sauvegarde, capture : A79 lot L3) ──────────────────
+    // Génération de chaque indice et pile des indices libres (le dernier est réutilisé en premier) : de quoi recréer les
+    // mêmes identifiants (les références `Entity` des composants restent valides) et la même suite de `create` ensuite.
+    struct EntityTable
+    {
+        std::vector<std::uint32_t> generations; // par indice ; un indice absent de `freeIndices` est vivant
+        std::vector<std::uint32_t> freeIndices;
+        friend bool operator==(const EntityTable &, const EntityTable &) = default;
+    };
+    EntityTable entityTable() const;
+    // Vide le monde (entités, données, hiérarchie ; les types enregistrés restent) puis recrée les entités de `table`, sans
+    // composant ni parent. kInvalidArgument (monde inchangé) : indice libre hors de la table ou en double.
+    core::Result<> resetEntities(const EntityTable &table);
+
     // ── Types de composants ───────────────────────────────────────────────────
     // Copie la description. Même nom et même disposition (`sameLayout`) : rend l'identifiant existant (et prend la nouvelle
     // valeur par défaut). Même nom, autre disposition : kAlreadyExists. Description invalide : kInvalidArgument.
@@ -102,6 +116,9 @@ class World
     const ComponentDesc *componentDesc(ComponentId id) const noexcept;
     // Types enregistrés, par emplacement croissant.
     std::vector<ComponentId> componentIds() const;
+    // Entités qui ont ce composant, dans l'ordre dense du stockage (ordre de parcours) ; vide si l'identifiant est invalide.
+    // Valide jusqu'au prochain ajout ou retrait du même type.
+    std::span<const Entity> componentEntities(ComponentId id) const noexcept;
     ComponentType<Transform> transformType() const noexcept { return transformType_; }
 
     // ── Données (non typées) ──────────────────────────────────────────────────

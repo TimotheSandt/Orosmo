@@ -165,6 +165,7 @@ jobs:
           python3 tools/check_layers.py --strict
           python3 tools/check_api_isolation.py --strict   # gl*, Vk*, MTL*, GLFW, <windows.h> hors de src/rhi/ et src/platform/ : bloquant (M2 lot C)
           python3 tools/check_headers.py --strict
+          python3 tools/check_deterministic_math.py      # SIM-01 (A79 L3) : chemin rejoué sans sin/exp/rand/horloge
 
       - name: Build (debug, -Werror)
         run: make -j"$(nproc)" all-debug
