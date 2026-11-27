@@ -82,7 +82,9 @@ auto game = orosmo::app::GameModule::load({.path = exeDir / "game.so", .targets 
   (gestionnaire renommé) sont journalisés et rendus par `missingActions()` ; l'appel reste sans effet ni plantage.
 - **Paramètres (GAME-05, L6)** : `ctx->registerParams<T>("tuning", "tuning.json")` (chemin relatif à
   `GameTargets::paramsDirectory`) rend une `Params<T>` à capturer par valeur ; le fichier est tenu par le moteur et relu au
-  début de chaque `GameModule::update` quand il change : valeur lue à l'image suivante, sans compilation. Fichier invalide
+  début de chaque `GameModule::update` quand il change : `ParamsFile::poll` interroge le fichier au plus une fois par
+  `ParamsSettings::pollInterval` (100 ms par défaut), donc la valeur est lue au plus `pollInterval` après la modification, au
+  début du `GameModule::update` qui la détecte (plusieurs images plus tard au besoin), sans compilation. Fichier invalide
   (JSON, type, plage) : dernière valeur valide gardée, `lastError()` et journal. Champ absent : défaut ; inconnu : avertissement.
   Même nom, même fichier, même disposition à la version suivante : même objet. Hôte : `ParamsHost<T>::open(chemin)`, `poll()`.
 - **`shutdown`** n'est appelé qu'à l'arrêt définitif (`stop`, destruction), pas au rechargement.

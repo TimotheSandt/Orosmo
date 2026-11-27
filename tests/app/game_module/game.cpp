@@ -38,7 +38,9 @@ using Counter = test_game::CounterV3;
 using test_game::Counter;
 #endif
 
+#if TEST_GAME_VERSION != 3 // v3 : le pas vient des paramètres
 constexpr std::int64_t kIncrement = TEST_GAME_VERSION == 1 ? 1 : 10;
+#endif
 constexpr const char *kOnlySystem = TEST_GAME_VERSION == 1 ? "v1.only" : "v2.only";
 constexpr const char *kOwnAction = TEST_GAME_VERSION == 1 ? "game.v1" : "game.v2";
 

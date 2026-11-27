@@ -563,6 +563,22 @@ TEST_SUITE("app/game_module")
         CHECK(host.simulation.world().componentType<MoverChanged>("Mover").has_value());
     }
 
+    TEST_CASE("GameModule (GAME-03): a host type registered again by the game with the same layout stays the host's")
+    {
+        Host host;
+        auto hostType = host.simulation.world().registerComponent<MoverV1>("Mover");
+        REQUIRE(hostType.has_value());
+        auto game = app::GameModule::fromApi(&kMoverV1, {.simulation = &host.simulation});
+        REQUIRE(game.has_value()); // même disposition : accepté
+        CHECK(game->components().empty()); // mais pas noté parmi les types du jeu
+        auto refused = game->replace(&kMoverChanged); // autre disposition : jamais migré
+        REQUIRE_FALSE(refused.has_value());
+        CHECK((refused.error().code == ErrorCode::kCancelled));
+        CHECK(game->version() == 1);
+        REQUIRE(host.simulation.world().componentType<MoverV1>("Mover").has_value());
+        CHECK(host.simulation.world().componentType<MoverV1>("Mover")->id == hostType->id); // identifiant de l'hôte intact
+    }
+
     TEST_CASE("GameModule (GAME-04): a renamed handler leaves the interface binding missing (logged), without crash")
     {
         GameFolder folder("renamed");
@@ -670,6 +686,12 @@ TEST_SUITE("app/game_module")
         folder.install("v2");
         REQUIRE(game->reload().has_value());
         CHECK(game->orphanComponents() == std::vector<std::string>{"V1Only"});
+        // Pendant un parcours, le retrait est refusé (kBusy) : le nom reste suivi et un appel suivant le retire.
+        auto counter = host.simulation.world().componentType<Counter>("Counter");
+        REQUIRE(counter.has_value());
+        host.simulation.world().view(*counter).each([&](scene::Entity, Counter &) { CHECK(game->removeOrphanComponents() == 0); });
+        CHECK(game->orphanComponents() == std::vector<std::string>{"V1Only"});
+        CHECK(host.simulation.world().componentId("V1Only").has_value());
         CHECK(game->removeOrphanComponents() == 1);
         CHECK(game->orphanComponents().empty());
         CHECK_FALSE(host.simulation.world().componentId("V1Only").has_value());

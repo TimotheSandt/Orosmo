@@ -174,6 +174,21 @@ TEST_SUITE("scene/migration")
         }
     }
 
+    TEST_CASE("migrateComponent: a removed sub-field is reported like a removed field")
+    {
+        Fixture f;
+        REQUIRE(f.world.migrateComponent(scene::describeComponent<MoverAdded>("Mover")).has_value());
+        auto back = f.world.migrateComponent(scene::describeComponent<MoverV1>("Mover")); // `armor` et `inner.b` retirés
+        REQUIRE(back.has_value());
+        CHECK(back->kind == scene::MigrationKind::kRestored);
+        REQUIRE(back->warnings.size() == 2); // une fois chacun, pas une fois par entité
+        CHECK(std::ranges::any_of(back->warnings, [](const std::string &w) { return w.starts_with("Mover.armor: field removed"); }));
+        CHECK(std::ranges::any_of(back->warnings, [](const std::string &w) { return w.starts_with("Mover.inner.b: unknown field ignored"); }));
+        auto type = f.world.componentType<MoverV1>("Mover");
+        REQUIRE(type.has_value());
+        CHECK(f.world.get(f.owners.back(), *type)->inner.a == 3.f);
+    }
+
     TEST_CASE("migrateComponent: same layout keeps the identifier; errors for unknown types, Transform, invalid layouts")
     {
         Fixture f;

@@ -66,8 +66,11 @@ core::Result<scene::ComponentId> GameContext::registerComponent(scene::Component
             return registered;
         id = *registered;
     }
+    // Un type existant que le jeu n'a pas créé reste celui de l'hôte : accepté (même disposition), mais pas noté parmi les types
+    // du jeu, pour qu'un rechargement ne le migre jamais (GAME-03).
+    const bool gameOwned = !existing || (journal_ != nullptr && journal_->ownsComponent(name));
     auto &names = (*record)->components;
-    if (std::ranges::find(names, name) == names.end())
+    if (gameOwned && std::ranges::find(names, name) == names.end())
         names.push_back(std::move(name));
     return id;
 }
@@ -399,13 +402,21 @@ std::size_t GameModule::removeOrphanComponents()
     if (!impl_)
         return 0;
     std::size_t removed = 0;
-    for (const std::string &name : impl_->orphans)
-        if (Access::targets(impl_->context).world->unregisterComponent(name))
+    std::vector<std::string> kept; // refusés (kBusy pendant un parcours) : gardés pour un appel suivant
+    for (std::string &name : impl_->orphans)
+    {
+        if (auto unregistered = Access::targets(impl_->context).world->unregisterComponent(name); unregistered)
         {
             LOG_INFO("game module: orphan component type '" + name + "' removed with its data");
             ++removed;
         }
-    impl_->orphans.clear();
+        else if (unregistered.error().code != ErrorCode::kNotFound)
+        {
+            LOG_WARNING("game module: orphan component type '" + name + "' not removed: " + unregistered.error().describe());
+            kept.push_back(std::move(name));
+        }
+    }
+    impl_->orphans = std::move(kept);
     return removed;
 }
 
