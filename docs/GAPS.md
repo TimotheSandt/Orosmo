@@ -594,6 +594,15 @@ Numéros pris à partir de G240 pour ne pas croiser ceux des lots M8 menés en p
 | G298 | Profileur des outils | Liste plate des mesures de `core::Profiler` (moyenne, maximum) et graphe du temps CPU de l'image ; ni vue hiérarchique, ni graphe GPU séparé. Le panneau de performances de la démo (`PerformanceView.cui`, thème `hud.json`) reste dans la démo : seul son historique (`ui::FrameHistory`) est passé dans le moteur. | M10 |
 | G299 | Outils de debug vérifiés sous Linux seulement | Compilés et testés avec g++ 13.3 ; démo vérifiée en OpenGL et Vulkan sans fenêtre. Le monde de la démo ne contient que l'entité « caméra » (la scène n'est pas encore rendue par `scene::World`, lot L13). macOS et Windows : CI seulement. | CI |
 
+## Ajouts du lot M8-L12a, API des contenus (G250 et G251)
+
+Numéros pris à partir de G250 (L0/L9 : G222-G223, L11 : G240-G243, L1 en cours).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G250 | `AnimatedModel` : un maillage skinné partagé par plusieurs nœuds | Comme `SkinnedModel` (G198) : le repli CPU déforme le maillage GPU pour le premier nœud skinné qui le dessine. Sans compute, `RenderModel` n'est pas créé `skinnable` : les nœuds skinnés qui partagent une primitive partagent aussi son tampon (et un nœud statique qui dessine la même primitive la verrait déformée). Correction prévue : une sortie CPU par nœud skinné dans `RenderModel::create` et `AnimatedModel::applyPose`, sans exiger `kStorage`. | M10 |
+| G251 | `AnimatedModel` : pas d'événements de clip | Le lecteur (`play`, `crossFade`) ne rend pas les événements des clips (`Clip::collectEvents`) ; pour eux, piloter le modèle par une `StateMachine` et `setPose`. | M10 |
+
 ## Ajouts hors lot (G290)
 
 | ID | Sujet | Détail | Jalon |

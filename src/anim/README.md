@@ -10,10 +10,24 @@ aucun aléa ; le temps vient de l'appelant.
 | `clip.hpp` | `Clip` : animation glTF (translation, rotation, échelle ; STEP, LINEAR avec slerp, CUBICSPLINE de glTF), `sample` dans une pose, événements nommés (`addEvent`, `collectEvents` avec bouclage) ; `advanceClipTime` (`LoopMode::kOnce` / `kLoop`) — ANIM-02 |
 | `state_machine.hpp` | `StateMachine` : états (clip, boucle, vitesse), transitions par booléen, déclencheur consommé et/ou fin de clip, fondu enchaîné, événements (`takeEvents`) — ANIM-02 |
 | `curves.hpp` | `Curve<T>` (float, vec2, vec3, vec4 ; palier, linéaire, Hermite cubique) ; `PropertyAnimation` : courbes nommées liées à des fonctions qui posent la valeur (caméra, lumière, matériau, transformation) — ANIM-03 |
-| `crowd.hpp` | `CrowdRenderer` : foules instanciées, skinning dans le vertex shader (`shaders/rhi/mesh_pbr_crowd.vert`) avec une palette par agent, un draw call par primitive skinnée pour tous les agents ; `setAgents` (matrices + poses) ou `setAgentPalettes` (palettes déjà calculées) — ANIM-04 |
+| `animated_model.hpp` | `AnimatedModel` (M8-L12a, A75.2) : un glTF animé en une fabrique (`create(context, path)`, chargeur propre ou partagé, ou modèle en mémoire) ; lecteur `play`, `crossFade` (même calcul que `StateMachine`), `update`, `setPose` ; `dispatch`, `draw`, `setTransform` ; skinning en compute ou repli CPU (`SkinningPath`, `forceCpuSkinning`) ; `rebuild` et `reloadChanged` (textures) |
+| `crowd.hpp` | `CrowdRenderer` : foules instanciées, skinning dans le vertex shader (`shaders/rhi/mesh_pbr_crowd.vert`) avec une palette par agent, un draw call par primitive skinnée pour tous les agents ; `setAgents` (matrices + poses) ou `setAgentPalettes` (palettes déjà calculées) — ANIM-04 ; `create(context, animatedModel)` (son `RenderModel` au repos, les clips du modèle) et `setAgents(worlds, clips, times)` — A75.11 |
 | `skinning.hpp` | `SkinnedModel` : skinning GPU en compute (`shaders/rhi/skin.comp`, 4 os par sommet, palette en tampon de stockage) qui écrit le tampon de sommets d'un `assets::RenderModel` créé avec `skinnable` ; `jointPalette`, `skinVertices` (référence CPU) — ANIM-01 |
 
-Exemple :
+Exemple (M8-L12a, cinq lignes ; `context` : `renderer::RenderContext`) :
+
+```cpp
+auto hero = orosmo::anim::AnimatedModel::create(*context, "hero.gltf");
+(*hero)->play("walk");
+// chaque image :
+(*hero)->update(dt);
+(*hero)->dispatch(encoder);          // avant beginFrame du SceneRenderer (rien en repli CPU)
+(*hero)->draw(scene, camera);
+auto crowd = orosmo::anim::CrowdRenderer::create(*context, **hero);   // foule du même modèle
+crowd->get()->setAgents(worlds, clipIndices, times);
+```
+
+Exemple bas niveau (toujours disponible) :
 
 ```cpp
 auto clip = orosmo::anim::Clip::fromModel(model, 0);                 // première animation du glTF
@@ -31,4 +45,6 @@ Limites : pas de cibles de forme, d'IK ni de mouvement de racine (ANIM-05, P2) ;
 skinnés est déformé pour le premier seulement ; normales et tangentes déformées par mat3(palette) (exact sans échelle non uniforme
 dans les os) ; pendant un fondu de la machine à états, aucune autre transition n'est évaluée. Foules : pas de culling par agent ni d'ombres (G199). Voir `docs/GAPS.md` (G198, G199).
 
-Démo : `apps/demo --scene anim` (`apps/demo/src/Scene/anim_scene.cpp`) joue un personnage glTF généré avec `StateMachine` + `SkinnedModel` et une foule de 1000 agents ; coût mesuré dans `docs/PERF_OPENGL_VS_VULKAN.md` (« M6 : skinning et foules »).
+Limites d'`AnimatedModel` : pas d'événements de clip (G251 ; utiliser `StateMachine` + `setPose`) ; même règle « premier nœud » que `SkinnedModel` (G250).
+
+Démo : `apps/demo --scene anim` (`apps/demo/src/Scene/anim_scene.cpp`) joue un personnage glTF généré avec `AnimatedModel` (fondus `crossFade`) et une foule de 1000 agents créée depuis lui (depuis M8-L12a ; avant : `StateMachine` + `SkinnedModel` + second `RenderModel`) ; coût mesuré dans `docs/PERF_OPENGL_VS_VULKAN.md` (« M6 : skinning et foules »).
