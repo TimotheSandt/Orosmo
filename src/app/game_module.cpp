@@ -374,6 +374,20 @@ std::filesystem::path GameModule::loadedPath() const
     return impl_ && impl_->reloader ? impl_->reloader->loadedPath() : std::filesystem::path();
 }
 
+core::Result<void *> GameModule::findSymbol(std::string_view name) const
+{
+    if (!impl_ || impl_->api == nullptr)
+        return core::makeError(ErrorCode::kInvalidArgument, "game module: not running");
+    if (!impl_->reloader)
+        return core::makeError(ErrorCode::kUnsupported, "game module: static build, no library to look into");
+    return impl_->reloader->symbol(name);
+}
+
+std::shared_ptr<const void> GameModule::retainCode() const
+{
+    return impl_ && impl_->api != nullptr && impl_->reloader ? impl_->reloader->retain() : nullptr;
+}
+
 std::vector<std::string> GameModule::components() const
 {
     return impl_ ? impl_->active.components : std::vector<std::string>{};

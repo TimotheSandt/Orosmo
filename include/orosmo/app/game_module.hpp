@@ -32,6 +32,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace orosmo::app
@@ -90,6 +91,12 @@ class GameModule
     std::string name() const;
     // Fichier chargé (copie sous un nom unique) ; vide en version statique.
     std::filesystem::path loadedPath() const;
+    // UI-08 (développement) : adresse d'un symbole C exporté par la version active (vues `.cui` compilées dans la bibliothèque,
+    // `app::ViewHost`). kUnsupported en version statique, kInvalidArgument si le module est arrêté, kNotFound s'il est absent.
+    core::Result<void *> findSymbol(std::string_view name) const;
+    // Jeton qui garde la version active chargée tant qu'il vit, même après un rechargement ou `stop` : un arbre de widgets construit
+    // par son code en garde des fonctions (liaisons, gestionnaires). Nul en version statique ou module arrêté.
+    std::shared_ptr<const void> retainCode() const;
 
     // Ce que la version active a enregistré (noms, ordre d'enregistrement).
     std::vector<std::string> components() const;

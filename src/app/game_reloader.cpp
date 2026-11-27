@@ -8,6 +8,7 @@
 #include <orosmo/platform/dynamic_library.hpp>
 
 #include <chrono>
+#include <memory>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -45,7 +46,8 @@ class DynamicReloader final : public GameModule::Reloader
 {
   public:
     DynamicReloader(const GameModuleSettings &settings, platform::DynamicLibrary library)
-        : path_(settings.path), settleDelay_(settings.settleDelay), library_(std::move(library))
+        : path_(settings.path), settleDelay_(settings.settleDelay),
+          library_(std::make_shared<platform::DynamicLibrary>(std::move(library)))
     {
         if (settings.watch)
         {
@@ -86,19 +88,29 @@ class DynamicReloader final : public GameModule::Reloader
             impl.recordFailure(switched.error());
             return switched;
         }
-        // Succès : les fonctions de l'ancienne version sont détruites ; son code peut partir (copie effacée).
-        library_ = std::move(loaded->library);
+        // Succès : les fonctions de l'ancienne version sont détruites ; son code part (copie effacée) dès que plus rien ne le
+        // retient (`retain` : arbre de widgets construit par une vue de l'ancienne version, UI-08).
+        library_ = std::make_shared<platform::DynamicLibrary>(std::move(loaded->library));
         return {};
     }
 
-    std::filesystem::path loadedPath() const override { return library_.loadedPath(); }
+    std::filesystem::path loadedPath() const override { return library_ ? library_->loadedPath() : std::filesystem::path(); }
 
-    void unloadActive() noexcept override { library_.unload(); }
+    core::Result<void *> symbol(std::string_view name) const override
+    {
+        if (!library_)
+            return core::makeError(ErrorCode::kInvalidArgument, "game module: no library loaded");
+        return library_->symbol(name);
+    }
+
+    std::shared_ptr<const void> retain() const override { return library_; }
+
+    void unloadActive() noexcept override { library_.reset(); }
 
   private:
     std::filesystem::path path_;
     std::chrono::milliseconds settleDelay_;
-    platform::DynamicLibrary library_;
+    std::shared_ptr<platform::DynamicLibrary> library_; // partagée avec les jetons de `retain`
     core::FileWatcher watcher_;
     bool pending_ = false;
     std::chrono::steady_clock::time_point changedAt_{};
