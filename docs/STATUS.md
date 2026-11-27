@@ -55,6 +55,22 @@ UBSan sur les suites `app/*`, `scene/*`, `sim/*` (66 cas, 212 514 assertions, av
 inchangée, `--headless --capture` en Vulkan (validation : 0 message) et en OpenGL sans erreur. Non vérifié : Windows,
 macOS (G350), `clang-format` absent de la machine.
 
+Après la revue de la PR #32 et la fusion de `dev` avec L6 : `make all-debug`, `make check` verts, tests **898 / 898**
+(1 ignoré, 372 554 assertions), `test_game_static: OK` (sanitizers non relancés).
+
+## M8 lot L6 : migration d'état, gestionnaires par nom, paramètres JSON (A79, GAME-03, GAME-04, GAME-05)
+
+Branche `feat/M8-L6-migration-parametres` (depuis `feat/M8-L5-jeu-rechargeable`, `origin/dev` fusionné). Choix de réalisation
+sous A79 « L6 ». Linux x64 seulement en local (g++ 13.3) ; Windows et macOS par la CI (G310, G326).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| GAME-03 Migration par réflexion | `include/orosmo/scene/component_migration.hpp` (`migrateComponentValue`, `classifyMigration`), `scene::World::migrateComponent`, `app::GameContext::registerComponent` | suites `scene/migration` et `app/game_module` (bibliothèque `v1` puis `v3`) | champ ajouté au milieu : champs communs copiés, nouveau à sa valeur par défaut (`bonus == 42`), `kCopied`, ordre dense gardé, ancien identifiant refusé |
+| GAME-03 Repli sauvegarde/restauration | même code ; `GameModule::lastMigrations` | mêmes suites (`v3` puis `v1`, tables `kMoverChanged`) | champ retiré ou type changé : `kRestored`, un avertissement par champ, entier relu en réel, non convertible à sa valeur par défaut |
+| GAME-03 Échec de l'`init` | `GameModule::Impl::switchTo` (copie du monde avant `init`, G319) | `app/game_module` (`kMoverFails` par `GameModule::replace`) | ancienne version active, monde remis (valeurs, identifiant du type, entités), son système marche encore |
+| GAME-04 Gestionnaire renommé | `GameModule::missingActions`, journal après chaque passage | `app/game_module` (« renamed handler ») | liaison `bind("game.v1")` sans effet ni plantage après v2, `missingActions() == {"game.v1"}` |
+| GAME-05 Paramètres JSON | `include/orosmo/app/params_host.hpp` (`ParamsFile`, `ParamsHost<T>`, `Params<T>`), `GameContext::registerParams`, relu dans `GameModule::update` | `app/game_module` (« game parameters », « ParamsHost ») | `tuning.json` modifié : valeur lue au premier `update` après sa détection (au plus `pollInterval`, 100 ms par défaut ; 0 dans le test), sans compilation ; JSON illisible, type faux ou hors plage : dernière valeur valide gardée, `lastError` ; champ inconnu : avertissement |
+
 ## M8 lot L16 : performances décidées pour M8 (A61 G et C)
 
 Branche `feat/M8-L16-perf-a61` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa 26.1.6, Intel Arc, OpenGL et Vulkan). Aucune ligne

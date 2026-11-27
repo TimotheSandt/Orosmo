@@ -5,9 +5,10 @@ assemble les modules pour une application. Archive : `libapp.a` (`src/app/`), AP
 `orosmo::app`. Créé en M8 (A79 lot L5) avec le module de jeu ; façade `Application` et rendu des composants de la scène au
 lot L13.
 
-Dépend de `sim` (systèmes), `scene` (composants), `ui` (`ActionRegistry`, `Ui`, police), `anim` (`AnimatedModel`,
-`CrowdRenderer`), `assets` (`ModelLoader`), `renderer` (scène, 2D, lumières, ombres, tonemapping, instanciation), `rhi`
-(périphérique), `platform` (`Window`, `DynamicLibrary`) et `core` (`FileWatcher`, `FrameTimer`, `Handle`, erreurs, journal).
+Dépend de `sim` (systèmes), `scene` (composants, migration, lecture JSON des champs), `ui` (`ActionRegistry`, `Ui`, police),
+`anim` (`AnimatedModel`, `CrowdRenderer`), `assets` (`ModelLoader`), `renderer` (scène, 2D, lumières, ombres, tonemapping,
+instanciation), `rhi` (périphérique), `platform` (`Window`, `DynamicLibrary`) et `core` (`FileWatcher`, `FrameTimer`, `Handle`,
+JSON, erreurs, journal).
 
 | En-tête | Rôle |
 | --- | --- |
@@ -18,7 +19,8 @@ Dépend de `sim` (systèmes), `scene` (composants), `ui` (`ActionRegistry`, `Ui`
 | `render_components.hpp` | **L13** composants de rendu définis par le moteur : `MeshRenderer`, `LightComponent`, `CameraComponent`, `AnimatedModelComponent`, mode de dessin `DrawMode` (seul, instancié, foule : A73 point 3) ; ressources par `core::Handle<T>` ; réflexion |
 | `resource_pool.hpp` | `ResourcePool<T>` : objets possédés désignés par `core::Handle<T>` (génération : une poignée retirée ne retombe jamais sur un autre objet) |
 | `scene_render_system.hpp` | `SceneRenderSystem` : `update` (transformations, lecteurs, lumières), `applyCamera`, `dispatch` (skinning hors passe, A75.2), `draw` ; `SceneResources`, `registerRenderComponents`, `SceneRenderStats` |
-| `game_module.hpp` | `GameModule` : `load(settings)` (développement, rechargement à chaud), `fromApi(api, cibles)` (version finale statique), `update(dt)`, `reload()`, `stop()`, état (`version`, `failedReloads`, `lastError`, `systems`, `actions`, `components`, `orphanComponents`) |
+| `game_module.hpp` | `GameModule` : `load(settings)` (développement, rechargement à chaud), `fromApi(api, cibles)` (version finale statique), `update(dt)`, `reload()`, `replace(api)` (statique), `stop()`, état (`version`, `failedReloads`, `lastError`, `systems`, `actions`, `components`, `params`, `orphanComponents`, `removeOrphanComponents`, `lastMigrations`, `missingActions`) |
+| `params_host.hpp` | Paramètres JSON relus à chaud (GAME-05, L6) : `ParamsFile` (structure décrite + fichier + `FileWatcher`, dernière valeur valide gardée), `ParamsHost<T>` (hôte), `Params<T>` (poignée du jeu), `ParamsSettings` |
 
 ## Façade d'application (L13)
 
@@ -108,10 +110,29 @@ auto game = orosmo::app::GameModule::load({.path = exeDir / "game.so", .targets 
   sont détruits, ceux de l'ancienne remis, le monde et le générateur de la simulation remis à leur état d'avant l'`init`
   (copie, G319), la nouvelle déchargée ; `failedReloads`, `lastError`, message au journal.
 - **État** : les composants et leurs données restent dans le monde au rechargement et à l'arrêt (GAME-02). Un type que la
-  nouvelle version n'enregistre plus est gardé (`orphanComponents`, avertissement). Changer la disposition d'un composant fait
-  échouer l'`init` (kAlreadyExists) : la migration est le lot L6.
+  nouvelle version n'enregistre plus est gardé (`orphanComponents`, avertissement ; décision L6 : gardé par défaut,
+  `removeOrphanComponents()` le retire sur demande).
+- **Migration (GAME-03, L6, A79 choix 4 modifié)** : quand la nouvelle version enregistre un type d'une version précédente avec
+  une autre disposition, c'est le **moteur** qui migre (`scene::World::migrateComponent`), à partir des descriptions copiées :
+  chaque valeur est écrite par l'ancienne description, puis relue par nom de champ dans la valeur par défaut de la nouvelle.
+  Champ ajouté : champs communs copiés, nouveau à sa valeur par défaut (`kCopied`). Champ retiré ou type changé : repli
+  sauvegarde/restauration (`kRestored`) : champ retiré ignoré, type changé converti si la valeur JSON se relit, sinon défaut ;
+  un avertissement par champ perdu. Compte rendu : `lastMigrations()` et journal. Le type change de génération (anciens
+  identifiants refusés). Le monde copié par `switchTo` avant chaque `init` (G319) sert aussi au retour en arrière : si l'`init` échoue après une migration, il est remis
+  (données, identifiants, entités) et l'ancienne version reprend avec ses systèmes. Un type de l'hôte n'est jamais migré.
+- **Gestionnaires (GAME-04)** : l'interface appelle les actions par nom (`ActionRegistry::bind`, `.onClick(nom)`) ; celles de
+  l'ancienne version sont retirées, celles de la nouvelle ajoutées ; après chaque passage réussi, les noms liés mais absents
+  (gestionnaire renommé) sont journalisés et rendus par `missingActions()` ; l'appel reste sans effet ni plantage.
+- **Paramètres (GAME-05, L6)** : `ctx->registerParams<T>("tuning", "tuning.json")` (chemin relatif à
+  `GameTargets::paramsDirectory`) rend une `Params<T>` à capturer par valeur ; le fichier est tenu par le moteur et relu au
+  début de chaque `GameModule::update` quand il change : `ParamsFile::poll` interroge le fichier au plus une fois par
+  `ParamsSettings::pollInterval` (100 ms par défaut), donc la valeur est lue au plus `pollInterval` après la modification, au
+  début du `GameModule::update` qui la détecte (plusieurs images plus tard au besoin), sans compilation. Fichier invalide
+  (JSON, type, plage) : dernière valeur valide gardée, `lastError()` et journal. Champ absent : défaut ; inconnu : avertissement.
+  Même nom, même fichier, même disposition à la version suivante : même objet. Hôte : `ParamsHost<T>::open(chemin)`, `poll()`.
 - **`shutdown`** n'est appelé qu'à l'arrêt définitif (`stop`, destruction), pas au rechargement.
-- **Version finale (GAME-07)** : `fromApi` n'utilise ni `DynamicLibrary` ni `FileWatcher` ; tout le rechargement est dans
+- **Version finale (GAME-07)** : `fromApi` n'utilise pas `DynamicLibrary` (ni `FileWatcher`, sauf pour les paramètres que le
+  jeu enregistre, G326) ; tout le rechargement est dans
   `game_reloader.cpp`, objet à part de `libapp.a` que l'éditeur de liens ne prend que si `GameModule::load` est appelé.
   `bin/tests/test_game_static` le prouve (`nm` : ni `platform::DynamicLibrary` ni `GameModule::load`).
 - **Ordre de vie** : les cibles survivent au module ; à appeler hors d'un pas de simulation.
@@ -125,17 +146,18 @@ La bibliothèque de jeu n'embarque pas le moteur : `ENGINE_MODULE_CXXFLAGS` (`-f
 
 `tests/app/application_tests.cpp` : suite `app/application` (sans GPU : réserve, ligne de commande, composants sauvegardés) et
 `app/application-gpu` (application sans fenêtre = même scène à la main, repli Vulkan -> OpenGL, ordre des rappels et temps,
-modes de dessin, ombres et HDR, capture ; ignorée sans périphérique). `tests/app/game_module_tests.cpp` (`make demo-test-unit`, sans GPU) avec la bibliothèque `tests/app/game_module/game.cpp`
-construite en quatre versions (`v1`, `v2`, `badabi`, `failinit`) ; `bin/tests/test_game_static` (version statique, lancé par
+modes de dessin, ombres et HDR, capture ; ignorée sans périphérique).
+`tests/app/game_module_tests.cpp` (`make demo-test-unit`, sans GPU) avec la bibliothèque `tests/app/game_module/game.cpp`
+construite en cinq versions (`v1`, `v2`, `v3` : champ ajouté et paramètres, `badabi`, `failinit`), et des tables liées dans
+l'exécutable des tests (`replace`) pour le type changé et l'`init` qui échoue après une migration ;
+`tests/scene/component_migration_tests.cpp` ; `bin/tests/test_game_static` (version statique, lancé par
 `make test`).
 
 ## Pour les lots suivants
 
-- **L6** : migration d'un composant dont la disposition change (point d'accroche : `GameModule::Impl::switchTo`, avant
-  l'`init` de la nouvelle version) ; journal de `ActionRegistry::missing()` après chaque rechargement ; décision sur
-  `orphanComponents`.
+- **L6** : fait (migration, `missingActions`, paramètres, décision sur les orphelins).
 - **L14** : gabarit d'`orosmo init` et tutoriel réécrits avec `Application::main`, `spawn`, `onUpdate` et `defaultGame()`.
 - **L7** : cible qui ne reconstruit que la bibliothèque de jeu, en-tête léger `orosmo/game.hpp` (`game_context.hpp` inclut
   aujourd'hui `sim/simulation.hpp`, donc `scene` et la sérialisation).
 
-Limites : `docs/GAPS.md` (G310 et suivants).
+Limites : `docs/GAPS.md` (G310 à G318, G320 à G326).
