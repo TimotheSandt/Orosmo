@@ -1,6 +1,12 @@
 // UI-04 et UI-10 (A79 lot L10) : outils de debug sur orosmo::ui. Console (commandes par nom, erreurs, journal), inspecteur
 // d'interface (arbre et tailles calculées, surlignage), inspecteur d'entités (champs décrits à l'exécution, modifiables), rien
 // quand les outils sont fermés (UI-13), historique des temps d'image.
+// GCC 16 (MinGW) dévirtualise à tort `box->clearChildren()` vers Section::clearChildren (-Warray-bounds, faux positif, G34).
+// Avant les inclusions : l'avertissement est rattaché à widgets.hpp, hors de la portée du pragma de test_support.hpp.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
+
 #include "ui_harness.hpp"
 
 #include <orosmo/core/log.hpp>
