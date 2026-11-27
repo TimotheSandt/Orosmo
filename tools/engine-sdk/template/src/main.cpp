@@ -286,7 +286,12 @@ int runApp(const LaunchOptions &opts)
     std::optional<orosmo::app::GameModule> gameLogic = startGame(simulation, interface.actions());
     // After the game logic (it may hold the view's code) and the interface: destroyed first, the HUD tree with it.
     orosmo::app::ViewHost views(interface, hudSettings(gameLogic ? &*gameLogic : nullptr));
-    if (auto mounted = views.setRoot(cui::HudView{.state = &state}); !mounted)
+    if (!gameLogic)
+    {
+        // No game library: nothing to reload from, the HUD linked in the executable is used.
+        interface.setRoot(cui::buildHudView(interface, state));
+    }
+    else if (auto mounted = views.setRoot(cui::HudView{.state = &state}); !mounted)
     {
         std::cerr << "HUD view not built: " << mounted.error().describe() << '\n';
     }

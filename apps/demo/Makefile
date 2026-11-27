@@ -224,6 +224,13 @@ GEN_OBJS := $(GEN_CPP_SOURCES:$(ENGINE_GEN_DIR)/%.gen.cpp=$(OBJ_DIR)/gen/%.o)
 ALL_OBJS := $(OBJS_CPP) $(OBJS_C) $(if $(GAME_VIEW_OBJS),$(GAME_VIEW_OBJS),$(GEN_OBJS))
 TEST_GAME_OBJS := $(filter-out $(OBJ_DIR)/src/main.o $(GAME_MODULE_SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/src/%.o),$(OBJS_CPP) $(OBJS_C))
 
+# CUI_IN_GAME change les options (-DOROSMO_CUI_RELOADABLE) et les objets liés : une estampille par valeur, recréée quand la valeur
+# change, fait recompiler les objets sans `make clean`.
+CUI_STAMP :=
+ifneq ($(GAME_MODULE),)
+    CUI_STAMP := $(OBJ_DIR)/cui-in-game-$(CUI_IN_GAME).stamp
+endif
+
 # Windows icon resource
 ICON_RC :=
 ifneq ($(strip $(ICON_NAME)),)
@@ -380,6 +387,14 @@ $(OBJ_DIR)/gen/%.o: $(ENGINE_GEN_DIR)/%.gen.cpp
 	$(call ors_compile,CXX [gen])
 	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
 	$(ors_end)
+
+ifneq ($(CUI_STAMP),)
+$(OBJS_CPP) $(OBJS_C) $(GAME_MODULE_OBJS): $(CUI_STAMP)
+$(CUI_STAMP):
+	@mkdir -p "$(dir $@)"
+	@rm -f $(OBJ_DIR)/cui-in-game-*.stamp
+	@touch $@
+endif
 
 # Ensure CUI files are generated before any object is compiled
 $(ALL_OBJS): | $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)

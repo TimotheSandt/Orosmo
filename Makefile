@@ -331,7 +331,13 @@ e2e-init:
 	    echo "e2e-init : orosmo run (OpenGL, sans fenêtre)"; \
 	    cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo run -- --api opengl --headless \
 	        --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3 \
-	      && test -s "$(abspath $(E2E_RUN))/capture/scene.png" && test -s "$(abspath $(E2E_RUN))/capture/ui.png"; \
+	      && test -s "$(abspath $(E2E_RUN))/capture/scene.png" && test -s "$(abspath $(E2E_RUN))/capture/ui.png" \
+	    && echo "e2e-init : HUD sans bibliothèque de jeu" \
+	      && cd "$(abspath $(E2E_RUN))/mygame" && lib=$$(find bin/debug -name 'game.so' -o -name 'game.dylib' -o -name 'game.dll') \
+	      && mv "$$lib" "$$lib.off" \
+	      && { ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture-nogame" \
+	             --capture-frames 3 > ../nogame.txt 2>&1; code=$$?; mv "$$lib.off" "$$lib"; test $$code = 0; } \
+	      && grep -q 'Game logic not started' ../nogame.txt && ! grep -q 'HUD view not built' ../nogame.txt; \
 	  else \
 	    echo "e2e-init : lancement graphique sauté (E2E_RUN_GRAPHICS=0 : exécuteur sans OpenGL 4.3, projet seulement compilé et lié)"; \
 	  fi
@@ -361,6 +367,9 @@ e2e-init:
 	cp $(E2E_RUN)/mygame/src/HudView.cui $(E2E_RUN)/mygame/src/hud_state.hpp $(E2E_RUN)/views/src/
 	cp tools/e2e/view_reload_host.cpp $(E2E_RUN)/views/src/main.cpp
 	cd $(E2E_RUN)/views && $(E2E_ENV) $(MAKE) debug
+	@# Changer CUI_IN_GAME sans `make clean` recompile les objets qui voient -DOROSMO_CUI_RELOADABLE.
+	cd $(E2E_RUN)/views && $(E2E_ENV) $(MAKE) -n CUI_IN_GAME=0 debug > ../cui-flag.txt
+	grep -q 'src/main\.cpp' $(E2E_RUN)/cui-flag.txt || { echo "e2e-init : CUI_IN_GAME changé, src/main.cpp pas recompilé"; exit 1; }
 	$(E2E_SH) python3 tools/e2e_view_reload.py --project $(E2E_RUN)/views --build "\"$(E2E_TOOL)\" build --game" \
 	    --exe bin/debug/main$(E2E_EXE) --max $(E2E_RELOAD_MAX) --record $(E2E_RUN)/view-reload.txt
 	$(MAKE) -C $(E2E_RUN)/minimal ENGINE_DIR="$(E2E_ENGINE)"
