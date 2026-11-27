@@ -184,8 +184,9 @@ Json replayToJson(const Replay &replay)
               {"firstStep", replay.firstStep},
               {"lastStep", replay.lastStep},
               {"stepNanoseconds", replay.stepNanoseconds},
-              {"stream", replay.stream},
               {"inputs", std::move(inputs)}};
+    if (replay.stream)
+        data["stream"] = *replay.stream;
     return Json{{"version", kReplayVersion}, {"data", std::move(data)}};
 }
 
@@ -206,7 +207,8 @@ Result<Replay> replayFromJson(const Json &json)
     replay.seed = *seed;
     replay.firstStep = *first;
     replay.lastStep = *last;
-    // Réglages de la partie : absents d'un document plus ancien (durée non vérifiée, flux par défaut).
+    // Réglages de la partie : absents d'un document plus ancien (non vérifiés).
+    replay.stream.reset();
     if (data.contains("stepNanoseconds"))
     {
         auto stepNs = readU64(data, "stepNanoseconds", "replay");
@@ -517,7 +519,7 @@ Result<> Simulation::play(const Replay &replay)
         return core::makeError(ErrorCode::kInvalidArgument, "play: not allowed during a step");
     if (replay.seed != settings_.seed)
         return core::makeError(ErrorCode::kInvalidArgument, "play: the replay was recorded with another seed");
-    if (replay.stream != settings_.stream)
+    if (replay.stream && *replay.stream != settings_.stream)
         return core::makeError(ErrorCode::kInvalidArgument, "play: the replay was recorded with another random stream");
     if (replay.stepNanoseconds != 0 && replay.stepNanoseconds != settings_.step.count())
         return core::makeError(ErrorCode::kInvalidArgument, "play: the replay was recorded with another step duration (" +

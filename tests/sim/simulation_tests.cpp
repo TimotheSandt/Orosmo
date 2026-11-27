@@ -493,7 +493,7 @@ TEST_SUITE("sim/simulation")
         auto old = replayFromJson(legacy);
         REQUIRE(old);
         CHECK(old->stepNanoseconds == 0);
-        CHECK(old->stream == core::Random::kDefaultStream);
+        CHECK_FALSE(old->stream.has_value()); // flux inconnu : play ne le vérifie pas (revue PR #40)
     }
 
     TEST_CASE("Simulation: a capture or a state saved during a step is partial and cannot be restored")

@@ -514,7 +514,7 @@ TEST_SUITE("scene/world")
         auto hp = b.registerComponent(health); // même emplacement que Velocity dans `a`
         REQUIRE(hp);
         REQUIRE(hp->index == vel->id.index);
-        b.add(b.create(), *hp);
+        REQUIRE(b.add(b.create(), *hp));
         auto view = a.view(*vel);
         REQUIRE(view.valid());
         a = b;

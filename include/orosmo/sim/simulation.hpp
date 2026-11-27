@@ -90,7 +90,7 @@ struct Snapshot
 // Partie rejouable : à partir du pas `firstStep` (0 : état initial construit par le jeu avec la graine `seed`), jouer jusqu'au
 // pas `lastStep` exclu avec ces entrées (toutes les entrées livrées dans l'intervalle, y compris celles qu'un système a mises
 // en file pendant un pas). `stepNanoseconds` et `stream` : réglages de la partie enregistrée (`recording`), vérifiés par
-// `play` ; `stepNanoseconds` à 0 (rejeu écrit à la main, document sans ce champ) n'est pas vérifié.
+// `play` ; `stepNanoseconds` à 0 ou `stream` vide (rejeu écrit à la main, document sans ce champ) ne sont pas vérifiés.
 struct Replay
 {
     std::uint64_t seed = 0;
@@ -98,7 +98,7 @@ struct Replay
     std::uint64_t lastStep = 0;
     std::vector<Input> inputs;
     std::int64_t stepNanoseconds = 0;
-    std::uint64_t stream = core::Random::kDefaultStream;
+    std::optional<std::uint64_t> stream = core::Random::kDefaultStream; // vide : document sans flux, non vérifié
     friend bool operator==(const Replay &, const Replay &) = default;
 };
 core::Json replayToJson(const Replay &replay);

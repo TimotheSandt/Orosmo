@@ -40,10 +40,9 @@ struct TempDir
     TempDir()
     {
         const auto base = std::filesystem::temp_directory_path();
-        const auto stamp = static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count());
         for (unsigned attempt = 0;; ++attempt)
         {
-            path = base / ("orosmo-scene-" + std::to_string(stamp) + "-" + std::to_string(attempt));
+            path = base / ("orosmo-scene-" + std::to_string(attempt)); // create_directory départage les exécutions simultanées
             std::error_code ec;
             if (std::filesystem::create_directory(path, ec))
                 return;
@@ -422,10 +421,13 @@ TEST_SUITE("scene/file")
     {
         ComponentType<Agent> type;
         const World world = makeWorld(type);
-        const std::filesystem::path full = "/dev/full"; // Linux : /dev/full.tmp ne peut pas être créé ; kIo, /dev/full intact
-        if (!std::filesystem::exists(full))
+        if (!std::filesystem::exists("/dev/full")) // Linux
             return;
-        CHECK((errorOf(saveSceneFile(world, full)) == core::ErrorCode::kIo));
+        // Le fichier temporaire est un lien vers /dev/full : l'écriture échoue, et rien dans /dev n'est renommé ni remplacé.
+        const TempDir temp;
+        std::filesystem::create_symlink("/dev/full", temp.path / "full.json.tmp");
+        CHECK((errorOf(saveSceneFile(world, temp.path / "full.json")) == core::ErrorCode::kIo));
+        CHECK_FALSE(std::filesystem::exists(temp.path / "full.json"));
     }
 
     TEST_CASE("Scene: a failed saveSceneFile keeps the previous save and removes its temporary file")
