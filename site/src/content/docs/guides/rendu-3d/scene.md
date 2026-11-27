@@ -53,8 +53,24 @@ camera.setOrientation(glm::normalize(glm::vec3(0.0f, -0.35f, -1.0f))); // direct
 camera.setFovDegrees(60.0f);
 ```
 
-Source : [`tools/engine-sdk/template/src/main.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/tools/engine-sdk/template/src/main.cpp)
-(la fonction `makeColoredCube` y est en entier). Pour créer ce projet : [Créer un projet](/demarrer/premier-projet/).
+Adapté de l'ancien programme de départ d'`orosmo init` ; celui d'aujourd'hui passe par `app::Application`, qui fait ces
+étapes pour lui ([`src/app/application.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/src/app/application.cpp)), et
+construit son cube par `MeshBuilder::addBox`. Pour créer ce projet : [Créer un projet](/demarrer/premier-projet/).
+
+## Contexte de rendu (depuis M8)
+
+`rd::RenderContext` (`orosmo/renderer/render_context.hpp`) réunit le quatuor que chaque fabrique du renderer demande
+(périphérique, bibliothèque de shaders, cache de pipelines, dossier des shaders). Les fabriques ont une surcharge qui le
+prend (`SceneRenderer::create(context)`, `assets::ModelLoader::create(context)`, `anim::AnimatedModel::create(context, …)`…) ;
+les anciennes signatures restent.
+
+```cpp
+auto context = rd::RenderContext::create(device, GET_RESOURCE_PATH("shader/rhi"));   // possède bibliothèque et cache
+auto sceneResult = rd::SceneRenderer::create(*context);
+// ou, avec des objets existants : rd::RenderContext shared(device, shaders, pipelines, shaderDir);
+```
+
+Le contexte n'est ni copiable ni déplaçable et doit vivre plus longtemps que tout ce qu'il a servi à créer.
 
 ## Le cycle d'une image
 
@@ -87,7 +103,7 @@ if (ok) ok = renderer.endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, siz
 
 Si `drawMesh` (ou `setCamera`) échoue après un `beginFrame` réussi, `endFrame` est sauté et l'image reste ouverte : le
 `beginFrame` suivant est refusé (`kInvalidArgument`, « the previous frame was not ended »). Après une telle erreur, affichez
-le message et arrêtez l'application, comme le fait le projet de démarrage (`Frame failed`, `EXIT_FAILURE`).
+le message et arrêtez l'application, comme le fait `app::Application::run` (`Frame failed`, `EXIT_FAILURE`).
 
 `composed` est une `rd::RenderTarget` sans profondeur à la taille du framebuffer, où la scène puis l'interface sont
 dessinées avant la copie dans l'image de la fenêtre. Sa création et la boucle entière sont dans
@@ -108,7 +124,9 @@ proche, 0 au loin) et le plan lointain est infini par défaut. Le monde a Y en h
 | Option | Type | Défaut | Effet |
 |---|---|---|---|
 | `setPosition` | `glm::vec3` | `(0, 0, 0)` | Position dans le monde. |
-| `setOrientation` | `glm::vec3` | `(0, 0, -1)` | Direction du regard (un vecteur, pas des angles). |
+| `setOrientation` | `glm::vec3` | `(0, 0, -1)` | Direction du regard (un vecteur, pas des angles), prise telle quelle. |
+| `setForward` | `glm::vec3` | `(0, 0, -1)` | Direction du regard, normalisée (un vecteur nul est ignoré). Lue par `forward()`. |
+| `lookAt` | `glm::vec3` | — | Tourne la caméra vers un point du monde (ignoré si c'est sa position). Une cible droit au-dessus ou au-dessous (direction parallèle à `up()`) rend la vue indéfinie : appelez d'abord `setUp` avec un autre haut. Même limite pour `setForward`. |
 | `setUp` | `glm::vec3` | `(0, 1, 0)` | Haut de la caméra. |
 | `setFovDegrees` | `float` | `70` | Champ vertical, en degrés. |
 | `setNearPlane` | `float` | `0.1` | Plan proche (m). |

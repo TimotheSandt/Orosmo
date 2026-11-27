@@ -1,8 +1,8 @@
 {
-  "_doc": "Couches de docs/03 §1, du bas (0) vers le haut. Un fichier ne doit inclure que des fichiers de sa couche ou d'une couche inférieure. 'rules' : premier motif (fnmatch, chemins relatifs à la racine) qui correspond. Cette table décrit la CIBLE appliquée au code ACTUEL (avant migration) : elle sera remplacée par include/orosmo/<module>/ au fil des jalons.",
+  "_doc": "Couches de docs/03 §1, du bas (0) vers le haut. Un fichier ne doit inclure que des fichiers de sa couche ou d'une couche inférieure. 'rules' : premier motif (fnmatch, chemins relatifs à la racine) qui correspond. Niveau 'app' (Application, GameModule : assemble platform, renderer, assets, anim, scene, ui et sim) : A79, à confirmer par l'auteur ; 'game' = logique de jeu (dossier game/ ou bibliothèque d'un projet). Cette table décrit la CIBLE appliquée au code ACTUEL (avant migration) : elle sera remplacée par include/orosmo/<module>/ au fil des jalons.",
   "levels": {
     "core": 0, "platform": 1, "rhi": 2, "renderer": 3, "assets": 4, "anim": 5,
-    "scene": 6, "ui": 7, "world": 8, "sim": 9, "game": 10, "apps": 11
+    "scene": 6, "ui": 7, "world": 8, "sim": 9, "app": 10, "game": 11, "apps": 12
   },
   "rules": [
     ["include/orosmo/core/*", "core"],
@@ -17,13 +17,21 @@
     ["src/assets/*", "assets"],
     ["include/orosmo/anim/*", "anim"],
     ["src/anim/*", "anim"],
+    ["include/orosmo/scene/*", "scene"],
+    ["src/scene/*", "scene"],
     ["include/orosmo/ui/*", "ui"],
     ["src/ui/*", "ui"],
+    ["include/orosmo/sim/*", "sim"],
+    ["src/sim/*", "sim"],
+    ["include/orosmo/app/*", "app"],
+    ["src/app/*", "app"],
+    ["include/orosmo/game.hpp", "game"],
+    ["game/*", "game"],
     ["src/ThirdParty/*", "core"],
     ["apps/*", "apps"]
   ],
   "include_roots": ["include"],
-  "scan": ["include", "src", "apps"],
+  "scan": ["include", "src", "game", "apps"],
   "api_isolation": {
     "allowed": ["src/rhi/", "src/platform/", "include/orosmo/platform/"],
     "_doc": "docs/03 §8.2 : gl, GL_, Vk, vk, MTL, <GLFW/, <windows.h> interdits hors des backends et de platform."

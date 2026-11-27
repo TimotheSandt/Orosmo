@@ -47,6 +47,7 @@ core::Result<std::unique_ptr<Renderer2D>> Renderer2D::create(rhi::Device &device
                                                              const std::filesystem::path &shaderDirectory)
 {
     std::unique_ptr<Renderer2D> r(new Renderer2D(device, pipelines));
+    r->arena_ = BatchArena(device.framesInFlight()); // A61 G : une zone par image en vol du périphérique
     auto sprite = library.loadGraphics(shaderDirectory / "sprite2d.vert", shaderDirectory / "sprite2d.frag");
     auto shape = library.loadGraphics(shaderDirectory / "shape2d.vert", shaderDirectory / "shape2d.frag");
     if (!sprite || !shape)

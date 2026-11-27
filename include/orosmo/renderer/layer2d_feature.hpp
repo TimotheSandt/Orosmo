@@ -14,6 +14,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/mesh.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/render_feature.hpp"
@@ -26,6 +27,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace orosmo::renderer
 {
@@ -49,11 +51,18 @@ class Layer2DFeature final : public RenderFeature
   public:
     static core::Result<std::unique_ptr<Layer2DFeature>> create(std::string name, Layer2DMode mode, rhi::Device &device, ShaderLibrary &library,
                                                                 PipelineCache &pipelines, const std::filesystem::path &shaderDirectory);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<Layer2DFeature>> create(std::string name, Layer2DMode mode, const RenderContext &context)
+    {
+        return create(std::move(name), mode, context.device(), context.library(), context.pipelines(), context.shaderDirectory());
+    }
 
     std::string name() const override { return name_; }
     Layer2DMode mode() const noexcept { return mode_; }
     core::Result<> prepare(const FrameData &frame) override;
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
+    // A61 C : mode, et en kTexture la texture et sa taille (le graphe est reconstruit quand elles changent).
+    std::optional<std::uint64_t> passSignature() const override;
 
     // Dessinateur du plugin : `material(texture)`, `draw(Sprite)`, formes. Les dépôts se font après `begin`.
     Renderer2D &renderer() noexcept { return *renderer_; }

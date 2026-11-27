@@ -12,7 +12,7 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 | --- | --- |
 | `gpu_buffer.hpp` | `GpuBuffer` : tampon RAII (`create`, `update`, `read`, `resize`) |
 | `batch_arena.hpp` | `BatchArena` : tampon de sommets partagé ; une plage distincte par envoi tant que l'encodeur est le même (deux `render` avant `submit` gardent chacun leurs données sur Vulkan) ; une zone `kUpload` par image en vol (un nouvel encodeur passe à la zone suivante : celle de l'image précédente n'est jamais réécrite) |
-| `frame_ring.hpp` | `FrameRing` : anneau de tampons `kUpload`, un par image en vol (`kDefaultFramesInFlight` = 2, paramètre) ; l'image `n` écrit la zone `n % framesInFlight` ; `alignUp` |
+| `frame_ring.hpp` | `FrameRing` : anneau de tampons `kUpload`, un par image en vol (`kDefaultFramesInFlight` = `rhi::kDefaultFramesInFlight` = 2, paramètre) ; l'image `n` écrit la zone `n % framesInFlight` ; `alignUp` |
 | `texture.hpp` | `Texture` : texture 2D RAII + échantillonneur, mips selon `FilterMode`, `upload`, `resize`, `readback`, `fromFile` (stb, RGBA8, retournée comme l'ancien chargeur ; le retournement est fait ici, le réglage global de stb n'est jamais modifié) |
 | `render_target.hpp` | `RenderTarget` : cibles couleur (MRT) + profondeur (lisible ou non), `passDesc` (description de passe), `resize`/`reconfigure` (sans fuite, la cible reste valide si la recréation échoue), `readPixelUInt` / `readPixelRgba8` (origine en haut à gauche) ; un format de profondeur parmi les formats couleur est refusé |
 | `shader_library.hpp` | `ShaderLibrary` (explicite, pas de singleton) et `ShaderProgram` : GLSL 450 depuis des fichiers ou des sources, réflexion fusionnée des étages, cache SPIR-V disque, **rechargement à chaud** (`pollHotReload`) : les étages modifiés d'un programme dans un même poll sont validés puis installés ensemble, et si l'un ne compile pas aucun n'est installé (après un échec, la modification suivante recompile tous les étages depuis leurs fichiers) ; un échec reste dans `lastError()` même si un autre programme se recharge dans le même poll ; les fichiers d'un programme libéré (ou d'un chargement en échec) ne sont plus surveillés (`watchedStageCount`). Identifiant de programme unique dans le processus |
@@ -25,23 +25,47 @@ en B6. Aucune ne se « lie » : tout passe par des handles RHI, des groupes de l
 
 | En-tête | Rôle |
 | --- | --- |
-| `camera.hpp` | `Camera` : position, orientation, perspective (mêmes formules que l'ancienne), jitter, `data()` = `CameraData` std140 (80 octets). Aucune entrée, aucun GLFW : le pilotage clavier/souris revient à l'application (G80) |
-| `light.hpp` | `Light`, `LightManager` : lumières ambiante, directionnelle, ponctuelle, projecteur (toutes rendues depuis M5, voir REN-05 plus bas) ; SSBO std430 dont la disposition est vérifiée par `static_assert` (`GpuLight` 96 octets, `GpuLightHeader` 48, offsets des champs) ; le tampon grandit au besoin. `light(i)` en lecture seule, `setLight` renvoie kOutOfRange pour un index périmé |
+| `camera.hpp` | `Camera` : position, orientation, perspective (mêmes formules que l'ancienne), jitter, `data()` = `CameraData` std140 (80 octets) ; `setForward` (direction normalisée, vecteur nul ignoré), `lookAt(cible)`, `forward()` (A75.12, M8-L12b). Aucune entrée, aucun GLFW : le pilotage clavier/souris revient à l'application (G80) |
+| `light.hpp` | `Light`, `LightManager` : lumières ambiante, directionnelle, ponctuelle, projecteur (toutes rendues depuis M5, voir REN-05 plus bas) ; SSBO std430 dont la disposition est vérifiée par `static_assert` (`GpuLight` 96 octets, `GpuLightHeader` 48, offsets des champs) ; le tampon grandit au besoin. `light(i)` en lecture seule, `setLight` renvoie kOutOfRange pour un index périmé. Fabriques à descripteur (A75.10, M8-L12b) : `directionalLight(DirectionalLightDesc)`, `pointLight(PointLightDesc)`, `spotLight(SpotLightDesc)` : `direction` = sens de propagation pour tous les types, portée en mètres (atténuation en carré inverse dont `lightRange` vaut la portée), demi-angles en degrés ; `lightDirection(light)` ; les fabriques d'origine restent |
 | `mesh.hpp` | `Mesh` : sommets, index (chacun vérifié contre le nombre de sommets), instances optionnelles, attributs décrits par leurs tailles en flottants, transformation (translation, rotations X/Y/Z, échelle, ou matrice donnée par `setModelMatrix` depuis M6) et matrice des normales (inverse transposée, calculée par objet), faces éliminées (`setCullMode`, défaut `kNone`), textures liées (groupe 1), constantes de shader (push constants) |
 | `material.hpp` | REN-10 / REN-11 (M6) : `PbrMaterial` (bloc de paramètres std140 + groupe 1 : couleur de base, métal/rugosité, normale, occlusion, émission, bloc à la liaison 5, ombres en 6 et 7), `PbrDefaults` (textures neutres), `PbrMaterialDesc::features` → `pbrDefines` (variantes par définitions, A48, A71), `instantiate` (instance qui surcharge les paramètres), `setParams`, `rebuild` (nouvel atlas d'ombres) ; `PbrShaderCache` (un programme `mesh_pbr.vert` + `mesh_pbr.frag` par combinaison) ; `kPbrVertexAttributeSizes` (position, normale, uv, tangente, couleur) |
 | `ibl.hpp` | REN-13 (M6) : `EquirectImage`, `equirectUv`/`equirectDirection` (−Z au centre, +Y en haut), `ShIrradiance` et `projectEquirect` (harmoniques sphériques d'ordre 2, irradiance / π), `computeBrdfLut` (A, B du split-sum, même BRDF que `pbr.glsl`), `ProbeSet` (16 sondes au plus, poids (1 − d/r)², l'environnement complète), `IblFeature` (plugin : `setEnvironment`, `setIntensity`, `setProbes` ; liaisons de l'image 5 cube préfiltré, 6 table BRDF, 7 bloc `IblBlock`), `iblDefines()` pour un `PbrMaterial` éclairé par l'environnement |
 | `fullscreen_blit.hpp` | `FullscreenBlit` : copie plein écran par triangle (le RHI n'a pas de commande de blit) ; `draw` respecte le viewport et le ciseau actifs ; `compose` pose une source prémultipliée sur la cible |
 | `upscaling.hpp` | extensions de fin d'image : `IUpscaleMode` (avec `initialize`/`shutdown`), `IAdvancedUpscaleMode`, `IPostProcessPass`, `IFrameGenerationMode`, `BilinearBlitUpscaleMode` |
-| `scene_renderer.hpp` | `SceneRenderer` : cible de scène, groupe 0 (caméra, lumières, `FrameData`, liaisons 3 à 7 des plugins), pré-passe de profondeur optionnelle (`setDepthPrepass`, REN-04), `beginFrame` / `setCamera` / `drawMesh` (enregistre) / `endFrame` (construit et exécute le graphe de l'image, voir plus bas), plugins (`addFeature`), échelle de rendu, jitter de Halton (seulement pour un mode exécuté ou un plugin qui le demande : `RenderFeature::wantsJitter`, REN-19), historique (les consommateurs lisent l'image PRÉCÉDENTE, `resetHistory` à la première image et après un redimensionnement), vecteurs de mouvement, profondeur lisible. Un mode de mise à l'échelle n'est exécuté que si `upscalingEnabled()` (sinon copie 1:1), il est initialisé avant d'être activé et arrêté quand il est remplacé ; un mode de génération refusé laisse l'actif en place ; `generatedFrame()` expose son image. Remplace `Renderer` + `Renderer3D` |
+| `scene_renderer.hpp` | `SceneRenderer` : cible de scène, groupe 0 (caméra, lumières, `FrameData`, liaisons 3 à 7 des plugins), pré-passe de profondeur optionnelle (`setDepthPrepass`, REN-04), `beginFrame` / `setCamera` / `drawMesh` (enregistre) / `endFrame` (construit et exécute le graphe de l'image, voir plus bas), plugins (`addFeature`), échelle de rendu, jitter de Halton (seulement pour un mode exécuté ou un plugin qui le demande : `RenderFeature::wantsJitter`, REN-19), historique (les consommateurs lisent l'image PRÉCÉDENTE, `resetHistory` à la première image et après un redimensionnement), vecteurs de mouvement, profondeur lisible. Un mode de mise à l'échelle n'est exécuté que si `upscalingEnabled()` (sinon copie 1:1), il est initialisé avant d'être activé et arrêté quand il est remplacé ; un mode de génération refusé laisse l'actif en place ; `generatedFrame()` expose son image. `abortFrame` ferme une image ouverte sans l'exécuter ; pendant une image, `addFeature` et `setDebugView` sont refusés (kBusy) et `removeFeature` / `removePostProcessPass` différés à sa fin (revue PR #37). Remplace `Renderer` + `Renderer3D` |
 | `debug_draw.hpp` | `DebugDraw` (REN-34) : lignes, boîtes, sphères, repères en coordonnées monde ; désactivé par défaut hors debug (chaque appel revient au premier test) ; dessiné par `SceneRenderer::drawDebug` dans la passe de scène, test de profondeur au choix (shaders `debug_line.*` chargés au premier appel) |
 | `shaders/rhi/` | `mesh.vert` / `mesh.frag` (éclairage identique à l'ancien), `blit.vert` / `blit.frag` : GLSL 450 (`set`/`binding`, push constants) |
+
+### API simplifiée (M8-L11 : A75.3 à A75.7, A75.15)
+
+Moins de code pour l'usage courant ; les anciennes signatures restent jusqu'à M10 (choix 10 d'A79) et sont encore exercées par les tests.
+
+| En-tête | Rôle |
+| --- | --- |
+| `render_context.hpp` | `RenderContext` (A75.4) : périphérique, `ShaderLibrary`, `PipelineCache` et dossier des shaders. `RenderContext::create(device, dir)` possède la bibliothèque et le cache ; le constructeur référence des objets existants. Surcharges `create(const RenderContext &, ...)` sur `SceneRenderer`, `CanvasRenderer`, `FullscreenBlit`, `Renderer2D`, `InstanceRenderer`, `TransparentFeature`, `ShadowFeature`, `ForwardPlusLighting` (et `enableForwardPlus`), `IblFeature`, `GpuDrivenFeature` (et `enableGpuDriven`), `PostContext`, `SceneView`, `ViewsFeature`, `Layer2DFeature`, `PbrShaderCache`, `anim::SkinnedModel`, `anim::CrowdRenderer` |
+| `mesh_builder.hpp` | `MeshBuilder` (A75.5) : sommets (`MeshVertex` : position, normale, uv, couleur), triangles, quadrilatères, `addBox`, `addPlane` ; disposition `MeshLayout::kPbr` (tangentes calculées, `computeTangents` : Gram-Schmidt, signe glTF) ou `kColored` (programme par défaut de la scène) ; `build` → `MeshData`, `create` → `Mesh` |
+| `scene_renderer.hpp` | `shaderDefines()` (définitions des plugins, `RenderFeature::shaderDefines`, puis des AOV actifs) et `revision()` (A75.3) ; `drawMesh(Mesh &)` sans caméra et `setWireframe` (A75.6) ; `drawMesh(Mesh &)` résout le programme au dessin quand le maillage n'en impose pas (l'ancienne `drawMesh(mesh, camera)` exige toujours `setProgram`) : celui du matériau (`PbrShaderCache` interne) ou `mesh.vert`/`mesh.frag` pour la disposition kColored, compilés avec `shaderDefines()` et recompilés à la révision suivante (lue à `beginFrame`) ; `endFrame(rhi::TextureHandle)` lit format et taille de la sortie (A75.7) |
+| `mesh.hpp` | `Mesh::setMaterial(std::shared_ptr<PbrMaterial>)` (A75.5) : le maillage garde le matériau vivant, suit son groupe 1 (même après `PbrMaterial::rebuild`), règle les faces éliminées (`kBack`, `kNone` en double face : A75.15) et le mode de fusion des AOV. Défaut `setCullMode` inchangé (`kNone`) pour l'existant ; `assets::RenderModel` met `kBack` depuis M6 |
+| `forward_plus.hpp` | `ForwardPlusLighting::shaderDefines()` renvoie `forwardPlusDefines()` : la variante forward+ n'est plus propagée à la main |
+
+Exemple (cube PBR, sans programme ni groupe à relier) :
+
+```cpp
+auto context = rd::RenderContext::create(*device, shaderDir);
+auto scene = rd::SceneRenderer::create(*context);
+auto cube = rd::MeshBuilder().addBox({0.5f, 0.5f, 0.5f}).create(*device);
+cube->setMaterial(*rd::PbrMaterial::create(*device, desc, *rd::PbrDefaults::create(*device)));
+// image : beginFrame, setCamera, drawMesh(*cube), endFrame(backbuffer)
+```
+
+Tests : `tests/renderer/render_api_tests.cpp` (suites `renderer/render-api`, `renderer/mesh-builder`).
 
 ### Graphe de passes, plugins et données par image (M5 : REN-01, REN-03)
 
 | En-tête | Rôle |
 | --- | --- |
-| `render_graph.hpp` | `RenderGraph` : ressources nommées (textures et tampons, importés ou transitoires), passes `kRaster` (le graphe ouvre la passe de rendu sur les attachements déclarés) ou `kGeneric` (la passe enregistre ce qu'elle veut), ordre déduit, passes inutiles écartées, cycle refusé (`compile` : kInvalidArgument avec le chemin des passes), réserve de transitoires (réutilisées d'une image à l'autre, partagées entre ressources de vies disjointes et de même description, libérées après `kTransientKeepFrames` images sans usage), une mesure du `Profiler` par passe exécutée (`RenderGraph/<passe>`, clé précalculée par passe, minuterie GPU si un `ProfilerGpuTimerFactory` est installé avec l'encodeur de l'image), groupe de débogage par passe (RenderDoc). Les barrières restent au RHI |
-| `render_feature.hpp` | `RenderFeature` (plugin : `supports`, `prepare(FrameData)`, `declarePasses(RenderGraphBuilder&)`) et `RenderGraphBuilder` (graphe de l'image + ressources connues : `sceneColor`, `sceneDepth`, `motionVectors`, `output`, tailles ; `addSceneInput` pour une texture ou un tampon ; `addFrameBinding` : liaison 3 à 7 ajoutée au groupe 0 de l'image) |
+| `render_graph.hpp` | `RenderGraph` : ressources nommées (textures et tampons, importés ou transitoires), passes `kRaster` (le graphe ouvre la passe de rendu sur les attachements déclarés) ou `kGeneric` (la passe enregistre ce qu'elle veut), ordre déduit, passes inutiles écartées, cycle refusé (`compile` : kInvalidArgument avec le chemin des passes), graphe compilé réexécuté sans recompilation (`compileCount`) et ressource importée remplacée en place (`setImportedTexture`, `setImportedBuffer`, A61 C), réserve de transitoires (réutilisées d'une image à l'autre, partagées entre ressources de vies disjointes et de même description, libérées après `kTransientKeepFrames` images sans usage), une mesure du `Profiler` par passe exécutée (`RenderGraph/<passe>`, clé précalculée par passe, minuterie GPU si un `ProfilerGpuTimerFactory` est installé avec l'encodeur de l'image), groupe de débogage par passe (RenderDoc). Les barrières restent au RHI |
+| `render_feature.hpp` | `RenderFeature` (plugin : `supports`, `prepare(FrameData)`, `declarePasses(RenderGraphBuilder&)`, `passSignature()` pour le graphe gardé, A61 C, avec `mixPassSignature`) et `RenderGraphBuilder` (graphe de l'image + ressources connues : `sceneColor`, `sceneDepth`, `motionVectors`, `output`, tailles ; `addSceneInput` pour une texture ou un tampon ; `addFrameBinding` : liaison 3 à 7 ajoutée au groupe 0 de l'image) |
 | `frame_data.hpp` | `FrameData` (docs/03 §10, std140, 640 octets, `static_assert` sur tailles et offsets), `FrameEnvironment`, `splitDouble`, `frameNoiseSeed` ; côté GLSL : `shaders/rhi/frame_data.glsl` (`#include "frame_data.glsl"`, groupe 0 binding 2) |
 
 **Règles de dépendance** (par ressource ; l'ordre de déclaration ne compte qu'entre les accès à une même ressource) :
@@ -99,8 +123,9 @@ dans `TransparentFeature`) plusieurs fois dans l'image garde chaque pose.
 debug de l'image partent dans **une seule** écriture (`updateBuffer`), à `endFrame`, dans la zone `frameSerial() % framesInFlight()`
 d'un `FrameRing` (tampons `rhi::MemoryKind::kUpload`, usage uniforme + sommets) : `[FrameData à 0][CameraData][tranches][lignes]`.
 La zone réécrite a été lue `framesInFlight` images plus tôt : le RHI (`beginFrame` / `present`) a attendu cette image, aucune plage
-lue par une image en vol n'est réécrite. `SceneRendererConfig::framesInFlight` (défaut 2, celui des deux backends) règle la
-profondeur ; un groupe 0 et un groupe 2 par zone (le tampon change d'une zone à l'autre). `setCamera` ne fait plus que garder les
+lue par une image en vol n'est réécrite. `SceneRendererConfig::framesInFlight` règle la profondeur : 0 (défaut, A61 G) prend celle
+du périphérique (`rhi::Device::framesInFlight`, 2 par défaut, réglable de 1 à 3) ; une valeur plus petite est refusée
+(kInvalidArgument). `Renderer2D` et `CanvasRenderer` font de même pour leur `BatchArena` ; un groupe 0 et un groupe 2 par zone (le tampon change d'une zone à l'autre). `setCamera` ne fait plus que garder les
 données (envoyées à `endFrame` ; la dernière caméra sert aux images suivantes). `FrameResources::buffer` est le tampon de la zone
 de l'image (FrameData à l'offset 0) : il change d'une image à l'autre. Mesures et compteurs : rapport perf M5 ; tests
 `tests/renderer/frame_ring_tests.cpp` (suite `renderer/frame-ring`).
@@ -119,6 +144,20 @@ plugin (dépôts des transparents, placements des vues). L'historique temporel n
 et le graphe entier réussissent ; un échec l'invalide (réinitialisation signalée à l'image suivante). Avec des liaisons de plugins au
 groupe 0 (clusters du forward+), tous les dessins de l'image doivent utiliser le `LightManager` actif à `endFrame` : sinon
 `endFrame` refuse l'image (kUnsupported) au lieu de lire les clusters d'autres lumières.
+
+**Graphe gardé d'une image à l'autre (A61 C, M8).** `endFrame` ne redéclare le graphe que si sa structure peut avoir changé : clé
+`GraphKey` (révision des plugins et post-traitements, modes de mise à l'échelle et de génération, format et taille de sortie,
+taille de rendu, format de scène, AOV, profondeur, scène dans la sortie, pré-passe, options d'effacement, vue de debug, historique,
+et `RenderFeature::passSignature()` de chaque plugin, lue après son `prepare`). Clé égale à l'image précédente : le graphe compilé
+resert tel quel, ses ressources importées (sortie, cible de scène, AOV, profondeur, historique en double tampon) reçoivent les
+ressources GPU de l'image (`RenderGraph::setImportedTexture`), les liaisons du groupe 0 des plugins sont reprises, et les passes du
+renderer lisent les valeurs de l'image à l'exécution (`passOutput_`, historique). Un plugin sans signature (`std::nullopt`, défaut,
+plugins d'avant M8), une image en échec, `setRenderGraphCaching(false)` (`SceneRendererConfig::cacheRenderGraph`) : graphe
+reconstruit. `prepare` de chaque plugin est appelé à chaque image, tous avant les `declarePasses` d'une reconstruction. Plugins du
+moteur avec signature : ombres, forward+, IBL, couche 2D, transparents, vue de debug des AOV ; sans (reconstruit à chaque image,
+G340) : post-traitements, GPU-driven, vues. Compteurs : `graphBuildCount()`, `graphReused()`, `RenderGraph::compileCount()`.
+Tests : `tests/renderer/graph_cache_tests.cpp` (suites `renderer/graph-cache`, `renderer/frames-in-flight`) et le cas A61 C de
+`render_graph_tests.cpp`.
 
 **Ajouter une passe d'ombre (REN-06 à 08).** C'est ce que fait `ShadowFeature` (voir « Ombres » plus bas) : atlas persistant importé
 (`graph.importTexture`), passes `kGeneric` qui l'écrivent, puis `builder.addSceneInput(atlas)` : elles s'exécutent avant `scene` et ne

@@ -13,6 +13,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/blend_mode.hpp"
 #include "orosmo/renderer/mesh.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
@@ -58,10 +59,17 @@ class TransparentFeature final : public RenderFeature
     // `shaderDirectory` : shaders/rhi (mesh.vert, mesh.frag).
     static core::Result<std::unique_ptr<TransparentFeature>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                                     const std::filesystem::path &shaderDirectory);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<TransparentFeature>> create(const RenderContext &context)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory());
+    }
 
     std::string name() const override { return kName; }
     core::Result<> prepare(const FrameData &frame) override;
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
+    // A61 C : la passe n'existe que si des objets sont déposés ; elle lit les dépôts de l'image à l'exécution.
+    std::optional<std::uint64_t> passSignature() const override { return entries_.empty() ? 1u : 2u; }
     void frameEnded() noexcept override;
 
     // Dépose un objet pour l'image (entre `SceneRenderer::setCamera` et `endFrame`). La géométrie de `mesh` est utilisée ; son

@@ -1,6 +1,9 @@
 // CORE-09 : mathématiques. Vecteurs, matrices et quaternions en float (GPU, rendu local) ;
 // positions MONDIALES en double (WorldPosition) ; passage de l'un à l'autre uniquement par les fonctions nommées ci-dessous.
+// Les types seuls (et `WorldPosition`) sont dans `math_types.hpp` (en-tête léger) ; ici, les fonctions de glm et les conversions.
 #pragma once
+
+#include <orosmo/core/math_types.hpp>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -10,35 +13,7 @@
 namespace orosmo::core
 {
 
-using Vec2 = glm::vec2;
-using Vec3 = glm::vec3;
-using Vec4 = glm::vec4;
-using Mat3 = glm::mat3;
-using Mat4 = glm::mat4;
-using Quat = glm::quat;
-
-using DVec2 = glm::dvec2;
-using DVec3 = glm::dvec3;
-using DMat4 = glm::dmat4;
-using DQuat = glm::dquat;
-
 inline constexpr double kPi = 3.14159265358979323846;
-
-// Position dans le monde, en double (précision au millimètre à des milliers de km). Type fort : pas de conversion
-// implicite vers Vec3, ce qui empêche d'envoyer par erreur une position mondiale au GPU.
-struct WorldPosition
-{
-    DVec3 value{0.0};
-
-    constexpr WorldPosition() = default;
-    constexpr explicit WorldPosition(const DVec3 &v) : value(v) {}
-    constexpr WorldPosition(double x, double y, double z) : value(x, y, z) {}
-
-    friend constexpr WorldPosition operator+(const WorldPosition &p, const DVec3 &offset) { return WorldPosition(p.value + offset); }
-    friend constexpr WorldPosition operator-(const WorldPosition &p, const DVec3 &offset) { return WorldPosition(p.value - offset); }
-    friend constexpr DVec3 operator-(const WorldPosition &a, const WorldPosition &b) { return a.value - b.value; }
-    friend constexpr bool operator==(const WorldPosition &a, const WorldPosition &b) { return a.value == b.value; }
-};
 
 // Origine flottante : position relative à `origin` (typiquement la caméra), arrondie en float. Soustraction faite
 // en double AVANT l'arrondi : l'erreur ne dépend plus de la distance à l'origine du monde.

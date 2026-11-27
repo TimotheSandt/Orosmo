@@ -132,6 +132,8 @@ expression (lecture seule). Le chemin commence par un champ `@Mutable`.
 | `.span(2)` | colonnes occupées dans une `Grid` |
 | `.id("seed")` | identifiant (`Widget::find`) |
 | `.tooltip("texte")` | infobulle |
+| `.tabIndex(2)`, `.tabIndex(-1)` | ordre de tabulation (UI-09) : positif d'abord, par valeur croissante ; `0` (défaut) dans l'ordre de l'arbre ; négatif : hors de l'ordre de tabulation (le clic et les flèches l'atteignent encore) |
+| `.focusable(false)` | le widget ne prend jamais le focus (ni Tab, ni flèches, ni clic) ; `true` : comportement par défaut du widget |
 | `.visible(expr)`, `.enabled(expr)` | `true`/`false`, ou expression relue à chaque image |
 | `.variant("title")` | type de style du thème (`widgets.title`) |
 | `.overflow(.visible)` / `.overflow(.hidden)` | ce qui dépasse du widget : visible et cliquable (défaut), ou coupé à son rectangle ; pour faire défiler : `ScrollView` |
@@ -200,8 +202,12 @@ par **état**. Un thème peut en étendre un autre ; les variantes claire et som
 - **Types de widget** : `panel`, `box`, `label`, `title`, `caption`, `button`, `checkbox`, `slider`, `textField`, `dropdown`, `popup`,
   `item`, `tabs`, `tab`, `scroll`, `tooltip`, `plot`, `section`, `sectionHeader`, `colorPicker`, `separator`, `radio`, `textArea`,
   `colorWheel`, `gradient`, `curve`, `image`, `modalBackdrop`, `dialog`, `dialogTitle`, `dialogClose`, `menuBar`, `menu`, `menuItem`,
-  `toast`, `toastSuccess`, `toastWarning`, `toastError` (et tout nom choisi par
+  `toast`, `toastSuccess`, `toastWarning`, `toastError`, `focusRing` (et tout nom choisi par
   `.variant`).
+- **Anneau de focus** (UI-09) : le style `focusRing` (état `normal`) dessine un contour autour du widget focalisé après une
+  navigation au clavier ou à la manette (pas après un clic) : `border` (couleur), `borderWidth`, `radius`, `padding` (écart
+  entre le widget et l'anneau ; négatif : à l'intérieur). Un thème sans `focusRing`, ou avec `borderWidth` à 0, n'en dessine pas.
+  `base.json` le relie aux jetons `color.focus`, `border.focus`, `radius.medium` et `focus.ringGap`.
 - **Rechargement à chaud** : `ThemeHost::watch(fileWatcher)` ; un fichier invalide laisse le thème précédent en place, avec l'erreur
   `fichier: widgets.button.radius: expects a number` dans le journal.
 
@@ -255,6 +261,14 @@ Le SDK (`tools/engine-sdk/engine.mk`) régénère `Generated/%.gen.cpp` quand le
 - Les positions d'erreur sont celles de l'élément ou du modificateur, pas de l'argument fautif (les expressions n'ont pas de position).
 - `once` dans une interpolation n'est pas figé par cette cible : le texte est relu à chaque image.
 - Pas de boucle ni de condition dans le langage (règle 12) : une liste de widgets variable se construit en C++, ou par `ParamPanel`.
-- Pas de rechargement à chaud de la vue elle-même (UI-08, P1) : le thème se recharge, la vue se recompile.
-- Pas de navigation à la manette (UI-09). La sélection de texte et le presse-papiers existent (champs de texte, éditeur
+- Rechargement à chaud de la vue (UI-08), en développement seulement : une vue compilée dans la bibliothèque de jeu est
+  reconstruite après chaque rechargement de cette bibliothèque (`app::ViewHost`). Si les champs liés changent (`@Mutable`,
+  `@Observed`, `@Snapshot`, `@cui-cpp`), l'ancienne vue reste et il faut relancer le programme reconstruit (G361). La vue
+  liée à l'exécutable (version finale) n'est pas rechargée. Exception : si la bibliothèque est rechargée pendant une
+  compilation qui échoue ensuite, la vue reste l'ancienne jusqu'au rechargement suivant.
+- Navigation (UI-09) : Tab / Maj+Tab suivent l'ordre de tabulation ; une flèche que le widget focalisé n'utilise pas (bouton, case
+  à cocher...) passe le focus au voisin le plus proche dans sa direction (sans boucler) ; un curseur, un champ de texte, une
+  liste déroulante et les menus gardent leurs flèches. Manette (`ui::GamepadNavigator`, `platform::Gamepads`) : croix et stick
+  gauche = flèches (répétées tant qu'elles sont tenues ; un curseur horizontal laisse Haut et Bas à la navigation), A = Entrée,
+  B = Échap, RB / LB = Tab / Maj+Tab. Le défilement d'une `ScrollView` vers le widget focalisé n'est pas fait (G222, docs/GAPS.md). La sélection de texte et le presse-papiers existent (champs de texte, éditeur
   multiligne ; presse-papiers du système par `ui::useSystemClipboard`) ; la composition IME n'est pas affichée (G107).

@@ -27,7 +27,7 @@ pas exister.
 
 | Fichier créé | Rôle |
 |---|---|
-| `src/` | le projet de démarrage : `main.cpp`, `hud_state.hpp`, `HudView.cui` |
+| `src/` | le projet de démarrage : `main.cpp` (écrit avec `app::Application`, voir [Lire la boucle d'une application](/demarrer/premiere-application/)), `hud_state.hpp`, `HudView.cui`, et la logique de jeu rechargeable `game/` |
 | `config.mk` | nom, version du jeu, `OROSMO_VERSION` : à vous, à versionner |
 | `config.local.mk` | réglages de la machine (par exemple `ENGINE_DIR`), ignoré par git |
 | `Makefile`, `.gitignore` | modèles suivis par `orosmo update` |
@@ -48,23 +48,23 @@ L'outil ne fait que lancer `make`. Les commandes suivantes donnent le même rés
 
 Les autres cibles du `Makefile` (`dev`, `test`, `benchmark`, `compile-commands`, `fclean`…) sont décrites dans
 [Compiler avec Make ou CMake](/reference/construction/#projet-créé-par-orosmo-init). Le projet de démarrage accepte
-`--headless`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et `--help`. Son option `--api` n'accepte que
-`opengl` : il crée toujours un périphérique OpenGL (pour Vulkan, voir
-[Choisir le backend graphique](/guides/application/peripherique/)).
+`--api vulkan|opengl` (Vulkan par défaut, avec repli sur OpenGL s'il ne démarre pas ; `--strict-backend` supprime le
+repli), `--headless`, `--size <L>x<H>`, `--frames <N>`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et
+`--help` (options de `app::Application::main`).
 
 ## Version du moteur
 
 Le projet nomme sa version du moteur dans `config.mk` :
 
 ```makefile title="config.mk"
-OROSMO_VERSION := 0.6.2
+OROSMO_VERSION := 0.7.0
 ```
 
-Le `Makefile` demande son chemin à l'outil (`orosmo path 0.6.2`). Si cette version n'est pas installée, il s'arrête avec la
+Le `Makefile` demande son chemin à l'outil (`orosmo path 0.7.0`). Si cette version n'est pas installée, il s'arrête avec la
 commande à lancer :
 
 ```text
-Orosmo 0.6.2 is not installed: run "orosmo install 0.6.2" (or pass ENGINE_DIR=/path/to/engine)
+Orosmo 0.7.0 is not installed: run "orosmo install 0.7.0" (or pass ENGINE_DIR=/path/to/engine)
 ```
 
 Deux projets peuvent utiliser deux versions différentes : chacune est installée une fois dans `~/.orosmo/engines/`. Pour

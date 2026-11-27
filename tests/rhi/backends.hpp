@@ -84,6 +84,7 @@ inline std::vector<orosmo::rhi::Backend> parseBackendList(const char *text)
 
 inline const BackendProbe &backendProbe()
 {
+    REQUIRE_GPU_ALLOWED();
     static const BackendProbe probe = []
     {
         BackendProbe result;

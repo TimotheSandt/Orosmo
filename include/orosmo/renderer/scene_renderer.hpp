@@ -15,9 +15,11 @@
 #include "orosmo/renderer/fullscreen_blit.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/light.hpp"
+#include "orosmo/renderer/material.hpp"
 #include "orosmo/renderer/mesh.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/render_feature.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/render_graph.hpp"
 #include "orosmo/renderer/render_target.hpp"
 #include "orosmo/renderer/shader_library.hpp"
@@ -25,8 +27,11 @@
 #include "orosmo/rhi/device.hpp"
 
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
+#include <optional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -36,11 +41,17 @@ namespace orosmo::renderer
 
 struct SceneRendererConfig
 {
-    // Dossier des shaders du moteur : `mesh.vert`, `mesh.frag`, `blit.vert`, `blit.frag` (shaders/rhi/).
+    // Dossier des shaders du moteur : `mesh.vert`, `mesh.frag`, `blit.vert`, `blit.frag` (shaders/rhi/). Vide avec la fabrique
+    // qui prend un `RenderContext` : celui du contexte.
     std::filesystem::path shaderDirectory;
     // Images en vol (perf M5) : profondeur de l'anneau des données par image (FrameData, caméra, tranches de modèle, lignes de
-    // debug). Au moins celle du RHI (2) ; 3 si le périphérique en garde 3 d'avance.
-    std::uint32_t framesInFlight = kDefaultFramesInFlight;
+    // debug). 0 (défaut, A61 G) : celle du périphérique (`rhi::Device::framesInFlight`). Une valeur plus petite que celle du
+    // périphérique est refusée par `create` (kInvalidArgument : une zone serait réécrite pendant que le GPU la lit) ; plus grande,
+    // elle reste juste.
+    std::uint32_t framesInFlight = 0;
+    // A61 C : graphe de passes gardé d'une image à l'autre tant que les plugins, les cibles et les tailles ne changent pas (voir
+    // `RenderFeature::passSignature`). Faux : reconstruit à chaque image (comportement d'avant M8, pour mesurer).
+    bool cacheRenderGraph = true;
 };
 
 // Dessin externe joué dans la passe « scene » (REN-28, `SceneRenderer::drawCustom`) : la cible et l'origine du rendu relatif à la
@@ -71,6 +82,8 @@ class SceneRenderer
 
     static core::Result<std::unique_ptr<SceneRenderer>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                                const SceneRendererConfig &config);
+    // A75.4 : même fabrique depuis un `RenderContext` (dossier des shaders du contexte si `config.shaderDirectory` est vide).
+    static core::Result<std::unique_ptr<SceneRenderer>> create(const RenderContext &context, SceneRendererConfig config = {});
     ~SceneRenderer();
     SceneRenderer(const SceneRenderer &) = delete;
     SceneRenderer &operator=(const SceneRenderer &) = delete;
@@ -105,6 +118,7 @@ class SceneRenderer
     std::vector<std::string> registeredUpscaleModes() const;
     UpscaleRequirements activeUpscaleModeRequirements() const noexcept;
     void addPostProcessPass(std::unique_ptr<IPostProcessPass> pass);
+    // Pendant l'exécution du graphe (depuis une passe ou un post-traitement), le retrait est différé à la fin d'endFrame.
     void removePostProcessPass(const std::string &name);
     // Remplace le mode de génération d'images (nul : aucun). Un mode non supporté ou qui ne s'initialise pas est refusé
     // (kUnsupported) et le mode actif est conservé.
@@ -151,10 +165,24 @@ class SceneRenderer
 
     // ── Plugins de rendu (REN-01) ───────────────────────────────────────────────────────────────────────────────────
     // Enregistre un plugin : ses passes sont ajoutées au graphe à chaque `endFrame`, dans l'ordre d'enregistrement. Refusé
-    // (kUnsupported) si `supports` est faux, (kAlreadyExists) si un plugin du même nom existe. Renvoie le plugin (non possédé).
+    // (kUnsupported) si `supports` est faux, (kAlreadyExists) si un plugin du même nom existe, (kBusy) pendant une image (entre
+    // beginFrame et la fin d'endFrame). Renvoie le plugin (non possédé).
     core::Result<RenderFeature *> addFeature(std::unique_ptr<RenderFeature> feature);
+    // Retire un plugin. Pendant une image (entre beginFrame et la fin d'endFrame), le retrait est différé à la fin de l'image : ses
+    // définitions de shader et ses liaisons du groupe 0 restent cohérentes avec les dessins déjà enregistrés.
     void removeFeature(const std::string &name);
     std::vector<std::string> featureNames() const;
+
+    // A61 C : graphe de passes gardé d'une image à l'autre. `endFrame` le reconstruit seulement quand un plugin, un post-traitement,
+    // un mode (mise à l'échelle, génération d'images, debug), une cible (format, AOV, profondeur, historique) ou une taille change,
+    // ou qu'un plugin rend une autre `RenderFeature::passSignature` (un plugin sans signature : reconstruit à chaque image). Les
+    // `prepare` des plugins sont appelés à chaque image, tous avant les `declarePasses` d'une reconstruction.
+    void setRenderGraphCaching(bool enabled) noexcept;
+    bool renderGraphCaching() const noexcept { return graphCaching_; }
+    // Reconstructions du graphe depuis la création (une image qui réutilise le graphe n'en ajoute pas).
+    std::uint64_t graphBuildCount() const noexcept { return graphBuilds_; }
+    // Vrai si la dernière image (endFrame) a réutilisé le graphe de l'image précédente.
+    bool graphReused() const noexcept { return graphReused_; }
     // Graphe de la dernière image (ordre d'exécution, passes écartées, ressources transitoires).
     const RenderGraph &renderGraph() const noexcept { return graph_; }
 
@@ -169,11 +197,21 @@ class SceneRenderer
     // Macros à donner à ShaderLibrary::loadGraphics pour un programme de maillage qui écrit les AOV actifs (à recharger si
     // l'ensemble change) ; vide sans AOV.
     std::vector<std::pair<std::string, std::string>> aovShaderDefines() const { return orosmo::renderer::aovShaderDefines(activeAovs()); }
+    // A75.3 : toutes les définitions qu'un programme de maillage doit recevoir pour cette scène, dans un ordre stable : celles des
+    // plugins (`RenderFeature::shaderDefines`, ex. OROSMO_FORWARD_PLUS, dans l'ordre d'enregistrement) puis celles des AOV actifs.
+    // Les maillages sans programme imposé (`Mesh::setProgram`) sont compilés avec elles au dessin ; un programme chargé à la main
+    // les passe à `ShaderLibrary::loadGraphics` (ou à `ShadowFeature::receiverProgramWith`).
+    std::vector<Define> shaderDefines() const;
+    // Compteur qui change chaque fois que `shaderDefines()` change (plugin ajouté ou retiré, AOV déclaré ou relâché, mode de
+    // debug...) : un programme compilé avec une révision plus ancienne est à recharger. Les programmes résolus au dessin le sont
+    // automatiquement.
+    std::uint64_t revision() const;
     // Attachements de la cible de scène de la dernière image commencée.
     const AovLayout &aovLayout() const noexcept { return aovLayout_; }
     // Mode d'affichage de debug (REN-35) ; kNone (défaut) : aucun effet, aucune allocation. kNormals et kMotion demandent leur AOV
     // (le programme de maillage doit être compilé avec `aovShaderDefines()` APRÈS cet appel) ; kAlbedo, kOverdraw et kWireframe
     // remplacent le programme des maillages par un programme de debug ; kLod n'a d'effet que via `VisibilityOptions::lodColors`.
+    // kBusy pendant une image (entre beginFrame et la fin d'endFrame) : rien n'est changé.
     core::Result<> setDebugView(DebugView view);
     DebugView debugView() const noexcept { return debugView_; }
 
@@ -199,8 +237,15 @@ class SceneRenderer
     // dernière caméra donnée sert aux images suivantes tant qu'aucune autre ne la remplace).
     core::Result<> setCamera(Camera &camera);
     // Enregistre le dessin (pipeline, constantes et transformation sont résolus ici ; les tampons du maillage doivent rester
-    // valides jusqu'à `endFrame`).
+    // valides jusqu'à `endFrame`). Ancienne signature (gardée jusqu'à M10) : le maillage doit avoir un programme (`setProgram`).
     core::Result<> drawMesh(Mesh &mesh, const Camera &camera);
+    // A75.6 : même dessin sans caméra ; le fil de fer vient de `setWireframe`, de la caméra donnée au dernier `setCamera`
+    // (`Camera::wireframe`) ou du mode de debug kWireframe. Le programme est résolu ici s'il n'est pas imposé (A75.3) : matériau
+    // (`Mesh::setMaterial`) ou programme par défaut de la disposition kColored ; kInvalidArgument sinon.
+    core::Result<> drawMesh(Mesh &mesh);
+    // A75.6 : fil de fer pour tous les maillages (en plus du rendu plein), comme `Camera::setWireframe`.
+    void setWireframe(bool enabled) noexcept { wireframe_ = enabled; }
+    bool wireframe() const noexcept { return wireframe_; }
     // REN-34 : dessine les segments de `debug` dans la passe de scène (après setCamera). Sans segment ou désactivé : rien (aucun
     // coût). Les shaders `debug_line.vert/frag` sont chargés au premier appel. Les segments sont copiés à l'appel.
     core::Result<> drawDebug(const DebugDraw &debug);
@@ -216,6 +261,14 @@ class SceneRenderer
     // `output`, génération d'images, historique, puis les passes des plugins. Chaque passe est mesurée par le Profiler sous
     // « RenderGraph/<passe> » (scene, post.<nom>, upscale, frame-generation, history).
     core::Result<> endFrame(const UpscaleTarget &output);
+    // A75.7 : même fin d'image vers une texture (backbuffer de `Device::beginFrame`, cible de rendu) dont le format et la taille
+    // sont lus sur le périphérique ; la scène y est copiée, étirée si la sortie n'a pas la résolution de `setOutputResolution`.
+    // kInvalidArgument si la texture est inconnue.
+    core::Result<> endFrame(rhi::TextureHandle output);
+    // Abandonne l'image ouverte (revue PR #37) : ferme l'enregistrement sans exécuter le graphe, comme un endFrame qui échoue avant
+    // le graphe (dessins, segments de debug et dépôts des plugins retirés, retraits différés appliqués, historique invalidé). Sans
+    // image ouverte (ou pendant endFrame), ne fait rien. Pour l'appelant dont une étape échoue entre beginFrame et endFrame.
+    void abortFrame();
 
     // Outil de copie plein écran partagé (présentation, mises à l'échelle de l'application).
     FullscreenBlit &blit() noexcept { return *blit_; }
@@ -235,6 +288,7 @@ class SceneRenderer
         std::vector<std::byte> pushConstants;
         LightManager *lights = nullptr;
         rhi::BindGroupHandle textureGroup;
+        std::shared_ptr<const PbrMaterial> material; // garde le groupe 1 du matériau jusqu'à endFrame (Mesh::setMaterial après le dessin)
         std::uint32_t modelOffset = 0; // tranche du modèle de CE dessin (recordModelSlice), décalage dynamique du groupe 2
         rhi::BufferHandle vertexBuffer;
         rhi::BufferHandle instanceBuffer;
@@ -257,7 +311,10 @@ class SceneRenderer
     LightManager &activeLights() noexcept { return lights_ != nullptr ? *lights_ : defaultLights_; }
     core::Result<> rebuildFrameGroup(LightManager &lights, bool featuresDeclared);
     bool outputSampled(rhi::TextureHandle texture) const;
-    core::Result<> record(Mesh &mesh, bool lines, std::uint32_t modelOffset);
+    core::Result<> record(Mesh &mesh, const ShaderProgram &meshProgram, bool lines, std::uint32_t modelOffset);
+    core::Result<> drawMeshWith(Mesh &mesh, bool wireframe, bool resolve);
+    // A75.3 : programme du dessin (imposé, du matériau, ou par défaut), compilé avec `shaderDefines()` de la révision courante.
+    core::Result<std::shared_ptr<ShaderProgram>> resolveProgram(const Mesh &mesh);
     // Écrit les données de l'image dans sa zone de l'anneau (FrameData, caméra, tranches, lignes de debug) : un seul updateBuffer.
     core::Result<> uploadFrameRing();
     // Format de la couleur de la cible de l'image en cours (celui de beginFrame, même si setSceneColorFormat a changé depuis).
@@ -266,6 +323,8 @@ class SceneRenderer
     core::Result<> updateFrameData();
     core::Result<> ensureHistory(RenderTarget &target, bool &fresh);
     core::Result<> buildGraph(const UpscaleTarget &output, bool hadHistory);
+    core::Result<> declareGraph(const UpscaleTarget &output, bool intoOutput);
+    core::Result<> refreshGraphImports(const UpscaleTarget &output);
     // Mélange et profondeur du matériau (REN-41) puis effets du mode de debug, sur les cibles déjà préparées.
     void configureMaterialState(GraphicsState &state, BlendMode blend, bool lines) const;
     bool replacesMeshProgram() const noexcept
@@ -278,6 +337,17 @@ class SceneRenderer
     PipelineCache &pipelines_;
     std::unique_ptr<FullscreenBlit> blit_;
     std::shared_ptr<ShaderProgram> meshProgram_;
+    // A75.3 : programmes résolus au dessin pour la révision `resolvedRevision_` (vidés quand elle change).
+    std::unique_ptr<PbrShaderCache> pbrShaders_;
+    std::map<std::uint32_t, std::shared_ptr<ShaderProgram>> pbrPrograms_; // par variante (PbrMaterial::features)
+    std::shared_ptr<ShaderProgram> defaultProgram_;                       // mesh.vert / mesh.frag (disposition kColored)
+    std::map<std::vector<Define>, std::shared_ptr<ShaderProgram>> defaultPrograms_; // gardés : les images en vol les référencent
+    std::uint64_t resolvedRevision_ = 0;
+    std::vector<Define> resolvedDefines_; // définitions de la révision résolue (beginFrame)
+    mutable std::vector<Define> lastDefines_;
+    mutable std::uint64_t revision_ = 0;
+    bool wireframe_ = false;
+    bool cameraWireframe_ = false; // Camera::wireframe du dernier setCamera
     std::shared_ptr<ShaderProgram> debugProgram_;
     std::vector<float> debugVertices_; // segments de debug de l'image (envoyés une fois, à endFrame)
     std::filesystem::path shaderDirectory_;
@@ -306,7 +376,57 @@ class SceneRenderer
     FrameResources frameResources_;
 
     RenderGraph graph_;
+    // A61 C : ce dont dépend la structure du graphe ; égale à l'image précédente (et toutes les signatures présentes) : graphe gardé.
+    struct GraphKey
+    {
+        std::uint64_t plugins = 0; // pluginsRevision_
+        const IUpscaleMode *upscaleMode = nullptr;
+        const IFrameGenerationMode *frameGeneration = nullptr;
+        rhi::Format outputFormat = rhi::Format::kRGBA8Unorm;
+        rhi::Extent2D outputSize{};
+        rhi::Extent2D renderSize{};
+        rhi::Format sceneFormat = rhi::Format::kRGBA8Unorm;
+        AovSet aovs;
+        bool depth = false;
+        bool intoOutput = false;
+        bool prepass = false;
+        bool clearDepth = true;
+        std::array<float, 4> clearColor{};
+        DebugView debugView = DebugView::kNone;
+        bool runsMode = false;
+        bool scaledFrame = false;
+        bool history = false;
+        bool previousHistory = false;
+        std::vector<std::optional<std::uint64_t>> signatures; // une par plugin, dans l'ordre d'enregistrement
+        bool operator==(const GraphKey &) const = default;
+    };
+    // Ressources importées par le renderer, recopiées à chaque image d'un graphe gardé (leur ressource GPU peut changer).
+    struct GraphImports
+    {
+        RgTexture output;
+        RgTexture sceneColor;
+        RgTexture sceneDepth;
+        RgTexture previousHistory;
+        RgTexture nextHistory;
+        std::array<RgTexture, kAovCount> aovs{};
+    };
+    bool graphCaching_ = true;
+    bool graphValid_ = false; // le graphe déclaré correspond à graphKey_ et peut resservir
+    bool graphReused_ = false;
+    std::uint64_t graphBuilds_ = 0;
+    std::uint64_t pluginsRevision_ = 0; // plugins, post-traitements : change à chaque ajout ou retrait
+    GraphKey graphKey_;
+    GraphKey frameKey_; // clé de l'image en cours (réutilise sa mémoire)
+    GraphImports graphImports_;
+    std::vector<rhi::BindGroupEntry> graphFrameBindings_; // liaisons des plugins déclarées avec le graphe gardé
+    // Valeurs de l'image lues par les passes du renderer À L'EXÉCUTION (un graphe gardé ne recopie rien à la déclaration).
+    UpscaleTarget passOutput_{};
+    rhi::TextureHandle passPreviousHistory_;
+    bool passResetHistory_ = false;
+    std::uint32_t passNextHistory_ = 0;
     std::vector<std::unique_ptr<RenderFeature>> features_;
+    std::vector<std::string> pendingRemovals_; // removeFeature pendant une image : appliqués à sa fin
+    std::vector<std::string> pendingPostRemovals_; // removePostProcessPass pendant endFrame : appliqués à sa fin
     std::vector<SceneDraw> draws_;
     FrameOptions frameOptions_;
 

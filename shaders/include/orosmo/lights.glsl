@@ -22,6 +22,10 @@ float lightRange(vec3 color, float strength, float a, float b)
     {
         return 0.0;
     }
+    if (a > 0.0 && b == 0.0)
+    {
+        return min(sqrt(k / a), kLightMaxRange); // carré inverse seul : sans 4ak, qui déborde pour une intensité très grande
+    }
     if (a > 0.0)
     {
         float root = sqrt(b * b + 4.0 * a * k);

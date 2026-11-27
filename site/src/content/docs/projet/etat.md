@@ -1,11 +1,11 @@
 ---
 title: État du moteur
-description: Ce qui est livré, partiel ou absent dans la version 0.6.2, par section de la checklist, avec où trouver les preuves.
+description: Ce qui est livré, partiel ou absent dans la version 0.7.0, par section de la checklist, avec où trouver les preuves.
 sidebar:
   order: 3
 ---
 
-Cette page résume l'état à la version 0.6.2 (M6 livré le 2026-11-24, M14, distribution du SDK le 2026-11-25). La référence est le dépôt :
+Cette page résume l'état à la version 0.7.0 (M8 livré côté code le 2026-11-27, après M6, M14 et la distribution du SDK ; release à publier par l'auteur). La référence est le dépôt :
 
 - [`docs/02-CHECKLIST_FONCTIONNALITES.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/02-CHECKLIST_FONCTIONNALITES.md) : un identifiant par fonction, avec son critère d'acceptation ;
 - [`docs/STATUS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/STATUS.md) : l'état de chaque identifiant et sa preuve (fichier, symbole, test) ;
@@ -17,7 +17,7 @@ Un identifiant n'est « Fait » que s'il a un test automatisé ou une commande d
 Lire les identifiants : `REN-…`, `RHI-…`, `PLAT-…`, `ASSET-…`, `ANIM-…`, `UI-…` et leurs semblables sont les lignes de la
 checklist (`docs/02`). `Gnnn` est une limite connue dans `docs/GAPS.md`. `Ann` est une décision ou une question dans
 `docs/QUESTIONS.md`. `Mn` est un jalon du plan (`docs/05`) : M8 est la scène, la simulation et la logique de jeu
-rechargeable ; M9, macOS et Metal ; M11, les modules et addons.
+rechargeable (livré en `v0.7.0`) ; M9, macOS et Metal ; M11, les modules et addons.
 :::
 
 ## Décompte par section
@@ -28,20 +28,20 @@ sur une branche), Hors moteur (ne sera pas dans le moteur) et Incompatible (exis
 | Section | Identifiants | Fait | Partiel | Absent | Autres |
 |---|---|---|---|---|---|
 | A. Noyau (`core`) | 13 | 10 | 3 | 0 | |
-| B. Plateforme et entrées | 5 | 0 | 4 | 1 | |
+| B. Plateforme et entrées | 5 | 0 | 5 | 0 | |
 | C. Couche graphique (RHI) | 19 | 7 | 10 | 2 | |
 | D. Rendu 3D | 41 | 16 | 11 | 14 | |
 | E. Rendu 2D et mélange 2D/3D | 7 | 5 | 0 | 2 | |
 | F. Contenu et animation | 12 | 8 | 1 | 3 | |
 | G. Terrain et monde | 14 | 0 | 0 | 0 | 9 archivés, 5 hors moteur |
-| H. Scène et simulation | 6 | 0 | 0 | 4 | 2 hors moteur |
-| I. Interface et langage `.cui` | 13 | 5 | 4 | 4 | |
-| J. Logique de jeu rechargeable | 7 | 0 | 0 | 7 | |
+| H. Scène et simulation | 6 | 4 | 0 | 0 | 2 hors moteur |
+| I. Interface et langage `.cui` | 13 | 9 | 4 | 0 | |
+| J. Logique de jeu rechargeable | 7 | 7 | 0 | 0 | |
 | K. Voxels et ray tracing | 5 | 0 | 0 | 4 | 1 incompatible |
 | L. Outils, qualité, construction | 11 | 1 | 8 | 0 | 2 archivés |
 | M. Modules et addons | 9 | 0 | 0 | 9 | |
 | N. Site et déploiement | 5 | 1 | 3 | 1 | |
-| Total | 167 | 53 | 44 | 51 | 11 archivés, 7 hors moteur, 1 incompatible |
+| Total | 167 | 68 | 45 | 35 | 11 archivés, 7 hors moteur, 1 incompatible |
 
 ## Jalons livrés
 
@@ -56,6 +56,7 @@ sur une branche), Hors moteur (ne sera pas dans le moteur) et Incompatible (exis
 | M6 | import et export glTF 2.0, textures et KTX2, cuisson de maillages, matériaux PBR, éclairage par environnement, skinning GPU, machine à états, courbes, foules | `v0.6.0` |
 | M14 | ce site | |
 | SDK | installeur, outil `orosmo` (install, build, run, migrate…), moteur précompilé avec ses dépendances (`deps/`), installé une fois par machine (A76) | `v0.6.2` |
+| M8 | scène (entités, sauvegarde), simulation à pas fixe rejouable et son thread, logique de jeu et vues rechargées à chaud, navigation au clavier et à la manette, outils de debug, façade `app::Application`, API de rendu et de contenus simplifiées | `v0.7.0` (à publier par l'auteur) |
 
 Notes détaillées de chaque jalon : `docs/releases/`. Le jalon M7 a été supprimé (le moteur reste générique) et son numéro
 n'est pas réattribué.
@@ -72,12 +73,17 @@ Chaque ligne cite l'identifiant de la checklist.
 - Contenu : glTF 2.0 en lecture et en écriture (ASSET-01), textures sRGB ou linéaires (ASSET-02), KTX2 (ASSET-03), cuisson de
   maillages (ASSET-04).
 - Animation : skinning GPU (ANIM-01), clips et machine à états (ANIM-02), courbes de propriétés (ANIM-03), foules (ANIM-04).
-- Interface : widgets, mise en page, vues `.cui` compilées en C++, thèmes JSON rechargés à chaud.
+- Interface : widgets, mise en page, vues `.cui` compilées en C++, thèmes JSON rechargés à chaud ; vues `.cui` rechargées
+  en développement (UI-08), navigation au clavier et à la manette (UI-09), outils de debug et inspecteurs (UI-04, UI-10).
+- Scène et simulation : entités, composants et hiérarchie (ECS-01, ECS-02), sauvegarde JSON et MessagePack (ECS-03),
+  simulation à pas fixe rejouable avec thread optionnel (SIM-01).
+- Logique de jeu : bibliothèque rechargée sans perte d'état, migration des composants, gestionnaires par nom, paramètres
+  JSON, construction incrémentale, version finale statique (GAME-01 à GAME-07). Façade `app::Application`.
 - Outillage : installeurs, `orosmo install`, `init`, `update`, `migrate`, `build`, `run`, `doctor`, paquet avec `deps/`, `engine.mk` et `OrosmoConfig.cmake` (`make e2e-init`). Windows et macOS non essayés (G216).
 
 ## Partiel
 
-- Plateformes (PLAT-01, 02, 04, 05) : Windows et macOS sont compilés par la CI mais pas vérifiés pour le code récent ;
+- Plateformes (PLAT-01 à 05) : manettes limitées à la navigation de l'interface (PLAT-03, G223) ; Windows et macOS sont compilés par la CI mais pas vérifiés pour le code récent ;
   `--headless` n'est vérifié que sous Linux ; pas de composition IME (G107).
 - RHI : Vulkan n'est vérifié que sous Linux avec un GPU (G142) ; Metal est reconnu mais refusé.
 - Rendu : anticrénelage FXAA, SMAA 1x et TAA livrés, MSAA absent (REN-19) ; lumières de surface (REN-05), ombres de contact (REN-08), variantes de matériaux sans constantes de
@@ -88,16 +94,11 @@ Chaque ligne cite l'identifiant de la checklist.
 
 ## Absent
 
-- Scène et simulation : entités et composants, transformations hiérarchiques, chargement de scène, boucle de simulation
-  (ECS-01 à ECS-03, SIM-01). L'application garde ses propres objets.
-- Logique de jeu rechargeable (GAME-01 à GAME-07).
-- Entrées : manettes (PLAT-03).
 - Rendu : occlusion ambiante, réflexions, éclairage précalculé, ciel, brouillard, nuages, eau, particules, décalques,
   réfraction, transparence indépendante de l'ordre (REN-14 à REN-16, REN-24 à REN-27, REN-33, REN-38, REN-40). Plusieurs sont prévus
   comme modules préinstallés (M13).
 - 2D : cartes de tuiles, éclairage 2D (R2D-04, R2D-07).
 - Contenu : import OBJ, cinématique inverse, morph targets, retargeting (ASSET-06, ANIM-05, ANIM-06).
-- Interface : outils de debug, rechargement à chaud de la vue elle-même, navigation à la manette, inspecteur (UI-04, 08, 09, 10).
 - Backend Metal (RHI-13), transferts asynchrones (RHI-19).
 - Voxels et ray tracing (EXT-01 à EXT-05).
 - Modules, addons et registre (MOD-01 à MOD-09).

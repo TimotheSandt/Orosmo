@@ -5,6 +5,10 @@
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include "UI/Views/DemoView.gen.h"
@@ -53,9 +57,10 @@ Game::Game(bool headlessMode, int width, int height, rhi::Backend backend)
 {
 }
 
-orosmo::core::Result<std::unique_ptr<Game>> Game::create(bool headless, int width, int height, rhi::Backend backend)
+orosmo::core::Result<std::unique_ptr<Game>> Game::create(bool headless, int width, int height, rhi::Backend backend, std::uint32_t framesInFlight)
 {
     std::unique_ptr<Game> game(new Game(headless, width, height, backend));
+    game->framesInFlight = framesInFlight;
     if (auto r = game->createGraphics(); !r)
     {
         return std::unexpected(r.error());
@@ -70,6 +75,7 @@ orosmo::core::Result<> Game::createGraphics()
     LOG_TRACE("Initializing window");
     rhi::DeviceDesc desc;
     desc.backend = this->selectedBackend;
+    desc.framesInFlight = this->framesInFlight;
 #ifdef DEBUG
     desc.validation = true;
 #else
@@ -81,7 +87,7 @@ orosmo::core::Result<> Game::createGraphics()
     }
     else
     {
-        if (this->window.init([&]() { (void)rhi::prepareWindowHints(desc); }) != 0)
+        if (!this->window.init([&]() { (void)rhi::prepareWindowHints(desc); }))
         {
             return makeError(ErrorCode::kUnsupported, "Failed to initialize the window (no display?)");
         }
@@ -166,6 +172,16 @@ void Game::setGpuTimings(demo::GpuTimingsMode mode)
     this->uiState.gpuTimings = static_cast<int>(mode);
     this->applyGpuTimings();
 }
+
+void Game::setRenderGraphCaching(bool enabled)
+{
+    if (this->sceneRenderer)
+    {
+        this->sceneRenderer->setRenderGraphCaching(enabled);
+    }
+}
+
+std::uint64_t Game::graphBuildCount() const noexcept { return this->sceneRenderer ? this->sceneRenderer->graphBuildCount() : 0; }
 
 void Game::setDirectPresentation(bool enabled)
 {
@@ -349,7 +365,7 @@ orosmo::core::Result<> Game::init()
     rd::ShadowFeature *shadowFeature = nullptr;
     if (this->shadowsEnabled)
     {
-        auto shadows = rd::ShadowFeature::create(*this->device, *this->shaders, *this->pipelines, kShaderDirectory);
+        auto shadows = rd::ShadowFeature::create(*this->device, *this->shaders, *this->pipelines, kShaderDirectory, this->shadowSettings.value_or(rd::ShadowSettings{}));
         if (!shadows)
         {
             return orosmo::core::makeError(shadows.error().code, "Failed to create the shadows: " + shadows.error().message);
@@ -364,8 +380,8 @@ orosmo::core::Result<> Game::init()
         this->scene->setShadows(shadowFeature);
     }
     this->scene->setDebugOptions(this->debugView, this->freezeFrustum);
-    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory, forwardPlus, this->pointLightCount,
-                                       this->sceneRenderer->aovShaderDefines()); !ready)
+    if (auto ready = this->scene->init(*this->device, *this->shaders, kShaderDirectory, this->pointLightCount,
+                                       this->sceneRenderer->shaderDefines()); !ready)
     {
         return orosmo::core::makeError(ready.error().code, "Failed to initialize the demo scene: " + ready.error().message);
     }
@@ -411,9 +427,7 @@ orosmo::core::Result<> Game::init()
         demo::AnimSceneOptions animOptions;
         animOptions.workDirectory = std::filesystem::temp_directory_path() / "orosmo-demo-anim";
         animOptions.crowdDefines = forwardPlus ? rd::forwardPlusDefines() : std::vector<rd::Define>{};
-        animOptions.modelDefines = animOptions.crowdDefines;
-        const std::vector<rd::Define> aovDefines = this->sceneRenderer->aovShaderDefines();
-        animOptions.modelDefines.insert(animOptions.modelDefines.end(), aovDefines.begin(), aovDefines.end());
+        animOptions.modelDefines = this->sceneRenderer->shaderDefines(); // forward+ et AOV (A75.3)
         this->anim = std::make_unique<demo::AnimScene>();
         if (auto ready = this->anim->init(*this->device, *this->shaders, *this->pipelines, kShaderDirectory, std::move(animOptions)); !ready)
         {
@@ -519,6 +533,7 @@ void Game::stop()
         this->scene.reset();
     }
     // Ordre critique : `fullUi` et `hudUi` référencent `uiState`, `performance`, `font` (qui référence `text`) et `watcher`.
+    this->debugTools.reset();
     this->fullUi.reset();
     this->uiState.ui = nullptr;
     this->hudUi.reset();
@@ -660,6 +675,10 @@ void Game::recordFrameTime(std::chrono::steady_clock::time_point frameStart)
                             ? static_cast<float>(static_cast<double>(Profiler::GetLastTime("Render").count()) * 1e-6)
                             : 0.0f;
     this->performance.pushFrame(cpuMs - waitMs, gpuMs, intervalMs, waitMs);
+    if (this->debugTools)
+    {
+        this->debugTools->frames().push(cpuMs - waitMs, gpuMs, intervalMs, waitMs); // profileur des outils de debug
+    }
     // Diagnostic des gels : une image en fenêtre au-delà de kFrameSpikeMs est journalisée avec la part de la mise à jour (le
     // reste est le rendu, l'encodage et la présentation). Les premières images (préparation) ne comptent pas.
     constexpr float kFrameSpikeMs = 200.0f;
@@ -729,7 +748,7 @@ PerformanceSample Game::samplePerformance() const
                    ? (this->headless ? "off" : "on")
                    : (pacing.mode == rd::FramePacingMode::kLimited ? "off, limit " + std::to_string(pacing.fpsLimit) + " FPS" : "off, no limit");
     s.modes = std::string("AA ") + std::string(rd::toString(this->antiAliasingMode)) + "   post " + std::string(demo::postModeName(this->postMode)) +
-              "   shadows " + (this->shadowFeature != nullptr ? "on" : "off") + "   lighting " + (this->forwardPlusActive ? "forward+" : "forward");
+              "   shadows " + (this->shadowFeature != nullptr ? "on " + std::string(demo::shadowQualityLabel(this->shadowSettings.value_or(rd::ShadowSettings{}))) : std::string("off")) + "   lighting " + (this->forwardPlusActive ? "forward+" : "forward");
     s.residentMiB = processResidentMiB();
     return s;
 }
@@ -750,7 +769,7 @@ void Game::processInput(bool toggleUiJustPressed)
         this->window.toggleBorderless();
     }
 #ifdef DEBUG
-    if (!uiWantsKeyboard && inputManager.isKeyJustPressed(platform::KeyButton::kF12))
+    if (!uiWantsKeyboard && inputManager.isKeyJustPressed(demo::kFullscreenKey))
     {
         this->window.toggleFullscreen();
     }
@@ -822,16 +841,24 @@ void Game::update()
             const bool ctrl = inputManager.isKeyPressed(platform::KeyButton::kLeftControl) || inputManager.isKeyPressed(platform::KeyButton::kRightControl) ||
                               inputManager.isKeyJustPressed(platform::KeyButton::kLeftControl) ||
                               inputManager.isKeyJustPressed(platform::KeyButton::kRightControl);
-            const bool uiHasKeyboard = this->uiMode == demo::UiMode::kFull && this->fullUi && this->fullUi->wantsKeyboard();
+            // Outils de debug (F12) : ils gardent la souris et le clavier qu'ils utilisent (état de l'image précédente).
+            const bool toolsHaveMouse = this->debugTools && this->debugTools->wantsMouse();
+            const bool toolsHaveKeyboard = this->debugTools && this->debugTools->wantsKeyboard();
+            if (this->debugTools && inputManager.isKeyJustPressed(demo::kDebugToolsKey))
+            {
+                this->debugTools->toggle();
+            }
+            const bool uiHasKeyboard = toolsHaveKeyboard || (this->uiMode == demo::UiMode::kFull && this->fullUi && this->fullUi->wantsKeyboard());
             if (ctrl && !uiHasKeyboard && inputManager.isKeyJustPressed(platform::KeyButton::kF))
             {
                 this->performance.cycleLevel();
                 this->performance.sinceRefresh = PerformanceStats::kRefreshSeconds; // textes du nouveau niveau dès cette image
                 LOG_INFO("HUD level: ", demo::hudLevelName(this->performance.level));
             }
-            f1JustPressed = inputManager.isKeyJustPressed(platform::KeyButton::kF1);
+            f1JustPressed = inputManager.isKeyJustPressed(platform::KeyButton::kF1) && !toolsHaveKeyboard;
+            escapeJustPressed = escapeJustPressed && !toolsHaveKeyboard;
             this->processInput(escapeJustPressed || f1JustPressed);
-            if (this->uiMode != demo::UiMode::kFull)
+            if (this->uiMode != demo::UiMode::kFull && !toolsHaveMouse && !toolsHaveKeyboard)
             {
                 this->cameraController.update(this->window, this->camera, deltaTime, this->viewWidth, this->viewHeight);
             }
@@ -862,6 +889,37 @@ void Game::update()
 
     const glm::vec2 viewport{static_cast<float>(this->viewWidth), static_cast<float>(this->viewHeight)};
 
+    // Entrées de la fenêtre, lues une fois : outils de debug d'abord (ils sont dessinés au-dessus), puis l'interface complète, qui
+    // ne reçoit pas la souris ni le clavier que les outils utilisent.
+    ui::InputFrame windowInput;
+    windowInput.deltaTime = deltaTime;
+    const bool toolsOpen = this->debugTools && this->debugTools->isOpen();
+    if (!this->headless && !capturing && (wasFullUi || toolsOpen))
+    {
+        windowInput = ui::readWindowInput(this->window, deltaTime);
+    }
+    if (toolsOpen)
+    {
+        this->debugTools->inspect(this->activeUi());
+        this->debugWorld.pull(this->camera);
+        this->debugTools->update(windowInput, viewport);
+        (void)this->debugWorld.push(this->camera); // valeur modifiée dans l'inspecteur d'entités
+        if (this->debugTools->wantsMouse())
+        {
+            windowInput.mouse = glm::vec2(-1.0e9f);
+            windowInput.mouseDown = false;
+            windowInput.secondaryDown = false;
+            windowInput.wheel = glm::vec2(0.0f);
+        }
+        if (this->debugTools->wantsKeyboard())
+        {
+            windowInput.text.clear();
+            windowInput.keys.clear();
+            windowInput.events.clear();
+            windowInput.shortcuts.clear();
+        }
+    }
+
     if (this->uiMode == demo::UiMode::kFull && this->fullUi)
     {
         const bool uiTakesEscape = this->fullUi->wantsKeyboard() || this->fullUi->popup() != nullptr || this->fullUi->modalOpen();
@@ -889,10 +947,32 @@ void Game::update()
                 input.mouse = target->rect().position + target->rect().size * 0.5f;
                 input.mouseDown = !this->clickId.empty() && this->renderedFrames == 1;
             }
+            if (!this->focusId.empty() && this->renderedFrames >= 1)
+            {
+                ui::Widget *target = this->fullUi->find(this->focusId);
+                if (target == nullptr || !target->canTakeFocus() || !target->visibleInTree())
+                {
+                    LOG_ERROR(1, "Capture: no visible focusable widget with id '", this->focusId, "' (--focus)");
+                    std::cerr << "Orosmo: no visible focusable widget with id '" << this->focusId << "' (--focus)\n";
+                    this->captureFailed = true;
+                    if (this->headless)
+                    {
+                        this->headlessFrameFailed = true;
+                    }
+                    this->window.requestClose();
+                    return;
+                }
+                this->fullUi->focus(target); // comme après Tab : anneau de focus visible
+                this->fullUi->setFocusVisible(true);
+            }
         }
         else if (!this->headless && wasFullUi)
         {
-            input = ui::readWindowInput(this->window, deltaTime);
+            input = windowInput;
+            this->gamepads.poll(); // UI-09 : manette branchée à chaud, croix / stick / A / B / LB / RB
+            this->gamepadNavigator.apply(this->gamepads.first(), input);
+            if (this->debugTools && this->debugTools->wantsKeyboard())
+                input.navigation.clear(); // la console garde le clavier : la manette n'atteint pas l'interface dessous (apply a suivi les appuis)
         }
 
         this->fullUi->update(input, viewport);
@@ -1040,7 +1120,98 @@ orosmo::core::Result<> Game::createUi()
     {
         LOG_ERROR(1, "UI: unregistered action ", missing);
     }
+
+    // Outils de debug du moteur (UI-04, UI-10) : thème sombre, monde de la démo, commandes de la console.
+    this->debugTools = std::make_unique<ui::debug::DebugTools>(*this->font);
+    if (auto theme = this->debugTools->ui().themes().load(GET_RESOURCE_PATH("themes/dark.json")); !theme)
+    {
+        return makeError(theme.error().code, "UI (debug tools): " + theme.error().message);
+    }
+    if (!this->headless)
+    {
+        ui::useSystemClipboard(this->debugTools->ui(), this->window);
+    }
+    if (auto world = this->debugWorld.init(); !world)
+    {
+        return makeError(world.error().code, "Debug world: " + world.error().message);
+    }
+    this->debugTools->inspectWorld(&this->debugWorld.world());
+    this->debugTools->selectEntity(this->debugWorld.cameraEntity());
+    ui::debug::DebugTab tab = ui::debug::DebugTab::kWidgets;
+    if (!ui::debug::debugTabFromName(this->initialDebugTab, tab))
+    {
+        return makeError(ErrorCode::kInvalidArgument, "UI: unknown debug tab '" + this->initialDebugTab + "'");
+    }
+    this->debugTools->selectTab(tab);
+    if (this->initialDebugTools)
+    {
+        this->debugTools->open();
+    }
+    this->registerConsoleCommands();
     return {};
+}
+
+// Commandes de la console des outils de debug (F12) : elles appellent des fonctions de la démo par leur nom.
+void Game::registerConsoleCommands()
+{
+    using orosmo::core::ErrorCode;
+    using orosmo::core::makeError;
+    using orosmo::core::Result;
+    ui::debug::Console &console = this->debugTools->console();
+    auto keep = [](Result<> added)
+    {
+        if (!added)
+        {
+            LOG_ERROR(1, "Console: ", added.error().message);
+        }
+    };
+    keep(console.add("hud", "hud <off|fps|full|graph> : performance panel level",
+                     [this](std::span<const std::string> args) -> Result<std::string>
+                     {
+                         const auto level = args.size() == 1 ? demo::parseHudLevel(args[0]) : std::nullopt;
+                         if (!level)
+                         {
+                             return makeError(ErrorCode::kInvalidArgument, "usage: hud <off|fps|full|graph>");
+                         }
+                         this->performance.level = *level;
+                         this->performance.sinceRefresh = PerformanceStats::kRefreshSeconds;
+                         return "HUD level: " + std::string(demo::hudLevelName(*level));
+                     }));
+    keep(console.add("ui", "ui <off|hud|full> : interface shown",
+                     [this](std::span<const std::string> args) -> Result<std::string>
+                     {
+                         static constexpr std::pair<std::string_view, demo::UiMode> kModes[] = {
+                             {"off", demo::UiMode::kOff}, {"hud", demo::UiMode::kHud}, {"full", demo::UiMode::kFull}};
+                         for (const auto &[name, mode] : kModes)
+                         {
+                             if (args.size() == 1 && args[0] == name)
+                             {
+                                 this->uiMode = mode;
+                                 return "UI: " + std::string(name);
+                             }
+                         }
+                         return makeError(ErrorCode::kInvalidArgument, "usage: ui <off|hud|full>");
+                     }));
+    keep(console.add("camera", "camera [reset] : camera position (reset: back to the start)",
+                     [this](std::span<const std::string> args) -> Result<std::string>
+                     {
+                         if (args.size() == 1 && args[0] == "reset")
+                         {
+                             this->resetCamera();
+                         }
+                         else if (!args.empty())
+                         {
+                             return makeError(ErrorCode::kInvalidArgument, "usage: camera [reset]");
+                         }
+                         const glm::vec3 p = this->camera.position();
+                         return "camera at " + ui::text(p.x) + ", " + ui::text(p.y) + ", " + ui::text(p.z);
+                     }));
+    keep(console.add("quit", "quit : close the demo",
+                     [this](std::span<const std::string>) -> Result<std::string>
+                     {
+                         this->window.requestClose();
+                         return std::string("closing");
+                     }));
 }
 
 // L'interface active se pose sur l'image composée (preserveTarget = true), directement ou via cible réduite (touches 5 à 8).
@@ -1060,13 +1231,21 @@ ui::Ui *Game::activeUi() const noexcept
 bool Game::renderUi(rhi::CommandEncoder &encoder, const rhi::TextureHandle &composedTexture)
 {
     ui::Ui *activeUi = this->activeUi();
-    if (activeUi == nullptr)
+    const bool toolsOpen = this->debugTools && this->debugTools->isOpen();
+    if (activeUi == nullptr && !toolsOpen)
     {
         return true;
     }
 
     rd::DrawList list;
-    activeUi->draw(list);
+    if (activeUi != nullptr)
+    {
+        activeUi->draw(list);
+    }
+    if (toolsOpen)
+    {
+        this->debugTools->draw(list); // au-dessus de l'interface ; fermés : rien (UI-13)
+    }
     auto failed = [&](const std::string &what, const orosmo::core::Error &error)
     {
         LOG_ERROR(1, what, error.message);
@@ -1189,7 +1368,7 @@ void Game::render()
     // (scene.png lit la cible de scène) ; pas sur le framebuffer de fenêtre OpenGL, qui ne prend pas la profondeur de la scène.
     this->sceneRenderer->setRenderIntoOutput(toBackbuffer && !this->captureAfterThisFrame() &&
                                              (this->selectedBackend == rhi::Backend::kVulkan || this->headless));
-    this->overlay->beginFrame(this->backbuffer, this->composition, this->activeUi() != nullptr);
+    this->overlay->beginFrame(this->backbuffer, this->composition, this->activeUi() != nullptr || (this->debugTools && this->debugTools->isOpen()));
     if (this->anim)
     {
         keep(this->anim->dispatch(encoder), "anim skinning"); // compute hors passe, avant le graphe de l'image
@@ -1206,7 +1385,7 @@ void Game::render()
         keep(this->anim->render(*this->sceneRenderer, this->camera), "anim scene");
     }
     Profiler::Profile(this->keyGraph,
-                      [&]() { keep(this->sceneRenderer->endFrame({finalImage, rhi::Format::kRGBA8Unorm, {viewW, viewH}}), "endFrame"); });
+                      [&]() { keep(this->sceneRenderer->endFrame(finalImage), "endFrame"); });
 
     // Graphe interrompu (scène refusée) : l'interface et la présentation sont encodées quand même, comme avant le graphe.
     if (!this->overlay->uiDone)

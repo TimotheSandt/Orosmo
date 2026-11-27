@@ -10,6 +10,8 @@
 // `create` refuse (kUnsupported). Pas de culling par agent, pas d'AOV ni de vecteurs de mouvement (docs/GAPS.md, G199).
 #pragma once
 
+#include "orosmo/anim/animated_model.hpp"
+#include "orosmo/anim/clip.hpp"
 #include "orosmo/anim/pose.hpp"
 #include "orosmo/anim/skinning.hpp"
 #include "orosmo/assets/model.hpp"
@@ -17,6 +19,7 @@
 #include "orosmo/core/error.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/scene_renderer.hpp"
 #include "orosmo/renderer/shader_library.hpp"
 #include "orosmo/rhi/device.hpp"
@@ -61,6 +64,18 @@ class CrowdRenderer
     static core::Result<std::unique_ptr<CrowdRenderer>> create(rhi::Device &device, renderer::ShaderLibrary &library, renderer::PipelineCache &pipelines,
                                                                const std::filesystem::path &shaderDirectory, const assets::Model &model,
                                                                const assets::RenderModel &render, const CrowdOptions &options = {});
+    // A75.4 : même fabrique depuis un `renderer::RenderContext`.
+    static core::Result<std::unique_ptr<CrowdRenderer>> create(const renderer::RenderContext &context, const assets::Model &model,
+                                                               const assets::RenderModel &render, const CrowdOptions &options = {})
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory(), model, render, options);
+    }
+    // A75.11 : foule d'un modèle animé. Crée son propre `RenderModel` au repos (même chargeur : les images externes sont partagées,
+    // les images incluses dans le fichier ont une clé propre à la foule et donc une seconde texture ; définitions
+    // `options.extraDefines`, clé `<clé du modèle>.crowd`) et copie les clips, pour `setAgents(worlds, clips, times)`. `context` et
+    // le chargeur de `model` doivent survivre à l'objet ; `model` peut être détruit ensuite.
+    static core::Result<std::unique_ptr<CrowdRenderer>> create(const renderer::RenderContext &context, const AnimatedModel &model,
+                                                               const CrowdOptions &options = {});
     ~CrowdRenderer();
     CrowdRenderer(const CrowdRenderer &) = delete;
     CrowdRenderer &operator=(const CrowdRenderer &) = delete;
@@ -75,6 +90,10 @@ class CrowdRenderer
 
     // Agents de l'image : une matrice monde et une pose par agent (palettes calculées ici, sur le CPU, déterministe).
     core::Result<> setAgents(std::span<const core::Mat4> worlds, std::span<const Pose> poses);
+    // A75.11 : agents qui jouent chacun un clip du modèle (`clips[i]` : indice dans `AnimatedModel::clips()`) au temps `times[i]`
+    // (secondes, bouclé sur la durée du clip ; non fini : kInvalidArgument). Seulement pour une foule créée depuis un
+    // `AnimatedModel` (sinon kInvalidArgument).
+    core::Result<> setAgents(std::span<const core::Mat4> worlds, std::span<const std::uint32_t> clips, std::span<const float> times);
     // Variante bas niveau : palettes déjà calculées (`worlds.size() × jointCount()` matrices, agent par agent), ex. partagées par
     // des agents à la même pose ou calculées sur plusieurs fils.
     core::Result<> setAgentPalettes(std::span<const core::Mat4> worlds, std::span<const core::Mat4> palettes);
@@ -97,6 +116,10 @@ class CrowdRenderer
     };
     rhi::Device &device_;
     renderer::PipelineCache &pipelines_;
+    std::unique_ptr<assets::RenderModel> ownedRender_; // A75.11 : modèle au repos propre à la foule (détruit après les lots)
+    std::vector<Clip> clips_;                          // A75.11 : clips du modèle animé
+    Pose rest_;
+    std::vector<Pose> poses_; // travail de setAgents(worlds, clips, times)
     std::vector<int> parents_;
     std::vector<assets::SkinData> skins_;
     std::vector<std::uint32_t> skinOffsets_; // premier os de chaque peau dans la palette d'un agent

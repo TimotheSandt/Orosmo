@@ -5,7 +5,7 @@ dessin (`orosmo::renderer::DrawList`, UI-02) et ne connaît ni le RHI ni le back
 son `Ui` (l'interface héritée `UI::`, son singleton `UI::Manager` et `src/ui/legacy/` ont été supprimés le 2026-11-20, la démo
 utilise ce module).
 
-- **Couche** : `ui` (`docs/03` §1) ; dépend de `core` et de `renderer` (liste de dessin, texte).
+- **Couche** : `ui` (`docs/03` §1) ; dépend de `core`, de `renderer` (liste de dessin, texte) et, pour l'inspecteur d'entités seulement (`debug_tools.cpp`), de `scene` (couche 6, en dessous).
 - **Image** : `ui.update(input, viewport)` (rechargement du thème ; entrées appliquées à la mise en page AFFICHÉE ; écritures des
   liaisons puis événements, dans l'ordre ; nouvelle mise en page), puis `ui.draw(list)` et `CanvasRenderer::render(list)`.
 - **API publique** : `include/orosmo/ui/`.
@@ -18,13 +18,19 @@ utilise ce module).
 | `widgets.hpp` | UI-03 : `Label`, `Button`, `Checkbox`, `Slider`, `Dropdown` (fenêtre surgissante), `TextField`, `NumberField`, `ColorPicker` (le carré d'aperçu ouvre la roue `ColorEditor` en fenêtre surgissante), `Plot`, `Tabs`, `Section`, `Separator` ; infobulles par `Widget::setTooltip` |
 | `controls.hpp` | UI-03 : `RadioButton`, `RangeSlider` (deux poignées), `SpinBox` (champ numérique à − / +), `TextArea` (éditeur multiligne, numéros de ligne, lecture seule) ; `TextEditState` (sélection, presse-papiers) partagé avec `TextField` |
 | `color.hpp` | UI-03 : conversions RGB / HSV / HSL / hexadécimal ; `Gradient`, `Curve` (données évaluables par le jeu) ; `ColorWheel`, `ColorEditor` (formats, alpha, hexadécimal), `GradientEditor`, `CurveEditor` |
+| `gamepad_navigation.hpp` | `GamepadNavigator` (UI-09) : état d'une manette (`platform::GamepadState`) → `InputFrame::navigation` (croix et stick gauche = flèches répétées, A = Entrée, B = Échap, RB / LB = Tab / Maj+Tab) ; réglages `GamepadNavigationSettings` (zone morte, répétition) |
 | `window_input.hpp` | `readWindowInput(window, dt)` : entrées de l'image lues sur une fenêtre `platform` (souris, texte, touches répétées, raccourcis) ; `useSystemClipboard(ui, window)` |
 | `menus.hpp` | UI-03 : `Dialog` (fenêtre modale), `MenuBar`, `Menu` (sous-menus), `MenuItem` (raccourci, case cochée), `ContextMenu` (clic droit), `Notifications` (nombre et hauteur maximaux), `DynamicImage` + `ImageView` (image produite par le jeu : mini-carte, boussole) |
 | `ui.hpp` | `Ui` : racine, thème, police, `ActionRegistry` (actions par nom), entrées de l'image (`InputFrame`, `Key`), survol / appui / focus / tabulation, pile de fenêtres surgissantes (menus, sous-menus), fenêtres modales, notifications (`notify`), presse-papiers (`setClipboard`), infobulle, `wantsMouse` / `wantsKeyboard`, écritures et événements différés |
+| `view_state.hpp` | UI-08 (A79 L8) : `replaceRoot(ui, racine)` remplace l'arbre en gardant, par identifiant de widget, focus et anneau visible, défilement (ScrollView, TextArea), section ouverte, onglet non lié (`Widget::saveRetained` / `restoreRetained`, `RetainedState`) ; `captureViewState`, `restoreViewState`, `countWidgets` |
+| `view_entry.hpp` | UI-08 : point d'entrée exporté par le C++ généré de chaque vue (`orosmoCuiView_<Vue>` → `CuiViewEntry` : ABI, empreinte `cui_bindings`, taille, construction), `OROSMO_CUI_VIEW_EXPORT`, `OROSMO_CUI_VIEW_LOCAL` (structure cachée) |
 | `font.hpp` | `Font` ; `FixedFont` (tests, sans GPU) ; `TextRendererFont` (adapte `TextRenderer` à `Font`) |
 | `text_renderer.hpp` | `TextRenderer` : polices FreeType, atlas MSDF construit à la demande (ASCII, puis Latin-1 / Latin étendu A au premier texte qui en contient) ; un atlas par taille de police, glyphes MTSDF calculés en parallèle (`core::TaskSystem`, FreeType reste séquentiel), mesure, mise en page (retour à la ligne, alignement, débordement), séries de glyphes ajoutées à la `DrawList` donnée par `setDrawListSink` |
 | `nine_slice.hpp` | UI-07 : fonds en neuf parties (`ImageStyle` du thème : coins fixes, bords et centre étirés, répétés ou supprimés) → `DrawImage` |
-| `reflect.hpp` | UI-12 : `reflectedPanel(objet)` : une structure `core::Reflect<T>` en widgets adaptés au type et à la plage ; `fieldLabel` ; `core::EnumNames<E>` pour les listes |
+| `reflect.hpp` | UI-12 : `reflectedPanel(objet)` : une structure `core::Reflect<T>` en widgets adaptés au type et à la plage ; `fieldLabel` ; `core::EnumNames<E>` pour les listes ; variante à l'exécution `reflectedPanel(locate, fields)` sur `core::FieldDesc` (type C++ inconnu : composants par nom, A79 L10) |
+| `debug_tools.hpp` | UI-04, UI-10 : `debug::DebugTools` (outils de debug, F12) : console, inspecteur d'interface (`describeWidgetTree`, tailles calculées, surlignage), inspecteur d'entités (`entityPanel` sur un `scene::World`), profileur ; rien quand ils sont fermés |
+| `debug_console.hpp` | UI-04 : `debug::Console` : commandes enregistrées par nom (`add`, `execute`, `core::Result`), journal du moteur recopié (`pollLog`), `splitCommandLine` |
+| `frame_history.hpp` | UI-04 : `FrameHistory` (anneau des temps d'image, `FpsStats`), repris du panneau de la démo |
 
 Thèmes livrés : `res/themes/base.json` (structure : chaque propriété de chaque widget renvoie à un jeton), `dark.json` et
 `light.json` (jetons seulement), `framed.json` (hérite de `dark.json` et ajoute des cadres en neuf parties, `res/themes/images/`),
@@ -71,11 +77,20 @@ seule ou lié sans setter garde la sélection et la copie, `Widget::handlesEditC
 (flèches, Entrée, Échap). `InputFrame::events` (rempli par `readWindowInput`) garde l'ordre réel du texte et des touches, et
 l'état de Maj de chaque appui.
 
+Navigation (UI-09) : Tab suit l'ordre de tabulation (`Widget::setTabIndex` : positif d'abord, croissant ; 0 dans l'ordre de
+l'arbre ; négatif hors de l'ordre ; `setFocusable(false)` : jamais de focus). Une flèche que le widget focalisé n'utilise pas
+(`Widget::usesArrowKey`) passe le focus au voisin dans sa direction (`Ui::moveFocus` : plus proche bord à bord, décalage
+perpendiculaire pénalisé, sans boucler) ; sans focus, les flèches du clavier ne font rien (l'application peut s'en servir). La
+manette passe par `InputFrame::navigation` (`GamepadNavigator`) : sans focus, une direction le donne au premier widget ; un
+curseur horizontal y laisse Haut et Bas à la navigation ; LB / RB sortent même d'un éditeur qui garde Tab. Un `RangeSlider` passe d'une poignée à l'autre avec Entrée (A à la manette) ; Début / Fin restent au clavier. Après une navigation au
+clavier ou à la manette (`Ui::focusVisible`), l'anneau de focus du style `focusRing` du thème est dessiné autour du widget ; un clic
+l'éteint. Un thème sans `focusRing` n'en dessine pas.
+
 Contrats de robustesse : un événement différé dont la source a été détruite n'est pas livré ; les actions différées au-delà de
 huit vagues passent à l'image suivante ; le focus quitte un widget inactif, masqué ou hors de la fenêtre modale ;
 `clearChildren` garde la structure des widgets composés (Tabs, Section, éditeurs).
 
-Limites (docs/GAPS.md) : pas de navigation à la manette (UI-09) ; `Plot` en barres seulement ; composition IME non affichée (G107).
+Limites (docs/GAPS.md) : une `ScrollView` ne défile pas vers le widget focalisé (G222) ; `Plot` en barres seulement ; composition IME non affichée (G107).
 
 ## Rendu économe (UI-13)
 
@@ -84,3 +99,36 @@ Limites (docs/GAPS.md) : pas de navigation à la manette (UI-09) ; `Plot` en bar
   l'élimine s'il ne rencontre pas l'intersection de la fenêtre et des zones de découpage des ancêtres (`clipsChildren`/`childClip`,
   `overflow(.hidden)`). Une liste de 1000 lignes dans un `ScrollView` ne produit que les lignes visibles.
 - Cache par couche : non livré (voir `docs/GAPS.md`).
+
+## Outils de debug (UI-04, UI-10 ; A79 lot L10)
+
+Construits sur `orosmo::ui`, sans Dear ImGui (A79 choix 6) : un `Ui` propre aux outils, les styles `debug*` du thème
+(`res/themes/base.json` : `debugPanel`, `debugRow`, `debugRowSelected`, `debugText`, `debugInput`, `debugInputLine`,
+`debugWarning`, `debugError`, `debugHighlight`), le lot 2D habituel.
+
+```cpp
+orosmo::ui::debug::DebugTools tools(font);
+tools.ui().themes().load("res/themes/dark.json");
+tools.inspect(&appUi);                 // UI-10 : arbre des widgets de cette interface
+tools.inspectWorld(&world);            // UI-04 : entités et composants (champs décrits à l'exécution, modifiables)
+tools.console().add("hud", "hud <level>", [&](std::span<const std::string> args) -> orosmo::core::Result<std::string> { ... });
+// chaque image :
+tools.handleToggle(input);             // F12
+tools.update(input, viewport);         // fermés : rien
+if (tools.wantsMouse()) { /* ne pas donner la souris à l'application */ }
+appUi.draw(list); tools.draw(list);    // fermés : aucune commande
+tools.frames().push(cpuMs, gpuMs, intervalMs, waitMs);   // profileur
+```
+
+- **Console** : `Console::execute("nom arg \"arg 2\"")` ; commande inconnue : `kNotFound` et ligne d'erreur ; `help`, `clear`
+  intégrées ; les messages du `core::Logger` arrivés depuis l'ouverture s'y ajoutent (`Logger::RecordsSince`).
+- **Widgets** : une ligne par widget (`describeWidget` : « Button #play [button] 5,5 120x30 », type, identifiant, style, rectangle
+  de la dernière mise en page) ; survol d'une ligne = surlignage du widget dans l'interface inspectée, clic = surlignage gardé ;
+  sinon le widget survolé de l'interface inspectée.
+- **Entities** : liste des entités (200 au plus) ; l'entité choisie montre ses composants par `reflectedPanel(locate, fields)` ;
+  l'adresse du composant est relue à chaque accès (`World::get`), le panneau est refait quand ses composants changent.
+- **Profiler** : historique `FrameHistory` (graphe) et mesures nommées de `core::Profiler` (`Profiler::Names`), rafraîchis 4 fois
+  par seconde.
+- Démo : F12, `--debug-tools`, `--debug-tab console|widgets|entities|profiler` ; commandes `hud`, `ui`, `camera`, `quit`.
+
+Limites : `docs/GAPS.md` G295 à G299.

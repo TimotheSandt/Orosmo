@@ -1,0 +1,152 @@
+// Rechargement à chaud de la bibliothèque de jeu (GAME-01, A79 lot L5) : développement seulement. Ce fichier est le seul de
+// `app` qui charge une bibliothèque dynamique ou observe un fichier ; une version finale statique (OROSMO_GAME_STATIC) n'appelle
+// pas `GameModule::load`, et l'éditeur de liens ne prend pas ce fichier objet (GAME-07, vérifié par `nm`).
+#include "game_module_impl.hpp"
+
+#include <orosmo/core/file_watcher.hpp>
+#include <orosmo/core/log.hpp>
+#include <orosmo/platform/dynamic_library.hpp>
+
+#include <chrono>
+#include <memory>
+#include <optional>
+#include <string>
+#include <system_error>
+#include <utility>
+
+namespace orosmo::app
+{
+using core::ErrorCode;
+
+namespace
+{
+
+// Charge une copie de la bibliothèque et lit sa table (sans l'appeler).
+struct LoadedGame
+{
+    platform::DynamicLibrary library;
+    const OrosmoGameApi *api = nullptr;
+};
+
+core::Result<LoadedGame> loadGame(const std::filesystem::path &path)
+{
+    auto library = platform::DynamicLibrary::load(path);
+    if (!library)
+        return std::unexpected(std::move(library.error()));
+    auto entry = library->function<const OrosmoGameApi *()>(kGameApiSymbol);
+    if (!entry)
+        return std::unexpected(std::move(entry.error()));
+    LoadedGame loaded{std::move(*library), (*entry)()};
+    if (auto valid = validateGameApi(loaded.api); !valid)
+        return std::unexpected(std::move(valid.error()));
+    return loaded;
+}
+
+class DynamicReloader final : public GameModule::Reloader
+{
+  public:
+    // Construit AVANT la première lecture de la bibliothèque (revue PR #37) : l'état de référence de l'observateur précède la
+    // lecture, une version publiée pendant le chargement (ou pendant `init`) est vue au poll suivant. `adopt` donne ensuite la
+    // bibliothèque chargée.
+    explicit DynamicReloader(const GameModuleSettings &settings) : path_(settings.path), settleDelay_(settings.settleDelay)
+    {
+        if (settings.watch)
+        {
+            watcher_.setPollInterval(settings.pollInterval);
+            watcher_.watch(path_, [this](const core::FileEvent &event) {
+                // Fichier effacé (l'éditeur de liens le recrée) : on attend sa nouvelle version.
+                if (event.change != core::FileChange::kRemoved)
+                {
+                    pending_ = true;
+                    changedAt_ = std::chrono::steady_clock::now();
+                }
+            });
+        }
+    }
+
+    void adopt(platform::DynamicLibrary library) { library_ = std::make_shared<platform::DynamicLibrary>(std::move(library)); }
+
+    void poll(GameModule::Impl &impl) override
+    {
+        watcher_.poll();
+        if (!pending_ || std::chrono::steady_clock::now() - changedAt_ < settleDelay_)
+            return;
+        pending_ = false;
+        (void)reloadNow(impl);
+    }
+
+    core::Result<> reloadNow(GameModule::Impl &impl) override
+    {
+        pending_ = false;
+        auto loaded = loadGame(path_);
+        if (!loaded)
+        {
+            impl.recordFailure(loaded.error());
+            return std::unexpected(std::move(loaded.error()));
+        }
+        // L'ancienne copie reste chargée pendant l'`init` de la nouvelle ; en cas d'échec, la nouvelle est déchargée à la sortie
+        // (ses fonctions ont été détruites par `switchTo`).
+        if (auto switched = impl.switchTo(loaded->api); !switched)
+        {
+            impl.recordFailure(switched.error());
+            return switched;
+        }
+        // Succès : les fonctions de l'ancienne version sont détruites ; son code part (copie effacée) dès que plus rien ne le
+        // retient (`retain` : arbre de widgets construit par une vue de l'ancienne version, UI-08).
+        library_ = std::make_shared<platform::DynamicLibrary>(std::move(loaded->library));
+        return {};
+    }
+
+    std::filesystem::path loadedPath() const override { return library_ ? library_->loadedPath() : std::filesystem::path(); }
+
+    core::Result<void *> symbol(std::string_view name) const override
+    {
+        if (!library_)
+            return core::makeError(ErrorCode::kInvalidArgument, "game module: no library loaded");
+        return library_->symbol(name);
+    }
+
+    std::shared_ptr<const void> retain() const override { return library_; }
+
+    void unloadActive() noexcept override { library_.reset(); }
+
+  private:
+    std::filesystem::path path_;
+    std::chrono::milliseconds settleDelay_;
+    std::shared_ptr<platform::DynamicLibrary> library_; // partagée avec les jetons de `retain`
+    core::FileWatcher watcher_;
+    bool pending_ = false;
+    std::chrono::steady_clock::time_point changedAt_{};
+};
+
+} // namespace
+
+core::Result<GameModule> GameModule::load(GameModuleSettings settings)
+{
+    GameTargets targets = settings.targets;
+    if (targets.world == nullptr && targets.simulation != nullptr)
+        targets.world = &targets.simulation->world();
+    if (targets.world == nullptr)
+        return core::makeError(ErrorCode::kInvalidArgument, "game module: no world in the targets");
+    if (settings.path.empty())
+        return core::makeError(ErrorCode::kInvalidArgument, "game module: empty library path");
+    std::error_code ec;
+    std::filesystem::path absolute = std::filesystem::absolute(settings.path, ec); // sans exception (règle 10)
+    if (ec)
+        return core::makeError(ErrorCode::kIo, "game module: cannot resolve " + settings.path.string() + ": " + ec.message());
+    settings.path = std::move(absolute);
+
+    auto reloader = std::make_unique<DynamicReloader>(settings); // référence de l'observateur prise avant la lecture
+    auto loaded = loadGame(settings.path);
+    if (!loaded)
+        return std::unexpected(std::move(loaded.error()));
+
+    auto impl = std::make_unique<Impl>(targets);
+    if (auto started = impl->switchTo(loaded->api); !started)
+        return std::unexpected(std::move(started.error()));
+    reloader->adopt(std::move(loaded->library));
+    impl->reloader = std::move(reloader);
+    return GameModule(std::move(impl));
+}
+
+} // namespace orosmo::app

@@ -23,7 +23,7 @@ rhi::DeviceDesc desc;
 desc.backend = rhi::Backend::kOpenGL;
 desc.validation = true;
 
-if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)   // avant la création de la fenêtre
+if (!window.init([&] { (void)rhi::prepareWindowHints(desc); }))   // avant la création de la fenêtre
     return 1;
 desc.surface.nativeWindow = window.getWindow();                      // après
 
@@ -53,8 +53,8 @@ machine renvoie `ErrorCode::kUnsupported` avec la raison.
 | `appName` | `std::string` | `"engine"` | nom de l'application transmis au backend |
 
 Le défaut de `backend` est OpenGL dans la structure ; la démo, elle, demande Vulkan d'abord. Le projet de démarrage
-d'`orosmo init` ne crée qu'un périphérique OpenGL : pour Vulkan avec repli, remplacez son bloc de création du
-périphérique par le code de la section suivante.
+d'`orosmo init` passe par `app::Application`, qui fait le repli de la section suivante (Vulkan d'abord, puis OpenGL ;
+`--api opengl` le force, `--strict-backend` supprime le repli).
 
 ## Vulkan d'abord, OpenGL en repli
 
@@ -68,7 +68,7 @@ auto tryBackend = [](rhi::Backend backend, platform::Window &window) -> core::Re
 {
     rhi::DeviceDesc desc;
     desc.backend = backend;
-    if (window.init([&] { (void)rhi::prepareWindowHints(desc); }) != 0)
+    if (!window.init([&] { (void)rhi::prepareWindowHints(desc); }))
         return core::makeError(core::ErrorCode::kUnsupported, "fenêtre impossible");
     desc.surface.nativeWindow = window.getWindow();
     return rhi::createDevice(desc);
@@ -145,8 +145,8 @@ moteur ne les utilise pas.
 ## Validation
 
 Avec `validation = true`, les messages d'erreur et d'avertissement de la couche de validation sont comptés :
-`device.validationErrorCount()` doit rester à 0 (c'est ce que les tests exigent). Le starter et la démo l'activent en debug
-seulement (`#ifdef DEBUG`). Sous Vulkan, la couche est `VK_LAYER_KHRONOS_validation` (paquet `vulkan-validationlayers`) ; si elle est
+`device.validationErrorCount()` doit rester à 0 (c'est ce que les tests exigent). Le projet de démarrage (`app::defaultSettings`) et la démo
+l'activent en debug seulement (`#ifdef DEBUG`). Sous Vulkan, la couche est `VK_LAYER_KHRONOS_validation` (paquet `vulkan-validationlayers`) ; si elle est
 absente, un avertissement est écrit et le rendu continue sans validation.
 
 ## Choisir le GPU

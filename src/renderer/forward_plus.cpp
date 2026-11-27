@@ -33,6 +33,11 @@ float lightRange(const Light &light) noexcept
     {
         return 0.0f;
     }
+    if (light.a > 0.0f && light.b == 0.0f)
+    {
+        // Carré inverse seul : sqrt(k / a), sans 4ak qui déborde pour une intensité très grande (revue PR #37).
+        return std::min(std::sqrt(k / light.a), kLightMaxRange);
+    }
     if (light.a > 0.0f)
     {
         const float root = std::sqrt(light.b * light.b + 4.0f * light.a * k);
@@ -195,6 +200,19 @@ core::Result<> ForwardPlusLighting::ensureBuffers()
     return {};
 }
 
+core::Result<> ForwardPlusLighting::prepare(const FrameData &frame)
+{
+    (void)frame;
+    return ensureBuffers();
+}
+
+std::optional<std::uint64_t> ForwardPlusLighting::passSignature() const
+{
+    std::uint64_t signature = mixPassSignature(0, grid_.handle());
+    signature = mixPassSignature(signature, lightLists_.handle());
+    return mixPassSignature(signature, std::uint64_t{settings_.clusterCount()});
+}
+
 core::Result<> ForwardPlusLighting::declarePasses(RenderGraphBuilder &builder)
 {
     if (auto r = ensureBuffers(); !r)
@@ -322,6 +340,8 @@ void disableForwardPlus(SceneRenderer &renderer)
     renderer.removeFeature(ForwardPlusLighting::kName);
     renderer.setDepthPrepass(false);
 }
+
+std::vector<Define> ForwardPlusLighting::shaderDefines() const { return forwardPlusDefines(); }
 
 std::vector<Define> forwardPlusDefines(bool clusterDebug)
 {

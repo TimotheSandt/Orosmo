@@ -42,6 +42,7 @@ Jetons de forme, dans `base.json` (communs à tous les thèmes livrés) :
 | `font.size.title` | 19 |
 | `border.width` | 1 |
 | `border.focus` | 2 |
+| `focus.ringGap` | 2 |
 | `shadow.size` | 10 |
 | `shadow.offset` | 3 |
 | `control.size` | 18 |
@@ -98,8 +99,11 @@ Ordre d'application : `default`, le type de widget, puis (hors `normal`) l'état
 
 Types de widget de `base.json` : `default`, `panel`, `box`, `label`, `title`, `caption`, `button`, `checkbox`, `slider`, `textField`,
 `textArea`, `dropdown`, `popup`, `item`, `tabs`, `tab`, `scroll`, `tooltip`, `plot`, `section`, `sectionHeader`, `colorPicker`, `separator`,
-`radio`, `colorWheel`, `gradient`, `curve`, `image`, `modalBackdrop`, `dialog`, `dialogTitle`, `dialogClose`, `menuBar`, `menu`, `menuItem`,
-`toast`, `toastSuccess`, `toastWarning`, `toastError`. Tout autre nom est un style à vous, utilisable par `.variant("nom")`
+`radio`, `colorWheel`, `gradient`, `curve`, `image`, `modalBackdrop`, `focusRing`, `dialog`, `dialogTitle`, `dialogClose`, `menuBar`, `menu`, `menuItem`,
+`toast`, `toastSuccess`, `toastWarning`, `toastError`, et ceux des outils de debug : `debugPanel`, `debugRow`, `debugRowSelected`,
+`debugText`, `debugInputLine`, `debugWarning`, `debugError`, `debugInput`, `debugHighlight`. `focusRing` est l'anneau dessiné autour du
+widget focalisé après une navigation au clavier ou à la manette (`border`, `borderWidth`, `radius` ; `padding` : écart au widget,
+jeton `focus.ringGap`) ; un thème sans `focusRing` n'en dessine pas ([Navigation](/guides/interface/navigation/)). Tout autre nom est un style à vous, utilisable par `.variant("nom")`
 dans une vue ou `setStyleName("nom")` en C++ (le deuxième argument de `Label` et de `Button` est un nom de style).
 
 ## Propriétés

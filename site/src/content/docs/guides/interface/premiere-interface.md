@@ -11,9 +11,9 @@ la décrire dans un fichier, voir [le langage .cui](/guides/interface/langage-cu
 
 ## Exemple minimal
 
-L'interface a besoin d'une police (`TextRenderer`), d'un thème et d'un objet `Ui`. Ce code vient du projet de démarrage
-créé par `orosmo init` (`tools/engine-sdk/template/src/main.cpp`), sans la partie fenêtre et rendu 3D
-(voir [Première application](/demarrer/premiere-application/)).
+L'interface a besoin d'une police (`TextRenderer`), d'un thème et d'un objet `Ui`. C'est ce que `app::Application` crée
+pour le projet de démarrage d'`orosmo init` (`src/app/application.cpp`), écrit ici à la main, sans la partie fenêtre et
+rendu 3D (voir [Première application](/demarrer/premiere-application/)).
 
 ```cpp
 #include <orosmo/core/paths.hpp>
@@ -59,8 +59,8 @@ panel.emplace<ui::Button>("Reset").onClick([&](const ui::Event &) { settings.res
 gui.setRoot(std::move(panelOwner));
 ```
 
-Le deuxième argument de `Label` est le nom de style du thème (`widgets.title`). Le projet de démarrage nomme l'objet `interface` ;
-évitez ce nom sous Windows, où `interface` est une macro de `<objbase.h>`.
+Le deuxième argument de `Label` est le nom de style du thème (`widgets.title`). N'appelez pas l'objet `interface` sous
+Windows : c'est une macro de `<objbase.h>`.
 
 ## Dessiner une image
 
@@ -163,8 +163,10 @@ Un exemple complet de menu (Échap, Quitter, changement de thème) est dans [Éc
 
 ## Limites
 
-- La couche interface est marquée « Partiel » dans [l'état du projet](/projet/etat/) ; la navigation à la manette et l'accessibilité n'existent pas encore.
-- Pas de rechargement à chaud de l'arbre, seulement du thème.
+- La couche interface est marquée « Partiel » dans [l'état du projet](/projet/etat/). Navigation au clavier et à la manette :
+  [Naviguer au clavier et à la manette](/guides/interface/navigation/).
+- Un arbre construit en C++ ne se recharge pas à chaud (le thème, si) ; une vue `.cui` se recharge en développement :
+  [Vues rechargées à chaud](/guides/interface/rechargement-vues/).
 
 ## Voir aussi
 

@@ -12,6 +12,7 @@
 #include "Scene/anim_scene.hpp"
 #include "Scene/demo_scene.hpp"
 #include "Scene/mixed_scene.hpp"
+#include "Game/debug_world.hpp"
 #include "UI/demo_ui_state.hpp"
 #include "UI/performance_stats.hpp"
 #include "launch_options.hpp"
@@ -19,6 +20,7 @@
 #include <orosmo/core/error.hpp>
 #include <orosmo/core/file_watcher.hpp>
 #include <orosmo/core/profiler.hpp>
+#include <orosmo/platform/gamepad.hpp>
 #include <orosmo/platform/input_manager.hpp>
 #include <orosmo/platform/window.hpp>
 #include <orosmo/renderer/antialiasing.hpp>
@@ -31,7 +33,9 @@
 #include <orosmo/renderer/scene_renderer.hpp>
 #include <orosmo/renderer/shader_library.hpp>
 #include <orosmo/rhi/device.hpp>
+#include <orosmo/ui/debug_tools.hpp>
 #include <orosmo/ui/font.hpp>
+#include <orosmo/ui/gamepad_navigation.hpp>
 #include <orosmo/ui/text_renderer.hpp>
 #include <orosmo/ui/ui.hpp>
 
@@ -40,8 +44,10 @@ class Game
   public:
     // `headless` (PLAT-04) : aucune fenêtre ; périphérique hors écran, pas de temps fixe, pas d'entrées. Les échecs normaux
     // (pas d'affichage, pas d'OpenGL 4.3, shaders absents) reviennent en `Result`, pas en exception.
+    // `framesInFlight` (A61 G, --frames-in-flight) : images en vol du périphérique (rhi::DeviceDesc::framesInFlight).
     static orosmo::core::Result<std::unique_ptr<Game>> create(bool headless = false, int width = 1280, int height = 720,
-                                                              orosmo::rhi::Backend backend = orosmo::rhi::Backend::kOpenGL);
+                                                              orosmo::rhi::Backend backend = orosmo::rhi::Backend::kOpenGL,
+                                                              std::uint32_t framesInFlight = orosmo::rhi::kDefaultFramesInFlight);
     ~Game();
     Game(const Game &) = delete;
     Game &operator=(const Game &) = delete;
@@ -80,9 +86,17 @@ class Game
     void setAnimScene(bool enabled) noexcept { animScene = enabled; }
     // REN-39 : ombre des vitres de la scène mêlée (sans valeur : elles ne projettent rien).
     void setTransparentShadow(std::optional<orosmo::renderer::TransparentShadowMode> mode) noexcept { transparentShadow = mode; }
+    // --shadow-quality (M8) : réglages passés à ShadowFeature::create (sans valeur : ShadowSettings{}, les défauts du moteur).
+    void setShadowSettings(std::optional<orosmo::renderer::ShadowSettings> settings) noexcept { shadowSettings = settings; }
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
     // --hud (niveau du panneau de performances ; Ctrl+F le change ensuite).
     void setHudLevel(demo::HudLevel level) noexcept { performance.level = level; }
+    // --debug-tools / --debug-tab (UI-04, UI-10) : outils de debug ouverts au départ sur cet onglet (F12 ensuite).
+    void setDebugTools(bool open, std::string tab)
+    {
+        initialDebugTools = open;
+        initialDebugTab = std::move(tab);
+    }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
     void setCaptureInteraction(std::string hover, std::string click)
@@ -90,6 +104,7 @@ class Game
         hoverId = std::move(hover);
         clickId = std::move(click);
     }
+    void setCaptureFocus(std::string focus) { focusId = std::move(focus); }
     // Cadence d'images (vsync, limite à N FPS, sans limite), changeable à chaud (aussi depuis l'interface complète). Sans fenêtre
     // (--headless) : mémorisée et affichée, sans effet (ni vsync ni limiteur).
     void setFramePacing(orosmo::renderer::FramePacing pacing);
@@ -98,6 +113,10 @@ class Game
     void setGpuTimings(demo::GpuTimingsMode mode);
     // Dessin direct dans l'image de la fenêtre (Vulkan, G185) ; voir rhi::DeviceDesc::directPresentation.
     void setDirectPresentation(bool enabled);
+    // A61 C (--graph-cache on|off) : graphe de passes gardé d'une image à l'autre (SceneRenderer::setRenderGraphCaching).
+    void setRenderGraphCaching(bool enabled);
+    std::uint64_t graphBuildCount() const noexcept;
+    std::uint32_t framesInFlightCount() const noexcept { return this->device ? this->device->framesInFlight() : this->framesInFlight; }
     demo::GpuTimingsMode gpuTimings() const noexcept { return gpuTimingsMode; }
     // Faux si une capture était demandée et n'a pas été faite, ou si une image de la capture a été refusée par le périphérique.
     bool captureSucceeded() const noexcept { return !captureFailed && (captureDirectory.empty() || captureDone); }
@@ -163,6 +182,13 @@ class Game
     std::unique_ptr<orosmo::ui::TextRendererFont> font;
     std::unique_ptr<orosmo::ui::Ui> hudUi;
     std::unique_ptr<orosmo::ui::Ui> fullUi;
+    // Outils de debug du moteur (F12) : console, inspecteurs d'interface et d'entités, profileur. Ils inspectent l'interface
+    // affichée et `debugWorld` (déclaré avant eux : il leur survit).
+    demo::DebugWorld debugWorld;
+    std::unique_ptr<orosmo::ui::debug::DebugTools> debugTools;
+    bool initialDebugTools = false;
+    std::string initialDebugTab = "widgets";
+    void registerConsoleCommands();
 
     orosmo::renderer::Camera camera;
     CameraController cameraController;
@@ -173,6 +199,7 @@ class Game
     bool animScene = false;
     std::chrono::steady_clock::time_point lastAnimReload{}; // rechargement de la texture : 2 Hz, horloge réelle (comme le FileWatcher)
     std::optional<orosmo::renderer::TransparentShadowMode> transparentShadow;
+    std::optional<orosmo::renderer::ShadowSettings> shadowSettings;
     bool stopped = false;
 
     int requestedWidth = 1280;
@@ -198,6 +225,10 @@ class Game
     std::uint32_t pointLightCount = 0;
     std::string hoverId;
     std::string clickId;
+    std::string focusId;
+    // UI-09 : manettes lues à chaque image, traduites en navigation de l'interface complète.
+    orosmo::platform::Gamepads gamepads;
+    orosmo::ui::GamepadNavigator gamepadNavigator;
     std::string captureDirectory;
     std::uint32_t captureFrames = 0;
     std::uint32_t renderedFrames = 0;
@@ -208,6 +239,7 @@ class Game
     std::optional<orosmo::core::Error> sceneError;
     bool uiFailed = false;
     bool headless = false;
+    std::uint32_t framesInFlight = orosmo::rhi::kDefaultFramesInFlight;
     std::vector<float> frameTimesMs;
     std::vector<float> frameWaitMs;
     std::chrono::steady_clock::duration frameWait{}; // attente de l'image en cours (beginFrame + present du périphérique)

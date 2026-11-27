@@ -29,6 +29,8 @@ class DebugViewFeature final : public RenderFeature
 
     std::string name() const override { return "debug.view"; }
     AovSet requiredAovs() const override { return {aov_}; }
+    // A61 C : une seule passe, toujours la même ; son groupe suit la texture lue à l'exécution.
+    std::optional<std::uint64_t> passSignature() const override { return static_cast<std::uint64_t>(aov_); }
 
     core::Result<> declarePasses(RenderGraphBuilder &builder) override
     {
@@ -128,6 +130,11 @@ core::Result<> SceneRenderer::setDebugView(DebugView view)
     if (view == debugView_)
     {
         return {};
+    }
+    if (frameOpen_ || executing_)
+    {
+        // Revue PR #37 : l'ancien plugin `debug.view` resterait (retrait différé) et le nouveau serait refusé ; rien n'est changé.
+        return makeError(ErrorCode::kBusy, "SceneRenderer::setDebugView: refused during a frame (between beginFrame and the end of endFrame)");
     }
     std::shared_ptr<ShaderProgram> program;
     std::shared_ptr<ShaderProgram> texturedProgram;

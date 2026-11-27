@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 const HASH_TAG: &str = "// @cui-hash:";
 // Bump this whenever generator output changes without a corresponding .cui syntax change.
-const OUTPUT_FORMAT_VERSION: &str = "10"; // 10 : en-têtes `orosmo/ui/...`, namespace `orosmo::ui` ; 9 : cible héritée UI::View supprimée
+const OUTPUT_FORMAT_VERSION: &str = "11"; // 11 : points d'entrée orosmoCuiView_<Vue> et empreinte cui_bindings (UI-08) ; 10 : en-têtes `orosmo/ui/...`, namespace `orosmo::ui` ; 9 : cible héritée UI::View supprimée
 const COMPILER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const COMPILER_FINGERPRINT: &str = env!("CUI_BUILD_FINGERPRINT");
 

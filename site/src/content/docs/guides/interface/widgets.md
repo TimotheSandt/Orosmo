@@ -160,7 +160,8 @@ de texte, Ctrl+A, C, X, V, Z, Y sont des commandes d'édition à la place.
 
 - `Plot` ne dessine que des barres.
 - La composition IME (saisie chinoise, japonaise...) n'est pas affichée dans les champs : seul le texte validé arrive.
-- Pas de navigation à la manette. Quelques tailles de comportement restent en dur (voir [l'état du projet](/projet/etat/)).
+- Quelques tailles de comportement restent en dur (voir [l'état du projet](/projet/etat/)). Navigation au clavier et à la manette :
+  [Naviguer au clavier et à la manette](/guides/interface/navigation/).
 
 ## Voir aussi
 

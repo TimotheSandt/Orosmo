@@ -96,16 +96,16 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | CORE-08 | Événements | Absent | Pas de bus d'événements typé. | M3 (proposé : premier usage, événements de l'interface) |
 | CORE-12 | Sérialisation et réflexion | Absent | Ni sérialisation, ni réflexion, ni versionnage. | M1 |
 | CORE-13 | Observateur de fichiers | Absent | Aucun observateur de fichiers. | M1 |
-| ECS-01 | Entités et composants | Absent | Absent ; choix ECS maison/EnTT à trancher. | M8 |
-| ECS-02 | Transformations hiérarchiques | Absent | Absent (transformations dans `Mesh`). | M8 |
-| ECS-03 | Chargement et sauvegarde de scène | Absent | Absent. | M8 |
-| GAME-01 | Module de jeu rechargeable | Absent | Absent. | M8 |
-| GAME-02 | État côté moteur | Absent | Absent. | M8 |
-| GAME-03 | Migration d'état | Absent | Absent. | M8 |
-| GAME-04 | Registre des gestionnaires | Absent | Absent. | M8 |
-| GAME-05 | Paramètres de gameplay en JSON | Absent | Absent. | M8 |
-| GAME-06 | Construction incrémentale | Absent | Absent. | M8 |
-| GAME-07 | Version finale | Absent | Absent. | M8 |
+| ECS-01 | Entités et composants | Fait | Module `scene` (M8 L2), ECS maison (A79 choix 1) ; preuve : `docs/STATUS.md`, « M8 lot L2 » (`include/orosmo/scene/world.hpp` `World`, suite doctest `scene/world`, verte dans `make demo-test`) ; limites G260 à G264. | — |
+| ECS-02 | Transformations hiérarchiques | Fait | `scene::Transform`, `World::updateTransforms` (M8 L2) ; preuve : `docs/STATUS.md`, « M8 lot L2 » (suite doctest `scene/hierarchy`, verte, dont la précision à 10^7 m) ; G260, G262. Le rendu des entités (`Mesh` garde sa transformation) vient en L13. | — |
+| ECS-03 | Chargement et sauvegarde de scène | Fait | `scene::saveScene`, `loadScene` (JSON), `saveSceneBinary` (MessagePack), migrations par type (M8 L3) ; limites G282, G283, G286. Preuve : `docs/STATUS.md`, « M8 lot L3 » (suite `scene/file`). | — |
+| GAME-01 | Module de jeu rechargeable | Fait | `app::GameModule` (M8 L5) : interface C `orosmoGameApi` (`abiVersion`), copie sous nom unique, rechargement sur `FileWatcher`, ancienne version gardée jusqu'au démarrage de la nouvelle ; G310, G314 à G316. | — |
+| GAME-02 | État côté moteur | Fait | Composants, systèmes et actions enregistrés par nom via `app::GameContext`, retirés au déchargement ; règle 13 vérifiée sur le binaire (`tools/check_game_static.py`, `make check`) ; G311 à G313, G318. | — |
+| GAME-03 | Migration d'état | Fait (L6) | `scene::World::migrateComponent`, `GameContext::registerComponent` ; G320 à G323 ; preuve : `docs/STATUS.md`, « M8 lot L6 » (`include/orosmo/scene/component_migration.hpp`, suites `scene/migration` et `app/game_module`). | M8 |
+| GAME-04 | Registre des gestionnaires | Fait (L5, L6) | Liaison tardive (`ActionRegistry::bind`), actions retirées et remises au rechargement, `missing()` journalisé ; G324 ; preuve : `docs/STATUS.md`, « M8 lot L6 » (`GameModule::missingActions`, suite `app/game_module`, « renamed handler »). | M8 |
+| GAME-05 | Paramètres de gameplay en JSON | Fait (L6) | `app::ParamsFile`, `ParamsHost<T>`, `GameContext::registerParams` ; G325, G326 ; preuve : `docs/STATUS.md`, « M8 lot L6 » (`include/orosmo/app/params_host.hpp`, suite `app/game_module`, « game parameters », « ParamsHost »). | M8 |
+| GAME-06 | Construction incrémentale | Fait | `orosmo/game.hpp` (léger, contrôlé par `check_headers`), `make game` et `orosmo build --game`, `ccache` s'il est présent ; `make e2e-init` : modification rechargée en 2,0 à 4,0 s (`docs/BASELINE/game-reload-M8-L7.txt`) ; G330 à G334. | — |
+| GAME-07 | Version finale | Fait | `GameModule::fromApi` + `OROSMO_GAME_STATIC` (`make release` du gabarit) ; aucun symbole de rechargement lié (`nm`, `bin/tests/test_game_static`) ; G317. | — |
 | PLAT-05 | Saisie de texte | Partiel | Texte Unicode en UTF-8 (`InputManager::GetTextInput`, M3) ; presse-papiers du système (`Window::GetClipboardText` / `SetClipboardText`) ; appuis avec répétition et raccourcis (`InputManager::GetKeyPresses` / `GetShortcuts`) ; pas de composition IME affichée (G107). | M5 |
 | R2D-04 | Cartes de tuiles | Absent | Absent. | M5 (proposé : non cité dans docs/05) |
 | R2D-06 | Plusieurs vues | Absent | Absent (un `Renderer3D` et un `Renderer2D` par fenêtre). | M5 |
@@ -127,16 +127,16 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | REN-39 | Ombres des transparents | Absent | Absent. | M5 |
 | REN-41 | Transparents et sorties auxiliaires | Absent | Absent. | M5 |
 | RHI-17 | Dispatch indirect et groupes dynamiques | Absent | Absent. | M5 (proposé : rendu piloté par GPU) |
-| SIM-01 | Boucle de simulation à pas fixe | Absent | Absent. | M8 |
+| SIM-01 | Boucle de simulation à pas fixe | Fait | `sim::Simulation` (M8 L3), thread optionnel `SimulationThread` (M8 L4) ; limites G280, G284, G300 à G307. Preuve : `docs/STATUS.md`, « M8 lot L3 » et « M8 lot L4 » (suites `sim/simulation`, `sim/thread`, `demo/simulation`). | — |
 | TER-05 | Érosion | Absent | Absent (seul `GenerateCrater`). | Hors moteur (A39) |
 | TER-06 | Biomes | Absent | Absent. | Hors moteur (A39) |
 | TER-08 | Végétation et dispersion | Absent | Absent. | Hors moteur (A39) |
 | TER-09 | Planètes sphériques | Absent | Absent. | Hors moteur (A39) |
 | TER-13 | Lancer de rayon sur le terrain | Archivé (A37) | `raycastTerrain`, cohérent avec la profondeur rendue. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
-| UI-04 | Outils de debug | Absent | Absent. | M8 |
-| UI-08 | Rechargement à chaud de l'interface | Absent | Absent. | M8 |
-| UI-09 | Navigation et accessibilité de base | Absent | Absent. | M8 |
-| UI-10 | Inspecteur d'interface | Absent | Absent. | M8 |
+| UI-04 | Outils de debug | Fait (limites) | `ui::debug::DebugTools` (M8 L10) : console, profileur, inspecteur d'entités ; limites G295, G297, G298, G299. Preuve : `docs/STATUS.md`, « M8 lot L10 » (fichiers, suites `ui/debug`, résultats). | M10 |
+| UI-08 | Rechargement à chaud de l'interface | Fait | Développement : vues `.cui` compilées dans la bibliothèque de jeu, reconstruites à l'enregistrement et recréées (focus, défilement, sections gardés) par `app::ViewHost` ; version finale liée. G360 à G367. Preuve (fichiers, tests, résultats) : `docs/STATUS.md`, « M8 lot L8 ». | — |
+| UI-09 | Navigation et accessibilité de base | Fait (M8 L9) | Ordre de tabulation (`tabIndex`, `.focusable`), flèches entre voisins, manette, anneau de focus du thème. Reste : défilement vers le widget focalisé (G222). Preuve : `docs/STATUS.md`, section « M8 lot L9 ». | — |
+| UI-10 | Inspecteur d'interface | Fait (limites) | Onglet Widgets de `DebugTools` (M8 L10) ; fenêtres détachées absentes (G296). Preuve : `docs/STATUS.md`, « M8 lot L10 » (fichiers, suites `ui/debug`, résultats). | M10 |
 | UI-12 | Paramètres réfléchis → curseurs | Fait (M3) | `reflectedPanel`, `ParamPanel` du langage. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 
 ## P2
@@ -148,7 +148,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | ASSET-06 | OBJ | Absent | Absent. | Après M10 (P2) |
 | EXT-01 | Plugin de rendu voxel | Absent | Absent (pas de graphe de passes, voir REN-01). | M10 |
 | EXT-02 | Tracé de rayons logiciel sur voxels | Absent | Absent. | Après M10 (P2) |
-| PLAT-03 | Manettes | Absent | Aucune manette. | Après M10 (P2) ; UI-09 la demande en M8 |
+| PLAT-03 | Manettes | Partiel (M8 L9) | Sous-ensemble pour UI-09 (`platform::Gamepads` : boutons, axes, branchement à chaud, manettes à disposition standard). **Manque** : vibrations, remappage, joysticks sans disposition connue, événements par rappel (G223). | Après M10 (P2) |
 | REN-09 | Ombres avancées | Absent | Absent. | Après M10 (P2) |
 | REN-12 | Extensions de matériaux | Absent | Absent. | Après M10 (P2) |
 | REN-15 | Réflexions et GI | Absent | Absent. | Après M10 (P2) |
@@ -277,10 +277,10 @@ La PR `dev` → `main` contient tout l'historique de `dev` : plusieurs remarques
 | M11 | MOD-01 à MOD-04, MOD-09 |
 | M12 | MOD-05 à MOD-08 |
 | M13 | REN-23, REN-24, REN-25, REN-26, REN-27, REN-14, REN-33, REN-38 |
-| M8 | ECS-01, ECS-02, ECS-03, GAME-01, GAME-02, GAME-03, GAME-04, GAME-05, GAME-06, GAME-07, SIM-01, SIM-02, UI-04, UI-08, UI-09, UI-10 |
+| M8 | ECS-01, ECS-02, ECS-03, GAME-01, GAME-02, GAME-03, GAME-04, GAME-05, GAME-06, GAME-07, SIM-01, UI-04, UI-08, UI-09, UI-10 (SIM-02 hors moteur, A39) |
 | M9 | RHI-13 |
 | M10 | EXT-01 |
-| Après M10 | ANIM-05, ANIM-06, ASSET-06, EXT-02, EXT-04, EXT-05, PLAT-03, R2D-07, REN-09, REN-12, REN-15, REN-16, REN-20, REN-40, RHI-19, SIM-03, TER-14 |
+| Après M10 | ANIM-05, ANIM-06, ASSET-06, EXT-02, EXT-04, EXT-05, PLAT-03, R2D-07, REN-09, REN-12, REN-15, REN-16, REN-20, REN-40, RHI-19, TER-14 |
 | Continu | GIT-01 |
 
 ## Ajouts de M1 bis (G61 à G63)
@@ -456,7 +456,7 @@ Constatés pendant M5 (`docs/releases/M5.md`) ; chaque ligne a été vérifiée 
 | G162 | Référence `scene-opengl-demo-1280x720.png` | Diffère déjà de 1 250 pixels à la tolérance 0 sur la machine de mesure (G139 en comptait 12 hors tolérance 8) ; 332 pixels sur une autre mesure ; les deux restent dans la tolérance de la CI. `make demo-vulkan-check` : `dark-scene` / `ui` à 0,58 % des pixels au-delà de la tolérance 8, accepté par l'outil, antérieur à M5 | M5 |
 | G163 | Build : copies datées d'origine | `sync-demo` copie avec `cp -p` (`mk/engine.mk`) : un en-tête modifié pendant une compilation de référence laisse des `.o` périmés (SIGSEGV constaté dans `debug_draw_tests`). Contournement : supprimer `apps/demo/obj/release/tests/renderer/*.o` | M5 |
 | G164 | Windows, macOS, arm64 et formatage | Code de M5 non vérifié sous Windows, macOS ni arm64 (la CI le dira) ; `clang-format` non installé : fichiers neufs non formatés (comme G135) | M5 |
-| G165 | UI-13 : cache par couche | Le cache par couche de l'interface (un conteneur inchangé n'est ni remis en page ni redessiné) n'est pas fait ; proposition : le reporter à M6 (A54) | M6 |
+| G165 | UI-13 : cache par couche | Le cache par couche de l'interface (un conteneur inchangé n'est ni remis en page ni redessiné) n'est pas fait ; proposition : le reporter à M6 (A54) ; non fait en M6, reporté de M8 à M10 par la validation d'A79 (à confirmer par l'auteur) | M10 |
 | G166 | REN-05 : types de lumières | Pas de lumières de surface (P2) ; un projecteur est testé comme une sphère dans les clusters (plus large que son cône) | M6 |
 | G167 | REN-31 : imposteurs | LOD par distance et fondu tramé faits ; pas d'imposteurs automatiques pour la végétation lointaine | M6 |
 | G168 | REN-22 : atmosphère | La boîte à outils n'a pas d'include d'atmosphère (le bloc `FrameData` en porte les paramètres) ; l'atmosphère est le module REN-24 (A39) ; critère de REN-22 à amender (A56) | M13 |
@@ -541,3 +541,270 @@ Distribution du SDK (A76, `docs/03` §16) : outil `orosmo`, moteurs dans `OROSMO
 | G219 | Moteurs installés modifiables | `orosmo install` n'enlève pas les droits d'écriture de `$OROSMO_HOME/engines/<v>` : rien du build n'y écrit (vérifié par `make e2e-init` sur un paquet en lecture seule), mais une modification à la main touche tous les projets de cette version. `orosmo install <v> --force` le réinstalle. (Un moteur en lecture seule ne casse plus le 2e build : `copy_res` rend la copie inscriptible, prouvé par le 2e build de `make e2e-init`.) | Avant v0.7 |
 | G220 | ~~`make e2e-init` : `orosmo doctor` sans l'`OROSMO_HOME` isolé~~ | **Corrigé** (feat/SDK-installers) : toutes les commandes `orosmo` de `e2e-init` reçoivent le même `OROSMO_HOME`. | — |
 | G221 | `install.sh` avec wget : protocole des redirections non contrôlé | L'outil `orosmo` (client `https_only`), `install.sh` avec curl (`--proto '=https' --proto-redir '=https'`) et, depuis fix/SDK-review2, `install.ps1` (redirections suivies à la main, `HttpWebRequest` avec `AllowAutoRedirect = $false`, HTTPS seulement ; jamais exécuté, pas de PowerShell ici, G216) refusent `http://`, redirections comprises. `install.sh` avec wget seulement (son `--https-only` ne vaut qu'en mode récursif) refuse une base `http://` mais ne contrôle pas une redirection HTTPS → HTTP décidée par le serveur. | Avant v0.7 |
+
+## Ajouts de M8 lot L1 (G230 à G234)
+
+Fondations de M8 (A79 lot L1) : `platform::DynamicLibrary`, liaison de la bibliothèque avec le moteur de l'hôte, `core::Random`, `core::SpscQueue`, couches `scene`, `sim`, `app`, `game`, job TSan. Numéros pris à la suite de G221 ; un autre lot de la même vague peut avoir pris les mêmes : renuméroter à la fusion.
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G230 | Liaison bibliothèque/hôte sous Windows et macOS : CI seulement | Les options de lien (`engine_host_ldflags`, `engine_module_ldflags` de `tools/engine-sdk/engine.mk` : `--export-all-symbols` et bibliothèque d'import sous MinGW, `-undefined dynamic_lookup -Wl,-no_fixup_chains` sous macOS) et `tests/platform/dynamic_library_tests.cpp` ne sont exécutés sur ces systèmes que par la CI (`make demo-test` des jobs Windows et macOS) ; rien n'a été essayé localement. MSVC n'est pas pris en charge (exporter depuis un `.exe` y demande `__declspec(dllexport)` ou un `.def`) : le projet ne vise que MinGW sous Windows. | M8 (CI du lot L1) |
+| G231 | Nombre de symboles exportés par l'hôte (limite PE de 65 535) | Mesuré sous Linux : **10 109** symboles exportés par l'exécutable des tests lié avec `-rdynamic` (`nm -D --defined-only`, moteur et dépendances tierces compris). Sous MinGW, la règle de lien des tests affiche le compte de la table d'exports (`objdump -p`) dans le journal de la CI. Si l'exécutable du jeu (lot L5) approche la limite : exclure les archives tierces des exports (`-Wl,--exclude-libs,<archives>`), la bibliothèque de jeu n'ayant besoin que du moteur. | M8 L5 |
+| G232 | Copies laissées après un plantage | `DynamicLibrary` efface sa copie (`<nom>-<pid>-<n><ext>`) au déchargement ; un processus tué la laisse à côté de l'original. Le module de jeu (L5) doit effacer les copies périmées au démarrage (motif `<nom>-*-*<ext>`, pid absent). | M8 L5 |
+| G233 | TSan : réglage de l'ASLR sur les noyaux récents | Le runtime TSan de GCC 13 refuse l'entropie mmap de 32 bits des noyaux récents (« unexpected memory mapping ») : le job CI `tsan` passe `vm.mmap_rnd_bits=28` ; en local, même réglage (`sudo sysctl -w vm.mmap_rnd_bits=28`) ou `setarch -R make demo-test-unit SANITIZE=thread`. Sans affichage ni pilote Vulkan (`env -u DISPLAY -u WAYLAND_DISPLAY VK_DRIVER_FILES=/nonexistent.json`, comme le job) : **439 cas unitaires propres sous TSan** (dont `core/spsc_queue` et `platform/dynamic_library`). Avec un affichage, TSan signale une course dans Mesa et libxcb (bibliothèques non instrumentées) : `GPU_TEST_SUITES` du `Makefile` (`demo-test-unit`) n'exclut pas toutes les suites qui ouvrent un périphérique (`anim/*`, `assets/*`, `apps/demo*`…) ; elles s'ignorent seulement faute de GPU. Classement à revoir (lot L4, test concurrent simulation + rendu). | M8 L4 |
+| G234 | État statique d'une bibliothèque rechargée sous macOS | Sous Linux (GCC), `-fno-gnu-unique` dans `ENGINE_MODULE_CXXFLAGS` donne à chaque copie chargée ses propres variables `static` de fonctions `inline` et un vrai déchargement (test « each loaded copy has its own static state… ») ; Windows l'a par construction. Sous macOS, dyld peut fusionner les définitions faibles de deux images : le test n'y exige rien et affiche les valeurs observées (`MESSAGE`, journal de la CI). Si elles ne valent pas 1 et 1 : compiler la bibliothèque de jeu avec une visibilité cachée par défaut (`-fvisibility=hidden`, exports marqués). | M8 L5 |
+
+## Ajouts de M8 lot L2 (G260 à G264)
+
+Entités, composants et transformations (A79 lot L2, ECS-01, ECS-02) : module `scene` (`src/scene/README.md`).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G260 | Écriture directe dans un `Transform` non suivie | `World::get` et `view(...).each` rendent un `Transform &` modifiable sans marquer l'entité sale : l'appelant appelle `markTransformDirty` (ou passe par `setTransform` / `editTransform`). Un oubli laisse la partie monde périmée jusqu'au prochain marquage, sans message. Une vue en lecture seule ou un marquage automatique par système est à décider avec la boucle de simulation. | M8 L3 |
+| G261 | Requêtes simples | `view` et `forEach` : intersection de types, parcours du plus petit stockage, un seul thread. Pas d'exclusion (`without`), de type optionnel, de tri, de groupes ni de parcours parallèle (`TaskSystem::parallelFor`) ; recherche d'un type par nom linéaire en nombre de types. | Plus tard (selon besoin mesuré) |
+| G262 | Changement de parent sans garder la position monde | `setParent` garde la transformation **locale** : l'entité saute à la position relative à son nouveau parent. Pas d'option « garder la position monde » (inverse de `worldLinear` à calculer). | M8 L10 ou plus tard |
+| G263 | Génération d'entité sur 32 bits | Après 2^32 destructions du même indice, la génération reboucle et un très vieil identifiant redeviendrait valide (non détecté ; l'indice n'est pas retiré). | Plus tard |
+| G264 | `scene` vérifié sous Linux seulement | Compilé et testé avec g++ 13.3 (debug, release, ASan+UBSan) ; clang de macOS (`-Werror`) et MinGW/MSVC de Windows seulement par la CI. Les composants alignés au-delà de `alignof(std::max_align_t)` utilisent `operator new(std::align_val_t)` (C++17, disponible partout). | CI |
+
+## Ajouts de M8 lot L3 (G280 à G291, sauf G290)
+
+Sauvegarde de scène et boucle de simulation à pas fixe (A79 lot L3, ECS-03, SIM-01) : `scene/scene_file.hpp`,
+`scene/fingerprint.hpp`, module `sim` (`src/sim/README.md`).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G280 | Empreinte figée vérifiée sous Linux x64 seulement | L'empreinte de `--sim-agents 500 --seed 42 --sim-steps 1000` est figée par `tests/demo/agent_simulation_tests.cpp` à partir de g++ 13.3 (x64, debug et release, ASan+UBSan). Linux arm64, Windows MinGW et macOS clang ne sont vérifiés que par la CI : une valeur différente y ferait échouer le test (c'est son rôle). MSVC (pas de `-ffp-contract=off`, `/fp:precise` peut contracter selon la version) n'est pas couvert. | CI de la PR L3 |
+| G281 | Contrôle du chemin rejoué lexical | `tools/check_deterministic_math.py` cherche des noms (`sin(`, `std::exp(`, `glm::angleAxis(`, `rand(`, `steady_clock::now`…) dans `src/sim`, `src/scene`, `core/random.hpp`, `core/hash.hpp` et `apps/demo/src/Sim` : un appel caché derrière une autre fonction (d'un autre module, ou d'une fonction de glm non listée) n'est pas vu ; la bibliothèque de jeu (L5) n'est pas couverte. | L5 (jeu), plus tard |
+| G282 | Valeurs que la sauvegarde ne garde pas au bit près | NaN écrit `"nan"` : la charge et le signe d'un NaN sont perdus (relu en NaN silencieux). Structure non réfléchie dans un composant (`kStruct` sans sous-champ) : écrite en octets hexadécimaux dans l'ordre de la machine (fichier non portable entre boutismes ; toutes les cibles sont petit-boutistes). | Plus tard |
+| G283 | Type de composant non enregistré au chargement | Ignoré avec un avertissement : ses données sont perdues si la scène est ensuite resauvegardée (pas de conservation des blocs inconnus). Les systèmes ne font pas partie de l'état sauvegardé (enregistrés par le jeu, L5). | L6 (migration), plus tard |
+| G284 | Temps accumulé non capturé | `Snapshot` et `saveState` gardent monde, générateur, pas et entrées en attente, pas l'accumulateur de `FixedStepper` (sans accesseur) : après `restore`, la fraction `alpha()` repart de 0 (l'état simulé est exact ; seule l'interpolation de la première image diffère). | L4 |
+| G285 | Empreinte sensible à l'ordre dense | Deux mondes de même contenu mais d'ordre de stockage différent ont des empreintes différentes (voulu : l'ordre de parcours change le résultat d'une simulation). Pas d'empreinte « contenu seul ». | Plus tard si besoin |
+| G286 | Chargement en copie | `loadScene` (tout ou rien) construit une copie du monde avant d'échanger : mémoire doublée pendant le chargement ; recherche d'un type par nom linéaire. Pas de chargement en flux ni partiel (sous-arbre, préfabriqué). | Plus tard (L12a contenus ?) |
+| G287 | Thread de simulation | **Traité par le lot L4** (`sim/simulation_thread.hpp`, G300 et suivants). Avant : `Simulation` mono-thread, sans thread dédié, instantané en double tampon ni cadence configurable. | M8 L4 (fait) |
+| G288 | Entrées en JSON | `Input::data` est un `core::Json` libre, haché par son texte (`dump()`) : un réel d'entrée est exact (écrit au plus court) mais une entrée lourde coûte une allocation par pas. Pas de format binaire de rejeu (le JSON du `Replay` passe par `core::toBinary` si besoin). | Plus tard |
+| G289 | Pointeur dans un composant | `ComponentData` n'exige qu'un type trivialement copiable : un pointeur (classé `kStruct` opaque par `core::fieldTypeOf`, ou caché dans une structure non réfléchie) est haché et sauvegardé octet par octet, donc l'empreinte et le fichier dépendent d'une adresse. Remarque de revue (PR #25) : refuser les pointeurs à la description ou les hacher par valeur logique est un choix d'API (`core/reflection.hpp` sert aussi l'UI), à trancher par l'auteur ; une structure opaque ne peut pas être inspectée à la compilation. Contournement : stocker des `Entity` ou des indices, jamais d'adresse. | M8 L5 ou plus tard |
+| G291 | Entrées mises en file par un système, puis rejouées | **Corrigé** (revue de la PR #37) : `play` ne livre plus deux fois une entrée qu'un système remet en file au rejeu (`tests/sim/simulation_tests.cpp`, « inputs queued by a system are not delivered twice by a replay »). | M8 L4 |
+
+## Ajouts de M8 lot L4 (G300 à G307)
+
+Thread de simulation optionnel (A79 lot L4, extension de SIM-01) : `sim/simulation_thread.hpp`, `sim/snapshot_buffer.hpp`
+(`src/sim/README.md`). G287 est traité par ce lot.
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G300 | Pas de commande pendant que le thread tourne | Ajouter ou retirer un système, capturer, restaurer, sauvegarder ou rejouer demande `stop()` puis un nouveau `SimulationThread::start` : aucune file de commandes vers le thread. Le rechargement de la bibliothèque de jeu (L5) devra arrêter puis relancer le thread. | L5 / L6 |
+| G301 | Instantané complet à chaque publication | L'instantané copie toutes les transformations (et les composants listés) à chaque lot de pas, plus deux captures d'état par lot : coût linéaire en nombre d'entités, pas de copie des seules entités modifiées. Mesuré seulement sur 64 entités (tests). | M10 (performances) |
+| G302 | Interpolation par décomposition | `interpolate` décompose la partie linéaire en échelle par colonne et rotation (nlerp) quand les colonnes sont orthogonales ; cisaillement (parent à échelle non uniforme), réflexion ou échelle nulle : interpolation terme à terme (revue PR #29), qui garde le cisaillement mais pas la longueur des colonnes en rotation. Les autres composants de l'instantané ne sont pas interpolés. | Plus tard |
+| G303 | Attente réglée sur l'horloge murale | En `kFixedRate`, le thread attend (`condition_variable::wait_for`) la durée restante du pas, moins le temps passé à jouer et publier (revue PR #29), lue sur l'`IClock` : avec une horloge qui ne suit pas le temps réel (`ManualClock`), il faut `frame()` ou `sync()` pour le réveiller. Cette compensation n'a pas de test déterministe (elle n'agit que sur l'instant du réveil, pas sur le nombre de pas, fixé par l'horloge). Pas de réglage de priorité ni d'affinité du thread. | Plus tard |
+| G304 | Entrées refusées seulement comptées | Une entrée qui arrive après son pas est refusée (rejeu préservé), comptée et journalisée ; le jeu doit la dater avec une marge (`stepIndex() + latence`). Pas de report automatique au pas suivant. | L13 (entrées du jeu) |
+| G305 | Démo sans mode thread | `apps/demo` n'a pas d'option pour le thread de simulation (`--sim-agents` reste mono-thread) ; la preuve est dans les tests (`sim/thread`), dont le test concurrent sous TSan (job CI `tsan`). Les réglages `sim.*` de `core::Config` ne sont lus par aucune application. | L13 / L14 |
+| G306 | Changement de `SANITIZE` sans reconstruire les tests | `make fclean` ne nettoie que le moteur : les objets des tests de `apps/demo/obj` gardent l'ancienne instrumentation (une première passe TSan a lié des tests non instrumentés et signalé de fausses courses sur `TaskSystem` et l'instantané). Il faut aussi `make demo-fclean` avant `SANITIZE=...` ; le job CI part d'un arbre propre et n'est pas touché. En local, TSan tourne avec `setarch -R` (G233), sans changer `vm.mmap_rnd_bits`. | Outillage, plus tard |
+| G307 | Échecs du thread non provoqués en test | `SimulationThread::start` rend `kBusy` si `std::thread` lève `std::system_error` (plus de thread disponible) : chemin non testé (impossible à provoquer sans limiter les ressources du processus). Un système qui lève sur le thread arrête la boucle et l'erreur passe par `status()` (testé) ; l'état du monde est celui laissé par le pas interrompu, comme en mono-thread. | Plus tard |
+
+## Ajouts du lot M8-L11, API de rendu simplifiée (G240 à G243)
+
+Numéros pris à partir de G240 pour ne pas croiser ceux des lots M8 menés en parallèle (L0, L1, L9).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G240 | Récepteurs d'ombres non résolus au dessin | `SceneRenderer::drawMesh(Mesh &)` résout le programme du matériau PBR (variante `kPbrShadows` si le matériau a été créé avec les ombres) et le programme par défaut `mesh.vert`/`mesh.frag` ; la variante réceptrice d'ombres de `mesh.frag` (`ShadowFeature::receiverProgramWith`, groupe `receiverGroup`) reste à imposer par `setProgram` (la démo le fait, avec `shaderDefines()`). | M8 (L12a) ou M10 |
+| G241 | Passe « upscale » non renommée « present » (A75.7) | `endFrame(rhi::TextureHandle)` lit le format et la taille de la sortie ; la copie finale garde le nom de passe « upscale » (clés du Profiler `RenderGraph/upscale`, tests, `tools/perf_compare.py`). Le renommage est reporté avec les sous-objets de réglages d'A75.17. | M10 |
+| G242 | Défaut `Mesh::setCullMode` inchangé (A75.15) | Le défaut reste `kNone` pour l'existant ; `kBack` vient de `Mesh::setMaterial` (et de `assets::RenderModel` depuis M6) ; `MeshBuilder` produit des faces anti-horaires vues de l'extérieur, mais un maillage sans matériau reste à `kNone`. | M10 (changement incompatible annoncé) |
+| G243 | `drawMesh(Mesh &)` : résolution par disposition limitée | Sans programme ni matériau, seule la disposition kColored (trois `vec3`, sans instance) reçoit un programme par défaut ; les dispositions texturée (`mesh_textured.vert`) et instanciée gardent `setProgram`. | M10 |
+
+## Ajouts de M8 lot L9 (G222, G223)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G222 | Focus hors de la vue d'une `ScrollView` | Tab ou une flèche peut donner le focus à un widget défilé hors de sa `ScrollView` : la vue ne défile pas vers lui (l'anneau de focus est découpé comme le widget, donc invisible). Les flèches choisissent le voisin par géométrie, y compris hors de la zone visible. | M10 |
+| G223 | Manettes : reste de PLAT-03 | `platform::Gamepads` ne lit que les manettes à disposition standard reconnues par GLFW, par scrutation à chaque image ; ni vibration, ni remappage, ni joystick quelconque, ni deuxième stick ou gâchettes dans la navigation de l'interface. Aucune manette réelle essayée (tests par `Gamepads::simulate`) ; Windows et macOS non vérifiés. | Après M10 (P2) |
+
+## Ajouts de M8 lot L10 (G295 à G299)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G295 | Console de debug minimale | Affiche les 18 dernières lignes (500 gardées) sans défilement ; pas de rappel des lignes tapées (Haut / Bas), pas de complétion, pas de filtre du journal par niveau. Les arguments sont des chaînes : chaque commande les analyse. | Plus tard (selon besoin) |
+| G296 | Inspecteur d'interface : fenêtres détachées | L'arbre suit `Widget::children` : le contenu des fenêtres surgissantes, menus et boîtes de dialogue (`detached`) n'y figure pas ; 1000 lignes au plus ; arbre relu à chaque image tant que l'onglet est affiché (coût linéaire ; `typeid` et démanglage par widget, jugés hors « chemins chauds » de `docs/03` §7 car réservés à l'outil ouvert sur cet onglet ; un nom de type explicite sur `Widget` s'en passerait : à décider par l'auteur). Le nom du type vient de `typeid` (démanglé par `<cxxabi.h>` avec GCC et Clang ; MSVC : nom brut sans « class »). | M10 |
+| G297 | Inspecteur d'entités limité | 200 entités listées au plus, sans nom ni hiérarchie ; pas d'ajout ni de retrait de composant ; énumération montrée comme entier signé (noms des valeurs absents de `FieldDesc`) ; quaternion édité composante par composante ; chaînes et tableaux non modifiables (refusés dans les composants de toute façon). | M8 L13 ou plus tard |
+| G298 | Profileur des outils | Liste plate des mesures de `core::Profiler` (moyenne, maximum) et graphe du temps CPU de l'image ; ni vue hiérarchique, ni graphe GPU séparé. Le panneau de performances de la démo (`PerformanceView.cui`, thème `hud.json`) reste dans la démo : seul son historique (`ui::FrameHistory`) est passé dans le moteur. | M10 |
+| G299 | Outils de debug vérifiés sous Linux seulement | Compilés et testés avec g++ 13.3 ; démo vérifiée en OpenGL et Vulkan sans fenêtre. Le monde de la démo ne contient que l'entité « caméra » (la scène n'est pas encore rendue par `scene::World`, lot L13). macOS et Windows : CI seulement. | CI |
+
+## Ajouts du lot M8-L12a, API des contenus (G250 et G251)
+
+Numéros pris à partir de G250 (L0/L9 : G222-G223, L11 : G240-G243, L1 en cours).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G250 | `AnimatedModel` : un maillage skinné partagé par plusieurs nœuds | Comme `SkinnedModel` (G198) : le repli CPU déforme le maillage GPU pour le premier nœud skinné qui le dessine. Sans compute, `RenderModel` n'est pas créé `skinnable` : les nœuds skinnés qui partagent une primitive partagent aussi son tampon (et un nœud statique qui dessine la même primitive la verrait déformée). Correction prévue : une sortie CPU par nœud skinné dans `RenderModel::create` et `AnimatedModel::applyPose`, sans exiger `kStorage`. | M10 |
+| G251 | `AnimatedModel` : pas d'événements de clip | Le lecteur (`play`, `crossFade`) ne rend pas les événements des clips (`Clip::collectEvents`) ; pour eux, piloter le modèle par une `StateMachine` et `setPose`. | M10 |
+
+## Ajouts hors lot (G290)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G290 | Qualité d'ombre selon l'importance d'un objet | Aucune résolution d'ombre propre à un caster : la netteté dépend de la cascade (ou de la lumière, `LightShadowParams`), pas de l'objet. Pistes : ombre dédiée par objet, maillage simplifié pour l'ombre, distance d'ombre par caster (A80). Fonctionnement à confirmer par l'auteur avant M10. | M10 (à confirmer, A80) |
+
+## Ajouts de M8 lot L5 (G310 à G319)
+
+Module de jeu rechargeable et version finale statique (A79 lot L5, GAME-01, GAME-02, GAME-07) : module `app`
+(`src/app/README.md`), `tools/check_game_static.py`, gabarit (`apps/demo/Makefile`, `tools/engine-sdk/template/src/game/`).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G310 | Rechargement vérifié sous Linux seulement | Chargement, rechargement, refus d'ABI, retour à l'ancienne version et version statique testés avec g++ 13.3 (Linux x64). Windows MinGW (DLL liée à la bibliothèque d'import de l'exécutable des tests, copie sous nom unique) et macOS (`-undefined dynamic_lookup`) seulement par la CI ; MSVC non couvert. | CI de la PR L5 |
+| G311 | Contrôle de la règle 13 sous Windows et macOS | Sous Windows, `check_game_static.py` lit le fichier objet du jeu, pas la DLL (le démarrage C de MinGW y ajoute ses données, non distinguées) ; l'émulation TLS de MinGW (`__emutls_v.*` en `.data`) est refusée comme le reste. Sous macOS, lecture de `nm -m` (`__DATA,__data`, `__bss`, `__common`, `__thread_*`) non essayée ici. Liste blanche établie sous Linux, complétée par la CI de la PR #28 : `__dyld_private` (Mach-O, ld64) et symboles de section COFF (`.bss`, `.data`, nom commençant par un point) ; analyse des trois formats figée par `tests/tools/test_check_game_static.py`. | CI, plus tard |
+| G312 | Contrôle de la règle 13 limité aux symboles | Un état caché sans symbole (mémoire allouée et gardée par un pointeur en `.data.rel.ro` modifiable par `const_cast`, état dans une bibliothèque tierce liée au jeu, fichier ouvert) n'est pas vu ; une constante non modifiée mais non `const` peut être repliée par l'optimiseur et passer. Les tables `.data.rel.ro` (vtables, `constexpr` avec pointeurs) sont permises par choix. | Plus tard |
+| G313 | Composants orphelins gardés | Un type de composant qu'une nouvelle version n'enregistre plus reste dans le monde avec ses données (`GameModule::orphanComponents`, avertissement). **L6 :** décision de les garder par défaut (un type retiré le temps d'une édition retrouve ses données) ; `GameModule::removeOrphanComponents()` les retire sur demande (un retrait refusé, `kBusy` pendant un parcours, garde le nom pour un appel suivant). La disposition changée sous le même nom est migrée (GAME-03). Rien ne les retire automatiquement. | Fait en partie (L6) |
+| G314 | Pas de délai d'attente ni d'isolation de l'`init` | Un `init` qui boucle ou plante (signal, exception non attrapée) arrête l'hôte : pas de bac à sable ni de reprise sur erreur grave ; une exception traverse l'interface C (comportement de GCC/Clang, non garanti par la norme). | Plus tard |
+| G315 | Rechargement par interrogation | `FileWatcher` interroge le fichier (date, taille) ; le rechargement attend `settleDelay` (250 ms) après la dernière modification. Un éditeur de liens plus lent que ce délai donne un premier échec (fichier tronqué, journalisé, ancienne version gardée), puis un rechargement réussi à la modification suivante seulement s'il y en a une (observé sur une machine chargée : un `kIo` journalisé en erreur, puis `reloaded` 0,5 s plus tard). Pas de reprise automatique sans nouvelle modification. | M8 L7 |
+| G316 | `abiVersion` seule | La version d'ABI ne couvre que l'interface `OrosmoGameApi` et `GameContext` ; une bibliothèque compilée contre d'autres en-têtes du moteur (autre version d'`orosmo`, autres options) n'est pas détectée (disposition de `World`, `Simulation`, `std::function` de la bibliothèque standard). Pas d'empreinte des en-têtes ni de la version du moteur. | Plus tard |
+| G317 | Gabarit : `make` = debug avec un jeu | Un projet qui a `src/game/*.cpp` se construit par défaut en debug (bibliothèque rechargée) ; sans `src/game/` le défaut reste release (démo, anciens projets). `make release` lie le jeu statiquement. La cible qui ne reconstruit que la bibliothèque est `make game` (M8 L7). Depuis L14, le programme du gabarit passe par `app::Application`, qui avance la simulation à pas fixe (`Simulation::advance`, plus au pas de l'image). | — |
+| G318 | Actions : `missing()` non journalisé au rechargement | **Corrigé en L6** : après chaque passage réussi, `ActionRegistry::missing()` est journalisé (avertissement) et rendu par `GameModule::missingActions()` (suite `app/game_module`, test « renamed handler » ; preuve : `docs/STATUS.md`, « M8 lot L6 »). | Fait (L6) |
+| G319 | Copie du monde à chaque chargement | Pour remettre l'état du moteur si `init` échoue après avoir écrit (revue de la PR #28), `switchTo` copie le monde entier (et le générateur de la simulation) avant chaque `init` : coût proportionnel à la taille du monde à chaque rechargement (développement seulement ; la version statique ne le fait qu'une fois au démarrage). L'état hors du monde (fichiers, ressources du renderer, actions de l'hôte) n'est pas remis. | Plus tard (copie à la demande si mesurée gênante) |
+
+## Ajouts du lot M8-L6, migration, gestionnaires, paramètres (G320 à G326)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G320 | Migration sans table de versions | Un composant dont la disposition change est relu par nom de champ (`World::migrateComponent`) ; les migrations par version de L3 (`SceneMigrations::components`) ne sont pas appliquées au rechargement : un champ renommé est perdu (repli, avertissement), pas renommé. | M8 L8 ou plus tard |
+| G321 | Retour en arrière des migrations par la copie de G319 | Une migration (GAME-03) pendant un `init` qui échoue est annulée par la copie du monde que `switchTo` prend avant chaque `init` (G319) : pas de seconde copie propre à la migration. Les pointeurs de l'hôte vers des données de composants sont invalides après une migration ou un retour en arrière. | M10 |
+| G322 | Migration seulement pour les types du jeu | Seul un type enregistré par une version précédente du jeu est migré ; un type de l'hôte sous le même nom reste refusé (`kAlreadyExists`), même si le jeu l'a d'abord réenregistré avec la même disposition (accepté, mais pas noté parmi ses types). Un `ComponentType<T>` ou une `View` de l'ancienne disposition gardés par l'hôte deviennent invalides (génération suivante), sans message. | — |
+| G323 | Conversion de type limitée à JSON | Le repli convertit un champ seulement si sa valeur JSON se relit dans le nouveau type (entier vers réel, entier vers entier d’une autre taille dans sa plage…) ; sinon valeur par défaut et avertissement. Pas de conversion programmable (scalaire vers vecteur…). | — |
+| G324 | `missing()` cumule hôte et jeu | `GameModule::missingActions()` liste aussi les noms liés par l'interface que l'hôte n'a jamais enregistrés, et chaque nom absent n'est journalisé par `ActionRegistry` qu'une fois à l'appel. | — |
+| G325 | Paramètres : disposition changée relue du fichier seulement | Quand une nouvelle version enregistre des paramètres d'une autre disposition, la valeur vient du fichier (ou des défauts), pas de la valeur précédente. Pas de schéma JSON publié ni de rechargement de paramètres imbriqués dans plusieurs fichiers. | — |
+| G326 | Paramètres observés aussi en version finale | `ParamsFile` utilise `core::FileWatcher` (interrogation, `pollInterval`) aussi avec `GameModule::fromApi` : coût négligeable, mais une version finale ne peut pas encore figer ses paramètres (`ParamsSettings::watch` est global aux cibles). Vérifié sous Linux seulement (comme G310). | M8 L13 |
+
+## Ajouts du lot M8-L12b, petites fabriques et plateforme (G270 à G273)
+
+Numéros pris à partir de G270 pour ne pas croiser ceux des lots M8 menés en parallèle.
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G270 | `Window::init` : changement incompatible (A75.8) | `init` rend `core::Result<>` au lieu d'un `int` (0 = succès) : un projet qui écrit `window.init() != 0` ne compile plus (pas de surcharge possible sur le seul type de retour). Démo, gabarit `orosmo init`, tests et site migrés (`if (!window.init(...))`). À annoncer dans les notes de version de M8. | M8 (notes de version) |
+| G271 | Reste d'A75.8 pour `platform` | Noms hérités gardés (`getWidth`, `getElapseTimeSecond`, `getWindow`…, préfixes `get`), `LOG_ERROR` avec code entier dans `window.cpp`, `InputManager` toujours une instance statique par fenêtre native (A10, décision de l'auteur : `Window::input()` la renvoie, choix 9). Renommage avec la migration des conventions de `core` et `ui`. | M10 |
+| G272 | Fabriques de lumières à descripteur : limites (A75.10) | Le champ `Light::direction` garde les deux sens (vers la lumière pour une directionnelle, faisceau pour un projecteur), car c'est la disposition lue par `mesh.frag` et les ombres : seules les fabriques et `lightDirection` ont une convention unique. La portée est convertie en coefficient à la création (carré inverse, `b = 0`) à partir de la couleur et de l'intensité : changer l'une après coup dans une copie change la portée ; pas de `setRange` ni de terme linéaire. La portée est la distance du seuil de 1/256 (celle de `lightRange`, du forward+ et de la fenêtre de `lights.glsl`) : à mi-portée il ne reste qu'environ 4 / (crête × 384) de la lumière, quels que soient les coefficients ; une lumière « qui porte loin » demande une portée large ou plus d'intensité. Une portée décorrélée du seuil demanderait de changer la disposition GPU et le shader (même image impossible). | M10 |
+| G273 | `Camera::setForward` / `lookAt` parallèles à `up` | Une direction parallèle à `up()` (caméra verticale) n'est pas refusée et rend la vue indéfinie (comme `setOrientation`) ; `rotatePitch` seul borne à 10° de la verticale. Documenté dans `camera.hpp`. | M10 |
+
+## Ajouts de M8 lot L7 (G330 à G334)
+
+Construction incrémentale de la bibliothèque de jeu (GAME-06) : `orosmo/game.hpp`, `make game`, `orosmo build --game`,
+`tools/e2e_reload.py`.
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G330 | Temps mesuré sous Linux seulement | Le critère < 5 s est mesuré sur la machine de référence Linux (`docs/BASELINE/game-reload-M8-L7.txt`). Windows (MinGW) et macOS : `make e2e-init` fait la même étape en CI, avec une limite large (`E2E_RELOAD_MAX=60`) ; ni lancés ni mesurés ici. | M8 L15 |
+| G331 | `make game` et en-têtes partagés avec l'hôte | `make game` ne refait que la bibliothèque : si un en-tête partagé avec `src/main.cpp` (`src/game/spin.hpp`) change la disposition d'un composant, la bibliothèque rechargée migre le composant (L6) mais l'hôte garde l'ancienne disposition : il faut `make` puis relancer. Depuis L8, ce but regénère aussi les vues `.cui` (compilées dans la bibliothèque). | M8 L8 |
+| G332 | `ccache` réel non essayé | `ccache` n'est pas installé sur la machine : seul son appel par le `Makefile` est vérifié (faux `ccache` dans `make e2e-init`). Pas de gain mesuré ; il ne sert que si la même source a déjà été compilée. | — |
+| G333 | Inclusions et types changés (incompatibilité) | `core/reflection.hpp` et `scene/transform.hpp` n'incluent plus que les types de glm (`core/math_types.hpp`) : un projet qui comptait sur eux pour `glm::normalize` ou les matrices doit inclure `core/math.hpp`. `sim::StepContext::inputs` est un `ConstView<Input>` (convertible en `std::span`, sans `front`, `subspan`…) et lire une `Input` demande `sim/simulation.hpp`, comme tout appel à `context->simulation()->…` (`game.hpp` ne déclare que le nom de la classe). De même `StepContext::events` et `emit(nom, charge)` (L4) : `Event` et la charge demandent `sim/simulation.hpp` ; `emit` n'est plus en ligne ni à argument par défaut (deux surcharges). | — |
+| G334 | Limites de l'en-tête léger | `orosmo/game.hpp` coûte encore environ 4 s de compilation (bibliothèque standard et types de glm ; pas d'en-tête précompilé). La glm installée (0.9.9.8) tire `gtc/constants` et `gtc/matrix_transform` depuis ses types : seuls `glm.hpp`, `gtc/quaternion` et `gtx/` sont refusés par `check_headers` ; non vérifié avec glm 1.x. Journal : `core/log.hpp` n'est pas inclus. | M10 |
+
+## Ajouts de M8 lot L13, façade d'application (G350 à G357)
+
+Numéros pris à partir de G350 pour ne pas croiser ceux des lots M8 menés en parallèle.
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G350 | `Application` : fenêtre et plates-formes non vérifiées par les tests | Les tests (`tests/app/application_tests.cpp`) tournent sans fenêtre (`headless`) : la boucle fenêtrée (événements, taille du tampon d'image, fermeture, `Window::terminate` dans `Application::main`) n'est pas essayée (aucun essai avec une fenêtre, sous aucun système) ; Windows et macOS ni compilés ni essayés ici. `main` change le dossier courant pour celui de l'exécutable (comme l'ancien gabarit) ; une seule fenêtre par application. Depuis L14, le programme de départ passe par `Application::main` : `make e2e-init` le lance sans fenêtre (capture, et sans bibliothèque de jeu) ; la boucle fenêtrée reste non essayée. | M8 L15 |
+| G351 | Poignées des composants de rendu sauvegardées sans sens hors de l'exécution | `MeshRenderer::mesh` et `AnimatedModelComponent::model` sont des `core::Handle<T>` (emplacement, génération) : sauvegardés avec la scène, ils ne désignent rien dans une autre exécution (aucun chemin de ressource ni identifiant stable). Un rechargement de scène doit refaire les poignées. | M10 (ressources par chemin, VFS) |
+| G352 | `kInstanced` limité à la disposition colorée | Le dessin instancié des `MeshRenderer` passe par `renderer::InstanceRenderer` et son programme par défaut (`mesh_instanced.vert` + `mesh.frag`, disposition `MeshLayout::kColored`) : un maillage qui porte un matériau PBR, ou ses propres instances, est dessiné en `kSingle` (même image, un dessin par entité). Pas de couleur par instance dans le composant. | M10 |
+| G353 | Ombres des composants : caster par maillage, boîte vide | Un `castShadows` inscrit le maillage (ou ceux du `RenderModel` d'un modèle animé) comme caster mobile, une fois par poignée : un maillage partagé par plusieurs entités projette à la DERNIÈRE transformation donnée dans l'image (en `kInstanced`, la dernière instance seulement) ; un caster qu'aucune entité ne demande pendant un `draw` est retiré ; boîte vide (`Aabb::empty`, dessiné dans toutes les vues, pas de culling des ombres). Les foules (`kCrowd`) ne projettent pas. | M10 |
+| G354 | Foules non prises en charge : entités non dessinées | Sans `CrowdRenderer::supportedBy` (règle 11), les entités `kCrowd` ne sont pas dessinées (avertissement journalisé une fois, comptées dans `SceneRenderStats::skipped`) : pas de repli `kSingle`. Une foule par modèle, créée au premier dessin (`CrowdRenderer::create(context, model)`), gardée tant que le modèle est dans la réserve. | Plus tard |
+| G355 | Matrices des composants en float depuis l'origine | `SceneRenderSystem` passe `scene::relativeMatrix(transform, origine 0)` aux maillages : le rendu relatif à la caméra (REN-02) se fait ensuite en float. Les positions en double du `Transform` perdent leur précision au-delà de ~10^5 m (pas de soustraction de la caméra en double avant l'arrondi). | M10 |
+| G356 | Le rendu lit le monde de la simulation, sans instantané ni interpolation | Les composants de rendu sont lus directement dans `Simulation::world()` à chaque image (même thread) ; `FrameTime::alpha` est donné aux rappels mais le système de rendu n'interpole pas entre deux pas. La façade fait tourner la simulation dans son thread (mode par défaut de SIM-01) ; le mode thread de L4 (`sim::SimulationThread`, instantanés `SnapshotBuffer`) n'y est pas branché. | M10 |
+| G357 | Façade : réglages non exposés | `ApplicationSettings` ne règle pas les options avancées de `SceneRenderer` (anticrénelage, post-traitements autres que le tonemapping, `ShadowSettings`, images en vol), ni le plein écran ou le vsync en cours d'exécution, ni le cache de shaders sur disque : passer par `scene()`, `window()`, `device()` (API bas niveau). Le lecteur des modèles `kSingle` avance du delta d'image (pas de la simulation : non rejouable). | Plus tard |
+
+## Ajouts du lot M8-L16, performances A61 G et C (G340 à G344)
+
+Numéros pris à partir de G340 pour ne pas croiser ceux des lots M8 menés en parallèle.
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G340 | Plugins sans signature de passes (A61 C) | `PostEffect` et ses dérivés (exposition automatique, bloom, tonemap, FXAA, SMAA, TAA : groupes de liaison créés à chaque `declarePasses`, détruits à la suivante), `GpuDrivenFeature` (compteurs de l'image capturés à la déclaration, copies en attente) et `ViewsFeature` (placements de l'image déplacés dans la passe) gardent `passSignature() = nullopt` : dès que l'un d'eux est enregistré, le graphe entier est reconstruit à chaque image, comme avant M8. Pour les rendre gardables : créer les groupes dans `prepare` ou dans la passe, lire compteurs et placements à l'exécution, puis rendre une signature. | M10 |
+| G341 | Signature de plugin non vérifiée (A61 C) | Un plugin qui rend une signature fausse (oublie un handle importé, une liaison `addFrameBinding` ou une passe conditionnelle) exécute un graphe périmé sans erreur. Signature sur 64 bits (`mixPassSignature`) : collision théoriquement possible. Piste : en debug, redéclarer une image sur N dans un graphe témoin et comparer passes, accès et handles. | M10 |
+| G342 | Graphe gardé : coût restant par image (A61 C) | Un graphe gardé saute déclarations et compilation, mais `RenderGraph::execute` refait encore l'allocation des transitoires (vies, réserve) et le renderer la clé (`GraphKey`, une signature par plugin) à chaque image. | M10 |
+| G343 | Images en vol : vérifications manquantes (A61 G) | Tests automatiques hors écran seulement (`tests/rhi/frames_in_flight_tests.cpp`) ; la chaîne d'échange avec 1 ou 3 images en vol n'est vérifiée que par la démo fenêtrée sous Linux (Mesa, Intel Arc) ; Windows, macOS (MoltenVK) et Metal natif non vérifiés. Le nombre ne change pas à chaud (il faut recréer le périphérique). | M10 |
+| G344 | Images en vol : pas de réglage de la latence de présentation (A61 G) | `framesInFlight` borne l'avance du processeur sur le GPU ; le nombre d'images de la chaîne d'échange Vulkan (`minImageCount`) et le `glfwSwapInterval` restent ceux d'avant. Aucune mesure de latence entrée → affichage (seulement la durée des images). | M10 |
+
+## Ajouts de M8 lot L8, interface rechargée à chaud (G360 à G367)
+
+UI-08 : vues `.cui` compilées dans la bibliothèque de jeu en développement (`app::ViewHost`, `ui::replaceRoot`,
+`orosmoCuiView_<Vue>`), `make e2e-init` (`tools/e2e_view_reload.py`).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G360 | Windows et macOS non essayés | Linux x64 seulement en local. Sous Windows, `platform::runCommand` passe par `_popen` (`cmd.exe`), la commande du gabarit est `make game` (MSYS2 ; `mingw32-make` n'est pas cherché) et la structure de la vue n'est pas cachée (une DLL lie déjà ses propres définitions) ; sous macOS, la visibilité cachée et le contrôle `nm -m` des tables `constexpr` exportées ne sont vus que par la CI. Temps « .cui enregistré -> vue recréée » mesuré sous Linux seulement. | M8 L15 |
+| G361 | Structure de la vue changée : redémarrage | Un champ lié ajouté ou retiré (`@Mutable`, `@Observed`, `@Snapshot`) ou un bloc `@cui-cpp` modifié change `cui_bindings` : la vue n'est pas recréée (ancienne vue gardée, message) et il faut relancer le programme reconstruit (`make`). Une disposition changée DES TYPES liés (`HudState` dans `hud_state.hpp`) n'est pas détectée : comme pour les composants partagés (G331), il faut reconstruire l'hôte. | — |
+| G362 | État gardé limité | Seulement pour les widgets qui ont un identifiant, et seulement focus (et anneau), défilement (ScrollView, TextArea), section ouverte, onglet non lié. Les fenêtres surgissantes (liste déroulante, menu, sous-menu) se ferment ; survol, appui, curseur et sélection d'un champ de texte en cours d'édition repartent à zéro (la valeur liée, elle, est gardée). | M10 |
+| G363 | Construction lancée par le programme | Une seule commande à la fois, sur un thread (pas d'annulation ; une modification pendant la construction en relance une après elle) ; sortie lue à la fin (`lastBuildOutput`), pas en continu ; à l'arrêt, le programme attend la construction en cours. Lancé par `make run`, l'enfant hérite de `MAKEFLAGS` du make parent. Le gabarit déduit le dossier du projet et le type de construction du chemin de l'exécutable (`bin/<type>/`). | M10 |
+| G364 | Message affiché par une notification | L'erreur est montrée par `Ui::notify`, donc seulement si l'arbre a un widget `Notifications` (ajouté au gabarit) ; sinon, journal et sortie seulement. Résumé : les lignes contenant « error » (au plus 4). | — |
+| G365 | ~~`Application` sans `ViewHost`~~ | **Traité en L14** : `Application` possède l'hôte (`setView`, `views()`, `ApplicationSettings::views`), l'appelle à chaque image et le détruit avant le jeu et l'interface ; le programme de départ et le tutoriel 3D l'utilisent (tests « View host », « Application::setView »). | — |
+| G366 | Vues liées deux fois en développement | En debug/dev, les objets des vues sont liés dans la bibliothèque ET dans l'exécutable (compatibilité d'un `main.cpp` qui appelle `cui::build<Vue>` directement, sans rechargement ; depuis L14, aussi la vue liée d'`Application::setView` quand la bibliothèque de jeu manque) ; `make game` les recompile, l'exécutable n'est relié qu'au `make` suivant. `CUI_IN_GAME=0` revient aux vues seulement dans l'exécutable. Chaque vue ajoute un symbole exporté (limite PE de 65 535, G231). | — |
+| G367 | Version chargée après une construction en échec | Pendant une construction l'arbre n'est pas recréé, et la version du jeu chargée avant la fin d'un échec est ignorée (même celle d'une construction réussie juste avant, chargée pendant la suivante). Une bibliothèque liée par une commande en échec mais chargée APRÈS la fin (délai de `GameModule`) serait prise : `make game` l'efface quand le contrôle échoue, une commande personnalisée doit faire de même. | M10 |
+
+## Ajouts de M8 lot L14, programme de départ et tutoriel (G370 à G375)
+
+Programme de départ d'`orosmo init` et tutoriel 3D réécrits avec `app::Application` (mesure A77 : `docs/releases/M8.md`).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G370 | Tutoriel 3D compilé, pas lancé, par un test | `make e2e-init` extrait le code de la page (`tools/extract_doc_code.py`) et le compile dans un projet `orosmo init` ; il ne le lance pas : il faut un modèle glTF animé, absent du dépôt. Lancé à la main (Linux, OpenGL et Vulkan, sans fenêtre, avec le personnage `figure.gltf` de la démo `--scene anim`). Le contrôleur de caméra et le menu (entrées de la fenêtre) ne sont essayés qu'à la main. | M8 L15 |
+| G371 | Réglages du projet dépendants des options de compilation | `defaultGame`, `defaultViews` et `defaultSettings` (`orosmo/app/default_game.hpp`) sont des fonctions en ligne dont le corps dépend de `OROSMO_GAME_STATIC`, `OROSMO_CUI_RELOADABLE` et `DEBUG` : un seul fichier du programme doit les inclure (deux fichiers compilés avec des options différentes violeraient la règle de la définition unique). Même chose pour `Application::setView` (forme rechargeable ou liée, choisie par `OROSMO_CUI_RELOADABLE`). Le dossier du projet est déduit du chemin de l'exécutable (`<projet>/bin/<type>/`, G363). | — |
+| G372 | Bibliothèque de jeu absente en développement : cube immobile | Avant L14, le programme de départ faisait tourner le cube lui-même si `bin/<type>/game.<ext>` manquait. Il ne le fait plus : la rotation est la logique de jeu (`src/game/`, système `spin`), et sans elle le cube reste immobile (le HUD lié dans l'exécutable s'affiche, `Game logic not started` est journalisé). La version finale lie toujours le jeu. | — |
+| G373 | Rotation du cube calculée avec `std::sin` / `std::cos` | Le système `spin` du gabarit écrit la rotation du `Transform` à partir de l'angle (quaternion par `std::sin` et `std::cos`, dont l'arrondi dépend de la bibliothèque C). L'angle, lui, est exact ; seule la rotation affichée peut différer d'un ulp d'une plate-forme à l'autre. Un jeu dont la simulation doit être rejouable partout (règle 9, `tools/check_deterministic_math.py`) évite ces fonctions dans ses systèmes. | — |
+| G374 | Réglages de la façade non essayés avec une fenêtre | `ApplicationSettings::windowed` et `logFile` (lus par `Application::create` et `main`) ne sont pas couverts par les tests, qui tournent sans fenêtre et sans `main` ; non essayés avec une fenêtre, et le contenu de `logs/log.log` n'est pas vérifié. | M8 L15 |
+| G375 | `pauseAnimations` : modèles `kSingle` seulement | Les lecteurs des modèles animés `kSingle` sont arrêtés (avancés de 0 s) ; les foules `kCrowd` suivent le `time` de leurs composants, que le jeu doit cesser d'avancer lui-même. Le delta passé aux effets du renderer (`SceneRenderer::setDeltaTime`) n'est pas mis à zéro. | — |
+
+## Ajouts de M8 lot L15, finalisation (G380 à G384)
+
+Démo, documentation, release `v0.7.0` préparée (A79 L15).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G380 | Façade sans outils de debug ni manette | `app::Application` ne crée pas `ui::debug::DebugTools` (F12) et ne relie pas `platform::Gamepads` à `ui::GamepadNavigator` : un programme écrit avec la façade les ajoute lui-même (`onUi`, `ui()`, `window()`). La démo `apps/demo`, qui garde l'API bas niveau, a les deux. Les guides le disent (`guides/interface/outils-debug.md`, `navigation.md`, `application/facade.md`). | M10 |
+| G381 | Garde « pas de GPU » des tests limitée aux aides | `make demo-test-unit` pose `ENGINE_TEST_NO_GPU=1` ; seules les aides de test qui créent un périphérique (`tests/rhi/backends.hpp` `backendProbe`, `gpu_fixture.hpp` `Gpu`, `createApp` de `tests/app/application_tests.cpp`) échouent alors. Un test qui appellerait `rhi::createDevice` ou `Application::create` directement passerait la garde. Classement fait en L15 en traçant les ouvertures de `/dev/dri`, `libvulkan`, `libEGL`, `libGLX` de chaque suite de `demo-test-unit` (`strace`) : 9 suites en ouvraient ; 21 cas passés dans des suites `<suite>/gpu` et 4 suites entières (27 cas : `anim/animated-model`, `anim/crowd`, `assets/texture`, `app/application-gpu`) ajoutées à `GPU_TEST_SUITES`. | — |
+| G382 | Version 0.7.0 non publiée | Numéro mis à jour (`mk/config.mk`, `vcpkg.json`, `tools/*/Cargo.toml`, `tools/Cargo.lock`, `tools/vscode-cui/package.json`) et pages du site à `0.7.0` ; ni tag ni release (l'auteur ouvre la MR vers `main` et publie). D'ici là, `orosmo install 0.7.0` et l'exemple `--version 0.7.0` de la page Installation ne trouvent rien. | Auteur |
+| G383 | Site : CI non observée | `npm ci && npm run build && npm run check-links && npm run check-anchors` verts en local (Node 24) ; le job `site.yml` n'a pas tourné sur ces pages. Pages relues contre les en-têtes de `dev` (L15), pas contre Windows ni macOS. | M15 |
+| G384 | Vérification de fin de jalon sous Linux seulement | Clone propre vérifié sous Linux x64 (g++ 13.3, Mesa, Intel). Windows MinGW et macOS clang `-Werror` : par la CI de la MR seulement. | CI |
+
+## Revue CodeRabbit de la PR #37, documentation et outils (G410 à G412)
+
+Corrigés : `run-debug` / `run-dev` construisent la bibliothèque de jeu ; `check_deterministic_math.py` (commentaire séparateur,
+chaînes brutes), `extract_doc_code.py` (clôtures CommonMark), `perf_compare.py` (`--backend` réservé) ; exemple des outils de
+debug du site ; limites de `docs/UI_LANGUAGE.md`, `docs/02` (SIM-01, UI-09), `docs/05` (périmètre des 59 lignes), README de
+`scene` et `sim` ; G350 et G374 (aucun essai fenêtré n'avait été fait).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G410 | SIM-01 « Fait (limites) » (clos) | La revue proposait « Partiel » ou la correction de G291 : G291 est corrigé, la limite est retirée de `docs/02`. | M8 |
+| G411 | `run-debug` non couvert par un test | La dépendance `$(GAME_MODULE)` de `run-debug` / `run-dev` est vérifiée par `make -n`, aucun test automatique ne lance ces cibles (elles ouvrent une fenêtre). | — |
+| G412 | Extraction des blocs de code : sous-ensemble de CommonMark | `tools/extract_doc_code.py` ignore les clôtures indentées (listes, citations) : les pages extraites n'en ont pas pour leurs fichiers titrés. | — |
+
+| G390 | Générations de types de composants uniques dans le processus | Revue PR 37 (scene) : pour qu'une `View` ou un `ComponentId` ne lise jamais un autre type après `a = b`, la génération d'un emplacement de type vient d'un compteur atomique du processus (`src/scene/world.cpp` `nextSlotGeneration`, « Transform » : 0). Conséquences : un identifiant obtenu dans un monde n'est pas valable dans un monde construit indépendamment (seulement dans ses copies) ; la valeur dépend de l'ordre des enregistrements du processus (elle n'entre ni dans les sauvegardes ni dans les empreintes ; `ui::debug` l'utilise seulement comme signature) ; le compteur 32 bits reboucle après 2^32 enregistrements. | — |
+| G391 | `saveSceneFile` : remplacement atomique non vérifié hors Linux | La sauvegarde écrit un temporaire `…~<hex>` (création exclusive `O_EXCL` / `_wsopen_s`, pas plus long que la destination) puis `std::filesystem::rename` (POSIX `rename` ; `MoveFileExW` avec remplacement sous MSVC et libstdc++ MinGW) : non vérifié sous Windows ni macOS. Deux sauvegardes simultanées vers le même chemin ne partagent jamais un temporaire (création exclusive), le dernier renommage l'emporte ; la création exclusive sous Windows n'est pas compilée ici. L'échec à la fermeture (disque plein) n'a plus de test : `/dev/full.tmp` ne peut pas être créé, le test `/dev/full` couvre désormais l'échec d'ouverture ; les échecs d'ouverture du temporaire et de remplacement sont testés (`tests/scene/scene_file_tests.cpp`). | CI |
+| G392 | Exception d'un système : monde non restauré | Revue PR 37 (sim) : un système qui lève pendant `Simulation::step()` rend ses entrées à la file (non journalisées, rejouées au prochain `step`), mais les modifications du monde faites par les systèmes déjà passés restent (contrat documenté, pas de copie du monde à chaque pas). Rejouer après une exception peut donc diverger d'une partie sans exception. | — |
+| G393 | Rejeu écrit à la main | `Replay::stepNanoseconds` à 0 (rejeu construit en C++ ou document antérieur) n'est pas vérifié par `play`. Pendant `play`, une entrée qu'un système met en file pour un pas de l'intervalle est ignorée (le rejeu enregistré par `recording` la contient déjà) : un rejeu écrit à la main doit donc contenir aussi ces entrées régénérées. | — |
+
+## Revue CodeRabbit de la PR #37 (M8), app et moteur (G400 à G406)
+
+| ID | Manque | Détail | Jalon |
+|---|---|---|---|
+| G400 | Historique de mouvement par ordre de dessin | `app::SceneRenderSystem` donne aux entités qui partagent un maillage les emplacements d'historique (`Mesh::setHistorySlot`, REN-21) dans l'ordre de dessin de l'image : si une entité devient invisible, la suivante prend son emplacement et reçoit pour une image la matrice précédente de l'autre (vecteur de mouvement faux, TAA et flou de mouvement). Demande des emplacements liés à l'entité et invalidés à la réattribution. | M10 |
+| G401 | Paramètres de jeu non synchronisés avec `SimulationThread` | `ParamsFile::poll` / `reload` (appelés par `GameModule::update`) écrivent la valeur que `Params<T>::get` lit sans verrou : sûr quand la simulation tourne sur le thread de `GameModule::update` (façade `app`), course de données si des systèmes la lisent sur `sim::SimulationThread` pendant ce temps. Précondition écrite dans `params_host.hpp` ; un double tampon publié entre deux pas reste à faire. | M10 |
+| G402 | Foule non reconstruite par `AnimatedModel::reloadChanged` | `CrowdRenderer::create(context, model, …)` a son propre `RenderModel` : une texture recréée par le cache n'y est pas suivie (pas de `texturesStale` côté foule). Documenté dans `animated_model.hpp` : l'appelant recrée la foule (la démo le fait). | M10 |
+| G403 | Handles du graphe sans identité | `RenderGraph::setImportedTexture` / `setImportedBuffer` acceptent un handle logique d'un autre graphe, ou d'avant un `reset`, s'il tombe au même indice sur une ressource importée. Précondition écrite dans `render_graph.hpp` ; une identité (graphe, déclaration) dans `RgTexture` / `RgBuffer` reste à ajouter. | M10 |
+| G404 | `Mesh::setTextures` / `setMaterialGroup` entre un dessin et `endFrame` | Le groupe de textures POSSÉDÉ par le maillage est détruit tout de suite : un dessin déjà enregistré dans l'image le lie encore à `endFrame`. Le cas du matériau (`setMaterial`) est corrigé (le dessin retient le `PbrMaterial`) ; le groupe propre au maillage n'est pas partagé. Contournement : changer les textures hors d'une image. | M10 |
+| G405 | `init` rejeté qui a mis des entrées en file (**traité**, revue 2 de la PR #37 : `Simulation::restorePending` remet la seule file, test `tests/app/game_module_tests.cpp`) | `GameModule` retire ces entrées par `sim::Simulation::restore` (seule façon de remettre la file sans toucher au module `sim`) : dans ce cas seulement, le temps accumulé par `advance` repart de zéro et les événements non repris sont perdus. Une API de la simulation qui remet la seule file éviterait ces effets. | M10 |
+| G406 | Corrections de la revue sans test automatisé | Fenêtre fermée avant la capture (`Application::run` rend un échec), image composée gardée si l'image à une nouvelle taille échoue (`Application::frame`), référence de l'observateur prise avant la lecture de la bibliothèque (`GameModule::load`), chemins préférés pour `LoadLibraryExW` (Windows) : demandent une fenêtre redimensionnée, une course sur le disque ou Windows. Les cas de `tests/platform/window_input_tests.cpp` qui ouvrent une fenêtre restent dans la suite `platform/window`, déjà exclue des tests sans GPU ni fenêtre (`GPU_TEST_SUITES`) : pas d'exécutable séparé. | — |
+
+## Revue CodeRabbit de la PR #37, seconde vague (G420 à G422)
+
+Corrigés (avec tests) : temporaire unique et exclusif de `saveSceneFile` ; valeur JSON `discarded` refusée ; pas interrompu
+atomique pour la file et les événements (entrées mises en file et événements de la tentative abandonnés) ; rejeu interrompu
+repris par `step()` sans doublon ; tri des entrées de `loadState` en O(n log n) ; erreur et arrêt de `SimulationThread`
+publiés ensemble ; `init` rejeté : seule la file est remise (G405).
+
+| ID | Manque | Détail | Jalon |
+| --- | --- | --- | --- |
+| G420 | Glissement de l'application qui traverse les outils de debug | L'exemple du site (`guides/interface/outils-debug.md`) et la démo (`Game.cpp`) mettent `mouseDown` à faux quand `DebugTools::wantsMouse()` : un glissement commencé dans l'interface de l'application qui passe sur le panneau reçoit un faux relâchement, puis un nouvel appui en revenant. Garder le destinataire du geste jusqu'au relâchement physique demande une capture du pointeur entre deux `Ui` (non faite). | M10 |
+| G421 | `saveSceneFile` : erreur de vidange sans test automatisé | Le test qui forçait l'échec à la fermeture passait par un lien `<chemin>.tmp` vers `/dev/full` ; le temporaire n'ouvre plus de fichier existant, ce chemin (`out.close()` en échec → `kIo`, temporaire supprimé) n'a plus de test. Sans `std::ios::noreplace` (bibliothèque sans `__cpp_lib_ios_noreplace`), la création reste précédée d'un simple test d'existence (course possible avec un autre processus). | — |
+| G422 | Entrées mises en file pendant un pas invisibles jusqu'à sa fin | Pour qu'un pas interrompu ne laisse rien en file, `queueInput` appelé par un système les garde à part : `pendingInputs()`, `fingerprint()`, `capture()` lus pendant le pas ne les voient pas (ces deux derniers sont déjà partiels pendant un pas). | — |

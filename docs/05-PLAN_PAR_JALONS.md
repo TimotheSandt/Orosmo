@@ -187,9 +187,40 @@ Le moteur reste générique : l'atmosphère, les effets et le « monde riche » 
 - ECS-01 à ECS-03, SIM-01 (SIM-02 et SIM-03, accès aux données du monde et agents, sont hors moteur : A39).
 - GAME-01 à GAME-07 : module de jeu en bibliothèque dynamique, registre de gestionnaires, migration d'état, paramètres JSON, version finale statique.
 - **Simplicité d'utilisation de l'API (décidé par l'auteur le 2026-11-26, A77)** : aujourd'hui, il faut beaucoup de code pour obtenir un résultat (le tutoriel 3D du site en est la mesure). M8, qui ajoute la scène et la logique de jeu, est le jalon où l'API de haut niveau prend forme : on y simplifie l'usage courant (création de l'application, boucle, scène, chargement d'un modèle, lumière, caméra, interface) en s'appuyant sur les propositions A75.1 à A75.17. L'API bas niveau reste accessible. Mesure : le nombre de lignes du programme de départ et du tutoriel 3D, avant et après, noté dans le bilan du jalon.
+- **Thread de simulation optionnel (extension de SIM-01, décidé par l'auteur le 2026-11-26 ; « SIM-01 bis » n'est pas un identifiant de `docs/02`)** : la boucle de SIM-01 peut tourner sur un thread dédié, à cadence configurable (N pas par image de rendu, ou fréquence fixe indépendante du rendu, par exemple 20, 50 ou 120 Hz, réglée par `core::Config` au démarrage). Un seul point d'échange : un instantané immuable publié par la simulation (double tampon), lu par le rendu. Les événements de la simulation vers le rendu passent par une file à un producteur et un consommateur **à écrire** (`core::RingBuffer`, `ring_buffer.hpp`, est un tampon de mesures sans synchronisation, pas une telle file) ; l'`EventBus` reste propriété du thread principal. Les entrées du joueur sont datées par numéro de pas, ce qui garde la simulation rejouable aussi en mode thread. Le mode mono-thread déterministe de SIM-01 reste le défaut ; aucune donnée non sûre entre threads (`EventBus`, `Vfs`, `Config`, `FileWatcher`, `ArenaAllocator`) n'est partagée par deux threads (une arène par thread, remise à zéro à chaque pas). Preuve : test concurrent simulation + rendu propre sous TSan dans la CI ; ce job **n'existe pas encore** (la CI n'a qu'ASan+UBSan, `SANITIZE=address,undefined`) : un job `SANITIZE=thread`, construit à part car TSan est incompatible avec ASan, est à ajouter.
+- **Option `--shadow-quality low|medium|high` de la démo (décidée par l'auteur le 2026-11-26)** : n'existe pas encore. Trois niveaux de réglages d'ombres passés à `renderer::ShadowFeature::create` (son paramètre `ShadowSettings` existe déjà), `high` étant le défaut et égal à `ShadowSettings{}`, les réglages actuels du moteur (captures de référence inchangées). C'est une option de la démo, sans changement du moteur, liée aux ombres de M5 (REN-06 à REN-08) ; indépendante du reste de M8.
+  - `apps/demo/src/launch_options.hpp` : inclure `<orosmo/renderer/shadow_feature.hpp>` ; `enum class ShadowQuality : std::uint8_t { kLow, kMedium, kHigh }` ; champ `ShadowQuality shadowQuality` dans `LaunchOptions` ; `parseShadowQuality(std::string_view)` et `shadowSettingsForQuality(ShadowQuality)` → `renderer::ShadowSettings`.
+  - `apps/demo/src/launch_options.cpp` (`parseLaunchOptions`) : lire `--shadow-quality` (casse indifférente comme `--lighting`, valeur invalide refusée comme pour les autres options).
+  - Préréglages (à valider par une mesure) :
+
+    | Réglage | low | medium | high (défaut, `ShadowSettings{}`) |
+    |---|---|---|---|
+    | `cascadeResolution` | 256 | 512 | 1024 |
+    | `cascadeCount` | 2 | 3 | 4 |
+    | `atlasSize` | 1024 | 2048 | 4096 |
+    | `spotResolution` | 256 | 512 | 1024 |
+    | `pcfRadius` | 0 | 1 | 1 |
+    | `maxDistance` | 40 | 60 | 80 |
+    | `cascadeUpdateInterval` | {1,4,8,16} | {1,2,4,8} | {1,1,2,4} |
+    | `maxViewUpdatesPerFrame` | 4 | 6 | 8 |
+
+  - `apps/demo/src/Game/Game.h` et `Game.cpp` : champ `std::optional<renderer::ShadowSettings> shadowSettings` et son setter `setShadowSettings` (même schéma que `setTransparentShadow`) ; `Game::init()` passe `shadowSettings.value_or(ShadowSettings{})` à `ShadowFeature::create` ; `Game::samplePerformance()` affiche la qualité après « shadows on » dans la ligne des modes du panneau de performances.
+  - `apps/demo/src/main.cpp` : `game.setShadowSettings(demo::shadowSettingsForQuality(launchOptions.shadowQuality))` à côté de `setShadowsEnabled`.
+  - Aide (`printUsage`) : ajouter `[--shadow-quality low|medium|high]` dans la ligne d'usage et le décrire dans le paragraphe « Shadows ».
+  - Tests (`tests/demo/launch_options_tests.cpp`) : lecture (défaut `high`, chaque valeur, valeur invalide refusée), préréglages qui remplissent bien les champs, cohérence avec les défauts du moteur (`shadowSettingsForQuality(kHigh)` comparé aux champs du tableau dans `ShadowSettings{}`, sinon un changement de défaut côté moteur passerait inaperçu).
+
+### Lots de M8 (proposés par l'IA le 2026-11-26, validés avec modifications par l'agent validateur le même jour, `docs/QUESTIONS.md` A79 ; décisions d'architecture à confirmer par l'auteur)
+
+Une branche `feat/M8-L<n>-…` par lot, créée depuis `dev`, une PR vers `dev` par lot (CI verte, CodeRabbit). Détail (contenu, critères de fin, tailles, choix par défaut, reports proposés) : A79.
+
+- **L0** `--shadow-quality` de la démo · **L1** fondations (couches `scene`, `sim`, `app`, `game` dans `tools/layers.json`, `DynamicLibrary` et liaison du moteur avec la bibliothèque de jeu, `Random`, `SpscQueue`, job TSan) · **L2** entités et transformations (ECS-01, ECS-02) · **L3** sauvegarde de scène et boucle à pas fixe (ECS-03, SIM-01) · **L4** thread de simulation · **L5** module de jeu rechargeable (GAME-01, 02, 07) · **L6** migration, gestionnaires, paramètres (GAME-03, 04, 05) · **L7** construction incrémentale (GAME-06) · **L8** interface rechargée à chaud (UI-08) · **L9** navigation et accessibilité (UI-09) · **L10** outils de debug et inspecteur (UI-04, UI-10) · **L11** API de rendu simplifiée (A75.3 à A75.7, A75.15) · **L12a** API des contenus (A75.2, A75.11) · **L12b** petites fabriques et plateforme (A75.8 pour `platform`, A75.10, A75.12, A75.16) · **L13** façade d'application et rendu de scène (A75.1, reste d'A75.9, A73 point 3) · **L14** programme de départ et tutoriel réécrits · **L15** démo, documentation, release `v0.7.0` · **L16** performances placées en M8 par A61 (G trois images en vol, C graphe de passes mis en cache ; déplaçable en M10 par l'auteur).
+- **Ordre** : L1, avec L0, L9 et L11 en parallèle (L0 fusionné avant L11) ; puis L2, L12a après L11, L12b après L9 et L11 ; L3 et L10 après L2 ; L4 et L5 après L3, L16 après L11, L12a, L12b ; L6 et L7 après L5, puis L8 ; L13 après L3, L5, L12a, L12b ; L14 après L13, L6, L7, L8 ; L15 en dernier. Chemin critique : L1 → L2 → L3 → L5 → L7 → L8 → L14 → L15.
+- **Mesure A77** (lignes non vides hors commentaires `//`, commande dans A79) : avant, programme de départ d'`orosmo init` **403** lignes, tutoriel 3D **459** ; cible, **≤ 80** et **≤ 180**. Après L14 (2026-11-27) : **59** et **170** (`docs/releases/M8.md`). Les 59 lignes ne comptent pas `src/game/` du gabarit (53 lignes, dont la rotation du cube qui était dans `main.cpp` avant M8) : 112 avec lui, au-dessus de la cible `≤ 80` (A79).
 
 **Démo** : on modifie un fichier de logique pendant que le programme tourne, on compile, et le comportement change sans redémarrage ni perte d'état ; on modifie un fichier d'interface et l'écran se met à jour ; un petit programme de simulation (quelques centaines d'agents évoluant dans une scène de test) tourne sans fenêtre, rejouable avec la même graine.
-**Terminé** : cas de rechargement testés (changement de corps de fonction, ajout de champ, changement de hiérarchie avec repli sur sauvegarde/restauration) ; boucle à pas fixe testée ; rejouabilité vérifiée.
+**Terminé** : cas de rechargement testés (changement de corps de fonction, ajout de champ, changement de hiérarchie avec repli sur sauvegarde/restauration) ; boucle à pas fixe testée ; rejouabilité vérifiée ; cadence de simulation réglable testée (pas par image et fréquence fixe) et échange simulation/rendu propre sous TSan ; les trois niveaux de `--shadow-quality` testés avec `high` vérifié égal aux défauts du moteur.
+
+**Documentation du site et du wiki (exigé par l'auteur le 2026-11-26)** : M8 n'est terminé que si `site/` (site vitrine et wiki) couvre toutes ses fonctionnalités, côté utilisation et côté architecture interne, sans page périmée ; fait dans le lot L15 (`docs/QUESTIONS.md` A79). **Ne modifier que le nécessaire** (auteur, 2026-11-26) : seulement les pages concernées par un changement de M8 et les pages manquantes ; pas de réécriture, de réorganisation ni de retouche de style du reste.
 
 ## M9 · macOS et Metal
 
@@ -206,6 +237,7 @@ Le moteur reste générique : l'atmosphère, les effets et le « monde riche » 
 - Revue de documentation, schémas, guide de démarrage.
 - Nettoyage : TODO restants, code mort, avertissements.
 - Passe de performance : budgets de mémoire et de temps notés par système.
+- Qualité d'ombre selon l'importance des objets (A80, G290 ; demandé par l'auteur le 2026-11-26, **fonctionnement à confirmer par l'auteur avant d'être validé**) : ombre dédiée aux objets importants, maillage simplifié pour l'ombre des objets secondaires, distance d'ombre par caster.
 - Emballage : binaires des démos, README principal.
 
 **Terminé** : passe de confirmation de `docs/04` (§« Confirmation de la couverture ») sans écart non justifié.

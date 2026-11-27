@@ -298,6 +298,8 @@ bool Slider::onSecondaryClick(Ui &ui, glm::vec2)
     return true;
 }
 
+bool Slider::usesArrowKey(int key, bool fromGamepad) const { return !fromGamepad || key == kKeyLeft || key == kKeyRight; }
+
 void Slider::onKey(Ui &ui, int key)
 {
     const double step = step_ > 0.0 ? step_ : (max_ - min_) / 100.0;
@@ -420,6 +422,10 @@ void Dropdown::onRelease(Ui &ui, glm::vec2, bool inside)
         open(ui);
 }
 
+// Clavier : Haut et Bas changent l'option. Manette (revue PR #37) : ils déplacent le focus, comme pour le curseur ; liste
+// ouverte (A), ils changent l'option (`Ui::update` les donne au widget dont la liste est ouverte).
+bool Dropdown::usesArrowKey(int key, bool fromGamepad) const { return !fromGamepad && (key == kKeyUp || key == kKeyDown); }
+
 void Dropdown::onKey(Ui &ui, int key)
 {
     if (key == kKeyUp)
@@ -541,6 +547,8 @@ void TextField::onText(Ui &, std::string_view text)
     edit_.beginEdit(TextEditState::EditKind::kTyping, clean);
     edit_.insert(clean);
 }
+
+bool TextField::usesArrowKey(int key, bool) const { return key == kKeyLeft || key == kKeyRight; }
 
 void TextField::onKey(Ui &ui, int key)
 {
@@ -914,6 +922,18 @@ void Tabs::clearChildren()
     header_ = &emplace<HBox>();
 }
 
+void Tabs::saveRetained(RetainedState &state) const
+{
+    if (!selected_.get)
+        state.selected = selected(); // l'onglet montré (un indice hors des pages est borné)
+}
+
+void Tabs::restoreRetained(Ui &, const RetainedState &state)
+{
+    if (!selected_.get && state.selected) // pas d'événement : l'utilisateur n'a rien changé
+        local_ = *state.selected;
+}
+
 int Tabs::selected() const
 {
     const int n = static_cast<int>(pages_.size());
@@ -978,6 +998,14 @@ Section::Section(std::string title, bool expanded) : VBox("section"), expanded_(
     emplace<SectionHeader>(*this, std::move(title));
     body_ = &emplace<VBox>();
     body_->bindVisible([this] { return expanded_; });
+}
+
+void Section::saveRetained(RetainedState &state) const { state.expanded = expanded_; }
+
+void Section::restoreRetained(Ui &, const RetainedState &state)
+{
+    if (state.expanded)
+        expanded_ = *state.expanded;
 }
 
 glm::vec2 Section::measureContent(Ui &ui, glm::vec2 available, const Style &style)

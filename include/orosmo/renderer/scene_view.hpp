@@ -9,6 +9,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/camera.hpp"
 #include "orosmo/renderer/fullscreen_blit.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
@@ -39,6 +40,11 @@ class SceneView
   public:
     static core::Result<std::unique_ptr<SceneView>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                            const std::filesystem::path &shaderDirectory, std::uint32_t width, std::uint32_t height);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<SceneView>> create(const RenderContext &context, std::uint32_t width, std::uint32_t height)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory(), width, height);
+    }
     SceneRenderer &renderer() noexcept { return *renderer_; }
     Camera &camera() noexcept { return camera_; }
 
@@ -101,6 +107,11 @@ class ViewsFeature final : public RenderFeature
     static constexpr const char *kName = "views";
     static core::Result<std::unique_ptr<ViewsFeature>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                               const std::filesystem::path &shaderDirectory);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<ViewsFeature>> create(const RenderContext &context)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory());
+    }
     std::string name() const override { return kName; }
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
     // Les placements d'une image qui échoue avant la déclaration de la passe expirent aussi (`RenderFeature::frameEnded`).

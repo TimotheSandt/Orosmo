@@ -125,6 +125,7 @@ class Slider : public Widget
     void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
     bool onSecondaryClick(Ui &ui, glm::vec2 mouse) override;
     void onKey(Ui &ui, int key) override;
+    bool usesArrowKey(int key, bool fromGamepad) const override;
     // Distance (pixels) au-delà de laquelle un appui devient un glissement.
     static constexpr float kDragThreshold = 3.0f;
 
@@ -163,6 +164,7 @@ class Dropdown : public Widget
     bool focusable() const override { return true; }
     void onRelease(Ui &ui, glm::vec2 mouse, bool inside) override;
     void onKey(Ui &ui, int key) override;
+    bool usesArrowKey(int key, bool fromGamepad) const override;
     // Choix d'une option (clic dans la liste) : écrit la valeur, ferme la liste, émet onChange.
     void choose(Ui &ui, int index);
 
@@ -238,6 +240,7 @@ class TextField : public Widget
     void onPress(Ui &ui, glm::vec2 mouse) override;
     void onDrag(Ui &ui, glm::vec2 mouse) override;
     void onKey(Ui &ui, int key) override;
+    bool usesArrowKey(int key, bool fromGamepad) const override;
     void onText(Ui &ui, std::string_view text) override;
     void onFocusChanged(Ui &ui, bool focused) override;
 
@@ -329,6 +332,9 @@ class Tabs : public VBox
     void select(Ui &ui, int index);
     std::size_t pageCount() const noexcept { return pages_.size(); }
     void clearChildren() override; // retire les pages et leurs onglets ; l'en-tête reste
+    // UI-08 : l'onglet choisi est gardé quand il n'est pas lié (une liaison le garde déjà dans l'état de l'application).
+    void saveRetained(RetainedState &state) const override;
+    void restoreRetained(Ui &ui, const RetainedState &state) override;
 
   private:
     HBox *header_;
@@ -346,6 +352,8 @@ class Section : public VBox
     bool expanded() const noexcept { return expanded_; }
     void setExpanded(bool expanded) noexcept { expanded_ = expanded; }
     void clearChildren() override { body_->clearChildren(); } // vide le contenu ; l'en-tête et le corps restent
+    void saveRetained(RetainedState &state) const override;
+    void restoreRetained(Ui &ui, const RetainedState &state) override;
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;

@@ -8,6 +8,7 @@ Un module ne dépend que des modules **du dessous**. Jamais l'inverse. Une CI le
  apps/        terrain-viewer, terrain-gen, (futurs jeux)
  game/        logique de jeu (bibliothèque rechargeable en développement)
  ─────────────────────────────────────────────────────────────
+ app          Application, GameModule : assemble les modules ci-dessous (A79, à confirmer)
  sim          boucle à pas fixe, accès aux données du monde
  world        bruit, terrain, planètes, biomes, export
  ui           UIManager, widgets, thèmes, code généré par le langage d'interface
@@ -29,6 +30,7 @@ Notes :
 - `world` ne dépend **pas** de `renderer` : la génération fonctionne sans GPU (mode ligne de commande, simulation). Les calculs sur GPU passent par `rhi` (compute) et sont isolés dans `world/gpu/`.
 - `ui` produit des listes de dessin ; le plugin `renderer2d` les affiche.
 - `game/` ne dépend que de l'API publique du moteur et se compile en bibliothèque séparée (§13). Aucun module du moteur ne dépend de `game/`.
+- **`app` (A79, à confirmer par l'auteur)** : module proposé par le découpage de M8 (`docs/QUESTIONS.md` A79, choix 3) pour `Application` et `GameModule`, qui assemblent `platform`, `renderer`, `assets`, `anim`, `scene`, `ui` et `sim` ; aucune couche existante ne peut le faire sans dépendre d'une couche supérieure. `tools/layers.json` le place entre `sim` et `game/` (le lot L1 n'y met que la règle de dépendance ; le dossier du module est créé par le lot L5 qui le remplit). Si l'auteur refuse, `GameModule` va dans `sim` et la façade attend M10.
 - `platform` et `rhi` se rencontrent à un seul endroit : la création de la surface de fenêtre, par une fonction de `platform` appelée par le backend.
 
 ## 2. Arborescence
@@ -127,7 +129,7 @@ std::expected<std::unique_ptr<Device>, Error> createDevice(const DeviceDesc&, Wi
 ### Règles du RHI
 
 1. **Barrières et transitions de layout : le RHI les calcule.** Les couches hautes déclarent l'usage des ressources (lecture shader, cible de rendu, stockage, copie) ; le backend Vulkan en déduit les barrières ; OpenGL les traduit en `glMemoryBarrier` ; Metal les ignore au besoin. Aucune barrière manuelle dans le code du moteur.
-2. **Destruction différée.** `destroy` n'est effectif qu'une fois les images en vol terminées.
+2. **Destruction différée.** `destroy` n'est effectif qu'une fois les images en vol terminées. Leur nombre est réglé à la création du périphérique (`DeviceDesc::framesInFlight`, 1 à 3, défaut 2 : A61 G, M8).
 3. **Pas d'état implicite.** Chaque passe déclare ses attachements ; chaque pipeline porte tout son état fixe.
 4. **Les fonctionnalités optionnelles passent par `Capabilities`.** Le moteur demande, il ne suppose pas. Si une fonction est absente, le renderer choisit un chemin de repli ou refuse proprement avec un message clair.
 5. **Un seul modèle de liaison** (voir §4).
@@ -214,7 +216,7 @@ Règles :
 
 ## 11. Rendu : plugins, MRT, AOV, 2D
 
-**Plugins de rendu (render features).** Le renderer ne connaît que l'interface `RenderFeature` : `declarePasses(RenderGraphBuilder&)`, `prepare(const FrameData&)`, `declareAov()`. Maillages, terrain, 2D, et plus tard voxels et ray tracing sont des plugins. Un plugin accède aux capacités optionnelles via `Capabilities` et se désactive proprement si elles manquent.
+**Plugins de rendu (render features).** Le renderer ne connaît que l'interface `RenderFeature` : `declarePasses(RenderGraphBuilder&)`, `prepare(const FrameData&)`, `declareAov()`. Maillages, terrain, 2D, et plus tard voxels et ray tracing sont des plugins. Un plugin accède aux capacités optionnelles via `Capabilities` et se désactive proprement si elles manquent. *Graphe gardé (A61 C, M8, à confirmer) : le graphe compilé est réutilisé tant que plugins, cibles, tailles et `RenderFeature::passSignature()` ne changent pas ; un plugin sans signature le fait reconstruire à chaque image.*
 
 **Sorties multiples (MRT) et AOV.**
 - `RenderPassDesc` accepte jusqu'à `Capabilities::maxColorAttachments` cibles couleur (au moins 4 attendues) plus la profondeur, chacune avec format, `loadOp`, `storeOp`.
@@ -276,6 +278,7 @@ Chaque matériau porte un `BlendMode`. L'ordre de rendu dans la passe principale
 - **Thèmes** : jetons nommés, états des widgets, variantes ; chargement à chaud. Un widget ne contient jamais de couleur ou de taille en dur sauf surcharge explicite et locale.
 - **Rendu** : l'interface produit des listes de dessin (rectangles, texte, images, découpage, ordre `z`) ; elle ne connaît ni le RHI ni le backend.
 - **Rechargement à chaud** : en développement, le même arbre est interprété (ou chargé en bibliothèque dynamique) et mis à jour à l'enregistrement du fichier ; en version finale, le C++ généré est lié directement.
+  - **Réalisé en M8 (A79 choix 5, à confirmer par l'auteur)** : forme « bibliothèque dynamique », pas d'interpréteur. En debug et dev, le C++ généré des vues est compilé dans la bibliothèque de jeu ; `app::ViewHost` observe les `.cui`, lance `make game`, retrouve la vue par `orosmoCuiView_<Vue>` dans la version rechargée et recrée l'arbre en gardant focus, défilement et sections (`ui::replaceRoot`). Une erreur garde l'ancienne vue. Un changement des champs liés demande un redémarrage (G361). L'état lié aux vues vit côté programme.
 - **Documentation** : `docs/UI_LANGUAGE.md` (grammaire, exemples, limites, messages d'erreur), écrite à partir du code existant et validée par des tests de compilation.
 
 ## 13. Logique de jeu rechargeable
@@ -285,6 +288,7 @@ Chaque matériau porte un `BlendMode`. L'ordre de rendu dans la passe principale
 - Les systèmes s'enregistrent **par nom** à `init` et se désenregistrent au déchargement. Le moteur ne conserve ni pointeur vers du code de la bibliothèque, ni `std::function`, ni variable `static` définie dedans.
 - Changement du corps d'une fonction : rechargé sans perte. Ajout d'un champ : migration par réflexion. Changement de hiérarchie ou de fonctions virtuelles : sauvegarde de l'état, rechargement, restauration.
 - Windows : copie sous un nom unique avant chargement (le fichier d'origine reste libre). Linux et macOS : `dlopen` d'un chemin unique.
+  - **Réalisé en M8 (A79)** : copie sous un nom unique sur les trois systèmes (`platform::DynamicLibrary`). La bibliothèque ne contient pas de copie du moteur : l'exécutable exporte ses symboles (`-rdynamic` sous Linux, `-undefined dynamic_lookup` pour la bibliothèque sous macOS, `--export-all-symbols` et bibliothèque d'import sous MinGW). Module `app` (`GameModule`, `GameContext`, `OrosmoGameApi`), niveau `app` de `tools/layers.json` (choix 3, à confirmer). Changement de hiérarchie ou de type d'un champ : repli « sauvegarde/restauration » par nom de champ (`scene::World::migrateComponent`) ; `init` en échec : monde remis par copie et ancienne version gardée. Règle « aucun état dans la bibliothèque » vérifiée sur le binaire (`tools/check_game_static.py`).
 - Les paramètres de gameplay vivent en JSON rechargés instantanément.
 - Version finale : la logique est liée statiquement ; aucun code de rechargement n'est compilé.
 - Alternative écartée pour l'instant : un langage de script embarqué (Lua). À réévaluer si le C++ rechargé se révèle trop lent à compiler.

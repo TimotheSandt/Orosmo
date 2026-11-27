@@ -6,7 +6,9 @@
 #include <orosmo/renderer/antialiasing.hpp>
 #include <orosmo/renderer/debug_view.hpp>
 #include <orosmo/renderer/frame_pacing.hpp>
+#include <orosmo/renderer/shadow_feature.hpp>
 #include <orosmo/renderer/transparent_shadow.hpp>
+#include <orosmo/rhi/device.hpp>
 #include <orosmo/rhi/types.hpp>
 
 #include <cstdint>
@@ -31,6 +33,15 @@ enum class LightingMode : std::uint8_t
 {
     kForward,
     kForwardPlus,
+};
+
+// --shadow-quality low|medium|high (M8) : préréglage des ombres (ShadowSettings passé à ShadowFeature::create). high (défaut)
+// est égal à ShadowSettings{}, les réglages du moteur : captures de référence inchangées.
+enum class ShadowQuality : std::uint8_t
+{
+    kLow,
+    kMedium,
+    kHigh,
 };
 
 enum class UiMode : std::uint8_t
@@ -91,6 +102,10 @@ struct LaunchOptions
     // --direct-present on|off (défaut : on) : Vulkan dessine directement dans l'image de la fenêtre (G185) au lieu de copier une
     // image hors écran ; peut scintiller à très haute cadence sans vsync (docs/GAPS.md). Sans effet sur OpenGL et en headless.
     bool directPresentation = true;
+    // --frames-in-flight 1|2|3 (A61 G, défaut : 2, rhi::kDefaultFramesInFlight) : images préparées d'avance par le processeur.
+    std::uint32_t framesInFlight = orosmo::rhi::kDefaultFramesInFlight;
+    // --graph-cache on|off (A61 C, défaut : on) : graphe de passes gardé d'une image à l'autre (off : reconstruit à chaque image).
+    bool graphCache = true;
     // --gpu-timings auto|on|off (défaut : auto).
     GpuTimingsMode gpuTimings = GpuTimingsMode::kAuto;
     // --ui off|hud|full (défaut : hud).
@@ -104,6 +119,12 @@ struct LaunchOptions
     // --hover <id> / --click <id> : pointeur simulé pendant --capture (--click exige --capture-frames >= 3, --hover >= 2).
     std::string hoverId;
     std::string clickId;
+    // --focus <id> (UI-09) : focus clavier sur ce widget pendant --capture, anneau de focus visible (--capture-frames >= 2).
+    std::string focusId;
+    // --debug-tools (UI-04, UI-10) : outils de debug ouverts dès le départ (F12 les ouvre ou ferme) ; --debug-tab
+    // console|widgets|entities|profiler : onglet affiché (défaut : widgets).
+    bool debugTools = false;
+    std::string debugTab = "widgets";
     // --size WxH (défaut : 1280x720, minimum : 640x400).
     int width = 1280;
     int height = 720;
@@ -119,6 +140,8 @@ struct LaunchOptions
     bool freezeFrustum = false;
     // --shadows off|on (REN-06 à 08) : ombres en cascade avec cache. off (défaut) : captures de référence inchangées.
     bool shadows = false;
+    // --shadow-quality low|medium|high (M8) : préréglage des ombres. high (défaut) : ShadowSettings{}, captures inchangées.
+    ShadowQuality shadowQuality = ShadowQuality::kHigh;
     // --post none|hdr|bloom|full (défaut : none, captures de référence inchangées).
     PostMode post = PostMode::kNone;
     // --aa none|fxaa|smaa|taa (REN-19) : anticrénelage. none (défaut) : aucun plugin, captures de référence inchangées.
@@ -134,6 +157,12 @@ struct LaunchOptions
     // --transparent-shadow none|full|masked|dithered (REN-39) : ombre des vitres de --scene mixed avec --shadows on. Absent (défaut) :
     // les vitres ne sont pas des casters (comportement d'avant REN-39, captures de référence inchangées).
     std::optional<orosmo::renderer::TransparentShadowMode> transparentShadow;
+    // --sim-agents N [--seed S] [--sim-steps K] (SIM-01, A79 lot L3, choix 8) : mode simulation sans fenêtre NI périphérique
+    // graphique. N agents (1 à 1 000 000), graine S (défaut 42), K pas fixes (défaut 1000, au plus 10 000 000), puis
+    // l'empreinte de l'état est affichée et la démo quitte. 0 (défaut) : démo normale. --seed et --sim-steps exigent --sim-agents.
+    std::uint32_t simAgents = 0;
+    std::uint64_t simSeed = 42;
+    std::uint64_t simSteps = 1000;
 };
 
 // Nom affiché : « OpenGL », « Vulkan », « Metal ».
@@ -160,6 +189,16 @@ std::optional<PostMode> parsePostMode(std::string_view value) noexcept;
 std::string_view postModeName(PostMode mode) noexcept;
 // « forward », « forwardplus » / « forward+ » (casse indifférente).
 std::optional<LightingMode> parseLightingMode(std::string_view value) noexcept;
+
+// « low », « medium », « high » (casse indifférente).
+std::optional<ShadowQuality> parseShadowQuality(std::string_view value) noexcept;
+std::string_view shadowQualityName(ShadowQuality quality) noexcept;
+// Préréglage d'ombres (tableau de docs/05 M8) ; kHigh rend ShadowSettings{}. Les champs hors du tableau gardent les défauts du moteur.
+orosmo::renderer::ShadowSettings shadowSettingsForQuality(ShadowQuality quality) noexcept;
+// Égalité champ par champ (ShadowSettings n'a pas d'operator==, le moteur n'est pas modifié par cette option).
+bool sameShadowSettings(const orosmo::renderer::ShadowSettings &left, const orosmo::renderer::ShadowSettings &right) noexcept;
+// Nom du préréglage égal à `settings` (« low », « medium », « high »), sinon « custom » : affiché par le panneau de performances.
+std::string_view shadowQualityLabel(const orosmo::renderer::ShadowSettings &settings) noexcept;
 
 // Argument inconnu ou valeur invalide : erreur kInvalidArgument (message prêt à afficher).
 orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv);

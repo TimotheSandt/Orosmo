@@ -22,13 +22,16 @@ inférieur.
 | 3 | `renderer` | graphe de passes, plugins, scène, matériaux, lumières, ombres, effets, 2D | présent |
 | 4 | `assets` | import glTF, textures, cuisson | présent |
 | 5 | `anim` | squelettes, clips, machines à états, courbes, foules | présent |
-| 6 | `scene` | entités, composants, transformations | prévu (M8) |
-| 7 | `ui` | widgets, mise en page, thèmes, code généré par le langage `.cui` | présent |
-| 8 à 10 | `world`, `sim`, `game` | monde, boucle de simulation, logique de jeu rechargeable | prévus ou archivés |
-| 11 | `apps` | la démo `apps/demo`, les jeux | présent |
+| 6 | `scene` | entités, composants, hiérarchie, transformations, sauvegarde | présent (M8) |
+| 7 | `ui` | widgets, mise en page, thèmes, code généré par le langage `.cui`, outils de debug | présent |
+| 8 | `world` | monde procédural | archivé (branche `archive/procedural-world`) |
+| 9 | `sim` | boucle à pas fixe déterministe, rejeu, thread de simulation | présent (M8) |
+| 10 | `app` | façade `Application`, module de jeu rechargeable, hôte des vues ([détail](/interne/scene-sim-app/)) | présent (M8, niveau **à confirmer par l'auteur**) |
+| 11 | `game` | logique de jeu (`orosmo/game.hpp`, bibliothèque rechargeable en développement) | projets |
+| 12 | `apps` | la démo `apps/demo`, les jeux | présent |
 
 Chaque module présent est une bibliothèque statique : `libcore.a`, `libplatform.a`, `librhi.a`, `librenderer.a`,
-`libassets.a`, `libanim.a`, `libui.a`, plus `libthirdparty.a`. `ui` produit des listes de dessin (`renderer::DrawList`) que
+`libassets.a`, `libanim.a`, `libscene.a`, `libui.a`, `libsim.a`, `libapp.a`, plus `libthirdparty.a`. `ui` produit des listes de dessin (`renderer::DrawList`) que
 le renderer affiche. `platform` et `rhi` ne se rencontrent qu'à la création de la surface : la fenêtre donne un pointeur
 opaque (`Window::getWindow()`) que `rhi::SurfaceDesc::nativeWindow` reçoit.
 
@@ -36,7 +39,9 @@ La liste des en-têtes de chaque module est dans l'[index des en-têtes](/refere
 
 ## Quel niveau une application utilise
 
-Une application 3D se construit avec `platform`, `renderer`, `assets`, `anim` et `ui`. Du `rhi`, elle n'utilise que le
+Depuis M8, une application passe d'abord par la façade `app::Application`
+([guide](/guides/application/facade/)), qui crée et relie les objets ci-dessous. Sans elle, une application 3D se construit
+avec `platform`, `renderer`, `assets`, `anim` et `ui`. Du `rhi`, elle n'utilise que le
 strict nécessaire pour faire tourner une image : créer le `rhi::Device`, ouvrir un `CommandEncoder` par image, `submit` et
 `present`, et passer le périphérique (`device`) aux objets du renderer.
 
@@ -48,6 +53,9 @@ strict nécessaire pour faire tourner une image : créer le `rhi::Device`, ouvri
 | Charger un modèle, des textures | `assets` | `loadGltf`, `RenderModel`, `TextureCache` |
 | Animer | `anim` | `Clip`, `StateMachine`, `SkinnedModel`, `CrowdRenderer` |
 | Interface | `ui` | `Ui`, widgets, thèmes, vues `.cui` |
+| Entités, sauvegarde | `scene` | `World`, `Transform`, `saveSceneFile` |
+| Simulation à pas fixe, rejeu | `sim` | `Simulation`, `SimulationThread` |
+| Tout assembler, logique rechargeable | `app` | `Application`, `GameModule`, `ViewHost` |
 | Nouvel effet de rendu | `renderer` + `rhi` | `RenderFeature`, `RenderGraph`, pipelines et groupes de liaison |
 
 Les handles, pipelines et groupes de liaison du RHI ne servent directement qu'à deux endroits : un plugin de rendu
@@ -96,14 +104,16 @@ tools/                            compilateur .cui, outil orosmo, SDK, contrôle
 
 ## Contrôles automatiques
 
-`make check` lance les quatre contrôles ; la CI les exécute à chaque poussée et ils sont bloquants.
+`make check` lance les contrôles ci-dessous ; la CI les exécute à chaque poussée et ils sont bloquants.
 
 | Cible | Script | Ce qui échoue |
 | --- | --- | --- |
 | `make check-layers` | `tools/check_layers.py --strict` | Un `#include` vers un module de niveau supérieur (règles de `tools/layers.json`). |
 | `make check-api` | `tools/check_api_isolation.py --strict` | `gl*`, `GL_*`, `Vk*`, `vk*`, `VK_*`, `MTL*`, `glfw*`, `<vulkan/…>`, `<GL/…>`, `<windows.h>`… hors de `src/rhi/`, `src/platform/` et `include/orosmo/platform/`. |
-| `make check-headers` | `tools/check_headers.py --strict` | Un en-tête public qui ne se compile pas seul. |
+| `make check-headers` | `tools/check_headers.py --strict` | Un en-tête public qui ne se compile pas seul, ou un en-tête léger (`orosmo/game.hpp`) qui tire un fichier interdit. |
 | `make check-repo` | `tools/check-repo.sh` | Binaire suivi, collision de casse, fin de ligne CRLF. |
+| `make check-determinism` | `tools/check_deterministic_math.py` | Horloge, `rand()` ou fonction transcendante dans le code rejoué (`src/sim`, `src/scene`, scénario de la démo). |
+| `make check-game-static` | `tools/check_game_static.py` | État dans une bibliothèque de jeu (variable globale modifiable, `static`, `thread_local`), lu sur le binaire. |
 
 ```bash
 make check

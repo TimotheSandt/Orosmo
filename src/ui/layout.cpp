@@ -298,6 +298,15 @@ void Overlay::arrange(Ui &ui, const Rect &content, const Style &)
 
 void ScrollView::setScroll(float y) noexcept { scroll_ = std::clamp(y, 0.0f, maxScroll_); }
 
+void ScrollView::saveRetained(RetainedState &state) const { state.scroll = scroll_; }
+
+// Avant la première mise en page, la borne n'est pas connue : `arrange` ramène la valeur dans [0, maxScroll].
+void ScrollView::restoreRetained(Ui &, const RetainedState &state)
+{
+    if (state.scroll)
+        scroll_ = std::max(0.0f, *state.scroll);
+}
+
 glm::vec2 ScrollView::measureContent(Ui &ui, glm::vec2 available, const Style &style)
 {
     glm::vec2 size{0.0f};

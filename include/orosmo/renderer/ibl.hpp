@@ -20,6 +20,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/pipeline_cache.hpp"
 #include "orosmo/renderer/render_feature.hpp"
@@ -131,6 +132,11 @@ class IblFeature final : public RenderFeature
     // Crée les ressources (environnement noir par défaut, table BRDF). kUnsupported sans compute.
     static core::Result<std::unique_ptr<IblFeature>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                             std::filesystem::path shaderDirectory, IblSettings settings = {});
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<IblFeature>> create(const RenderContext &context, IblSettings settings = {})
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory(), settings);
+    }
     ~IblFeature() override;
     IblFeature(const IblFeature &) = delete;
     IblFeature &operator=(const IblFeature &) = delete;
@@ -141,6 +147,8 @@ class IblFeature final : public RenderFeature
     // relatives à elle (soustraction en double), le bloc est réécrit quand elle change.
     core::Result<> prepare(const FrameData &frame) override;
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
+    // A61 C : textures, échantillonneurs et bloc liés au groupe 0 (le graphe est reconstruit quand l'un d'eux change).
+    std::optional<std::uint64_t> passSignature() const override;
 
     // Remplace l'environnement : envoi de l'image, préfiltrage en compute (soumis tout de suite), irradiance SH. kInvalidArgument
     // (propagé de `projectEquirect`) pour une image vide ou trop petite pour les neuf coefficients SH (ex. 1 × 1) ; un
@@ -160,6 +168,7 @@ class IblFeature final : public RenderFeature
     GpuIblBlock gpuBlock() const noexcept;
 
   private:
+    core::Result<> uploadParams();
     IblFeature(rhi::Device &device, PipelineCache &pipelines, IblSettings settings) : device_(device), pipelines_(pipelines), settings_(settings) {}
     core::Result<> createStaticResources(ShaderLibrary &library, const std::filesystem::path &shaderDirectory);
     core::Result<> prefilter(rhi::TextureHandle equirect);

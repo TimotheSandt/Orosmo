@@ -279,6 +279,8 @@ bool RangeSlider::onSecondaryClick(Ui &ui, glm::vec2)
     return true;
 }
 
+bool RangeSlider::usesArrowKey(int key, bool fromGamepad) const { return !fromGamepad || key == kKeyLeft || key == kKeyRight; }
+
 void RangeSlider::onKey(Ui &ui, int key)
 {
     const double step = step_ > 0.0 ? step_ : (max_ - min_) / 100.0;
@@ -291,6 +293,8 @@ void RangeSlider::onKey(Ui &ui, int key)
         handle_ = 0;
     else if (key == kKeyEnd)
         handle_ = 1;
+    else if (key == kKeyEnter)
+        handle_ = 1 - handle_; // UI-09 : Entrée (A à la manette, qui n'a ni Début ni Fin) passe à l'autre poignée
 }
 
 glm::vec2 RangeSlider::measureContent(Ui &ui, glm::vec2, const Style &style)
@@ -481,6 +485,15 @@ void TextArea::revealCaret(const Ui &ui)
     scroll_ = std::max(scroll_, 0.0f);
 }
 
+void TextArea::saveRetained(RetainedState &state) const { state.scroll = scroll_; }
+
+// Borné par `arrange` à la mise en page suivante (le nombre de rangées n'est connu qu'alors).
+void TextArea::restoreRetained(Ui &, const RetainedState &state)
+{
+    if (state.scroll)
+        scroll_ = std::max(0.0f, *state.scroll);
+}
+
 void TextArea::onFocusChanged(Ui &ui, bool focused)
 {
     Widget::onFocusChanged(ui, focused);
@@ -522,6 +535,8 @@ void TextArea::onText(Ui &ui, std::string_view text)
     desiredX_ = -1.0f;
     changed(ui);
 }
+
+bool TextArea::usesArrowKey(int, bool) const { return true; }
 
 void TextArea::onKey(Ui &ui, int key)
 {

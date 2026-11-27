@@ -103,6 +103,10 @@ struct InputFrame
         std::string text; // UTF-8, si key == kKeyNone
     };
     std::vector<Event> events;
+    // UI-09 : commandes de navigation d'une manette (GamepadNavigator), traitées après les touches : flèches (déplacement du focus
+    // vers le widget voisin, ou valeur d'un widget qui les garde même à la manette : curseur horizontal), Tab (Maj : en arrière),
+    // Entrée (activer), Échap (annuler). Sans focus, une flèche le donne au premier widget de l'ordre de tabulation.
+    std::vector<Event> navigation;
 };
 
 // Actions appelées par leur nom (docs/03 §12, mode développement) : un événement du langage d'interface qui nomme une fonction
@@ -143,6 +147,12 @@ class Ui
     void setRoot(std::unique_ptr<Widget> root);
     Widget *root() const noexcept { return root_.get(); }
     Widget *find(std::string_view id) const noexcept;
+    // Vrai pendant `update` (un `setRoot` y est différé à la fin de l'image).
+    bool updating() const noexcept { return updating_; }
+    // Garde `keep` vivant jusqu'à l'application d'un `setRoot` différé (fin de `update`, après la destruction de l'ancien arbre) ;
+    // hors de `update`, relâché tout de suite. Ex. bibliothèque qui a construit un arbre retiré pendant `update` (revue PR #37).
+    // Relâchés dans l'ordre inverse des appels.
+    void retainUntilRootReplaced(std::shared_ptr<const void> keep);
 
     void update(const InputFrame &input, glm::vec2 viewport);
     void draw(renderer::DrawList &list) const;
@@ -159,8 +169,17 @@ class Ui
     // Nul si le widget focalisé a été détruit depuis (retiré par `clearChildren` sans `forget`).
     Widget *focused() const noexcept { return focusedAlive_.expired() ? nullptr : focused_; }
     void focus(Widget *widget);
-    // Ordre de tabulation : widgets visibles, actifs et `focusable`, dans l'ordre de l'arbre.
+    // Ordre de tabulation (UI-09) : widgets visibles, actifs et focalisables (`Widget::canTakeFocus`) ; d'abord ceux dont
+    // `tabIndex` est positif, par valeur croissante, puis ceux à 0, dans l'ordre de l'arbre ; un `tabIndex` négatif sort de l'ordre
+    // de tabulation (le clic et les flèches l'atteignent encore). Fenêtre modale ouverte : ses widgets seulement.
     void focusNext(bool backwards = false);
+    // Navigation par flèches (UI-09) : donne le focus au widget focalisable le plus proche dans la direction de `key` (kKeyLeft,
+    // kKeyRight, kKeyUp, kKeyDown), sans boucler ; faux si aucun (le focus reste) ou sans focus.
+    bool moveFocus(int key);
+    // Focus visible : l'anneau de focus du thème (style "focusRing") est dessiné autour du widget focalisé. Vrai après une
+    // navigation au clavier ou à la manette (Tab, flèches), faux après un clic : la souris ne montre pas l'anneau.
+    bool focusVisible() const noexcept { return focusVisible_; }
+    void setFocusVisible(bool visible) noexcept { focusVisible_ = visible; }
 
     // Écriture différée (liaison) ou événement : appelé à la fin de `update`, dans l'ordre.
     void defer(std::function<void()> action);
@@ -222,6 +241,9 @@ class Ui
     void setHovered(Widget *target);
     void flushDeferred();
     void collectFocusable(Widget &w, std::vector<Widget *> &out) const;
+    // Widgets que Tab et les flèches parcourent : ceux de la fenêtre modale ouverte, sinon de l'arbre (ordre de l'arbre).
+    std::vector<Widget *> focusScope() const;
+    void drawFocusRing(renderer::DrawList &list) const;
     void layoutPopups();
     struct PopupEntry
     {
@@ -248,6 +270,7 @@ class Ui
     const Font *font_;
     ThemeHost themes_;
     ActionRegistry actions_;
+    std::vector<std::shared_ptr<const void>> retained_; // retainUntilRootReplaced ; déclaré avant root_ : détruit après lui
     std::unique_ptr<Widget> root_;
     std::unique_ptr<Widget> pendingRoot_;
     bool hasPendingRoot_ = false; // une demande en attente, même pour une racine nulle
@@ -274,6 +297,7 @@ class Ui
     bool secondaryWasDown_ = false;
     bool shift_ = false;
     bool wantsMouse_ = false;
+    bool focusVisible_ = false;
     float time_ = 0.0f;
     float hoverTime_ = 0.0f;
     float tooltipDelay_ = 0.6f;

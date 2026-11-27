@@ -18,6 +18,7 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -30,6 +31,14 @@ namespace orosmo::ui
 
 class Ui;
 class Widget;
+
+// UI-08 : état d'interaction d'un widget gardé d'un arbre à l'autre (`Widget::saveRetained`). Champs vides : rien à garder.
+struct RetainedState
+{
+    std::optional<float> scroll{}; // défilement vertical, en pixels (borné à la mise en page suivante)
+    std::optional<bool> expanded{}; // section ouverte
+    std::optional<int> selected{};  // onglet choisi
+};
 
 struct Rect
 {
@@ -114,6 +123,18 @@ struct Event
 };
 
 using Handler = std::function<void(const Event &)>;
+
+// `.tabIndex(expr)` du langage d'interface : valeur bornée à `int`, 0 si elle n'est pas finie (aucune conversion indéfinie).
+inline int tabIndexFrom(double value) noexcept
+{
+    if (!std::isfinite(value))
+        return 0;
+    if (value <= static_cast<double>(std::numeric_limits<int>::min()))
+        return std::numeric_limits<int>::min();
+    if (value >= static_cast<double>(std::numeric_limits<int>::max()))
+        return std::numeric_limits<int>::max();
+    return static_cast<int>(value);
+}
 
 // Appelle `f(event)` si `f` accepte un `const Event &`, sinon `f()` : le code généré par le langage d'interface lie ainsi une
 // fonction C++ quelle que soit sa signature (avec ou sans l'événement).
@@ -287,6 +308,23 @@ class Widget
     bool pressed() const noexcept { return pressed_; }
     bool focused() const noexcept { return focused_; }
 
+    // ── Navigation au clavier et à la manette (UI-09) ──
+    // Ordre de tabulation (Ui::focusNext) : positif d'abord, par valeur croissante ; 0 (défaut) dans l'ordre de l'arbre ; négatif
+    // hors de l'ordre de tabulation (le clic et les flèches l'atteignent encore).
+    Widget &setTabIndex(int index) noexcept { tabIndex_ = index; return *this; }
+    int tabIndex() const noexcept { return tabIndex_; }
+    // Faux : le widget ne prend jamais le focus (ni Tab, ni flèches, ni clic), même s'il le pourrait (`focusable`).
+    Widget &setFocusable(bool allowed) noexcept { focusAllowed_ = allowed; return *this; }
+    bool canTakeFocus() const { return focusAllowed_ && focusable(); }
+    // Vrai si le widget et tous ses parents sont visibles (`visible` ne regarde que le widget).
+    bool visibleInTree() const
+    {
+        for (const Widget *w = this; w != nullptr; w = w->parent_)
+            if (!w->visible())
+                return false;
+        return true;
+    }
+
     // ── Événements ──
     Widget &onClick(Handler h) { handlers_[0] = std::move(h); return *this; }
     Widget &onChange(Handler h) { handlers_[1] = std::move(h); return *this; }
@@ -331,6 +369,10 @@ class Widget
     virtual Widget *detached() const noexcept { return nullptr; }
     // Le widget garde la touche Tab pour lui (éditeur de texte) au lieu de passer le focus.
     virtual bool wantsTab() const { return false; }
+    // Le widget focalisé garde cette flèche (kKeyLeft...) pour lui (curseur, champ de texte, liste) au lieu de passer le focus au
+    // voisin (UI-09). `fromGamepad` : commande de la croix ou du stick d'une manette (un curseur horizontal y laisse Haut et Bas
+    // à la navigation).
+    virtual bool usesArrowKey(int key, bool fromGamepad) const;
     virtual bool onWheel(Ui &ui, glm::vec2 wheel);
     virtual void onKey(Ui &ui, int key);                // orosmo::ui::Key
     virtual void onText(Ui &ui, std::string_view text); // UTF-8 saisi
@@ -339,6 +381,13 @@ class Widget
     // de menu, bouton). L'interface le propose aux widgets visibles et actifs, dans l'ordre de l'arbre.
     virtual bool onShortcut(Ui &ui, std::string_view shortcut);
 
+    // UI-08 : état d'interaction gardé quand l'arbre est recréé (rechargement à chaud d'une vue `.cui`, `ui::replaceRoot`), par
+    // identifiant de widget. `saveRetained` écrit ce que le widget veut garder (rien par défaut) ; `restoreRetained` le reprend sur
+    // le widget de même identifiant du nouvel arbre, avant sa première mise en page. ScrollView et TextArea gardent le défilement,
+    // Section l'état ouvert, Tabs l'onglet choisi.
+    virtual void saveRetained(RetainedState &state) const;
+    virtual void restoreRetained(Ui &ui, const RetainedState &state);
+
     // Programme l'événement : il est appelé à la fin de `Ui::update`, après les écritures différées qui le précèdent.
     void emit(Ui &ui, EventKind kind, bool active = true);
     // Appelle le gestionnaire tout de suite (relais d'un événement d'un enfant, déjà différé).
@@ -346,6 +395,11 @@ class Widget
 
     // Fond, bordure et ombre du style sur `r` (rien si le fond et la bordure sont transparents).
     static void drawBox(renderer::DrawList &list, const Rect &r, const Style &style);
+
+    // Jeton de durée de vie : il expire à la destruction du widget. Une action différée (`Ui::defer`) qui touche au widget le
+    // vérifie d'abord (un gestionnaire exécuté avant elle dans la même image a pu retirer le widget : `clearChildren`). Il sert
+    // aussi d'identité stable (comparaison par `owner_before`), sans risque de confusion avec un widget recréé à la même adresse.
+    std::weak_ptr<char> lifetimeToken() const noexcept { return lifetime_; }
 
   protected:
     // Taille du contenu (sans la marge intérieure du style) quand `available` est offert au contenu.
@@ -365,10 +419,6 @@ class Widget
     static void drawText(const Ui &ui, renderer::DrawList &list, std::string_view text, const Rect &r, const Style &style, Align align,
                          const Color *color = nullptr);
     static Rect inset(const Rect &r, float padding) noexcept;
-    // Jeton de durée de vie : il expire à la destruction du widget. Une action différée (`Ui::defer`) qui touche au widget le
-    // vérifie d'abord (un gestionnaire exécuté avant elle dans la même image a pu retirer le widget : `clearChildren`).
-    std::weak_ptr<char> lifetimeToken() const noexcept { return lifetime_; }
-
     Rect rect_;
     glm::vec2 measured_{0.0f};
 
@@ -397,6 +447,8 @@ class Widget
     bool hovered_ = false;
     bool pressed_ = false;
     bool focused_ = false;
+    bool focusAllowed_ = true;
+    int tabIndex_ = 0;
     mutable bool overrideWarned_ = false;
 };
 

@@ -126,8 +126,8 @@ Toujours tester `r` avant.
 
 ## Modules qui n'utilisent pas encore Result
 
-Une partie du code repris des versions précédentes garde son ancien style : `platform::Window::init` rend un `int`
-(0 = succès), `Window::newFrame` un `bool`, `ui::TextRenderer::init` et `loadFont` un `bool`, et `core::bench::writeReport`
+Une partie du code repris des versions précédentes garde son ancien style : `Window::newFrame` rend un `bool`
+(`platform::Window::init` rend un `Result<>` depuis M8), `ui::TextRenderer::init` et `loadFont` un `bool`, et `core::bench::writeReport`
 lance `std::runtime_error` si le fichier ne s'ouvre pas.
 
 ## Assertions

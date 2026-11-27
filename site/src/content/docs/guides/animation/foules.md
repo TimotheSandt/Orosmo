@@ -72,6 +72,13 @@ Pièges :
 - `setAgents` se rappelle à chaque image avant `draw` ; `draw` ne se rappelle qu'une fois par image, car les tampons sont réécrits au `setAgents` suivant.
 - `draw` s'appelle entre `beginFrame`/`setCamera` et `endFrame`, comme les autres dessins.
 
+### Depuis un AnimatedModel (depuis M8)
+
+`an::CrowdRenderer::create(context, animatedModel)` reprend le modèle et les clips d'un
+[`AnimatedModel`](/guides/animation/squelettes/#en-cinq-lignes--animatedmodel) ; chaque agent donne alors un indice de clip
+et un temps, et la foule calcule les poses : `setAgents(worlds, clips, times)`. Le contexte et le modèle doivent vivre plus
+longtemps que la foule. Même image qu'une foule construite à la main (`tests/anim/animated_model_tests.cpp`).
+
 ## Options
 
 `CrowdRenderer::create` prend un `CrowdOptions` en dernier argument.

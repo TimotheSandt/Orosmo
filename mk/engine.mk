@@ -12,7 +12,7 @@
 #
 # ── Output ────────────────────────────────────────────────────────────────────
 #   lib/<build>/libui.a  lib/<build>/libcore.a  lib/<build>/libplatform.a
-#   lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libassets.a  lib/<build>/libanim.a  lib/<build>/libthirdparty.a
+#   lib/<build>/librhi.a  lib/<build>/librenderer.a  lib/<build>/libassets.a  lib/<build>/libanim.a  lib/<build>/libscene.a  lib/<build>/libsim.a  lib/<build>/libapp.a  lib/<build>/libthirdparty.a
 #
 # ── Distribution (make dist) ─────────────────────────────────────────────────
 #   dist/pkg-<platform>/          — staging, zipped into dist/orosmo-pkg-<platform>.zip
@@ -158,11 +158,14 @@ LIB_RHI        := $(LIB_DIR)/$(BUILD_TYPE)/librhi.a
 LIB_RENDERER   := $(LIB_DIR)/$(BUILD_TYPE)/librenderer.a
 LIB_ASSETS     := $(LIB_DIR)/$(BUILD_TYPE)/libassets.a
 LIB_ANIM       := $(LIB_DIR)/$(BUILD_TYPE)/libanim.a
+LIB_SCENE      := $(LIB_DIR)/$(BUILD_TYPE)/libscene.a
+LIB_SIM        := $(LIB_DIR)/$(BUILD_TYPE)/libsim.a
+LIB_APP        := $(LIB_DIR)/$(BUILD_TYPE)/libapp.a
 LIB_THIRDPARTY := $(LIB_DIR)/$(BUILD_TYPE)/libthirdparty.a
 
-ENGINE_LIB_NAMES := libui.a libcore.a libplatform.a librhi.a librenderer.a libassets.a libanim.a libthirdparty.a
+ENGINE_LIB_NAMES := libui.a libcore.a libplatform.a librhi.a librenderer.a libassets.a libanim.a libscene.a libsim.a libapp.a libthirdparty.a
 
-ENGINE_LIBS := $(LIB_UI) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_ASSETS) $(LIB_ANIM) $(LIB_THIRDPARTY)
+ENGINE_LIBS := $(LIB_UI) $(LIB_CORE) $(LIB_PLATFORM) $(LIB_RHI) $(LIB_RENDERER) $(LIB_ASSETS) $(LIB_ANIM) $(LIB_SCENE) $(LIB_SIM) $(LIB_APP) $(LIB_THIRDPARTY)
 
 # ── Per-subsystem sources ─────────────────────────────────────────────────────
 UI_SRCS         := $(shell find $(LIBRARIES_SRC_DIR)/ui         -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
@@ -172,6 +175,9 @@ Rhi_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/rhi        -type f \( -name
 Renderer_SRCS   := $(shell find $(LIBRARIES_SRC_DIR)/renderer   -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Assets_SRCS     := $(shell find $(LIBRARIES_SRC_DIR)/assets     -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 Anim_SRCS       := $(shell find $(LIBRARIES_SRC_DIR)/anim       -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+Scene_SRCS      := $(shell find $(LIBRARIES_SRC_DIR)/scene      -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+Sim_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/sim        -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
+App_SRCS        := $(shell find $(LIBRARIES_SRC_DIR)/app        -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 ThirdParty_SRCS := $(shell find $(LIBRARIES_SRC_DIR)/ThirdParty -type f \( -name "*.cpp" -o -name "*.c" \) 2>/dev/null)
 
 obj_from_src = \
@@ -185,9 +191,12 @@ Rhi_OBJS        := $(call obj_from_src,$(Rhi_SRCS))
 Renderer_OBJS   := $(call obj_from_src,$(Renderer_SRCS))
 Assets_OBJS     := $(call obj_from_src,$(Assets_SRCS))
 Anim_OBJS       := $(call obj_from_src,$(Anim_SRCS))
+Scene_OBJS      := $(call obj_from_src,$(Scene_SRCS))
+Sim_OBJS        := $(call obj_from_src,$(Sim_SRCS))
+App_OBJS        := $(call obj_from_src,$(App_SRCS))
 ThirdParty_OBJS := $(call obj_from_src,$(ThirdParty_SRCS))
 
-ALL_ENGINE_OBJS := $(UI_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(Assets_OBJS) $(Anim_OBJS) $(ThirdParty_OBJS)
+ALL_ENGINE_OBJS := $(UI_OBJS) $(Core_OBJS) $(Platform_OBJS) $(Rhi_OBJS) $(Renderer_OBJS) $(Assets_OBJS) $(Anim_OBJS) $(Scene_OBJS) $(Sim_OBJS) $(App_OBJS) $(ThirdParty_OBJS)
 
 # ── Git remote detection ──────────────────────────────────────────────────────
 # Reads the 'origin' remote and extracts the host and owner/repo slug.
@@ -331,6 +340,29 @@ $(LIB_ANIM): $(Anim_OBJS) mk/engine.mk
 	$(ORS_Q)$(AR) rcs $@ $(Anim_OBJS)
 	$(ors_end)
 
+# Archive recréée (rm) : `ar rcs` garderait les objets de fichiers supprimés.
+$(LIB_SCENE): $(Scene_OBJS) mk/engine.mk
+	@mkdir -p "$(dir $@)"
+	$(ORS_Q)rm -f $@
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $(Scene_OBJS)
+	$(ors_end)
+
+$(LIB_SIM): $(Sim_OBJS) mk/engine.mk
+	@mkdir -p "$(dir $@)"
+	$(ORS_Q)rm -f $@
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $(Sim_OBJS)
+	$(ors_end)
+
+# A79 L5 : game_reloader.o (bibliothèque dynamique, FileWatcher) reste un objet à part : une version finale statique ne le lie pas.
+$(LIB_APP): $(App_OBJS) mk/engine.mk
+	@mkdir -p "$(dir $@)"
+	$(ORS_Q)rm -f $@
+	$(call ors_link,AR [$(BUILD_TYPE)])
+	$(ORS_Q)$(AR) rcs $@ $(App_OBJS)
+	$(ors_end)
+
 $(LIB_THIRDPARTY): $(ThirdParty_OBJS)
 	@mkdir -p "$(dir $@)"
 	$(call ors_link,AR [$(BUILD_TYPE)])
@@ -390,6 +422,7 @@ ifeq ($(DETECTED_OS),Windows)
 	@powershell -NoProfile -Command "(Get-Content 'tools/engine-sdk/cmake/OrosmoConfigVersion.cmake.in') -replace '@ENGINE_VERSION@','$(ENGINE_VERSION)' | Set-Content '$(DIST_PKG_DIR)/cmake/OrosmoConfigVersion.cmake'"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination '$(DIST_PKG_DIR)/tools' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/build_progress.py' -Destination '$(DIST_PKG_DIR)/tools' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/check_game_static.py' -Destination '$(DIST_PKG_DIR)/tools' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/gen_compile_commands.py' -Destination '$(DIST_PKG_DIR)/tools' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'vcpkg.json' -Destination '$(DIST_PKG_DIR)' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/dist.gitignore' -Destination '$(DIST_PKG_DIR)/.gitignore' -Force"
@@ -412,6 +445,7 @@ else
 	@sed 's/@ENGINE_VERSION@/$(ENGINE_VERSION)/g' tools/engine-sdk/cmake/OrosmoConfigVersion.cmake.in > "$(DIST_PKG_DIR)/cmake/OrosmoConfigVersion.cmake"
 	@cp "$(_CUI_INSTALLED)"       "$(DIST_PKG_DIR)/tools/"
 	@cp tools/build_progress.py   "$(DIST_PKG_DIR)/tools/"   # barre de progression des projets (Makefile du modèle)
+	@cp tools/check_game_static.py "$(DIST_PKG_DIR)/tools/"  # règle 13 sur la bibliothèque de jeu (A79 L5, Makefile du modèle)
 	@cp tools/gen_compile_commands.py "$(DIST_PKG_DIR)/tools/"
 	@cp vcpkg.json      "$(DIST_PKG_DIR)/vcpkg.json"
 	@cp tools/engine-sdk/dist.gitignore "$(DIST_PKG_DIR)/.gitignore"
@@ -522,11 +556,13 @@ ifeq ($(DETECTED_OS),Windows)
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/engine-sdk/engine.mk' -Destination 'apps/demo/orosmo/make' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path '$(_CUI_INSTALLED)' -Destination 'apps/demo/orosmo/tools' -Force"
 	@powershell -NoProfile -Command "Copy-Item -Path 'tools/build_progress.py' -Destination 'apps/demo/orosmo/tools' -Force"
+	@powershell -NoProfile -Command "Copy-Item -Path 'tools/check_game_static.py' -Destination 'apps/demo/orosmo/tools' -Force"
 else
 	@cp -p $(ENGINE_LIBS) apps/demo/orosmo/lib/$(BUILD_TYPE)/
 	@cp -p tools/engine-sdk/engine.mk apps/demo/orosmo/make/
 	@cp -p "$(_CUI_INSTALLED)" apps/demo/orosmo/tools/
 	@cp -p tools/build_progress.py apps/demo/orosmo/tools/
+	@cp -p tools/check_game_static.py apps/demo/orosmo/tools/
 endif
 	@if [ ! -e apps/demo/orosmo/vcpkg_installed ]; then \
 	    if [ "$(DETECTED_OS)" = "Windows" ]; then \

@@ -6,6 +6,8 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <cstdint>
+#include <limits>
 #include <istream>
 #include <ostream>
 #include <utility>
@@ -38,6 +40,17 @@ bool equalsIgnoreCase(std::string_view left, std::string_view right) noexcept
 std::optional<std::uint32_t> parseUnsigned(std::string_view text, std::uint32_t maximum) noexcept
 {
     std::uint32_t value = 0;
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (text.empty() || error != std::errc{} || end != text.data() + text.size() || value > maximum)
+    {
+        return std::nullopt;
+    }
+    return value;
+}
+
+std::optional<std::uint64_t> parseUnsigned64(std::string_view text, std::uint64_t maximum) noexcept
+{
+    std::uint64_t value = 0;
     const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
     if (text.empty() || error != std::errc{} || end != text.data() + text.size() || value > maximum)
     {
@@ -115,6 +128,86 @@ std::optional<LightingMode> parseLightingMode(std::string_view value) noexcept
         return LightingMode::kForwardPlus;
     }
     return std::nullopt;
+}
+
+std::optional<ShadowQuality> parseShadowQuality(std::string_view value) noexcept
+{
+    constexpr std::pair<std::string_view, ShadowQuality> kQualities[] = {{"low", ShadowQuality::kLow}, {"medium", ShadowQuality::kMedium}, {"high", ShadowQuality::kHigh}};
+    for (const auto &[name, quality] : kQualities)
+    {
+        if (equalsIgnoreCase(value, name))
+        {
+            return quality;
+        }
+    }
+    return std::nullopt;
+}
+
+std::string_view shadowQualityName(ShadowQuality quality) noexcept
+{
+    switch (quality)
+    {
+    case ShadowQuality::kLow:
+        return "low";
+    case ShadowQuality::kMedium:
+        return "medium";
+    case ShadowQuality::kHigh:
+        break;
+    }
+    return "high";
+}
+
+orosmo::renderer::ShadowSettings shadowSettingsForQuality(ShadowQuality quality) noexcept
+{
+    orosmo::renderer::ShadowSettings settings{};
+    switch (quality)
+    {
+    case ShadowQuality::kLow:
+        settings.cascadeResolution = 256;
+        settings.cascadeCount = 2;
+        settings.atlasSize = 1024;
+        settings.spotResolution = 256;
+        settings.pcfRadius = 0;
+        settings.maxDistance = 40.0f;
+        settings.cascadeUpdateInterval = {1, 4, 8, 16};
+        settings.maxViewUpdatesPerFrame = 4;
+        break;
+    case ShadowQuality::kMedium:
+        settings.cascadeResolution = 512;
+        settings.cascadeCount = 3;
+        settings.atlasSize = 2048;
+        settings.spotResolution = 512;
+        settings.pcfRadius = 1;
+        settings.maxDistance = 60.0f;
+        settings.cascadeUpdateInterval = {1, 2, 4, 8};
+        settings.maxViewUpdatesPerFrame = 6;
+        break;
+    case ShadowQuality::kHigh:
+        break; // réglages du moteur
+    }
+    return settings;
+}
+
+bool sameShadowSettings(const orosmo::renderer::ShadowSettings &left, const orosmo::renderer::ShadowSettings &right) noexcept
+{
+    return left.atlasSize == right.atlasSize && left.minTileSize == right.minTileSize && left.cascadeCount == right.cascadeCount &&
+           left.cascadeResolution == right.cascadeResolution && left.maxDistance == right.maxDistance && left.splitLambda == right.splitLambda &&
+           left.fadeFraction == right.fadeFraction && left.depthExtension == right.depthExtension && left.cascadeUpdateInterval == right.cascadeUpdateInterval &&
+           left.maxViewUpdatesPerFrame == right.maxViewUpdatesPerFrame && left.pcfRadius == right.pcfRadius && left.constantBias == right.constantBias &&
+           left.slopeBias == right.slopeBias && left.normalOffset == right.normalOffset && left.spotResolution == right.spotResolution &&
+           left.maxSpotShadows == right.maxSpotShadows;
+}
+
+std::string_view shadowQualityLabel(const orosmo::renderer::ShadowSettings &settings) noexcept
+{
+    for (const ShadowQuality quality : {ShadowQuality::kLow, ShadowQuality::kMedium, ShadowQuality::kHigh})
+    {
+        if (sameShadowSettings(settings, shadowSettingsForQuality(quality)))
+        {
+            return shadowQualityName(quality);
+        }
+    }
+    return "custom";
 }
 
 std::optional<UiMode> parseUiMode(std::string_view value) noexcept
@@ -255,6 +348,8 @@ orosmo::renderer::FramePacing framePacingFor(const LaunchOptions &options) noexc
 orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv)
 {
     LaunchOptions options;
+    bool simSeedGiven = false;
+    bool simStepsGiven = false;
     for (int index = 1; index < argc; ++index)
     {
         const std::string argument(argv[index]);
@@ -331,6 +426,23 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.directPresentation = equalsIgnoreCase(*value, "on");
         }
+        else if (matchOption("--frames-in-flight", value))
+        {
+            const auto count = value ? parseUnsigned(*value, orosmo::rhi::kMaxFramesInFlight) : std::nullopt;
+            if (!count || *count == 0)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --frames-in-flight (1 to 3): " + value.value_or(""));
+            }
+            options.framesInFlight = *count;
+        }
+        else if (matchOption("--graph-cache", value))
+        {
+            if (!value || (!equalsIgnoreCase(*value, "on") && !equalsIgnoreCase(*value, "off")))
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --graph-cache (expected on|off): " + value.value_or(""));
+            }
+            options.graphCache = equalsIgnoreCase(*value, "on");
+        }
         else if (matchOption("--gpu-timings", value))
         {
             if (!value)
@@ -347,6 +459,10 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
         else if (argument == "--headless")
         {
             options.headless = true;
+        }
+        else if (argument == "--debug-tools")
+        {
+            options.debugTools = true;
         }
         else if (argument == "--strict-backend")
         {
@@ -437,6 +553,16 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.tab = std::string(*tab);
         }
+        else if (matchOption("--debug-tab", value))
+        {
+            if (!value || (*value != "console" && *value != "widgets" && *value != "entities" && *value != "profiler"))
+            {
+                return makeError(ErrorCode::kInvalidArgument,
+                                 "Unknown --debug-tab value (expected console|widgets|entities|profiler): " + value.value_or(std::string()));
+            }
+            options.debugTools = true;
+            options.debugTab = std::move(*value);
+        }
         else if (matchOption("--hover", value))
         {
             if (!value || value->empty())
@@ -444,6 +570,14 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
                 return makeError(ErrorCode::kInvalidArgument, "Missing value after --hover");
             }
             options.hoverId = std::move(*value);
+        }
+        else if (matchOption("--focus", value))
+        {
+            if (!value || value->empty())
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Missing value after --focus");
+            }
+            options.focusId = std::move(*value);
         }
         else if (matchOption("--click", value))
         {
@@ -530,6 +664,15 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.shadows = *value == "on";
         }
+        else if (matchOption("--shadow-quality", value))
+        {
+            const auto quality = value ? parseShadowQuality(*value) : std::nullopt;
+            if (!quality)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --shadow-quality (low, medium or high): " + value.value_or(""));
+            }
+            options.shadowQuality = *quality;
+        }
         else if (matchOption("--transparent-shadow", value))
         {
             const auto mode = value ? orosmo::renderer::transparentShadowModeFromName(*value) : std::unexpected(makeError(ErrorCode::kInvalidArgument, "").error());
@@ -556,6 +699,35 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
                 return makeError(ErrorCode::kInvalidArgument, "Invalid value for --lights (0 to 100000): " + value.value_or(""));
             }
             options.pointLights = *count;
+        }
+        else if (matchOption("--sim-agents", value))
+        {
+            const auto count = value ? parseUnsigned(*value, 1000000U) : std::nullopt;
+            if (!count || *count == 0)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --sim-agents (1 to 1000000): " + value.value_or(""));
+            }
+            options.simAgents = *count;
+        }
+        else if (matchOption("--seed", value))
+        {
+            const auto seed = value ? parseUnsigned64(*value, std::numeric_limits<std::uint64_t>::max()) : std::nullopt;
+            if (!seed)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --seed (unsigned 64-bit integer): " + value.value_or(""));
+            }
+            options.simSeed = *seed;
+            simSeedGiven = true;
+        }
+        else if (matchOption("--sim-steps", value))
+        {
+            const auto steps = value ? parseUnsigned64(*value, 10000000U) : std::nullopt;
+            if (!steps)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --sim-steps (0 to 10000000): " + value.value_or(""));
+            }
+            options.simSteps = *steps;
+            simStepsGiven = true;
         }
         else if (matchOption("--scene", value))
         {
@@ -585,9 +757,28 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
         }
     }
 
+    if (options.simAgents == 0 && (simSeedGiven || simStepsGiven))
+    {
+        return makeError(ErrorCode::kInvalidArgument, "--seed and --sim-steps require --sim-agents");
+    }
+    if (options.simAgents > 0 && (options.headless || !options.captureDirectory.empty()))
+    {
+        return makeError(ErrorCode::kInvalidArgument, "--sim-agents runs without window nor graphics device: it cannot be combined with --headless or --capture");
+    }
+
     if (!options.clickId.empty() && options.captureFrames < 3)
     {
         return makeError(ErrorCode::kInvalidArgument, "--click requires --capture-frames 3 or more");
+    }
+
+    if (!options.focusId.empty() && options.captureFrames < 2)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "--focus requires --capture-frames 2 or more");
+    }
+    if (!options.focusId.empty() && options.uiMode != UiMode::kFull)
+    {
+        // La cible n'est cherchée que dans l'interface complète : une capture ne doit pas réussir sans appliquer le focus.
+        return makeError(ErrorCode::kInvalidArgument, "--focus requires --ui full");
     }
 
     if (!options.hoverId.empty() && options.captureFrames < 2)
@@ -613,16 +804,20 @@ void printUsage(std::ostream &out)
         << "              [--theme dark|light|framed]"
         << " [--tab scene|widgets|controls|color|windows|layout|themes] [--size WxH]\n"
         << "              [--instances N] [--gpu-driven off|on] [--debug-view none|normals|albedo|overdraw|lod|wireframe|motion] [--freeze-frustum]\n"
-        << "              [--shadows off|on] [--transparent-shadow none|full|masked|dithered] [--scene default|mixed|anim] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
+        << "              [--shadows off|on] [--shadow-quality low|medium|high] [--transparent-shadow none|full|masked|dithered] [--scene default|mixed|anim] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
         << "              [--aa none|fxaa|smaa|taa]\n"
         << "              [--headless] [--vsync [on|off]] [--fps-limit N] [--direct-present on|off] [--gpu-timings auto|on|off]\n"
-        << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>]] [--help]\n";
+        << "              [--frames-in-flight 1|2|3] [--graph-cache on|off]\n"
+        << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>] [--focus <id>]]\n"
+        << "              [--debug-tools] [--debug-tab console|widgets|entities|profiler]\n"
+        << "              [--sim-agents N [--seed S] [--sim-steps K]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : Vulkan by default; --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
     out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
     out << "Example: Orosmo --api opengl --ui full --theme dark --tab scene\n";
     out << "Capture : renders N frames (default 10) at WxH (default 1280x720, min 640x400), writes <dir>/scene.png and\n";
-    out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames, --hover >= 2).\n";
+    out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames, --hover >= 2);\n"
+        << "          --focus gives the keyboard focus to a widget, focus ring shown (>= 2 frames).\n";
     out << "Headless: --headless creates no window (offscreen device, fixed time step), renders N frames and exits;\n";
     out << "          combine it with --capture <dir> to save the images.\n";
     out << "Pacing  : vertical synchronization is on by default; --vsync off removes it (no limit), --fps-limit N (10 to 1000) caps\n";
@@ -632,8 +827,13 @@ void printUsage(std::ostream &out)
     out << "          without vsync on some compositors (UI missing, black areas). No effect with OpenGL or --headless.\n";
     out << "GPU timers: --gpu-timings auto (default) only measures GPU times while the HUD shows them (levels full and graph);\n";
     out << "          on / off force them (tools that read the 'Perf: RenderGraph/...' lines use on).\n";
+    out << "Frames  : --frames-in-flight 1|2|3 (default 2) sets how many frames the CPU may prepare ahead of the GPU; --graph-cache\n";
+    out << "          on (default) keeps the render graph between frames while plugins, targets and sizes stay the same, off rebuilds it.\n";
     out << "HUD     : --hud sets the performance panel shown with --ui hud: off (nothing), fps (FPS only), full (default: every\n";
     out << "          measurement), graph (full + CPU/GPU frame time history in the bottom right corner). Ctrl+F cycles the levels.\n";
+    out << "Tools   : F12 (or --debug-tools) opens the engine debug tools: console (log, commands: help, hud, camera),\n";
+    out << "          widget inspector (tree, computed sizes, hover highlight), entity inspector, profiler. --debug-tab picks the tab.\n";
+    out << "          Debug builds: F11 toggles borderless, F10 fullscreen.\n";
     out << "Debug   : --debug-view shows normals, albedo, overdraw, LOD colors (needs --instances), wireframe or motion vectors;\n";
     out << "          --freeze-frustum freezes the culling frustum of the instanced objects (needs --instances) and draws it.\n";
     out << "Instances: --instances N adds N instanced objects around the courtyard (frustum culling, distance LOD); the draw\n";
@@ -642,6 +842,8 @@ void printUsage(std::ostream &out)
     out << "          from the previous frame); GPU and CPU culling counts are logged side by side. Falls back to CPU culling.\n";
     out << "Shadows  : --shadows on draws cascaded sun shadows with a cache (redrawn only where something moves); the shadow\n";
     out << "          update statistics are logged. Off by default.\n";
+    out << "          --shadow-quality low|medium|high picks the shadow preset (cascade and spot resolution, cascade count, atlas size,\n";
+    out << "          PCF radius, distance, update rate); high (default) is the engine defaults. Needs --shadows on.\n";
     out << "          --transparent-shadow none|full|masked|dithered makes the panes of --scene mixed cast a shadow of that kind\n";
     out << "          (needs --shadows on; absent: the panes cast no shadow).\n";
     out << "Post:     --post hdr renders the scene in HDR with ACES tonemapping; bloom adds bloom; full adds auto exposure,\n";
@@ -654,6 +856,8 @@ void printUsage(std::ostream &out)
     out << "          Its color texture (path logged) is reloaded live when the file changes on disk.\n";
     out << "Lighting: --lighting forwardplus uses clustered forward+ lighting (depth pre-pass, clusters filled by a compute pass;\n";
     out << "          falls back to forward without compute shaders). --lights N adds N deterministic point lights.\n";
+    out << "Simulation: --sim-agents N runs N agents on the fixed-step simulation without window nor graphics device (seed\n";
+    out << "          --seed S, default 42; --sim-steps K steps, default 1000), prints the state fingerprint and exits.\n";
 }
 
 bool promptForBackend(std::istream &input, std::ostream &output, Backend &selected)

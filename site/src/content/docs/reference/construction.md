@@ -17,6 +17,7 @@ installé (`$OROSMO_HOME/engines/<version>/make/engine.mk`, `cmake/`).
 |---|---|---|
 | `orosmo build` | `make debug` | `bin/debug/main` (`-O1 -g -DDEBUG`) |
 | `orosmo build --release` | `make release` | `bin/release/<PROJECT_NAME>` (`-O3 -DNDEBUG`) |
+| `orosmo build --game` | `make game` | bibliothèque de jeu seule (`bin/debug/game.so`, `.dylib` ou `.dll`) |
 | `orosmo run [-- args]` | `make run-debug` | compile si besoin, puis lance le programme |
 | `orosmo clean` | `make clean` | supprime `obj/` et `Generated/` |
 
@@ -24,6 +25,21 @@ Autres cibles du `Makefile` : `dev` (`-O0 -g3`), `run` (le binaire le plus réce
 `benchmark`, `compile-commands` (écrit `compile_commands.json` pour clangd), `fclean` (supprime aussi `bin/`), `info` (moteur
 trouvé, version, archives), `add-dep`, `install-deps`, `search-dep` (bibliothèques du jeu, plus bas). `orosmo build --json`
 donne la même compilation en événements JSON : voir [Commande orosmo](/reference/commande-orosmo/#format-de-build-json).
+
+### Logique de jeu rechargeable
+
+Les sources de `src/game/` sont compilées en une bibliothèque que le programme (build debug ou dev) recharge à chaud.
+Programme lancé, après une modification, `orosmo build --game` (ou `make game`) ne refait qu'elle. Incluez
+`<orosmo/game.hpp>`, qui ne tire ni le rendu ni `glm/glm.hpp`. Si `ccache` est installé, le `Makefile` l'utilise
+(`make CCACHE=` le désactive). Pour un programme lancé par `make dev`, la commande est
+`make game BUILD_TYPE=dev` (`make game` seul refait la bibliothèque debug, que ce programme ne charge pas). Si un en-tête partagé avec `src/main.cpp` change les données d'un composant, reconstruisez tout
+et relancez le programme. `make release` lie le jeu statiquement.
+
+En debug et dev, les vues `.cui` sont aussi compilées dans cette bibliothèque (et dans l'exécutable) : `make game` relance `cui`
+sur une vue modifiée, et le programme de départ (`app::ViewHost`) lance lui-même `make game` quand un `.cui` de `src/` est
+enregistré, puis recrée l'interface en gardant focus, défilement et sections ouvertes. Une erreur garde l'ancienne interface et
+s'affiche en notification. Si les champs d'une vue changent (`@Mutable`, `@Snapshot`, `@cui-cpp`), relancez le programme
+reconstruit. `make CUI_IN_GAME=0` garde les vues dans l'exécutable seulement.
 
 ### Trouver le moteur
 
@@ -113,7 +129,7 @@ Le compilateur est lancé avec `-std=c++23 -Wall -Wextra -Wpedantic` (plus `-Wer
 Pour écrire son propre `Makefile` (sans le gabarit d'`orosmo init`), avec un moteur installé ou un paquet décompressé :
 
 ```makefile
-ENGINE_DIR   := $(shell orosmo path 0.6.2)  # ou le dossier d'un paquet décompressé
+ENGINE_DIR   := $(shell orosmo path 0.7.0)  # ou le dossier d'un paquet décompressé
 GAME_SRC_DIR := src                          # les .cui de ce dossier sont compilés automatiquement
 BUILD_TYPE   ?= release                      # debug | dev | release
 include $(ENGINE_DIR)/make/engine.mk
@@ -151,7 +167,7 @@ Variables fournies par `engine.mk` :
 | `ENGINE_VCPKG_TRIPLET` | `x64-linux`, `arm64-linux`, `x64-osx`, `arm64-osx`, `x64-mingw-static` ; modifiable avant l'inclusion |
 | `ENGINE_CXXFLAGS` | options de compilation du `BUILD_TYPE` choisi |
 | `ENGINE_INCLUDES` | tous les `-I` des en-têtes du moteur, des dépendances et de `Generated/` |
-| `ENGINE_LIBS` | archives : `libui`, `libcore`, `libplatform`, `librhi`, `librenderer`, `libassets`, `libanim`, `libthirdparty` |
+| `ENGINE_LIBS` | archives : `libui`, `libcore`, `libplatform`, `librhi`, `librenderer`, `libassets`, `libanim`, `libscene`, `libthirdparty` |
 | `ENGINE_LINK_LIBS` | `ENGINE_LIBS` entre `--start-group` et `--end-group` : à utiliser à l'édition de liens |
 | `ENGINE_LDFLAGS` | `-L` et `-l` des dépendances (`ENGINE_DEPS_DIR`, KTX, meshoptimizer, GLFW, shaderc, `<stacktrace>`…) et des bibliothèques du système (OpenGL, X11, chargeur Vulkan par volk) |
 | `ENGINE_DEPS_DIR` | bibliothèques tierces : `$(ENGINE_DIR)/deps` d'un paquet ; `$(ENGINE_DIR)/vcpkg_installed/<triplet>` sans `deps/` (dépôt du moteur, paquets plus anciens) ; `<ENGINE_VCPKG_ROOT>/<triplet>` si `ENGINE_VCPKG_ROOT` est donnée |
@@ -170,7 +186,7 @@ moteur et ne s'installent pas à part. `engine.mk` n'écrit jamais dans `ENGINE_
 cmake_minimum_required(VERSION 3.20)
 project(mygame LANGUAGES CXX)
 
-find_package(Orosmo REQUIRED)   # cmake -DCMAKE_PREFIX_PATH="$(orosmo path 0.6.2)" ...
+find_package(Orosmo REQUIRED)   # cmake -DCMAKE_PREFIX_PATH="$(orosmo path 0.7.0)" ...
 
 add_executable(mygame src/main.cpp)
 orosmo_add_cui_views(mygame src/HudView.cui)

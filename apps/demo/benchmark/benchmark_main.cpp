@@ -1,8 +1,11 @@
+#include "scene_benchmarks.hpp"
+
 #include <orosmo/core/benchmark.hpp>
 
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <memory>
 
 // ── Enregistrement des scénarios ─────────────────────────────────────────────
 //
@@ -30,9 +33,11 @@
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-static void registerScenarios(orosmo::core::bench::ScenarioRegistry & /*registry*/)
+static void registerScenarios(orosmo::core::bench::ScenarioRegistry &registry)
 {
     // Ajouter les scénarios ici.
+    registry.registerScenario("scene-view", [] { return std::make_unique<scene_bench::ViewScenario>(); });
+    registry.registerScenario("scene-transforms", [] { return std::make_unique<scene_bench::TransformScenario>(); });
 }
 
 static orosmo::core::bench::BenchmarkConfig buildConfig()
@@ -50,6 +55,16 @@ static orosmo::core::bench::BenchmarkConfig buildConfig()
     //   cfg.minSamples     = 100;
     //   cfg.measureSetup   = false;
     //   config.scenarios.push_back(cfg);
+
+    for (const char *name : {"scene-view", "scene-transforms"})
+    {
+        orosmo::core::bench::ScenarioConfig cfg;
+        cfg.name = name;
+        cfg.warmupSeconds = 0.5;
+        cfg.measureSeconds = 3.0;
+        cfg.minSamples = 50;
+        config.scenarios.push_back(cfg);
+    }
 
     return config;
 }

@@ -8,6 +8,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/camera2d.hpp"
 #include "orosmo/renderer/batch_arena.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
@@ -74,6 +75,11 @@ class Renderer2D
     // `shaderDirectory` contient sprite2d et shape2d (.vert et .frag), soit shaders/rhi/.
     static core::Result<std::unique_ptr<Renderer2D>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                             const std::filesystem::path &shaderDirectory);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<Renderer2D>> create(const RenderContext &context)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory());
+    }
     ~Renderer2D();
     Renderer2D(const Renderer2D &) = delete;
     Renderer2D &operator=(const Renderer2D &) = delete;

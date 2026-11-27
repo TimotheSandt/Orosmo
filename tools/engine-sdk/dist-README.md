@@ -15,7 +15,7 @@ orosmo-pkg-<platform>/
       renderer/        SceneRenderer, Camera (reverse-Z), CanvasRenderer, DrawList, Mesh, LightManager, DebugDraw
       ui/              orosmo::ui — widgets, layout, JSON themes, reflected parameter panels
   lib/
-    debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libassets, libanim, libui, libthirdparty (link them all:
+    debug/, release/ — static archives: libcore, libplatform, librhi, librenderer, libassets, libanim, libscene, libsim, libapp, libui, libthirdparty (link them all:
                        ENGINE_LINK_LIBS)
   deps/
     include/, lib/   — the engine's third-party libraries, prebuilt and static (GLFW, glad, volk, shaderc/glslang/SPIRV-Tools,

@@ -1,11 +1,14 @@
 // Périphérique de test qui délègue tout à un vrai périphérique et note chaque `updateBuffer` (tampon, plage) et chaque tampon créé
-// (mémoire) : compteurs observables des écritures par image (perf M5, anneaux par image en vol).
+// (mémoire) : compteurs observables des écritures par image (perf M5, anneaux par image en vol). Peut aussi faire échouer
+// `beginFrame` et `present` (façade d'application, M8-L13).
 #pragma once
 
 #include <orosmo/rhi/device.hpp>
 
 #include <cstdint>
 #include <map>
+#include <memory>
+#include <optional>
 #include <vector>
 
 namespace tests
@@ -22,6 +25,12 @@ class CountingDevice final : public orosmo::rhi::Device
     };
 
     explicit CountingDevice(orosmo::rhi::Device &inner) : inner_(inner) {}
+    // Possède le périphérique délégué (usine de périphérique d'un test d'application).
+    explicit CountingDevice(std::unique_ptr<orosmo::rhi::Device> owned) : owned_(std::move(owned)), inner_(*owned_) {}
+
+    // Erreur injectée à la place de `beginFrame` (le vrai n'est pas appelé) et après `present` (le vrai est appelé).
+    std::optional<orosmo::core::ErrorCode> beginFrameError;
+    std::optional<orosmo::core::ErrorCode> presentError;
 
     std::vector<Write> writes;
     std::map<std::uint64_t, orosmo::rhi::MemoryKind> memory; // key(handle) -> mémoire demandée
@@ -29,6 +38,7 @@ class CountingDevice final : public orosmo::rhi::Device
 
     using Result0 = orosmo::rhi::Result<>;
     const orosmo::rhi::Capabilities &capabilities() const noexcept override { return inner_.capabilities(); }
+    std::uint32_t framesInFlight() const noexcept override { return inner_.framesInFlight(); }
     orosmo::rhi::Result<orosmo::rhi::BufferHandle> createBuffer(const orosmo::rhi::BufferDesc &desc, std::span<const std::byte> initial) override
     {
         auto r = inner_.createBuffer(desc, initial);
@@ -106,8 +116,23 @@ class CountingDevice final : public orosmo::rhi::Device
     }
     std::unique_ptr<orosmo::rhi::CommandEncoder> createCommandEncoder() override { return inner_.createCommandEncoder(); }
     Result0 submit(std::unique_ptr<orosmo::rhi::CommandEncoder> e) override { return inner_.submit(std::move(e)); }
-    orosmo::rhi::Result<orosmo::rhi::TextureHandle> beginFrame() override { return inner_.beginFrame(); }
-    Result0 present() override { return inner_.present(); }
+    orosmo::rhi::Result<orosmo::rhi::TextureHandle> beginFrame() override
+    {
+        if (beginFrameError)
+        {
+            return orosmo::core::makeError(*beginFrameError, "CountingDevice: injected beginFrame failure");
+        }
+        return inner_.beginFrame();
+    }
+    Result0 present() override
+    {
+        auto presented = inner_.present();
+        if (presentError)
+        {
+            return orosmo::core::makeError(*presentError, "CountingDevice: injected present failure");
+        }
+        return presented;
+    }
     Result0 resize(orosmo::rhi::Extent2D size) override { return inner_.resize(size); }
     void setVSync(bool enabled) override { inner_.setVSync(enabled); }
     void setDirectPresentation(bool enabled) override { inner_.setDirectPresentation(enabled); }
@@ -116,6 +141,7 @@ class CountingDevice final : public orosmo::rhi::Device
     orosmo::rhi::DeviceStats stats() const noexcept override { return inner_.stats(); }
 
   private:
+    std::unique_ptr<orosmo::rhi::Device> owned_; // avant inner_ : construit en premier
     orosmo::rhi::Device &inner_;
 };
 

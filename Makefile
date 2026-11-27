@@ -52,8 +52,8 @@ else
 # ferait disparaître les en-têtes sous la compilation de l'autre.
 .NOTPARALLEL:
 
-.PHONY: check check-repo check-layers check-api check-headers compile-commands
-check: check-repo check-layers check-api check-headers
+.PHONY: check check-repo check-layers check-api check-headers check-determinism check-game-static compile-commands
+check: check-repo check-layers check-api check-headers check-determinism check-game-static
 
 compile-commands:
 	@python3 tools/gen_compile_commands.py --build-type $(BUILD_TYPE) --cxx "$(CXX)" --cc "$(CC)"
@@ -69,6 +69,14 @@ check-api:
 
 check-headers:
 	@python3 tools/check_headers.py --strict
+
+# SIM-01 (A79 L3) : ni fonction transcendante, ni rand(), ni horloge dans le chemin rejoué de la simulation.
+check-determinism:
+	@python3 tools/check_deterministic_math.py
+
+# GAME-02 (A79 L5, règle 13) : aucun état modifiable dans la bibliothèque de jeu, vérifié sur le binaire (nm).
+check-game-static:
+	@python3 tools/check_game_static.py
 
 # ── Combined ──────────────────────────────────────────────────────────────────
 #   make all-debug             engine debug → sync → demo debug
@@ -185,8 +193,13 @@ demo-test:
 
 # Tests sans GPU ni fenêtre (unitaires) / seulement ceux qui en demandent un (intégration graphique : contexte OpenGL hors écran,
 # fenêtre). `make demo-test` exécute les deux. ENGINE_TEST_REQUIRE_GPU=1 fait échouer (au lieu d'ignorer) un test GPU sans pilote.
-GPU_TEST_SUITES := rhi/opengl*,rhi/vulkan*,rhi/backend*,renderer/*,platform/window,ui/render
+# Un cas qui crée un périphérique va dans une suite de cette liste : suite entière, ou « <suite>/gpu » donnée au cas par
+# `* doctest::test_suite("<suite>/gpu")` quand le reste de la suite n'a pas besoin de GPU. `demo-test-unit` pose
+# ENGINE_TEST_NO_GPU=1 : les aides de création de périphérique des tests (tests/rhi/backends.hpp, gpu_fixture.hpp,
+# tests/app/application_tests.cpp) y échouent au lieu d'ouvrir un pilote (A79 L15).
+GPU_TEST_SUITES := rhi/opengl*,rhi/vulkan*,rhi/backend*,renderer/*,platform/window,ui/render,*/gpu,app/application-gpu,anim/animated-model,anim/crowd,assets/texture
 .PHONY: demo-test-unit demo-test-gpu
+demo-test-unit: export ENGINE_TEST_NO_GPU := 1
 demo-test-unit:
 	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
 	$(MAKE) -f $(ENGINE_MK) sync-demo BUILD_TYPE=release
@@ -226,12 +239,24 @@ demo-capture: all-debug
 	@# M6 : personnage skinné animé (glTF généré puis importé) et foule de 1000 agents (un draw call par primitive skinnée).
 	./$(DEMO_BIN) --api opengl --headless --ui hud --scene anim --capture build/demo-capture/anim --capture-frames 30
 	test -s build/demo-capture/anim/scene.png
+	@# UI-04, UI-10 (A79 lot L10) : outils de debug (F12) ouverts sur chaque onglet, au-dessus de l'interface complète.
+	for tab in widgets console entities profiler; do \
+	    ./$(DEMO_BIN) --api opengl --headless --ui full --theme dark --tab widgets --debug-tab $$tab --capture build/demo-capture/debug-tools-$$tab --capture-frames 30 || exit 1; \
+	    test -s build/demo-capture/debug-tools-$$tab/ui.png || exit 1; done
 	test -s build/demo-capture/dark-widgets/ui.png
 	test -s build/demo-capture/light-widgets/ui.png
 	@# compare_png.py : code 0 = identiques (erreur ici) ; 1 + ligne DIFFERENT = images différentes (attendu) ; autre = erreur d'exécution.
 	@out=$$(python3 tools/compare_png.py build/demo-capture/dark-widgets/ui.png build/demo-capture/light-widgets/ui.png); rc=$$?; \
 	if [ $$rc -eq 0 ]; then echo "demo-capture : les captures dark et light sont identiques"; exit 1; \
 	elif [ $$rc -eq 1 ] && printf '%s\n' "$$out" | grep -q '^DIFFERENT'; then echo "demo-capture : OK (dark != light)"; \
+	else echo "demo-capture : erreur du comparateur (code $$rc) : $$out"; exit 1; fi
+	@# UI-09 : focus clavier sur un bouton radio de l'onglet Contrôles, anneau de focus du thème comparé à sa référence, et absent sans focus.
+	./$(DEMO_BIN) --api opengl --headless --ui full --theme dark --tab controls --focus detailMedium --capture build/demo-capture/dark-controls-focus --capture-frames 5
+	python3 tools/compare_png.py docs/BASELINE/reference/ui-opengl-controls-focus-1280x720.png build/demo-capture/dark-controls-focus/ui.png \
+	    --tolerance 8 --max-diff-percent 2
+	@out=$$(python3 tools/compare_png.py build/demo-capture/dark-controls/ui.png build/demo-capture/dark-controls-focus/ui.png); rc=$$?; \
+	if [ $$rc -eq 0 ]; then echo "demo-capture : l'anneau de focus n'est pas dessiné"; exit 1; \
+	elif [ $$rc -eq 1 ] && printf '%s\n' "$$out" | grep -q '^DIFFERENT'; then echo "demo-capture : OK (anneau de focus)"; \
 	else echo "demo-capture : erreur du comparateur (code $$rc) : $$out"; exit 1; fi
 
 # M4 : la démo donne la même image dans la tolérance en Vulkan et en OpenGL, et les couches de validation Vulkan (synchronisation
@@ -248,13 +273,16 @@ demo-vulkan-check: all-debug
 #                   `orosmo init` d'un projet neuf (sans réseau : OROSMO_DOWNLOAD_BASE = un faux dossier de release avec
 #                   SHA256SUMS), `make debug` SANS ENGINE_DIR (le Makefile du projet trouve le moteur par `orosmo path`),
 #                   aucun vcpkg_installed, Generated/ dans le projet ; `orosmo build --json` ; `orosmo run -- --api opengl
-#                   --headless …` (capture) si E2E_RUN_GRAPHICS=1 ; exemple minimal copié hors du moteur et compilé ; CMake.
+#                   --headless …` (capture) si E2E_RUN_GRAPHICS=1 ; code du tutoriel 3D du site extrait de la page et compilé
+#                   (A79 L14) ; exemple minimal copié hors du moteur et compilé ; CMake.
 #   Chaque lancement a son dossier (rien n'est effacé ; les droits d'écriture du moteur installé sont rendus à la fin).
 E2E_RUN      := build/e2e/$(shell date +%Y%m%d-%H%M%S)
 E2E_PLATFORM  = $(shell $(MAKE) -s -f $(ENGINE_MK) print-platform)
 E2E_EXE       = $(if $(filter Windows_NT,$(OS)),.exe)
 # 1 : e2e-init lance aussi le projet créé (OpenGL 4.3 requis : Linux, ou Mesa sous xvfb). 0 : seulement compiler et lier (macOS ≤ 4.1, Windows sans GPU).
 E2E_RUN_GRAPHICS ?= 1
+# GAME-06 : durée maximale « .cpp du jeu modifié -> code rechargé » (5 s sur la machine de référence ; plus large en CI).
+E2E_RELOAD_MAX ?= 5
 E2E_HOME      = $(abspath $(E2E_RUN))/home
 E2E_PKG       = $(abspath dist)/orosmo-pkg-$(E2E_PLATFORM).zip
 E2E_TOOL      = $(E2E_HOME)/bin/orosmo$(E2E_EXE)
@@ -294,6 +322,13 @@ e2e-init:
 	@# Sans ENGINE_DIR : le Makefile du projet appelle `orosmo path $(OROSMO_VERSION)` (outil trouvé dans le PATH).
 	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) debug
 	test -n "$$(find $(E2E_RUN)/mygame/Generated -name '*.gen.cpp')"   # sortie de cui dans le projet
+	@# A79 L5 : `make debug` construit la logique de jeu (src/game/) en bibliothèque rechargeable, à côté de l'exécutable.
+	test -n "$$(find $(E2E_RUN)/mygame/bin/debug \( -name 'game.so' -o -name 'game.dylib' -o -name 'game.dll' \) -print)"
+	@# `make release` la lie statiquement, sans code de rechargement (GAME-07).
+	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) release
+	@syms=$$(nm -C $(E2E_RUN)/mygame/bin/release/mygame$(E2E_EXE)) || { echo "e2e-init : nm a échoué, contrôle GAME-07 impossible"; exit 1; }; \
+	    ! printf '%s\n' "$$syms" | grep -E 'orosmo::platform::DynamicLibrary|GameModule::load\(|DynamicReloader|ViewHost::mountFromLibrary|DevReloader|runCommand' \
+	    || { echo "e2e-init : code de rechargement dans la version finale"; exit 1; }
 	@# 2e build (copy_res recopie les ressources du moteur en lecture seule : elles doivent rester inscriptibles, G220).
 	cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo build --json > ../build.json
 	@# Motif sans guillemets doubles : sous mingw32-make (Windows), '"…"' arrive à grep avec des barres obliques inverses.
@@ -302,10 +337,54 @@ e2e-init:
 	    echo "e2e-init : orosmo run (OpenGL, sans fenêtre)"; \
 	    cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo run -- --api opengl --headless \
 	        --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3 \
-	      && test -s "$(abspath $(E2E_RUN))/capture/scene.png" && test -s "$(abspath $(E2E_RUN))/capture/ui.png"; \
+	      && test -s "$(abspath $(E2E_RUN))/capture/scene.png" && test -s "$(abspath $(E2E_RUN))/capture/ui.png" \
+	    && echo "e2e-init : HUD sans bibliothèque de jeu" \
+	      && cd "$(abspath $(E2E_RUN))/mygame" && lib=$$(find bin/debug -name 'game.so' -o -name 'game.dylib' -o -name 'game.dll') \
+	      && mv "$$lib" "$$lib.off" \
+	      && { ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture-nogame" \
+	             --capture-frames 3 > ../nogame.txt 2>&1; code=$$?; mv "$$lib.off" "$$lib"; test $$code = 0; } \
+	      && grep -q 'Game logic not started' ../nogame.txt && ! grep -q 'HUD view not built' ../nogame.txt; \
 	  else \
 	    echo "e2e-init : lancement graphique sauté (E2E_RUN_GRAPHICS=0 : exécuteur sans OpenGL 4.3, projet seulement compilé et lié)"; \
 	  fi
+	@# GAME-06 (A79 L7) : projet de même Makefile et même src/game/ que mygame, avec un hôte sans GPU
+	@# (tools/e2e/reload_host.cpp). `make game` ne refait que la bibliothèque, avec ccache s'il est là (un faux suffit ici) ;
+	@# puis, programme lancé, un .cpp du jeu est modifié, reconstruit par `orosmo build --game` et rechargé, temps mesuré.
+	mkdir -p $(E2E_RUN)/reload/src $(E2E_RUN)/fake-ccache
+	cp $(E2E_RUN)/mygame/Makefile $(E2E_RUN)/mygame/config.mk $(E2E_RUN)/reload/
+	cp -r $(E2E_RUN)/mygame/src/game $(E2E_RUN)/reload/src/
+	cp tools/e2e/reload_host.cpp $(E2E_RUN)/reload/src/main.cpp
+	cd $(E2E_RUN)/reload && $(E2E_ENV) $(MAKE) debug
+	printf '#!/bin/sh\nexec "$$@"\n' > $(E2E_RUN)/fake-ccache/ccache
+	chmod +x $(E2E_RUN)/fake-ccache/ccache
+	cd $(E2E_RUN)/reload && $(E2E_ENV) PATH="$$(cd ../fake-ccache && pwd):$$(cd "$(E2E_HOME)/bin" && pwd):$$PATH" \
+	    $(MAKE) -n -W src/game/game.cpp game > ../game-goal.txt
+	grep -q 'ccache .*src/game/game\.cpp' $(E2E_RUN)/game-goal.txt
+	@! grep -E 'src/main\.cpp|-o bin/debug/main(\.exe)?( |$$)' $(E2E_RUN)/game-goal.txt \
+	    || { echo "e2e-init : make game refait autre chose que la bibliothèque de jeu"; exit 1; }
+	$(E2E_SH) python3 tools/e2e_reload.py --project $(E2E_RUN)/reload --tool "$(E2E_TOOL)" \
+	    --exe bin/debug/main$(E2E_EXE) --max $(E2E_RELOAD_MAX) --record $(E2E_RUN)/reload.txt
+	@# UI-08 (A79 L8) : même Makefile, même src/game/ et même vue src/HudView.cui que mygame, avec un hôte sans GPU
+	@# (tools/e2e/view_reload_host.cpp). Programme lancé, un .cui invalide garde l'ancienne vue (erreur signalée), puis un .cui
+	@# valide avec un widget de plus est recompilé avec la bibliothèque de jeu (lancé par le programme) et l'arbre recréé, temps mesuré.
+	mkdir -p $(E2E_RUN)/views/src
+	cp $(E2E_RUN)/mygame/Makefile $(E2E_RUN)/mygame/config.mk $(E2E_RUN)/views/
+	cp -r $(E2E_RUN)/mygame/src/game $(E2E_RUN)/views/src/
+	cp $(E2E_RUN)/mygame/src/HudView.cui $(E2E_RUN)/mygame/src/hud_state.hpp $(E2E_RUN)/views/src/
+	cp tools/e2e/view_reload_host.cpp $(E2E_RUN)/views/src/main.cpp
+	cd $(E2E_RUN)/views && $(E2E_ENV) $(MAKE) debug
+	@# Changer CUI_IN_GAME sans `make clean` recompile les objets qui voient -DOROSMO_CUI_RELOADABLE.
+	cd $(E2E_RUN)/views && $(E2E_ENV) $(MAKE) -n CUI_IN_GAME=0 debug > ../cui-flag.txt
+	grep -q 'src/main\.cpp' $(E2E_RUN)/cui-flag.txt || { echo "e2e-init : CUI_IN_GAME changé, src/main.cpp pas recompilé"; exit 1; }
+	$(E2E_SH) python3 tools/e2e_view_reload.py --project $(E2E_RUN)/views --build "\"$(E2E_TOOL)\" build --game" \
+	    --exe bin/debug/main$(E2E_EXE) --max $(E2E_RELOAD_MAX) --record $(E2E_RUN)/view-reload.txt
+	@# A79 L14 : le tutoriel 3D du site (site/src/content/docs/demarrer/tutoriel-jeu-3d.md), extrait des blocs de code de la page
+	@# et compilé dans un projet `orosmo init`, comme le lecteur le fait. Pas lancé : il faut un modèle glTF animé (hors dépôt).
+	cd $(E2E_RUN) && $(E2E_SH) orosmo init tutorial
+	python3 tools/extract_doc_code.py site/src/content/docs/demarrer/tutoriel-jeu-3d.md --out $(E2E_RUN)/tutorial \
+	    --remove src/HudView.cui --remove src/hud_state.hpp
+	cd $(E2E_RUN)/tutorial && $(E2E_ENV) $(MAKE) debug
+	test -x $(E2E_RUN)/tutorial/bin/debug/main$(E2E_EXE)
 	$(MAKE) -C $(E2E_RUN)/minimal ENGINE_DIR="$(E2E_ENGINE)"
 	$(E2E_RUN)/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
 	@echo "e2e-init : sortie de l'exemple minimal :"; cat $(E2E_RUN)/minimal.txt

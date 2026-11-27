@@ -34,7 +34,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | --- | --- | --- | --- | --- |
 | PLAT-01 | Fenêtre | P0 | Abstraction au-dessus de GLFW : création, redimensionnement, plein écran, DPI élevé, surface pour le RHI. | Partiel (GLFW caché, DPI lisible ; ×2 non observé) |
 | PLAT-02 | InputManager | P0 | Existe déjà. Dispositions QWERTY/AZERTY/DVORAK, remappage, état par image. | Partiel (molette faite) |
-| PLAT-03 | Manettes | P2 | Axes, boutons, hot-plug. | Absent |
+| PLAT-03 | Manettes | P2 | Axes, boutons, hot-plug. | Partiel (M8 L9 : sous-ensemble pour UI-09, `platform::Gamepads` ; manque vibrations, remappage, joysticks sans disposition connue, G223) |
 | PLAT-04 | Mode sans fenêtre | P0 | Démarrage sans fenêtre (génération et export en ligne de commande) sur les trois systèmes. | Partiel (`--headless` sous Linux) |
 | PLAT-05 | Saisie de texte | P1 | Texte Unicode, composition IME, presse-papiers. | Partiel (texte Unicode, presse-papiers du système en mode fenêtré par `ui::useSystemClipboard` ; pas de composition IME : G107) |
 
@@ -162,10 +162,10 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
-| ECS-01 | Entités et composants | P1 | ECS maison ou EnTT (choix à justifier dans `docs/QUESTIONS.md`) ; tableaux contigus ; composants = données simples, **réfléchies** (CORE-12). | Absent |
-| ECS-02 | Transformations hiérarchiques | P1 | Parents/enfants, grandes coordonnées en `double`. | Absent |
-| ECS-03 | Chargement et sauvegarde de scène | P1 | Via CORE-12, versionné. | Absent |
-| SIM-01 | Boucle de simulation à pas fixe | P1 | Découplée du rendu ; rejouable avec la même graine ; capture et restauration d'état ; points d'accroche pour systèmes. | Absent |
+| ECS-01 | Entités et composants | P1 | ECS maison ou EnTT (choix à justifier dans `docs/QUESTIONS.md`) ; tableaux contigus ; composants = données simples, **réfléchies** (CORE-12). | Fait — ECS maison (A79 choix 1) ; preuve : `docs/STATUS.md`, « M8 lot L2 » |
+| ECS-02 | Transformations hiérarchiques | P1 | Parents/enfants, grandes coordonnées en `double`. | Fait — preuve : `docs/STATUS.md`, « M8 lot L2 » |
+| ECS-03 | Chargement et sauvegarde de scène | P1 | Via CORE-12, versionné. | Fait — JSON et MessagePack, versions et migrations par type ; preuve : `docs/STATUS.md`, « M8 lot L3 » |
+| SIM-01 | Boucle de simulation à pas fixe | P1 | Découplée du rendu ; rejouable avec la même graine ; capture et restauration d'état ; points d'accroche pour systèmes. | Fait (mono-thread : « M8 lot L3 » ; thread dédié optionnel, cadence par `Config`, instantané en double tampon : « M8 lot L4 », G300 à G306) — preuve : `docs/STATUS.md` ; même empreinte sur toutes les plateformes à confirmer par la CI (G280) |
 | SIM-02 | Accès aux données du monde | P2 | API de lecture (hauteur, biome, eau) utilisable sans rendu par la simulation. | Hors moteur (A39) |
 | SIM-03 | Agents et écosystème | P3 | Hors moteur. Seuls les points d'accroche de SIM-01 et SIM-02 sont attendus. | Hors moteur (A39) |
 
@@ -176,13 +176,13 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | UI-01 | UIManager | P0 | Existe (UIComponent, UIContainer, VBox, `DeferredValue<T>` à double tampon, mixin CRTP). Migré sur le RHI ; comportement identique. | Partiel |
 | UI-02 | Rendu indépendant du backend | P0 | L'interface produit des listes de dessin (rectangles, texte, images, découpage, ordre `z`) ; un adaptateur les envoie au batch 2D (R2D-01). | Partiel |
 | UI-03 | Widgets de base | P0 | Bouton, curseur, case à cocher, liste déroulante, champ de texte, sélecteur de couleur, graphique simple, onglets, défilement, infobulles. | Fait — preuve : `docs/STATUS.md`, « M3 » ; M5 : un clic sur le carré d'un `ColorPicker` ouvre la roue `ColorEditor` en fenêtre surgissante (`tests/ui/widgets_tests.cpp`, « ColorPicker: clicking the swatch opens a ColorEditor popup bound to the same color; sliders do not ») |
-| UI-04 | Outils de debug | P1 | Dear ImGui (ou équivalent) sur le RHI, réservé aux outils : profileur, console. | Absent |
+| UI-04 | Outils de debug | P1 | Dear ImGui (ou équivalent) sur le RHI, réservé aux outils : profileur, console. | Fait — preuve : `docs/STATUS.md`, « M8 lot L10 » |
 | UI-05 | Langage d'interface : compilateur vers C++ | P0 | Description déclarative de l'arbre, compilée en C++ sans coût d'exécution ; événements (`onClick`, `onChange`, `onHover`, `onFocus`) liés à des fonctions externes, **aucune logique métier dans le langage** ; liaison de données typée dans les deux sens ; C++ embarqué possible ; erreurs avec **fichier, ligne et colonne du source du langage** (diagnostics de `cui` ; une erreur du compilateur C++ dans le code généré est rapportée au fichier et à la ligne du `.cui` par `#line`, sans la colonne) ; intégration au build avec dépendances correctes. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | UI-06 | Mise en page complète | P0 | `VBox`, `HBox`, grille, superposition, marges, alignement, tailles fixes, flexibles et minimales. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | UI-07 | Thèmes en JSON | P0 | Fichier de données avec **jetons** (`color.primary`, `radius.medium`, polices, tailles, marges, ombres, bordures) et états (normal, survol, appuyé, désactivé, focus) ; les widgets lisent le thème, jamais de valeur en dur ; changement à chaud ; variantes clair/sombre ; surcharge locale possible dans le langage. | Partiel — preuve : `docs/STATUS.md`, « M3 » (ajouts) ; reste des tailles en dur dans les widgets (G111) |
-| UI-08 | Rechargement à chaud de l'interface | P1 | Mode développement : le même arbre est interprété ou chargé en bibliothèque dynamique et se met à jour à l'enregistrement ; mode final : C++ généré lié directement. | Absent |
-| UI-09 | Navigation et accessibilité de base | P1 | Clavier et manette, focus visible, ordre de tabulation. | Absent |
-| UI-10 | Inspecteur d'interface | P1 | Arbre des composants et tailles calculées affichés dans les outils de debug. | Absent |
+| UI-08 | Rechargement à chaud de l'interface | P1 | Mode développement : le même arbre est interprété ou chargé en bibliothèque dynamique et se met à jour à l'enregistrement ; mode final : C++ généré lié directement. | Fait (preuve : `docs/STATUS.md`, « M8 lot L8 ») |
+| UI-09 | Navigation et accessibilité de base | P1 | Clavier et manette, focus visible, ordre de tabulation. | Fait (limites, M8 L9 : un widget focalisé hors de la zone visible d'une `ScrollView` n'a pas d'anneau visible, la vue ne défile pas vers lui, G222 ; preuve : `Ui::focusNext`, `Ui::moveFocus` (`src/ui/ui.cpp`), `GamepadNavigator` ; tests et résultats dans `docs/STATUS.md`, « M8 lot L9 ») |
+| UI-10 | Inspecteur d'interface | P1 | Arbre des composants et tailles calculées affichés dans les outils de debug. | Fait — preuve : `docs/STATUS.md`, « M8 lot L10 » |
 | UI-11 | Spécification et tests du langage | P0 | `docs/UI_LANGUAGE.md` : grammaire, exemples, limites ; tests de compilation avec entrées valides et invalides et messages d'erreur attendus. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | UI-12 | Paramètres réfléchis → curseurs | P1 | Une structure de paramètres réfléchie (CORE-12) est affichée automatiquement en widgets adaptés au type et à la plage. | Fait — preuve : `docs/STATUS.md`, « M3 » |
 | UI-13 | Rendu de l'interface économe | P1 | Élément caché : aucune commande ni aucun dessin ; élément hors de sa zone de découpage : éliminé à la production de la liste ; conteneur inchangé : ni remis en page ni redessiné, son image en cache est recomposée ; gain mesuré (frame CPU, nombre de dessins). | Partiel — fait : un élément caché, un onglet inactif ou une section repliée ne produisent aucune commande ; un élément hors de sa zone de découpage ou de la fenêtre est éliminé à la production de la liste (`tests/ui/lean_render_tests.cpp`, 4 cas) ; interface 143 → 18 draw calls grâce au batch 2D. **Manque** : cache par couche (conteneur inchangé ni remis en page ni redessiné), reporté à M6 sur proposition (A54 dans `docs/QUESTIONS.md`, G165). |
@@ -191,13 +191,13 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
-| GAME-01 | Module de jeu rechargeable | P1 | Bibliothèque dynamique avec interface C stable (`init`, `update`, `onReload`, `shutdown`) ; chargée, déchargée et rechargée à l'enregistrement. | Absent |
-| GAME-02 | État côté moteur | P1 | Aucun état persistant dans la bibliothèque ; les systèmes s'enregistrent par nom à `init` et se désenregistrent au déchargement. | Absent |
-| GAME-03 | Migration d'état | P1 | Ajout d'un champ à un composant : migration par réflexion (champs communs copiés, nouveaux à la valeur par défaut) ; en cas d'échec : sauvegarde, rechargement, restauration. | Absent |
-| GAME-04 | Registre des gestionnaires | P1 | Les gestionnaires d'événements de l'interface sont retrouvés **par nom** au moment de l'appel en mode développement. | Absent |
-| GAME-05 | Paramètres de gameplay en JSON | P1 | Rechargés instantanément, sans compilation. | Absent |
-| GAME-06 | Construction incrémentale | P1 | Compilation d'un fichier en quelques secondes (ccache, en-têtes légers) ; sous Windows, la bibliothèque est copiée sous un nom unique avant chargement. | Absent |
-| GAME-07 | Version finale | P1 | Logique liée statiquement, sans mécanisme de rechargement. | Absent |
+| GAME-01 | Module de jeu rechargeable | P1 | Bibliothèque dynamique avec interface C stable (`init`, `update`, `onReload`, `shutdown`) ; chargée, déchargée et rechargée à l'enregistrement. | Fait — lot M8-L5 ; preuve : `docs/STATUS.md` (section M8 lot L5 : suite `app/game_module`, `make e2e-init`) ; Windows et macOS par la CI seulement (G310) |
+| GAME-02 | État côté moteur | P1 | Aucun état persistant dans la bibliothèque ; les systèmes s'enregistrent par nom à `init` et se désenregistrent au déchargement. | Fait — lot M8-L5 ; preuve : `docs/STATUS.md` (section M8 lot L5 : suite `app/game_module`, `tools/check_game_static.py` dans `make check`) |
+| GAME-03 | Migration d'état | P1 | Ajout d'un champ à un composant : migration par réflexion (champs communs copiés, nouveaux à la valeur par défaut) ; en cas d'échec : sauvegarde, rechargement, restauration. | Fait — lot M8-L6 ; preuve : `docs/STATUS.md` (section M8 lot L6) |
+| GAME-04 | Registre des gestionnaires | P1 | Les gestionnaires d'événements de l'interface sont retrouvés **par nom** au moment de l'appel en mode développement. | Fait — lot M8-L6 ; preuve : `docs/STATUS.md` (section M8 lot L6) |
+| GAME-05 | Paramètres de gameplay en JSON | P1 | Rechargés instantanément, sans compilation. | Fait — lot M8-L6 ; preuve : `docs/STATUS.md` (section M8 lot L6) |
+| GAME-06 | Construction incrémentale | P1 | Compilation d'un fichier en quelques secondes (ccache, en-têtes légers) ; sous Windows, la bibliothèque est copiée sous un nom unique avant chargement. | Fait — lot M8-L7 ; preuve : `docs/STATUS.md` (section M8 lot L7) |
+| GAME-07 | Version finale | P1 | Logique liée statiquement, sans mécanisme de rechargement. | Fait — lot M8-L5 ; preuve : `docs/STATUS.md` (section M8 lot L5 : `test_game_static` et `nm` dans `make demo-test` et `make e2e-init`) |
 
 ## K. Voxels et ray tracing (extensions, points d'accroche)
 

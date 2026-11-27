@@ -1,6 +1,7 @@
 #include "orosmo/renderer/frame_ring.hpp"
 
 #include <algorithm>
+#include <string>
 #include <utility>
 
 namespace orosmo::renderer
@@ -13,6 +14,12 @@ FrameRing::FrameRing(rhi::BufferUsage usage, std::string debugName, std::uint32_
 
 core::Result<bool> FrameRing::reserve(rhi::Device &device, std::uint64_t bytes)
 {
+    // Moins profond que le périphérique : une zone serait réécrite pendant que le GPU la lit encore (revue PR #37).
+    if (framesInFlight_ < device.framesInFlight())
+    {
+        return core::makeError(core::ErrorCode::kInvalidArgument, "FrameRing::reserve: framesInFlight (" + std::to_string(framesInFlight_) +
+                                                                      ") is below the device's (" + std::to_string(device.framesInFlight()) + ")");
+    }
     if (slots_.size() != framesInFlight_)
     {
         slots_.resize(framesInFlight_);

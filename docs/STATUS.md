@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le jalon M14 (site vitrine et wiki, 2026-11-24, intégré à `dev` le 2026-11-25), après M6 (`v0.6.0`, 2026-11-24), après M5 (`v0.5.0`, 2026-11-22), après la `v0.4.1` (2026-11-21), après la fin de M4, après M3 (2026-11-19) et le nettoyage « Orosmo » (2026-11-20). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour pour la fin de M8 (`v0.7.0` préparée, 2026-11-27), après la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le jalon M14 (site vitrine et wiki, 2026-11-24, intégré à `dev` le 2026-11-25), après M6 (`v0.6.0`, 2026-11-24), après M5 (`v0.5.0`, 2026-11-22), après la `v0.4.1` (2026-11-21), après la fin de M4, après M3 (2026-11-19) et le nettoyage « Orosmo » (2026-11-20). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -26,9 +26,343 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **M6 Assets, matériaux et animation** | **Livré côté code, sur `milestone/M6` ; à proposer à `main`** | `docs/releases/M6.md` : modules `assets` et `anim`, import et export glTF 2.0 (cgltf), textures sRGB ou linéaires, KTX2 (BC7, ASTC, Basis), cuisson de maillages (meshoptimizer, LOD, `.omesh`), rechargement à chaud des textures, matériaux PBR avec variantes et instances, IBL (harmoniques sphériques, cube préfiltré, sondes), skinning GPU, clips, machine à états, courbes, foules instanciées (1000 agents, un draw call par primitive) ; RHI : formats compressés `kBC7*` et `kASTC4x4*`. Linux x64, g++ 13.3, Mesa 26.1.6, Intel Arc, clone propre (`b54f89d`) : `make all-debug` sans avertissement ; `make demo-test` **679 cas** (678 verts, 1 ignoré, 1 rouge : le cas de fenêtre `PLAT-01` connu instable, suite relancée seule 6 / 6) ; ASan + UBSan : même résultat, aucun signalement ASan, **3 messages UBSan** de `platform/window.hpp:34` (booléen non initialisé, code non touché par M6), **corrigé** par `fix/M6-window-params` (G201) : ASan + UBSan relancés, 0 message, 679 / 680 (1 rouge : cas de fenêtre instable) ; `make demo-test` 680 / 680 ; `make check`, `make demo-capture`, `make demo-vulkan-check` (validation à 0), `make cui-test`, tests Python verts ; démo `--scene anim` : captures `anim/scene` et `anim/ui` identiques OpenGL / Vulkan à 2/255. 10 identifiants passent à Fait, 2 à Partiel (REN-11, ASSET-05) (G195 à G201, A70 à A72) |
 | **M5 Cœur du rendu** | **Livré côté code, sur `milestone/M5` ; à proposer à `main`** | `docs/releases/M5.md` : graphe de passes et plugins, `FrameData`, forward+ clusterisé, ombres en cascade avec cache, HDR et post-traitements, anticrénelage (FXAA, SMAA 1x, TAA), AOV à la demande, instancing, culling CPU et GPU (Hi-Z, multi-draw indirect), LOD, transparents triés, modes de fusion, batch 2D, mélange 2D/3D, interface économe, roue de couleur ; RHI : ajouts `Capabilities::drawIndirectFirstInstance` et `CommandEncoder::id()` (revue). Linux x64, g++ 13.3, Mesa, Intel Arc : `make demo-test` **545 / 545**, suites GPU en Vulkan **229 / 229** (316 cas hors GPU ignorés), `make check`, `make demo-vulkan-check` (validation à 0 message), `make demo-capture` verts ; ASan + UBSan : 545 / 545 sans signalement ; clone propre (`df005c7`) : tout vert. Après la revue de la PR #12 (`9423484`) : `make demo-test` **582 / 582**, GPU Vulkan **244 / 244**, GPU sur rasteriseurs logiciels **244 / 244**, `make check`, `make demo-capture`, `make demo-vulkan-check` verts. Après les optimisations (A61) : `make demo-test` **611 / 611**, GPU Vulkan **265 / 265**, GPU logiciel **265 / 265**, tout vert ; Vulkan par défaut ; 0,49 → 0,26 ms par image (Vulkan, release). 17 identifiants passent à Fait, 5 d'Absent à Partiel (G151 à G188) |
 | **M14 Site vitrine et wiki** | **Livré côté code, sur `milestone/M14` ; rien n'est publié (publication après M6, au premier tag `v*` sur `main`)** | `docs/releases/M14.md` : `site/` (Astro 7 + Starlight ; **après la refonte : 64 pages**, couvrant M6 ; première livraison : 16 pages), `npm ci && npm run build && npm run check-links && npm run check-anchors` (après la refonte : 5375 liens internes, 1659 ancres, 0 cassé ; première livraison : 470 liens), `docker build` + `docker run` + `curl` (200, santé `healthy`), `.github/workflows/site.yml` (actionlint 0 erreur, jamais exécuté sur GitHub), `docs/DEPLOIEMENT_SITE.md` ; hébergement proposé en A74 |
+| **M8 Interface avancée, scène, simulation, logique rechargeable** | **Livré côté code, dans `dev` (18 lots, A79) ; `v0.7.0` préparée, ni tag ni release ; à proposer à `main`** | `docs/releases/M8.md`, `docs/releases/M8-MR.md` : modules `scene`, `sim`, `app` ; clone propre (`8b255e6`) : `make all-debug` sans avertissement, `make demo-test` **924 / 924**, `make check`, `make e2e-init` (logique rechargée en 1,80 s sans perte d'état, `.cui` → vue recréée en 2,65 s), démo OpenGL et Vulkan sans message de validation, `--sim-agents 500 --seed 42` : même empreinte deux fois ; ASan + UBSan et TSan : voir « M8 lot L15 ». Totaux `docs/02` : Fait 68, Partiel 45, Absent 35 |
 | **M15 Façade du projet** | **Planifié (A78, 2026-11-26)** : site vitrine soigné et documentation simplifiée, en fin de plan, après la charte et le wireframe de l'auteur ; la simplicité de l'API est planifiée en M8 (A77) | `docs/05` M15 et M8 |
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
+
+## M8 lot L15 : démo, documentation, release (A79)
+
+Branche `feat/M8-L15-finalisation` (depuis `dev` à `305c643`). Choix : `docs/QUESTIONS.md`, A79, « Lot L15 ». Critères de
+`docs/05` M8 un par un, avec commande et résultat : `docs/releases/M8.md`, « Démo et critères ».
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| Identifiants | `docs/02` GAME-01, GAME-02, GAME-07 (Absent → Fait, preuves du lot L5) ; `docs/GAPS.md` ECS-03, SIM-01 | comptage par script de `docs/02` | Fait 68, Partiel 45, Absent 35, Archivé 11, Hors moteur 7, Incompatible 1 (avant M8 : 53 / 44 / 51) |
+| Suites GPU des tests | `Makefile` `GPU_TEST_SUITES`, `ENGINE_TEST_NO_GPU` ; `tests/support/test_support.hpp` `REQUIRE_GPU_ALLOWED` ; 21 cas en `<suite>/gpu` | `make demo-test-unit` ; `make demo-test-gpu` ; `make demo-test` | 562 / 562 sans GPU (avant la correction : un cas oublié échouait sur la garde, preuve qu'elle marche) ; 362 cas GPU ; total inchangé 924 (G381) |
+| Démo M8 | projet `orosmo init` + `make e2e-init` ; `apps/demo --sim-agents` | voir `docs/releases/M8.md` | rechargement logique 1,80 s, vues 2,65 s ; empreinte `0xa3f0f4166622ae05` deux fois |
+| Site et wiki | `site/src/content/docs/` : 9 pages neuves, 23 touchées (liste dans `docs/releases/M8.md`) | `npm ci && npm run build && npm run check-links && npm run check-anchors` | 76 pages, 0 lien ni ancre cassés (G383 : CI non observée) |
+| Version | `mk/config.mk` `ENGINE_VERSION`, `vcpkg.json`, `tools/*/Cargo.toml`, `tools/Cargo.lock`, `tools/vscode-cui/package.json` | `make e2e-init` | `OROSMO_VERSION := 0.7.0` écrit par `orosmo init` ; ni tag ni release (G382) |
+| Documentation | `docs/03` §12 et §13 (notes « réalisé en M8 »), README `scene`, `sim`, `app`, `docs/releases/M8.md`, `M8-MR.md` | relecture | — |
+
+Vérifications (clone propre, Linux x64, g++ 13.3, Mesa, Intel Arc) : `make all-debug` 0 avertissement ; `make demo-test`
+924 / 924 ; `make check` OK ; `make cui-test`, tests Python OK ; `make e2e-init` OK ; démo OpenGL et Vulkan sans message de
+validation ; ASan + UBSan (après `make fclean`, `make demo-fclean`) : 924 / 924, 0 message ; TSan (`demo-test-unit`, binaire lancé par `setarch -R` à cause de G233) : 562 / 562, 0 rapport. Non vérifié : Windows, macOS (G384).
+
+## M8 lot L14 : programme de départ et tutoriel 3D avec la façade (A79, A77)
+
+Branche `feat/M8-L14-depart-tutoriel` (depuis `feat/M8-L8-cui-rechargement`, qui contient `dev` avec L13). Choix de
+réalisation : `docs/QUESTIONS.md`, A79, « Lot L14 ». Linux x64 seulement en local (g++ 13.3, Intel Arc, Mesa).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| A77 Mesure | `tools/engine-sdk/template/src/`, `site/src/content/docs/demarrer/tutoriel-jeu-3d.md` | commandes de `docs/releases/M8.md` | programme de départ **403 → 59** lignes (≤ 80) ; tutoriel 3D **459 → 170** (≤ 180) |
+| G365 Hôte de la vue dans la façade | `Application::setView`, `views()`, `ApplicationSettings::views`, `ViewHost::setLinkedRoot` | `make demo-test` : cas « View host (A79 L14, G365) » (forme liée), « Application::setView (A79 L14, G365) » (bibliothèque de jeu de test `test_view_v1` puis `v2`) | vue installée ; construite par la bibliothèque puis recréée après son rechargement (`rebuilds() == 1`) ; sans bibliothèque : vue liée ; sans interface : `kUnsupported` ; 0 message de validation (OpenGL, Vulkan) |
+| Réglages du projet | `defaultViews()`, `defaultSettings(titre)` (`include/orosmo/app/default_game.hpp`) | cas « defaultViews and defaultSettings » | `.cui` de `<projet>/src`, `make game BUILD_TYPE=<type>` dans `<projet>` ; validation et `logs/log.log` en debug |
+| Pause du tutoriel | `Application::pauseAnimations` | cas « pauseAnimations (A79 L14) » | lecteur `kSingle` figé, simulation continue ; repart après |
+| Sol PBR | `Application::addMesh(constructeur, matériau)`, `createMaterial` | cas « addMesh(builder, material) » | matériau gardé, récepteur d'ombres (`kPbrShadows`) ; disposition colorée refusée |
+| Cube aux faces colorées | `renderer::MeshBuilder::addBox(demi-côtés, six couleurs)` | cas « MeshBuilder::addBox with one color per face » | même géométrie, couleur par face (+X, −X, +Y, −Y, +Z, −Z) |
+| Programme de départ | `tools/engine-sdk/template/src/main.cpp`, `game/game.cpp` | `make e2e-init` | vert de bout en bout : projet créé compilé (debug, release sans code de rechargement), lancé sans fenêtre (capture, puis sans bibliothèque de jeu : HUD lié) ; GAME-06 : modification → code rechargé **1,91 s** (≤ 5 s) ; `.cui` enregistré → vue recréée **2,67 s**. À la main : `--api opengl` et `--api vulkan --headless --capture` : captures identiques (0/255), cube tourné et éclairé, HUD ; Vulkan : 0 message de validation |
+| Tutoriel compilé par un test | `tools/extract_doc_code.py` ; étape de `make e2e-init` | `python3 -m unittest discover -s tests/tools` ; `make e2e-init` | 3 tests Python verts ; `make e2e-init` extrait `menu_state.hpp`, `MenuView.cui`, `main.cpp` et compile le projet (`-Werror`). À la main, avec `figure.gltf` de la démo : OpenGL et Vulkan sans fenêtre, personnage animé, sol, ombre, ciel ; Vulkan : 0 message de validation ; lancement non automatisé (G370) |
+
+Vérifications : `make all-debug` sans avertissement ; `make check` vert ; `make demo-test` **924 / 924** (1 ignoré) et `test_game_static: OK` ; `make fclean && make demo-test SANITIZE=address,undefined` : 923 / 924, **aucun signalement** ASan ni UBSan ; le seul cas rouge est le cas de fenêtre `PLAT-01` (taille du tampon d'image), instable et connu (non touché par L14), vert 2 fois sur 3 relancé seul. Non vérifié : Windows, macOS (clang `-Werror`), `clang-format` absent de la machine, boucle fenêtrée (G374).
+
+## M8 lot L8 : interface rechargée à chaud (A79, UI-08)
+
+Branche `feat/M8-L8-cui-rechargement` (depuis `feat/M8-L7-build-incremental`). Linux x64 seulement en local (g++ 13.3) ;
+Windows et macOS par la CI (G360). Choix de réalisation : `docs/QUESTIONS.md`, A79, « L8, choix de réalisation ».
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| UI-08 État gardé par identifiant | `include/orosmo/ui/view_state.hpp` `replaceRoot`, `captureViewState`, `restoreViewState` ; `Widget::saveRetained` / `restoreRetained` (ScrollView, TextArea, Section, Tabs) | `make demo-test` (suite `ui/view_state`) | 5 cas verts : focus et anneau, défilement, section, onglet gardés, widget ajouté ; borne à la mise en page ; refus pendant `Ui::update` |
+| UI-08 Point d'entrée des vues | `tools/cui-rs/src/engine.rs` (`orosmoCuiView_<Vue>`, `cui_bindings`, `OROSMO_CUI_VIEW_LOCAL`) ; `include/orosmo/ui/view_entry.hpp` | `make cui-test` | `cargo test` 18 verts (dont `a_view_exports_its_entry_point_and_the_fingerprint_of_its_structure`) |
+| UI-08 Vue rechargée depuis la bibliothèque de jeu | `include/orosmo/app/view_host.hpp` `ViewHost` ; `src/app/view_reloader.cpp` ; `GameModule::findSymbol`, `retainCode` ; `platform::runCommand` | `make demo-test` (suite `app/view_host`, bibliothèques `bin/tests/test_view_v1..v3`) | 7 cas verts : arbre recréé (un widget de plus, focus, défilement et section gardés, état lié gardé) ; structure changée : ancienne vue et son code gardés, `kVersionMismatch`, notification ; construction en échec : vue gardée, message ; forme liée |
+| UI-08 Version finale liée | `ViewHost::setRoot` sans `OROSMO_CUI_RELOADABLE` ; `src/app/view_host.cpp` seul | `make demo-test` (`bin/tests/test_game_static`, contrôle `nm`) ; `make e2e-init` (version finale de `mygame`) | `test_game_static: OK (static game and linked view, no hot reload code linked)` ; ni `ViewHost::mountFromLibrary`, ni `DevReloader`, ni `runCommand` |
+| UI-08 De bout en bout | gabarit (`src/main.cpp` `hudSettings`, `HudView.cui` avec `Notifications`), `apps/demo/Makefile` (`GAME_VIEW_OBJS`, `CUI_IN_GAME`), `tools/e2e/view_reload_host.cpp`, `tools/e2e_view_reload.py` | `make e2e-init` | `.cui` invalide : ancienne vue gardée (7 widgets), erreur signalée ; `.cui` enregistré -> vue recréée (8 widgets, focus gardé) en 2,57 s (limite 5 s) ; exécutable non refait. GAME-06 inchangé : 1,91 s (limite 5 s) |
+
+Vérifications (Linux x64, g++ 13.3) : `make all-debug` sans avertissement ; `make demo-test` 912 cas verts (1 ignoré) puis
+`test_game_static: OK` ; `make check` OK (règle 13 vérifiée aussi sur les bibliothèques de test qui contiennent une vue) ;
+`make e2e-init` OK ; `make cui-test` vert. ASan + UBSan sur arbre propre (`make demo-test-unit SANITIZE=address,undefined`, `ASAN_OPTIONS=alloc_dealloc_mismatch=0` comme en L7) : 599 cas verts, `test_game_static` sans message. Rendu non touché (aucune capture refaite).
+Site : `reference/construction` complété. Non vérifié : Windows, macOS (G360) ; `clang-format` absent de la machine.
+
+Revue CodeRabbit de la PR #34 : les 11 remarques retenues (constantes d'une vue à `@cui-cpp` dans `cui_bindings`, version
+chargée pendant une construction en échec ignorée, G367, estampille `CUI_IN_GAME`, HUD lié sans bibliothèque de jeu, tests de
+`app/view_host` sans processus ni pause). Après revue : `make -j6 all-debug`, `make -j6 demo-test` (918 cas verts, 1 ignoré),
+`make check`, `make cui-test`, `make -j6 e2e-init` verts ; sanitizers non relancés.
+
+## M8 lot L7 : construction incrémentale de la bibliothèque de jeu (A79, GAME-06)
+
+Branche `feat/M8-L7-build-incremental` (depuis `feat/M8-L5-jeu-rechargeable`). Linux x64 seulement en local (g++ 13.3) ;
+Windows et macOS par la CI (G330). Mesures : `docs/BASELINE/game-reload-M8-L7.txt`.
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| GAME-06 En-tête léger | `include/orosmo/game.hpp`, `sim/system.hpp` (`StepContext`, `ConstView`), `core/math_types.hpp` | `make check` (`tools/check_headers.py`, `LIGHT_HEADERS`) | ni `renderer`, `rhi`, `platform`, `ui`, `Simulation`, `nlohmann/json`, `glm.hpp` ; game.cpp du gabarit : 6,9-7,4 s avant, 3,9-4,0 s après |
+| GAME-06 Cible du gabarit et `ccache` | `apps/demo/Makefile` (`game`, `CCACHE`) | `make e2e-init` | `make -n -W src/game/game.cpp game` : `ccache g++ … game.cpp`, ni `src/main.cpp` ni édition de liens du programme |
+| GAME-06 Outil | `tools/engine-init-rs/src/main.rs` (`build --game`, `make_goals`) | `cargo test` (`tests::build_game_option`), `make e2e-init` | 34 tests verts |
+| GAME-06 Reconstruire et recharger < 5 s | `tools/e2e/reload_host.cpp`, `tools/e2e_reload.py` | `make e2e-init` (`E2E_RELOAD_MAX=5`) | 2,0-2,5 s (charge ~7), 4,0 s sous charge ~20-40 ; code changé exécuté, état du composant gardé, exécutable non refait ; copie sous nom unique avant chargement : L5 (suite `app/game_module`) |
+
+Vérifications (Linux x64, g++ 13.3, 22 threads, machine partagée) : `make all-debug` sans avertissement ; `make demo-test` vert
+(806 puis 811 cas, 1 ignoré à chaque passage, puis `test_game_static: OK`) ; ASan + UBSan sur arbre propre
+(`make demo-test-unit SANITIZE=address,undefined`, `ASAN_OPTIONS=alloc_dealloc_mismatch=0`) : 508 cas verts, `test_game_static`
+sans message ; sans cette option, la passe s'arrête sur l'erreur connue de `libshaderc` du système (antérieure, notée en L5).
+`make check` OK ; `make e2e-init` OK ; `cargo test` de l'outil 34 verts. Rendu non touché (pas de captures). Site non
+reconstruit ; code non formaté par `clang-format` (absent de la machine).
+
+## M8 lot L13 : façade d'application et rendu de scène (A79, A75.1, reste d'A75.9, A73 point 3)
+
+Branche `feat/M8-L13-application` (depuis `dev` avec L3, L5, L10, L12a, L12b). Module `app` (`src/app/README.md`) :
+`Application`, composants de rendu définis par le moteur et leur système. Décisions sous A79 « Lot L13 ». Linux x64 seulement
+en local (g++ 13.3, Intel Arc, Mesa, OpenGL et Vulkan) ; Windows et macOS par la CI (G350). La démo `apps/demo` n'est pas
+touchée (elle garde l'API bas niveau) ; le gabarit et le tutoriel passent à la façade en L14.
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| A75.1 Façade d'application | `include/orosmo/app/application.hpp` (`Application::create`, `main`, `run`, `frame`, `spawn`, `addMesh`, `loadAnimatedModel`, `ApplicationSettings`, `parseArguments`) | `make demo-test` (suite `app/application-gpu`, cas « Application without a window renders the same image ») | sur OpenGL et Vulkan, l'image d'une application sans fenêtre (cube, ambiante, directionnelle, caméra en composants) est **identique** (tolérance 1/255, 0 pixel hors tolérance) à la même scène construite avec `SceneRenderer`, `LightManager`, `Mesh` et `Camera` ; 0 message de validation |
+| A75.1 Repli de backend | `Application::Impl::createGraphics`, `ApplicationSettings::backendFallback`, `createDevice` | cas « Backend fallback » | Vulkan qui échoue : OpenGL (`fellBack()`, deux essais) ; `--strict-backend` : `kUnsupported` qui cite l'erreur, un essai ; pas de repli depuis OpenGL |
+| A75.1 Ordre des rappels | `onUpdate`, `onUi`, `onRender`, `RenderFrame` | cas « Callbacks » | `update`, `ui`, `render` à chaque image ; jeu lié (`GameSource::fromApi`) : système et action enregistrés, 3 pas en 3 images ; pause : 0 pas ; un `onRender` qui échoue rend l'erreur |
+| A75.9 (reste) Temps fourni | `FrameTime` (`dt`, `fixedStep`, `steps`, `alpha`, `simulationStep`), `maxFrameDelta`, `settings.clock` | cas « Time (A75.9) » | horloge manuelle : 0, 40 ms (2 pas), 1 s ramenée à 250 ms (8 pas, plafond) ; sans fenêtre : `dt` = un pas fixe |
+| Composants de rendu | `include/orosmo/app/render_components.hpp` (`MeshRenderer`, `LightComponent`, `CameraComponent`, `AnimatedModelComponent`), `registerRenderComponents`, `ResourcePool` (`core::Handle<T>`) | suite `app/application` (sans GPU) | trivialement copiables, enregistrés par nom, sauvegardés et rechargés avec l'état de la simulation (même empreinte) ; poignée retirée jamais réutilisée |
+| A73 point 3 Mode de dessin | `DrawMode`, `SceneRenderSystem::draw` | cas « Draw modes » | 3 cubes `kSingle` = 3 dessins ; `kInstanced` = 1 lot de 3, même image (tolérance 2) ; poignée périmée ignorée ; modèle animé `kSingle` (lecteur avancé) et foule `kCrowd` (2 agents, clip absent ignoré) |
+| A75.2 Dispatch compute | `SceneRenderSystem::dispatch`, appelé par `Application::frame` avant `beginFrame` | cas « Draw modes » | skinning enregistré hors passe ; 0 message de validation |
+| Ombres et HDR | `ApplicationSettings::shadows`, `hdr` ; casters des composants | cas « Shadows and HDR » | un caster par maillage `castShadows`, oublié quand le maillage est retiré ; lumière `kDynamic` ; caster retiré aussi quand aucune entité ne le demande (cas « Shadow casters ») |
+| Revue PR #32 : arrêt et erreurs | `Application::Impl::~Impl`, `Application::frame` | cas « Destruction », « beginFrame », « present », « Capture without a window » (`tests::CountingDevice` injecte les erreurs) | rappels libérés avant le jeu et le périphérique ; erreurs de `beginFrame`/`present` propagées (kBusy toléré) ; capture au-delà de 3 images écrite ; limite avant la capture = échec |
+
+Vérifications (Linux x64, g++ 13.3, Intel Arc, Mesa ; après fusion de `dev` avec L4 et L16) : `make all-debug` sans
+avertissement ; `make check` vert ; tests **879 / 879** (1 ignoré, 372 174 assertions) et `test_game_static: OK` ; ASan +
+UBSan sur les suites `app/*`, `scene/*`, `sim/*` (66 cas, 212 514 assertions, avant la fusion) sans signalement ; démo
+inchangée, `--headless --capture` en Vulkan (validation : 0 message) et en OpenGL sans erreur. Non vérifié : Windows,
+macOS (G350), `clang-format` absent de la machine.
+
+Après la revue de la PR #32 et la fusion de `dev` avec L6 : `make all-debug`, `make check` verts, tests **898 / 898**
+(1 ignoré, 372 554 assertions), `test_game_static: OK` (sanitizers non relancés).
+
+## M8 lot L6 : migration d'état, gestionnaires par nom, paramètres JSON (A79, GAME-03, GAME-04, GAME-05)
+
+Branche `feat/M8-L6-migration-parametres` (depuis `feat/M8-L5-jeu-rechargeable`, `origin/dev` fusionné). Choix de réalisation
+sous A79 « L6 ». Linux x64 seulement en local (g++ 13.3) ; Windows et macOS par la CI (G310, G326).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| GAME-03 Migration par réflexion | `include/orosmo/scene/component_migration.hpp` (`migrateComponentValue`, `classifyMigration`), `scene::World::migrateComponent`, `app::GameContext::registerComponent` | suites `scene/migration` et `app/game_module` (bibliothèque `v1` puis `v3`) | champ ajouté au milieu : champs communs copiés, nouveau à sa valeur par défaut (`bonus == 42`), `kCopied`, ordre dense gardé, ancien identifiant refusé |
+| GAME-03 Repli sauvegarde/restauration | même code ; `GameModule::lastMigrations` | mêmes suites (`v3` puis `v1`, tables `kMoverChanged`) | champ retiré ou type changé : `kRestored`, un avertissement par champ, entier relu en réel, non convertible à sa valeur par défaut |
+| GAME-03 Échec de l'`init` | `GameModule::Impl::switchTo` (copie du monde avant `init`, G319) | `app/game_module` (`kMoverFails` par `GameModule::replace`) | ancienne version active, monde remis (valeurs, identifiant du type, entités), son système marche encore |
+| GAME-04 Gestionnaire renommé | `GameModule::missingActions`, journal après chaque passage | `app/game_module` (« renamed handler ») | liaison `bind("game.v1")` sans effet ni plantage après v2, `missingActions() == {"game.v1"}` |
+| GAME-05 Paramètres JSON | `include/orosmo/app/params_host.hpp` (`ParamsFile`, `ParamsHost<T>`, `Params<T>`), `GameContext::registerParams`, relu dans `GameModule::update` | `app/game_module` (« game parameters », « ParamsHost ») | `tuning.json` modifié : valeur lue au premier `update` après sa détection (au plus `pollInterval`, 100 ms par défaut ; 0 dans le test), sans compilation ; JSON illisible, type faux ou hors plage : dernière valeur valide gardée, `lastError` ; champ inconnu : avertissement |
+
+## M8 lot L16 : performances décidées pour M8 (A61 G et C)
+
+Branche `feat/M8-L16-perf-a61` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa 26.1.6, Intel Arc, OpenGL et Vulkan). Aucune ligne
+de `docs/02` ne change d'état (A61 n'a pas d'identifiant de checklist). Décisions : `docs/QUESTIONS.md`, A79 « Lot L16 ».
+
+| Proposition | État | Fichier et symbole | Preuve |
+| --- | --- | --- | --- |
+| A61 G : images en vol réglables (1 à 3), deux par défaut | **Fait** (Windows, macOS, Metal non vérifiés : G343) | `include/orosmo/rhi/device.hpp` `DeviceDesc::framesInFlight`, `kDefaultFramesInFlight`, `kMaxFramesInFlight`, `Device::framesInFlight` ; `src/rhi/opengl/gl_device.cpp`, `src/rhi/vulkan/vk_swapchain.cpp` (`framesInFlight_`) ; `SceneRendererConfig::framesInFlight` = 0 (celle du périphérique) ; démo `--frames-in-flight` | `tests/rhi/frames_in_flight_tests.cpp` (refus de 0 et 4 ; valeur rendue ; libération après exactement N présentations ; image k finie au retour de `beginFrame` k + N ; N = 1, 2, 3, deux backends) et suite `renderer/frames-in-flight` : verts ; démo Vulkan fenêtrée et hors écran avec 1, 2, 3 images : validation 0 message. Mesure : pas de gain stable de 3 images, défaut gardé à 2 (`docs/PERF_OPENGL_VS_VULKAN.md`, section M8) |
+| A61 C : graphe de passes gardé tant que plugins, cibles et tailles ne changent pas | **Fait** pour les plugins avec signature (post-traitements, GPU-driven, vues sans signature : G340) | `render_feature.hpp` `RenderFeature::passSignature`, `mixPassSignature` ; `render_graph.hpp` `RenderGraph::setImportedTexture`, `setImportedBuffer`, `compileCount` ; `scene_renderer.hpp` `GraphKey`, `setRenderGraphCaching`, `graphBuildCount`, `graphReused` ; signatures des ombres, du forward+, de l'IBL, de la couche 2D, des transparents, de la vue de debug, de `demo::FrameOverlay` ; démo `--graph-cache` | `tests/renderer/graph_cache_tests.cpp` (suite `renderer/graph-cache` : graphe construit une fois sur 6 images, sortie changée sans reconstruction et vue par la passe, taille, couleur d'effacement et plugin ajouté ou retiré : une reconstruction, signature changée ou absente, cache coupé, image en échec) et cas A61 C de `render_graph_tests.cpp` : verts ; démo : 2 à 3 reconstructions sur 600 images au lieu de 600 ; `CPU/Graph` 0,60 → 0,50 ms (scène lourde, OpenGL hors écran) |
+
+Non-régression : 16 captures (8 configurations × OpenGL et Vulkan : HUD, ombres, widgets, post-traitements, scène mixte avec
+ombres tramées, scène mixte avec post-traitements, animation, forward+) faites avec le binaire d'avant puis d'après :
+les 16 `scene.png` identiques au pixel près (`tools/compare_png.py`, tolérance 0), avec 2 et avec 3 images en vol ; les `ui.png` sans HUD identiques, celles avec HUD diffèrent seulement par les temps affichés (deux exécutions du binaire d'avant diffèrent de la même façon).
+
+Vérifications : `make all-debug` sans avertissement ; `make demo-test` (après fusion d'`origin/dev`, L3) : 830 cas, 830 verts, 1 ignoré ; `make check` vert ; démo debug Vulkan et OpenGL (`--ui full --scene mixed --shadows on`, `--frames-in-flight 1` et `3`, hors écran, et Vulkan fenêtré avec 1, 2, 3) : validation Vulkan 0 message, aucune erreur GL_KHR_debug ; ASan + UBSan (`make fclean && make demo-fclean && make demo-test SANITIZE=address,undefined TEST_ARGS='--test-suite=*frames-in-flight*,renderer/*,rhi/backend*'`) : 249 cas verts, aucun rapport. Démo : `apps/demo/bin/debug/main --frames-in-flight 3 --graph-cache on` (journal « Perf: framesInFlight=3 graphBuilds=… »). Windows et macOS non vérifiés (G343).
+
+## M8 lot L4 : thread de simulation optionnel (A79, extension de SIM-01)
+
+Branche `feat/M8-L4-thread-simulation` (depuis `feat/M8-L3-sauvegarde-simulation`). Module `sim` (`src/sim/README.md`) :
+`simulation_thread.hpp`, `snapshot_buffer.hpp` ; `Simulation` reçoit événements et arène de pas ; `core::ManualClock` devient
+lisible depuis un autre thread. Choix de réalisation sous A79 « L4 » ; limites G300 à G306. Le mode mono-thread reste le défaut.
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| Thread dédié, même résultat qu'en mono-thread | `include/orosmo/sim/simulation_thread.hpp` (`SimulationThread::start`, `frame`, `sync`, `stop`) | `make demo-test-unit` (suite `sim/thread`) | 12 agents, 300 pas, 6 entrées (apparitions, destructions, impulsions) poussées par la file : **même empreinte et mêmes événements** qu'en mono-thread, en 1, 3 et 4 pas par image et en fréquence fixe (`ManualClock`) |
+| Cadence (`Config`) | `Cadence`, `ThreadSettings`, `declareSimulationConfig`, `readSimulationConfig`, `stepForRate` | suite `sim/thread` | 20, 50 et 120 Hz pendant 2 s d'images à 60 Hz (`ManualClock`) : 40, 100 et 240 pas, nombre exact après chaque image, `alpha` = fraction du `FixedStepper` à 1e-9 ; 1, 2 et 4 pas par image : 50 N pas, au plus une image de retard ; réglages `sim.*` lus (fichier et ligne de commande), valeurs hors plage refusées |
+| Instantané immuable en double tampon, interpolation | `SnapshotBuffer`, `RenderSnapshot` (`alpha`, `transformAt`, `column`, `read`), `interpolate`, `relativeMatrix` | suite `sim/thread` | dernier publié lu, inchangé jusqu'au prochain `acquire` ; état d'avant apparié par entité (nouvelle entité : état courant) ; composants listés copiés ; interpolation exacte aux bornes, rotation de 90° à mi-chemin = 45° sans perte d'échelle |
+| Événements et entrées par `SpscQueue`, arène par thread | `StepContext::emit`, `Simulation::takeEvents`, `StepContext::scratch`, `SimulationThread::pushInput`, `popEvent`, `rejectedInputs` | suite `sim/thread` | file d'événements de 4 places, 400 événements : aucun perdu, dans l'ordre ; entrée d'un pas déjà joué refusée et comptée ; entrées en file rendues à la simulation par `stop` ; arène vide au début de chaque pas |
+| Test concurrent simulation + lecteur (rôle du rendu), sans GPU | `tests/sim/simulation_thread_tests.cpp` (« concurrent simulation and snapshot reader ») | `setarch -R make demo-test-unit SANITIZE=thread` (après `make fclean demo-fclean`, sans affichage ni pilote Vulkan, comme le job `tsan`) | 1000 Hz (horloge réelle) puis 3 pas par image, 64 entités, au moins 400 pas : aucun instantané déchiré, aucun événement perdu, toute entrée livrée, refusée ou en attente |
+
+Vérifications (Linux x64, g++ 13.3, Intel Xe, Mesa ; avant fusion de `origin/dev`) : `make all-debug` sans avertissement ;
+`make demo-test` **798 cas verts** (1 ignoré ; 13 nouveaux, suite `sim/thread`) ; `make demo-test-unit` 505 cas ; **TSan** : 505 cas
+unitaires verts, **0 signalement** ; **ASan + UBSan** (`make demo-test SANITIZE=address,undefined`, arbre propre) : 798 cas verts,
+aucun message ; `make check` OK (118 en-têtes autonomes, 0 violation de couche, chemin rejoué propre). Windows MinGW et macOS : par
+la CI seulement. Non formaté par `tools/format_sources.sh` (clang-format absent) : style voisin suivi à la main.
+
+## M8 lot L5 : module de jeu rechargeable, version finale statique (A79, GAME-01, GAME-02, GAME-07)
+
+Branche `feat/M8-L5-jeu-rechargeable` (depuis `feat/M8-L3-sauvegarde-simulation`). Nouveau module `app` (niveau `app` de
+`tools/layers.json`, A79 choix 3, provisoire), archive `libapp.a` (`src/app/README.md`). Choix de réalisation sous A79 « L5 ».
+Linux x64 seulement en local (g++ 13.3) ; Windows et macOS par la CI (G310, G311).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| GAME-01 Interface C | `include/orosmo/app/game_api.hpp` (`OrosmoGameApi`, `orosmoGameApi`, `kGameAbiVersion`, `OROSMO_GAME_EXPORT`) | suite `app/game_module` | table lue par son nom ; `abiVersion` différente refusée au chargement et au rechargement (`kVersionMismatch`, ancienne version gardée) |
+| GAME-01 Chargement et rechargement | `include/orosmo/app/game_module.hpp` (`GameModule::load`, `update`, `reload`), `src/app/game_reloader.cpp` | suite `app/game_module` avec `tests/app/game_module/game.cpp` construit en v1, v2, badabi, failinit | v1 puis v2 copiée sur le fichier surveillé : rechargée à l'`update` suivant, comportement changé (+1 → +10 par pas), état du composant intact (5 → 25), `onReload` appelé ; copie de la v1 effacée ; `init` qui échoue après avoir écrit dans le monde, fichier tronqué : ancienne version active, enregistrements remis, empreinte de la simulation identique (monde et générateur remis) |
+| GAME-02 État côté moteur | `include/orosmo/app/game_context.hpp` (`GameContext::registerComponent`, `addSystem`, `addAction`) | suite `app/game_module` | systèmes et actions de l'ancienne version absents après rechargement (`Simulation::systemOrder`, `ActionRegistry::contains`) ; `stop` : `shutdown`, plus aucun système ni action, données des composants gardées ; nom déjà pris par l'hôte refusé |
+| GAME-02 Règle 13 sur le binaire | `tools/check_game_static.py` (`make check`, CI, après chaque édition de liens d'une bibliothèque de jeu) | `make check` | auto-test : six formes d'état refusées (global `.bss`/`.data`, `thread_local` `.tbss`/`.tdata`, `static` local et `static` d'une fonction `inline`), constantes et vtables acceptées ; bibliothèque de test v1 et v2 sans état |
+| GAME-07 Version finale | `GameModule::fromApi`, `OROSMO_GAME_STATIC` ; `bin/tests/test_game_static` (`tests/app/game_module/static_main.cpp`) | `make demo-test` (lien + `nm` + exécution) | aucun symbole `platform::DynamicLibrary`, `GameModule::load(` ni `DynamicReloader` dans l'exécutable ; `test_game_static: OK` |
+| Gabarit | `apps/demo/Makefile` (`GAME_MODULE_DIR`, `GAME_MODULE`, `.DEFAULT_GOAL := all`), `tools/engine-sdk/template/src/game/` (`Spin`, système `spin`), `main.cpp` (`startGame`) | `make e2e-init` | `make debug` : `bin/debug/game.so` (contrôle de la règle 13 après l'édition de liens) ; `orosmo run -- --headless` : `game: started, version 1` puis `game: stopped` ; `make release` : jeu lié, aucun symbole de rechargement (`nm`) ; à la main, programme lancé puis `src/game/game.cpp` modifié et `make debug` : `game: reloaded, version 2` (un premier essai sur le fichier à moitié écrit a échoué proprement, G315) |
+
+Vérifications (Linux x64, g++ 13.3, Intel Xe, Mesa ; machine chargée par d'autres agents) : `make all-debug` sans avertissement ;
+`make demo-test` **793 cas verts** (1 ignoré ; 8 nouveaux, suite `app/game_module`) ; après la revue de la PR #28 (fusion de `dev`) : **827 cas verts**, 9 dans `app/game_module`, 31 tests Python puis `test_game_static: OK` ;
+`make demo-test-unit` 500 cas verts ; `make check` OK (119 en-têtes autonomes, 0 violation de couche, `check_game_static` OK) ;
+`make e2e-init` OK ; ASan + UBSan (`make fclean && make demo-test-unit SANITIZE=address,undefined`) : suite `app/game_module` 8 / 8 et `test_game_static` sans aucun message ; le passage complet s'arrête sur une erreur **antérieure au lot** (`alloc-dealloc-mismatch` dans `libshaderc` du système, appelé par le test de foule `anim` qui crée un périphérique graphique alors qu'il est dans `demo-test-unit`), et le passage complet avec `ASAN_OPTIONS=alloc_dealloc_mismatch=0` n'a pas fini en 15 min sur la machine chargée. Pas de rendu touché (démo inchangée). Non formaté par `tools/format_sources.sh`
+(clang-format absent de la machine) : style du code voisin suivi à la main.
+
+## M8 lot L10 : outils de debug et inspecteur (A79, UI-04, UI-10)
+
+Branche `feat/M8-L10-inspecteur-console` (depuis `feat/M8-L2-ecs`). Outils construits sur `orosmo::ui`, sans Dear ImGui (A79
+choix 6) ; `ui` dépend désormais de `scene` (couche inférieure) pour l'inspecteur d'entités. Décisions : `docs/QUESTIONS.md`,
+A79, « Lot L10 » ; limites G295 à G299. Démo : `apps/demo/bin/debug/main` puis F12, ou `--debug-tools [--debug-tab
+console|widgets|entities|profiler]`.
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| UI-04 Console | `include/orosmo/ui/debug_console.hpp` (`debug::Console::add`, `execute`, `pollLog`, `splitCommandLine`) ; `core::Logger::RecordsSince`, `LastSequence` | suite `ui/debug` (« console runs a registered command… », « console mirrors the engine log », « the console input runs the typed line ») ; `Logger` (« RecordsSince… ») | commande exécutée par nom avec arguments entre guillemets ; commande inconnue : `kNotFound` et ligne d'erreur ; journal recopié (avertissement, erreur) ; saisie + Entrée exécute et vide le champ |
+| UI-04 Inspecteur d'entités | `include/orosmo/ui/reflect.hpp` (`reflectedPanel(ObjectLocator, span<const FieldDesc>)`), `debug_tools.hpp` (`entityPanel`, `describeEntity`) | « the runtime reflected panel edits fields… », « the entity inspector modifies a component » | entier, double, uint8 (hors plage refusé), booléen modifiés par l'interface aux bons décalages ; composant modifié dans le `World`, y compris après déplacement de son stockage ; panneau refait à la destruction |
+| UI-04 Profileur | `include/orosmo/ui/frame_history.hpp` (`FrameHistory`, `FpsStats`, repris de la démo), `core::Profiler::Names`, onglet Profiler | « frame history computes the frame rate », `Profiler` (« Names lists… »), suite `apps/demo_performance` (inchangée) | FPS moyenne / min / max identiques au calcul de la démo |
+| UI-10 Inspecteur d'interface | `debug_tools.hpp` (`describeWidgetTree`, `describeWidget`, `DebugTools::widgetTree`, `highlight`) | « the widget inspector lists the tree with the layout sizes » | arbre dans l'ordre, rectangles égaux à ceux de la mise en page (bouton 120×30 en 5,5), widget masqué signalé ; survol d'une ligne = surlignage du widget |
+| UI-13 Rien quand fermé | `DebugTools::update`, `draw` | « closed debug tools neither lay out nor draw » | fermés : liste de dessin vide, aucune mise en page ; F12 ouvre et ferme |
+
+Vérifications (Linux, g++ 13.3, Intel Xe, Mesa) : `make all-debug` sans avertissement ; `make demo-test` **772 cas verts** (1
+ignoré ; 10 nouveaux : 8 dans `ui/debug`, 1 `Logger`, 1 `Profiler`) ; `make check` OK (113 en-têtes autonomes, 0 violation de
+couche, 0 appel d'API graphique hors zone) ; captures `--debug-tab widgets|console|entities|profiler` en OpenGL et Vulkan sans
+fenêtre : code 0, « Vulkan validation: 0 error/warning » ; outils fermés : `ui.png` de `--tab controls --focus detailMedium`
+identique pixel pour pixel à `docs/BASELINE/reference/ui-opengl-controls-focus-1280x720.png` ; ASan + UBSan (`make fclean`, `make demo-test-unit SANITIZE=address,undefined`) : 487 cas verts sans GPU (dont les 10 nouveaux), aucun message ; le `make demo-test` complet sous sanitizers n'a pas été relancé (lot sans code GPU).
+`make demo-capture` ajoute les quatre captures des outils. `clang-format` absent de la machine : sources non reformatées.
+
+Revue de la PR #26 (CI MinGW et CodeRabbit, après fusion de `dev`) : `Result` ignoré corrigé dans les tests (libstdc++ 15 ;
+reproduit sous g++ 13.3 avec une copie de `<expected>` marquée `[[nodiscard]]`) ; `Console` non copiable, état des commandes gardé
+(« a console command keeps its state… ») ; surlignage gardé lié au widget (« the pinned highlight follows its widget… ») ;
+direction de caméra parallèle à `up` refusée (suite `apps/demo-debug-world`) ; plein écran des builds debug déplacé de F12 à F10
+(`static_assert` dans `Game/debug_world.hpp`). `make all-debug`, `make demo-test` (**806 cas verts**, 1 ignoré) et `make check` OK.
+Après fusion de `dev` (PR #25, lot L3) : faux positif `-Warray-bounds` de GCC 16 (MinGW) désactivé dans `debug_tools_tests.cpp`
+(G34 ; non reproductible sous g++ 13.3, à confirmer par la CI) ; `make demo-test` **832 cas verts**, 1 ignoré, `make check` OK.
+
+## M8 lot L3 : sauvegarde de scène et boucle à pas fixe (A79, ECS-03, SIM-01)
+
+Branche `feat/M8-L3-sauvegarde-simulation` (depuis `feat/M8-L2-ecs`). Sauvegarde et empreinte dans `scene`
+(`src/scene/README.md`), nouveau module `sim` (`src/sim/README.md`), couche 9, archive `libsim.a`. Choix de réalisation sous
+A79 « L3 ». Linux x64 seulement en local (g++ 13.3) ; arm64, Windows et macOS par la CI (G280).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| ECS-03 Sauvegarde JSON et binaire | `include/orosmo/scene/scene_file.hpp` (`saveScene`, `loadScene`, `saveSceneBinary`, `loadSceneBinary`, `saveSceneFile`, `loadSceneFile`) ; `World::entityTable`, `resetEntities`, `componentEntities` | `make demo-test-unit` (suite `scene/file`) | aller-retour JSON et MessagePack **exact** (même empreinte, même texte, mêmes octets ; -0, infinis, dénormaux, `int64` min, `uint64` max, références `Entity`, ordre dense, ordre des enfants, indices libres, `create` suivants identiques) ; cache monde recalculé |
+| ECS-03 Versions | `SceneMigrations` (format et par type), `kSceneFormatVersion` | suite `scene/file` | migration de composant v1 -> v2 ; sans migration ou version plus récente : `kVersionMismatch`, monde inchangé ; champ manquant = défaut ; champ inconnu et type non enregistré ignorés avec avertissement ; documents invalides refusés (tout ou rien) |
+| Empreinte | `include/orosmo/scene/fingerprint.hpp` (`fingerprint`, `hashWorld`), `include/orosmo/core/hash.hpp` (`Fnv1a`) | suite `scene/file` | ignore remplissage et cache monde ; sensible à un ulp, au signe de zéro, à l'ordre dense ; indépendante de l'ordre d'enregistrement des types |
+| SIM-01 Pas fixe, systèmes | `include/orosmo/sim/simulation.hpp` (`Simulation::advance`, `step`, `run`, `addSystem`, `systemOrder`) | suite `sim/simulation` | nombre de pas égal au temps cumulé / pas pour trois découpages d'images ; `maxStepsPerFrame` ; ordre phase, ordre, nom ; pas d'ajout pendant un pas |
+| SIM-01 Entrées, rejeu | `Simulation::queueInput`, `inputLog`, `recording`, `play`, `Replay`, `replayToJson` | suite `sim/simulation` | entrées livrées à leur pas, dans l'ordre ; enregistrement rejoué (aussi via JSON) : même empreinte ; autre graine refusée |
+| SIM-01 Capture et restauration | `Simulation::capture`, `restore`, `saveState`, `loadState`, `Snapshot` | suites `sim/simulation`, `demo/simulation` | 500 agents, graine 42 : capture au pas 500 puis restauration, et état JSON/MessagePack rechargé dans une nouvelle simulation : même empreinte au pas 1000 |
+| SIM-01 Mode sans fenêtre de la démo | `apps/demo/src/Sim/agent_simulation.cpp` (`runSimulationMode`), options `--sim-agents`, `--seed`, `--sim-steps` | `apps/demo/bin/debug/main --sim-agents 500 --seed 42 --sim-steps 1000` | `Simulation: agents=500 seed=42 steps=1000 alive=500 fingerprint=0xa3f0f4166622ae05` en 84 ms, sans fenêtre ni GPU ; **même valeur en debug et en release**, figée par la suite `demo/simulation` (deux exécutions identiques, autre graine différente) |
+| Chemin rejoué déterministe | `tools/check_deterministic_math.py` (`make check`, CI), `-ffp-contract=off` (`mk/engine.mk`, `tools/engine-sdk/engine.mk`) | `make check` ; `python3 -m unittest discover -s tests/tools` | OK ; 5 tests du contrôle (refus de `sin`, `glm::angleAxis`, `rand`, `<random>`, horloge ; commentaires ignorés) |
+
+Vérifications (Linux x64, g++ 13.3, Intel Xe, Mesa) : `make all-debug` sans avertissement ; `make demo-test` **777 cas verts**
+(1 ignoré ; 16 nouveaux : 6 `scene/file`, 6 `sim/simulation`, 4 `demo/simulation`) ; `make demo-test-unit` 492 cas verts ;
+`make check` OK (114 en-têtes autonomes, 0 violation de couche, chemin rejoué propre) ; `python3 -m unittest discover -s
+tests/tools` 26 tests OK. ASan + UBSan (`-fsanitize=address,undefined -fno-sanitize-recover=all`, `-O1`) **sur les sources et
+tests du lot seulement** (`src/scene/`, `src/sim/`, `apps/demo/src/Sim/`, `launch_options.cpp`, suites `scene/*`, `sim/*`,
+`demo/simulation`, `core/serialization`, liés aux archives release du reste du moteur) : 43 cas verts, aucun message,
+empreinte figée retrouvée ; le `make demo-test SANITIZE=address,undefined` complet n'a pas été relancé (machine partagée, lot
+sans code GPU). Non formaté par `tools/format_sources.sh` (clang-format absent de la machine) : style du code voisin suivi à la
+main.
+
+## M8 lot L2 : entités et transformations (A79, ECS-01, ECS-02)
+
+Branche `feat/M8-L2-ecs` (depuis `feat/M8-L1-fondations`). Nouveau module `scene` (`src/scene/README.md`), couche 6, archive
+`libscene.a`, dépend seulement de `core`. ECS maison (A79 choix 1), composants trivialement copiables (choix 2) ; choix de
+réalisation sous A79 « L2 ». Linux seulement en local (g++ 13.3) ; macOS et Windows par la CI (G264).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| ECS-01 Entités | `include/orosmo/scene/entity.hpp` (`Entity`), `world.hpp` (`World::create`, `destroy`, `alive`) | `make demo-test` (suite `scene/world`) | une entité détruite est refusée par sa génération, même après réutilisation de l'indice, et n'atteint pas les composants de la nouvelle |
+| ECS-01 Composants par nom | `component.hpp` (`ComponentDesc`, `validateComponentDesc`, `describeComponent<T>`), `World::registerComponent`, `componentId`, `componentType<T>`, `add(e, nom)` | suite `scene/world` | description copiée (survit à l'original), valeur par défaut, version ; composant inconnu refusé par nom (`kNotFound`) ; disposition différente `kAlreadyExists` ; descriptions invalides refusées ; retrait d'un type et identifiant périmé |
+| ECS-01 Stockage contigu, requêtes | `component_pool.hpp` (`ComponentPool`), `World::view`, `forEach`, `forEachComponent` | suite `scene/world` | stockage contigu aligné (64 octets), dense après retraits ; vues typées et non typées concordantes ; copie profonde ; **100 000 entités parcourues** (temps dans `src/scene/README.md`) |
+| Réflexion avec décalages | `include/orosmo/core/reflection.hpp` (`FieldDesc::offset`, `size`, `fields`, `kDVec3`, `kQuat`, `kDQuat`) | suite `core/reflection` | décalages et tailles égaux à `offsetof` / `sizeof`, sous-champs, type sans constructeur par défaut |
+| ECS-02 Hiérarchie, transformations | `transform.hpp` (`Transform`, `composeWorld`, `relativeMatrix`), `World::setParent`, `updateTransforms` | suite `scene/hierarchy` | ordre des enfants, changement de parent, cycle refusé, destruction du sous-arbre ; propagation (rotation, échelle, ancêtre sans `Transform`) ; seules les entités sales et leurs descendants recalculées ; **précision à 10^7 m : erreur < 1 mm relative à la caméra** ; 100 000 entités en hiérarchie |
+
+Vérifications (Linux, g++ 13.3, Intel Xe, Mesa) : `make all-debug` sans avertissement ; `make demo-test` **757 cas verts**
+(1 ignoré ; 30 cas dans les suites `scene/*`, `core/reflection` et `core/serialization`, dont 18 nouveaux pour `scene` et 3 pour la
+réflexion) ; `make check` OK (110 en-têtes autonomes, 0 violation de couche) ; ASan + UBSan (`-fsanitize=address,undefined
+-fno-sanitize-recover=all`, debug) **sur les tests du lot seulement** (sources `src/scene/` et tests `tests/scene/`,
+`tests/core/reflection_layout_tests.cpp`, `serialization_tests.cpp`, liés à `libcore.a`) : 30 cas verts, aucun message ; le
+`make demo-test SANITIZE=address,undefined` complet n'a pas été relancé (machine partagée, lot sans code GPU).
+
+Après la revue de la PR #22 (CodeRabbit) : décalages mesurés sur un objet construit (`FieldDesc::kUnknownOffset` sinon),
+vues par `ComponentId`, `kBusy` pour un nouveau type pendant un parcours, garde de parcours sûre face aux exceptions, copie de
+la valeur avant agrandissement du stockage, taille bornée (`ComponentDesc::kMaxSize`), textes d'aide hors de la disposition,
+remontée des ancêtres mémorisée dans `updateTransforms`, valeur par défaut sans `resize` + `memcpy` (faux positif
+`-Warray-bounds` de GCC 16 sous MinGW) ; 7 cas de régression. Horloges retirées des tests : mesures dans `apps/demo/benchmark`
+(`scene-view`, `scene-transforms`, `make -C apps/demo ENGINE_DIR=orosmo TEST_DIR=../../tests benchmark`). Vérifications :
+`make all-debug` sans avertissement, `make demo-test` **776 cas verts** (1 ignoré), `make check` OK, ASan + UBSan sur les tests
+du lot (37 cas) sans message.
+
+## M8 lot L1 : fondations (A79)
+
+Branche `feat/M8-L1-fondations`. Aucune ligne de `docs/02` ne change d'état : ce lot prépare GAME-01, UI-08 (chargement
+dynamique), SIM-01 bis (file entre threads, TSan) et ECS/SIM (couches). Linux seulement en local (g++ 13.3) ; Windows MinGW et
+macOS par la CI (G230).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| Bibliothèque dynamique | `include/orosmo/platform/dynamic_library.hpp`, `src/platform/dynamic_library.cpp` (`DynamicLibrary::load`, `symbol`, `function<Sig>`, `unload`, copie sous un nom unique) | `make demo-test` (suite `platform/dynamic_library`) | 5 cas verts : fichier absent `kNotFound`, symbole absent `kNotFound`, appel d'une fonction, copie unique effacée au déchargement, deux versions chargées ensemble |
+| Bibliothèque liée au moteur de l'hôte | `tools/engine-sdk/engine.mk` (`engine_host_ldflags`, `engine_module_ldflags`, `ENGINE_MODULE_EXT`, `engine_count_exports`), `apps/demo/Makefile` (`TEST_MODULE`), `tests/platform/test_module/test_module.cpp` | même commande ; `nm -DC bin/tests/test_module.so` | le message écrit par la bibliothèque arrive dans le `Logger` de l'hôte et la bibliothèque lit le même compte ; `Logger::AddLog` et `KeptLogCount` indéfinis (`U`) dans la bibliothèque, contrôle `nm` au lien ; **10 109** symboles exportés par l'exécutable des tests (limite PE 65 535, G231) |
+| Générateur PCG32 | `include/orosmo/core/random.hpp` (`Random`) | suite `core/random` | 5 cas verts : 1 000 valeurs de la graine 42 égales à `tests/core/random_seed42_table.inc` (référence Python indépendante, début = `pcg32-demo`), `advance`, `fromState`, bornes |
+| File SPSC sans verrou | `include/orosmo/core/spsc_queue.hpp` (`SpscQueue<T>`) | suite `core/spsc_queue` ; sous TSan : `setarch -R` + `-fsanitize=thread` | 3 cas verts, 1e6 éléments entre deux threads dans l'ordre ; propre sous TSan ; une version cassée (`relaxed` à la publication) y est signalée (data race) |
+| Couches `scene`, `sim`, `app`, `game` | `tools/layers.json` (niveau `app` entre `sim` et `game`, A79 à confirmer), `docs/03` §1 annoté | `make check` ; `python3 -m unittest discover -s tests/tools` | OK ; 5 tests de `tests/tools/test_check_layers.py` (arbre factice : `scene -> app` et `sim -> game` refusés) |
+| Job CI TSan | `.github/workflows/ci.yml` (job `tsan` : `make demo-test-unit SANITIZE=thread`, `vm.mmap_rnd_bits=28`) | actionlint 1.7.12 ; en local `make fclean && setarch -R make demo-test-unit SANITIZE=thread`, puis le binaire sans affichage ni pilote Vulkan (G233) | actionlint : 0 erreur ; **439 cas unitaires verts et propres sous TSan** ; le job lui-même s'observe au push |
+
+Vérifications (Linux, g++ 13.3, Intel Xe, Mesa) : `make demo-test` **724 cas verts** (13 nouveaux) ; `make fclean && make demo-test
+SANITIZE=address,undefined` : aucun message ASan ni UBSan, 723 cas sur 724 (le seul échec est `PLAT-01 the framebuffer size…`,
+instable sous un gestionnaire de fenêtres qui redimensionne la fenêtre de test, déjà noté sous G201 ; 1 échec sur 3 en le relançant
+seul) ; `make all-debug` sans avertissement ; `make check` OK.
+
+## M8 lot L11 : API de rendu simplifiée (A75.3 à A75.7, A75.15)
+
+Sur `feat/M8-L11-api-rendu` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa, OpenGL et Vulkan). Les anciennes signatures restent (choix 10) et sont encore exercées par les tests. Tests : `tests/renderer/render_api_tests.cpp` (suites `renderer/render-api`, `renderer/mesh-builder`, sur les deux backends).
+
+| Proposition | État | Fichier et symbole | Preuve |
+| --- | --- | --- | --- |
+| A75.3 définitions et programme résolu au dessin | **Fait** (récepteurs d'ombres par `mesh.frag` : G240 ; dispositions texturée et instanciée : G243) | `scene_renderer.hpp` `SceneRenderer::shaderDefines`, `revision`, `resolveProgram` ; `render_feature.hpp` `RenderFeature::shaderDefines` ; `ForwardPlusLighting::shaderDefines` | cas « SceneRenderer::shaderDefines and revision », « drawMesh(mesh) (A75.3, A75.6) » (recompilé pour un AOV ajouté, mêmes pixels que l'ancien chemin) : verts |
+| A75.4 `RenderContext` | **Fait** | `render_context.hpp` `RenderContext` ; surcharges `create(const RenderContext &…)` de 17 fabriques, `enableForwardPlus` et `enableGpuDriven` | cas « RenderContext (A75.4) » : contexte possédant et contexte qui référence, ancienne signature : verts |
+| A75.5 matériau porté par le maillage, `MeshBuilder` | **Fait** | `mesh.hpp` `Mesh::setMaterial`, `material` ; `mesh_builder.hpp` `MeshBuilder` (`computeTangents`, `addBox`, `addPlane`) | cas « MeshBuilder (A75.5) » et « Mesh::setMaterial » (matériau gardé vivant, groupe suivi, mêmes pixels que l'ancien chemin) : verts |
+| A75.6 `drawMesh(Mesh &)`, `setWireframe` | **Fait** | `SceneRenderer::drawMesh(Mesh &)`, `setWireframe` | cas « setWireframe (A75.6) » : verts ; démo migrée (`apps/demo/src/Scene/demo_scene.cpp`) |
+| A75.7 `endFrame(backbuffer)` | **Partiel** (passe « upscale » non renommée : G241) | `SceneRenderer::endFrame(rhi::TextureHandle)` | cas « endFrame(texture) (A75.7) » : mêmes pixels, sortie étirée, texture inconnue refusée : verts ; démo migrée (`Game::render`) |
+| A75.15 `kBack` pour le contenu glTF | **Fait** pour les matériaux (défaut global gardé : G242) | `Mesh::setMaterial` ; `assets::RenderModel` (depuis M6) | cas « Mesh::setMaterial » : `kBack`, `kNone` en double face |
+
+Non-régression : 24 captures (12 configurations × OpenGL et Vulkan : HUD, ombres, forward+, forward+ et ombres, widgets, scène mixte, ombre tramée, animation, TAA, debug normales, fil de fer, 200 instances) faites avant puis après : les 24 `scene.png` identiques au pixel près (`tools/compare_png.py --tolerance 0`), `ui.png` identiques sauf le texte des mesures en direct du HUD (FPS, ms) ; couches de validation Vulkan : 0 message sur chaque exécution.
+
+Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 718 cas, 718 verts (7 nouveaux), 1 ignoré ; ASan + UBSan sur les suites `renderer/*` et `assets/*` (`make demo-test SANITIZE=address,undefined TEST_ARGS='--test-suite=renderer/*,assets/*'`) : 260 cas verts, aucun rapport ; `make check` : OK ; `make demo-capture` : OK (références comparées) ; `make demo-vulkan-check` : OK, validation Vulkan silencieuse. Non vérifié : Windows et macOS (compilés par la CI au push).
+
+
+## M8 lot L12a : API des contenus (A75.2, A75.11)
+
+Sur `feat/M8-L12a-api-contenus` (A79), fondé sur L11. Preuves sous Linux x64 (g++ 13.3, Mesa, OpenGL et Vulkan). Anciennes API gardées (`SkinnedModel`, `CrowdRenderer::create(…, render)`, `setAgents(worlds, poses)`). Tests : `tests/anim/animated_model_tests.cpp` (suite `anim/animated-model`, sur les deux backends) et `tests/apps/demo_anim_scene_tests.cpp`.
+
+| Proposition | État | Fichier et symbole | Preuve |
+| --- | --- | --- | --- |
+| A75.2 `assets::ModelLoader` | **Fait** | `model_loader.hpp` `ModelLoader::create`, `load`, `createRenderModel`, `reloadChanged` | cas « ModelLoader: a missing file is an error naming it… » : vert |
+| A75.2 `anim::AnimatedModel` (modèle animé en 5 lignes) | **Fait** (événements de clip : G251) | `animated_model.hpp` `AnimatedModel::create`, `play`, `crossFade`, `update`, `setPose`, `dispatch`, `draw`, `rebuild`, `reloadChanged` | cas « an animated glTF model is loaded and played in five lines » et « play and crossFade give the same poses as a StateMachine » (égalité exacte) : verts |
+| A75.2 repli CPU (`skinVertices`) | **Fait** (maillage partagé par plusieurs nœuds : G250) | `AnimatedModel` (`SkinningPath::kCpu`, `forceCpuSkinning`) | cas « the CPU fallback deforms the vertices like the compute skinning, to 1e-4 » (au milieu d'un fondu, sommets relus sur le GPU) : vert sur OpenGL et Vulkan |
+| A75.11 foule depuis un modèle | **Fait** | `crowd.hpp` `CrowdRenderer::create(context, animatedModel)`, `setAgents(worlds, clips, times)` | cas « a crowd created from an animated model… draws like a hand-built crowd » (images identiques) : vert |
+| Démo `--scene anim` migrée | **Fait** | `apps/demo/src/Scene/anim_scene.cpp` `AnimScene::init`, `update`, `updateCrowd`, `reloadChanged` | suite `apps/demo-anim` : verte ; captures avant/après (ci-dessous) |
+
+Non-régression : `--scene anim` capturée avant (anciens `anim_scene.*` de `dcbadf8` sur le même moteur) puis après, OpenGL et Vulkan, à 30 images et à 240 images (4 s : le fondu de 3 s vers « wave » est passé) : les 4 `scene.png` identiques au pixel près (`tools/compare_png.py --tolerance 0`) ; couches de validation Vulkan : 0 message.
+
+Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 726 cas verts avant la fusion de `origin/dev`, 736 cas verts (1 ignoré) après ; ASan + UBSan sur les suites `anim/*`, `assets/*` et `apps/demo-anim` : 83 cas verts, aucun rapport ; `make check` : OK. Non vérifié : Windows et macOS (compilés par la CI au push) ; `clang-format` absent de la machine (formatage non appliqué).
+
+
+## M8 lot L0 : `--shadow-quality` de la démo
+
+Option de la démo, sans changement du moteur (`docs/05` M8, A79). `apps/demo/src/launch_options.hpp` : `ShadowQuality`, `parseShadowQuality`, `shadowSettingsForQuality` (préréglages `low`, `medium`, `high` = `ShadowSettings{}`), `shadowQualityLabel` ; `Game::setShadowSettings` passe les réglages à `ShadowFeature::create` ; le panneau de performances affiche « shadows on <qualité> ». Tests : `tests/demo/launch_options_tests.cpp` (lecture, défaut `high`, valeur invalide refusée, préréglages, `high` égal à `ShadowSettings{}`). Démo : `apps/demo/bin/debug/main --shadows on --shadow-quality low`.
+
+## M8 lot L12b : petites fabriques et plateforme (A75.10, A75.12, A75.16, part `platform` d'A75.8)
+
+Sur `feat/M8-L12b-fabriques-platform` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa, OpenGL et Vulkan). Tests : `tests/renderer/light_camera_api_tests.cpp` (sans GPU), cas « A75.10 descriptor light factories give the same image… » de `tests/renderer/forward_plus_tests.cpp` (deux backends), cas A75.8 et A75.16 de `tests/platform/window_input_tests.cpp`.
+
+| Proposition | État | Fichier et symbole | Preuve |
+| --- | --- | --- | --- |
+| A75.10 une convention de direction, portée, degrés | **Fait** (limites : G272) | `light.hpp` `DirectionalLightDesc`, `PointLightDesc`, `SpotLightDesc`, `directionalLight(desc)`, `pointLight(desc)`, `spotLight(desc)`, `lightDirection` ; anciennes fabriques gardées | cas « A75.10 directionalLight(desc) / spotLight(desc) / pointLight(desc) » (portée = `lightRange`) et « same image as the old ones » (tolérance 0, OpenGL et Vulkan) : verts |
+| A75.12 `setForward`, `lookAt` | **Fait** (verticale : G273) | `camera.hpp` `Camera::setForward`, `lookAt`, `forward` | cas « A75.12 setForward… », « A75.12 lookAt… » (cible au centre de l'écran, même vue que `glm::lookAt`) : verts |
+| A75.16 `pollEvents` séparé de `newFrame` | **Fait** | `window.hpp` `Window::pollEvents`, `newFrame` (documenté ; faux sans fenêtre au lieu d'un pointeur nul) ; gabarit : `break` au lieu de `continue` | cas « A75.16 pollEvents… » et « a window that was never created behaves safely » : verts |
+| A75.8 (part `platform`) `init` → `Result<>`, `Window::input()` | **Fait** pour `init` et `input` (changement incompatible : G270 ; reste : G271) | `Window::init` (kInvalidArgument, kAlreadyExists, kUnsupported ; `glfwInit` en échec ne quitte plus), `Window::input` | cas « A75.8 Window::init returns a Result… », « a second init… », « Window::input() is the InputManager of getInstance » : verts |
 
 ## SDK (v0.6.2)
 
@@ -46,6 +380,18 @@ Distribution du SDK, décision A76 (`docs/QUESTIONS.md`), contrat `docs/03` §16
 Après la revue de la PR #15 (`fix/SDK-review1`, 2026-11-26) : `make e2e-init` vert de bout en bout (G220 corrigé, `doctor` 13 ok, 2e build sur moteur en lecture seule) ; `orosmo migrate` essayé à la main sur deux projets `--vendor` (build cassé : migration annulée, fichiers et `orosmo/` restaurés ; build sain : `orosmo.old/` supprimé) ; `cargo test` 28 verts. Les lignes du tableau ci-dessus datent de `788c332` (2026-11-25).
 
 Non prouvé : Windows et macOS (G215, G216 ; `install.ps1` jamais exécuté), installeurs et `orosmo install` depuis GitHub (après publication), `update` de bout en bout, chemins avec espaces (G214, atténué), redirections hors curl (G221). Limites : G214 à G220.
+
+## Identifiants de `docs/02` touchés par M8 lot L9 (UI-09)
+
+Preuves sous Linux x64 (g++ 13.3, Mesa 26.1.6, Intel Arc), branche `feat/M8-L9-ui-focus`. Windows et macOS non vérifiés (CI).
+Décisions sur les ambiguïtés : `docs/QUESTIONS.md`, A79, « Lot L9 ».
+
+| ID | Avant | Après | Preuve |
+| --- | --- | --- | --- |
+| UI-09 | Absent | **Fait** | Ordre de tabulation : `include/orosmo/ui/widget.hpp` `Widget::setTabIndex`, `setFocusable`, `canTakeFocus` ; `src/ui/ui.cpp` `Ui::focusNext` (positif croissant, puis 0 dans l'ordre de l'arbre, négatif exclu). Flèches : `Ui::moveFocus` (voisin le plus proche, sans boucler), `Widget::usesArrowKey` (curseur, champ de texte, liste, menus gardent leurs flèches). Manette : `include/orosmo/ui/gamepad_navigation.hpp` `GamepadNavigator` → `InputFrame::navigation`. Focus visible : style de thème `focusRing` (`res/themes/base.json`, jetons `color.focus`, `border.focus`, `focus.ringGap`), `Ui::drawFocusRing`, `Ui::focusVisible` (clavier ou manette, pas la souris). Langage : `.tabIndex(n)`, `.focusable(false)`, moins unaire (`tools/cui-rs/src/engine.rs`, `parser.rs`). Tests : `tests/ui/navigation_tests.cpp` (6 cas : ordre de tabulation, grille 3 x 3 aux flèches, flèches gardées par un curseur, manette simulée avec branchement, répétition, A / B / LB / RB, liste déroulante fermée par B, anneau de focus du thème), `tests/ui/cui_widgets_tests.cpp` (`tabIndex` et `focusable` compilés depuis `tests/ui/cui/test_widgets.cui`), `tools/cui-rs/src/tests.rs` `ui09_tab_index_and_focusable_describe_the_keyboard_order`. Démo : `apps/demo/bin/debug/main --api opengl --headless --ui full --tab controls --focus detailMedium --capture <dir>` ; `make demo-capture` compare à `docs/BASELINE/reference/ui-opengl-controls-focus-1280x720.png`. Résultats : `make demo-test` 717 / 717 (1 ignoré) ; `make demo-test-unit SANITIZE=address,undefined` (après `make fclean demo-fclean`) 432 / 432 sans signalement ; `make cui-test` vert (17 tests `cargo` de `cui`, 18 cas d'erreur) ; `make check` vert ; captures sans `--focus` identiques avant / après (0 pixel, onglets `controls`, `widgets`, `windows`, liste ouverte) ; capture avec focus identique OpenGL / Vulkan (0 pixel), validation Vulkan 0 message. Reste : G222 (défilement vers le widget focalisé) |
+| PLAT-03 | Absent | Partiel | `include/orosmo/platform/gamepad.hpp` `Gamepads` (`poll` par GLFW, `simulate`, `events`, `first`), `GamepadState`, `GamepadButton`, `GamepadAxis` ; tests par `Gamepads::simulate` dans `tests/ui/navigation_tests.cpp` ; démo : manette branchée sur l'interface complète (`apps/demo/src/Game/Game.cpp`). **Manque** : vibrations, remappage, joysticks sans disposition connue, aucune manette réelle essayée (G223) |
+
+Totaux de `docs/02` : Fait +1 (UI-09), Partiel +1 (PLAT-03), Absent −2.
 
 ## Identifiants de `docs/02` touchés par M14
 

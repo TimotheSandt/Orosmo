@@ -54,6 +54,7 @@ struct Gpu
     // Périphérique hors écran du backend demandé (voir FOR_EACH_BACKEND dans rhi/backends.hpp).
     explicit Gpu(Backend wanted = Backend::kOpenGL, Extent2D size = {8, 8}) : backend(wanted)
     {
+        REQUIRE_GPU_ALLOWED();
         DeviceDesc desc;
         desc.backend = wanted;
         desc.surface.size = size;

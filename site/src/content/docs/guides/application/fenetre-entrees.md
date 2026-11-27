@@ -20,14 +20,14 @@ namespace platform = orosmo::platform;
 int main()
 {
     platform::Window window("monjeu", 1280, 720, platform::WindowState::kWindowed);
-    if (window.init() != 0)             // 0 : succès ; -1 : la fenêtre n'a pas pu être créée
+    if (auto opened = window.init(); !opened)   // Result<> : opened.error() dit pourquoi (pas d’affichage, taille invalide…)
         return 1;
 
-    platform::InputManager &input = platform::InputManager::getInstance(window.getWindow());
+    platform::InputManager &input = window.input();   // = InputManager::getInstance(window.getWindow())
     while (!window.shouldClose())
     {
-        if (!window.newFrame())         // événements, entrées, compteur de FPS
-            continue;
+        if (!window.newFrame())         // événements, entrées, compteur de FPS ; faux : fenêtre inutilisable
+            break;
         if (input.isKeyJustPressed(platform::KeyButton::kEscape))
             window.requestClose();
     }
@@ -36,11 +36,14 @@ int main()
 }
 ```
 
-Limite : si GLFW lui-même ne s'initialise pas (`glfwInit` échoue), `init` journalise `LOG_FATAL`, qui termine le processus
-(`std::exit(1)`) : ce cas ne revient jamais à votre code et ne peut pas être traité par le test de `init`.
+`init` rend un `core::Result<>` : `kInvalidArgument` pour une taille nulle ou négative, `kAlreadyExists` si la fenêtre est
+déjà créée, `kUnsupported` si GLFW ne démarre pas (pas d'affichage) ou refuse la fenêtre. Ces cas reviennent tous à votre
+code (avant M8, un échec de `glfwInit` terminait le processus).
 
 `newFrame()` traite les événements du système et met à jour l'`InputManager` de la fenêtre : lisez les entrées après
-cet appel. Avec un périphérique graphique, `init` reçoit en plus le rappel `[&] { (void)rhi::prepareWindowHints(desc); }`
+cet appel. Il fait aussi `core::Profiler::Process()`, compte l'image (FPS) et applique la limite de `setMaxFPS` (il peut
+attendre). Une boucle qui gère elle-même cadence et mesures appelle plutôt `pollEvents()`, qui ne fait que lire les
+événements et mettre à jour les entrées. Les deux rendent faux sans fenêtre utilisable : sortez alors de la boucle. Avec un périphérique graphique, `init` reçoit en plus le rappel `[&] { (void)rhi::prepareWindowHints(desc); }`
 (voir [Choisir le backend graphique](/guides/application/peripherique/)).
 
 ## Créer la fenêtre
@@ -203,7 +206,8 @@ presse-papiers du système.
 ## Limites
 
 - Le facteur d'échelle ×2 (écrans « Retina ») est lu mais n'a pas été observé sur un vrai écran.
-- Pas de manettes.
+- Manettes : `platform::Gamepads` lit les manettes à disposition standard (boutons, axes, branchement à chaud), pour la
+  [navigation de l'interface](/guides/interface/navigation/) ; ni vibration, ni remappage, ni joystick quelconque (G223).
 - Saisie de texte : Unicode et presse-papiers fonctionnent en mode fenêtré ; la composition (IME, saisie du chinois ou du
   japonais) n'est pas gérée.
 

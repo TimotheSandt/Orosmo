@@ -21,6 +21,7 @@ Projets
   orosmo update [chemin]                         passe le projet à la dernière version du moteur
   orosmo migrate [chemin]                        ancien projet avec orosmo/ -> moteur installé
   orosmo build [--release] [--json] [-C dossier] compile avec make (debug par défaut)
+  orosmo build --game [--json] [-C dossier]      ne reconstruit que la bibliothèque de jeu (make game)
   orosmo run [--release] [-C dossier] [-- args]  compile, puis lance le programme
   orosmo clean [-C dossier]                      make clean
 Outil

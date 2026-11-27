@@ -4,6 +4,8 @@
 #include "orosmo/renderer/image.hpp"
 
 #include <algorithm>
+#include <string>
+#include <utility>
 #include <cstring>
 #include <limits>
 #include <vector>
@@ -40,7 +42,14 @@ glm::vec2 haltonJitter(std::uint32_t index, std::uint32_t sequenceLength, int re
 core::Result<std::unique_ptr<SceneRenderer>> SceneRenderer::create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                                    const SceneRendererConfig &config)
 {
+    const std::uint32_t framesInFlight = config.framesInFlight == 0 ? std::max(device.framesInFlight(), 1u) : config.framesInFlight;
+    if (framesInFlight < device.framesInFlight())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::create: framesInFlight (" + std::to_string(framesInFlight) +
+                                                          ") is below the device's (" + std::to_string(device.framesInFlight()) + ")");
+    }
     std::unique_ptr<SceneRenderer> renderer(new SceneRenderer(device, library, pipelines));
+    renderer->graphCaching_ = config.cacheRenderGraph;
     auto blit = FullscreenBlit::create(device, library, pipelines, config.shaderDirectory);
     if (!blit)
     {
@@ -54,10 +63,11 @@ core::Result<std::unique_ptr<SceneRenderer>> SceneRenderer::create(rhi::Device &
     }
     renderer->meshProgram_ = *program;
     renderer->shaderDirectory_ = config.shaderDirectory;
+    renderer->pbrShaders_ = std::make_unique<PbrShaderCache>(library, config.shaderDirectory);
     // Anneau des données par image : FrameData à 0 (FrameResources::buffer la lit là), la caméra et les tranches du modèle après,
     // chacune alignée pour un tampon uniforme (décalages dynamiques du groupe 2).
     const std::uint64_t alignment = std::max<std::uint64_t>(device.capabilities().minUniformAlignment, 1);
-    renderer->ring_ = FrameRing(rhi::BufferUsage::kUniform | rhi::BufferUsage::kVertex, "scene.frame-ring", std::max(config.framesInFlight, 1u));
+    renderer->ring_ = FrameRing(rhi::BufferUsage::kUniform | rhi::BufferUsage::kVertex, "scene.frame-ring", framesInFlight);
     renderer->cameraOffset_ = alignUp(sizeof(FrameData), alignment);
     renderer->modelBase_ = alignUp(renderer->cameraOffset_ + sizeof(CameraData), alignment);
     renderer->modelSliceStride_ = alignUp(Mesh::kModelBlockSize, alignment);
@@ -98,11 +108,106 @@ SceneRenderer::~SceneRenderer()
     }
 }
 
+core::Result<std::unique_ptr<SceneRenderer>> SceneRenderer::create(const RenderContext &context, SceneRendererConfig config)
+{
+    if (config.shaderDirectory.empty())
+    {
+        config.shaderDirectory = context.shaderDirectory();
+    }
+    return create(context.device(), context.library(), context.pipelines(), config);
+}
+
+std::vector<Define> SceneRenderer::shaderDefines() const
+{
+    std::vector<Define> defines;
+    for (const std::unique_ptr<RenderFeature> &feature : features_)
+    {
+        const std::vector<Define> wanted = feature->shaderDefines();
+        defines.insert(defines.end(), wanted.begin(), wanted.end());
+    }
+    const std::vector<Define> aov = aovShaderDefines();
+    defines.insert(defines.end(), aov.begin(), aov.end());
+    return defines;
+}
+
+std::uint64_t SceneRenderer::revision() const
+{
+    std::vector<Define> defines = shaderDefines();
+    if (revision_ == 0 || defines != lastDefines_)
+    {
+        lastDefines_ = std::move(defines);
+        ++revision_;
+    }
+    return revision_;
+}
+
+core::Result<std::shared_ptr<ShaderProgram>> SceneRenderer::resolveProgram(const Mesh &mesh)
+{
+    if (mesh.program() != nullptr)
+    {
+        return mesh.program(); // programme imposé (ancien chemin)
+    }
+    // Révision lue une fois par image (beginFrame) : tous les dessins de l'image ont les mêmes définitions.
+    if (mesh.material() != nullptr)
+    {
+        const std::uint32_t features = mesh.material()->features();
+        if (auto found = pbrPrograms_.find(features); found != pbrPrograms_.end())
+        {
+            return found->second;
+        }
+        auto program = pbrShaders_->program(features, resolvedDefines_);
+        if (!program)
+        {
+            return std::unexpected(program.error());
+        }
+        pbrPrograms_.emplace(features, *program);
+        return *program;
+    }
+    // Disposition kColored (MeshBuilder) : position, normale, couleur (trois vec3), sans instance : mesh.vert / mesh.frag.
+    const std::vector<rhi::VertexAttribute> &attributes = mesh.vertexAttributes();
+    const bool colored = !mesh.instanced() && attributes.size() == 3 &&
+                         std::ranges::all_of(attributes, [](const rhi::VertexAttribute &a)
+                                             { return a.binding == 0 && a.location < 3 && a.format == rhi::VertexFormat::kFloat3; });
+    if (!colored)
+    {
+        return makeError(ErrorCode::kInvalidArgument,
+                         "SceneRenderer::drawMesh: the mesh has no program, no material and not the default (colored) vertex layout");
+    }
+    if (defaultProgram_ == nullptr)
+    {
+        if (resolvedDefines_.empty())
+        {
+            defaultProgram_ = meshProgram_;
+        }
+        else if (auto found = defaultPrograms_.find(resolvedDefines_); found != defaultPrograms_.end())
+        {
+            defaultProgram_ = found->second;
+        }
+        else
+        {
+            auto program = library_.loadGraphics(shaderDirectory_ / "mesh.vert", shaderDirectory_ / "mesh.frag", resolvedDefines_);
+            if (!program)
+            {
+                return std::unexpected(program.error());
+            }
+            defaultPrograms_.emplace(resolvedDefines_, *program); // gardé : les pipelines des images en vol le référencent
+            defaultProgram_ = *program;
+        }
+    }
+    return defaultProgram_;
+}
+
 core::Result<RenderFeature *> SceneRenderer::addFeature(std::unique_ptr<RenderFeature> feature)
 {
     if (feature == nullptr)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::addFeature: null feature");
+    }
+    if (frameOpen_ || executing_)
+    {
+        // Revue PR #37 : les définitions des programmes sont figées à beginFrame ; un plugin ajouté ensuite (forward+) préparerait
+        // des données que les dessins de l'image ne liraient pas.
+        return makeError(ErrorCode::kBusy, "SceneRenderer::addFeature: refused during a frame (between beginFrame and the end of endFrame)");
     }
     if (!feature->supports(device_.capabilities()))
     {
@@ -121,12 +226,26 @@ core::Result<RenderFeature *> SceneRenderer::addFeature(std::unique_ptr<RenderFe
                                                       " color attachments, the device has " + std::to_string(device_.capabilities().maxColorAttachments));
     }
     features_.push_back(std::move(feature));
+    ++pluginsRevision_; // A61 C : nouveau plugin, graphe reconstruit
     return features_.back().get();
 }
 
 void SceneRenderer::removeFeature(const std::string &name)
 {
-    std::erase_if(features_, [&](const std::unique_ptr<RenderFeature> &f) { return f->name() == name; });
+    if (frameOpen_ || executing_)
+    {
+        // Image en cours : les définitions des programmes (figées à beginFrame) et les liaisons du groupe 0 (déclarées à endFrame)
+        // doivent rester celles des mêmes plugins ; le retrait est appliqué à la fin de l'image (EndOfFrame).
+        pendingRemovals_.push_back(name);
+        return;
+    }
+    if (std::erase_if(features_, [&](const std::unique_ptr<RenderFeature> &f) { return f->name() == name; }) > 0)
+    {
+        ++pluginsRevision_;
+        graphValid_ = false;
+        graph_.reset(); // les passes du plugin retiré pointent vers lui
+        graphFrameBindings_.clear();
+    }
     featureFrameBindings_.clear(); // les liaisons d'un plugin retiré ne doivent plus entrer dans le groupe 0 (redéclarées à chaque image)
 }
 
@@ -241,12 +360,25 @@ void SceneRenderer::addPostProcessPass(std::unique_ptr<IPostProcessPass> pass)
     if (pass)
     {
         postProcessPasses_.push_back(std::move(pass));
+        ++pluginsRevision_;
     }
 }
 
 void SceneRenderer::removePostProcessPass(const std::string &name)
 {
-    std::erase_if(postProcessPasses_, [&](const std::unique_ptr<IPostProcessPass> &p) { return p && p->name() == name; });
+    if (executing_)
+    {
+        // Demandé par une passe du graphe en cours (revue PR #37) : détruire le post-traitement (ou le graphe) détruirait la passe
+        // qui s'exécute ; retrait appliqué à la fin de l'image (EndOfFrame).
+        pendingPostRemovals_.push_back(name);
+        return;
+    }
+    if (std::erase_if(postProcessPasses_, [&](const std::unique_ptr<IPostProcessPass> &p) { return p && p->name() == name; }) > 0)
+    {
+        ++pluginsRevision_;
+        graphValid_ = false;
+        graph_.reset(); // les passes du post-traitement retiré pointent vers lui
+    }
 }
 
 core::Result<> SceneRenderer::setFrameGenerationMode(std::unique_ptr<IFrameGenerationMode> mode)
@@ -268,6 +400,7 @@ core::Result<> SceneRenderer::setFrameGenerationMode(std::unique_ptr<IFrameGener
         frameGenMode_->shutdown();
     }
     frameGenMode_ = std::move(mode);
+    ++pluginsRevision_; // A61 C : la passe « frame-generation » apparaît ou disparaît
     generatedFrame_ = {};
     return {};
 }
@@ -425,6 +558,14 @@ core::Result<> SceneRenderer::beginFrame(rhi::CommandEncoder &encoder, const Fra
     encoder_ = &encoder;
     frameOpen_ = true;
     ++frameSerial_;
+    // A75.3 : définitions des programmes résolus au dessin, une fois par image ; une nouvelle révision les fait recompiler.
+    if (const std::uint64_t current = revision(); current != resolvedRevision_)
+    {
+        resolvedRevision_ = current;
+        resolvedDefines_ = lastDefines_;
+        pbrPrograms_.clear(); // les programmes restent dans pbrShaders_ (images en vol)
+        defaultProgram_.reset();
+    }
     return {};
 }
 
@@ -435,6 +576,7 @@ core::Result<> SceneRenderer::setCamera(Camera &camera)
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::setCamera: not created");
     }
     camera.setJitter(currentJitter_);
+    cameraWireframe_ = camera.wireframe();
     cameraOrigin_ = cameraRelative_ ? camera.position() : glm::vec3(0.0f);
     // Données par image (REN-03) : mêmes matrices que le tampon de la caméra.
     cameraView_ = cameraRelative_ ? camera.relativeViewMatrix() : camera.viewMatrix();
@@ -444,7 +586,7 @@ core::Result<> SceneRenderer::setCamera(Camera &camera)
     return {};
 }
 
-core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t modelOffset)
+core::Result<> SceneRenderer::record(Mesh &mesh, const ShaderProgram &drawProgram, bool lines, std::uint32_t modelOffset)
 {
     GraphicsState state;
     state.vertexBuffers = mesh.vertexBuffers();
@@ -468,7 +610,7 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t model
     const bool textured = !mesh.textureGroup().isNull() &&
                           std::ranges::any_of(mesh.vertexAttributes(), [](const rhi::VertexAttribute &a)
                                               { return a.location == 2 && a.binding == 0 && a.format == rhi::VertexFormat::kFloat2; });
-    const ShaderProgram &program = !replacesMeshProgram() || !debugViewProgram_ ? *mesh.program()
+    const ShaderProgram &program = !replacesMeshProgram() || !debugViewProgram_ ? drawProgram
                                    : textured && debugViewTexturedProgram_     ? *debugViewTexturedProgram_
                                                                                : *debugViewProgram_;
     // REN-21 / REN-41 : un AOV n'est écrit que s'il est actif, si le matériau le veut (un transparent n'en écrit aucun par défaut) et
@@ -493,7 +635,7 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t model
             t.writeMask = rhi::ColorWriteMask::kNone; // mêmes attachements que la scène, aucune écriture de couleur
         }
         depthOnly.debugName += ".prepass";
-        auto prepassPipeline = pipelines_.graphics(*mesh.program(), depthOnly);
+        auto prepassPipeline = pipelines_.graphics(drawProgram, depthOnly);
         if (!prepassPipeline)
         {
             return std::unexpected(prepassPipeline.error());
@@ -518,6 +660,7 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t model
     }
     draw.lights = &activeLights(); // les lumières choisies au moment du dessin, comme avant l'enregistrement différé
     draw.textureGroup = mesh.textureGroup();
+    draw.material = mesh.material(); // revue PR #37 : un setMaterial avant endFrame ne détruit pas le groupe de CE dessin
     draw.modelOffset = modelOffset;
     draw.vertexBuffer = mesh.vertexBuffer();
     draw.instanceBuffer = mesh.instanced() ? mesh.instanceBuffer() : rhi::BufferHandle{};
@@ -528,13 +671,27 @@ core::Result<> SceneRenderer::record(Mesh &mesh, bool lines, std::uint32_t model
     return {};
 }
 
-core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
+// Ancienne signature : comportement d'avant M8 (programme imposé obligatoire), fil de fer de la caméra donnée.
+core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera) { return drawMeshWith(mesh, camera.wireframe() || wireframe_, false); }
+
+core::Result<> SceneRenderer::drawMesh(Mesh &mesh) { return drawMeshWith(mesh, cameraWireframe_ || wireframe_, true); }
+
+core::Result<> SceneRenderer::drawMeshWith(Mesh &mesh, bool wireframe, bool resolve)
 {
     if (!frameOpen_)
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: no frame is open");
     }
-    if (!mesh.valid() || !mesh.program() || mesh.program()->isCompute())
+    if (!mesh.valid() || (!resolve && mesh.program() == nullptr))
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: the mesh is empty or has no graphics program");
+    }
+    auto program = resolveProgram(mesh);
+    if (!program)
+    {
+        return std::unexpected(program.error());
+    }
+    if (*program == nullptr || (*program)->isCompute())
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::drawMesh: the mesh is empty or has no graphics program");
     }
@@ -554,11 +711,11 @@ core::Result<> SceneRenderer::drawMesh(Mesh &mesh, const Camera &camera)
     {
         return std::unexpected(slice.error());
     }
-    if (auto r = record(mesh, false, *slice); !r)
+    if (auto r = record(mesh, **program, false, *slice); !r)
     {
         return r;
     }
-    return camera.wireframe() || debugView_ == DebugView::kWireframe ? record(mesh, true, *slice) : core::Result<>{};
+    return wireframe || debugView_ == DebugView::kWireframe ? record(mesh, **program, true, *slice) : core::Result<>{};
 }
 
 core::Result<std::uint32_t> SceneRenderer::recordModelSlice(const Mesh &mesh)
@@ -854,13 +1011,16 @@ bool SceneRenderer::outputSampled(rhi::TextureHandle texture) const
     return desc && rhi::hasFlag(desc->usage, rhi::TextureUsage::kSampled);
 }
 
+void SceneRenderer::setRenderGraphCaching(bool enabled) noexcept
+{
+    graphCaching_ = enabled;
+    graphValid_ = false; // la prochaine image reconstruit (et garde ou non) le graphe
+}
+
 core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHistory)
 {
-    graph_.reset();
+    graphReused_ = false;
     const rhi::Extent2D renderSize{static_cast<std::uint32_t>(frameWidth_), static_cast<std::uint32_t>(frameHeight_)};
-    RenderGraphBuilder::Resources known;
-    known.renderSize = renderSize;
-    known.outputSize = output.size;
     // A63 : la scène va droit dans la sortie quand la copie 1:1 serait la seule chose entre les deux (voir setRenderIntoOutput).
     // La couleur de scène et la sortie sont alors UNE ressource du graphe : l'ordre des passes qui écrivent la sortie est gardé.
     const bool intoOutput = renderIntoOutput_ && !output.texture.isNull() && !scaled() && !modeRuns() && !needsHistory() && frameGenMode_ == nullptr &&
@@ -868,6 +1028,135 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
                             output.size.width == renderSize.width && output.size.height == renderSize.height &&
                             std::ranges::none_of(features_, [](const auto &f) { return f->postProcessesScene(); }) && outputSampled(output.texture);
     renderedIntoOutput_ = intoOutput;
+
+    // ── Historique en double tampon : lecture de l'image précédente, copie de l'image courante dans l'autre tampon ──────
+    // L'historique n'est « l'image précédente » que s'il a été écrit avec succès à l'image précédente, à la même taille.
+    // `hadHistory` est l'état lu par endFrame AVANT toute opération qui peut échouer ; historyValid_ est déjà faux : seule une copie
+    // réussie suivie d'une exécution réussie du graphe le revalide (un échec le laisse invalide, de même qu'une image qui n'en a
+    // pas besoin).
+    const bool history = needsHistory();
+    bool previousValid = false;
+    const std::uint32_t next = hadHistory ? (lastHistory_ ^ 1u) : lastHistory_;
+    if (history)
+    {
+        bool fresh = false;
+        if (hadHistory)
+        {
+            RenderTarget &previous = history_[lastHistory_];
+            previousValid = previous.valid() && previous.width() == renderSize.width && previous.height() == renderSize.height;
+        }
+        if (auto r = ensureHistory(history_[next], fresh); !r)
+        {
+            return r;
+        }
+    }
+    // Lus par les passes du renderer à l'exécution (graphe gardé : rien n'est copié à la déclaration).
+    passOutput_ = output;
+    passResetHistory_ = resetHistoryNextFrame_ || !previousValid;
+    passPreviousHistory_ = previousValid ? history_[lastHistory_].color(0) : rhi::TextureHandle{};
+    passNextHistory_ = next;
+
+    // ── Plugins : préparation de l'image (toujours), avant de décider si le graphe resert ─────────────────────────────
+    for (const auto &feature : features_)
+    {
+        if (auto r = feature->prepare(frameData_); !r)
+        {
+            return makeError(r.error().code, "feature '" + feature->name() + "': " + r.error().message, r.error().where);
+        }
+    }
+
+    // ── A61 C : graphe gardé si rien de ce dont dépend sa structure n'a changé ───────────────────────────────────────
+    GraphKey &key = frameKey_;
+    key.plugins = pluginsRevision_;
+    key.upscaleMode = activeUpscaleMode_;
+    key.frameGeneration = frameGenMode_.get();
+    key.outputFormat = output.format;
+    key.outputSize = output.size;
+    key.renderSize = renderSize;
+    key.sceneFormat = sceneTarget_.info().colorFormats[0];
+    key.aovs = aovLayout_.set();
+    key.depth = !sceneTarget_.depth().isNull();
+    key.intoOutput = intoOutput;
+    key.prepass = prepassThisFrame_;
+    key.clearDepth = frameOptions_.clearDepth;
+    key.clearColor = frameOptions_.clearColor;
+    key.debugView = debugView_;
+    key.runsMode = modeRuns();
+    key.scaledFrame = scaled();
+    key.history = history;
+    key.previousHistory = previousValid;
+    key.signatures.clear();
+    bool cacheable = graphCaching_;
+    for (const auto &feature : features_)
+    {
+        key.signatures.push_back(feature->passSignature());
+        cacheable = cacheable && key.signatures.back().has_value();
+    }
+    if (cacheable && graphValid_ && key == graphKey_)
+    {
+        if (auto r = refreshGraphImports(output); !r)
+        {
+            graphValid_ = false;
+            return r;
+        }
+        featureFrameBindings_ = graphFrameBindings_; // liaisons du groupe 0 déclarées avec le graphe
+        graphReused_ = true;
+        return {};
+    }
+    graphValid_ = false;
+    if (auto r = declareGraph(output, intoOutput); !r)
+    {
+        return r;
+    }
+    ++graphBuilds_;
+    std::swap(graphKey_, frameKey_);
+    graphFrameBindings_ = featureFrameBindings_;
+    graphValid_ = cacheable;
+    return {};
+}
+
+core::Result<> SceneRenderer::refreshGraphImports(const UpscaleTarget &output)
+{
+    const GraphImports &in = graphImports_;
+    const auto set = [this](RgTexture texture, rhi::TextureHandle handle) -> core::Result<>
+    { return texture.valid() ? graph_.setImportedTexture(texture, handle) : core::Result<>{}; };
+    if (auto r = set(in.output, output.texture); !r)
+    {
+        return r;
+    }
+    if (in.sceneColor.valid() && in.sceneColor != in.output)
+    {
+        if (auto r = set(in.sceneColor, sceneTarget_.color(0)); !r)
+        {
+            return r;
+        }
+    }
+    for (const Aov aov : aovLayout_.set().list()) // mêmes AOV qu'à la déclaration (dans la clé du graphe)
+    {
+        if (auto r = set(in.aovs[static_cast<std::size_t>(aov)], sceneTarget_.color(*aovLayout_.index(aov))); !r)
+        {
+            return r;
+        }
+    }
+    if (auto r = set(in.sceneDepth, sceneTarget_.depth()); !r)
+    {
+        return r;
+    }
+    if (auto r = set(in.previousHistory, passPreviousHistory_); !r)
+    {
+        return r;
+    }
+    return in.nextHistory.valid() ? set(in.nextHistory, history_[passNextHistory_].color(0)) : core::Result<>{};
+}
+
+core::Result<> SceneRenderer::declareGraph(const UpscaleTarget &output, bool intoOutput)
+{
+    graph_.reset();
+    graphImports_ = {};
+    const rhi::Extent2D renderSize{static_cast<std::uint32_t>(frameWidth_), static_cast<std::uint32_t>(frameHeight_)};
+    RenderGraphBuilder::Resources known;
+    known.renderSize = renderSize;
+    known.outputSize = output.size;
     if (intoOutput)
     {
         known.output = graph_.importTexture("output", output.texture, {.format = output.format, .size = output.size});
@@ -896,8 +1185,12 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
     {
         known.output = graph_.importTexture("output", output.texture, {.format = output.format, .size = output.size});
     }
+    graphImports_.output = known.output;
+    graphImports_.sceneColor = known.sceneColor;
+    graphImports_.sceneDepth = known.sceneDepth;
+    graphImports_.aovs = known.aovs;
 
-    featureFrameBindings_.clear(); // redéclarées par les plugins à chaque image
+    featureFrameBindings_.clear(); // redéclarées par les plugins à chaque reconstruction
 
     // ── Pré-passe de profondeur (REN-04) : mêmes attachements que la scène, profondeur seule ─────────────────────────
     const bool prepass = prepassThisFrame_ && known.sceneDepth.valid();
@@ -929,36 +1222,20 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
         }
     }
 
-    // ── Historique en double tampon : lecture de l'image précédente, copie de l'image courante dans l'autre tampon ──────
-    // L'historique n'est « l'image précédente » que s'il a été écrit avec succès à l'image précédente, à la même taille.
-    // `hadHistory` est l'état lu par endFrame AVANT toute opération qui peut échouer ; historyValid_ est déjà faux : seule une copie
-    // réussie suivie d'une exécution réussie du graphe le revalide (un échec le laisse invalide, de même qu'une image qui n'en a
-    // pas besoin).
+    // ── Historique (ressources de l'image, voir buildGraph) ──────────────────────────────────────────────────────────
     const bool history = needsHistory();
-    bool previousValid = false;
     RgTexture previousHistory;
     RgTexture nextHistory;
-    const std::uint32_t next = hadHistory ? (lastHistory_ ^ 1u) : lastHistory_;
     if (history)
     {
-        bool fresh = false;
-        if (hadHistory)
+        if (!passPreviousHistory_.isNull())
         {
-            RenderTarget &previous = history_[lastHistory_];
-            previousValid = previous.valid() && previous.width() == renderSize.width && previous.height() == renderSize.height;
+            previousHistory = graph_.importTexture("history.previous", passPreviousHistory_, {.size = renderSize});
         }
-        if (auto r = ensureHistory(history_[next], fresh); !r)
-        {
-            return r;
-        }
-        if (previousValid)
-        {
-            previousHistory = graph_.importTexture("history.previous", history_[lastHistory_].color(0), {.size = renderSize});
-        }
-        nextHistory = graph_.importTexture("history.next", history_[next].color(0), {.size = renderSize});
+        nextHistory = graph_.importTexture("history.next", history_[passNextHistory_].color(0), {.size = renderSize});
     }
-    const bool resetHistory = resetHistoryNextFrame_ || !previousValid;
-    const rhi::TextureHandle previous = previousValid ? history_[lastHistory_].color(0) : rhi::TextureHandle{};
+    graphImports_.previousHistory = previousHistory;
+    graphImports_.nextHistory = nextHistory;
 
     // ── Mise à l'échelle (ou copie 1:1) vers la sortie ────────────────────────────────────────────────────────────────
     if (!intoOutput && (modeRuns() || !scaled()))
@@ -969,8 +1246,9 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
         }
         auto upscale = graph_.addPass(
             "upscale", PassType::kGeneric,
-            [this, output, previous, resetHistory](RenderPassContext &ctx) -> core::Result<>
+            [this](RenderPassContext &ctx) -> core::Result<>
             {
+                const UpscaleTarget &output = passOutput_;
                 FrameContext context{device_, ctx.encoder(), *blit_};
                 if (!modeRuns())
                 {
@@ -984,12 +1262,14 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
                     input.color = sceneTarget_.color(0);
                     input.depth = sceneTarget_.depth();
                     input.motionVectors = aovLayout_.set().has(Aov::kMotion) ? sceneTarget_.color(1) : rhi::TextureHandle{};
-                    input.historyColor = previous;
+                    input.historyColor = passPreviousHistory_;
                     input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
-                    input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+                    // Taille de la texture de sortie (celle que le mode écrit), comme l'adaptateur `upscale()` : elle peut différer
+                    // de `setOutputResolution` (`endFrame(rhi::TextureHandle)` étire la scène sur la texture).
+                    input.outputResolution = {static_cast<float>(output.size.width), static_cast<float>(output.size.height)};
                     input.jitter = currentJitter_;
                     input.deltaTimeSeconds = deltaTime_;
-                    input.resetHistory = resetHistory;
+                    input.resetHistory = passResetHistory_;
                     UpscaleOutput out;
                     out.output = output.texture;
                     return advanced->execute(context, input, out);
@@ -1016,20 +1296,21 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
     if (frameGenMode_ != nullptr)
     {
         auto generation = graph_.addPass("frame-generation", PassType::kGeneric,
-                                         [this, previous, resetHistory](RenderPassContext &ctx) -> core::Result<>
+                                         [this](RenderPassContext &ctx) -> core::Result<>
                                          {
+                                             const UpscaleTarget &output = passOutput_;
                                              FrameContext context{device_, ctx.encoder(), *blit_};
                                              FrameGenerationInput input;
                                              input.currentColor = sceneTarget_.color(0);
-                                             input.previousColor = previous;
+                                             input.previousColor = passPreviousHistory_;
                                              input.depth = sceneTarget_.depth();
                                              input.motionVectors =
                                                  aovLayout_.set().has(Aov::kMotion) ? sceneTarget_.color(1) : rhi::TextureHandle{};
                                              input.renderResolution = {static_cast<float>(frameWidth_), static_cast<float>(frameHeight_)};
-                                             input.outputResolution = {static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+                                             input.outputResolution = {static_cast<float>(output.size.width), static_cast<float>(output.size.height)};
                                              input.jitter = currentJitter_;
                                              input.deltaTimeSeconds = deltaTime_;
-                                             input.resetHistory = resetHistory;
+                                             input.resetHistory = passResetHistory_;
                                              FrameGenerationOutput out;
                                              if (auto r = frameGenMode_->generateFrame(context, input, out); !r)
                                              {
@@ -1058,8 +1339,9 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
     {
         graph_
             .addPass("history", PassType::kGeneric,
-                     [this, next](RenderPassContext &ctx) -> core::Result<>
+                     [this](RenderPassContext &ctx) -> core::Result<>
                      {
+                         const std::uint32_t next = passNextHistory_;
                          if (auto r = blit_->copy(ctx.encoder(), sceneTarget_.color(0), blit_->nearestSampler(), history_[next].color(0),
                                                   rhi::Format::kRGBA8Unorm, "history");
                              !r)
@@ -1075,14 +1357,10 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
             .write(nextHistory);
     }
 
-    // ── Plugins ───────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ── Plugins (préparés par buildGraph) ─────────────────────────────────────────────────────────────────────────────
     RenderGraphBuilder builder(graph_, known, device_.capabilities(), "scene", &featureFrameBindings_);
     for (const auto &feature : features_)
     {
-        if (auto r = feature->prepare(frameData_); !r)
-        {
-            return makeError(r.error().code, "feature '" + feature->name() + "': " + r.error().message, r.error().where);
-        }
         if (auto r = feature->declarePasses(builder); !r)
         {
             return makeError(r.error().code, "feature '" + feature->name() + "': " + r.error().message, r.error().where);
@@ -1112,6 +1390,28 @@ core::Result<> SceneRenderer::buildGraph(const UpscaleTarget &output, bool hadHi
             .write(known.sceneColor);
     }
     return {};
+}
+
+core::Result<> SceneRenderer::endFrame(rhi::TextureHandle output)
+{
+    auto desc = device_.textureDesc(output);
+    if (!desc)
+    {
+        // Texture inconnue : passée nulle, refusée par endFrame quel que soit le graphe (revue PR #37), qui ferme l'image ouverte
+        // comme un endFrame qui échoue : les dessins ne passent pas à l'image suivante.
+        return endFrame(UpscaleTarget{rhi::TextureHandle{}, rhi::Format::kRGBA8Unorm, {}});
+    }
+    return endFrame(UpscaleTarget{output, desc->format, {desc->size.width, desc->size.height}});
+}
+
+void SceneRenderer::abortFrame()
+{
+    if (!frameOpen_)
+    {
+        return;
+    }
+    // Sortie nulle : endFrame ferme l'image (EndOfFrame) et la refuse avant toute mise à jour ou exécution ; ce refus est attendu.
+    [[maybe_unused]] const core::Result<> refused = endFrame(UpscaleTarget{});
 }
 
 core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
@@ -1149,9 +1449,23 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
             // les redéclare (revue CodeRabbit PR #12).
             self.featureFrameBindings_.clear();
             self.executing_ = false;
+            for (const std::string &name : std::exchange(self.pendingRemovals_, {}))
+            {
+                self.removeFeature(name); // retraits demandés pendant l'image
+            }
+            for (const std::string &name : std::exchange(self.pendingPostRemovals_, {}))
+            {
+                self.removePostProcessPass(name); // retraits demandés pendant l'exécution du graphe
+            }
         }
     } endOfFrame{*this};
 
+    // Sortie nulle (ou texture inconnue de `endFrame(rhi::TextureHandle)`) : refusée avant le graphe, quel que soit le mode (à
+    // échelle réduite sans mode, aucune passe ne la lirait et l'image passerait pour réussie). endOfFrame ferme l'image.
+    if (output.texture.isNull())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::endFrame: the output texture is null or unknown");
+    }
     if (auto r = updateFrameData(); !r)
     {
         return r;
@@ -1189,6 +1503,7 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
     }
     if (auto r = graph_.execute(encoder); !r)
     {
+        graphValid_ = false; // une passe a échoué : l'image suivante redéclare tout
         return r;
     }
     historyValid_ = historyWritten_;

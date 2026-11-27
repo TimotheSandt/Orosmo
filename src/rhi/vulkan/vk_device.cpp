@@ -165,6 +165,7 @@ Result<> VulkanDevice::init(const DeviceDesc &desc)
 {
     windowed_ = desc.surface.nativeWindow != nullptr;
     vsync_ = desc.vsync;
+    framesInFlight_ = std::clamp(desc.framesInFlight, 1u, kMaxFramesInFlight); // createDevice a refusé les autres valeurs
     backbufferSize_ = {std::max(1u, desc.surface.size.width), std::max(1u, desc.surface.size.height)};
 
     if (!volkReady())
@@ -636,7 +637,7 @@ void VulkanDevice::collectReleases(bool ignoreFrames)
     for (std::size_t i = 0; i < pending_.size(); ++i)
     {
         Pending &p = pending_[i];
-        if (p.serial <= done && (ignoreFrames || !p.waitFrames || frame_ >= p.frame + kFramesInFlight))
+        if (p.serial <= done && (ignoreFrames || !p.waitFrames || frame_ >= p.frame + framesInFlight_))
         {
             ready.push_back(std::move(p));
         }

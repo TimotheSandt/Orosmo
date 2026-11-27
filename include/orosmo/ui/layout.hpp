@@ -101,6 +101,8 @@ class ScrollView : public Widget
     bool onWheel(Ui &ui, glm::vec2 wheel) override;
     void onPress(Ui &ui, glm::vec2 mouse) override;
     void onDrag(Ui &ui, glm::vec2 mouse) override;
+    void saveRetained(RetainedState &state) const override;
+    void restoreRetained(Ui &ui, const RetainedState &state) override;
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;

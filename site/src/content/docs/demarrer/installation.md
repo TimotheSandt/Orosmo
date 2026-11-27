@@ -56,12 +56,12 @@ Sous Windows : `irm <url> -OutFile install.ps1`, lecture, puis `.\install.ps1`.
 Avec `curl … | sh`, les options passent après `sh -s --` :
 
 ```bash
-curl -fsSL https://github.com/TimotheSandt/Orosmo/releases/latest/download/install.sh | sh -s -- --yes --version 0.6.2
+curl -fsSL https://github.com/TimotheSandt/Orosmo/releases/latest/download/install.sh | sh -s -- --yes --version 0.7.0
 ```
 
 Sous Windows, `irm … | iex` ne transmet pas d'options : utilisez les variables d'environnement `OROSMO_YES=1`,
 `OROSMO_NO_DEPS=1` et `OROSMO_VERSION=x.y.z`, ou lancez le script téléchargé avec ses paramètres
-`.\install.ps1 -Yes -NoDeps -Version 0.6.2`.
+`.\install.ps1 -Yes -NoDeps -Version 0.7.0`.
 
 ```powershell
 $env:OROSMO_YES = "1"; irm https://github.com/TimotheSandt/Orosmo/releases/latest/download/install.ps1 | iex
@@ -85,7 +85,7 @@ Les deux scripts sont aussi servis par le site : `https://orosmo.gasshog.fr/inst
 ```text
 ~/.orosmo/
   bin/orosmo                 l'outil
-  engines/0.6.2/             un moteur : en-têtes, bibliothèques, deps/, make/engine.mk, cmake/, tools/cui, shaders/, res/
+  engines/0.7.0/             un moteur : en-têtes, bibliothèques, deps/, make/engine.mk, cmake/, tools/cui, shaders/, res/
 ```
 
 Les bibliothèques tierces du moteur (GLFW, glad, FreeType, msdfgen, shaderc, volk…) sont dans `deps/`, précompilées et

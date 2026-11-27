@@ -165,6 +165,8 @@ jobs:
           python3 tools/check_layers.py --strict
           python3 tools/check_api_isolation.py --strict   # gl*, Vk*, MTL*, GLFW, <windows.h> hors de src/rhi/ et src/platform/ : bloquant (M2 lot C)
           python3 tools/check_headers.py --strict
+          python3 tools/check_deterministic_math.py      # SIM-01 (A79 L3) : chemin rejoué sans sin/exp/rand/horloge
+          python3 tools/check_game_static.py             # GAME-02 (A79 L5) : bibliothèque de jeu sans état (.data/.bss/TLS)
 
       - name: Build (debug, -Werror)
         run: make -j"$(nproc)" all-debug
@@ -200,7 +202,7 @@ jobs:
         run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make demo-capture
 
       - name: End to end from the package (BLD-02; orosmo init, build, run, examples)
-        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" e2e-init
+        run: LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" make -j"$(nproc)" e2e-init E2E_RELOAD_MAX=60
 
       - name: ccache statistics
         if: always()
@@ -393,6 +395,81 @@ jobs:
           path: .ccache
           key: ccache-linux-asan-${{ github.run_id }}
 
+  # ── ThreadSanitizer (M8, A79 lot L1) : unit tests (no GPU, no window) under TSan, in a job of its own because TSan cannot be
+  #    combined with ASan. Covers core::SpscQueue between two threads, TaskSystem, and later the simulation thread (lot L4). ──
+  tsan:
+    name: Linux x64 (TSan unit tests)
+    needs: plan
+    if: ${{ !cancelled() && needs.plan.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca  # branch stable, pinned: the branch moves
+        with:
+          toolchain: stable
+      - name: Install system packages (apt)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake python3 pkg-config curl zip unzip tar git \
+            autoconf autoconf-archive automake libtool \
+            libwayland-dev libxkbcommon-dev wayland-protocols libglm-dev libstb-dev libshaderc-dev glslc doctest-dev \
+            libfreetype-dev libvulkan-dev vulkan-validationlayers libgl-dev libx11-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            ccache
+      - name: Bootstrap vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Restore vcpkg archives
+        uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: |
+            vcpkg-archives-linux-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-archives-linux-
+      - name: Install glad and msdfgen (vcpkg, vcpkg.json)
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          "$VCPKG_ROOT/vcpkg" install
+      - name: Link dependencies
+        run: sh tools/setup-linux-deps.sh
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-linux-tsan-${{ github.run_id }}
+          restore-keys: ccache-linux-tsan-
+
+      - name: Enable ccache
+        run: |
+          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
+          ccache --zero-stats
+      # Ubuntu 24.04 kernels randomise mmap with 32 bits: the TSan runtime of GCC 13 then aborts ("unexpected memory mapping").
+      - name: Lower ASLR entropy for TSan
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      # No display and no Vulkan driver on purpose, so that nothing reports races inside the uninstrumented Mesa and xcb
+      # libraries. demo-test-unit sets ENGINE_TEST_NO_GPU=1: a test outside GPU_TEST_SUITES that creates a device fails.
+      - name: Unit tests under TSan
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+          VK_DRIVER_FILES: /nonexistent/icd.json
+          VK_ICD_FILENAMES: /nonexistent/icd.json
+        run: make -j"$(nproc)" demo-test-unit SANITIZE=thread
+
+      - name: ccache statistics
+        if: always()
+        run: ccache --show-stats
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-linux-tsan-${{ github.run_id }}
+
   # ── Windows and macOS: same entry points through vcpkg manifest mode. ─────────────────────
   # Bloquants depuis le 2026-11-21 (plusieurs runs verts sur les deux systèmes, e2e du paquet compris), avertissements en erreur.
   other-platforms:
@@ -505,7 +582,7 @@ jobs:
 
       - name: End to end from the package (Unix)
         if: runner.os != 'Windows'
-        run: make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0
+        run: make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0 E2E_RELOAD_MAX=60
 
       - name: Build and test (Windows)
         if: runner.os == 'Windows'
@@ -521,7 +598,7 @@ jobs:
         shell: msys2 {0}
         run: |
           if [ -d /mingw64/lib/ccache/bin ]; then export PATH="/mingw64/lib/ccache/bin:$PATH"; fi
-          mingw32-make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0
+          mingw32-make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0 E2E_RELOAD_MAX=60
 
       - name: ccache statistics (Unix)
         if: always() && runner.os != 'Windows'

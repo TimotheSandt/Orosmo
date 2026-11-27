@@ -6,6 +6,7 @@
 #pragma once
 
 #include "orosmo/core/error.hpp"
+#include "orosmo/renderer/render_context.hpp"
 #include "orosmo/renderer/gpu_buffer.hpp"
 #include "orosmo/renderer/instance_batch.hpp"
 #include "orosmo/renderer/mesh.hpp"
@@ -56,6 +57,11 @@ class InstanceRenderer
     // `shaderDirectory` : shaders/rhi (mesh_instanced.vert, mesh.frag).
     static core::Result<std::unique_ptr<InstanceRenderer>> create(rhi::Device &device, ShaderLibrary &library, PipelineCache &pipelines,
                                                                   const std::filesystem::path &shaderDirectory);
+    // A75.4 : même fabrique depuis un `RenderContext`.
+    static core::Result<std::unique_ptr<InstanceRenderer>> create(const RenderContext &context)
+    {
+        return create(context.device(), context.library(), context.pipelines(), context.shaderDirectory());
+    }
     InstanceRenderer(const InstanceRenderer &) = delete;
     InstanceRenderer &operator=(const InstanceRenderer &) = delete;
 
@@ -63,6 +69,9 @@ class InstanceRenderer
     // plus. Identifiants consécutifs à partir de 0.
     core::Result<std::uint32_t> addMesh(const Mesh &mesh);
     std::uint32_t addMaterial(InstanceMaterial material);
+    // Remplace le matériau `id` (ex. textures, push constants ou faces éliminées du maillage source changés) ; faux si inconnu.
+    // Avant `draw` : les dessins déjà enregistrés gardent le matériau lu à leur enregistrement.
+    bool setMaterial(std::uint32_t id, InstanceMaterial material);
     std::size_t meshCount() const noexcept { return meshes_.size(); }
     // Maillage d'un identifiant (nul si inconnu) : sert aux casters d'ombres (ShadowFeature) qui dessinent les mêmes lots.
     const Mesh *mesh(std::uint32_t id) const noexcept { return id < meshes_.size() ? meshes_[id] : nullptr; }
