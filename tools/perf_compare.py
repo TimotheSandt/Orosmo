@@ -13,7 +13,8 @@ de temps), les passes du graphe de l'image `RenderGraph/scene`, `RenderGraph/ups
 frame CPU = durée de la boucle / images (`frameCpuMs`, premier affichage compris), le temps CPU médian par image, celui
 de la première image et le maximum (`frameMedian`, `firstFrame`, `frameMax` : journal `Perf: frameMedianMs=`...), puis la médiane, le minimum, le maximum et l'écart interquartile sur les exécutions.
 `workMedian` et `waitMedian` séparent le travail du processeur de son attente (image en vol au GPU, vsync) ; `graphBuilds`
-compte les reconstructions du graphe de passes (A61 C). `--extra` ajoute des options à chaque lancement de la démo, par exemple
+compte les reconstructions du graphe de passes (A61 C) ; `CPU/Graph` est le temps processeur de `SceneRenderer::endFrame`
+(déclaration ou reprise du graphe, enregistrement des passes) et `CPU/Submit` celui de la soumission. `--extra` ajoute des options à chaque lancement de la démo, par exemple
 `--extra="--frames-in-flight 3"` ou `--extra="--graph-cache off"` (forme `=` : la valeur commence par `--`) (A61 G et C, M8).
 La première exécution de chaque couple est écartée (caches de pipelines et de shaders froids). Utiliser un binaire RELEASE
 (couches de validation coupées) : le binaire de debug mesure surtout la validation.
@@ -32,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PERF = re.compile(r"Perf: (?:([\w/.-]+) avgMs|(loop|frameMedian|workMedian|waitMedian|firstFrame|frameMax)Ms)=([0-9.eE+-]+)")
 GRAPH = re.compile(r"Perf: framesInFlight=(\d+) graphBuilds=(\d+)")
 DEVICE = re.compile(r"Graphics device: (.*?)(?:\x1b\[[0-9;]*m)*$", re.M)
-METRICS = ["frameCpuMs", "frameMedian", "workMedian", "waitMedian", "graphBuilds", "firstFrame", "frameMax", "Render", "RenderGraph/scene", "RenderGraph/upscale", "RenderGraph/ui", "RenderGraph/present", "SwapBuffers"]
+METRICS = ["frameCpuMs", "frameMedian", "workMedian", "waitMedian", "graphBuilds", "firstFrame", "frameMax", "Render", "CPU/Graph", "CPU/Submit", "RenderGraph/scene", "RenderGraph/upscale", "RenderGraph/ui", "RenderGraph/present", "SwapBuffers"]
 
 
 def run_once(binary, api, mode, frames, ui, scratch, extra=()):

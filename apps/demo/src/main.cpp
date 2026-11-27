@@ -52,7 +52,7 @@ static void reportPerformance(std::chrono::steady_clock::duration elapsed, const
         LOG_INFO("Perf: frames=", frameMs.size(), " median frame ", frame, " ms = CPU work ", work, " ms + waiting ", wait,
                  " ms (GPU, vsync); ~", work > 0.0f ? 1000.0f / work : 0.0f, " FPS if the CPU were the only limit");
     }
-    for (const char *name : {"Render", "RenderGraph/depth-prepass", "RenderGraph/forwardplus.clusters", "RenderGraph/gpudriven.cull",
+    for (const char *name : {"Render", "CPU/Graph", "CPU/Submit", "RenderGraph/depth-prepass", "RenderGraph/forwardplus.clusters", "RenderGraph/gpudriven.cull",
                              "RenderGraph/gpudriven.hiz", "RenderGraph/scene", "RenderGraph/upscale",
                              "RenderGraph/ui", "RenderGraph/present", "SwapBuffers"})
     {
