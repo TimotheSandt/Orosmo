@@ -45,9 +45,10 @@ core::Result<LoadedGame> loadGame(const std::filesystem::path &path)
 class DynamicReloader final : public GameModule::Reloader
 {
   public:
-    DynamicReloader(const GameModuleSettings &settings, platform::DynamicLibrary library)
-        : path_(settings.path), settleDelay_(settings.settleDelay),
-          library_(std::make_shared<platform::DynamicLibrary>(std::move(library)))
+    // Construit AVANT la première lecture de la bibliothèque (revue PR #37) : l'état de référence de l'observateur précède la
+    // lecture, une version publiée pendant le chargement (ou pendant `init`) est vue au poll suivant. `adopt` donne ensuite la
+    // bibliothèque chargée.
+    explicit DynamicReloader(const GameModuleSettings &settings) : path_(settings.path), settleDelay_(settings.settleDelay)
     {
         if (settings.watch)
         {
@@ -62,6 +63,8 @@ class DynamicReloader final : public GameModule::Reloader
             });
         }
     }
+
+    void adopt(platform::DynamicLibrary library) { library_ = std::make_shared<platform::DynamicLibrary>(std::move(library)); }
 
     void poll(GameModule::Impl &impl) override
     {
@@ -133,6 +136,7 @@ core::Result<GameModule> GameModule::load(GameModuleSettings settings)
         return core::makeError(ErrorCode::kIo, "game module: cannot resolve " + settings.path.string() + ": " + ec.message());
     settings.path = std::move(absolute);
 
+    auto reloader = std::make_unique<DynamicReloader>(settings); // référence de l'observateur prise avant la lecture
     auto loaded = loadGame(settings.path);
     if (!loaded)
         return std::unexpected(std::move(loaded.error()));
@@ -140,7 +144,8 @@ core::Result<GameModule> GameModule::load(GameModuleSettings settings)
     auto impl = std::make_unique<Impl>(targets);
     if (auto started = impl->switchTo(loaded->api); !started)
         return std::unexpected(std::move(started.error()));
-    impl->reloader = std::make_unique<DynamicReloader>(settings, std::move(loaded->library));
+    reloader->adopt(std::move(loaded->library));
+    impl->reloader = std::move(reloader);
     return GameModule(std::move(impl));
 }
 

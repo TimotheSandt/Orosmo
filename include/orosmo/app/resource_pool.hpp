@@ -23,8 +23,21 @@ template <typename T> class ResourcePool
     ResourcePool() = default;
     ResourcePool(const ResourcePool &) = delete;
     ResourcePool &operator=(const ResourcePool &) = delete;
-    ResourcePool(ResourcePool &&) noexcept = default;
-    ResourcePool &operator=(ResourcePool &&) noexcept = default;
+    // Le déplacement vide la source (objets, emplacements et compte) : elle redevient une réserve neuve.
+    ResourcePool(ResourcePool &&other) noexcept
+        : slots_(std::exchange(other.slots_, {})), free_(std::exchange(other.free_, {})), count_(std::exchange(other.count_, 0))
+    {
+    }
+    ResourcePool &operator=(ResourcePool &&other) noexcept
+    {
+        if (this != &other)
+        {
+            slots_ = std::exchange(other.slots_, {});
+            free_ = std::exchange(other.free_, {});
+            count_ = std::exchange(other.count_, 0);
+        }
+        return *this;
+    }
     ~ResourcePool() = default;
 
     // Prend l'objet ; poignée vide (`valid()` faux) si `object` est nul.
@@ -49,7 +62,8 @@ template <typename T> class ResourcePool
         return core::Handle<T>{index, slot.generation};
     }
 
-    // Nul si la poignée est vide, périmée ou d'une autre réserve de même taille.
+    // Nul si la poignée est vide ou périmée. Précondition : la poignée vient de CETTE réserve (aucune identité de réserve n'est
+    // portée : une poignée d'une autre réserve du même type peut désigner un objet d'ici).
     T *get(core::Handle<T> handle) const noexcept
     {
         if (!handle.valid() || handle.index >= slots_.size())

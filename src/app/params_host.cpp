@@ -111,10 +111,8 @@ core::Result<ParamsFile> ParamsFile::open(std::filesystem::path path, scene::Com
     {
         state->watcher.setPollInterval(settings.pollInterval);
         // L'adresse de `State` ne change pas (tenu par pointeur) : la capture reste valide après un déplacement de ParamsFile.
-        state->watcher.watch(state->path, [s = state.get()](const core::FileEvent &event) {
-            if (event.change != core::FileChange::kRemoved)
-                s->pending = true;
-        });
+        // Fichier retiré aussi (revue PR #37) : la relecture signale kIo dans lastError, les dernières valeurs valides restent.
+        state->watcher.watch(state->path, [s = state.get()](const core::FileEvent &) { s->pending = true; });
     }
     (void)state->reload(); // absent ou invalide : valeurs par défaut, erreur gardée dans lastError
     return ParamsFile(std::move(state));

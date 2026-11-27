@@ -51,6 +51,13 @@ ViewHost::~ViewHost()
 {
     impl_->reloader.reset(); // attend une construction en cours
     impl_->detachTree();     // l'arbre part avant le code qui l'a construit
+    if (impl_->ui->updating())
+    {
+        // Détruit depuis un rappel de `Ui::update` : le retrait de l'arbre est différé à la fin de l'image ; le code et la
+        // structure de la vue (que ses gestionnaires visent) restent retenus jusque-là (revue PR #37). Structure relâchée d'abord.
+        impl_->ui->retainUntilRootReplaced(std::move(impl_->code));
+        impl_->ui->retainUntilRootReplaced(std::move(impl_->view));
+    }
     impl_->code.reset();
 }
 

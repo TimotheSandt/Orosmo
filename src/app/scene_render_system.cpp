@@ -276,7 +276,21 @@ struct SceneRenderSystem::Impl
     core::Result<const Instanced *> instancedEntry(core::Handle<renderer::Mesh> handle, const renderer::Mesh &mesh)
     {
         if (auto it = instanced.find(keyOf(handle)); it != instanced.end())
+        {
+            // Revue PR #37 : les valeurs copiées du maillage (groupe de textures, push constants, faces) ont pu changer depuis
+            // (`Mesh::setTextures` détruit l'ancien groupe) : le matériau d'instance suit, l'entrée reste.
+            const renderer::InstanceMaterial *cached = instancer->material(it->second.material);
+            if (cached != nullptr && (cached->textures != mesh.textureGroup() || cached->pushConstants != mesh.pushConstants() ||
+                                      cached->cull != mesh.cullMode()))
+            {
+                renderer::InstanceMaterial material = *cached;
+                material.textures = mesh.textureGroup();
+                material.pushConstants = mesh.pushConstants();
+                material.cull = mesh.cullMode();
+                (void)instancer->setMaterial(it->second.material, std::move(material));
+            }
             return &it->second;
+        }
         if (mesh.material() != nullptr || mesh.instanced())
             return static_cast<const Instanced *>(nullptr); // PBR ou instances propres : G352
         if (!instancer)
