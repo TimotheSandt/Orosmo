@@ -140,6 +140,9 @@ class ShadowFeature : public RenderFeature
     std::string name() const override { return "shadows"; }
     core::Result<> prepare(const FrameData &frame) override;
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
+    // A61 C : atlas, cache et passes que le plan de l'image demande (cache statique, copies, atlas) ; un cache d'ombres stable
+    // garde le graphe, une vue à redessiner ou à recopier le reconstruit.
+    std::optional<std::uint64_t> passSignature() const override;
 
     // Lumières lues à chaque image (mobilité, mode, position, direction) ; non possédé.
     void setLights(const LightManager *lights) noexcept { lights_ = lights; }
@@ -179,6 +182,8 @@ class ShadowFeature : public RenderFeature
     std::uint64_t frameCounter() const noexcept { return frame_; }
 
   private:
+    bool staticWorkPlanned() const noexcept;
+    bool copiesPlanned() const noexcept;
     struct MeshCaster
     {
         const Mesh *mesh = nullptr;

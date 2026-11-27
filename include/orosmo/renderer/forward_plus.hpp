@@ -106,7 +106,11 @@ class ForwardPlusLighting final : public RenderFeature
 
     std::string name() const override { return kName; }
     bool supports(const rhi::Capabilities &capabilities) const noexcept override { return supportedBy(capabilities); }
+    // Crée ou recrée les tampons des clusters (nouveaux réglages) avant la signature de l'image (A61 C).
+    core::Result<> prepare(const FrameData &frame) override;
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
+    // A61 C : tampons des clusters et nombre de groupes de calcul (le graphe est reconstruit quand ils changent).
+    std::optional<std::uint64_t> passSignature() const override;
     // A75.3 : variante OROSMO_FORWARD_PLUS des maillages (`forwardPlusDefines()`), lue par `SceneRenderer::shaderDefines()`.
     std::vector<Define> shaderDefines() const override;
 
