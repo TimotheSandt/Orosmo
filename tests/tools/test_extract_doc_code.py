@@ -61,6 +61,10 @@ class ExtractDocCodeTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=path):
                 edc.extract(f'```cpp title="{path}"\nx\n```\n')
 
+    def test_backticks_after_the_marker_do_not_open_a_block(self):
+        page = '``` `not a fence\n```cpp title="a.cpp"\nint x;\n```\n'
+        self.assertEqual(edc.extract(page)["a.cpp"], "int x;\n")
+
     def test_errors(self):
         with self.assertRaisesRegex(ValueError, "before the start"):
             edc.extract('```cpp title="a.cpp (suite)"\nx\n```\n')

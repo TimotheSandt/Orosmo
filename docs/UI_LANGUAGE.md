@@ -264,7 +264,8 @@ Le SDK (`tools/engine-sdk/engine.mk`) régénère `Generated/%.gen.cpp` quand le
 - Rechargement à chaud de la vue (UI-08), en développement seulement : une vue compilée dans la bibliothèque de jeu est
   reconstruite après chaque rechargement de cette bibliothèque (`app::ViewHost`). Si les champs liés changent (`@Mutable`,
   `@Observed`, `@Snapshot`, `@cui-cpp`), l'ancienne vue reste et il faut relancer le programme reconstruit (G361). La vue
-  liée à l'exécutable (version finale) n'est pas rechargée.
+  liée à l'exécutable (version finale) n'est pas rechargée. Exception : si la bibliothèque est rechargée pendant une
+  compilation qui échoue ensuite, la vue reste l'ancienne jusqu'au rechargement suivant.
 - Navigation (UI-09) : Tab / Maj+Tab suivent l'ordre de tabulation ; une flèche que le widget focalisé n'utilise pas (bouton, case
   à cocher...) passe le focus au voisin le plus proche dans sa direction (sans boucler) ; un curseur, un champ de texte, une
   liste déroulante et les menus gardent leurs flèches. Manette (`ui::GamepadNavigator`, `platform::Gamepads`) : croix et stick

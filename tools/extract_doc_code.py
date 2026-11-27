@@ -32,7 +32,8 @@ def extract(markdown):
     for number, line in enumerate(markdown.splitlines(), start=1):
         if current is None:
             fence = FENCE.match(line)
-            if not fence:
+            # Une clôture en accents graves n'en porte pas dans ses informations (CommonMark).
+            if not fence or (fence.group(1)[0] == "`" and "`" in line[len(fence.group(1)):]):
                 continue
             marker = fence.group(1)
             title = TITLE.search(fence.group(3))

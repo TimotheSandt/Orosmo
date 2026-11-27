@@ -36,6 +36,10 @@ class ScanTextTest(unittest.TestCase):
                    "lifetime(x)"]:
             self.assertEqual(self.labels(ok), [], ok)
 
+    def test_detects_a_name_separated_from_its_scope_by_a_comment(self):
+        for text in ("auto q = glm::/* note */slerp(a, b, t);", "std::/* note */mt19937 gen;", "float s = std::/* note */sin(x);"):
+            self.assertTrue(self.labels(text), text)
+
     def test_ignores_comments_and_strings(self):
         self.assertEqual(self.labels('// std::sin(x)\nconst char *s = "cos(x)";\n/* exp(1)\n pow(2, 3) */'), [])
         self.assertEqual(cdm.scan_text("/* a\nb */ std::sin(x)")[0][0], 2)
