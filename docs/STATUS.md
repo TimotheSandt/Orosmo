@@ -98,6 +98,23 @@ Non-régression : 24 captures (12 configurations × OpenGL et Vulkan : HUD, ombr
 Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 718 cas, 718 verts (7 nouveaux), 1 ignoré ; ASan + UBSan sur les suites `renderer/*` et `assets/*` (`make demo-test SANITIZE=address,undefined TEST_ARGS='--test-suite=renderer/*,assets/*'`) : 260 cas verts, aucun rapport ; `make check` : OK ; `make demo-capture` : OK (références comparées) ; `make demo-vulkan-check` : OK, validation Vulkan silencieuse. Non vérifié : Windows et macOS (compilés par la CI au push).
 
 
+## M8 lot L12a : API des contenus (A75.2, A75.11)
+
+Sur `feat/M8-L12a-api-contenus` (A79), fondé sur L11. Preuves sous Linux x64 (g++ 13.3, Mesa, OpenGL et Vulkan). Anciennes API gardées (`SkinnedModel`, `CrowdRenderer::create(…, render)`, `setAgents(worlds, poses)`). Tests : `tests/anim/animated_model_tests.cpp` (suite `anim/animated-model`, sur les deux backends) et `tests/apps/demo_anim_scene_tests.cpp`.
+
+| Proposition | État | Fichier et symbole | Preuve |
+| --- | --- | --- | --- |
+| A75.2 `assets::ModelLoader` | **Fait** | `model_loader.hpp` `ModelLoader::create`, `load`, `createRenderModel`, `reloadChanged` | cas « ModelLoader: a missing file is an error naming it… » : vert |
+| A75.2 `anim::AnimatedModel` (modèle animé en 5 lignes) | **Fait** (événements de clip : G251) | `animated_model.hpp` `AnimatedModel::create`, `play`, `crossFade`, `update`, `setPose`, `dispatch`, `draw`, `rebuild`, `reloadChanged` | cas « an animated glTF model is loaded and played in five lines » et « play and crossFade give the same poses as a StateMachine » (égalité exacte) : verts |
+| A75.2 repli CPU (`skinVertices`) | **Fait** (maillage partagé par plusieurs nœuds : G250) | `AnimatedModel` (`SkinningPath::kCpu`, `forceCpuSkinning`) | cas « the CPU fallback deforms the vertices like the compute skinning, to 1e-4 » (au milieu d'un fondu, sommets relus sur le GPU) : vert sur OpenGL et Vulkan |
+| A75.11 foule depuis un modèle | **Fait** | `crowd.hpp` `CrowdRenderer::create(context, animatedModel)`, `setAgents(worlds, clips, times)` | cas « a crowd created from an animated model… draws like a hand-built crowd » (images identiques) : vert |
+| Démo `--scene anim` migrée | **Fait** | `apps/demo/src/Scene/anim_scene.cpp` `AnimScene::init`, `update`, `updateCrowd`, `reloadChanged` | suite `apps/demo-anim` : verte ; captures avant/après (ci-dessous) |
+
+Non-régression : `--scene anim` capturée avant (anciens `anim_scene.*` de `dcbadf8` sur le même moteur) puis après, OpenGL et Vulkan, à 30 images et à 240 images (4 s : le fondu de 3 s vers « wave » est passé) : les 4 `scene.png` identiques au pixel près (`tools/compare_png.py --tolerance 0`) ; couches de validation Vulkan : 0 message.
+
+Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 726 cas verts avant la fusion de `origin/dev`, 736 cas verts (1 ignoré) après ; ASan + UBSan sur les suites `anim/*`, `assets/*` et `apps/demo-anim` : 83 cas verts, aucun rapport ; `make check` : OK. Non vérifié : Windows et macOS (compilés par la CI au push) ; `clang-format` absent de la machine (formatage non appliqué).
+
+
 ## M8 lot L0 : `--shadow-quality` de la démo
 
 Option de la démo, sans changement du moteur (`docs/05` M8, A79). `apps/demo/src/launch_options.hpp` : `ShadowQuality`, `parseShadowQuality`, `shadowSettingsForQuality` (préréglages `low`, `medium`, `high` = `ShadowSettings{}`), `shadowQualityLabel` ; `Game::setShadowSettings` passe les réglages à `ShadowFeature::create` ; le panneau de performances affiche « shadows on <qualité> ». Tests : `tests/demo/launch_options_tests.cpp` (lecture, défaut `high`, valeur invalide refusée, préréglages, `high` égal à `ShadowSettings{}`). Démo : `apps/demo/bin/debug/main --shadows on --shadow-quality low`.

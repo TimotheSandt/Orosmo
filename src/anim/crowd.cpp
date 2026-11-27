@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <cstring>
 #include <optional>
 #include <string>
@@ -122,6 +123,33 @@ core::Result<std::unique_ptr<CrowdRenderer>> CrowdRenderer::create(rhi::Device &
     return out;
 }
 
+core::Result<std::unique_ptr<CrowdRenderer>> CrowdRenderer::create(const renderer::RenderContext &context, const AnimatedModel &model,
+                                                                   const CrowdOptions &options)
+{
+    if (!supportedBy(context.device().capabilities()))
+    {
+        return makeError(ErrorCode::kUnsupported, "CrowdRenderer: storage buffers read by the vertex shader at group 2 are required");
+    }
+    assets::RenderModelOptions renderOptions;
+    renderOptions.sourceKey = model.options().render.sourceKey + ".crowd";
+    renderOptions.extraDefines = options.extraDefines;
+    auto created = model.loader().createRenderModel(model.model(), renderOptions);
+    if (!created)
+    {
+        return makeError(created.error().code, "CrowdRenderer: " + created.error().message);
+    }
+    auto render = std::make_unique<assets::RenderModel>(std::move(*created));
+    auto crowd = create(context, model.model(), *render, options);
+    if (!crowd)
+    {
+        return crowd;
+    }
+    (*crowd)->ownedRender_ = std::move(render);
+    (*crowd)->clips_ = model.clips();
+    (*crowd)->rest_ = restPose(model.model());
+    return crowd;
+}
+
 core::Result<> CrowdRenderer::agentPalette(const Pose &pose, std::span<core::Mat4> out) const
 {
     if (out.size() != jointCount_)
@@ -139,6 +167,43 @@ core::Result<> CrowdRenderer::agentPalette(const Pose &pose, std::span<core::Mat
         std::copy(palette.begin(), palette.end(), out.begin() + skinOffsets_[s]);
     }
     return {};
+}
+
+core::Result<> CrowdRenderer::setAgents(std::span<const core::Mat4> worlds, std::span<const std::uint32_t> clips, std::span<const float> times)
+{
+    if (clips_.empty())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "CrowdRenderer::setAgents: the crowd was not created from an AnimatedModel (no clips)");
+    }
+    if (worlds.size() != clips.size() || worlds.size() != times.size())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "CrowdRenderer::setAgents: one clip and one time per agent");
+    }
+    poses_.resize(worlds.size(), rest_);
+    for (std::size_t a = 0; a < worlds.size(); ++a)
+    {
+        if (clips[a] >= clips_.size())
+        {
+            return makeError(ErrorCode::kOutOfRange, "CrowdRenderer::setAgents: agent " + std::to_string(a) + " plays clip " + std::to_string(clips[a]) +
+                                                         " of " + std::to_string(clips_.size()));
+        }
+        if (!std::isfinite(times[a]))
+        {
+            return makeError(ErrorCode::kInvalidArgument, "CrowdRenderer::setAgents: agent " + std::to_string(a) + " has a non-finite time");
+        }
+        const Clip &clip = clips_[clips[a]];
+        float t = clip.duration() > 0.0f ? std::fmod(times[a], clip.duration()) : 0.0f;
+        if (t < 0.0f)
+        {
+            t += clip.duration();
+        }
+        poses_[a] = rest_;
+        if (auto r = clip.sample(t, poses_[a]); !r)
+        {
+            return r;
+        }
+    }
+    return setAgents(worlds, std::span<const Pose>(poses_));
 }
 
 core::Result<> CrowdRenderer::setAgents(std::span<const core::Mat4> worlds, std::span<const Pose> poses)
