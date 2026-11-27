@@ -61,8 +61,7 @@ temps par entité, avancés par le jeu). Limites : G350 à G356.
 
 ```cpp
 // game/game.cpp — compilé en bibliothèque (make / make debug) ou lié dans l'exécutable (make release, OROSMO_GAME_STATIC)
-#include <orosmo/app/game_api.hpp>
-#include <orosmo/app/game_context.hpp>
+#include <orosmo/game.hpp> // en-tête léger : interface C, contexte, monde, systèmes, types mathématiques
 
 namespace {
 bool init(orosmo::app::GameContext *ctx)
@@ -157,7 +156,19 @@ l'exécutable des tests (`replace`) pour le type changé et l'`init` qui échoue
 
 - **L6** : fait (migration, `missingActions`, paramètres, décision sur les orphelins).
 - **L14** : gabarit d'`orosmo init` et tutoriel réécrits avec `Application::main`, `spawn`, `onUpdate` et `defaultGame()`.
-- **L7** : cible qui ne reconstruit que la bibliothèque de jeu, en-tête léger `orosmo/game.hpp` (`game_context.hpp` inclut
-  aujourd'hui `sim/simulation.hpp`, donc `scene` et la sérialisation).
+
+## Construction incrémentale (GAME-06, L7)
+
+- **`orosmo/game.hpp`** : seul en-tête à inclure dans la bibliothèque de jeu. Il ne tire ni `renderer`, `rhi`, `platform`,
+  `ui`, ni `sim::Simulation`, ni `nlohmann/json`, ni `glm/glm.hpp` (`tools/check_headers.py`, `LIGHT_HEADERS`). Les systèmes
+  viennent de `sim/system.hpp` (`StepContext::inputs` est une vue ; pour lire le contenu d'une `Input`, inclure
+  `sim/simulation.hpp`, plus lourd), les types mathématiques de `core/math_types.hpp`. `game_context.hpp` n'inclut plus
+  `sim/simulation.hpp` ; c'est `game_module.hpp` (côté hôte) qui le fait.
+- **`make game`** (gabarit, `apps/demo/Makefile`) : ne refait que la bibliothèque ; **`orosmo build --game`** l'appelle.
+  Pour un programme `make dev` : `make game BUILD_TYPE=dev`.
+  `ccache` est utilisé s'il est dans le `PATH` (`make CCACHE=` pour s'en passer).
+- **Mesure** : `make e2e-init` modifie `src/game/game.cpp` d'un programme lancé (`tools/e2e/reload_host.cpp`,
+  `tools/e2e_reload.py`), reconstruit et vérifie le code rechargé en moins de `E2E_RELOAD_MAX` secondes (5 par défaut) ;
+  valeurs dans `docs/BASELINE/game-reload-M8-L7.txt`.
 
 Limites : `docs/GAPS.md` (G310 à G318, G320 à G326).

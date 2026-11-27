@@ -225,6 +225,10 @@ struct SteppingScope
 };
 } // namespace
 
+void StepContext::emit(std::string name) { events.push_back(Event{step, std::move(name), core::Json{}}); }
+
+void StepContext::emit(std::string name, core::Json data) { events.push_back(Event{step, std::move(name), std::move(data)}); }
+
 bool Simulation::refuseNested(const char *what) const
 {
     if (!stepping_)
@@ -246,7 +250,7 @@ void Simulation::step()
     pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(due));
 
     scratch_.reset();
-    StepContext context{world_, random_, step_, dt_, current_, scratch_, events_};
+    StepContext context{world_, random_, step_, dt_, {current_.data(), current_.size()}, scratch_, events_};
     for (System &system : systems_)
         system.run(context);
     world_.updateTransforms();

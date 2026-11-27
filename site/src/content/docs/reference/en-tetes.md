@@ -12,6 +12,12 @@ en-tête se compile seul (`make check-headers`). Les modules sont rangés en cou
 Espaces de noms : `orosmo::core`, `orosmo::platform`, `orosmo::rhi`, `orosmo::renderer`, `orosmo::assets`, `orosmo::anim`,
 `orosmo::ui`.
 
+## Logique de jeu
+
+| En-tête | Contenu | Page |
+| --- | --- | --- |
+| `orosmo/game.hpp` | en-tête unique et léger de la bibliothèque de jeu : contexte, monde, composants, systèmes (`sim/system.hpp`), types mathématiques | [Compiler](/reference/construction/#logique-de-jeu-rechargeable) |
+
 ## core
 
 | En-tête | Types et fonctions principaux | Page |
@@ -25,6 +31,7 @@ Espaces de noms : `orosmo::core`, `orosmo::platform`, `orosmo::rhi`, `orosmo::re
 | `time.hpp` | `IClock`, `SteadyClock`, `ManualClock`, `FrameTimer`, `FixedStepper` | [Temps et événements](/guides/noyau/temps-evenements/) |
 | `events.hpp` | `EventBus`, `Subscription` | [Temps et événements](/guides/noyau/temps-evenements/) |
 | `math.hpp` | `Vec2`…`Mat4`, `Quat`, `WorldPosition`, `toLocal`, `toWorld`, `narrow`, `widen` | [Temps et événements](/guides/noyau/temps-evenements/) |
+| `math_types.hpp` | les types seuls (`Vec3`, `Quat`, `WorldPosition`), sans les fonctions de glm | — |
 | `vfs.hpp` | `Vfs` | [Fichiers et ressources](/guides/noyau/fichiers-ressources/) |
 | `paths.hpp` | `GET_RESOURCE_PATH`, `setWorkingDirectoryToExecutable`, `validateAssets` | [Fichiers et ressources](/guides/noyau/fichiers-ressources/) |
 | `resources.hpp` | `Handle<T>`, `ResourceCache<T>`, `ResourceState` | [Fichiers et ressources](/guides/noyau/fichiers-ressources/) |

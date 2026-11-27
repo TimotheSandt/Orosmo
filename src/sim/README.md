@@ -7,6 +7,7 @@ optionnel au lot L4.
 
 | En-tête | Rôle |
 | --- | --- |
+| `system.hpp` | `Phase`, `StepContext`, `SystemDesc` seuls (en-tête léger de `orosmo/game.hpp`) : `emit(nom)` ; la forme avec charge, `Input` et `Event` demandent `simulation.hpp` |
 | `simulation.hpp` | `Simulation` (monde, générateur, pas fixe, systèmes, entrées datées, événements, arène de pas, capture et restauration, état JSON, rejeu, empreinte), `SystemDesc` / `StepContext` (`emit`, `scratch`) / `Phase`, `Input`, `Event`, `Snapshot`, `Replay` (`replayToJson`, `replayFromJson`) |
 | `simulation_thread.hpp` | `SimulationThread` (thread dédié : `start`, `frame`, `sync`, `pushInput`, `acquire`, `popEvent`, `stop`), `ThreadSettings`, `Cadence`, `RenderSnapshot` / `RenderTransform` / `interpolate`, `SimulationConfig` (`declareSimulationConfig`, `readSimulationConfig`, `stepForRate`) (lot L4) |
 | `snapshot_buffer.hpp` | `SnapshotBuffer<T>` : échange sans verrou d'un instantané entre un écrivain et un lecteur (trois emplacements) (lot L4) |

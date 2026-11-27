@@ -17,6 +17,7 @@ installé (`$OROSMO_HOME/engines/<version>/make/engine.mk`, `cmake/`).
 |---|---|---|
 | `orosmo build` | `make debug` | `bin/debug/main` (`-O1 -g -DDEBUG`) |
 | `orosmo build --release` | `make release` | `bin/release/<PROJECT_NAME>` (`-O3 -DNDEBUG`) |
+| `orosmo build --game` | `make game` | bibliothèque de jeu seule (`bin/debug/game.so`, `.dylib` ou `.dll`) |
 | `orosmo run [-- args]` | `make run-debug` | compile si besoin, puis lance le programme |
 | `orosmo clean` | `make clean` | supprime `obj/` et `Generated/` |
 
@@ -24,6 +25,15 @@ Autres cibles du `Makefile` : `dev` (`-O0 -g3`), `run` (le binaire le plus réce
 `benchmark`, `compile-commands` (écrit `compile_commands.json` pour clangd), `fclean` (supprime aussi `bin/`), `info` (moteur
 trouvé, version, archives), `add-dep`, `install-deps`, `search-dep` (bibliothèques du jeu, plus bas). `orosmo build --json`
 donne la même compilation en événements JSON : voir [Commande orosmo](/reference/commande-orosmo/#format-de-build-json).
+
+### Logique de jeu rechargeable
+
+Les sources de `src/game/` sont compilées en une bibliothèque que le programme (build debug ou dev) recharge à chaud.
+Programme lancé, après une modification, `orosmo build --game` (ou `make game`) ne refait qu'elle. Incluez
+`<orosmo/game.hpp>`, qui ne tire ni le rendu ni `glm/glm.hpp`. Si `ccache` est installé, le `Makefile` l'utilise
+(`make CCACHE=` le désactive). Pour un programme lancé par `make dev`, la commande est
+`make game BUILD_TYPE=dev` (`make game` seul refait la bibliothèque debug, que ce programme ne charge pas). Si un en-tête partagé avec `src/main.cpp` change les données d'un composant, reconstruisez tout
+et relancez le programme. `make release` lie le jeu statiquement.
 
 ### Trouver le moteur
 

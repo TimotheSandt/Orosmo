@@ -23,6 +23,7 @@
 #include <orosmo/app/game_api.hpp>
 #include <orosmo/app/game_context.hpp>
 #include <orosmo/core/error.hpp>
+#include <orosmo/sim/simulation.hpp> // l'hôte possède la simulation cible (le jeu ne voit que sim/system.hpp)
 
 #include <chrono>
 #include <cstddef>

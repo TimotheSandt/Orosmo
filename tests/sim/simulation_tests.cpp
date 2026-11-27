@@ -4,9 +4,11 @@
 #include <orosmo/sim/simulation.hpp>
 
 #include <chrono>
-#include <limits>
-#include <stdexcept>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <span>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -446,4 +448,39 @@ TEST_SUITE("sim/simulation")
         CHECK(live.fingerprint() == expected);
         CHECK(live.pendingInputs() == std::vector<Input>{{30, "bump", 3}});
     }
+}
+
+TEST_CASE("sim : StepContext::inputs, vue des entrées du pas (type léger de sim/system.hpp, GAME-06)")
+{
+    Simulation sim;
+    std::size_t seen = 0;
+    std::string names;
+    REQUIRE(sim.addSystem({"read", Phase::kInput, 0, [&](StepContext &ctx) {
+                               const std::span<const Input> span = ctx.inputs; // conversion vers std::span
+                               seen = span.size();
+                               for (std::size_t i = 0; i < ctx.inputs.size(); ++i)
+                                   names += ctx.inputs[i].name;
+                           }}));
+    sim.step();
+    CHECK(seen == 0);
+    REQUIRE(sim.queueInput({.step = 1, .name = "a", .data = {}}));
+    REQUIRE(sim.queueInput({.step = 1, .name = "b", .data = {}}));
+    sim.step();
+    CHECK(seen == 2);
+    CHECK(names == "ab");
+}
+
+TEST_CASE("sim : StepContext::emit sans charge (forme de l'en-tête léger) et avec charge")
+{
+    Simulation sim;
+    REQUIRE(sim.addSystem({"emit", Phase::kUpdate, 0, [](StepContext &ctx) {
+                               ctx.emit("bare");
+                               ctx.emit("full", core::Json{{"v", 1}});
+                           }}));
+    sim.step();
+    const auto events = sim.takeEvents();
+    REQUIRE(events.size() == 2);
+    CHECK(events[0].name == "bare");
+    CHECK(events[0].data.is_null());
+    CHECK(events[1].data["v"] == 1);
 }

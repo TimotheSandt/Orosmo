@@ -681,25 +681,31 @@ impl ProjectBackup {
 
 struct BuildOptions {
     release: bool,
+    /// `build --game` : seulement la bibliothèque de jeu rechargeable (`make game`, GAME-06).
+    game: bool,
     json: bool,
     dir: PathBuf,
     program_args: Vec<String>,
 }
 
 fn parse_build_options(args: &[String], cmd: &str, allow_json: bool) -> Result<BuildOptions, String> {
-    let mut o = BuildOptions { release: false, json: false, dir: PathBuf::from("."), program_args: Vec::new() };
+    let mut o = BuildOptions { release: false, game: false, json: false, dir: PathBuf::from("."), program_args: Vec::new() };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--release" => o.release = true,
             "--debug" => o.release = false,
             "--json" if allow_json => o.json = true,
+            "--game" if cmd == "build" => o.game = true,
             "-C" => o.dir = PathBuf::from(it.next().ok_or("-C expects a project directory")?),
             "--" => {
                 o.program_args = it.by_ref().cloned().collect();
             }
             other => return Err(format!("unknown argument for {cmd}: {other}")),
         }
+    }
+    if o.game && o.release {
+        return Err("build --game rebuilds the reloadable library of a development build: not with --release".to_string());
     }
     if !o.dir.join("Makefile").is_file() {
         return Err(format!("no Makefile in '{}': not an Orosmo project directory", o.dir.display()));
@@ -708,8 +714,12 @@ fn parse_build_options(args: &[String], cmd: &str, allow_json: bool) -> Result<B
 }
 
 fn build_goals(release: bool) -> Vec<String> {
+    make_goals(if release { "release" } else { "debug" })
+}
+
+fn make_goals(goal: &str) -> Vec<String> {
     let jobs = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
-    vec![format!("-j{jobs}"), if release { "release" } else { "debug" }.to_string()]
+    vec![format!("-j{jobs}"), goal.to_string()]
 }
 
 fn cmd_build(args: &[String]) -> Result<i32, String> {
@@ -717,7 +727,8 @@ fn cmd_build(args: &[String]) -> Result<i32, String> {
     if !o.program_args.is_empty() {
         return Err("build takes no program arguments (see `orosmo run -- …`)".to_string());
     }
-    makerun::run_make(&o.dir, &build_goals(o.release), if o.json { Output::Json } else { Output::Human })
+    let goals = if o.game { make_goals("game") } else { build_goals(o.release) };
+    makerun::run_make(&o.dir, &goals, if o.json { Output::Json } else { Output::Human })
 }
 
 fn cmd_run(args: &[String]) -> Result<i32, String> {
@@ -1228,6 +1239,7 @@ fn print_usage() {
     eprintln!("  orosmo update [path]              move the project to the latest engine, refresh Makefile and .gitignore");
     eprintln!("  orosmo migrate [path]             old project with orosmo/ -> shared engine (orosmo/ removed after a successful build)");
     eprintln!("  orosmo build [--release] [--json] [-C dir]   build with make (debug by default)");
+    eprintln!("  orosmo build --game [--json] [-C dir]        rebuild only the game library (reloaded by the running program)");
     eprintln!("  orosmo run [--release] [-C dir] [-- args...] build, then run the program with args");
     eprintln!("  orosmo clean [-C dir]             make clean");
     eprintln!();
@@ -1251,6 +1263,22 @@ fn print_usage() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_game_option() {
+        let dir = std::env::temp_dir().join(format!("orosmo_build_game_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("Makefile"), "all:\n").unwrap();
+        let args = |a: &[&str]| -> Vec<String> {
+            a.iter().map(|s| s.to_string()).chain(["-C".to_string(), dir.display().to_string()]).collect()
+        };
+        assert!(parse_build_options(&args(&["--game"]), "build", true).unwrap().game);
+        assert!(!parse_build_options(&args(&[]), "build", true).unwrap().game);
+        assert!(parse_build_options(&args(&["--game", "--release"]), "build", true).is_err());
+        assert!(parse_build_options(&args(&["--game"]), "run", false).is_err()); // build seulement
+        assert_eq!(make_goals("game").last().map(String::as_str), Some("game"));
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn config_template_gets_the_engine_version() {

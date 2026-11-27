@@ -6,8 +6,7 @@
 // systems and actions registered by name through the context). `tools/check_game_static.py` checks the built library.
 #include "game/spin.hpp"
 
-#include <orosmo/app/game_api.hpp>
-#include <orosmo/app/game_context.hpp>
+#include <orosmo/game.hpp> // light header (no renderer, no full glm): keeps rebuilds of this library fast
 
 namespace
 {

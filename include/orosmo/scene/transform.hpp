@@ -7,7 +7,7 @@
 // `-ffp-contract=off` (règle 9, lot L3).
 #pragma once
 
-#include <orosmo/core/math.hpp>
+#include <orosmo/core/math_types.hpp>
 #include <orosmo/core/reflection.hpp>
 
 #include <tuple>

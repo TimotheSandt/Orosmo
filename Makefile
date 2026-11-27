@@ -275,6 +275,8 @@ E2E_PLATFORM  = $(shell $(MAKE) -s -f $(ENGINE_MK) print-platform)
 E2E_EXE       = $(if $(filter Windows_NT,$(OS)),.exe)
 # 1 : e2e-init lance aussi le projet créé (OpenGL 4.3 requis : Linux, ou Mesa sous xvfb). 0 : seulement compiler et lier (macOS ≤ 4.1, Windows sans GPU).
 E2E_RUN_GRAPHICS ?= 1
+# GAME-06 : durée maximale « .cpp du jeu modifié -> code rechargé » (5 s sur la machine de référence ; plus large en CI).
+E2E_RELOAD_MAX ?= 5
 E2E_HOME      = $(abspath $(E2E_RUN))/home
 E2E_PKG       = $(abspath dist)/orosmo-pkg-$(E2E_PLATFORM).zip
 E2E_TOOL      = $(E2E_HOME)/bin/orosmo$(E2E_EXE)
@@ -333,6 +335,23 @@ e2e-init:
 	  else \
 	    echo "e2e-init : lancement graphique sauté (E2E_RUN_GRAPHICS=0 : exécuteur sans OpenGL 4.3, projet seulement compilé et lié)"; \
 	  fi
+	@# GAME-06 (A79 L7) : projet de même Makefile et même src/game/ que mygame, avec un hôte sans GPU
+	@# (tools/e2e/reload_host.cpp). `make game` ne refait que la bibliothèque, avec ccache s'il est là (un faux suffit ici) ;
+	@# puis, programme lancé, un .cpp du jeu est modifié, reconstruit par `orosmo build --game` et rechargé, temps mesuré.
+	mkdir -p $(E2E_RUN)/reload/src $(E2E_RUN)/fake-ccache
+	cp $(E2E_RUN)/mygame/Makefile $(E2E_RUN)/mygame/config.mk $(E2E_RUN)/reload/
+	cp -r $(E2E_RUN)/mygame/src/game $(E2E_RUN)/reload/src/
+	cp tools/e2e/reload_host.cpp $(E2E_RUN)/reload/src/main.cpp
+	cd $(E2E_RUN)/reload && $(E2E_ENV) $(MAKE) debug
+	printf '#!/bin/sh\nexec "$$@"\n' > $(E2E_RUN)/fake-ccache/ccache
+	chmod +x $(E2E_RUN)/fake-ccache/ccache
+	cd $(E2E_RUN)/reload && $(E2E_ENV) PATH="$$(cd ../fake-ccache && pwd):$$(cd "$(E2E_HOME)/bin" && pwd):$$PATH" \
+	    $(MAKE) -n -W src/game/game.cpp game > ../game-goal.txt
+	grep -q 'ccache .*src/game/game\.cpp' $(E2E_RUN)/game-goal.txt
+	@! grep -E 'src/main\.cpp|-o bin/debug/main(\.exe)?( |$$)' $(E2E_RUN)/game-goal.txt \
+	    || { echo "e2e-init : make game refait autre chose que la bibliothèque de jeu"; exit 1; }
+	$(E2E_SH) python3 tools/e2e_reload.py --project $(E2E_RUN)/reload --tool "$(E2E_TOOL)" \
+	    --exe bin/debug/main$(E2E_EXE) --max $(E2E_RELOAD_MAX) --record $(E2E_RUN)/reload.txt
 	$(MAKE) -C $(E2E_RUN)/minimal ENGINE_DIR="$(E2E_ENGINE)"
 	$(E2E_RUN)/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
 	@echo "e2e-init : sortie de l'exemple minimal :"; cat $(E2E_RUN)/minimal.txt

@@ -17,7 +17,7 @@
 #include <orosmo/core/error.hpp>
 #include <orosmo/scene/component.hpp>
 #include <orosmo/scene/world.hpp>
-#include <orosmo/sim/simulation.hpp>
+#include <orosmo/sim/system.hpp> // pas sim/simulation.hpp : en-tête léger (GAME-06, A79 lot L7)
 
 #include <cstdint>
 #include <filesystem>
@@ -27,6 +27,11 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+
+namespace orosmo::sim
+{
+class Simulation;
+} // namespace orosmo::sim
 
 namespace orosmo::ui
 {

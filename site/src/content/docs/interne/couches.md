@@ -102,7 +102,7 @@ tools/                            compilateur .cui, outil orosmo, SDK, contrôle
 | --- | --- | --- |
 | `make check-layers` | `tools/check_layers.py --strict` | Un `#include` vers un module de niveau supérieur (règles de `tools/layers.json`). |
 | `make check-api` | `tools/check_api_isolation.py --strict` | `gl*`, `GL_*`, `Vk*`, `vk*`, `VK_*`, `MTL*`, `glfw*`, `<vulkan/…>`, `<GL/…>`, `<windows.h>`… hors de `src/rhi/`, `src/platform/` et `include/orosmo/platform/`. |
-| `make check-headers` | `tools/check_headers.py --strict` | Un en-tête public qui ne se compile pas seul. |
+| `make check-headers` | `tools/check_headers.py --strict` | Un en-tête public qui ne se compile pas seul, ou un en-tête léger (`orosmo/game.hpp`) qui tire un fichier interdit. |
 | `make check-repo` | `tools/check-repo.sh` | Binaire suivi, collision de casse, fin de ligne CRLF. |
 
 ```bash

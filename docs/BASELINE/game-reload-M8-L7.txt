@@ -1,0 +1,27 @@
+GAME-06 (M8, A79 lot L7) : reconstruction et rechargement de la bibliothèque de jeu. Mesures du 2026-11-26.
+
+Machine : Intel Core Ultra 7 155H (22 threads), Linux 7.2 (Pop!_OS 24.04), g++ 13.3.0, dépôt sur disque monté, ccache NON installé.
+La machine servait en même temps à d'autres compilations : la charge (moyenne sur 1 min) est notée.
+
+1. « .cpp du jeu modifié -> nouveau code en train de tourner » (tools/e2e_reload.py sur le projet de `make e2e-init`,
+   moteur installé, `orosmo build --game`, src/game/game.cpp du gabarit ; comprend make, compilation, édition de liens,
+   contrôle de la règle 13, délai de stabilité de 250 ms et interrogation du fichier toutes les 100 ms). Critère : < 5 s.
+
+   charge   build --game   modification -> code rechargé
+   ~7,4     1,85 s         2,11 s
+   ~7,0     2,33 s         2,53 s
+   ~7,0     1,81 s         2,01 s
+   ~20-40   3,74 s         3,97 s   (pendant `make e2e-init`, plusieurs builds en parallèle)
+
+   `make game` seul après `touch src/game/game.cpp` (charge ~7) : 2,11 s et 2,63 s.
+
+2. Compilation du seul src/game/game.cpp du gabarit (-O1 -g, charge ~9), avant (commit 3a16eb02 : game_context.hpp
+   incluait sim/simulation.hpp) et après (orosmo/game.hpp) :
+
+                      avant        après
+   durée              6,9-7,4 s    3,9-4,0 s
+   mémoire maximale   364 Mo       201 Mo
+   lignes (-E)        183 267      112 269
+
+Commandes : `make e2e-init` (limite E2E_RELOAD_MAX=5 par défaut, 60 en CI) ; le résultat est écrit dans
+build/e2e/<date>/reload.txt. Windows et macOS : non mesurés ici (docs/GAPS.md G330).

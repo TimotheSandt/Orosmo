@@ -10,6 +10,31 @@ import argparse, concurrent.futures, os, shutil, subprocess, sys, tempfile
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
+# En-têtes légers (GAME-06, A79 lot L7) : ce que leur inclusion ne doit JAMAIS tirer, même indirectement. Chaque motif est
+# cherché dans les chemins (séparés par « / ») de la liste des dépendances donnée par le compilateur (-M). De glm, seuls les
+# types sont permis (`glm/ext/…` et ce que `detail/type_quat` tire lui-même, dont `gtc/constants`).
+LIGHT_HEADERS = {
+    "orosmo/game.hpp": [
+        "/orosmo/renderer/", "/orosmo/rhi/", "/orosmo/platform/", "/orosmo/ui/", "/orosmo/assets/", "/orosmo/anim/",
+        "/orosmo/sim/simulation.hpp", "/orosmo/scene/scene_file.hpp", "/orosmo/core/serialization.hpp", "/orosmo/core/math.hpp",
+        "/nlohmann/json.hpp", "/glm/glm.hpp", "/glm/gtc/quaternion", "/glm/gtx/", "/vulkan/", "/GLFW/",
+    ],
+}
+
+
+def forbidden_dependencies(cxx, flags, tmp, header, patterns):
+    """Fichiers interdits que `header` inclut ; None si le compilateur échoue (déjà signalé par le contrôle d'autonomie)."""
+    src = os.path.join(tmp, "light.cpp")
+    with open(src, "w", encoding="utf-8") as f:
+        f.write(f'#include <{header}>\n')
+    r = subprocess.run([cxx] + [x for x in flags if x != "-fsyntax-only"] + ["-M", src], capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    # Format make : « cible: dépendances », lignes continuées par « \ », espaces des chemins échappés ; \ de Windows -> /.
+    text = r.stdout.replace("\\\n", " ").replace("\\ ", "\0").replace("\\", "/")
+    deps = [d.replace("\0", " ") for d in text.split()]
+    return sorted({d for d in deps for p in patterns if p in d})
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -53,9 +78,19 @@ def main():
                 first = next((l for l in err if "error" in l), err[0])
                 bad.append(h)
                 print(f"WARNING headers: {h} ne se compile pas seul : {first[:160]}")
+    heavy = 0
+    for header, patterns in LIGHT_HEADERS.items():
+        found = forbidden_dependencies(cxx, flags, tmp, header, patterns) if header in headers else None
+        if found is None:
+            heavy += 1
+            print(f"WARNING headers: en-tête léger {header} absent ou impossible à analyser")
+        elif found:
+            heavy += 1
+            print(f"WARNING headers: en-tête léger {header} tire {len(found)} fichier(s) interdit(s) : {', '.join(found[:4])}")
     shutil.rmtree(tmp, ignore_errors=True)
-    print(f"check_headers: {len(headers)} en-têtes, {len(bad)} non autonome(s)")
-    return 1 if a.strict and bad else 0
+    print(f"check_headers: {len(headers)} en-têtes, {len(bad)} non autonome(s) ; "
+          f"{len(LIGHT_HEADERS)} en-tête(s) léger(s), {heavy} en défaut")
+    return 1 if a.strict and (bad or heavy) else 0
 
 
 if __name__ == "__main__":

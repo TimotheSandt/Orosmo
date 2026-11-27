@@ -30,6 +30,25 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L7 : construction incrémentale de la bibliothèque de jeu (A79, GAME-06)
+
+Branche `feat/M8-L7-build-incremental` (depuis `feat/M8-L5-jeu-rechargeable`). Linux x64 seulement en local (g++ 13.3) ;
+Windows et macOS par la CI (G330). Mesures : `docs/BASELINE/game-reload-M8-L7.txt`.
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| GAME-06 En-tête léger | `include/orosmo/game.hpp`, `sim/system.hpp` (`StepContext`, `ConstView`), `core/math_types.hpp` | `make check` (`tools/check_headers.py`, `LIGHT_HEADERS`) | ni `renderer`, `rhi`, `platform`, `ui`, `Simulation`, `nlohmann/json`, `glm.hpp` ; game.cpp du gabarit : 6,9-7,4 s avant, 3,9-4,0 s après |
+| GAME-06 Cible du gabarit et `ccache` | `apps/demo/Makefile` (`game`, `CCACHE`) | `make e2e-init` | `make -n -W src/game/game.cpp game` : `ccache g++ … game.cpp`, ni `src/main.cpp` ni édition de liens du programme |
+| GAME-06 Outil | `tools/engine-init-rs/src/main.rs` (`build --game`, `make_goals`) | `cargo test` (`tests::build_game_option`), `make e2e-init` | 34 tests verts |
+| GAME-06 Reconstruire et recharger < 5 s | `tools/e2e/reload_host.cpp`, `tools/e2e_reload.py` | `make e2e-init` (`E2E_RELOAD_MAX=5`) | 2,0-2,5 s (charge ~7), 4,0 s sous charge ~20-40 ; code changé exécuté, état du composant gardé, exécutable non refait ; copie sous nom unique avant chargement : L5 (suite `app/game_module`) |
+
+Vérifications (Linux x64, g++ 13.3, 22 threads, machine partagée) : `make all-debug` sans avertissement ; `make demo-test` vert
+(806 puis 811 cas, 1 ignoré à chaque passage, puis `test_game_static: OK`) ; ASan + UBSan sur arbre propre
+(`make demo-test-unit SANITIZE=address,undefined`, `ASAN_OPTIONS=alloc_dealloc_mismatch=0`) : 508 cas verts, `test_game_static`
+sans message ; sans cette option, la passe s'arrête sur l'erreur connue de `libshaderc` du système (antérieure, notée en L5).
+`make check` OK ; `make e2e-init` OK ; `cargo test` de l'outil 34 verts. Rendu non touché (pas de captures). Site non
+reconstruit ; code non formaté par `clang-format` (absent de la machine).
+
 ## M8 lot L13 : façade d'application et rendu de scène (A79, A75.1, reste d'A75.9, A73 point 3)
 
 Branche `feat/M8-L13-application` (depuis `dev` avec L3, L5, L10, L12a, L12b). Module `app` (`src/app/README.md`) :

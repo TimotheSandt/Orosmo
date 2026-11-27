@@ -11,7 +11,7 @@
 //   };
 #pragma once
 
-#include <orosmo/core/math.hpp>
+#include <orosmo/core/math_types.hpp>
 
 #include <cstddef>
 #include <cstdint>
