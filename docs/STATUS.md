@@ -30,6 +30,19 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L6 : migration d'état, gestionnaires par nom, paramètres JSON (A79, GAME-03, GAME-04, GAME-05)
+
+Branche `feat/M8-L6-migration-parametres` (depuis `feat/M8-L5-jeu-rechargeable`, `origin/dev` fusionné). Choix de réalisation
+sous A79 « L6 ». Linux x64 seulement en local (g++ 13.3) ; Windows et macOS par la CI (G310, G326).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| GAME-03 Migration par réflexion | `include/orosmo/scene/component_migration.hpp` (`migrateComponentValue`, `classifyMigration`), `scene::World::migrateComponent`, `app::GameContext::registerComponent` | suites `scene/migration` et `app/game_module` (bibliothèque `v1` puis `v3`) | champ ajouté au milieu : champs communs copiés, nouveau à sa valeur par défaut (`bonus == 42`), `kCopied`, ordre dense gardé, ancien identifiant refusé |
+| GAME-03 Repli sauvegarde/restauration | même code ; `GameModule::lastMigrations` | mêmes suites (`v3` puis `v1`, tables `kMoverChanged`) | champ retiré ou type changé : `kRestored`, un avertissement par champ, entier relu en réel, non convertible à sa valeur par défaut |
+| GAME-03 Échec de l'`init` | `GameModule::Impl::switchTo` (`detail::ReloadJournal::backup`) | `app/game_module` (`kMoverFails` par `GameModule::replace`) | ancienne version active, monde remis (valeurs, identifiant du type, entités), son système marche encore |
+| GAME-04 Gestionnaire renommé | `GameModule::missingActions`, journal après chaque passage | `app/game_module` (« renamed handler ») | liaison `bind("game.v1")` sans effet ni plantage après v2, `missingActions() == {"game.v1"}` |
+| GAME-05 Paramètres JSON | `include/orosmo/app/params_host.hpp` (`ParamsFile`, `ParamsHost<T>`, `Params<T>`), `GameContext::registerParams`, relu dans `GameModule::update` | `app/game_module` (« game parameters », « ParamsHost ») | `tuning.json` modifié : valeur lue à l'image suivante sans compilation ; JSON illisible, type faux ou hors plage : dernière valeur valide gardée, `lastError` ; champ inconnu : avertissement |
+
 ## M8 lot L5 : module de jeu rechargeable, version finale statique (A79, GAME-01, GAME-02, GAME-07)
 
 Branche `feat/M8-L5-jeu-rechargeable` (depuis `feat/M8-L3-sauvegarde-simulation`). Nouveau module `app` (niveau `app` de

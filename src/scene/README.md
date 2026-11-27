@@ -20,7 +20,8 @@ destructeur.
 | `transform.hpp` | `Transform` (local en double : position, rotation `DQuat`, échelle ; cache monde : `worldPosition`, `worldLinear`), `composeWorld`, `relativeMatrix(t, origine)` (float relatif à la caméra), `worldPosition(t)` |
 | `scene_file.hpp` | `saveScene` / `loadScene` (JSON), `saveSceneBinary` / `loadSceneBinary` (MessagePack), `saveSceneFile` / `loadSceneFile`, `SceneMigrations`, `SceneLoadReport`, `componentToJson` / `componentFromJson`, `kSceneFormatVersion` (lot L3) |
 | `fingerprint.hpp` | `fingerprint(world)`, `hashWorld` : empreinte des champs décrits (lot L3) |
-| `world.hpp` | `World` : entités (`create`, `destroy` du sous-arbre, `alive`), registre (`registerComponent`, `unregisterComponent`, `componentId`, `componentType<T>`, `componentDesc`), données (`add` / `get` / `has` / `remove` par identifiant, par nom ou typées), requêtes (`view(a, b).each(fn)`, `forEach` et `forEachComponent` non typés), hiérarchie (`setParent`, `parent`, `children`), table des entités (`entityTable`, `resetEntities`, lot L3), ordre dense (`componentEntities`), transformations (`setTransform`, `editTransform`, `markTransformDirty`, `updateTransforms`) |
+| `component_migration.hpp` | GAME-03 (lot L6) : `MigrationKind` (`kCopied`, `kRestored`), `ComponentMigration`, `classifyMigration`, `migrateComponentValue` (par nom de champ, à partir des descriptions copiées) |
+| `world.hpp` | `World` : entités (`create`, `destroy` du sous-arbre, `alive`), registre (`registerComponent`, `unregisterComponent`, `migrateComponent` (L6), `componentId`, `componentType<T>`, `componentDesc`), données (`add` / `get` / `has` / `remove` par identifiant, par nom ou typées), requêtes (`view(a, b).each(fn)`, `forEach` et `forEachComponent` non typés), hiérarchie (`setParent`, `parent`, `children`), table des entités (`entityTable`, `resetEntities`, lot L3), ordre dense (`componentEntities`), transformations (`setTransform`, `editTransform`, `markTransformDirty`, `updateTransforms`) |
 
 Exemple :
 
@@ -51,7 +52,9 @@ auto model = relativeMatrix(*world.transform(ship), cameraPosition); // float, r
 - **Enregistrement** : même nom et même disposition (taille, alignement, version, champs) : sans effet, rend l'identifiant
   existant (prévu pour le rechargement, L5) ; même nom, autre disposition : `kAlreadyExists` (la migration est le lot L6).
   Description invalide (champ hors de la structure, chaîne ou tableau dynamique, alignement…) : `kInvalidArgument` qui nomme le
-  champ. `componentType<T>(nom)` vérifie taille, alignement et champs de T contre la description enregistrée.
+  champ. **Migration (L6)** : `migrateComponent(desc)` remplace la disposition d'un type et relit ses valeurs par nom de champ
+  (ordre dense gardé, génération suivante : anciens identifiants refusés) ; c'est `app::GameModule` qui l'appelle au
+  rechargement. `componentType<T>(nom)` vérifie taille, alignement et champs de T contre la description enregistrée.
 - **Pointeurs** : un pointeur de composant reste valide jusqu'au prochain ajout ou retrait du même type. Aucun changement de
   structure pendant un `each` / `forEach` (ENGINE_ASSERT en debug) ; enregistrer un nouveau type ou en retirer un y rend
   `kBusy`. Une `View` garde les identifiants de ses types : valable après d'autres enregistrements, invalide (`valid()`
