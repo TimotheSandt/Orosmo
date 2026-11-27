@@ -75,6 +75,8 @@ Dans les builds debug de la démo, F11 bascule la fenêtre sans bordure et F10 l
 - Inspecteur d'entités : 200 entités au plus, sans nom ni hiérarchie, sans ajout ni retrait de composant (G297).
 - Profileur : liste plate et graphe du temps CPU seulement (G298).
 - La façade [`app::Application`](/guides/application/facade/) ne crée pas les outils : créez-les vous-même (G380).
+- Un glissement commencé dans l'interface de l'application qui passe sur les outils y reçoit un faux relâchement
+  (`mouseDown` mis à faux), puis un nouvel appui en revenant : pas encore de capture du geste entre deux `Ui` (G420).
 
 ## Voir aussi
 
