@@ -80,7 +80,10 @@ auto model = relativeMatrix(*world.transform(ship), cameraPosition); // float, r
   type (`SceneMigrations::components[nom][v]`) ; plus récente : `kVersionMismatch` ; plage d'un champ (`range`) vérifiée. Tout
   ou rien (chargé dans une copie). Le cache monde est recalculé (`updateTransforms`).
 - **Empreinte** : FNV-1a 64 bits (`core/hash.hpp`) de la table des entités, de la hiérarchie et des valeurs des champs décrits
-  des types non vides, par nom de type croissant, dans l'ordre dense ; réels par motif de bits.
+  des types non vides, par nom de type croissant, dans l'ordre dense ; réels par motif de bits, sauf NaN (tous hachés comme
+  le NaN silencieux canonique, relu de `"nan"` : l'aller-retour JSON garde l'empreinte). `saveSceneFile` ferme le fichier
+  avant de conclure (une erreur de vidange, disque plein, rend `kIo`). Un pointeur dans un composant n'est pas refusé et
+  rendrait l'empreinte dépendante d'une adresse (G289).
 
 ## Pour les lots suivants (non faits ici)
 

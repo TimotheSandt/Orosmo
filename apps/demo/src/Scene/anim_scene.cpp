@@ -238,11 +238,9 @@ Result<> AnimScene::init(orosmo::rhi::Device &device, rd::ShaderLibrary &library
     {
         return makeError(ErrorCode::kInvalidArgument, "AnimScene: invalid figure description");
     }
-    device_ = &device;
-    library_ = &library;
-    pipelines_ = &pipelines;
-    shaderDirectory_ = shaderDirectory;
+    destroy();
     options_ = std::move(options);
+    context_ = std::make_unique<rd::RenderContext>(device, library, pipelines, shaderDirectory);
 
     std::error_code ec;
     std::filesystem::create_directories(options_.workDirectory, ec);
@@ -261,46 +259,39 @@ Result<> AnimScene::init(orosmo::rhi::Device &device, rd::ShaderLibrary &library
     {
         return makeError(saved.error().code, "AnimScene: saving " + modelPath_.string() + ": " + saved.error().message);
     }
-    auto loaded = as::loadGltf(modelPath_);
+    auto loader = as::ModelLoader::create(*context_);
+    if (!loader)
+    {
+        return std::unexpected(loader.error());
+    }
+    loader_ = std::make_unique<as::ModelLoader>(std::move(*loader));
+    auto loaded = loader_->load(modelPath_);
     if (!loaded)
     {
-        return makeError(loaded.error().code, "AnimScene: loading " + modelPath_.string() + ": " + loaded.error().message);
+        return makeError(loaded.error().code, "AnimScene: " + loaded.error().message);
     }
-    model_ = std::move(*loaded);
-    if (model_.skins.empty() || model_.animations.size() < 2)
+    if (loaded->skins.empty() || loaded->animations.size() < 2)
     {
         return makeError(ErrorCode::kParse, "AnimScene: the reloaded glTF lost its skin or its animations");
     }
-
-    clips_.clear();
-    for (std::size_t i = 0; i < 2; ++i)
+    an::AnimatedModelOptions heroOptions;
+    heroOptions.render.sourceKey = "anim.hero";
+    heroOptions.render.extraDefines = options_.modelDefines;
+    auto hero = an::AnimatedModel::create(*context_, *loader_, std::move(*loaded), heroOptions);
+    if (!hero)
     {
-        auto clip = an::Clip::fromModel(model_, i);
-        if (!clip)
-        {
-            return std::unexpected(clip.error());
-        }
-        clips_.push_back(std::move(*clip));
+        return makeError(hero.error().code, "AnimScene: hero model: " + hero.error().message);
     }
-    machine_.emplace(an::restPose(model_));
-    for (auto r : {machine_->addState({"sway", &clips_[0], an::LoopMode::kLoop, 1.0f}), machine_->addState({"wave", &clips_[1], an::LoopMode::kLoop, 1.4f}),
-                   machine_->addTransition({.from = "sway", .to = "wave", .duration = 0.5f, .condition = "toWave"}),
-                   machine_->addTransition({.from = "wave", .to = "sway", .duration = 0.5f, .condition = "toSway"}), machine_->start("sway")})
+    hero_ = std::move(*hero);
+    hero_->setTransform(glm::scale(glm::translate(glm::mat4(1.0f), options_.heroPosition), glm::vec3(options_.heroScale)));
+    if (!heroSkinned())
     {
-        if (!r)
-        {
-            return r;
-        }
+        LOG_WARNING("Anim scene: no compute skinning on this device (compute and storage buffers required): the hero is skinned on the CPU");
     }
-
-    textures_ = std::make_unique<as::TextureCache>(device);
-    pbrShaders_ = std::make_unique<rd::PbrShaderCache>(library, shaderDirectory);
-    auto defaults = rd::PbrDefaults::create(device);
-    if (!defaults)
+    if (auto played = hero_->play("sway"); !played)
     {
-        return std::unexpected(defaults.error());
+        return played;
     }
-    defaults_ = *defaults;
 
     // Agents : grille de colonnes × rangées, phase, vitesse et orientation tirées d'un hachage de l'indice (déterministe).
     const std::uint32_t n = options_.agents;
@@ -310,7 +301,8 @@ Result<> AnimScene::init(orosmo::rhi::Device &device, rd::ShaderLibrary &library
     agentWorlds_.resize(n);
     agentPhase_.resize(n);
     agentSpeed_.resize(n);
-    agentPoses_.assign(n, an::restPose(model_));
+    agentClips_.resize(n);
+    agentTimes_.resize(n);
     for (std::uint32_t i = 0; i < n; ++i)
     {
         const float fx = columns > 1 ? static_cast<float>(i % columns) / static_cast<float>(columns - 1) - 0.5f : 0.0f;
@@ -321,12 +313,14 @@ Result<> AnimScene::init(orosmo::rhi::Device &device, rd::ShaderLibrary &library
         agentWorlds_[i] = glm::scale(glm::rotate(glm::translate(glm::mat4(1.0f), p), yaw, glm::vec3(0.0f, 1.0f, 0.0f)), glm::vec3(options_.agentScale));
         agentPhase_[i] = kClipSeconds * hash01(i * 11U + 3U);
         agentSpeed_[i] = 0.75f + 0.5f * hash01(i * 13U + 9U);
+        // Un agent sur trois agite les bras (« wave », clip 1), les autres se balancent (« sway », clip 0).
+        agentClips_[i] = i % 3 == 0 ? 1U : 0U;
     }
     time_ = 0.0f;
     nextSwitch_ = 3.0f;
     waving_ = false;
 
-    if (auto built = buildModels(); !built)
+    if (auto built = buildCrowd(); !built)
     {
         return built;
     }
@@ -334,59 +328,20 @@ Result<> AnimScene::init(orosmo::rhi::Device &device, rd::ShaderLibrary &library
     {
         return posed;
     }
-    LOG_INFO("Anim scene: ", modelPath_.string(), " (", model_.stats().vertices, " vertices, ", model_.skins[0].joints.size(), " joints, ",
-             model_.animations.size(), " clips) ; hero ", skinned_ ? "skinned on the GPU (compute)" : "in rest pose", " ; crowd: ", agentCount(),
+    LOG_INFO("Anim scene: ", modelPath_.string(), " (", model().stats().vertices, " vertices, ", model().skins[0].joints.size(), " joints, ",
+             model().animations.size(), " clips) ; hero skinned ", heroSkinned() ? "on the GPU (compute)" : "on the CPU", " ; crowd: ", agentCount(),
              " agents, ", crowdBatchCount(), " draw calls ; edit ", texturePath_.string(), " to reload it live");
     return {};
 }
 
-Result<> AnimScene::buildModels()
+Result<> AnimScene::buildCrowd()
 {
-    skinned_.reset();
     crowd_.reset();
-    hero_.reset();
-    crowdModel_.reset();
-
-    as::RenderModelOptions heroOptions;
-    heroOptions.sourceKey = "anim.hero";
-    const bool canSkin = an::SkinnedModel::supportedBy(device_->capabilities());
-    heroOptions.skinnable = canSkin; // tampon de sommets inscriptible par le compute seulement s'il existe
-    heroOptions.extraDefines = options_.modelDefines;
-    auto hero = as::RenderModel::create(*device_, model_, *textures_, *pbrShaders_, defaults_, heroOptions);
-    if (!hero)
+    if (options_.agents > 0 && an::CrowdRenderer::supportedBy(context_->device().capabilities()))
     {
-        return makeError(hero.error().code, "AnimScene: hero model: " + hero.error().message);
-    }
-    hero_ = std::make_unique<as::RenderModel>(std::move(*hero));
-    hero_->setRootTransform(glm::scale(glm::translate(glm::mat4(1.0f), options_.heroPosition), glm::vec3(options_.heroScale)));
-    if (canSkin)
-    {
-        auto skinned = an::SkinnedModel::create(*device_, *library_, *pipelines_, shaderDirectory_, model_, *hero_);
-        if (!skinned)
-        {
-            return makeError(skinned.error().code, "AnimScene: skinning: " + skinned.error().message);
-        }
-        skinned_.emplace(std::move(*skinned));
-    }
-    else
-    {
-        LOG_WARNING("Anim scene: no compute skinning on this device (compute and storage buffers required): the hero stays in its rest pose");
-    }
-
-    if (options_.agents > 0 && an::CrowdRenderer::supportedBy(device_->capabilities()))
-    {
-        as::RenderModelOptions crowdOptions;
-        crowdOptions.sourceKey = "anim.crowd";
-        crowdOptions.extraDefines = options_.crowdDefines;
-        auto render = as::RenderModel::create(*device_, model_, *textures_, *pbrShaders_, defaults_, crowdOptions);
-        if (!render)
-        {
-            return makeError(render.error().code, "AnimScene: crowd model: " + render.error().message);
-        }
-        crowdModel_ = std::make_unique<as::RenderModel>(std::move(*render));
         an::CrowdOptions co;
         co.extraDefines = options_.crowdDefines;
-        auto crowd = an::CrowdRenderer::create(*device_, *library_, *pipelines_, shaderDirectory_, model_, *crowdModel_, co);
+        auto crowd = an::CrowdRenderer::create(*context_, *hero_, co);
         if (!crowd)
         {
             return makeError(crowd.error().code, "AnimScene: crowd: " + crowd.error().message);
@@ -397,35 +352,27 @@ Result<> AnimScene::buildModels()
     {
         LOG_WARNING("Anim scene: no crowd on this device (storage buffers read by the vertex shader required)");
     }
-
-    const auto &maps = hero_->materials().front()->desc().maps;
-    const auto &albedo = maps[static_cast<std::size_t>(rd::PbrMap::kBaseColor)];
-    albedoHandle_ = albedo ? albedo->handle() : orosmo::rhi::TextureHandle{};
     return {};
 }
 
 Result<> AnimScene::update(float dt)
 {
-    if (!machine_)
+    if (!hero_)
     {
         return makeError(ErrorCode::kInvalidArgument, "AnimScene::update: scene is not initialized");
     }
     time_ += dt;
-    // Le personnage alterne entre ses deux clips toutes les 3 s (fondu de 0,5 s), au temps simulé : même suite, même pose.
+    if (auto r = hero_->update(dt); !r)
+    {
+        return r;
+    }
+    // Le personnage alterne entre ses deux clips toutes les 3 s (fondu de 0,5 s), au temps simulé : même suite, même pose. Le fondu
+    // part après l'avance de l'image, comme la transition de la `StateMachine` qu'il remplace (mêmes poses).
     if (time_ >= nextSwitch_)
     {
         nextSwitch_ += 3.0f;
         waving_ = !waving_;
-        machine_->setTrigger(waving_ ? "toWave" : "toSway");
-    }
-    if (auto r = machine_->update(dt); !r)
-    {
-        return r;
-    }
-    (void)machine_->takeEvents();
-    if (skinned_)
-    {
-        if (auto r = skinned_->setPose(machine_->pose()); !r)
+        if (auto r = hero_->crossFade(waving_ ? "wave" : "sway", 0.5f, {.speed = waving_ ? 1.4f : 1.0f}); !r)
         {
             return r;
         }
@@ -439,23 +386,16 @@ Result<> AnimScene::updateCrowd()
     {
         return {};
     }
-    for (std::size_t i = 0; i < agentPoses_.size(); ++i)
+    const auto &clips = hero_->clips();
+    for (std::size_t i = 0; i < agentTimes_.size(); ++i)
     {
-        // Un agent sur trois agite les bras (« wave »), les autres se balancent (« sway ») ; chacun à sa phase et sa vitesse.
-        const an::Clip &clip = clips_[i % 3 == 0 ? 1 : 0];
-        const float t = std::fmod(time_ * agentSpeed_[i] + agentPhase_[i], clip.duration());
-        if (auto r = clip.sample(t, agentPoses_[i]); !r)
-        {
-            return r;
-        }
+        // Chaque agent à sa phase et sa vitesse, temps ramené dans la durée de son clip.
+        agentTimes_[i] = std::fmod(time_ * agentSpeed_[i] + agentPhase_[i], clips[agentClips_[i]].duration());
     }
-    return crowd_->setAgents(agentWorlds_, agentPoses_);
+    return crowd_->setAgents(agentWorlds_, agentClips_, agentTimes_);
 }
 
-Result<> AnimScene::dispatch(orosmo::rhi::CommandEncoder &encoder)
-{
-    return skinned_ ? skinned_->dispatch(encoder) : Result<>{};
-}
+Result<> AnimScene::dispatch(orosmo::rhi::CommandEncoder &encoder) { return hero_ ? hero_->dispatch(encoder) : Result<>{}; }
 
 Result<> AnimScene::render(rd::SceneRenderer &renderer, const rd::Camera &camera)
 {
@@ -468,7 +408,9 @@ Result<> AnimScene::render(rd::SceneRenderer &renderer, const rd::Camera &camera
         return r;
     }
     crowdStats_ = {};
-    if (crowd_)
+    // Reconstruction en attente : le personnage (AnimatedModel::draw) et la foule ne dessinent pas avec des groupes liés à une
+    // texture remplacée.
+    if (crowd_ && !rebuildPending_ && !hero_->texturesStale())
     {
         auto drawn = crowd_->draw(renderer, camera.wireframe());
         if (!drawn)
@@ -488,12 +430,12 @@ Result<> AnimScene::render(rd::SceneRenderer &renderer, const rd::Camera &camera
 
 std::size_t AnimScene::reloadChanged()
 {
-    if (!textures_)
+    if (!loader_ || !hero_)
     {
         return 0;
     }
-    const std::size_t reloaded = textures_->reloadChanged();
-    // Un échec précédent a laissé la scène sans modèles : on retente à chaque modification, et sinon toutes les kRetryFrames
+    const std::size_t reloaded = loader_->reloadChanged();
+    // Un échec précédent a laissé la scène sans foule à jour : on retente à chaque modification, et sinon toutes les kRetryFrames
     // images (échec transitoire, fichier inchangé).
     constexpr int kRetryFrames = 120;
     bool retry = false;
@@ -501,22 +443,24 @@ std::size_t AnimScene::reloadChanged()
     {
         retry = ++retryCountdown_ >= kRetryFrames;
     }
-    if (reloaded == 0 && !retry)
+    if (reloaded == 0 && !retry && (rebuildPending_ || !hero_->texturesStale()))
     {
         return reloaded;
     }
     retryCountdown_ = 0;
-    bool rebuild = rebuildPending_;
-    if (!rebuild && hero_)
+    // Texture recréée (taille ou format changé) : `texturesStale` compare aux textures du modèle installé, ce qui couvre aussi un
+    // rechargement fait par un autre utilisateur du chargeur.
+    if (rebuildPending_ || hero_->texturesStale())
     {
-        const auto &albedo = hero_->materials().front()->desc().maps[static_cast<std::size_t>(rd::PbrMap::kBaseColor)];
-        rebuild = albedo && !(albedo->handle() == albedoHandle_);
-    }
-    if (rebuild)
-    {
-        // Taille changée : la texture partagée a été recréée ; les groupes des matériaux et des lots de la foule la lient encore.
-        device_->waitIdle();
-        if (auto rebuilt = buildModels(); !rebuilt)
+        // Taille changée : la texture partagée a été recréée ; les groupes des matériaux et des lots de la foule la lient encore. Le
+        // personnage garde son lecteur (même pose) ; la foule est recréée depuis lui.
+        context_->device().waitIdle();
+        auto rebuilt = hero_->rebuild();
+        if (rebuilt)
+        {
+            rebuilt = buildCrowd();
+        }
+        if (!rebuilt)
         {
             rebuildPending_ = true;
             LOG_ERROR(1, "Anim scene: rebuilding the models after the texture reload: ", rebuilt.error().message, " (retried automatically)");
@@ -539,15 +483,10 @@ std::size_t AnimScene::reloadChanged()
 
 void AnimScene::destroy()
 {
-    skinned_.reset();
     crowd_.reset();
     hero_.reset();
-    crowdModel_.reset();
-    textures_.reset();
-    defaults_.reset();
-    pbrShaders_.reset();
-    machine_.reset();
-    clips_.clear();
+    loader_.reset();
+    context_.reset();
 }
 
 } // namespace demo

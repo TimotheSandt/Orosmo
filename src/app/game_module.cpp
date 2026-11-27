@@ -6,6 +6,7 @@
 #include <orosmo/ui/ui.hpp>
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -126,9 +127,20 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
     Access::version(context) = version + 1;
     Access::reloading(context) = replacing;
 
+    // `init` peut écrire dans le monde (et tirer des nombres) avant d'échouer : copie de l'état du moteur, remise en cas d'échec,
+    // pour que la version active reprenne inchangée (copie profonde du monde à chaque chargement : G319).
+    const GameTargets &targets = Access::targets(context);
+    scene::World savedWorld = *targets.world;
+    std::optional<core::Random> savedRandom;
+    if (targets.simulation != nullptr)
+        savedRandom = targets.simulation->random();
+
     // L6 : la migration des composants dont la disposition change se branchera ici (avant l'`init` de la nouvelle version).
     if (!next->init(&context))
     {
+        *targets.world = std::move(savedWorld);
+        if (savedRandom)
+            targets.simulation->random() = *savedRandom;
         // Retour à l'ancienne version : ses noms reprennent leur place ; les fonctions de la nouvelle sont détruites ici, avant que
         // l'appelant ne décharge sa bibliothèque.
         detach(Access::targets(context), active);

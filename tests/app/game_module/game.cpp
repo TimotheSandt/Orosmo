@@ -66,6 +66,13 @@ bool init(app::GameContext *context)
         return false;
 
 #if defined(OROSMO_TEST_GAME_VARIANT_failinit)
+    // Écrit dans l'état du moteur (composant, nouvelle entité, nouveau type, générateur) avant d'échouer : tout doit être remis.
+    world.view(type).each([](scene::Entity, Counter &c) { c.value = 999; });
+    world.add(world.create(), type, Counter{});
+    if (!context->registerComponent<test_game::V1Only>("FailInitOnly"))
+        return false;
+    if (context->simulation() != nullptr)
+        (void)context->simulation()->random().nextU32();
     (void)context->addSystem({"failinit.system", sim::Phase::kUpdate, 0, [](sim::StepContext &) {}});
     return false;
 #else

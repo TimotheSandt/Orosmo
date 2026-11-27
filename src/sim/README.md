@@ -23,23 +23,35 @@ sim.queueInput({.step = 30, .name = "jump", .data = 2.5});  // livrée au pas 30
 sim.advance(frameDelta);                                     // 0..maxStepsPerFrame pas, selon le temps cumulé
 auto snapshot = sim.capture();                               // monde + Random + pas + entrées en attente
 sim.restore(snapshot);
-auto replay = sim.recording();                               // graine + pas + entrées : rejoue la même partie
+auto replay = sim.recording();                               // Result<Replay> : graine + pas + entrées, rejoue la même partie
 ```
 
 ## Règles
 
-- **Pas fixe** : `advance(delta)` passe par `core::FixedStepper` ; le nombre de pas ne dépend que du temps cumulé (au plus
-  `maxStepsPerFrame` par appel, le surplus est abandonné). `step()` et `run(n)` jouent des pas sans horloge (tests, mode sans
+- **Pas fixe** : `advance(delta)` passe par `core::FixedStepper` ; au plus `maxStepsPerFrame` pas par appel, le surplus est
+  abandonné. Tant qu'aucun appel n'atteint ce plafond, le nombre de pas ne dépend que du temps cumulé ; sinon il dépend du
+  découpage (pas de 10 ms, plafond 4 : `advance(100ms)` joue 4 pas, dix `advance(10ms)` en jouent 10). `step()` et `run(n)` jouent des pas sans horloge (tests, mode sans
   fenêtre de la démo). Après chaque pas, `World::updateTransforms()` est appelé.
 - **Systèmes** : enregistrés par nom (règle 13), exécutés par phase (`kInput`, `kUpdate`, `kPostUpdate`), puis ordre, puis
-  nom : l'ordre ne dépend pas de l'ordre d'enregistrement. Pas d'ajout ni de retrait pendant un pas (refusé).
+  nom : l'ordre ne dépend pas de l'ordre d'enregistrement. Pas d'ajout ni de retrait pendant un pas (refusé), ni de pas
+  imbriqué : `step`, `run`, `advance`, `restore` appelés depuis un système sont ignorés (avertissement journalisé),
+  `play` et `loadState` rendent `kInvalidArgument`. Un système qui lève une exception ne laisse pas la simulation « dans un pas ».
 - **Entrées** : datées par pas, livrées dans l'ordre d'ajout à `StepContext::inputs`, enregistrées dans `inputLog()`. Une entrée
-  d'un pas déjà joué est refusée.
+  d'un pas déjà joué est refusée, comme une entrée du pas en cours mise en file par un système (ses entrées sont déjà
+  prélevées) ; les pas suivants restent ouverts. La charge (`core::Json`) ne contient ni infini ni NaN (`dump()` les écrit
+  `null` : type changé au rechargement, charges confondues dans l'empreinte) : refusée par `queueInput`, `play`, `loadState`.
+  Les entiers positifs signés (document construit en C++) et non signés (document relu) sont acceptés partout.
 - **Capture** : `Snapshot` est une copie profonde (le monde est copiable). `restore` garde le journal des entrées d'avant le
   pas restauré et remet à zéro le temps accumulé. Les systèmes ne font pas partie de l'état. `saveState` / `loadState` : même
-  état en JSON (scène par `scene_file.hpp`, générateur par `state`/`increment`), tout ou rien.
+  état en JSON (scène par `scene_file.hpp`, générateur par `state`/`increment`), tout ou rien ; une entrée en attente
+  antérieure au pas sauvegardé est refusée (`kParse`). `loadState` vide le journal (autre partie) : `firstLoggedStep()`
+  devient le pas chargé.
+- **Rejeu** : `recording(first)` rend `kInvalidArgument` si `first` précède `firstLoggedStep()` (entrées inconnues : le
+  rejeu serait faux) ou dépasse le pas courant. `play` valide tout le lot avant d'insérer (entrées dans `[firstStep,
+  lastStep)`, charges finies) et, dans cet intervalle, remplace les entrées déjà en attente (venues d'un instantané) au lieu
+  de les doubler ; celles d'après `lastStep` restent.
 - **Empreinte** : `fingerprint()` = `scene::hashWorld` (champs décrits, ordre dense, table des entités) + état du générateur +
-  pas + entrées en attente.
+  pas + entrées en attente (tout NaN d'un champ haché comme le NaN canonique : même empreinte après un aller-retour JSON).
 - **Déterminisme** (règle 9) : même graine, mêmes systèmes, mêmes entrées => même empreinte, sur toutes les plateformes, si les
   systèmes n'utilisent ni horloge, ni `rand()`, ni fonction transcendante (`sin`, `exp`, `pow`… diffèrent entre glibc, macOS et
   MinGW) et sont compilés avec `-ffp-contract=off` (moteur, démo et gabarit : `mk/engine.mk`, `tools/engine-sdk/engine.mk`,

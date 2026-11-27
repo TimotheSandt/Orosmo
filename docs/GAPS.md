@@ -133,10 +133,10 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | TER-08 | Végétation et dispersion | Absent | Absent. | Hors moteur (A39) |
 | TER-09 | Planètes sphériques | Absent | Absent. | Hors moteur (A39) |
 | TER-13 | Lancer de rayon sur le terrain | Archivé (A37) | `raycastTerrain`, cohérent avec la profondeur rendue. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
-| UI-04 | Outils de debug | Absent | Absent. | M8 |
+| UI-04 | Outils de debug | Fait (limites) | `ui::debug::DebugTools` (M8 L10) : console, profileur, inspecteur d'entités ; limites G295, G297, G298, G299. Preuve : `docs/STATUS.md`, « M8 lot L10 » (fichiers, suites `ui/debug`, résultats). | M10 |
 | UI-08 | Rechargement à chaud de l'interface | Absent | Absent. | M8 |
 | UI-09 | Navigation et accessibilité de base | Fait (M8 L9) | Ordre de tabulation (`tabIndex`, `.focusable`), flèches entre voisins, manette, anneau de focus du thème. Reste : défilement vers le widget focalisé (G222). Preuve : `docs/STATUS.md`, section « M8 lot L9 ». | — |
-| UI-10 | Inspecteur d'interface | Absent | Absent. | M8 |
+| UI-10 | Inspecteur d'interface | Fait (limites) | Onglet Widgets de `DebugTools` (M8 L10) ; fenêtres détachées absentes (G296). Preuve : `docs/STATUS.md`, « M8 lot L10 » (fichiers, suites `ui/debug`, résultats). | M10 |
 | UI-12 | Paramètres réfléchis → curseurs | Fait (M3) | `reflectedPanel`, `ParamPanel` du langage. Preuve (fichier, test, résultat) : `docs/STATUS.md`, section « M3 ». | — |
 
 ## P2
@@ -566,7 +566,7 @@ Entités, composants et transformations (A79 lot L2, ECS-01, ECS-02) : module `s
 | G263 | Génération d'entité sur 32 bits | Après 2^32 destructions du même indice, la génération reboucle et un très vieil identifiant redeviendrait valide (non détecté ; l'indice n'est pas retiré). | Plus tard |
 | G264 | `scene` vérifié sous Linux seulement | Compilé et testé avec g++ 13.3 (debug, release, ASan+UBSan) ; clang de macOS (`-Werror`) et MinGW/MSVC de Windows seulement par la CI. Les composants alignés au-delà de `alignof(std::max_align_t)` utilisent `operator new(std::align_val_t)` (C++17, disponible partout). | CI |
 
-## Ajouts de M8 lot L3 (G280 à G288)
+## Ajouts de M8 lot L3 (G280 à G291, sauf G290)
 
 Sauvegarde de scène et boucle de simulation à pas fixe (A79 lot L3, ECS-03, SIM-01) : `scene/scene_file.hpp`,
 `scene/fingerprint.hpp`, module `sim` (`src/sim/README.md`).
@@ -582,6 +582,8 @@ Sauvegarde de scène et boucle de simulation à pas fixe (A79 lot L3, ECS-03, SI
 | G286 | Chargement en copie | `loadScene` (tout ou rien) construit une copie du monde avant d'échanger : mémoire doublée pendant le chargement ; recherche d'un type par nom linéaire. Pas de chargement en flux ni partiel (sous-arbre, préfabriqué). | Plus tard (L12a contenus ?) |
 | G287 | Thread de simulation | `Simulation` est mono-thread : pas de thread dédié, pas d'instantané immuable en double tampon pour le rendu, pas de cadence configurable (`Config`). | M8 L4 |
 | G288 | Entrées en JSON | `Input::data` est un `core::Json` libre, haché par son texte (`dump()`) : un réel d'entrée est exact (écrit au plus court) mais une entrée lourde coûte une allocation par pas. Pas de format binaire de rejeu (le JSON du `Replay` passe par `core::toBinary` si besoin). | Plus tard |
+| G289 | Pointeur dans un composant | `ComponentData` n'exige qu'un type trivialement copiable : un pointeur (classé `kStruct` opaque par `core::fieldTypeOf`, ou caché dans une structure non réfléchie) est haché et sauvegardé octet par octet, donc l'empreinte et le fichier dépendent d'une adresse. Remarque de revue (PR #25) : refuser les pointeurs à la description ou les hacher par valeur logique est un choix d'API (`core/reflection.hpp` sert aussi l'UI), à trancher par l'auteur ; une structure opaque ne peut pas être inspectée à la compilation. Contournement : stocker des `Entity` ou des indices, jamais d'adresse. | M8 L5 ou plus tard |
+| G291 | Entrées mises en file par un système, puis rejouées | Le journal ne distingue pas une entrée venue de l'extérieur d'une entrée qu'un système a mise en file pour un pas suivant : `play` la met en file d'avance et le système la remet en file au rejeu, elle est livrée deux fois. Contournement : un système ne met pas d'entrée en file (il agit sur le monde). Correction : marquer l'origine dans `pending_`/journal et ne rejouer que les entrées extérieures. | M8 L4 |
 
 ## Ajouts du lot M8-L11, API de rendu simplifiée (G240 à G243)
 
@@ -601,13 +603,32 @@ Numéros pris à partir de G240 pour ne pas croiser ceux des lots M8 menés en p
 | G222 | Focus hors de la vue d'une `ScrollView` | Tab ou une flèche peut donner le focus à un widget défilé hors de sa `ScrollView` : la vue ne défile pas vers lui (l'anneau de focus est découpé comme le widget, donc invisible). Les flèches choisissent le voisin par géométrie, y compris hors de la zone visible. | M10 |
 | G223 | Manettes : reste de PLAT-03 | `platform::Gamepads` ne lit que les manettes à disposition standard reconnues par GLFW, par scrutation à chaque image ; ni vibration, ni remappage, ni joystick quelconque, ni deuxième stick ou gâchettes dans la navigation de l'interface. Aucune manette réelle essayée (tests par `Gamepads::simulate`) ; Windows et macOS non vérifiés. | Après M10 (P2) |
 
+## Ajouts de M8 lot L10 (G295 à G299)
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G295 | Console de debug minimale | Affiche les 18 dernières lignes (500 gardées) sans défilement ; pas de rappel des lignes tapées (Haut / Bas), pas de complétion, pas de filtre du journal par niveau. Les arguments sont des chaînes : chaque commande les analyse. | Plus tard (selon besoin) |
+| G296 | Inspecteur d'interface : fenêtres détachées | L'arbre suit `Widget::children` : le contenu des fenêtres surgissantes, menus et boîtes de dialogue (`detached`) n'y figure pas ; 1000 lignes au plus ; arbre relu à chaque image tant que l'onglet est affiché (coût linéaire ; `typeid` et démanglage par widget, jugés hors « chemins chauds » de `docs/03` §7 car réservés à l'outil ouvert sur cet onglet ; un nom de type explicite sur `Widget` s'en passerait : à décider par l'auteur). Le nom du type vient de `typeid` (démanglé par `<cxxabi.h>` avec GCC et Clang ; MSVC : nom brut sans « class »). | M10 |
+| G297 | Inspecteur d'entités limité | 200 entités listées au plus, sans nom ni hiérarchie ; pas d'ajout ni de retrait de composant ; énumération montrée comme entier signé (noms des valeurs absents de `FieldDesc`) ; quaternion édité composante par composante ; chaînes et tableaux non modifiables (refusés dans les composants de toute façon). | M8 L13 ou plus tard |
+| G298 | Profileur des outils | Liste plate des mesures de `core::Profiler` (moyenne, maximum) et graphe du temps CPU de l'image ; ni vue hiérarchique, ni graphe GPU séparé. Le panneau de performances de la démo (`PerformanceView.cui`, thème `hud.json`) reste dans la démo : seul son historique (`ui::FrameHistory`) est passé dans le moteur. | M10 |
+| G299 | Outils de debug vérifiés sous Linux seulement | Compilés et testés avec g++ 13.3 ; démo vérifiée en OpenGL et Vulkan sans fenêtre. Le monde de la démo ne contient que l'entité « caméra » (la scène n'est pas encore rendue par `scene::World`, lot L13). macOS et Windows : CI seulement. | CI |
+
+## Ajouts du lot M8-L12a, API des contenus (G250 et G251)
+
+Numéros pris à partir de G250 (L0/L9 : G222-G223, L11 : G240-G243, L1 en cours).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G250 | `AnimatedModel` : un maillage skinné partagé par plusieurs nœuds | Comme `SkinnedModel` (G198) : le repli CPU déforme le maillage GPU pour le premier nœud skinné qui le dessine. Sans compute, `RenderModel` n'est pas créé `skinnable` : les nœuds skinnés qui partagent une primitive partagent aussi son tampon (et un nœud statique qui dessine la même primitive la verrait déformée). Correction prévue : une sortie CPU par nœud skinné dans `RenderModel::create` et `AnimatedModel::applyPose`, sans exiger `kStorage`. | M10 |
+| G251 | `AnimatedModel` : pas d'événements de clip | Le lecteur (`play`, `crossFade`) ne rend pas les événements des clips (`Clip::collectEvents`) ; pour eux, piloter le modèle par une `StateMachine` et `setPose`. | M10 |
+
 ## Ajouts hors lot (G290)
 
 | ID | Sujet | Détail | Jalon |
 | --- | --- | --- | --- |
 | G290 | Qualité d'ombre selon l'importance d'un objet | Aucune résolution d'ombre propre à un caster : la netteté dépend de la cascade (ou de la lumière, `LightShadowParams`), pas de l'objet. Pistes : ombre dédiée par objet, maillage simplifié pour l'ombre, distance d'ombre par caster (A80). Fonctionnement à confirmer par l'auteur avant M10. | M10 (à confirmer, A80) |
 
-## Ajouts de M8 lot L5 (G310 à G318)
+## Ajouts de M8 lot L5 (G310 à G319)
 
 Module de jeu rechargeable et version finale statique (A79 lot L5, GAME-01, GAME-02, GAME-07) : module `app`
 (`src/app/README.md`), `tools/check_game_static.py`, gabarit (`apps/demo/Makefile`, `tools/engine-sdk/template/src/game/`).
@@ -615,7 +636,7 @@ Module de jeu rechargeable et version finale statique (A79 lot L5, GAME-01, GAME
 | ID | Sujet | Détail | Jalon |
 | --- | --- | --- | --- |
 | G310 | Rechargement vérifié sous Linux seulement | Chargement, rechargement, refus d'ABI, retour à l'ancienne version et version statique testés avec g++ 13.3 (Linux x64). Windows MinGW (DLL liée à la bibliothèque d'import de l'exécutable des tests, copie sous nom unique) et macOS (`-undefined dynamic_lookup`) seulement par la CI ; MSVC non couvert. | CI de la PR L5 |
-| G311 | Contrôle de la règle 13 sous Windows et macOS | Sous Windows, `check_game_static.py` lit le fichier objet du jeu, pas la DLL (le démarrage C de MinGW y ajoute ses données, non distinguées) ; l'émulation TLS de MinGW (`__emutls_v.*` en `.data`) est refusée comme le reste. Sous macOS, lecture de `nm -m` (`__DATA,__data`, `__bss`, `__common`, `__thread_*`) non essayée ici. Liste blanche (démarrage C/C++ de GCC sous ELF) établie sous Linux seulement. | CI, plus tard |
+| G311 | Contrôle de la règle 13 sous Windows et macOS | Sous Windows, `check_game_static.py` lit le fichier objet du jeu, pas la DLL (le démarrage C de MinGW y ajoute ses données, non distinguées) ; l'émulation TLS de MinGW (`__emutls_v.*` en `.data`) est refusée comme le reste. Sous macOS, lecture de `nm -m` (`__DATA,__data`, `__bss`, `__common`, `__thread_*`) non essayée ici. Liste blanche établie sous Linux, complétée par la CI de la PR #28 : `__dyld_private` (Mach-O, ld64) et symboles de section COFF (`.bss`, `.data`, nom commençant par un point) ; analyse des trois formats figée par `tests/tools/test_check_game_static.py`. | CI, plus tard |
 | G312 | Contrôle de la règle 13 limité aux symboles | Un état caché sans symbole (mémoire allouée et gardée par un pointeur en `.data.rel.ro` modifiable par `const_cast`, état dans une bibliothèque tierce liée au jeu, fichier ouvert) n'est pas vu ; une constante non modifiée mais non `const` peut être repliée par l'optimiseur et passer. Les tables `.data.rel.ro` (vtables, `constexpr` avec pointeurs) sont permises par choix. | Plus tard |
 | G313 | Composants orphelins gardés | Un type de composant qu'une nouvelle version n'enregistre plus reste dans le monde avec ses données (`GameModule::orphanComponents`, avertissement) ; rien ne le retire. Disposition changée sous le même nom : `init` échoue (kAlreadyExists) et l'ancienne version reste : la migration est L6. | M8 L6 |
 | G314 | Pas de délai d'attente ni d'isolation de l'`init` | Un `init` qui boucle ou plante (signal, exception non attrapée) arrête l'hôte : pas de bac à sable ni de reprise sur erreur grave ; une exception traverse l'interface C (comportement de GCC/Clang, non garanti par la norme). | Plus tard |
@@ -623,6 +644,7 @@ Module de jeu rechargeable et version finale statique (A79 lot L5, GAME-01, GAME
 | G316 | `abiVersion` seule | La version d'ABI ne couvre que l'interface `OrosmoGameApi` et `GameContext` ; une bibliothèque compilée contre d'autres en-têtes du moteur (autre version d'`orosmo`, autres options) n'est pas détectée (disposition de `World`, `Simulation`, `std::function` de la bibliothèque standard). Pas d'empreinte des en-têtes ni de la version du moteur. | Plus tard |
 | G317 | Gabarit : `make` = debug avec un jeu | Un projet qui a `src/game/*.cpp` se construit par défaut en debug (bibliothèque rechargée) ; sans `src/game/` le défaut reste release (démo, anciens projets). `make release` lie le jeu statiquement. La cible qui ne reconstruit que la bibliothèque est `make game` (M8 L7). | M8 L14 |
 | G318 | Actions : `missing()` non journalisé au rechargement | Les actions de l'ancienne version sont retirées et celles de la nouvelle ajoutées, mais `ActionRegistry::missing()` n'est pas journalisé après un rechargement (A79 L6). | M8 L6 |
+| G319 | Copie du monde à chaque chargement | Pour remettre l'état du moteur si `init` échoue après avoir écrit (revue de la PR #28), `switchTo` copie le monde entier (et le générateur de la simulation) avant chaque `init` : coût proportionnel à la taille du monde à chaque rechargement (développement seulement ; la version statique ne le fait qu'une fois au démarrage). L'état hors du monde (fichiers, ressources du renderer, actions de l'hôte) n'est pas remis. | Plus tard (copie à la demande si mesurée gênante) |
 
 ## Ajouts du lot M8-L12b, petites fabriques et plateforme (G270 à G273)
 

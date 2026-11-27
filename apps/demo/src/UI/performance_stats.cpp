@@ -99,7 +99,7 @@ bool PerformanceStats::tick(float deltaSeconds, const std::function<PerformanceS
     sinceRefresh = 0.0f;
     shown = sample();
     text = formatPerformance(shown);
-    if (count_ > 0)
+    if (history_.size() > 0)
     {
         const std::vector<float> cpu = cpuHistory();
         const std::vector<float> gpu = gpuHistory();
@@ -112,74 +112,17 @@ bool PerformanceStats::tick(float deltaSeconds, const std::function<PerformanceS
     return true;
 }
 
-void PerformanceStats::pushFrame(float cpuMs, float gpuMs, float intervalMs, float waitMs)
-{
-    cpu_[next_] = cpuMs;
-    wait_[next_] = waitMs;
-    gpu_[next_] = gpuMs;
-    interval_[next_] = intervalMs;
-    next_ = (next_ + 1) % kHistorySize;
-    count_ = std::min(count_ + 1, kHistorySize);
-}
-
-std::vector<float> PerformanceStats::ordered(const std::array<float, kHistorySize> &ring) const
-{
-    std::vector<float> out;
-    out.reserve(count_);
-    const std::size_t first = (next_ + kHistorySize - count_) % kHistorySize;
-    for (std::size_t i = 0; i < count_; ++i)
-    {
-        out.push_back(ring[(first + i) % kHistorySize]);
-    }
-    return out;
-}
+void PerformanceStats::pushFrame(float cpuMs, float gpuMs, float intervalMs, float waitMs) { history_.push(cpuMs, gpuMs, intervalMs, waitMs); }
 
 void PerformanceStats::fpsFromHistory(PerformanceSample &sample) const
 {
-    std::vector<float> intervals;
-    intervals.reserve(count_);
-    for (const float v : ordered(interval_))
-    {
-        if (v > 0.0f)
-        {
-            intervals.push_back(v);
-        }
-    }
-    if (intervals.empty())
-    {
-        sample.fpsAverage = sample.fpsLow1 = sample.fpsMin = sample.fpsMax = 0.0;
-        return;
-    }
-    double sum = 0.0;
-    for (const float v : intervals)
-    {
-        sum += static_cast<double>(v);
-    }
-    std::sort(intervals.begin(), intervals.end());
-    const std::size_t p99 = std::min(intervals.size() - 1, (intervals.size() * 99) / 100);
-    sample.fpsAverage = 1000.0 * static_cast<double>(intervals.size()) / sum;
-    sample.fpsLow1 = 1000.0 / static_cast<double>(intervals[p99]);
-    sample.fpsMin = 1000.0 / static_cast<double>(intervals.back());
-    sample.fpsMax = 1000.0 / static_cast<double>(intervals.front());
+    const orosmo::ui::FpsStats fps = history_.fps();
+    sample.fpsAverage = fps.average;
+    sample.fpsLow1 = fps.low1;
+    sample.fpsMin = fps.min;
+    sample.fpsMax = fps.max;
 }
 
-namespace
-{
-double average(const std::vector<float> &values)
-{
-    if (values.empty())
-    {
-        return 0.0;
-    }
-    double sum = 0.0;
-    for (const float v : values)
-    {
-        sum += static_cast<double>(v);
-    }
-    return sum / static_cast<double>(values.size());
-}
-} // namespace
+double PerformanceStats::averageCpuMs() const { return history_.averageCpuMs(); }
 
-double PerformanceStats::averageCpuMs() const { return average(ordered(cpu_)); }
-
-double PerformanceStats::averageWaitMs() const { return average(ordered(wait_)); }
+double PerformanceStats::averageWaitMs() const { return history_.averageWaitMs(); }

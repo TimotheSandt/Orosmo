@@ -4,6 +4,7 @@
 
 #include "launch_options.hpp"
 
+#include <orosmo/core/log.hpp>
 #include <orosmo/scene/world.hpp>
 
 #include <cstdio>
@@ -35,7 +36,8 @@ void spawn(scene::World &world, scene::ComponentType<Agent> type, orosmo::core::
 {
     const scene::Entity e = world.create();
     const DVec3 position{signedUnit(random) * kBound, signedUnit(random) * kBound, signedUnit(random) * kBound};
-    world.setTransform(e, {.position = position});
+    if (auto placed = world.setTransform(e, {.position = position}); !placed) // entité tout juste créée : ne doit pas échouer
+        LOG_WARNING("agents: setTransform failed: ", placed.error().message);
     Agent agent;
     agent.velocity = DVec3{signedUnit(random), signedUnit(random), signedUnit(random)};
     agent.energy = 0.5 + random.nextDouble() * 0.5;
@@ -72,8 +74,15 @@ orosmo::core::Result<> setupAgentSimulation(sim::Simulation &simulation, std::ui
          [agentType](sim::StepContext &ctx) {
              for (const sim::Input &input : ctx.inputs)
              {
-                 if (input.name != "agents.push" || !input.data.is_array() || input.data.size() != 3)
+                 if (input.name != "agents.push")
                      continue;
+                 const orosmo::core::Json &d = input.data;
+                 if (!d.is_array() || d.size() != 3 || !d[0].is_number() || !d[1].is_number() || !d[2].is_number())
+                 {
+                     // Pas d'exception de conversion dans le pas : l'entrée invalide est ignorée (la même au rejeu).
+                     LOG_WARNING("agents.push: expected [x, y, z] numbers at step ", ctx.step, ", got ", d.dump());
+                     continue;
+                 }
                  const DVec3 impulse{input.data[0].get<double>(), input.data[1].get<double>(), input.data[2].get<double>()};
                  ctx.world.view(agentType).each([&](scene::Entity, Agent &a) { a.velocity += impulse; });
              }

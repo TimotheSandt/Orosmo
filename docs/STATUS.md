@@ -58,17 +58,47 @@ Linux x64 seulement en local (g++ 13.3) ; Windows et macOS par la CI (G310, G311
 | Élément | Fichier et symbole | Commande | Résultat |
 | --- | --- | --- | --- |
 | GAME-01 Interface C | `include/orosmo/app/game_api.hpp` (`OrosmoGameApi`, `orosmoGameApi`, `kGameAbiVersion`, `OROSMO_GAME_EXPORT`) | suite `app/game_module` | table lue par son nom ; `abiVersion` différente refusée au chargement et au rechargement (`kVersionMismatch`, ancienne version gardée) |
-| GAME-01 Chargement et rechargement | `include/orosmo/app/game_module.hpp` (`GameModule::load`, `update`, `reload`), `src/app/game_reloader.cpp` | suite `app/game_module` avec `tests/app/game_module/game.cpp` construit en v1, v2, badabi, failinit | v1 puis v2 copiée sur le fichier surveillé : rechargée à l'`update` suivant, comportement changé (+1 → +10 par pas), état du composant intact (5 → 25), `onReload` appelé ; copie de la v1 effacée ; `init` qui échoue, fichier tronqué : ancienne version active, enregistrements remis |
+| GAME-01 Chargement et rechargement | `include/orosmo/app/game_module.hpp` (`GameModule::load`, `update`, `reload`), `src/app/game_reloader.cpp` | suite `app/game_module` avec `tests/app/game_module/game.cpp` construit en v1, v2, badabi, failinit | v1 puis v2 copiée sur le fichier surveillé : rechargée à l'`update` suivant, comportement changé (+1 → +10 par pas), état du composant intact (5 → 25), `onReload` appelé ; copie de la v1 effacée ; `init` qui échoue après avoir écrit dans le monde, fichier tronqué : ancienne version active, enregistrements remis, empreinte de la simulation identique (monde et générateur remis) |
 | GAME-02 État côté moteur | `include/orosmo/app/game_context.hpp` (`GameContext::registerComponent`, `addSystem`, `addAction`) | suite `app/game_module` | systèmes et actions de l'ancienne version absents après rechargement (`Simulation::systemOrder`, `ActionRegistry::contains`) ; `stop` : `shutdown`, plus aucun système ni action, données des composants gardées ; nom déjà pris par l'hôte refusé |
 | GAME-02 Règle 13 sur le binaire | `tools/check_game_static.py` (`make check`, CI, après chaque édition de liens d'une bibliothèque de jeu) | `make check` | auto-test : six formes d'état refusées (global `.bss`/`.data`, `thread_local` `.tbss`/`.tdata`, `static` local et `static` d'une fonction `inline`), constantes et vtables acceptées ; bibliothèque de test v1 et v2 sans état |
 | GAME-07 Version finale | `GameModule::fromApi`, `OROSMO_GAME_STATIC` ; `bin/tests/test_game_static` (`tests/app/game_module/static_main.cpp`) | `make demo-test` (lien + `nm` + exécution) | aucun symbole `platform::DynamicLibrary`, `GameModule::load(` ni `DynamicReloader` dans l'exécutable ; `test_game_static: OK` |
 | Gabarit | `apps/demo/Makefile` (`GAME_MODULE_DIR`, `GAME_MODULE`, `.DEFAULT_GOAL := all`), `tools/engine-sdk/template/src/game/` (`Spin`, système `spin`), `main.cpp` (`startGame`) | `make e2e-init` | `make debug` : `bin/debug/game.so` (contrôle de la règle 13 après l'édition de liens) ; `orosmo run -- --headless` : `game: started, version 1` puis `game: stopped` ; `make release` : jeu lié, aucun symbole de rechargement (`nm`) ; à la main, programme lancé puis `src/game/game.cpp` modifié et `make debug` : `game: reloaded, version 2` (un premier essai sur le fichier à moitié écrit a échoué proprement, G315) |
 
 Vérifications (Linux x64, g++ 13.3, Intel Xe, Mesa ; machine chargée par d'autres agents) : `make all-debug` sans avertissement ;
-`make demo-test` **793 cas verts** (1 ignoré ; 8 nouveaux, suite `app/game_module`) puis `test_game_static: OK` ;
+`make demo-test` **793 cas verts** (1 ignoré ; 8 nouveaux, suite `app/game_module`) ; après la revue de la PR #28 (fusion de `dev`) : **827 cas verts**, 9 dans `app/game_module`, 31 tests Python puis `test_game_static: OK` ;
 `make demo-test-unit` 500 cas verts ; `make check` OK (119 en-têtes autonomes, 0 violation de couche, `check_game_static` OK) ;
 `make e2e-init` OK ; ASan + UBSan (`make fclean && make demo-test-unit SANITIZE=address,undefined`) : suite `app/game_module` 8 / 8 et `test_game_static` sans aucun message ; le passage complet s'arrête sur une erreur **antérieure au lot** (`alloc-dealloc-mismatch` dans `libshaderc` du système, appelé par le test de foule `anim` qui crée un périphérique graphique alors qu'il est dans `demo-test-unit`), et le passage complet avec `ASAN_OPTIONS=alloc_dealloc_mismatch=0` n'a pas fini en 15 min sur la machine chargée. Pas de rendu touché (démo inchangée). Non formaté par `tools/format_sources.sh`
 (clang-format absent de la machine) : style du code voisin suivi à la main.
+
+## M8 lot L10 : outils de debug et inspecteur (A79, UI-04, UI-10)
+
+Branche `feat/M8-L10-inspecteur-console` (depuis `feat/M8-L2-ecs`). Outils construits sur `orosmo::ui`, sans Dear ImGui (A79
+choix 6) ; `ui` dépend désormais de `scene` (couche inférieure) pour l'inspecteur d'entités. Décisions : `docs/QUESTIONS.md`,
+A79, « Lot L10 » ; limites G295 à G299. Démo : `apps/demo/bin/debug/main` puis F12, ou `--debug-tools [--debug-tab
+console|widgets|entities|profiler]`.
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| UI-04 Console | `include/orosmo/ui/debug_console.hpp` (`debug::Console::add`, `execute`, `pollLog`, `splitCommandLine`) ; `core::Logger::RecordsSince`, `LastSequence` | suite `ui/debug` (« console runs a registered command… », « console mirrors the engine log », « the console input runs the typed line ») ; `Logger` (« RecordsSince… ») | commande exécutée par nom avec arguments entre guillemets ; commande inconnue : `kNotFound` et ligne d'erreur ; journal recopié (avertissement, erreur) ; saisie + Entrée exécute et vide le champ |
+| UI-04 Inspecteur d'entités | `include/orosmo/ui/reflect.hpp` (`reflectedPanel(ObjectLocator, span<const FieldDesc>)`), `debug_tools.hpp` (`entityPanel`, `describeEntity`) | « the runtime reflected panel edits fields… », « the entity inspector modifies a component » | entier, double, uint8 (hors plage refusé), booléen modifiés par l'interface aux bons décalages ; composant modifié dans le `World`, y compris après déplacement de son stockage ; panneau refait à la destruction |
+| UI-04 Profileur | `include/orosmo/ui/frame_history.hpp` (`FrameHistory`, `FpsStats`, repris de la démo), `core::Profiler::Names`, onglet Profiler | « frame history computes the frame rate », `Profiler` (« Names lists… »), suite `apps/demo_performance` (inchangée) | FPS moyenne / min / max identiques au calcul de la démo |
+| UI-10 Inspecteur d'interface | `debug_tools.hpp` (`describeWidgetTree`, `describeWidget`, `DebugTools::widgetTree`, `highlight`) | « the widget inspector lists the tree with the layout sizes » | arbre dans l'ordre, rectangles égaux à ceux de la mise en page (bouton 120×30 en 5,5), widget masqué signalé ; survol d'une ligne = surlignage du widget |
+| UI-13 Rien quand fermé | `DebugTools::update`, `draw` | « closed debug tools neither lay out nor draw » | fermés : liste de dessin vide, aucune mise en page ; F12 ouvre et ferme |
+
+Vérifications (Linux, g++ 13.3, Intel Xe, Mesa) : `make all-debug` sans avertissement ; `make demo-test` **772 cas verts** (1
+ignoré ; 10 nouveaux : 8 dans `ui/debug`, 1 `Logger`, 1 `Profiler`) ; `make check` OK (113 en-têtes autonomes, 0 violation de
+couche, 0 appel d'API graphique hors zone) ; captures `--debug-tab widgets|console|entities|profiler` en OpenGL et Vulkan sans
+fenêtre : code 0, « Vulkan validation: 0 error/warning » ; outils fermés : `ui.png` de `--tab controls --focus detailMedium`
+identique pixel pour pixel à `docs/BASELINE/reference/ui-opengl-controls-focus-1280x720.png` ; ASan + UBSan (`make fclean`, `make demo-test-unit SANITIZE=address,undefined`) : 487 cas verts sans GPU (dont les 10 nouveaux), aucun message ; le `make demo-test` complet sous sanitizers n'a pas été relancé (lot sans code GPU).
+`make demo-capture` ajoute les quatre captures des outils. `clang-format` absent de la machine : sources non reformatées.
+
+Revue de la PR #26 (CI MinGW et CodeRabbit, après fusion de `dev`) : `Result` ignoré corrigé dans les tests (libstdc++ 15 ;
+reproduit sous g++ 13.3 avec une copie de `<expected>` marquée `[[nodiscard]]`) ; `Console` non copiable, état des commandes gardé
+(« a console command keeps its state… ») ; surlignage gardé lié au widget (« the pinned highlight follows its widget… ») ;
+direction de caméra parallèle à `up` refusée (suite `apps/demo-debug-world`) ; plein écran des builds debug déplacé de F12 à F10
+(`static_assert` dans `Game/debug_world.hpp`). `make all-debug`, `make demo-test` (**806 cas verts**, 1 ignoré) et `make check` OK.
+Après fusion de `dev` (PR #25, lot L3) : faux positif `-Warray-bounds` de GCC 16 (MinGW) désactivé dans `debug_tools_tests.cpp`
+(G34 ; non reproductible sous g++ 13.3, à confirmer par la CI) ; `make demo-test` **832 cas verts**, 1 ignoré, `make check` OK.
 
 ## M8 lot L3 : sauvegarde de scène et boucle à pas fixe (A79, ECS-03, SIM-01)
 
@@ -163,6 +193,23 @@ Sur `feat/M8-L11-api-rendu` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa, OpenG
 Non-régression : 24 captures (12 configurations × OpenGL et Vulkan : HUD, ombres, forward+, forward+ et ombres, widgets, scène mixte, ombre tramée, animation, TAA, debug normales, fil de fer, 200 instances) faites avant puis après : les 24 `scene.png` identiques au pixel près (`tools/compare_png.py --tolerance 0`), `ui.png` identiques sauf le texte des mesures en direct du HUD (FPS, ms) ; couches de validation Vulkan : 0 message sur chaque exécution.
 
 Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 718 cas, 718 verts (7 nouveaux), 1 ignoré ; ASan + UBSan sur les suites `renderer/*` et `assets/*` (`make demo-test SANITIZE=address,undefined TEST_ARGS='--test-suite=renderer/*,assets/*'`) : 260 cas verts, aucun rapport ; `make check` : OK ; `make demo-capture` : OK (références comparées) ; `make demo-vulkan-check` : OK, validation Vulkan silencieuse. Non vérifié : Windows et macOS (compilés par la CI au push).
+
+
+## M8 lot L12a : API des contenus (A75.2, A75.11)
+
+Sur `feat/M8-L12a-api-contenus` (A79), fondé sur L11. Preuves sous Linux x64 (g++ 13.3, Mesa, OpenGL et Vulkan). Anciennes API gardées (`SkinnedModel`, `CrowdRenderer::create(…, render)`, `setAgents(worlds, poses)`). Tests : `tests/anim/animated_model_tests.cpp` (suite `anim/animated-model`, sur les deux backends) et `tests/apps/demo_anim_scene_tests.cpp`.
+
+| Proposition | État | Fichier et symbole | Preuve |
+| --- | --- | --- | --- |
+| A75.2 `assets::ModelLoader` | **Fait** | `model_loader.hpp` `ModelLoader::create`, `load`, `createRenderModel`, `reloadChanged` | cas « ModelLoader: a missing file is an error naming it… » : vert |
+| A75.2 `anim::AnimatedModel` (modèle animé en 5 lignes) | **Fait** (événements de clip : G251) | `animated_model.hpp` `AnimatedModel::create`, `play`, `crossFade`, `update`, `setPose`, `dispatch`, `draw`, `rebuild`, `reloadChanged` | cas « an animated glTF model is loaded and played in five lines » et « play and crossFade give the same poses as a StateMachine » (égalité exacte) : verts |
+| A75.2 repli CPU (`skinVertices`) | **Fait** (maillage partagé par plusieurs nœuds : G250) | `AnimatedModel` (`SkinningPath::kCpu`, `forceCpuSkinning`) | cas « the CPU fallback deforms the vertices like the compute skinning, to 1e-4 » (au milieu d'un fondu, sommets relus sur le GPU) : vert sur OpenGL et Vulkan |
+| A75.11 foule depuis un modèle | **Fait** | `crowd.hpp` `CrowdRenderer::create(context, animatedModel)`, `setAgents(worlds, clips, times)` | cas « a crowd created from an animated model… draws like a hand-built crowd » (images identiques) : vert |
+| Démo `--scene anim` migrée | **Fait** | `apps/demo/src/Scene/anim_scene.cpp` `AnimScene::init`, `update`, `updateCrowd`, `reloadChanged` | suite `apps/demo-anim` : verte ; captures avant/après (ci-dessous) |
+
+Non-régression : `--scene anim` capturée avant (anciens `anim_scene.*` de `dcbadf8` sur le même moteur) puis après, OpenGL et Vulkan, à 30 images et à 240 images (4 s : le fondu de 3 s vers « wave » est passé) : les 4 `scene.png` identiques au pixel près (`tools/compare_png.py --tolerance 0`) ; couches de validation Vulkan : 0 message.
+
+Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 726 cas verts avant la fusion de `origin/dev`, 736 cas verts (1 ignoré) après ; ASan + UBSan sur les suites `anim/*`, `assets/*` et `apps/demo-anim` : 83 cas verts, aucun rapport ; `make check` : OK. Non vérifié : Windows et macOS (compilés par la CI au push) ; `clang-format` absent de la machine (formatage non appliqué).
 
 
 ## M8 lot L0 : `--shadow-quality` de la démo
