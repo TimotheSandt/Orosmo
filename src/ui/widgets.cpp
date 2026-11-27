@@ -920,6 +920,18 @@ void Tabs::clearChildren()
     header_ = &emplace<HBox>();
 }
 
+void Tabs::saveRetained(RetainedState &state) const
+{
+    if (!selected_.get)
+        state.selected = selected(); // l'onglet montré (un indice hors des pages est borné)
+}
+
+void Tabs::restoreRetained(Ui &, const RetainedState &state)
+{
+    if (!selected_.get && state.selected) // pas d'événement : l'utilisateur n'a rien changé
+        local_ = *state.selected;
+}
+
 int Tabs::selected() const
 {
     const int n = static_cast<int>(pages_.size());
@@ -984,6 +996,14 @@ Section::Section(std::string title, bool expanded) : VBox("section"), expanded_(
     emplace<SectionHeader>(*this, std::move(title));
     body_ = &emplace<VBox>();
     body_->bindVisible([this] { return expanded_; });
+}
+
+void Section::saveRetained(RetainedState &state) const { state.expanded = expanded_; }
+
+void Section::restoreRetained(Ui &, const RetainedState &state)
+{
+    if (state.expanded)
+        expanded_ = *state.expanded;
 }
 
 glm::vec2 Section::measureContent(Ui &ui, glm::vec2 available, const Style &style)

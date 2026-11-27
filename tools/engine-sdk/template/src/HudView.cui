@@ -1,18 +1,22 @@
-// Starter HUD view compiled by cui into HudView.gen.h / HudView.gen.cpp.
+// Starter HUD view compiled by cui into HudView.gen.h / HudView.gen.cpp. Development build: edit and save it while the
+// program runs, the HUD is rebuilt (src/main.cpp, app::ViewHost); an error keeps the previous HUD and is shown at the top right.
 import "orosmo/ui"
 import "hud_state.hpp"
 
 view HudView {
     @Mutable var state: HudState
 
-    Panel {
-        Label("\(state.title)").variant("title").id("title")
-        Label("Frame: \(state.frame)").variant("caption").id("frame")
-        Checkbox("Rotate cube", checked: $state.rotate).id("rotate")
-        Button("Reset counter").onClick(state.resetFrame).id("reset")
+    Overlay {
+        Panel {
+            Label("\(state.title)").variant("title").id("title")
+            Label("Frame: \(state.frame)").variant("caption").id("frame")
+            Checkbox("Rotate cube", checked: $state.rotate).id("rotate")
+            Button("Reset counter").onClick(state.resetFrame).id("reset")
+        }
+        .width(240)
+        .height(.fit)
+        .margin(12)
+        .align(.start)
+        Notifications(max: 3, width: 360).align(.end).id("messages")
     }
-    .width(240)
-    .height(.fit)
-    .margin(12)
-    .align(.start)
 }

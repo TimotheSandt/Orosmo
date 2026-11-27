@@ -147,6 +147,8 @@ class Ui
     void setRoot(std::unique_ptr<Widget> root);
     Widget *root() const noexcept { return root_.get(); }
     Widget *find(std::string_view id) const noexcept;
+    // Vrai pendant `update` (un `setRoot` y est différé à la fin de l'image).
+    bool updating() const noexcept { return updating_; }
 
     void update(const InputFrame &input, glm::vec2 viewport);
     void draw(renderer::DrawList &list) const;

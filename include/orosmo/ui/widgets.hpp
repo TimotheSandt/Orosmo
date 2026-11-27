@@ -332,6 +332,9 @@ class Tabs : public VBox
     void select(Ui &ui, int index);
     std::size_t pageCount() const noexcept { return pages_.size(); }
     void clearChildren() override; // retire les pages et leurs onglets ; l'en-tête reste
+    // UI-08 : l'onglet choisi est gardé quand il n'est pas lié (une liaison le garde déjà dans l'état de l'application).
+    void saveRetained(RetainedState &state) const override;
+    void restoreRetained(Ui &ui, const RetainedState &state) override;
 
   private:
     HBox *header_;
@@ -349,6 +352,8 @@ class Section : public VBox
     bool expanded() const noexcept { return expanded_; }
     void setExpanded(bool expanded) noexcept { expanded_ = expanded; }
     void clearChildren() override { body_->clearChildren(); } // vide le contenu ; l'en-tête et le corps restent
+    void saveRetained(RetainedState &state) const override;
+    void restoreRetained(Ui &ui, const RetainedState &state) override;
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;

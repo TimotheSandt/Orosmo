@@ -30,6 +30,29 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L8 : interface rechargée à chaud (A79, UI-08)
+
+Branche `feat/M8-L8-cui-rechargement` (depuis `feat/M8-L7-build-incremental`). Linux x64 seulement en local (g++ 13.3) ;
+Windows et macOS par la CI (G360). Choix de réalisation : `docs/QUESTIONS.md`, A79, « L8, choix de réalisation ».
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| UI-08 État gardé par identifiant | `include/orosmo/ui/view_state.hpp` `replaceRoot`, `captureViewState`, `restoreViewState` ; `Widget::saveRetained` / `restoreRetained` (ScrollView, TextArea, Section, Tabs) | `make demo-test` (suite `ui/view_state`) | 5 cas verts : focus et anneau, défilement, section, onglet gardés, widget ajouté ; borne à la mise en page ; refus pendant `Ui::update` |
+| UI-08 Point d'entrée des vues | `tools/cui-rs/src/engine.rs` (`orosmoCuiView_<Vue>`, `cui_bindings`, `OROSMO_CUI_VIEW_LOCAL`) ; `include/orosmo/ui/view_entry.hpp` | `make cui-test` | `cargo test` 18 verts (dont `a_view_exports_its_entry_point_and_the_fingerprint_of_its_structure`) |
+| UI-08 Vue rechargée depuis la bibliothèque de jeu | `include/orosmo/app/view_host.hpp` `ViewHost` ; `src/app/view_reloader.cpp` ; `GameModule::findSymbol`, `retainCode` ; `platform::runCommand` | `make demo-test` (suite `app/view_host`, bibliothèques `bin/tests/test_view_v1..v3`) | 7 cas verts : arbre recréé (un widget de plus, focus, défilement et section gardés, état lié gardé) ; structure changée : ancienne vue et son code gardés, `kVersionMismatch`, notification ; construction en échec : vue gardée, message ; forme liée |
+| UI-08 Version finale liée | `ViewHost::setRoot` sans `OROSMO_CUI_RELOADABLE` ; `src/app/view_host.cpp` seul | `make demo-test` (`bin/tests/test_game_static`, contrôle `nm`) ; `make e2e-init` (version finale de `mygame`) | `test_game_static: OK (static game and linked view, no hot reload code linked)` ; ni `ViewHost::mountFromLibrary`, ni `DevReloader`, ni `runCommand` |
+| UI-08 De bout en bout | gabarit (`src/main.cpp` `hudSettings`, `HudView.cui` avec `Notifications`), `apps/demo/Makefile` (`GAME_VIEW_OBJS`, `CUI_IN_GAME`), `tools/e2e/view_reload_host.cpp`, `tools/e2e_view_reload.py` | `make e2e-init` | `.cui` invalide : ancienne vue gardée (7 widgets), erreur signalée ; `.cui` enregistré -> vue recréée (8 widgets, focus gardé) en 2,57 s (limite 5 s) ; exécutable non refait. GAME-06 inchangé : 1,91 s (limite 5 s) |
+
+Vérifications (Linux x64, g++ 13.3) : `make all-debug` sans avertissement ; `make demo-test` 912 cas verts (1 ignoré) puis
+`test_game_static: OK` ; `make check` OK (règle 13 vérifiée aussi sur les bibliothèques de test qui contiennent une vue) ;
+`make e2e-init` OK ; `make cui-test` vert. ASan + UBSan sur arbre propre (`make demo-test-unit SANITIZE=address,undefined`, `ASAN_OPTIONS=alloc_dealloc_mismatch=0` comme en L7) : 599 cas verts, `test_game_static` sans message. Rendu non touché (aucune capture refaite).
+Site : `reference/construction` complété. Non vérifié : Windows, macOS (G360) ; `clang-format` absent de la machine.
+
+Revue CodeRabbit de la PR #34 : les 11 remarques retenues (constantes d'une vue à `@cui-cpp` dans `cui_bindings`, version
+chargée pendant une construction en échec ignorée, G367, estampille `CUI_IN_GAME`, HUD lié sans bibliothèque de jeu, tests de
+`app/view_host` sans processus ni pause). Après revue : `make -j6 all-debug`, `make -j6 demo-test` (918 cas verts, 1 ignoré),
+`make check`, `make cui-test`, `make -j6 e2e-init` verts ; sanitizers non relancés.
+
 ## M8 lot L7 : construction incrémentale de la bibliothèque de jeu (A79, GAME-06)
 
 Branche `feat/M8-L7-build-incremental` (depuis `feat/M8-L5-jeu-rechargeable`). Linux x64 seulement en local (g++ 13.3) ;

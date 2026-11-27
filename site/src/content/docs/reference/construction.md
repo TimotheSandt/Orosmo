@@ -35,6 +35,12 @@ Programme lancé, après une modification, `orosmo build --game` (ou `make game`
 `make game BUILD_TYPE=dev` (`make game` seul refait la bibliothèque debug, que ce programme ne charge pas). Si un en-tête partagé avec `src/main.cpp` change les données d'un composant, reconstruisez tout
 et relancez le programme. `make release` lie le jeu statiquement.
 
+En debug et dev, les vues `.cui` sont aussi compilées dans cette bibliothèque (et dans l'exécutable) : `make game` relance `cui`
+sur une vue modifiée, et le programme de départ (`app::ViewHost`) lance lui-même `make game` quand un `.cui` de `src/` est
+enregistré, puis recrée l'interface en gardant focus, défilement et sections ouvertes. Une erreur garde l'ancienne interface et
+s'affiche en notification. Si les champs d'une vue changent (`@Mutable`, `@Snapshot`, `@cui-cpp`), relancez le programme
+reconstruit. `make CUI_IN_GAME=0` garde les vues dans l'exécutable seulement.
+
 ### Trouver le moteur
 
 Le `Makefile` choisit `ENGINE_DIR` dans cet ordre :

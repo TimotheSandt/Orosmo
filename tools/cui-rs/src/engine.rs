@@ -1037,6 +1037,16 @@ pub struct Output {
     pub source: String,
 }
 
+// Empreinte FNV-1a 64 bits (stable d'une plateforme et d'une version de Rust à l'autre).
+fn fnv1a64(text: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in text.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
 // Vérifie et génère ; en cas d'erreur, renvoie TOUTES les erreurs trouvées (ligne, colonne, message).
 pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<CompileError>> {
     let file_for_line = file.replace('\\', "/");
@@ -1053,11 +1063,13 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
     header.push("#include \"orosmo/ui/controls.hpp\"".into());
     header.push("#include \"orosmo/ui/color.hpp\"".into());
     header.push("#include \"orosmo/ui/menus.hpp\"".into());
+    header.push("#include \"orosmo/ui/view_entry.hpp\"".into());
     for import in ast.imports.iter().filter(|i| i.path != IMPORT) {
         header.push(format!("#include \"{}\"", import.path));
     }
     header.push(String::new());
     header.push("#include <algorithm>".into());
+    header.push("#include <cstdint>".into());
     header.push("#include <memory>".into());
     header.push("#include <string>".into());
     header.push("#include <vector>".into());
@@ -1070,6 +1082,8 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
     source.push(String::new());
     source.push("namespace cui".into());
     source.push("{".into());
+    // UI-08 : points d'entrée exportés (après le namespace cui), un par vue.
+    let mut exports: Vec<String> = Vec::new();
 
     for view in &ast.views {
         let mut diags: Vec<Diag> = Vec::new();
@@ -1080,6 +1094,12 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
         let mut helper_params = Vec::new();
         let mut helper_assign = Vec::new();
         let mut locals = Vec::new();
+        // UI-08 : ce qui fixe la disposition de la structure partagée par l'hôte et la bibliothèque de jeu (champs liés, blocs
+        // @cui-cpp) ; les constantes (`let`) seulement si la vue a un bloc @cui-cpp, qui peut dimensionner un membre avec elles ;
+        // les fonctions statiques (non constexpr) jamais.
+        let mut layout = vec![view.name.clone()];
+        let mut constants: Vec<String> = Vec::new();
+        let mut has_cpp = false;
         for field in &view.fields {
             // Préfixe réservé au code généré (cui_ui, cui_view, cui_w0...) : un champ ou une constante de ce nom y entrerait en
             // collision ; `view` et les autres noms restent libres.
@@ -1096,6 +1116,7 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
             match field {
                 ViewField::Wrapped(w) => {
                     let ty = cpp_type(&w.type_name);
+                    layout.push(format!("{} {} {}", w.wrapper, ty, w.name));
                     // Le type écrit dans l'en-tête est rapporté à la ligne du .cui (une erreur C++ « type inconnu » y renvoie).
                     members.push(format!("#line {} \"{file_for_line}\"", w.line.max(1)));
                     match w.wrapper.as_str() {
@@ -1135,6 +1156,7 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
                 ViewField::Let(l) => match expr_cpp(&l.value, &scope) {
                     Ok(v) => {
                         let ty = l.type_name.as_deref().map(cpp_type);
+                        constants.push(format!("let {} {} {v}", ty.as_deref().unwrap_or(""), l.name));
                         let value = if matches!(l.value, Expr::StringLit(_)) && is_constant_text(&l.value) {
                             // constexpr : un littéral, pas std::string
                             v.trim_start_matches("std::string(").trim_end_matches(')').to_string()
@@ -1158,8 +1180,16 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
                         Err(e) => diags.push((f.line, f.col, e)),
                     }
                 }
-                ViewField::Cpp(block) => members.push(format!("    {}", block.content)),
+                ViewField::Cpp(block) => {
+                    has_cpp = true;
+                    layout.push(format!("@cui-cpp {}", block.content));
+                    members.push(format!("    {}", block.content))
+                }
             }
+        }
+
+        if has_cpp {
+            layout.append(&mut constants);
         }
 
         // Arbre.
@@ -1177,10 +1207,15 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
 
         header.push(String::new());
         header.push(format!("// Vue `{}` ({file_for_line}:{}). Les objets liés doivent vivre plus longtemps que l'interface.", view.name, view.line));
-        header.push(format!("struct {}", view.name));
+        // UI-08 : cachée (ELF, Mach-O) : l'exécutable et la bibliothèque de jeu qui la contiennent tous deux gardent chacun leur
+        // `build` (sinon la bibliothèque rechargée appellerait celui de l'exécutable, exporté par -rdynamic).
+        header.push(format!("struct OROSMO_CUI_VIEW_LOCAL {}", view.name));
         header.push("{".into());
         header.extend(members);
         header.push(String::new());
+        header.push("    // UI-08 : nom et empreinte de la structure (rechargement à chaud, orosmo/ui/view_entry.hpp).".into());
+        header.push(format!("    static constexpr const char *cui_name = \"{}\";", view.name));
+        header.push(format!("    static constexpr std::uint64_t cui_bindings = 0x{:016x}ULL;", fnv1a64(&layout.join("\n"))));
         header.push("    std::unique_ptr<orosmo::ui::Widget> build(orosmo::ui::Ui &cui_ui) const;".into());
         header.push("};".into());
         header.push(String::new());
@@ -1207,12 +1242,29 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
         source.extend(g.lines);
         source.push(format!("    return {root};"));
         source.push("}".into());
+
+        let n = &view.name;
+        exports.push(String::new());
+        exports.push("namespace".into());
+        exports.push("{".into());
+        exports.push(format!("orosmo::ui::Widget *cui_build_{n}(const void *cui_view, orosmo::ui::Ui &cui_ui)"));
+        exports.push("{".into());
+        exports.push(format!("#line {} \"{file_for_line}\"", view.line.max(1)));
+        exports.push(format!("    return static_cast<const cui::{n} *>(cui_view)->build(cui_ui).release();"));
+        exports.push("}".into());
+        exports.push(format!(
+            "constexpr orosmo::ui::CuiViewEntry cui_entry_{n}{{orosmo::ui::kCuiViewAbi, cui::{n}::cui_bindings, sizeof(cui::{n}), &cui_build_{n}}};"
+        ));
+        exports.push("} // namespace".into());
+        exports.push(format!("OROSMO_CUI_VIEW_EXPORT const orosmo::ui::CuiViewEntry *orosmoCuiView_{n}() {{ return &cui_entry_{n}; }}"));
     }
 
     header.push(String::new());
     header.push("} // namespace cui".into());
     source.push(String::new());
     source.push("} // namespace cui".into());
+    // UI-08 : la vue compilée dans la bibliothèque de jeu (développement) est retrouvée par ces symboles (app::ViewHost).
+    source.extend(exports);
 
     if errors.is_empty() {
         Ok(Output { header: header.join("\n") + "\n", source: source.join("\n") + "\n" })

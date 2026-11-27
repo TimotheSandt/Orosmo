@@ -45,6 +45,9 @@ class GameModule::Reloader
     virtual void poll(Impl &impl) = 0;
     virtual core::Result<> reloadNow(Impl &impl) = 0;
     virtual std::filesystem::path loadedPath() const = 0;
+    // UI-08 : symbole de la version active, et jeton qui la garde chargée (nul si rien n'est chargé).
+    virtual core::Result<void *> symbol(std::string_view name) const = 0;
+    virtual std::shared_ptr<const void> retain() const = 0;
     // Décharge la bibliothèque active (après `shutdown` et le retrait de ses enregistrements).
     virtual void unloadActive() noexcept = 0;
 };

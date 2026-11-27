@@ -36,7 +36,7 @@ fn a_view_compiles_to_a_struct_and_a_build_function() {
     .unwrap();
     assert!(header.contains("#include \"state.hpp\""));
     assert!(header.contains("namespace cui"));
-    assert!(header.contains("struct Panel"));
+    assert!(header.contains("struct OROSMO_CUI_VIEW_LOCAL Panel"));
     assert!(header.contains("    State *state = nullptr;"));
     assert!(header.contains("    const Stats *stats = nullptr;"));
     assert!(header.contains("    static constexpr auto w = 320.0;"));
@@ -60,6 +60,31 @@ fn every_statement_is_mapped_to_its_line_in_the_cui_file() {
     }
     assert!(source.contains("#line 4 \"v.cui\"\n    auto cui_w1 = std::make_unique<orosmo::ui::Label>();"));
     assert!(source.contains("#line 5 \"v.cui\"\n    auto cui_w2 = std::make_unique<orosmo::ui::Label>();"));
+}
+
+// UI-08 : chaque vue exporte son point d'entrée (rechargement à chaud depuis la bibliothèque de jeu) ; l'empreinte de sa structure
+// change avec ses champs liés et ses blocs @cui-cpp, pas avec l'arbre ni les constantes.
+#[test]
+fn a_view_exports_its_entry_point_and_the_fingerprint_of_its_structure() {
+    let base = "view V {\n    @Mutable var s: S\n    let w = 1\n    VBox {\n        Label(\"a\")\n    }\n}\n";
+    let (header, source) = engine(base).unwrap();
+    assert!(header.contains("#include \"orosmo/ui/view_entry.hpp\""));
+    assert!(header.contains("    static constexpr const char *cui_name = \"V\";"));
+    assert!(source.contains("OROSMO_CUI_VIEW_EXPORT const orosmo::ui::CuiViewEntry *orosmoCuiView_V() { return &cui_entry_V; }"));
+    assert!(source.contains("orosmo::ui::kCuiViewAbi, cui::V::cui_bindings, sizeof(cui::V), &cui_build_V"));
+    let fingerprint = |text: &str| {
+        let (h, _) = engine(text).unwrap();
+        h.lines().find(|l| l.contains("cui_bindings =")).unwrap().to_string()
+    };
+    let same = fingerprint(base);
+    assert_eq!(same, fingerprint(&base.replace("Label(\"a\")", "Label(\"a\")\n        Label(\"b\")")));
+    assert_eq!(same, fingerprint(&base.replace("let w = 1", "let w = 2")));
+    assert_ne!(same, fingerprint(&base.replace("@Mutable var s: S", "@Mutable var s: S\n    @Mutable var t: S")));
+    assert_ne!(same, fingerprint(&base.replace("@Mutable var s: S", "@Observed var s: S")));
+    assert_ne!(same, fingerprint(&base.replace("let w = 1", "let w = 1\n    @cui-cpp {\n        int extra = 0;\n    }")));
+    // Une constante peut dimensionner un membre d'un bloc @cui-cpp : sa valeur compte alors dans l'empreinte.
+    let sized = base.replace("let w = 1", "let w = 1\n    @cui-cpp {\n        alignas(w) double a = 0;\n    }");
+    assert_ne!(fingerprint(&sized), fingerprint(&sized.replace("let w = 1", "let w = 2")));
 }
 
 #[test]

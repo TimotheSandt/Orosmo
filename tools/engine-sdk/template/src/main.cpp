@@ -4,6 +4,7 @@
 #include "hud_state.hpp"
 
 #include <orosmo/app/game_module.hpp>
+#include <orosmo/app/view_host.hpp>
 
 #include <orosmo/core/log.hpp>
 #include <orosmo/core/paths.hpp>
@@ -179,6 +180,22 @@ std::optional<orosmo::app::GameModule> startGame(orosmo::sim::Simulation &simula
     return std::move(*game);
 }
 
+// HUD view (src/HudView.cui). Development: the view is compiled into the game library; saving a .cui of src/ runs `make game`
+// (cui, then the library), the library is reloaded and the HUD rebuilt, keeping focus, scrolling and open sections (widget ids).
+// A .cui error keeps the previous HUD and shows the message. Final build (make release): the view is linked in the executable.
+orosmo::app::ViewHostSettings hudSettings(orosmo::app::GameModule *game)
+{
+    orosmo::app::ViewHostSettings settings{.game = game};
+#if defined(OROSMO_CUI_RELOADABLE)
+    const fs::path bin = orosmo::core::system::executablePath().parent_path(); // <project>/bin/<debug|dev>
+    const fs::path project = bin.parent_path().parent_path();
+    settings.sources = project / "src";
+    settings.buildCommand = "make game BUILD_TYPE=" + bin.filename().string();
+    settings.buildDirectory = project;
+#endif
+    return settings;
+}
+
 int runApp(const LaunchOptions &opts)
 {
     platform::Window window("{{PROJECT_NAME}}", kDefaultWidth, kDefaultHeight);
@@ -254,8 +271,6 @@ int runApp(const LaunchOptions &opts)
         return EXIT_FAILURE;
     }
 
-    interface.setRoot(cui::buildHudView(interface, state));
-
     rd::Camera camera;
     camera.setPosition({0.0f, 1.8f, 4.5f});
     camera.setOrientation(glm::normalize(glm::vec3(0.0f, -0.35f, -1.0f)));
@@ -269,6 +284,17 @@ int runApp(const LaunchOptions &opts)
     orosmo::sim::Simulation simulation(
         {.step = std::chrono::duration_cast<orosmo::core::Nanoseconds>(std::chrono::duration<double>(kFixedStep))});
     std::optional<orosmo::app::GameModule> gameLogic = startGame(simulation, interface.actions());
+    // After the game logic (it may hold the view's code) and the interface: destroyed first, the HUD tree with it.
+    orosmo::app::ViewHost views(interface, hudSettings(gameLogic ? &*gameLogic : nullptr));
+    if (!gameLogic)
+    {
+        // No game library: nothing to reload from, the HUD linked in the executable is used.
+        interface.setRoot(cui::buildHudView(interface, state));
+    }
+    else if (auto mounted = views.setRoot(cui::HudView{.state = &state}); !mounted)
+    {
+        std::cerr << "HUD view not built: " << mounted.error().describe() << '\n';
+    }
     std::uint32_t rendered = 0;
     bool captureOk = !capturing;
 
@@ -315,6 +341,7 @@ int runApp(const LaunchOptions &opts)
         }
         cube->setRotation({18.0f, angleDegrees, 0.0f});
 
+        views.update(); // development: rebuilds the HUD after a .cui is saved
         ui::InputFrame input = opts.headless ? ui::InputFrame{} : ui::readWindowInput(window, dt);
         if (!opts.headless && fixedSize && window.getWidth() > 0 && window.getHeight() > 0)
         {
