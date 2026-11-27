@@ -70,7 +70,9 @@ endif
 else
 
 GAME_SRC_DIR := src
-BUILD_TYPE   ?= release
+# A79 L5 : un projet qui a une logique de jeu rechargeable (src/game/*.cpp) se construit par défaut en debug (`make` =
+# développement, bibliothèque rechargée à chaud) ; `make release` la lie statiquement. Sans src/game/ : release, comme avant.
+BUILD_TYPE   ?= $(if $(wildcard src/game/*.cpp),debug,release)
 
 ifneq ($(findstring debug,$(MAKECMDGOALS)),)
     BUILD_TYPE := debug
@@ -182,13 +184,30 @@ _REL_BIN := bin/release/$(PROJECT_NAME)$(ENGINE_EXE_EXT)
 
 # ── Sources ───────────────────────────────────────────────────────────────────
 SRCS_CPP := $(shell find $(SRC_DIR) -type f -name "*.cpp" 2>/dev/null)
+
+# ── Logique de jeu (GAME-01, GAME-07 ; A79 L5) ────────────────────────────────
+# Sources de $(GAME_MODULE_DIR) : en debug/dev, bibliothèque $(BIN_DIR)/game$(ENGINE_MODULE_EXT) chargée par l'exécutable
+# (app::GameModule::load) et rechargée quand elle est reconstruite ; elle ne contient pas le moteur (engine_module_ldflags),
+# l'exécutable l'exporte (engine_host_ldflags). En release : liées dans l'exécutable avec -DOROSMO_GAME_STATIC, sans code de
+# rechargement. Après chaque édition de liens, la règle 13 est vérifiée sur le binaire (tools/check_game_static.py).
+GAME_MODULE_DIR  ?= $(SRC_DIR)/game
+GAME_MODULE_SRCS := $(filter $(GAME_MODULE_DIR)/%,$(SRCS_CPP))
+ifneq ($(GAME_MODULE_SRCS),)
+ifeq ($(BUILD_TYPE),release)
+    GAME_CXXFLAGS += -DOROSMO_GAME_STATIC
+else
+    SRCS_CPP         := $(filter-out $(GAME_MODULE_SRCS),$(SRCS_CPP))
+    GAME_MODULE      := $(BIN_DIR)/game$(ENGINE_MODULE_EXT)
+    GAME_MODULE_OBJS := $(GAME_MODULE_SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/gamelib/%.o)
+endif
+endif
 SRCS_C   := $(shell find $(SRC_DIR) -type f -name "*.c"   2>/dev/null)
 
 OBJS_CPP := $(SRCS_CPP:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/src/%.o)
 OBJS_C   := $(SRCS_C:$(SRC_DIR)/%.c=$(OBJ_DIR)/src/%.o)
 GEN_OBJS := $(GEN_CPP_SOURCES:$(ENGINE_GEN_DIR)/%.gen.cpp=$(OBJ_DIR)/gen/%.o)
 ALL_OBJS := $(OBJS_CPP) $(OBJS_C) $(GEN_OBJS)
-TEST_GAME_OBJS := $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS_CPP) $(OBJS_C))
+TEST_GAME_OBJS := $(filter-out $(OBJ_DIR)/src/main.o $(GAME_MODULE_SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/src/%.o),$(OBJS_CPP) $(OBJS_C))
 
 # Windows icon resource
 ICON_RC :=
@@ -203,7 +222,8 @@ endif
 
 # Test sources
 # tests/**/test_module/ : sources de bibliothèques chargées par les tests (platform::DynamicLibrary), pas de l'exécutable.
-TEST_SRCS   := $(shell find $(TEST_DIR) -type f -name "*.cpp" -not -path "*/test_module/*" 2>/dev/null)
+# tests/**/game_module/ : bibliothèque de jeu de test (A79 L5), construite en plusieurs versions, et sa version statique.
+TEST_SRCS   := $(shell find $(TEST_DIR) -type f -name "*.cpp" -not -path "*/test_module/*" -not -path "*/game_module/*" 2>/dev/null)
 # UI-11 : les vues .cui des tests (sauf les cas d'erreur de cui_errors/) sont compilées par cui, puis avec les tests.
 TEST_CUI_SRCS := $(shell find $(TEST_DIR) -type f -name "*.cui" -not -path "*/cui_errors/*" 2>/dev/null)
 TEST_GEN_CPP  := $(patsubst $(TEST_DIR)/%.cui,$(ENGINE_GEN_DIR)/tests/%.gen.cpp,$(TEST_CUI_SRCS))
@@ -215,6 +235,18 @@ TEST_TARGET := bin/tests/tests$(ENGINE_EXE_EXT)
 TEST_MODULE_SRCS := $(shell find $(TEST_DIR) -type f -path "*/test_module/*.cpp" 2>/dev/null)
 TEST_MODULE_OBJS := $(TEST_MODULE_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/tests/%.o)
 TEST_MODULE      := $(if $(TEST_MODULE_SRCS),bin/tests/test_module$(ENGINE_MODULE_EXT))
+# A79 L5 : bibliothèque de jeu de test (tests/app/game_module/game.cpp), une par version (corps de fonction différent, choisi par
+# -DOROSMO_TEST_GAME_VARIANT_<v>), chargée et rechargée par tests/app/game_module_tests.cpp ; et la version finale statique
+# (OROSMO_GAME_STATIC) liée dans bin/tests/test_game_static, lancée par `make test`.
+TEST_GAME_DIR       := $(TEST_DIR)/app/game_module
+TEST_GAME_SRC       := $(wildcard $(TEST_GAME_DIR)/game.cpp)
+TEST_GAME_VARIANTS  := v1 v2 badabi failinit
+TEST_GAMELIB_OBJS   := $(if $(TEST_GAME_SRC),$(foreach v,$(TEST_GAME_VARIANTS),$(OBJ_DIR)/tests/app/game_module/game_$(v).o))
+TEST_GAMES          := $(if $(TEST_GAME_SRC),$(foreach v,$(TEST_GAME_VARIANTS),bin/tests/test_game_$(v)$(ENGINE_MODULE_EXT)))
+TEST_GAME_STATIC_OBJS := $(if $(TEST_GAME_SRC),$(OBJ_DIR)/tests/app/game_module/static_game.o $(OBJ_DIR)/tests/app/game_module/static_main.o)
+TEST_GAME_STATIC    := $(if $(TEST_GAME_SRC),bin/tests/test_game_static$(ENGINE_EXE_EXT))
+# Règle 13 vérifiée sur le binaire (tools/check_game_static.py, copié dans $(ENGINE_DIR)/tools) : rien si Python 3 manque.
+_GAME_STATIC_CHECK  := $(if $(shell command -v python3 2>/dev/null),$(wildcard $(ENGINE_DIR)/tools/check_game_static.py))
 
 # Style sources
 BENCH_DIR    := benchmark
@@ -235,7 +267,7 @@ endif
 # ── Main targets ──────────────────────────────────────────────────────────────
 .PHONY: all debug dev release run run-debug run-dev run-release
 
-all debug dev release: $(TARGET)
+all debug dev release: $(TARGET) $(GAME_MODULE)
 
 # run-debug / run-dev / run-release: build the requested variant if needed, then run it.
 # BUILD_TYPE is set at parse time via the findstring block above, so $(TARGET) already
@@ -265,9 +297,24 @@ run:
 $(TARGET): $(ALL_OBJS) $(ENGINE_LIBS) | $(BIN_DIR) copy_res $(COPY_EXTRA)
 	$(call ors_link,LD)
 	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(ALL_OBJS) \
-	    $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) $(GAME_LDFLAGS) -o $@
+	    $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) $(GAME_LDFLAGS) $(if $(GAME_MODULE),$(call engine_host_ldflags,$@)) -o $@
 	$(ors_end)
 	@echo "Compiled: $@"
+
+# Bibliothèque de jeu (développement). Sous Windows, elle se lie à la bibliothèque d'import de l'exécutable : elle vient après lui.
+_GAME_STATIC_CHECK_TOOL := $(if $(shell command -v python3 2>/dev/null),$(wildcard $(ENGINE_DIR)/tools/check_game_static.py))
+$(GAME_MODULE): $(GAME_MODULE_OBJS) $(if $(filter Windows,$(ENGINE_OS)),$(TARGET)) | $(BIN_DIR)
+	$(call ors_link,LD game)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(GAME_MODULE_OBJS) $(call engine_module_ldflags,$(TARGET)) $(GAME_LDFLAGS) -o $@
+	$(ors_end)
+	$(if $(_GAME_STATIC_CHECK_TOOL),@python3 "$(_GAME_STATIC_CHECK_TOOL)" --quiet $(if $(filter Windows,$(ENGINE_OS)),$(GAME_MODULE_OBJS),$@))
+	@echo "Compiled: $@"
+
+$(OBJ_DIR)/gamelib/%.o: $(SRC_DIR)/%.cpp
+	@mkdir -p "$(dir $@)"
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ors_end)
 
 # ── Compilation rules ─────────────────────────────────────────────────────────
 $(OBJ_DIR)/src/%.o: $(SRC_DIR)/%.cpp
@@ -302,8 +349,9 @@ $(BIN_DIR)/icon.rc: $(ICON_NAME) | $(BIN_DIR)
 # ── Tests ─────────────────────────────────────────────────────────────────────
 .PHONY: test
 TEST_ARGS ?=
-test: $(TEST_TARGET) $(TEST_MODULE)
+test: $(TEST_TARGET) $(TEST_MODULE) $(TEST_GAMES) $(TEST_GAME_STATIC)
 	@./$(TEST_TARGET) $(TEST_ARGS)
+	$(if $(TEST_GAME_STATIC),@./$(TEST_GAME_STATIC))
 
 # L'exécutable des tests exporte le moteur (engine_host_ldflags) : la bibliothèque de test s'y relie au chargement. Nombre de
 # symboles exportés affiché : un exécutable PE (Windows) en exporte au plus 65 535.
@@ -328,6 +376,39 @@ $(TEST_MODULE_OBJS): $(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp
 	$(call ors_compile,CXX)
 	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 	$(ors_end)
+
+# Bibliothèques de jeu de test (A79 L5) : liées comme la bibliothèque de test ci-dessus (sans le moteur), puis contrôlées : aucune
+# copie du moteur (Linux) et aucun état modifiable du jeu (.data/.bss/TLS, règle 13). Sous Windows, le contrôle porte sur le
+# fichier objet du jeu (le démarrage C de MinGW ajoute ses propres données à la DLL).
+$(TEST_GAMES): bin/tests/test_game_%$(ENGINE_MODULE_EXT): $(OBJ_DIR)/tests/app/game_module/game_%.o $(if $(filter Windows,$(ENGINE_OS)),$(TEST_TARGET)) | bin/tests
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $< $(call engine_module_ldflags,$(TEST_TARGET)) -o $@
+	$(ors_end)
+	$(if $(filter Linux,$(ENGINE_OS)),@! nm -DC --defined-only $@ | grep -E ' [TDBR] orosmo::' \
+	    || { echo "$@ : le moteur est copié dans la bibliothèque (symboles orosmo:: définis ci-dessus)"; exit 1; })
+	$(if $(_GAME_STATIC_CHECK),@python3 "$(_GAME_STATIC_CHECK)" --quiet $(if $(filter Windows,$(ENGINE_OS)),$<,$@))
+
+$(TEST_GAMELIB_OBJS): $(OBJ_DIR)/tests/app/game_module/game_%.o: $(TEST_GAME_DIR)/game.cpp
+	@mkdir -p "$(dir $@)"
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) -DOROSMO_TEST_GAME_VARIANT_$* -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ors_end)
+
+# Version finale (GAME-07) : le jeu lié dans l'exécutable, sans code de rechargement (vérifié par nm après l'édition de liens).
+$(OBJ_DIR)/tests/app/game_module/static_game.o: $(TEST_GAME_DIR)/game.cpp
+$(OBJ_DIR)/tests/app/game_module/static_main.o: $(TEST_GAME_DIR)/static_main.cpp
+$(TEST_GAME_STATIC_OBJS):
+	@mkdir -p "$(dir $@)"
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -DOROSMO_GAME_STATIC -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ors_end)
+
+$(TEST_GAME_STATIC): $(TEST_GAME_STATIC_OBJS) $(ENGINE_LIBS) | bin/tests
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(TEST_GAME_STATIC_OBJS) $(ENGINE_LINK_LIBS) $(ENGINE_LDFLAGS) -o $@
+	$(ors_end)
+	@! nm -C $@ | grep -E 'orosmo::platform::DynamicLibrary|orosmo::app::GameModule::load\(|DynamicReloader' \
+	    || { echo "$@ : code de rechargement lié dans la version statique (symboles ci-dessus)"; exit 1; }
 
 # Les tests incluent aussi les vues générées de la démo (UI/Views/*.gen.h) : elles doivent exister avant leur compilation.
 $(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp | $(TEST_GEN_CPP) $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
@@ -569,6 +650,8 @@ info:
 -include $(wildcard $(ALL_OBJS:.o=.d))
 -include $(wildcard $(TEST_OBJS:.o=.d))
 -include $(wildcard $(TEST_MODULE_OBJS:.o=.d))
+-include $(wildcard $(GAME_MODULE_OBJS:.o=.d))
+-include $(wildcard $(TEST_GAMELIB_OBJS:.o=.d) $(TEST_GAME_STATIC_OBJS:.o=.d))
 -include $(wildcard $(BENCH_OBJS:.o=.d))
 
 # ── Installer (packaging) ─────────────────────────────────────────────────────
