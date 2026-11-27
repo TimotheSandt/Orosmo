@@ -80,10 +80,10 @@ TEST_SUITE("scene/hierarchy")
         const Entity a1 = world.create();
         const Entity a2 = world.create();
         const Entity b = world.create();
-        world.setParent(a, root);
-        world.setParent(b, root);
-        world.setParent(a1, a);
-        world.setParent(a2, a1);
+        REQUIRE(world.setParent(a, root));
+        REQUIRE(world.setParent(b, root));
+        REQUIRE(world.setParent(a1, a));
+        REQUIRE(world.setParent(a2, a1));
         CHECK(world.destroy(a));
         CHECK_FALSE(world.alive(a));
         CHECK_FALSE(world.alive(a1));
@@ -105,8 +105,8 @@ TEST_SUITE("scene/hierarchy")
         REQUIRE(world.setTransform(root, rootT));
         REQUIRE(world.setTransform(child, at(1.0, 0.0, 0.0)));
         REQUIRE(world.setTransform(grandChild, at(0.0, 3.0, 0.0)));
-        world.setParent(child, root);
-        world.setParent(grandChild, child);
+        REQUIRE(world.setParent(child, root));
+        REQUIRE(world.setParent(grandChild, child));
         CHECK(world.updateTransforms() == 3u);
         CHECK(near(world.transform(root)->worldPosition, {10.0, 0.0, 0.0}));
         CHECK(near(world.transform(child)->worldPosition, {10.0, 0.0, -2.0}));
@@ -130,12 +130,12 @@ TEST_SUITE("scene/hierarchy")
         const Entity right = world.create();
         const Entity node = world.create();
         const Entity leaf = world.create();
-        world.setTransform(left, at(-5.0, 0.0, 0.0));
-        world.setTransform(right, at(5.0, 0.0, 0.0));
-        world.setTransform(node, at(0.0, 1.0, 0.0));
-        world.setTransform(leaf, at(0.0, 0.0, 1.0));
-        world.setParent(node, left);
-        world.setParent(leaf, node);
+        REQUIRE(world.setTransform(left, at(-5.0, 0.0, 0.0)));
+        REQUIRE(world.setTransform(right, at(5.0, 0.0, 0.0)));
+        REQUIRE(world.setTransform(node, at(0.0, 1.0, 0.0)));
+        REQUIRE(world.setTransform(leaf, at(0.0, 0.0, 1.0)));
+        REQUIRE(world.setParent(node, left));
+        REQUIRE(world.setParent(leaf, node));
         CHECK(world.updateTransforms() == 4u);
         CHECK(near(world.transform(leaf)->worldPosition, {-5.0, 1.0, 1.0}));
 
@@ -154,12 +154,12 @@ TEST_SUITE("scene/hierarchy")
         for (int i = 0; i < 5; ++i)
         {
             chain.push_back(world.create());
-            world.setTransform(chain.back(), at(1.0, 0.0, 0.0));
+            REQUIRE(world.setTransform(chain.back(), at(1.0, 0.0, 0.0)));
             if (i > 0)
-                world.setParent(chain.back(), chain[static_cast<std::size_t>(i - 1)]);
+                REQUIRE(world.setParent(chain.back(), chain[static_cast<std::size_t>(i - 1)]));
         }
         const Entity other = world.create();
-        world.setTransform(other, at(0.0, 0.0, 0.0));
+        REQUIRE(world.setTransform(other, at(0.0, 0.0, 0.0)));
         CHECK(world.updateTransforms() == 6u);
         CHECK(world.updateTransforms() == 0u); // rien de sale
         CHECK(near(world.transform(chain[4])->worldPosition, {5.0, 0.0, 0.0}));
@@ -193,11 +193,11 @@ TEST_SUITE("scene/hierarchy")
         const Entity part = world.create();
         Transform planetT = at(1.0e7, -3.0e6, 1.0e7);
         planetT.rotation = quarterTurnY();
-        world.setTransform(planet, planetT);
-        world.setTransform(ship, at(1234.5678, 9.25, -4321.125));
-        world.setTransform(part, at(0.0123, 0.5, -0.75));
-        world.setParent(ship, planet);
-        world.setParent(part, ship);
+        REQUIRE(world.setTransform(planet, planetT));
+        REQUIRE(world.setTransform(ship, at(1234.5678, 9.25, -4321.125)));
+        REQUIRE(world.setTransform(part, at(0.0123, 0.5, -0.75)));
+        REQUIRE(world.setParent(ship, planet));
+        REQUIRE(world.setParent(part, ship));
         world.updateTransforms();
 
         // Position exacte : rotation d'un quart de tour (x, z) -> (z, -x), puis translations.
@@ -222,13 +222,13 @@ TEST_SUITE("scene/hierarchy")
         for (int r = 0; r < 1000; ++r)
         {
             const Entity root = world.create();
-            world.setTransform(root, at(static_cast<double>(r), 0.0, 0.0));
+            REQUIRE(world.setTransform(root, at(static_cast<double>(r), 0.0, 0.0)));
             roots.push_back(root);
             for (int c = 0; c < 99; ++c)
             {
                 const Entity child = world.create();
-                world.setTransform(child, at(0.0, 1.0, 0.0));
-                world.setParent(child, root);
+                REQUIRE(world.setTransform(child, at(0.0, 1.0, 0.0)));
+                REQUIRE(world.setParent(child, root));
             }
         }
         const auto t0 = std::chrono::steady_clock::now();
