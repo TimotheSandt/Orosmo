@@ -20,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <new>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -38,8 +39,11 @@ struct ComponentDesc
     std::vector<std::byte> defaultValue; // `size` octets, ou vide : composant initialisé à zéro
 
     static constexpr std::size_t kMaxAlignment = 4096;
+    static constexpr std::size_t kMaxSize = std::size_t{1} << 20; // 1 Mio : un composant est une petite donnée
 
-    // Même disposition (nom, taille, alignement, version, champs) : un nouvel enregistrement est alors sans effet.
+
+    // Même disposition (nom, taille, alignement, version ; nom, type, décalage, taille et sous-champs de chaque champ ; les
+    // textes d'aide et les plages n'en font pas partie) : un nouvel enregistrement met alors seulement la description à jour.
     bool sameLayout(const ComponentDesc &other) const;
 };
 
@@ -47,6 +51,8 @@ struct ComponentDesc
 // invalide, valeur par défaut de mauvaise taille, champ qui déborde de sa structure, champ chaîne ou tableau dynamique (non
 // trivialement copiable).
 core::Result<> validateComponentDesc(const ComponentDesc &desc);
+// Comparaison de disposition de deux listes de champs (voir `sameLayout`).
+bool sameFieldLayout(const std::vector<core::FieldDesc> &a, const std::vector<core::FieldDesc> &b);
 
 // Type de composant enregistré dans un `World` : emplacement dans la table et génération (un identifiant gardé après le retrait
 // du type est refusé, même si l'emplacement a été réutilisé).
@@ -85,9 +91,12 @@ ComponentDesc describeComponent(std::string name)
     d.fields = core::describeFields<T>();
     if constexpr (std::is_default_constructible_v<T>)
     {
-        const T value{};
-        d.defaultValue.resize(sizeof(T));
-        std::memcpy(d.defaultValue.data(), &value, sizeof(T));
+        // T{} construit dans un tampon mis à zéro : octets de remplissage (et unique octet d'un type vide) à zéro, donc
+        // définis. Copie directe des octets, sans resize puis memcpy (GCC 16 voit un faux débordement du memset de resize
+        // pour un type d'un octet, -Werror=array-bounds sous MinGW). T est trivialement copiable : rien à détruire.
+        alignas(T) std::byte storage[sizeof(T)]{};
+        ::new (static_cast<void *>(storage)) T{};
+        d.defaultValue.assign(storage, storage + sizeof(T));
     }
     return d;
 }

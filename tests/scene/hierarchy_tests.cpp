@@ -5,7 +5,6 @@
 
 #include <glm/gtc/quaternion.hpp>
 
-#include <chrono>
 #include <cmath>
 #include <vector>
 
@@ -215,7 +214,7 @@ TEST_SUITE("scene/hierarchy")
         CHECK(std::abs(static_cast<double>(naive) - (exact.x + 0.3)) > 1.0e-3);
     }
 
-    TEST_CASE("Transforms: updating 100 000 entities in a hierarchy")
+    TEST_CASE("Transforms: updating 100 000 entities in a hierarchy (time measured by apps/demo/benchmark, scene-transforms)")
     {
         World world;
         std::vector<Entity> roots;
@@ -231,15 +230,42 @@ TEST_SUITE("scene/hierarchy")
                 REQUIRE(world.setParent(child, root));
             }
         }
-        const auto t0 = std::chrono::steady_clock::now();
         const std::size_t all = world.updateTransforms();
-        const auto t1 = std::chrono::steady_clock::now();
         CHECK(all == 100000u);
         world.editTransform(roots[10])->position.z = 1.0;
         const std::size_t some = world.updateTransforms();
         CHECK(some == 100u);
         CHECK(near(world.transform(world.firstChild(roots[10]))->worldPosition, {10.0, 1.0, 1.0}));
-        MESSAGE("updateTransforms, 100000 entities: " << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()
-                                                       << " us");
+    }
+
+    TEST_CASE("Transforms: many dirty leaves under a long clean chain; a dirty ancestor covers its dirty descendants")
+    {
+        World world;
+        std::vector<Entity> chain;
+        for (int i = 0; i < 3000; ++i)
+        {
+            chain.push_back(world.create());
+            REQUIRE(world.setTransform(chain.back(), at(0.0, 1.0, 0.0)));
+            if (i > 0)
+                REQUIRE(world.setParent(chain.back(), chain[static_cast<std::size_t>(i - 1)]));
+        }
+        std::vector<Entity> leaves;
+        for (int i = 0; i < 3000; ++i)
+        {
+            leaves.push_back(world.create());
+            REQUIRE(world.setTransform(leaves.back(), at(static_cast<double>(i), 0.0, 0.0)));
+            REQUIRE(world.setParent(leaves.back(), chain.back()));
+        }
+        CHECK(world.updateTransforms() == 6000u);
+        for (const Entity leaf : leaves)
+            world.editTransform(leaf)->position.z = 1.0;
+        CHECK(world.updateTransforms() == 3000u); // chaque chaîne d'ancêtres propre n'est remontée qu'une fois
+        CHECK(near(world.transform(leaves[7])->worldPosition, {7.0, 3000.0, 1.0}));
+
+        for (const Entity leaf : leaves)
+            world.markTransformDirty(leaf);
+        world.editTransform(chain[2000])->position.y = 2.0; // ancêtre sale, après ses descendants dans la file
+        CHECK(world.updateTransforms() == 1000u + 3000u);
+        CHECK(near(world.transform(leaves[7])->worldPosition, {7.0, 3001.0, 1.0}));
     }
 }
