@@ -422,7 +422,9 @@ void Dropdown::onRelease(Ui &ui, glm::vec2, bool inside)
         open(ui);
 }
 
-bool Dropdown::usesArrowKey(int key, bool) const { return key == kKeyUp || key == kKeyDown; }
+// Clavier : Haut et Bas changent l'option. Manette (revue PR #37) : ils déplacent le focus, comme pour le curseur ; liste
+// ouverte (A), ils changent l'option (`Ui::update` les donne au widget dont la liste est ouverte).
+bool Dropdown::usesArrowKey(int key, bool fromGamepad) const { return !fromGamepad && (key == kKeyUp || key == kKeyDown); }
 
 void Dropdown::onKey(Ui &ui, int key)
 {

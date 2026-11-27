@@ -32,6 +32,7 @@ class FrameRing
     void beginFrame(std::uint64_t frame) noexcept { slot_ = framesInFlight_ == 0 ? 0 : static_cast<std::uint32_t>(frame % framesInFlight_); }
     // Capacité d'au moins `bytes` pour la zone courante. Vrai si son tampon a été (re)créé : nouveau handle, les groupes de liaison
     // qui le visent sont à refaire. L'ancien tampon est détruit (destruction différée par le RHI : l'image qui le lit le garde).
+    // kInvalidArgument si l'anneau est moins profond que `device.framesInFlight()`.
     core::Result<bool> reserve(rhi::Device &device, std::uint64_t bytes);
     // Écrit `data` à `offset` dans la zone courante (un `updateBuffer`).
     core::Result<> write(std::uint64_t offset, std::span<const std::byte> data);

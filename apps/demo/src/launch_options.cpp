@@ -775,6 +775,11 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
     {
         return makeError(ErrorCode::kInvalidArgument, "--focus requires --capture-frames 2 or more");
     }
+    if (!options.focusId.empty() && options.uiMode != UiMode::kFull)
+    {
+        // La cible n'est cherchée que dans l'interface complète : une capture ne doit pas réussir sans appliquer le focus.
+        return makeError(ErrorCode::kInvalidArgument, "--focus requires --ui full");
+    }
 
     if (!options.hoverId.empty() && options.captureFrames < 2)
     {

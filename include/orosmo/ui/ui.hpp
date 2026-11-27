@@ -149,6 +149,10 @@ class Ui
     Widget *find(std::string_view id) const noexcept;
     // Vrai pendant `update` (un `setRoot` y est différé à la fin de l'image).
     bool updating() const noexcept { return updating_; }
+    // Garde `keep` vivant jusqu'à l'application d'un `setRoot` différé (fin de `update`, après la destruction de l'ancien arbre) ;
+    // hors de `update`, relâché tout de suite. Ex. bibliothèque qui a construit un arbre retiré pendant `update` (revue PR #37).
+    // Relâchés dans l'ordre inverse des appels.
+    void retainUntilRootReplaced(std::shared_ptr<const void> keep);
 
     void update(const InputFrame &input, glm::vec2 viewport);
     void draw(renderer::DrawList &list) const;
@@ -266,6 +270,7 @@ class Ui
     const Font *font_;
     ThemeHost themes_;
     ActionRegistry actions_;
+    std::vector<std::shared_ptr<const void>> retained_; // retainUntilRootReplaced ; déclaré avant root_ : détruit après lui
     std::unique_ptr<Widget> root_;
     std::unique_ptr<Widget> pendingRoot_;
     bool hasPendingRoot_ = false; // une demande en attente, même pour une racine nulle

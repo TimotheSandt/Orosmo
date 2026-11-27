@@ -2,6 +2,8 @@
 // Bibliothèques de test : tests/app/game_module/game.cpp construit en plusieurs versions (`bin/tests/test_game_<v><ext>`).
 #include <doctest/doctest.h>
 
+#include "support/result_support.hpp"
+
 #include "app/game_module/test_game.hpp"
 
 #include <orosmo/app/game_module.hpp>
@@ -285,14 +287,24 @@ TEST_SUITE("app/game_module")
     TEST_CASE("GameModule: a relative path that cannot be resolved (current directory removed) is kIo, not an exception")
     {
         // Windows refuse d'effacer le dossier courant : cas propre à POSIX.
-        const fs::path previous = fs::current_path();
-        const fs::path gone = core::system::executablePath().parent_path() / "game_module_tests" / "gone";
+        // Dossier propre à ce cas ; le dossier courant est remis même si une étape lève une exception (revue PR #37).
+        struct RestoreCurrentPath
+        {
+            fs::path previous = fs::current_path();
+            ~RestoreCurrentPath()
+            {
+                std::error_code ignored;
+                fs::current_path(previous, ignored);
+            }
+        } restore;
+        const fs::path gone = core::system::executablePath().parent_path() / "game_module_tests" / "gone-cwd";
+        fs::remove_all(gone);
         fs::create_directories(gone);
         fs::current_path(gone);
         fs::remove(gone);
         Host host;
         auto game = app::GameModule::load(host.settings("game" + std::string(platform::DynamicLibrary::extension())));
-        fs::current_path(previous);
+        fs::current_path(restore.previous);
         REQUIRE_FALSE(game.has_value());
         CHECK((game.error().code == ErrorCode::kIo));
     }
@@ -317,7 +329,7 @@ TEST_SUITE("app/game_module")
         CHECK(c.value == 4);
         CHECK(c.shutdowns == 1);
         game->stop(); // sans effet
-        CHECK((game->reload().error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(game->reload()) == ErrorCode::kInvalidArgument));
     }
 
     TEST_CASE("GameModule: a name already taken by the host is refused (kAlreadyExists) and the game does not start")
@@ -343,17 +355,15 @@ TEST_SUITE("app/game_module")
         REQUIRE(game.has_value());
         CHECK_FALSE(game->hotReloadable());
         CHECK(game->loadedPath().empty());
-        CHECK((game->reload().error().code == ErrorCode::kUnsupported));
+        CHECK((tests::errorOf(game->reload()) == ErrorCode::kUnsupported));
         host.simulation.run(3);
         CHECK(host.counter().value == 6);
         game->update(0.0); // `update` nul : sans effet
 
         // Sans registre d'actions : addAction refusé (kUnsupported) ; sans monde : refusé.
-        CHECK((app::GameModule::fromApi(&kWrongAbi, {.simulation = &host.simulation}).error().code ==
-               ErrorCode::kVersionMismatch));
-        CHECK((app::GameModule::fromApi(nullptr, {.simulation = &host.simulation}).error().code ==
-               ErrorCode::kInvalidArgument));
-        CHECK((app::GameModule::fromApi(&kStaticApi, {}).error().code == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(app::GameModule::fromApi(&kWrongAbi, {.simulation = &host.simulation})) == ErrorCode::kVersionMismatch));
+        CHECK((tests::errorOf(app::GameModule::fromApi(nullptr, {.simulation = &host.simulation})) == ErrorCode::kInvalidArgument));
+        CHECK((tests::errorOf(app::GameModule::fromApi(&kStaticApi, {})) == ErrorCode::kInvalidArgument));
     }
 }
 
@@ -444,6 +454,10 @@ template <bool kFail> bool moverChangedInit(app::GameContext *context)
     if constexpr (kFail)
     {
         context->world().create(); // annulé avec le reste
+        // Entrée du candidat (revue PR #37) : retirée avec lui, l'ancienne version ne la reçoit pas.
+        if (context->simulation() != nullptr &&
+            !context->simulation()->queueInput({.step = context->simulation()->stepIndex(), .name = "candidate", .data = {}}))
+            return false;
         return false;
     }
     return true;
@@ -452,6 +466,16 @@ template <bool kFail> bool moverChangedInit(app::GameContext *context)
 constexpr OrosmoGameApi kMoverV1{app::kGameAbiVersion, "mover v1", &moverV1Init, nullptr, nullptr, nullptr};
 constexpr OrosmoGameApi kMoverChanged{app::kGameAbiVersion, "mover changed", &moverChangedInit<false>, nullptr, nullptr, nullptr};
 constexpr OrosmoGameApi kMoverFails{app::kGameAbiVersion, "mover fails", &moverChangedInit<true>, nullptr, nullptr, nullptr};
+
+template <bool kInvalid> bool tuningInit(app::GameContext *context)
+{
+    scene::ComponentDesc desc = scene::describeComponent<CounterV3>("tuning");
+    if constexpr (kInvalid)
+        desc.defaultValue.erase(desc.defaultValue.begin() + 1, desc.defaultValue.end()); // pas resize : faux positif GCC 16 (MinGW)
+    return context->registerParams("tuning", std::move(desc), "tuning.json").has_value();
+}
+constexpr OrosmoGameApi kTuningValid{app::kGameAbiVersion, "tuning valid", &tuningInit<false>, nullptr, nullptr, nullptr};
+constexpr OrosmoGameApi kTuningInvalid{app::kGameAbiVersion, "tuning invalid", &tuningInit<true>, nullptr, nullptr, nullptr};
 
 struct TuningHost
 {
@@ -526,8 +550,12 @@ TEST_SUITE("app/game_module")
         const std::uint64_t entitiesBefore = world.entities().size();
 
         // Nouvelle version qui migre « Mover » puis échoue : monde remis (données, identifiant, entités), v1 active.
+        // Une entrée déjà en attente reste ; celle que l'init rejeté a mise en file est retirée (revue PR #37).
+        REQUIRE(host.simulation.queueInput({.step = host.simulation.stepIndex() + 1, .name = "host", .data = {}}).has_value());
         auto failed = game->replace(&kMoverFails);
         REQUIRE_FALSE(failed.has_value());
+        REQUIRE(host.simulation.pendingInputs().size() == 1);
+        CHECK(host.simulation.pendingInputs().front().name == "host");
         CHECK((failed.error().code == ErrorCode::kCancelled));
         CHECK(game->version() == 1);
         CHECK(game->failedReloads() == 1);
@@ -672,6 +700,33 @@ TEST_SUITE("app/game_module")
         CHECK(params->get().scale == 3.f);
         CHECK_FALSE(params->poll()); // rien de nouveau
 
+        // Fichier supprimé (revue PR #37) : erreur signalée, dernières valeurs gardées ; recréé : erreur effacée.
+        fs::remove(file);
+        CHECK_FALSE(params->poll());
+        CHECK(params->get().scale == 3.f);
+        REQUIRE(params->lastError().has_value());
+        CHECK((params->lastError()->code == ErrorCode::kIo));
+        writeFile(file, R"({"scale": 4})");
+        CHECK(params->poll());
+        CHECK(params->get().scale == 4.f);
+        CHECK_FALSE(params->lastError().has_value());
+
+        fs::remove_all(dir);
+    }
+
+    TEST_CASE("GameModule (GAME-05, revue PR #37): an invalid params description is refused at reload too, not reused")
+    {
+        const fs::path dir = core::system::executablePath().parent_path() / "game_module_tests" / "params-invalid";
+        fs::remove_all(dir);
+        fs::create_directories(dir);
+        Host host;
+        auto game = app::GameModule::fromApi(&kTuningValid, {.simulation = &host.simulation, .paramsDirectory = dir});
+        REQUIRE(game.has_value());
+        auto failed = game->replace(&kTuningInvalid); // même nom, chemin et disposition ; valeur par défaut d'un octet
+        REQUIRE_FALSE(failed.has_value());
+        CHECK((failed.error().code == ErrorCode::kCancelled));
+        CHECK(game->version() == 1);
+        REQUIRE(game->replace(&kTuningValid).has_value()); // une description valide reprend le même fichier
         fs::remove_all(dir);
     }
 
@@ -682,7 +737,7 @@ TEST_SUITE("app/game_module")
         Host host;
         auto game = app::GameModule::load(host.settings(folder.library));
         REQUIRE(game.has_value());
-        CHECK((game->replace(&kMoverV1).error().code == ErrorCode::kUnsupported));
+        CHECK((tests::errorOf(game->replace(&kMoverV1)) == ErrorCode::kUnsupported));
         folder.install("v2");
         REQUIRE(game->reload().has_value());
         CHECK(game->orphanComponents() == std::vector<std::string>{"V1Only"});

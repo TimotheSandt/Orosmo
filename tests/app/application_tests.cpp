@@ -260,6 +260,8 @@ TEST_SUITE("app/application")
         const auto b = pool.add(std::make_unique<int>(2));
         REQUIRE(a.valid());
         REQUIRE(b.valid());
+        REQUIRE(pool.get(a) != nullptr);
+        REQUIRE(pool.get(b) != nullptr);
         CHECK(*pool.get(a) == 1);
         CHECK(*pool.get(b) == 2);
         CHECK(pool.size() == 2);
@@ -270,6 +272,7 @@ TEST_SUITE("app/application")
         CHECK(c.index == a.index);
         CHECK(c.generation != a.generation);
         CHECK(pool.get(a) == nullptr);
+        REQUIRE(pool.get(c) != nullptr);
         CHECK(*pool.get(c) == 3);
         CHECK(pool.get(orosmo::core::Handle<int>{}) == nullptr);
         CHECK(pool.get(orosmo::core::Handle<int>{42, 1}) == nullptr);
@@ -279,6 +282,21 @@ TEST_SUITE("app/application")
         pool.clear();
         CHECK(pool.empty());
         CHECK(pool.get(b) == nullptr);
+
+        // Revue PR #37 : le déplacement transfère le compte ; la source redevient vide.
+        const auto d = pool.add(std::make_unique<int>(4));
+        app::ResourcePool<int> moved(std::move(pool));
+        CHECK(moved.size() == 1);
+        REQUIRE(moved.get(d) != nullptr);
+        CHECK(*moved.get(d) == 4);
+        CHECK(pool.size() == 0); // NOLINT(bugprone-use-after-move) : état documenté après déplacement
+        CHECK(pool.get(d) == nullptr);
+        (void)pool.add(std::make_unique<int>(5));
+        CHECK(pool.size() == 1);
+        app::ResourcePool<int> assigned;
+        assigned = std::move(moved);
+        CHECK(assigned.size() == 1);
+        CHECK(moved.size() == 0); // NOLINT(bugprone-use-after-move)
     }
 
     TEST_CASE("parseArguments: API, strict backend, headless, size, frames, capture (made absolute), help, errors")
@@ -359,9 +377,15 @@ TEST_SUITE("app/application")
         REQUIRE(mesh != nullptr);
         CHECK((mesh->mesh == orosmo::core::Handle<rd::Mesh>{3, 7}));
         CHECK((mesh->mode == app::DrawMode::kInstanced));
-        CHECK((copy.world().get(e, copyTypes->light)->type == rd::LightType::kSpot));
-        CHECK(copy.world().get(e, copyTypes->camera)->fovDegrees == doctest::Approx(45.0f));
-        CHECK(copy.world().get(e, copyTypes->animatedModel)->clip == 1);
+        const auto *light = copy.world().get(e, copyTypes->light);
+        const auto *camera = copy.world().get(e, copyTypes->camera);
+        const auto *animated = copy.world().get(e, copyTypes->animatedModel);
+        REQUIRE(light != nullptr);
+        REQUIRE(camera != nullptr);
+        REQUIRE(animated != nullptr);
+        CHECK((light->type == rd::LightType::kSpot));
+        CHECK(camera->fovDegrees == doctest::Approx(45.0f));
+        CHECK(animated->clip == 1);
     }
 }
 
@@ -554,6 +578,11 @@ TEST_SUITE("app/application-gpu")
             auto failed = a.frame();
             REQUIRE_FALSE(failed.has_value());
             CHECK(failed.error().message.find("test render failure") != std::string::npos);
+            // Revue PR #37 : l'image ouverte par l'échec est fermée ; un rappel valide fait de nouveau des images.
+            a.onRender([](app::Application &, app::RenderFrame &) -> orosmo::core::Result<> { return {}; });
+            auto again = a.frame();
+            INFO((again ? std::string() : again.error().message));
+            CHECK(again.has_value());
             CHECK(a.device().validationErrorCount() == 0);
         }
     }
@@ -604,7 +633,10 @@ TEST_SUITE("app/application-gpu")
             REQUIRE_FALSE(a.spawn(app::LightComponent{.direction = {-0.5f, -1.0f, -0.3f}}).isNull());
             std::vector<scn::Entity> cubes;
             for (int i = 0; i < 3; ++i)
+            {
                 cubes.push_back(a.spawn(app::MeshRenderer{.mesh = *cube, .mode = app::DrawMode::kSingle}, {.position = {-1.5 + 1.5 * i, 0.0, 0.0}}));
+                REQUIRE_FALSE(cubes.back().isNull());
+            }
             a.camera().setPosition({0.0f, 0.5f, 5.0f});
             a.camera().lookAt({0.0f, 0.0f, 0.0f});
 
@@ -615,7 +647,11 @@ TEST_SUITE("app/application-gpu")
             REQUIRE(single.has_value());
 
             for (const scn::Entity e : cubes)
-                a.world().get(e, a.components().mesh)->mode = app::DrawMode::kInstanced;
+            {
+                auto *renderer = a.world().get(e, a.components().mesh);
+                REQUIRE(renderer != nullptr);
+                renderer->mode = app::DrawMode::kInstanced;
+            }
             REQUIRE(a.frame().has_value());
             CHECK(a.sceneSystem().stats().meshDraws == 0);
             CHECK(a.sceneSystem().stats().instancedBatches == 1);
@@ -627,6 +663,7 @@ TEST_SUITE("app/application-gpu")
             // Poignée périmée : ignorée et comptée ; entité invisible : ni dessinée ni comptée.
             REQUIRE(a.resources().meshes.remove(*other));
             REQUIRE_FALSE(a.spawn(app::MeshRenderer{.mesh = *other}).isNull());
+            REQUIRE(a.world().get(cubes[0], a.components().mesh) != nullptr);
             a.world().get(cubes[0], a.components().mesh)->visible = false;
             REQUIRE(a.frame().has_value());
             CHECK(a.sceneSystem().stats().skipped == 1);
@@ -659,6 +696,55 @@ TEST_SUITE("app/application-gpu")
                 CHECK(stats.crowds == 0);
                 CHECK(stats.skipped == 4);
             }
+            CHECK(a.device().validationErrorCount() == 0);
+        }
+    }
+
+    TEST_CASE("Instanced draws (revue PR #37): a value copied from the mesh that changes is followed by the instance material")
+    {
+        for (const rhi::Backend backend : tests::backendsToRun())
+        {
+            CAPTURE(tests::backendName(backend));
+            auto settings = headlessSettings(backend);
+            settings.frames = 0;
+            auto application = createApp(settings);
+            app::Application &a = *application;
+            auto cube = a.addMesh(coloredCube());
+            REQUIRE(cube.has_value());
+            REQUIRE_FALSE(a.spawn(app::LightComponent{.direction = {-0.5f, -1.0f, -0.3f}}).isNull());
+            std::vector<scn::Entity> cubes;
+            for (int i = 0; i < 2; ++i)
+            {
+                cubes.push_back(a.spawn(app::MeshRenderer{.mesh = *cube, .mode = app::DrawMode::kInstanced}, {.position = {-0.8 + 1.6 * i, 0.0, 0.0}}));
+                REQUIRE_FALSE(cubes.back().isNull());
+            }
+            a.camera().setPosition({0.0f, 0.5f, 5.0f});
+            a.camera().lookAt({0.0f, 0.0f, 0.0f});
+            REQUIRE(a.frame().has_value()); // entrée d'instanciation créée (faces : kNone)
+            CHECK(a.sceneSystem().stats().instancedBatches == 1);
+            auto before = a.readOutput();
+            REQUIRE(before.has_value());
+
+            // Faces avant éliminées après le premier dessin instancié : le lot suit le maillage, comme un dessin seul.
+            rd::Mesh *mesh = a.resources().meshes.get(*cube);
+            REQUIRE(mesh != nullptr);
+            mesh->setCullMode(rhi::CullMode::kFront);
+            REQUIRE(a.frame().has_value());
+            CHECK(a.sceneSystem().stats().instancedBatches == 1);
+            auto instanced = a.readOutput();
+            REQUIRE(instanced.has_value());
+            for (const scn::Entity e : cubes)
+            {
+                auto *renderer = a.world().get(e, a.components().mesh);
+                REQUIRE(renderer != nullptr);
+                renderer->mode = app::DrawMode::kSingle;
+            }
+            REQUIRE(a.frame().has_value());
+            CHECK(a.sceneSystem().stats().meshDraws == 2);
+            auto single = a.readOutput();
+            REQUIRE(single.has_value());
+            CHECK(differingPixels(*before, *single, 8) > 0); // le changement se voit
+            CHECK(differingPixels(*single, *instanced, 2) == 0);
             CHECK(a.device().validationErrorCount() == 0);
         }
     }

@@ -203,6 +203,12 @@ core::Result<RenderFeature *> SceneRenderer::addFeature(std::unique_ptr<RenderFe
     {
         return makeError(ErrorCode::kInvalidArgument, "SceneRenderer::addFeature: null feature");
     }
+    if (frameOpen_ || executing_)
+    {
+        // Revue PR #37 : les définitions des programmes sont figées à beginFrame ; un plugin ajouté ensuite (forward+) préparerait
+        // des données que les dessins de l'image ne liraient pas.
+        return makeError(ErrorCode::kBusy, "SceneRenderer::addFeature: refused during a frame (between beginFrame and the end of endFrame)");
+    }
     if (!feature->supports(device_.capabilities()))
     {
         return makeError(ErrorCode::kUnsupported, "SceneRenderer::addFeature: '" + feature->name() + "' is not supported by this device");
@@ -360,6 +366,13 @@ void SceneRenderer::addPostProcessPass(std::unique_ptr<IPostProcessPass> pass)
 
 void SceneRenderer::removePostProcessPass(const std::string &name)
 {
+    if (executing_)
+    {
+        // Demandé par une passe du graphe en cours (revue PR #37) : détruire le post-traitement (ou le graphe) détruirait la passe
+        // qui s'exécute ; retrait appliqué à la fin de l'image (EndOfFrame).
+        pendingPostRemovals_.push_back(name);
+        return;
+    }
     if (std::erase_if(postProcessPasses_, [&](const std::unique_ptr<IPostProcessPass> &p) { return p && p->name() == name; }) > 0)
     {
         ++pluginsRevision_;
@@ -647,6 +660,7 @@ core::Result<> SceneRenderer::record(Mesh &mesh, const ShaderProgram &drawProgra
     }
     draw.lights = &activeLights(); // les lumières choisies au moment du dessin, comme avant l'enregistrement différé
     draw.textureGroup = mesh.textureGroup();
+    draw.material = mesh.material(); // revue PR #37 : un setMaterial avant endFrame ne détruit pas le groupe de CE dessin
     draw.modelOffset = modelOffset;
     draw.vertexBuffer = mesh.vertexBuffer();
     draw.instanceBuffer = mesh.instanced() ? mesh.instanceBuffer() : rhi::BufferHandle{};
@@ -1383,10 +1397,21 @@ core::Result<> SceneRenderer::endFrame(rhi::TextureHandle output)
     auto desc = device_.textureDesc(output);
     if (!desc)
     {
-        // L'image ouverte est fermée comme par un endFrame qui échoue : les dessins ne passent pas à l'image suivante.
-        return endFrame(UpscaleTarget{output, rhi::Format::kRGBA8Unorm, {}});
+        // Texture inconnue : passée nulle, refusée par endFrame quel que soit le graphe (revue PR #37), qui ferme l'image ouverte
+        // comme un endFrame qui échoue : les dessins ne passent pas à l'image suivante.
+        return endFrame(UpscaleTarget{rhi::TextureHandle{}, rhi::Format::kRGBA8Unorm, {}});
     }
     return endFrame(UpscaleTarget{output, desc->format, {desc->size.width, desc->size.height}});
+}
+
+void SceneRenderer::abortFrame()
+{
+    if (!frameOpen_)
+    {
+        return;
+    }
+    // Sortie nulle : endFrame ferme l'image (EndOfFrame) et la refuse avant toute mise à jour ou exécution ; ce refus est attendu.
+    [[maybe_unused]] const core::Result<> refused = endFrame(UpscaleTarget{});
 }
 
 core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
@@ -1427,6 +1452,10 @@ core::Result<> SceneRenderer::endFrame(const UpscaleTarget &output)
             for (const std::string &name : std::exchange(self.pendingRemovals_, {}))
             {
                 self.removeFeature(name); // retraits demandés pendant l'image
+            }
+            for (const std::string &name : std::exchange(self.pendingPostRemovals_, {}))
+            {
+                self.removePostProcessPass(name); // retraits demandés pendant l'exécution du graphe
             }
         }
     } endOfFrame{*this};

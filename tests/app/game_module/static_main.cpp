@@ -53,7 +53,7 @@ int main()
     viewLinked = viewLinked && interface.root() == nullptr;
 
     game->stop();
-    const bool unregistered = simulation.systemOrder().empty() && !actions.contains("game.v1");
+    const bool unregistered = simulation.systemOrder().empty() && !actions.contains("game.v1") && !actions.contains("game.version");
 
     if (value != 3 || frames != 1 || !reloadRefused || !actionsRegistered || !unregistered || !viewLinked)
     {
