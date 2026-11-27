@@ -29,6 +29,7 @@ class CountingDevice final : public orosmo::rhi::Device
 
     using Result0 = orosmo::rhi::Result<>;
     const orosmo::rhi::Capabilities &capabilities() const noexcept override { return inner_.capabilities(); }
+    std::uint32_t framesInFlight() const noexcept override { return inner_.framesInFlight(); }
     orosmo::rhi::Result<orosmo::rhi::BufferHandle> createBuffer(const orosmo::rhi::BufferDesc &desc, std::span<const std::byte> initial) override
     {
         auto r = inner_.createBuffer(desc, initial);

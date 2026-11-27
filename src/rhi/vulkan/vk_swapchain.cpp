@@ -215,7 +215,7 @@ Result<TextureHandle> VulkanDevice::beginFrame()
     // Attendre d'abord l'image qui occupait cet emplacement, puis libérer : une ressource détruite pendant l'enregistrement de
     // cette image (encodeur pas encore soumis, donc pas couverte par la série notée à la destruction) n'est libérée qu'une
     // fois l'image terminée (sinon : VUID-vkDestroyQueryPool-queryPool-00793 quand les minuteries GPU sont coupées).
-    if (auto r = waitSerial(frameSerials_[frame_ % kFramesInFlight]); !r)
+    if (auto r = waitSerial(frameSerials_[frame_ % framesInFlight_]); !r)
         return std::unexpected(r.error());
     collectReleases();
     // Image de la chaîne déjà acquise par un beginFrame sans present (image sautée par l'application) : c'est encore l'image
@@ -525,7 +525,7 @@ static Result<> buildSwapchain(VulkanDevice &device, Swapchain &sc, bool vsync, 
     };
     if (auto r = createSemaphores(renderDone, images.size()); !r)
         return fail(r.error());
-    if (auto r = createSemaphores(acquired, kFramesInFlight + 1); !r)
+    if (auto r = createSemaphores(acquired, device.framesInFlight() + 1); !r)
         return fail(r.error());
 
     sc.handle = created;
@@ -626,7 +626,7 @@ Result<> VulkanDevice::present()
                 return abandonChain(std::unexpected(serial.error())); // non soumis : le tampon retourne à la réserve
             cb = VK_NULL_HANDLE;                                    // soumis : `submitRaw` l'a mis en retrait avec sa série
             ++counters_.copiedPresents;
-            frameSerials_[frame_ % kFramesInFlight] = *serial;
+            frameSerials_[frame_ % framesInFlight_] = *serial;
             ++frame_;
             rotateCommandPool(); // une réserve de tampons de commandes par image en vol
 
@@ -641,7 +641,7 @@ Result<> VulkanDevice::present()
                 sc.dirty = true;
             else if (shown != VK_SUCCESS)
                 return abandonChain(fromVk(shown, "vkQueuePresentKHR"));
-            else if (!sc.retired.empty() && ++sc.retiredPresents >= sc.images.size() + kFramesInFlight)
+            else if (!sc.retired.empty() && ++sc.retiredPresents >= sc.images.size() + framesInFlight_)
                 destroySemaphores(*this, sc.retired); // assez de présentations depuis la reconstruction : le moteur n'attend plus ces sémaphores
             return {};
         }
@@ -650,7 +650,7 @@ Result<> VulkanDevice::present()
     }
     if (auto r = flushPending(); !r)
         return r;
-    frameSerials_[frame_ % kFramesInFlight] = lastSubmitted_;
+    frameSerials_[frame_ % framesInFlight_] = lastSubmitted_;
     ++frame_;
     rotateCommandPool(); // une réserve de tampons de commandes par image en vol
     return {};
@@ -694,7 +694,7 @@ Result<> VulkanDevice::presentDirect()
     }
     restoreOffscreenBackbuffer();
     ++counters_.directPresents;
-    frameSerials_[frame_ % kFramesInFlight] = *serial;
+    frameSerials_[frame_ % framesInFlight_] = *serial;
     ++frame_;
     rotateCommandPool(); // une réserve de tampons de commandes par image en vol
 
@@ -712,7 +712,7 @@ Result<> VulkanDevice::presentDirect()
         sc.dirty = true;
         return fromVk(shown, "vkQueuePresentKHR");
     }
-    else if (!sc.retired.empty() && ++sc.retiredPresents >= sc.images.size() + kFramesInFlight)
+    else if (!sc.retired.empty() && ++sc.retiredPresents >= sc.images.size() + framesInFlight_)
         destroySemaphores(*this, sc.retired);
     return {};
 }

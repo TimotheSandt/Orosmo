@@ -35,6 +35,12 @@ Result<> prepareWindowHints(const DeviceDesc &desc)
 
 Result<std::unique_ptr<Device>> createDevice(const DeviceDesc &desc)
 {
+    if (desc.framesInFlight == 0 || desc.framesInFlight > kMaxFramesInFlight)
+    {
+        return orosmo::core::makeError(orosmo::core::ErrorCode::kInvalidArgument, "createDevice: framesInFlight must be between 1 and " +
+                                                                                       std::to_string(kMaxFramesInFlight) + " (got " +
+                                                                                       std::to_string(desc.framesInFlight) + ")");
+    }
     switch (desc.backend)
     {
         case Backend::kOpenGL: return gl::createGlDevice(desc);

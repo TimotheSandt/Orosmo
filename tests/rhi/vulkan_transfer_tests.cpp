@@ -347,9 +347,9 @@ TEST_SUITE("rhi/vulkan/transfer")
             REQUIRE(gpu->present().has_value());
         }
         const vk::TransferCounters after = device.transferCounters();
-        CHECK(after.commandPools <= vk::kFramesInFlight + 2);
-        CHECK(after.commandBuffersAllocated <= (vk::kFramesInFlight + 2) * 4);
-        CHECK(after.commandPoolResets - before.commandPoolResets >= kFrames - (vk::kFramesInFlight + 2)); // une remise à zéro par image
+        CHECK(after.commandPools <= gpu->framesInFlight() + 2);
+        CHECK(after.commandBuffersAllocated <= (gpu->framesInFlight() + 2) * 4);
+        CHECK(after.commandPoolResets - before.commandPoolResets >= kFrames - (gpu->framesInFlight() + 2)); // une remise à zéro par image
         gpu->waitIdle();
         gpu.expectNoValidationErrors();
     }
