@@ -151,7 +151,7 @@ Variables fournies par `engine.mk` :
 | `ENGINE_VCPKG_TRIPLET` | `x64-linux`, `arm64-linux`, `x64-osx`, `arm64-osx`, `x64-mingw-static` ; modifiable avant l'inclusion |
 | `ENGINE_CXXFLAGS` | options de compilation du `BUILD_TYPE` choisi |
 | `ENGINE_INCLUDES` | tous les `-I` des en-têtes du moteur, des dépendances et de `Generated/` |
-| `ENGINE_LIBS` | archives : `libui`, `libcore`, `libplatform`, `librhi`, `librenderer`, `libassets`, `libanim`, `libthirdparty` |
+| `ENGINE_LIBS` | archives : `libui`, `libcore`, `libplatform`, `librhi`, `librenderer`, `libassets`, `libanim`, `libscene`, `libthirdparty` |
 | `ENGINE_LINK_LIBS` | `ENGINE_LIBS` entre `--start-group` et `--end-group` : à utiliser à l'édition de liens |
 | `ENGINE_LDFLAGS` | `-L` et `-l` des dépendances (`ENGINE_DEPS_DIR`, KTX, meshoptimizer, GLFW, shaderc, `<stacktrace>`…) et des bibliothèques du système (OpenGL, X11, chargeur Vulkan par volk) |
 | `ENGINE_DEPS_DIR` | bibliothèques tierces : `$(ENGINE_DIR)/deps` d'un paquet ; `$(ENGINE_DIR)/vcpkg_installed/<triplet>` sans `deps/` (dépôt du moteur, paquets plus anciens) ; `<ENGINE_VCPKG_ROOT>/<triplet>` si `ENGINE_VCPKG_ROOT` est donnée |

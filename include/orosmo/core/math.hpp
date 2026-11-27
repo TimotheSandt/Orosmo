@@ -19,6 +19,7 @@ using Quat = glm::quat;
 
 using DVec2 = glm::dvec2;
 using DVec3 = glm::dvec3;
+using DMat3 = glm::dmat3;
 using DMat4 = glm::dmat4;
 using DQuat = glm::dquat;
 
