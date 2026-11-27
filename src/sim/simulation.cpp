@@ -480,7 +480,16 @@ Result<scene::SceneLoadReport> Simulation::loadState(const Json &state, const sc
     auto report = scene::loadScene(world, data["scene"], migrations);
     if (!report)
         return std::unexpected(report.error());
-    std::stable_sort(pending->begin(), pending->end(), [](const Input &a, const Input &b) { return a.step < b.step; });
+    // Tri stable par pas, par insertion (comme `insertPending`) : pas de std::stable_sort, dont le tampon temporaire de
+    // libstdc++ 13 (`get_temporary_buffer`) est signalé par ASan (alloc-dealloc-mismatch).
+    std::vector<Input> sorted;
+    sorted.reserve(pending->size());
+    for (Input &input : *pending)
+    {
+        auto at = std::upper_bound(sorted.begin(), sorted.end(), input.step, [](std::uint64_t s, const Input &x) { return s < x.step; });
+        sorted.insert(at, std::move(input));
+    }
+    *pending = std::move(sorted);
     restore(Snapshot{std::move(world), core::Random::fromState(*rngState, *rngIncrement), *step, std::move(*pending)});
     // Autre partie : le journal d'avant ne la décrit pas. Un rejeu ne peut commencer qu'au pas chargé.
     log_.clear();
