@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <format>
 #include <string>
 #include <vector>
 
@@ -58,10 +59,12 @@ void migrateComponentValue(const ComponentDesc &from, const void *src, const Com
     // Restauration : un champ à la fois, dans une copie, pour qu'un champ illisible ne laisse pas une valeur à moitié écrite.
     for (auto it = saved.begin(); it != saved.end(); ++it)
     {
-        const std::string path = to.name + "." + it.key();
+        // std::format plutôt que des « + » de chaînes : GCC 16 (MinGW) voit un faux débordement dans la concaténation
+        // inlinée (-Werror=restrict, -Werror=alloc-size-larger-than).
+        const std::string path = std::format("{}.{}", to.name, it.key());
         if (std::ranges::find(to.fields, it.key(), &core::FieldDesc::name) == to.fields.end())
         {
-            warnOnce(warnings, path + ": field removed, value dropped");
+            warnOnce(warnings, std::format("{}: field removed, value dropped", path));
             continue;
         }
         if (to.size != 0)
@@ -71,10 +74,13 @@ void migrateComponentValue(const ComponentDesc &from, const void *src, const Com
         std::vector<std::string> ignored;
         if (auto decoded = detail::decodeFields(to.fields, attempt.data(), single, to.name, ignored); !decoded)
         {
-            warnOnce(warnings, path + ": type changed, value not convertible (" + decoded.error().message +
-                                   "), default value kept");
+            warnOnce(warnings,
+                     std::format("{}: type changed, value not convertible ({}), default value kept", path, decoded.error().message));
             continue;
         }
+        // Sous-champ retiré (« Type.champ.sous: unknown field ignored ») : valeur perdue, signalée comme au premier niveau.
+        for (std::string &message : ignored)
+            warnOnce(warnings, std::move(message));
         if (to.size != 0)
             std::memcpy(out, attempt.data(), to.size);
     }

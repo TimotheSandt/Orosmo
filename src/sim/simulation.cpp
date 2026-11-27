@@ -144,7 +144,7 @@ Result<Replay> replayFromJson(const Json &json)
 
 Simulation::Simulation(SimulationSettings settings)
     : settings_(settings), dt_(std::chrono::duration<double>(settings.step).count()), stepper_(settings.step, settings.maxStepsPerFrame),
-      random_(settings.seed, settings.stream)
+      random_(settings.seed, settings.stream), scratch_(settings.scratchBytes)
 {
 }
 
@@ -225,6 +225,10 @@ struct SteppingScope
 };
 } // namespace
 
+void StepContext::emit(std::string name) { events.push_back(Event{step, std::move(name), core::Json{}}); }
+
+void StepContext::emit(std::string name, core::Json data) { events.push_back(Event{step, std::move(name), std::move(data)}); }
+
 bool Simulation::refuseNested(const char *what) const
 {
     if (!stepping_)
@@ -245,7 +249,8 @@ void Simulation::step()
     current_.assign(std::make_move_iterator(pending_.begin()), std::make_move_iterator(pending_.begin() + static_cast<std::ptrdiff_t>(due)));
     pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(due));
 
-    StepContext context{world_, random_, step_, dt_, {current_.data(), current_.size()}};
+    scratch_.reset();
+    StepContext context{world_, random_, step_, dt_, {current_.data(), current_.size()}, scratch_, events_};
     for (System &system : systems_)
         system.run(context);
     world_.updateTransforms();
@@ -288,6 +293,14 @@ void Simulation::restore(const Snapshot &snapshot)
     pending_ = snapshot.pending;
     std::erase_if(log_, [&](const Input &input) { return input.step >= step_; });
     stepper_ = core::FixedStepper(settings_.step, settings_.maxStepsPerFrame);
+    events_.clear();
+}
+
+std::vector<Event> Simulation::takeEvents()
+{
+    std::vector<Event> out;
+    out.swap(events_);
+    return out;
 }
 
 Json Simulation::saveState() const

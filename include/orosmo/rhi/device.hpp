@@ -83,6 +83,12 @@ struct SurfaceDesc
     Extent2D size{1, 1}; // taille du backbuffer hors écran ; ignorée pour une fenêtre (taille du framebuffer de la fenêtre)
 };
 
+// A61 G : images que le processeur peut préparer d'avance sur le GPU (docs/03 §3). Quand `beginFrame` de l'image k rend la
+// main, l'image k - framesInFlight est terminée par le GPU ; une ressource détruite pendant l'image k est libérée après
+// framesInFlight présentations (`present`). Plus d'images : moins d'attente du processeur, une image de latence en plus.
+inline constexpr std::uint32_t kDefaultFramesInFlight = 2;
+inline constexpr std::uint32_t kMaxFramesInFlight = 3;
+
 struct DeviceDesc
 {
     Backend backend = Backend::kOpenGL;
@@ -93,6 +99,8 @@ struct DeviceDesc
     // en moins par image. Peut faire scintiller l'image (interface absente, zones noires) à très haute cadence sans vsync sur
     // certains compositeurs (constaté : COSMIC + Mesa ANV à ~1000 FPS, docs/GAPS.md). Sans effet sur OpenGL et hors écran.
     bool directPresentation = true;
+    // A61 G : de 1 à kMaxFramesInFlight ; une autre valeur est refusée par `createDevice` (kInvalidArgument).
+    std::uint32_t framesInFlight = kDefaultFramesInFlight;
     std::string appName = "engine";
 };
 
@@ -115,6 +123,9 @@ class Device
     virtual ~Device() = default;
 
     virtual const Capabilities &capabilities() const noexcept = 0;
+    // A61 G : images en vol de ce périphérique (DeviceDesc::framesInFlight). Les anneaux par image du renderer en ont au moins
+    // autant de zones.
+    virtual std::uint32_t framesInFlight() const noexcept = 0;
 
     virtual Result<BufferHandle> createBuffer(const BufferDesc &desc, std::span<const std::byte> initial = {}) = 0;
     virtual Result<TextureHandle> createTexture(const TextureDesc &desc) = 0;

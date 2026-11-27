@@ -469,3 +469,18 @@ TEST_CASE("sim : StepContext::inputs, vue des entrées du pas (type léger de si
     CHECK(seen == 2);
     CHECK(names == "ab");
 }
+
+TEST_CASE("sim : StepContext::emit sans charge (forme de l'en-tête léger) et avec charge")
+{
+    Simulation sim;
+    REQUIRE(sim.addSystem({"emit", Phase::kUpdate, 0, [](StepContext &ctx) {
+                               ctx.emit("bare");
+                               ctx.emit("full", core::Json{{"v", 1}});
+                           }}));
+    sim.step();
+    const auto events = sim.takeEvents();
+    REQUIRE(events.size() == 2);
+    CHECK(events[0].name == "bare");
+    CHECK(events[0].data.is_null());
+    CHECK(events[1].data["v"] == 1);
+}

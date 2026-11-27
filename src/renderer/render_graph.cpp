@@ -124,6 +124,34 @@ RgBuffer RenderGraph::importBuffer(std::string name, rhi::BufferHandle buffer, c
     return {static_cast<std::uint32_t>(buffers_.size() - 1)};
 }
 
+core::Result<> RenderGraph::setImportedTexture(RgTexture texture, rhi::TextureHandle handle)
+{
+    if (!texture.valid() || texture.index >= textures_.size() || !textures_[texture.index].imported)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "RenderGraph::setImportedTexture: not an imported texture of this graph");
+    }
+    if (handle.isNull())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "RenderGraph::setImportedTexture: null texture for '" + textures_[texture.index].name + "'");
+    }
+    textures_[texture.index].handle = handle;
+    return {};
+}
+
+core::Result<> RenderGraph::setImportedBuffer(RgBuffer buffer, rhi::BufferHandle handle)
+{
+    if (!buffer.valid() || buffer.index >= buffers_.size() || !buffers_[buffer.index].imported)
+    {
+        return makeError(ErrorCode::kInvalidArgument, "RenderGraph::setImportedBuffer: not an imported buffer of this graph");
+    }
+    if (handle.isNull())
+    {
+        return makeError(ErrorCode::kInvalidArgument, "RenderGraph::setImportedBuffer: null buffer for '" + buffers_[buffer.index].name + "'");
+    }
+    buffers_[buffer.index].handle = handle;
+    return {};
+}
+
 RgTexture RenderGraph::createTexture(std::string name, const RgTextureDesc &desc)
 {
     textures_.push_back({.name = std::move(name), .desc = desc, .imported = false, .handle = {}});
@@ -551,6 +579,7 @@ core::Result<> RenderGraph::compile()
         }
     }
     compiled_ = true;
+    ++compileCount_;
     return {};
 }
 

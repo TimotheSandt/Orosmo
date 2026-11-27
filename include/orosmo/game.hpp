@@ -4,7 +4,8 @@
 //   - interface C avec le moteur (`OrosmoGameApi`, `OROSMO_GAME_EXPORT`, `app::kGameAbiVersion`) ;
 //   - contexte (`app::GameContext` : composants, systèmes et actions enregistrés par nom) ;
 //   - monde et composants (`scene::World`, `scene::ComponentType`, `Transform`), réflexion (`core::Reflect`) ;
-//   - systèmes (`sim::SystemDesc`, `sim::StepContext`, `sim::Phase`), générateur `core::Random` ;
+//   - systèmes (`sim::SystemDesc`, `sim::StepContext`, `sim::Phase`), générateur `core::Random`, `ctx.emit(nom)` (un
+//     événement avec charge JSON demande `sim/simulation.hpp`) ;
 //   - types mathématiques (`core::Vec3`, `core::Quat`…) sans la bibliothèque de fonctions de glm.
 //
 // Il N'inclut PAS : le rendu (`renderer`, `rhi`), la plateforme, l'interface (`ui`), la boucle de simulation

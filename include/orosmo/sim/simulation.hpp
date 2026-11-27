@@ -16,11 +16,16 @@
 // Déterminisme (règle 9) : même graine, mêmes systèmes, mêmes entrées => même état, sur toutes les plateformes, à condition
 // que les systèmes n'utilisent ni horloge, ni `rand()`, ni fonction transcendante de la bibliothèque C (`sin`, `exp`… diffèrent
 // entre glibc, macOS et MinGW) et soient compilés avec `-ffp-contract=off` (`mk/engine.mk`, `tools/engine-sdk/engine.mk`).
-// Le seul hasard est `StepContext::random`. Thread : un propriétaire ; le thread de simulation et l'instantané en double
-// tampon lu par le rendu viennent avec le lot L4 (le `Snapshot` d'ici en est la base).
+// Le seul hasard est `StepContext::random`. Thread : un propriétaire. Pour faire tourner la boucle sur un thread dédié
+// (instantané immuable lu par le rendu, entrées et événements par files sans verrou) : `simulation_thread.hpp` (lot L4).
+//   - Événements : un système appelle `ctx.emit(nom, données)` ; le propriétaire les reprend par `takeEvents()` (en mode
+//     thread, ils passent au rendu par une `core::SpscQueue`). Ils ne font pas partie de l'état (ni capture ni empreinte).
+//   - Mémoire temporaire : `ctx.scratch`, une arène propre à la simulation (donc au thread qui la fait tourner), remise à
+//     zéro au début de chaque pas (`SimulationSettings::scratchBytes`).
 #pragma once
 
 #include <orosmo/core/error.hpp>
+#include <orosmo/core/memory.hpp>
 #include <orosmo/core/random.hpp>
 #include <orosmo/core/serialization.hpp>
 #include <orosmo/core/time.hpp>
@@ -48,12 +53,23 @@ struct Input
     friend bool operator==(const Input &, const Input &) = default;
 };
 
+// Événement émis par un système pendant un pas (son, effet, message pour l'interface) : sortie de la simulation, lue par le
+// rendu ou le jeu. `step` : pas qui l'a émis.
+struct Event
+{
+    std::uint64_t step = 0;
+    std::string name;
+    core::Json data;
+    friend bool operator==(const Event &, const Event &) = default;
+};
+
 struct SimulationSettings
 {
     core::Nanoseconds step{16'666'667}; // 60 Hz
     int maxStepsPerFrame = 8;           // anti « spirale de la mort » (FixedStepper)
     std::uint64_t seed = 0;
     std::uint64_t stream = core::Random::kDefaultStream;
+    std::size_t scratchBytes = 64u * 1024u; // taille de `StepContext::scratch`
 };
 
 struct Snapshot
@@ -119,10 +135,16 @@ class Simulation
     // Nombre de pas joués = numéro du prochain pas.
     std::uint64_t stepIndex() const noexcept { return step_; }
 
+    // ── Événements ────────────────────────────────────────────────────────────
+    // Événements émis depuis la dernière reprise, dans l'ordre d'émission ; `takeEvents` les rend et vide la liste.
+    const std::vector<Event> &events() const noexcept { return events_; }
+    std::vector<Event> takeEvents();
+    const core::ArenaAllocator &scratch() const noexcept { return scratch_; }
+
     // ── Capture et restauration ───────────────────────────────────────────────
     Snapshot capture() const;
     // Remet l'état capturé (monde, générateur, pas, entrées en attente) ; le journal des entrées garde celles d'avant ce pas ;
-    // le temps accumulé par `advance` repart de zéro. Les systèmes ne font pas partie de l'état (enregistrés par le jeu).
+    // le temps accumulé par `advance` repart de zéro ; les événements non repris sont abandonnés. Les systèmes ne font pas partie de l'état (enregistrés par le jeu).
     void restore(const Snapshot &snapshot);
     // État en JSON : {"version", "data": {"step", "random": {"state", "increment"}, "pending": [...], "scene": <scène>}}.
     core::Json saveState() const;
@@ -164,6 +186,8 @@ class Simulation
     std::vector<Input> log_;
     std::uint64_t logStart_ = 0; // premier pas couvert par log_
     std::vector<Input> current_;
+    std::vector<Event> events_;
+    core::ArenaAllocator scratch_;
     bool stepping_ = false;
 };
 

@@ -165,6 +165,7 @@ void applyWindowHints(const DeviceDesc &desc)
 Result<> GlDevice::init(const DeviceDesc &desc)
 {
     windowed_ = desc.surface.nativeWindow != nullptr;
+    framesInFlight_ = std::clamp(desc.framesInFlight, 1u, kMaxFramesInFlight); // createDevice a refusé les autres valeurs
     backbufferSize_ = {std::max(desc.surface.size.width, 1u), std::max(desc.surface.size.height, 1u)};
 
     if (windowed_)
@@ -419,13 +420,13 @@ void GlDevice::flushReleases(bool all)
         pending_.clear();
         return;
     }
-    if (frame_ < kFramesInFlight)
+    if (frame_ < framesInFlight_)
     {
         return;
     }
-    // Images dont les ressources peuvent partir : celles qui ont au moins kFramesInFlight images présentées après elles. Leur
+    // Images dont les ressources peuvent partir : celles qui ont au moins framesInFlight_ images présentées après elles. Leur
     // clôture est attendue (normalement déjà franchie : c'est la limite d'avance du processeur sur le GPU).
-    const std::uint64_t retired = frame_ - kFramesInFlight;
+    const std::uint64_t retired = frame_ - framesInFlight_;
     std::erase_if(fences_,
                   [&](const FrameFence &f)
                   {

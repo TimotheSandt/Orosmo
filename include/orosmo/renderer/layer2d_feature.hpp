@@ -61,6 +61,8 @@ class Layer2DFeature final : public RenderFeature
     Layer2DMode mode() const noexcept { return mode_; }
     core::Result<> prepare(const FrameData &frame) override;
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
+    // A61 C : mode, et en kTexture la texture et sa taille (le graphe est reconstruit quand elles changent).
+    std::optional<std::uint64_t> passSignature() const override;
 
     // Dessinateur du plugin : `material(texture)`, `draw(Sprite)`, formes. Les dépôts se font après `begin`.
     Renderer2D &renderer() noexcept { return *renderer_; }

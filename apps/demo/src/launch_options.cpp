@@ -426,6 +426,23 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.directPresentation = equalsIgnoreCase(*value, "on");
         }
+        else if (matchOption("--frames-in-flight", value))
+        {
+            const auto count = value ? parseUnsigned(*value, orosmo::rhi::kMaxFramesInFlight) : std::nullopt;
+            if (!count || *count == 0)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --frames-in-flight (1 to 3): " + value.value_or(""));
+            }
+            options.framesInFlight = *count;
+        }
+        else if (matchOption("--graph-cache", value))
+        {
+            if (!value || (!equalsIgnoreCase(*value, "on") && !equalsIgnoreCase(*value, "off")))
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --graph-cache (expected on|off): " + value.value_or(""));
+            }
+            options.graphCache = equalsIgnoreCase(*value, "on");
+        }
         else if (matchOption("--gpu-timings", value))
         {
             if (!value)
@@ -785,6 +802,7 @@ void printUsage(std::ostream &out)
         << "              [--shadows off|on] [--shadow-quality low|medium|high] [--transparent-shadow none|full|masked|dithered] [--scene default|mixed|anim] [--lighting forward|forwardplus] [--lights N] [--post none|hdr|bloom|full]\n"
         << "              [--aa none|fxaa|smaa|taa]\n"
         << "              [--headless] [--vsync [on|off]] [--fps-limit N] [--direct-present on|off] [--gpu-timings auto|on|off]\n"
+        << "              [--frames-in-flight 1|2|3] [--graph-cache on|off]\n"
         << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>] [--focus <id>]]\n"
         << "              [--debug-tools] [--debug-tab console|widgets|entities|profiler]\n"
         << "              [--sim-agents N [--seed S] [--sim-steps K]] [--help]\n";
@@ -804,6 +822,8 @@ void printUsage(std::ostream &out)
     out << "          without vsync on some compositors (UI missing, black areas). No effect with OpenGL or --headless.\n";
     out << "GPU timers: --gpu-timings auto (default) only measures GPU times while the HUD shows them (levels full and graph);\n";
     out << "          on / off force them (tools that read the 'Perf: RenderGraph/...' lines use on).\n";
+    out << "Frames  : --frames-in-flight 1|2|3 (default 2) sets how many frames the CPU may prepare ahead of the GPU; --graph-cache\n";
+    out << "          on (default) keeps the render graph between frames while plugins, targets and sizes stay the same, off rebuilds it.\n";
     out << "HUD     : --hud sets the performance panel shown with --ui hud: off (nothing), fps (FPS only), full (default: every\n";
     out << "          measurement), graph (full + CPU/GPU frame time history in the bottom right corner). Ctrl+F cycles the levels.\n";
     out << "Tools   : F12 (or --debug-tools) opens the engine debug tools: console (log, commands: help, hud, camera),\n";

@@ -5,8 +5,11 @@
 // entrées (`Input`, charge JSON) reste dans `sim/simulation.hpp` : un système qui lit `StepContext::inputs` l'inclut.
 #pragma once
 
+#include <orosmo/core/memory.hpp>
 #include <orosmo/core/random.hpp>
 #include <orosmo/scene/world.hpp>
+
+#include <nlohmann/json_fwd.hpp> // déclaration seule : la charge d'un événement ne coûte rien ici
 
 #include <cstddef>
 #include <cstdint>
@@ -15,6 +18,12 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
+
+namespace orosmo::core
+{
+using Json = nlohmann::json; // le même alias que core/serialization.hpp
+} // namespace orosmo::core
 
 namespace orosmo::sim
 {
@@ -29,6 +38,7 @@ std::string_view phaseName(Phase phase) noexcept;
 std::optional<Phase> parsePhase(std::string_view name) noexcept;
 
 struct Input; // sim/simulation.hpp
+struct Event; // sim/simulation.hpp
 
 // Vue en lecture sur un tableau contigu, utilisable avec un type encore incomplet (`std::span` exige un type complet) : les
 // fonctions membres ne sont instanciées qu'à l'usage, là où le type est complet. `for (const Input &i : ctx.inputs)`.
@@ -55,9 +65,16 @@ struct StepContext
 {
     scene::World &world;
     core::Random &random;
-    std::uint64_t step;             // numéro du pas joué (0 pour le premier)
-    double dt;                      // durée d'un pas en secondes
-    ConstView<Input> inputs;        // entrées de ce pas, dans l'ordre d'ajout (type complet : sim/simulation.hpp)
+    std::uint64_t step;          // numéro du pas joué (0 pour le premier)
+    double dt;                   // durée d'un pas en secondes
+    ConstView<Input> inputs;     // entrées de ce pas, dans l'ordre d'ajout (type complet : sim/simulation.hpp)
+    core::ArenaAllocator &scratch; // mémoire temporaire du pas (types trivialement destructibles), vidée au pas suivant
+    std::vector<Event> &events;  // événements émis par ce pas et les précédents non encore repris (type : sim/simulation.hpp)
+
+    // Ajoute un événement daté de ce pas. La forme avec charge demande `nlohmann/json` complet chez l'appelant
+    // (sim/simulation.hpp). Définies dans le moteur (src/sim/simulation.cpp).
+    void emit(std::string name);
+    void emit(std::string name, core::Json data);
 };
 
 using SystemFn = std::function<void(StepContext &)>;

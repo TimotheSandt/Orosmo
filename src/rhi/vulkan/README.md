@@ -31,7 +31,7 @@ Seul endroit (avec `src/rhi/opengl/`) où existent `Vk*`, `vk*`, volk et VMA. M�
 
 Un seul sémaphore à chronologie ; chaque soumission le fait croître de 1 (`Serial`). `destroy(handle)` retire le handle tout de
 suite (il devient périmé) et met la libération en file avec la série courante : elle s'exécute quand le GPU a atteint cette
-série (`collectReleases`) **et** que `kFramesInFlight` images ont été présentées depuis (même compteur que le backend OpenGL :
+série (`collectReleases`) **et** que `framesInFlight()` images (A61 G, `DeviceDesc::framesInFlight`) ont été présentées depuis (même compteur que le backend OpenGL :
 `DeviceStats::pendingDestruction` évolue pareil) ; `waitIdle` libère sans attendre d'image, les tampons de transfert internes
 n'attendent que le GPU. `beginFrame` attend la série de l'image N - 2 (2 images d'avance au plus).
 

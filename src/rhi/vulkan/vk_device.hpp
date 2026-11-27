@@ -35,8 +35,8 @@ namespace orosmo::rhi::vk
 inline constexpr std::uint32_t kMaxColorTargets = 8;
 // Liaisons de tampons de sommets (comme le backend OpenGL).
 inline constexpr std::uint32_t kMaxVertexBindings = 16;
-// Images de CPU d'avance au plus : `beginFrame` attend la série de l'image N - kFramesInFlight.
-inline constexpr std::uint32_t kFramesInFlight = 2;
+// Images de CPU d'avance au plus (A61 G : DeviceDesc::framesInFlight, de 1 à kMaxFramesInFlight) : `beginFrame` attend la série
+// de l'image N - framesInFlight().
 
 // Série de soumission : valeur du sémaphore à chronologie du périphérique. Chaque `submit` la fait croître de 1.
 using Serial = std::uint64_t;
@@ -232,6 +232,7 @@ class VulkanDevice final : public Device
     static Result<std::unique_ptr<VulkanDevice>> create(const DeviceDesc &desc);
 
     // ── Interface Device ──────────────────────────────────────────────────────
+    std::uint32_t framesInFlight() const noexcept override { return framesInFlight_; }
     const Capabilities &capabilities() const noexcept override { return caps_; }
 
     Result<BufferHandle> createBuffer(const BufferDesc &desc, std::span<const std::byte> initial) override;            // vk_resources.cpp
@@ -307,7 +308,7 @@ class VulkanDevice final : public Device
     Serial completedSerial() const;
     Result<> waitSerial(Serial serial);
     // Exécute `release` quand le GPU a fini tout ce qui a été soumis jusqu'ici (série `lastSubmitted()` à cet instant).
-    // Comme le backend OpenGL, la libération attend aussi kFramesInFlight images présentées (`present`) après la destruction ;
+    // Comme le backend OpenGL, la libération attend aussi framesInFlight() images présentées (`present`) après la destruction ;
     // `waitIdle` (GPU arrêté) libère sans attendre d'image.
     // `waitFrames` faux : ressource interne (tampons de transfert), libérée dès que le GPU a fini.
     void queueRelease(std::function<void()> release, bool waitFrames = true);
@@ -549,7 +550,8 @@ class VulkanDevice final : public Device
     TextureHandle backbuffer_;
     Extent2D backbufferSize_{1, 1};
     std::uint64_t frame_ = 0;
-    std::array<Serial, kFramesInFlight> frameSerials_{};
+    std::uint32_t framesInFlight_ = kDefaultFramesInFlight;
+    std::array<Serial, kMaxFramesInFlight> frameSerials_{};
     bool vsync_ = false;
     std::atomic<std::uint64_t> validationErrors_{0};
 

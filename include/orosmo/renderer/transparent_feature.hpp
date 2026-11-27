@@ -68,6 +68,8 @@ class TransparentFeature final : public RenderFeature
     std::string name() const override { return kName; }
     core::Result<> prepare(const FrameData &frame) override;
     core::Result<> declarePasses(RenderGraphBuilder &builder) override;
+    // A61 C : la passe n'existe que si des objets sont déposés ; elle lit les dépôts de l'image à l'exécution.
+    std::optional<std::uint64_t> passSignature() const override { return entries_.empty() ? 1u : 2u; }
     void frameEnded() noexcept override;
 
     // Dépose un objet pour l'image (entre `SceneRenderer::setCamera` et `endFrame`). La géométrie de `mesh` est utilisée ; son

@@ -2,7 +2,7 @@
 """Mesure comparée OpenGL / Vulkan de la démo (M4, RHI-14).
 
     perf_compare.py [--bin apps/demo/bin/release/Orosmo] [--runs 7] [--frames 600] [--ui off|hud|full] [--modes headless,windowed]
-                    [--api opengl,vulkan] [--out FICHIER.json]
+                    [--api opengl,vulkan] [--extra="OPTIONS DE LA DÉMO"] [--out FICHIER.json]
 
 Lance la démo `runs` fois par backend (en alternance OpenGL / Vulkan pour répartir la dérive thermique) avec `--capture-frames N` :
 - `headless` : appareil hors écran, pas de présentation, pas de fenêtre ;
@@ -12,12 +12,17 @@ de temps), les passes du graphe de l'image `RenderGraph/scene`, `RenderGraph/ups
 (GPU, une mesure par passe depuis M5 ; avant : `RenderScene`, `Upscale`, `UIUpscale`) et `SwapBuffers` (CPU). Le script en tire, par exécution, le temps de
 frame CPU = durée de la boucle / images (`frameCpuMs`, premier affichage compris), le temps CPU médian par image, celui
 de la première image et le maximum (`frameMedian`, `firstFrame`, `frameMax` : journal `Perf: frameMedianMs=`...), puis la médiane, le minimum, le maximum et l'écart interquartile sur les exécutions.
+`workMedian` et `waitMedian` séparent le travail du processeur de son attente (image en vol au GPU, vsync) ; `graphBuilds`
+compte les reconstructions du graphe de passes (A61 C) ; `CPU/Graph` est le temps processeur de `SceneRenderer::endFrame`
+(déclaration ou reprise du graphe, enregistrement des passes) et `CPU/Submit` celui de la soumission. `--extra` ajoute des options à chaque lancement de la démo, par exemple
+`--extra="--frames-in-flight 3"` ou `--extra="--graph-cache off"` (forme `=` : la valeur commence par `--`) (A61 G et C, M8).
 La première exécution de chaque couple est écartée (caches de pipelines et de shaders froids). Utiliser un binaire RELEASE
 (couches de validation coupées) : le binaire de debug mesure surtout la validation.
 """
 import argparse
 import json
 import re
+import shlex
 import statistics
 import subprocess
 import sys
@@ -25,13 +30,23 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PERF = re.compile(r"Perf: (?:([\w/.-]+) avgMs|(loop|frameMedian|firstFrame|frameMax)Ms)=([0-9.eE+-]+)")
+PERF = re.compile(r"Perf: (?:([\w/.-]+) avgMs|(loop|frameMedian|workMedian|waitMedian|firstFrame|frameMax)Ms)=([0-9.eE+-]+)")
+GRAPH = re.compile(r"Perf: framesInFlight=(\d+) graphBuilds=(\d+)")
 DEVICE = re.compile(r"Graphics device: (.*?)(?:\x1b\[[0-9;]*m)*$", re.M)
-METRICS = ["frameCpuMs", "frameMedian", "firstFrame", "frameMax", "Render", "RenderGraph/scene", "RenderGraph/upscale", "RenderGraph/ui", "RenderGraph/present", "SwapBuffers"]
+METRICS = ["frameCpuMs", "frameMedian", "workMedian", "waitMedian", "graphBuilds", "firstFrame", "frameMax", "Render", "CPU/Graph", "CPU/Submit", "RenderGraph/scene", "RenderGraph/upscale", "RenderGraph/ui", "RenderGraph/present", "SwapBuffers"]
 
 
-def run_once(binary, api, mode, frames, ui, scratch):
+# Options posées par l'outil : les redéfinir dans --extra fausserait le calcul ou l'en-tête du rapport.
+RESERVED = ("--api", "--ui", "--capture", "--capture-frames", "--headless")
+
+
+def reserved_options(extra):
+    return [o for o in extra if o.split("=", 1)[0] in RESERVED]
+
+
+def run_once(binary, api, mode, frames, ui, scratch, extra=()):
     cmd = [str(binary), "--api", api, "--strict-backend", "--ui", ui, "--gpu-timings", "on", "--capture", str(scratch), "--capture-frames", str(frames)]
+    cmd += list(extra)
     if mode == "headless":
         cmd.append("--headless")
     proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=600)
@@ -42,6 +57,9 @@ def run_once(binary, api, mode, frames, ui, scratch):
     for name, loop, value in PERF.findall(log):
         values[name or loop] = float(value)
     values["frameCpuMs"] = values.pop("loop") / frames if "loop" in values else float("nan")
+    graph = GRAPH.search(log)
+    if graph:
+        values["graphBuilds"] = float(graph.group(2))
     device = DEVICE.search(log)
     return values, (device.group(1).strip() if device else "?")
 
@@ -62,8 +80,12 @@ def main():
     ap.add_argument("--ui", default="off", choices=["off", "hud", "full"])
     ap.add_argument("--modes", default="headless,windowed")
     ap.add_argument("--api", default="opengl,vulkan")
+    ap.add_argument("--extra", default="", help="options ajoutées à chaque lancement de la démo")
     ap.add_argument("--out", default="")
     opts = ap.parse_args()
+    bad = reserved_options(shlex.split(opts.extra))
+    if bad:
+        ap.error(f"--extra : options réservées à l'outil : {' '.join(bad)} (utiliser --api, --ui, --frames ou --modes)")
     apis = opts.api.split(",")
     result = {}
     devices = {}
@@ -72,7 +94,7 @@ def main():
             samples = {api: [] for api in apis}
             for i in range(opts.runs + 1):  # +1 : exécution de chauffe écartée
                 for api in apis:
-                    values, device = run_once(opts.bin, api, mode, opts.frames, opts.ui, scratch)
+                    values, device = run_once(opts.bin, api, mode, opts.frames, opts.ui, scratch, shlex.split(opts.extra))
                     devices[api] = device
                     if i > 0:
                         samples[api].append(values)
@@ -84,7 +106,7 @@ def main():
                         q1, q3 = quartiles(xs)
                         stats[metric] = {"median": statistics.median(xs), "min": min(xs), "max": max(xs), "q1": q1, "q3": q3, "n": len(xs)}
                 result[f"{mode}/{api}"] = stats
-    print(f"frames={opts.frames} runs={opts.runs} ui={opts.ui}")
+    print(f"frames={opts.frames} runs={opts.runs} ui={opts.ui} extra={opts.extra!r}")
     for api, device in devices.items():
         print(f"{api}: {device}")
     print(f"{'mode/api':<18}{'métrique':<13}{'médiane':>9}{'min':>9}{'max':>9}{'IQR':>9}")
@@ -92,7 +114,7 @@ def main():
         for metric, st in stats.items():
             print(f"{key:<18}{metric:<13}{st['median']:9.3f}{st['min']:9.3f}{st['max']:9.3f}{st['q3'] - st['q1']:9.3f}")
     if opts.out:
-        Path(opts.out).write_text(json.dumps({"devices": devices, "frames": opts.frames, "runs": opts.runs, "ui": opts.ui, "results": result}, indent=2))
+        Path(opts.out).write_text(json.dumps({"devices": devices, "frames": opts.frames, "runs": opts.runs, "ui": opts.ui, "extra": opts.extra, "results": result}, indent=2))
     return 0
 
 
