@@ -203,7 +203,15 @@ TEST_SUITE("anim/animated-model")
     TEST_CASE("ModelLoader: a missing file is an error naming it; a loaded model becomes a RenderModel")
     {
         tests::TempDir dir("animated_model");
-        Gpu gpu;
+        // Un seul backend suffit (logique CPU, le périphérique ne sert qu'aux ressources) ; sans périphérique, le cas est sauté
+        // comme ceux de FOR_EACH_BACKEND (CI sans affichage).
+        const std::vector<Backend> backends = tests::backendsToRun();
+        if (backends.empty())
+        {
+            MESSAGE("no GPU device: skipped");
+            return;
+        }
+        Gpu gpu(backends.front());
         REQUIRE(gpu.device);
         auto context = rd::RenderContext::create(*gpu.device, shaderDir());
         auto loader = as::ModelLoader::create(*context);
@@ -301,7 +309,15 @@ TEST_SUITE("anim/animated-model")
     {
         tests::TempDir dir("animated_model");
         const fs::path path = writeArm(dir.path);
-        Gpu gpu;
+        // Un seul backend suffit (logique CPU, le périphérique ne sert qu'aux ressources) ; sans périphérique, le cas est sauté
+        // comme ceux de FOR_EACH_BACKEND (CI sans affichage).
+        const std::vector<Backend> backends = tests::backendsToRun();
+        if (backends.empty())
+        {
+            MESSAGE("no GPU device: skipped");
+            return;
+        }
+        Gpu gpu(backends.front());
         REQUIRE(gpu.device);
         auto context = rd::RenderContext::create(*gpu.device, shaderDir());
         auto arm = an::AnimatedModel::create(*context, path);
