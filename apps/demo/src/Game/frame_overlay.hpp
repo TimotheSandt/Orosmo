@@ -7,7 +7,9 @@
 #include <orosmo/renderer/render_feature.hpp>
 #include <orosmo/rhi/device.hpp>
 
+#include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -50,6 +52,9 @@ class FrameOverlay final : public orosmo::renderer::RenderFeature
     void beginFrame(orosmo::rhi::TextureHandle backbuffer, FrameComposition composition, bool ui) noexcept;
 
     orosmo::core::Result<> declarePasses(orosmo::renderer::RenderGraphBuilder &builder) override;
+    // A61 C : passes « ui » et « present » selon l'image (interface, composition, backbuffer importé) ; le graphe est gardé tant
+    // qu'elles ne changent pas.
+    std::optional<std::uint64_t> passSignature() const override;
 
     FrameComposition composition() const noexcept { return composition_; }
 

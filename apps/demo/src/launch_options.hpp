@@ -8,6 +8,7 @@
 #include <orosmo/renderer/frame_pacing.hpp>
 #include <orosmo/renderer/shadow_feature.hpp>
 #include <orosmo/renderer/transparent_shadow.hpp>
+#include <orosmo/rhi/device.hpp>
 #include <orosmo/rhi/types.hpp>
 
 #include <cstdint>
@@ -101,6 +102,10 @@ struct LaunchOptions
     // --direct-present on|off (défaut : on) : Vulkan dessine directement dans l'image de la fenêtre (G185) au lieu de copier une
     // image hors écran ; peut scintiller à très haute cadence sans vsync (docs/GAPS.md). Sans effet sur OpenGL et en headless.
     bool directPresentation = true;
+    // --frames-in-flight 1|2|3 (A61 G, défaut : 2, rhi::kDefaultFramesInFlight) : images préparées d'avance par le processeur.
+    std::uint32_t framesInFlight = orosmo::rhi::kDefaultFramesInFlight;
+    // --graph-cache on|off (A61 C, défaut : on) : graphe de passes gardé d'une image à l'autre (off : reconstruit à chaque image).
+    bool graphCache = true;
     // --gpu-timings auto|on|off (défaut : auto).
     GpuTimingsMode gpuTimings = GpuTimingsMode::kAuto;
     // --ui off|hud|full (défaut : hud).
