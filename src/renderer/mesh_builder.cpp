@@ -32,6 +32,13 @@ MeshBuilder &MeshBuilder::addQuad(std::uint32_t a, std::uint32_t b, std::uint32_
 
 MeshBuilder &MeshBuilder::addBox(const glm::vec3 &halfExtents, const glm::vec4 &color, const glm::vec3 &center)
 {
+    std::array<glm::vec4, 6> colors;
+    colors.fill(color);
+    return addBox(halfExtents, colors, center);
+}
+
+MeshBuilder &MeshBuilder::addBox(const glm::vec3 &halfExtents, const std::array<glm::vec4, 6> &faceColors, const glm::vec3 &center)
+{
     // Une face par normale : `u` et `v` couvrent la face, u × v = normale (sommets anti-horaires vus de l'extérieur).
     struct Face
     {
@@ -47,8 +54,10 @@ MeshBuilder &MeshBuilder::addBox(const glm::vec3 &halfExtents, const glm::vec4 &
         {{0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
         {{0.0f, 0.0f, -1.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
     }};
-    for (const Face &face : kFaces)
+    for (std::size_t f = 0; f < kFaces.size(); ++f)
     {
+        const Face &face = kFaces[f];
+        const glm::vec4 &color = faceColors[f];
         const glm::vec3 n = face.normal * halfExtents;
         const glm::vec3 u = face.u * halfExtents;
         const glm::vec3 v = face.v * halfExtents;

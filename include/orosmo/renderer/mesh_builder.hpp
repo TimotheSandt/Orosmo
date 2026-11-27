@@ -9,6 +9,7 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -50,6 +51,8 @@ class MeshBuilder
     MeshBuilder &addQuad(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d);
     // Boîte de demi-côtés `halfExtents` centrée en `center` : 24 sommets (normales et uv par face), faces tournées vers l'extérieur.
     MeshBuilder &addBox(const glm::vec3 &halfExtents, const glm::vec4 &color = glm::vec4(1.0f), const glm::vec3 &center = glm::vec3(0.0f));
+    // Même boîte, une couleur par face, dans l'ordre +X, -X, +Y, -Y, +Z, -Z (A79 L14 : cube du programme de départ).
+    MeshBuilder &addBox(const glm::vec3 &halfExtents, const std::array<glm::vec4, 6> &faceColors, const glm::vec3 &center = glm::vec3(0.0f));
     // Plan horizontal (normale +Y) de taille `size` (X, Z) centré en `center`, uv de 0 à `uvScale`.
     MeshBuilder &addPlane(const glm::vec2 &size, const glm::vec4 &color = glm::vec4(1.0f), const glm::vec3 &center = glm::vec3(0.0f),
                           const glm::vec2 &uvScale = glm::vec2(1.0f));

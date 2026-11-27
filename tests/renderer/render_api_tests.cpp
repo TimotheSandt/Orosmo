@@ -23,6 +23,7 @@
 #include <glm/glm.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <memory>
@@ -209,6 +210,24 @@ TEST_SUITE("renderer/mesh-builder")
         outOfRange.addVertex({});
         outOfRange.addTriangle(0, 0, 3);
         CHECK((tests::errorOf(outOfRange.build()) == ErrorCode::kInvalidArgument));
+    }
+
+    TEST_CASE("MeshBuilder::addBox with one color per face (A79 L14): same geometry as one color, faces in the order +X -X +Y -Y +Z -Z")
+    {
+        const std::array<glm::vec4, 6> colors{{{1, 0, 0, 1}, {0, 1, 0, 1}, {0, 0, 1, 1}, {1, 1, 0, 1}, {0, 1, 1, 1}, {1, 0, 1, 1}}};
+        rd::MeshBuilder faces(rd::MeshLayout::kColored);
+        faces.addBox({1.0f, 2.0f, 3.0f}, colors, {0.5f, 0.0f, 0.0f});
+        rd::MeshBuilder single(rd::MeshLayout::kColored);
+        single.addBox({1.0f, 2.0f, 3.0f}, glm::vec4(1.0f), {0.5f, 0.0f, 0.0f});
+        REQUIRE(faces.vertexCount() == 24);
+        CHECK(faces.indices() == single.indices());
+        const std::array<glm::vec3, 6> normals{{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}}};
+        for (std::size_t v = 0; v < 24; ++v)
+        {
+            CHECK(faces.vertices()[v].position == single.vertices()[v].position);
+            CHECK(faces.vertices()[v].normal == normals[v / 4]);
+            CHECK(faces.vertices()[v].color == colors[v / 4]);
+        }
     }
 }
 
