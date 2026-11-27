@@ -234,7 +234,8 @@ TEST_SUITE("scene/file")
         {
             const auto path = dir / name;
             REQUIRE(saveSceneFile(original, path));
-            CHECK_FALSE(std::filesystem::exists(dir / (std::string(name) + ".tmp")));
+            for (const auto &entry : std::filesystem::directory_iterator(dir)) // aucun temporaire laissé
+                CHECK(entry.path().filename().string().find(".orosmo-tmp") == std::string::npos);
             World fromFile;
             REQUIRE(fromFile.registerComponent<Agent>("Agent"));
             REQUIRE(loadSceneFile(fromFile, path));
@@ -417,17 +418,31 @@ TEST_SUITE("scene/file")
         CHECK(fingerprint(b) != fingerprint(a));
     }
 
-    TEST_CASE("Scene: saveSceneFile reports a write error detected when the file is closed (full disk)")
+    TEST_CASE("Scene: saveSceneFile never opens nor truncates an existing file named like its temporary (revue PR #37)")
     {
         ComponentType<Agent> type;
         const World world = makeWorld(type);
-        if (!std::filesystem::exists("/dev/full")) // Linux
-            return;
-        // Le fichier temporaire est un lien vers /dev/full : l'écriture échoue, et rien dans /dev n'est renommé ni remplacé.
         const TempDir temp;
-        std::filesystem::create_symlink("/dev/full", temp.path / "full.json.tmp");
-        CHECK((errorOf(saveSceneFile(world, temp.path / "full.json")) == core::ErrorCode::kIo));
-        CHECK_FALSE(std::filesystem::exists(temp.path / "full.json"));
+        const auto readAll = [](const std::filesystem::path &p) {
+            std::ifstream in(p, std::ios::binary);
+            return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        };
+        // Une sauvegarde nommée comme l'ancien temporaire fixe (`<dest>.tmp`) survit à la sauvegarde de `<dest>`.
+        REQUIRE(saveSceneFile(world, temp.path / "slot.json.tmp"));
+        const std::string first = readAll(temp.path / "slot.json.tmp");
+        REQUIRE_FALSE(first.empty());
+        World changed = world;
+        changed.create();
+        REQUIRE(saveSceneFile(changed, temp.path / "slot.json"));
+        CHECK(readAll(temp.path / "slot.json.tmp") == first);
+        CHECK(readAll(temp.path / "slot.json") != first);
+        // Un lien existant vers /dev/full n'est pas suivi : la sauvegarde passe par un autre nom (Linux).
+        if (std::filesystem::exists("/dev/full"))
+        {
+            std::filesystem::create_symlink("/dev/full", temp.path / "full.json.tmp");
+            REQUIRE(saveSceneFile(world, temp.path / "full.json"));
+            CHECK(std::filesystem::is_symlink(temp.path / "full.json.tmp"));
+        }
     }
 
     TEST_CASE("Scene: a failed saveSceneFile keeps the previous save and removes its temporary file")
@@ -446,19 +461,18 @@ TEST_SUITE("scene/file")
 
         World changed = world;
         changed.create();
-        // Le temporaire ne peut pas être créé (un répertoire porte son nom) : la dernière sauvegarde reste intacte.
-        const auto tmp = temp.path / "save.json.tmp";
-        REQUIRE(std::filesystem::create_directory(tmp));
-        CHECK((errorOf(saveSceneFile(changed, path)) == core::ErrorCode::kIo));
+        // Le temporaire ne peut pas être créé (répertoire absent) : erreur, rien d'écrit.
+        CHECK((errorOf(saveSceneFile(changed, temp.path / "missing" / "save.json")) == core::ErrorCode::kIo));
+        CHECK_FALSE(std::filesystem::exists(temp.path / "missing"));
         CHECK(readAll(path) == previous);
-        std::filesystem::remove(tmp);
 
         // Le remplacement échoue (la destination est un répertoire non vide) : le temporaire écrit est supprimé.
         const auto dirTarget = temp.path / "dir.json";
         REQUIRE(std::filesystem::create_directory(dirTarget));
         { std::ofstream(dirTarget / "keep") << "x"; }
         CHECK((errorOf(saveSceneFile(changed, dirTarget)) == core::ErrorCode::kIo));
-        CHECK_FALSE(std::filesystem::exists(temp.path / "dir.json.tmp"));
+        for (const auto &entry : std::filesystem::directory_iterator(temp.path))
+            CHECK(entry.path().filename().string().find(".orosmo-tmp") == std::string::npos);
         CHECK(std::filesystem::exists(dirTarget / "keep"));
     }
 
