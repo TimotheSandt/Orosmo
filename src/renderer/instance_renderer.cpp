@@ -94,6 +94,14 @@ std::uint32_t InstanceRenderer::addMaterial(InstanceMaterial material)
     return static_cast<std::uint32_t>(materials_.size() - 1);
 }
 
+bool InstanceRenderer::setMaterial(std::uint32_t id, InstanceMaterial material)
+{
+    if (id >= materials_.size())
+        return false;
+    materials_[id] = std::move(material);
+    return true;
+}
+
 core::Result<> InstanceRenderer::upload(const InstanceBatchBuilder &batches, const glm::vec3 &origin, InstanceDrawStats &stats)
 {
     std::span<const GpuInstance> instances = batches.instances();
