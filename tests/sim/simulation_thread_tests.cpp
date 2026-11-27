@@ -626,6 +626,31 @@ TEST_SUITE("sim/thread")
         CHECK_THROWS_AS(sim.step(), std::runtime_error); // le propriétaire a repris la simulation : même pas, même erreur
     }
 
+    TEST_CASE("SimulationThread: once status() reports the error, the worker is stopped and inputs are refused (revue PR #37)")
+    {
+        Simulation sim({.step = 1ms, .seed = 3});
+        REQUIRE(sim.addSystem({"explode", Phase::kUpdate, 0, [](StepContext &ctx) {
+                                   if (ctx.step == 1)
+                                       throw std::runtime_error("boom");
+                               }}));
+        core::ManualClock clock;
+        auto thread = SimulationThread::start(sim, clock, {.cadence = Cadence::kStepsPerFrame, .stepsPerFrame = 4});
+        REQUIRE(thread);
+        (*thread)->frame(); // pas de sync : l'erreur est observée par status() seul, comme le ferait le rendu
+        bool failed = false;
+        for (int i = 0; i < 2'000'000 && !failed; ++i)
+        {
+            failed = !(*thread)->status();
+            if (!failed)
+                std::this_thread::yield();
+        }
+        REQUIRE(failed);
+        // Erreur et arrêt publiés ensemble : aucun intervalle où une entrée serait acceptée sans être livrée.
+        CHECK_FALSE((*thread)->running());
+        CHECK_FALSE((*thread)->pushInput({10, "late", 1}));
+        (*thread)->stop();
+    }
+
     // Test concurrent : la simulation tourne à 1000 Hz (ManualClock avancée par ce thread) ou en N pas par image pendant que ce thread joue le
     // rôle du rendu (lit les instantanés, vide les événements, pousse des entrées) ; aucun GPU (Mesa sous TSan donnerait des
     // faux positifs). Un instantané déchiré, un événement perdu ou une course (TSan) font échouer le test.
