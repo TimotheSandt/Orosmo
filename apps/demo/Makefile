@@ -9,6 +9,7 @@
 # ── Quick start ───────────────────────────────────────────────────────────────
 #   make debug        build debug binary
 #   make release      build release binary
+#   make game         rebuild only the reloadable game library (src/game/), while the program runs
 #   make run          run last built binary
 #   make clean        remove objects + Generated/
 #   make fclean       remove objects, Generated/, and bin/
@@ -30,6 +31,8 @@ RC           ?= windres
 CLANG_FORMAT ?= clang-format
 CLANG_TIDY   ?= clang-tidy
 VCPKG        ?= vcpkg
+# GAME-06: ccache is used for every compilation when it is installed (`make CCACHE=` disables it).
+CCACHE       ?= $(if $(shell command -v ccache 2>/dev/null),ccache)
 
 # ── Engine integration ────────────────────────────────────────────────────────
 # ENGINE_DIR resolution (see the top of this file). The orosmo tool: in PATH, else $(OROSMO_HOME)/bin (default ~/.orosmo/bin,
@@ -305,8 +308,16 @@ $(TARGET): $(ALL_OBJS) $(ENGINE_LIBS) | $(BIN_DIR) copy_res $(COPY_EXTRA)
 	@echo "Compiled: $@"
 
 # Bibliothèque de jeu (développement). Sous Windows, elle se lie à la bibliothèque d'import de l'exécutable : elle vient après lui.
+# GAME-06 : `make game` ne reconstruit QUE la bibliothèque. Sous Windows, avec ce but, l'exécutable (peut-être en cours
+# d'exécution, donc verrouillé) n'est pas refait dès que sa bibliothèque d'import existe.
+_GAME_ONLY_LINK = $(and $(filter game,$(MAKECMDGOALS)),$(wildcard $(call engine_host_implib,$(TARGET))))
+_GAME_HOST_DEP  = $(if $(filter Windows,$(ENGINE_OS)),$(if $(_GAME_ONLY_LINK),,$(TARGET)))
+.PHONY: game
+game: $(GAME_MODULE)
+	@$(if $(GAME_MODULE),:,echo "make game: no reloadable game library (it needs src/game/*.cpp and a debug or dev build)" >&2; exit 1)
+
 _GAME_STATIC_CHECK_TOOL := $(if $(shell command -v python3 2>/dev/null),$(wildcard $(ENGINE_DIR)/tools/check_game_static.py))
-$(GAME_MODULE): $(GAME_MODULE_OBJS) $(if $(filter Windows,$(ENGINE_OS)),$(TARGET)) | $(BIN_DIR)
+$(GAME_MODULE): $(GAME_MODULE_OBJS) $(_GAME_HOST_DEP) | $(BIN_DIR)
 	$(call ors_link,LD game)
 	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(GAME_MODULE_OBJS) $(call engine_module_ldflags,$(TARGET)) $(GAME_LDFLAGS) -o $@
 	$(ors_end)
@@ -316,26 +327,26 @@ $(GAME_MODULE): $(GAME_MODULE_OBJS) $(if $(filter Windows,$(ENGINE_OS)),$(TARGET
 $(OBJ_DIR)/gamelib/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CXX)
-	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
 	$(ors_end)
 
 # ── Compilation rules ─────────────────────────────────────────────────────────
 $(OBJ_DIR)/src/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CXX)
-	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
 	$(ors_end)
 
 $(OBJ_DIR)/src/%.o: $(SRC_DIR)/%.c
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CC)
-	$(ORS_Q)$(CC) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ORS_Q)$(CCACHE) $(CC) $(ENGINE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
 	$(ors_end)
 
 $(OBJ_DIR)/gen/%.o: $(ENGINE_GEN_DIR)/%.gen.cpp
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CXX [gen])
-	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
 	$(ors_end)
 
 # Ensure CUI files are generated before any object is compiled
@@ -377,7 +388,7 @@ $(TEST_MODULE): $(TEST_MODULE_OBJS) $(if $(filter Windows,$(ENGINE_OS)),$(TEST_T
 $(TEST_MODULE_OBJS): $(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CXX)
-	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 	$(ors_end)
 
 # Bibliothèques de jeu de test (A79 L5) : liées comme la bibliothèque de test ci-dessus (sans le moteur), puis contrôlées : aucune
@@ -394,7 +405,7 @@ $(TEST_GAMES): bin/tests/test_game_%$(ENGINE_MODULE_EXT): $(OBJ_DIR)/tests/app/g
 $(TEST_GAMELIB_OBJS): $(OBJ_DIR)/tests/app/game_module/game_%.o: $(TEST_GAME_DIR)/game.cpp
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CXX)
-	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) -DOROSMO_TEST_GAME_VARIANT_$* -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) -DOROSMO_TEST_GAME_VARIANT_$* -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 	$(ors_end)
 
 # Version finale (GAME-07) : le jeu lié dans l'exécutable, sans code de rechargement (vérifié par nm après l'édition de liens).
@@ -403,7 +414,7 @@ $(OBJ_DIR)/tests/app/game_module/static_main.o: $(TEST_GAME_DIR)/static_main.cpp
 $(TEST_GAME_STATIC_OBJS):
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CXX)
-	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -DOROSMO_GAME_STATIC -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) -DOROSMO_GAME_STATIC -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 	$(ors_end)
 
 $(TEST_GAME_STATIC): $(TEST_GAME_STATIC_OBJS) $(ENGINE_LIBS) | bin/tests
@@ -417,7 +428,7 @@ $(TEST_GAME_STATIC): $(TEST_GAME_STATIC_OBJS) $(ENGINE_LIBS) | bin/tests
 $(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp | $(TEST_GEN_CPP) $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CXX)
-	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 	$(ors_end)
 
 $(ENGINE_GEN_DIR)/tests/%.gen.cpp: $(TEST_DIR)/%.cui $(_ENG_CUI_TOOL)
@@ -429,7 +440,7 @@ $(ENGINE_GEN_DIR)/tests/%.gen.cpp: $(TEST_DIR)/%.cui $(_ENG_CUI_TOOL)
 $(TEST_GEN_OBJS): $(OBJ_DIR)/gen/tests/%.o: $(ENGINE_GEN_DIR)/tests/%.gen.cpp
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CXX)
-	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 	$(ors_end)
 
 # ── Benchmark ─────────────────────────────────────────────────────────────────
@@ -445,7 +456,7 @@ $(BENCH_TARGET): $(BENCH_OBJS) $(ENGINE_LIBS) | bin/benchmark
 $(OBJ_DIR)/benchmark/%.o: $(BENCH_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CXX)
-	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP -I$(BENCH_DIR) $(ENGINE_INCLUDES) -c $< -o $@
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) -MMD -MP -I$(BENCH_DIR) $(ENGINE_INCLUDES) -c $< -o $@
 	$(ors_end)
 
 # ── Resources & libraries ─────────────────────────────────────────────────────
