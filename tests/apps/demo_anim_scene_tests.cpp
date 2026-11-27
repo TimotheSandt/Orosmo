@@ -167,7 +167,8 @@ TEST_SUITE("apps/demo-anim")
         CHECK_FALSE((pose.nodes[2].rotation == an::restPose(*loaded).nodes[2].rotation));
     }
 
-    TEST_CASE("anim scene: model imported from glTF, 1000 agents in one draw call per skinned primitive, texture reloaded live")
+    TEST_CASE("anim scene: model imported from glTF, 1000 agents in one draw call per skinned primitive, texture reloaded live"
+              * doctest::test_suite("apps/demo-anim/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {

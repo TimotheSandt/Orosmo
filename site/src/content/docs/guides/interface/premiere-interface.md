@@ -163,8 +163,10 @@ Un exemple complet de menu (Échap, Quitter, changement de thème) est dans [Éc
 
 ## Limites
 
-- La couche interface est marquée « Partiel » dans [l'état du projet](/projet/etat/) ; la navigation à la manette et l'accessibilité n'existent pas encore.
-- Pas de rechargement à chaud de l'arbre, seulement du thème.
+- La couche interface est marquée « Partiel » dans [l'état du projet](/projet/etat/). Navigation au clavier et à la manette :
+  [Naviguer au clavier et à la manette](/guides/interface/navigation/).
+- Un arbre construit en C++ ne se recharge pas à chaud (le thème, si) ; une vue `.cui` se recharge en développement :
+  [Vues rechargées à chaud](/guides/interface/rechargement-vues/).
 
 ## Voir aussi
 

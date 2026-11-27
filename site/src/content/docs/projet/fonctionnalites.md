@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-Cette page liste ce que le moteur fait à la version 0.6.2. Une fonction n'y figure que si elle est « Fait » dans la
+Cette page liste ce que le moteur fait à la version 0.7.0. Une fonction n'y figure que si elle est « Fait » dans la
 checklist du dépôt
 ([`docs/02-CHECKLIST_FONCTIONNALITES.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/02-CHECKLIST_FONCTIONNALITES.md)),
 c'est-à-dire avec un test automatisé ou une commande de démo et son résultat
@@ -59,6 +59,18 @@ Exemple complet : [Application 2D complète](/guides/rendu-2d/application-2d/).
 - Langage `.cui` compilé en C++ ; les événements appellent des fonctions C++ : [Écrire une vue en .cui](/guides/interface/langage-cui/).
 - Grammaire du langage spécifiée et testée : [Langage .cui : grammaire et composants](/reference/langage-cui/).
 - Panneau de réglages généré depuis une structure réfléchie : [Configuration, réflexion, sérialisation](/guides/noyau/configuration/).
+- Vues `.cui` rechargées à chaud en développement : [Vues rechargées à chaud](/guides/interface/rechargement-vues/).
+- Navigation au clavier et à la manette, ordre de tabulation, anneau de focus : [Naviguer au clavier et à la manette](/guides/interface/navigation/).
+- Outils de debug : console, inspecteurs des widgets et des entités, profileur : [Outils de debug](/guides/interface/outils-debug/).
+
+## Scène, simulation et logique de jeu
+
+- Entités, composants enregistrés par nom, hiérarchie et transformations en double : [Entités, composants et transformations](/guides/scene/entites-composants/).
+- Sauvegarde et chargement de scène en JSON ou MessagePack, avec versions : [Sauvegarder et charger une scène](/guides/scene/sauvegarde/).
+- Simulation à pas fixe, rejouable avec la même graine, thread de simulation optionnel : [Simulation à pas fixe](/guides/scene/simulation/).
+- Logique de jeu rechargée sans redémarrage ni perte d'état, migration des composants, paramètres JSON, version finale
+  statique : [Logique de jeu rechargeable](/guides/scene/logique-rechargeable/).
+- Façade d'application (fenêtre, périphérique, rendu, interface, boucle) : [La façade app::Application](/guides/application/facade/).
 
 ## Noyau
 
@@ -88,10 +100,8 @@ Ces fonctions n'existent pas encore. Le plan est dans
 [`docs/05-PLAN_PAR_JALONS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/05-PLAN_PAR_JALONS.md), les limites
 connues dans [`docs/GAPS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/GAPS.md).
 
-- Scène à entités et composants, boucle de simulation, logique de jeu rechargeable sans redémarrer, rechargement à chaud
-  de l'interface (jalon M8).
 - Validation sur macOS et backend Metal (jalon M9). Metal est reconnu par le RHI mais refusé : il n'est pas disponible.
 - Extensions de rendu : voxels et ray tracing, ajoutés comme plugins du renderer (jalon M10).
 - Modules et addons, puis registre d'addons (jalons M11 et M12).
 - Effets livrés comme modules : brouillard, particules, occlusion ambiante, eau, réfraction (jalon M13).
-- Manettes, après le jalon M10.
+- Manettes au-delà de la navigation de l'interface (vibrations, remappage), après le jalon M10.

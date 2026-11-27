@@ -26,6 +26,8 @@ Par défaut la démo affiche la scène et le panneau de performances. Les touche
 | clic droit maintenu | oriente la caméra (le curseur est capturé) |
 | `A` / `E` | caméra plus rapide / plus lente tant qu'elles sont tenues |
 | `F11` | plein écran sans bordure |
+| `F12` | outils de debug : console, inspecteurs des widgets et des entités, profileur |
+| `Tab`, flèches, `Entrée` ; manette | navigation au clavier ou à la manette dans l'interface |
 
 L'interface complète a des onglets (`scene`, `widgets`, `controls`, `color`, `windows`, `layout`, `themes`), un choix de
 thème, de cadence d'images et de minuteries GPU, un journal d'événements et un bouton « Capture PNG ». Un onglet ou un
@@ -44,9 +46,16 @@ thème s'ouvre directement avec `--tab` et `--theme`.
 | Transparents et 2D dans le monde | `--scene mixed` | [Transparence](/guides/rendu-3d/transparence/) |
 | Personnage animé et foule de 1000 agents | `--scene anim` | [Squelettes](/guides/animation/squelettes/) |
 | Normales, surdessin, filaire… | `--debug-view normals` | [Debug visuel](/guides/rendu-3d/debug-visuel/) |
+| Qualité des ombres | `--shadows on --shadow-quality low` | [Ombres](/guides/rendu-3d/ombres/) |
+| Outils de debug ouverts | `--debug-tools --debug-tab entities` | [Outils de debug](/guides/interface/outils-debug/) |
+| Simulation de 500 agents sans fenêtre, rejouable | `--sim-agents 500 --seed 42` | [Simulation à pas fixe](/guides/scene/simulation/) |
 
 `--aa taa` est refusé avec `--instances` : l'anticrénelage est alors désactivé et un message le dit. Toutes les valeurs sont
 dans [Options de la démo](/reference/options-demo/).
+
+La démo garde l'API bas niveau. Le rechargement à chaud de la logique de jeu et des vues `.cui` se montre avec le projet
+créé par `orosmo init` : voir [Logique de jeu rechargeable](/guides/scene/logique-rechargeable/) et
+[Vues rechargées à chaud](/guides/interface/rechargement-vues/).
 
 ## Captures hors écran
 

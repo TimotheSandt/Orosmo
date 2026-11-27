@@ -57,14 +57,14 @@ repli), `--headless`, `--size <L>x<H>`, `--frames <N>`, `--capture <dossier>`, `
 Le projet nomme sa version du moteur dans `config.mk` :
 
 ```makefile title="config.mk"
-OROSMO_VERSION := 0.6.2
+OROSMO_VERSION := 0.7.0
 ```
 
-Le `Makefile` demande son chemin à l'outil (`orosmo path 0.6.2`). Si cette version n'est pas installée, il s'arrête avec la
+Le `Makefile` demande son chemin à l'outil (`orosmo path 0.7.0`). Si cette version n'est pas installée, il s'arrête avec la
 commande à lancer :
 
 ```text
-Orosmo 0.6.2 is not installed: run "orosmo install 0.6.2" (or pass ENGINE_DIR=/path/to/engine)
+Orosmo 0.7.0 is not installed: run "orosmo install 0.7.0" (or pass ENGINE_DIR=/path/to/engine)
 ```
 
 Deux projets peuvent utiliser deux versions différentes : chacune est installée une fois dans `~/.orosmo/engines/`. Pour

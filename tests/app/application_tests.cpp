@@ -74,6 +74,7 @@ app::ApplicationSettings headlessSettings(rhi::Backend backend)
 
 std::unique_ptr<app::Application> createApp(const app::ApplicationSettings &settings)
 {
+    REQUIRE_GPU_ALLOWED();
     auto created = app::Application::create(settings);
     INFO((created ? std::string() : created.error().message));
     REQUIRE(created.has_value());

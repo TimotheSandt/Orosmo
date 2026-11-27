@@ -360,7 +360,7 @@ TEST_SUITE("assets/ktx2")
         CHECK_FALSE(as::loadKtx2(dir.path / "absent.ktx2", capsWith(true, true)).has_value());
     }
 
-    TEST_CASE("a UASTC KTX2 loaded through the cache is sampled with its colour on every backend")
+    TEST_CASE("a UASTC KTX2 loaded through the cache is sampled with its colour on every backend" * doctest::test_suite("assets/ktx2/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -387,7 +387,7 @@ TEST_SUITE("assets/ktx2")
         }
     }
 
-    TEST_CASE("a compressed texture is sampled only: render target and storage are refused")
+    TEST_CASE("a compressed texture is sampled only: render target and storage are refused" * doctest::test_suite("assets/ktx2/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -420,7 +420,7 @@ TEST_SUITE("assets/ktx2")
         }
     }
 
-    TEST_CASE("reloadChanged rewrites a changed file in place, keeping the handle")
+    TEST_CASE("reloadChanged rewrites a changed file in place, keeping the handle" * doctest::test_suite("assets/ktx2/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -447,7 +447,7 @@ TEST_SUITE("assets/ktx2")
         }
     }
 
-    TEST_CASE("reloadChanged recreates the texture when the size changes")
+    TEST_CASE("reloadChanged recreates the texture when the size changes" * doctest::test_suite("assets/ktx2/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -471,7 +471,7 @@ TEST_SUITE("assets/ktx2")
         }
     }
 
-    TEST_CASE("reloadChanged keeps the old texture when the file becomes unreadable")
+    TEST_CASE("reloadChanged keeps the old texture when the file becomes unreadable" * doctest::test_suite("assets/ktx2/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -495,7 +495,7 @@ TEST_SUITE("assets/ktx2")
         }
     }
 
-    TEST_CASE("reloadChanged reloads a KTX2 file in place")
+    TEST_CASE("reloadChanged reloads a KTX2 file in place" * doctest::test_suite("assets/ktx2/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -524,7 +524,7 @@ TEST_SUITE("assets/ktx2")
         }
     }
 
-    TEST_CASE("reloadChanged retries after a transient failure without a new modification")
+    TEST_CASE("reloadChanged retries after a transient failure without a new modification" * doctest::test_suite("assets/ktx2/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -557,7 +557,7 @@ TEST_SUITE("assets/ktx2")
         }
     }
 
-    TEST_CASE("reloadChanged recreates the texture when only the colour format changes")
+    TEST_CASE("reloadChanged recreates the texture when only the colour format changes" * doctest::test_suite("assets/ktx2/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {

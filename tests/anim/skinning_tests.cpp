@@ -122,7 +122,8 @@ TEST_SUITE("anim/skinning")
                orosmo::core::ErrorCode::kInvalidArgument));
     }
 
-    TEST_CASE("GPU skinning matches the CPU reference and the skinned model draws in the same submission")
+    TEST_CASE("GPU skinning matches the CPU reference and the skinned model draws in the same submission"
+              * doctest::test_suite("anim/skinning/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {

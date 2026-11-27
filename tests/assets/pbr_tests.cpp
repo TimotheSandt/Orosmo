@@ -166,7 +166,8 @@ TEST_SUITE("assets/pbr")
         CHECK(as::pbrVertices(p)[11] == doctest::Approx(-1.0f));
     }
 
-    TEST_CASE("RenderModel: unlit, lit dielectric, ambient-only metal, sRGB base colour map, culling, mask, instance")
+    TEST_CASE("RenderModel: unlit, lit dielectric, ambient-only metal, sRGB base colour map, culling, mask, instance"
+              * doctest::test_suite("assets/pbr/gpu"))
     {
         FOR_EACH_BACKEND(backend)
         {

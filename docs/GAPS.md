@@ -98,7 +98,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | CORE-13 | Observateur de fichiers | Absent | Aucun observateur de fichiers. | M1 |
 | ECS-01 | Entités et composants | Fait | Module `scene` (M8 L2), ECS maison (A79 choix 1) ; preuve : `docs/STATUS.md`, « M8 lot L2 » (`include/orosmo/scene/world.hpp` `World`, suite doctest `scene/world`, verte dans `make demo-test`) ; limites G260 à G264. | — |
 | ECS-02 | Transformations hiérarchiques | Fait | `scene::Transform`, `World::updateTransforms` (M8 L2) ; preuve : `docs/STATUS.md`, « M8 lot L2 » (suite doctest `scene/hierarchy`, verte, dont la précision à 10^7 m) ; G260, G262. Le rendu des entités (`Mesh` garde sa transformation) vient en L13. | — |
-| ECS-03 | Chargement et sauvegarde de scène | Absent | Absent. | M8 |
+| ECS-03 | Chargement et sauvegarde de scène | Fait | `scene::saveScene`, `loadScene` (JSON), `saveSceneBinary` (MessagePack), migrations par type (M8 L3) ; limites G282, G283, G286. Preuve : `docs/STATUS.md`, « M8 lot L3 » (suite `scene/file`). | — |
 | GAME-01 | Module de jeu rechargeable | Fait | `app::GameModule` (M8 L5) : interface C `orosmoGameApi` (`abiVersion`), copie sous nom unique, rechargement sur `FileWatcher`, ancienne version gardée jusqu'au démarrage de la nouvelle ; G310, G314 à G316. | — |
 | GAME-02 | État côté moteur | Fait | Composants, systèmes et actions enregistrés par nom via `app::GameContext`, retirés au déchargement ; règle 13 vérifiée sur le binaire (`tools/check_game_static.py`, `make check`) ; G311 à G313, G318. | — |
 | GAME-03 | Migration d'état | Fait (L6) | `scene::World::migrateComponent`, `GameContext::registerComponent` ; G320 à G323 ; preuve : `docs/STATUS.md`, « M8 lot L6 » (`include/orosmo/scene/component_migration.hpp`, suites `scene/migration` et `app/game_module`). | M8 |
@@ -127,7 +127,7 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | REN-39 | Ombres des transparents | Absent | Absent. | M5 |
 | REN-41 | Transparents et sorties auxiliaires | Absent | Absent. | M5 |
 | RHI-17 | Dispatch indirect et groupes dynamiques | Absent | Absent. | M5 (proposé : rendu piloté par GPU) |
-| SIM-01 | Boucle de simulation à pas fixe | Absent | Absent. | M8 |
+| SIM-01 | Boucle de simulation à pas fixe | Fait | `sim::Simulation` (M8 L3), thread optionnel `SimulationThread` (M8 L4) ; limites G280, G284, G300 à G307. Preuve : `docs/STATUS.md`, « M8 lot L3 » et « M8 lot L4 » (suites `sim/simulation`, `sim/thread`, `demo/simulation`). | — |
 | TER-05 | Érosion | Absent | Absent (seul `GenerateCrater`). | Hors moteur (A39) |
 | TER-06 | Biomes | Absent | Absent. | Hors moteur (A39) |
 | TER-08 | Végétation et dispersion | Absent | Absent. | Hors moteur (A39) |
@@ -753,3 +753,15 @@ Programme de départ d'`orosmo init` et tutoriel 3D réécrits avec `app::Applic
 | G373 | Rotation du cube calculée avec `std::sin` / `std::cos` | Le système `spin` du gabarit écrit la rotation du `Transform` à partir de l'angle (quaternion par `std::sin` et `std::cos`, dont l'arrondi dépend de la bibliothèque C). L'angle, lui, est exact ; seule la rotation affichée peut différer d'un ulp d'une plate-forme à l'autre. Un jeu dont la simulation doit être rejouable partout (règle 9, `tools/check_deterministic_math.py`) évite ces fonctions dans ses systèmes. | — |
 | G374 | Réglages de la façade non essayés avec une fenêtre | `ApplicationSettings::windowed` et `logFile` (lus par `Application::create` et `main`) ne sont pas couverts par les tests, qui tournent sans fenêtre et sans `main` ; essayés à la main sous Linux (fenêtre du tutoriel, `logs/log.log` du gabarit en debug). | M8 L15 |
 | G375 | `pauseAnimations` : modèles `kSingle` seulement | Les lecteurs des modèles animés `kSingle` sont arrêtés (avancés de 0 s) ; les foules `kCrowd` suivent le `time` de leurs composants, que le jeu doit cesser d'avancer lui-même. Le delta passé aux effets du renderer (`SceneRenderer::setDeltaTime`) n'est pas mis à zéro. | — |
+
+## Ajouts de M8 lot L15, finalisation (G380 à G384)
+
+Démo, documentation, release `v0.7.0` préparée (A79 L15).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G380 | Façade sans outils de debug ni manette | `app::Application` ne crée pas `ui::debug::DebugTools` (F12) et ne relie pas `platform::Gamepads` à `ui::GamepadNavigator` : un programme écrit avec la façade les ajoute lui-même (`onUi`, `ui()`, `window()`). La démo `apps/demo`, qui garde l'API bas niveau, a les deux. Les guides le disent (`guides/interface/outils-debug.md`, `navigation.md`, `application/facade.md`). | M10 |
+| G381 | Garde « pas de GPU » des tests limitée aux aides | `make demo-test-unit` pose `ENGINE_TEST_NO_GPU=1` ; seules les aides de test qui créent un périphérique (`tests/rhi/backends.hpp` `backendProbe`, `gpu_fixture.hpp` `Gpu`, `createApp` de `tests/app/application_tests.cpp`) échouent alors. Un test qui appellerait `rhi::createDevice` ou `Application::create` directement passerait la garde. Classement fait en L15 en traçant les ouvertures de `/dev/dri`, `libvulkan`, `libEGL`, `libGLX` de chaque suite de `demo-test-unit` (`strace`) : 9 suites en ouvraient ; 21 cas passés dans des suites `<suite>/gpu` et 4 suites entières (27 cas : `anim/animated-model`, `anim/crowd`, `assets/texture`, `app/application-gpu`) ajoutées à `GPU_TEST_SUITES`. | — |
+| G382 | Version 0.7.0 non publiée | Numéro mis à jour (`mk/config.mk`, `vcpkg.json`, `tools/*/Cargo.toml`, `tools/Cargo.lock`, `tools/vscode-cui/package.json`) et pages du site à `0.7.0` ; ni tag ni release (l'auteur ouvre la MR vers `main` et publie). D'ici là, `orosmo install 0.7.0` et l'exemple `--version 0.7.0` de la page Installation ne trouvent rien. | Auteur |
+| G383 | Site : CI non observée | `npm ci && npm run build && npm run check-links && npm run check-anchors` verts en local (Node 24) ; le job `site.yml` n'a pas tourné sur ces pages. Pages relues contre les en-têtes de `dev` (L15), pas contre Windows ni macOS. | M15 |
+| G384 | Vérification de fin de jalon sous Linux seulement | Clone propre vérifié sous Linux x64 (g++ 13.3, Mesa, Intel). Windows MinGW et macOS clang `-Werror` : par la CI de la MR seulement. | CI |

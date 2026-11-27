@@ -41,6 +41,29 @@ render->draw(renderer, camera);
 
 Source : `apps/demo/src/Scene/anim_scene.cpp` (`AnimScene::buildModels`) et `tests/assets/render_model_tests.cpp`.
 
+### Plus court : ModelLoader (depuis M8)
+
+`as::ModelLoader` (`orosmo/assets/model_loader.hpp`) crée et garde le cache de textures, le cache des programmes PBR et les
+textures par défaut ; un même chargeur sert plusieurs modèles (textures et programmes partagés).
+
+```cpp
+#include <orosmo/assets/model_loader.hpp>
+
+auto context = rd::RenderContext::create(device, shaderDir);     // voir « Dessiner une scène »
+auto loader = as::ModelLoader::create(*context);
+if (!loader) { /* ... */ }
+auto model = loader->load(GET_RESOURCE_PATH("models/casque.glb")); // le message d'erreur nomme le fichier
+if (!model) { /* ... */ }
+auto render = loader->createRenderModel(*model);
+if (!render) { /* ... */ }
+```
+
+Le contexte doit vivre plus longtemps que le chargeur, et le chargeur plus longtemps que les `RenderModel` qu'il a créés.
+`loader->reloadChanged()` relit les textures modifiées sur le disque ; rien n'est relu sans cet appel. Avec la façade,
+`Application::loadAnimatedModel` et `modelLoader()` créent le chargeur pour vous, mais la relecture reste à demander : pour un
+modèle animé, `animatedModel(handle)->reloadChanged()`, qui le reconstruit au besoin
+([La façade app::Application](/guides/application/facade/)).
+
 ## Lire le contenu d'un Model
 
 `Model` est un ensemble de tableaux dont les éléments se renvoient entre eux par indice (`-1` : absent). Le repère est celui de glTF : Y vers le haut, mètres, quaternions `(x, y, z, w)`.

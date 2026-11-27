@@ -191,13 +191,13 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
-| GAME-01 | Module de jeu rechargeable | P1 | Bibliothèque dynamique avec interface C stable (`init`, `update`, `onReload`, `shutdown`) ; chargée, déchargée et rechargée à l'enregistrement. | Absent |
-| GAME-02 | État côté moteur | P1 | Aucun état persistant dans la bibliothèque ; les systèmes s'enregistrent par nom à `init` et se désenregistrent au déchargement. | Absent |
+| GAME-01 | Module de jeu rechargeable | P1 | Bibliothèque dynamique avec interface C stable (`init`, `update`, `onReload`, `shutdown`) ; chargée, déchargée et rechargée à l'enregistrement. | Fait — lot M8-L5 ; preuve : `docs/STATUS.md` (section M8 lot L5 : suite `app/game_module`, `make e2e-init`) ; Windows et macOS par la CI seulement (G310) |
+| GAME-02 | État côté moteur | P1 | Aucun état persistant dans la bibliothèque ; les systèmes s'enregistrent par nom à `init` et se désenregistrent au déchargement. | Fait — lot M8-L5 ; preuve : `docs/STATUS.md` (section M8 lot L5 : suite `app/game_module`, `tools/check_game_static.py` dans `make check`) |
 | GAME-03 | Migration d'état | P1 | Ajout d'un champ à un composant : migration par réflexion (champs communs copiés, nouveaux à la valeur par défaut) ; en cas d'échec : sauvegarde, rechargement, restauration. | Fait — lot M8-L6 ; preuve : `docs/STATUS.md` (section M8 lot L6) |
 | GAME-04 | Registre des gestionnaires | P1 | Les gestionnaires d'événements de l'interface sont retrouvés **par nom** au moment de l'appel en mode développement. | Fait — lot M8-L6 ; preuve : `docs/STATUS.md` (section M8 lot L6) |
 | GAME-05 | Paramètres de gameplay en JSON | P1 | Rechargés instantanément, sans compilation. | Fait — lot M8-L6 ; preuve : `docs/STATUS.md` (section M8 lot L6) |
 | GAME-06 | Construction incrémentale | P1 | Compilation d'un fichier en quelques secondes (ccache, en-têtes légers) ; sous Windows, la bibliothèque est copiée sous un nom unique avant chargement. | Fait — lot M8-L7 ; preuve : `docs/STATUS.md` (section M8 lot L7) |
-| GAME-07 | Version finale | P1 | Logique liée statiquement, sans mécanisme de rechargement. | Absent |
+| GAME-07 | Version finale | P1 | Logique liée statiquement, sans mécanisme de rechargement. | Fait — lot M8-L5 ; preuve : `docs/STATUS.md` (section M8 lot L5 : `test_game_static` et `nm` dans `make demo-test` et `make e2e-init`) |
 
 ## K. Voxels et ray tracing (extensions, points d'accroche)
 

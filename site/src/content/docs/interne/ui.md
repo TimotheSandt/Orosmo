@@ -88,5 +88,7 @@ Test : `tests/ui/lean_render_tests.cpp`.
 
 ## Limites
 
-Pas de navigation à la manette, pas d'inspecteur d'interface, pas de rechargement à chaud de la vue,
-composition IME non affichée. Voir [l'état du projet](/projet/etat/).
+Composition IME non affichée ; une `ScrollView` ne défile pas vers le widget focalisé (G222) ; l'inspecteur ne montre pas
+les fenêtres détachées (G296). Depuis M8 : [navigation au clavier et à la manette](/guides/interface/navigation/),
+[outils de debug et inspecteurs](/guides/interface/outils-debug/), [vues rechargées à chaud](/guides/interface/rechargement-vues/)
+(par la bibliothèque de jeu, `app::ViewHost`). Voir [l'état du projet](/projet/etat/).

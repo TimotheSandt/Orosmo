@@ -206,7 +206,8 @@ presse-papiers du système.
 ## Limites
 
 - Le facteur d'échelle ×2 (écrans « Retina ») est lu mais n'a pas été observé sur un vrai écran.
-- Pas de manettes.
+- Manettes : `platform::Gamepads` lit les manettes à disposition standard (boutons, axes, branchement à chaud), pour la
+  [navigation de l'interface](/guides/interface/navigation/) ; ni vibration, ni remappage, ni joystick quelconque (G223).
 - Saisie de texte : Unicode et presse-papiers fonctionnent en mode fenêtré ; la composition (IME, saisie du chinois ou du
   japonais) n'est pas gérée.
 

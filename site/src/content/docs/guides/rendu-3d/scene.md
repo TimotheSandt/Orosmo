@@ -57,6 +57,21 @@ Adapté de l'ancien programme de départ d'`orosmo init` ; celui d'aujourd'hui p
 étapes pour lui ([`src/app/application.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/src/app/application.cpp)), et
 construit son cube par `MeshBuilder::addBox`. Pour créer ce projet : [Créer un projet](/demarrer/premier-projet/).
 
+## Contexte de rendu (depuis M8)
+
+`rd::RenderContext` (`orosmo/renderer/render_context.hpp`) réunit le quatuor que chaque fabrique du renderer demande
+(périphérique, bibliothèque de shaders, cache de pipelines, dossier des shaders). Les fabriques ont une surcharge qui le
+prend (`SceneRenderer::create(context)`, `assets::ModelLoader::create(context)`, `anim::AnimatedModel::create(context, …)`…) ;
+les anciennes signatures restent.
+
+```cpp
+auto context = rd::RenderContext::create(device, GET_RESOURCE_PATH("shader/rhi"));   // possède bibliothèque et cache
+auto sceneResult = rd::SceneRenderer::create(*context);
+// ou, avec des objets existants : rd::RenderContext shared(device, shaders, pipelines, shaderDir);
+```
+
+Le contexte n'est ni copiable ni déplaçable et doit vivre plus longtemps que tout ce qu'il a servi à créer.
+
 ## Le cycle d'une image
 
 Il y a deux `beginFrame` : celui du `rhi::Device`, qui donne l'image de la fenêtre, et celui du `SceneRenderer`, qui

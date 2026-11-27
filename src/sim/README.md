@@ -109,3 +109,5 @@ thread->stop();                                    // la simulation revient au t
   `tests/scene/scene_file_tests.cpp` (sauvegarde, migration, empreinte).
 
 Limites : voir `docs/GAPS.md` (G280 et suivants ; thread : G300 et suivants).
+
+Guide du site : `site/src/content/docs/guides/scene/simulation.md` ; architecture : `site/src/content/docs/interne/scene-sim-app.md`.

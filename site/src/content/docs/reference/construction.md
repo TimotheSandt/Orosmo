@@ -129,7 +129,7 @@ Le compilateur est lancé avec `-std=c++23 -Wall -Wextra -Wpedantic` (plus `-Wer
 Pour écrire son propre `Makefile` (sans le gabarit d'`orosmo init`), avec un moteur installé ou un paquet décompressé :
 
 ```makefile
-ENGINE_DIR   := $(shell orosmo path 0.6.2)  # ou le dossier d'un paquet décompressé
+ENGINE_DIR   := $(shell orosmo path 0.7.0)  # ou le dossier d'un paquet décompressé
 GAME_SRC_DIR := src                          # les .cui de ce dossier sont compilés automatiquement
 BUILD_TYPE   ?= release                      # debug | dev | release
 include $(ENGINE_DIR)/make/engine.mk
@@ -186,7 +186,7 @@ moteur et ne s'installent pas à part. `engine.mk` n'écrit jamais dans `ENGINE_
 cmake_minimum_required(VERSION 3.20)
 project(mygame LANGUAGES CXX)
 
-find_package(Orosmo REQUIRED)   # cmake -DCMAKE_PREFIX_PATH="$(orosmo path 0.6.2)" ...
+find_package(Orosmo REQUIRED)   # cmake -DCMAKE_PREFIX_PATH="$(orosmo path 0.7.0)" ...
 
 add_executable(mygame src/main.cpp)
 orosmo_add_cui_views(mygame src/HudView.cui)

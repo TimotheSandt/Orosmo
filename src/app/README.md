@@ -124,7 +124,7 @@ auto game = orosmo::app::GameModule::load({.path = exeDir / "game.so", .targets 
   l'ancienne version sont retirées, celles de la nouvelle ajoutées ; après chaque passage réussi, les noms liés mais absents
   (gestionnaire renommé) sont journalisés et rendus par `missingActions()` ; l'appel reste sans effet ni plantage.
 - **Paramètres (GAME-05, L6)** : `ctx->registerParams<T>("tuning", "tuning.json")` (chemin relatif à
-  `GameTargets::paramsDirectory`) rend une `Params<T>` à capturer par valeur ; le fichier est tenu par le moteur et relu au
+  `GameTargets::paramsDirectory`) rend un `core::Result<Params<T>>` ; la `Params<T>` qu'il contient se capture par valeur ; le fichier est tenu par le moteur et relu au
   début de chaque `GameModule::update` quand il change : `ParamsFile::poll` interroge le fichier au plus une fois par
   `ParamsSettings::pollInterval` (100 ms par défaut), donc la valeur est lue au plus `pollInterval` après la modification, au
   début du `GameModule::update` qui la détecte (plusieurs images plus tard au besoin), sans compilation. Fichier invalide
@@ -174,3 +174,7 @@ l'exécutable des tests (`replace`) pour le type changé et l'`init` qui échoue
   valeurs dans `docs/BASELINE/game-reload-M8-L7.txt`.
 
 Limites : `docs/GAPS.md` (G310 à G318, G320 à G326).
+
+Guides du site : `site/src/content/docs/guides/application/facade.md`, `guides/scene/logique-rechargeable.md`,
+`guides/interface/rechargement-vues.md` ; architecture : `site/src/content/docs/interne/scene-sim-app.md`. Limite de la façade
+notée en L15 : ni outils de debug ni navigation à la manette branchés (G380).

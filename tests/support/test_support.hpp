@@ -26,6 +26,25 @@ inline bool gpuRequired()
     return value != nullptr && std::string(value) != "0" && !std::string(value).empty();
 }
 
+// Vrai pendant `make demo-test-unit` (variable ENGINE_TEST_NO_GPU posée par le Makefile) : les suites de ce passage ne doivent
+// créer aucun périphérique graphique (jobs de CI sans GPU, TSan). Un cas qui en crée un doit être dans une suite de
+// GPU_TEST_SUITES du Makefile (par exemple « <suite>/gpu » par `* doctest::test_suite(...)`).
+inline bool gpuForbidden()
+{
+    const char *value = std::getenv("ENGINE_TEST_NO_GPU");
+    return value != nullptr && std::string(value) != "0" && !std::string(value).empty();
+}
+
+// Échec explicite si un test sans GPU s'apprête à créer un périphérique (voir gpuForbidden).
+#define REQUIRE_GPU_ALLOWED()                                                                                                      \
+    do                                                                                                                             \
+    {                                                                                                                              \
+        if (tests::gpuForbidden())                                                                                                 \
+        {                                                                                                                          \
+            FAIL("graphics device created by a test outside GPU_TEST_SUITES (ENGINE_TEST_NO_GPU): move it to a GPU suite");        \
+        }                                                                                                                          \
+    } while (0)
+
 inline void Assert(bool condition, const std::string &message) { REQUIRE_MESSAGE(condition, message); }
 
 inline void AssertNear(double actual, double expected, double epsilon, const std::string &message)

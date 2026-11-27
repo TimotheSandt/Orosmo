@@ -50,6 +50,7 @@ export default defineConfig({
             { label: 'Rendu 2D', collapsed: true, items: [{ autogenerate: { directory: 'guides/rendu-2d' } }] },
             { label: 'Contenus', collapsed: true, items: [{ autogenerate: { directory: 'guides/contenus' } }] },
             { label: 'Animation', collapsed: true, items: [{ autogenerate: { directory: 'guides/animation' } }] },
+            { label: 'Scène et jeu', collapsed: true, items: [{ autogenerate: { directory: 'guides/scene' } }] },
             { label: 'Interface', collapsed: true, items: [{ autogenerate: { directory: 'guides/interface' } }] },
             { label: 'Noyau', collapsed: true, items: [{ autogenerate: { directory: 'guides/noyau' } }] },
             { label: 'Avancé', collapsed: true, items: [{ autogenerate: { directory: 'guides/avance' } }] },

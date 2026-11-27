@@ -104,6 +104,8 @@ le raccourci (il marche menu fermé). Un `ContextMenu` est un enfant invisible :
 | `.visible(e)`, `.enabled(e)` | `true`, `false` ou expression booléenne relue à chaque image | visibilité, activation |
 | `.variant("nom")` | chaîne | style `widgets.<nom>` du thème |
 | `.overflow(...)` | `.visible` (défaut), `.hidden` | ce qui dépasse : visible et cliquable, ou coupé |
+| `.tabIndex(n)` | entier | ordre de tabulation : positif d'abord, croissant ; 0 dans l'ordre de l'arbre ; négatif hors de l'ordre ([Navigation](/guides/interface/navigation/)) |
+| `.focusable(false)` | `true`, `false` | `false` : le widget ne prend jamais le focus (Tab, flèches, clic) |
 | `.style(propriété: valeur, ...)` | une propriété de thème ; valeur : jeton, `"#rrggbb[aa]"`, nombre, nom d'image | surcharge locale |
 | `.textAlign(...)` | `.start`, `.center`, `.end` | `Label` seulement |
 | `.range(min, max)` | nombres | `Plot` seulement : bornes fixes |
@@ -153,4 +155,5 @@ Forme : `fichier:ligne:colonne: error: message`. La colonne est celle de l'élé
 
 - Pas de boucle ni de condition : une liste de widgets variable se construit en C++, ou par `ParamPanel`.
 - `once` et `always` sont acceptés devant une expression, sans effet.
-- Pas de rechargement à chaud de la vue ni de navigation à la manette.
+- Le rechargement à chaud de la vue passe par la bibliothèque de jeu, en développement ([Vues rechargées à chaud](/guides/interface/rechargement-vues/)) ;
+  un changement des champs liés demande un redémarrage.

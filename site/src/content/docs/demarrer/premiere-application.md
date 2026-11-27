@@ -104,7 +104,8 @@ exemples du wiki utilisent les références ci-dessus, plus lisibles.
 
 **Déballer un `Result`.** Les fabriques renvoient `core::Result<T>` (`std::expected<T, core::Error>`). Dans un exemple,
 `if (!r) return …;` veut dire : écrire `r.error().message` et sortir, ou propager avec `return std::unexpected(r.error());`.
-Un commentaire `// …` marque du code omis. Pour un `Result<T>` par valeur (`Mesh`, `LightManager`), on déréférence une fois
+Un commentaire `// …` marque du code omis. Un bloc `if (!r) { /* … */ }` qui ne contient qu'un commentaire vaut de même : le code
+omis quitte la fonction, et la suite de l'exemple suppose le succès. Pour un `Result<T>` par valeur (`Mesh`, `LightManager`), on déréférence une fois
 (`*lightsResult`) ; pour un `Result<std::unique_ptr<T>>` (`SceneRenderer`, `CanvasRenderer`, `Device`), deux fois.
 
 ### Chemins des ressources
@@ -127,11 +128,11 @@ const char *model  = GET_RESOURCE_PATH("models/casque.glb");   // un asset de vo
 Arborescence d'un projet créé par `orosmo init`, puis du dossier de l'exécutable après `make debug` :
 
 ```text
-~/.orosmo/engines/0.6.2/  le moteur installé (orosmo path 0.6.2) ; ne le modifiez pas, il sert à tous vos projets
+~/.orosmo/engines/0.7.0/  le moteur installé (orosmo path 0.7.0) ; ne le modifiez pas, il sert à tous vos projets
   res/fonts, res/themes     police et thèmes par défaut
   shaders/                  shaders du RHI (shaders/rhi/…)
 mygame/
-  config.mk               OROSMO_VERSION := 0.6.2
+  config.mk               OROSMO_VERSION := 0.7.0
   src/                    votre code et vos .cui
   res/                    (facultatif) vos ressources : voir ci-dessous
   Generated/              code C++ produit à partir des .cui
@@ -178,7 +179,8 @@ rhi::Device &device = **created;
 ```
 
 `prepareWindowHints` pose les attributs de contexte du backend juste avant la création de la fenêtre : il faut donc
-l'appeler dans le rappel de `init`. `Window::init` renvoie `0` en cas de succès, pas un `Result`. Le quatrième argument du
+l'appeler dans le rappel de `init`. `Window::init` rend un `core::Result<>` depuis M8 (avant : un `int`, `0` en cas de
+succès ; un ancien `window.init() != 0` ne compile plus, G270). Le quatrième argument du
 constructeur (`kWindowed`) compte : sans lui, la fenêtre s'ouvre en plein écran dans un programme compilé sans `DEBUG`
 (avec la façade : `ApplicationSettings::windowed` ; voir [Fenêtre, clavier et souris](/guides/application/fenetre-entrees/)).
 Pour Vulkan avec repli sur OpenGL, comme le fait la façade, remplacez ce bloc par celui de
@@ -274,7 +276,8 @@ travail compute (comme le skinning) doit être enregistré sur le même encodeur
 
 Les règles pour déballer un `Result` sont dans les [conventions](#conventions-des-exemples). 
 `error().message` est prêt à afficher. Deux
-exceptions viennent de l'ancien code : `Window::init` renvoie un `int`, `TextRenderer::init` et `loadFont` un `bool`.
+exceptions viennent de l'ancien code : `TextRenderer::init` et `loadFont` rendent un `bool` (`Window::init` rend un
+`Result<>` depuis M8).
 
 ## Le projet sans GPU
 

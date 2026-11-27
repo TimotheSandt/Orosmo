@@ -450,8 +450,8 @@ jobs:
       # Ubuntu 24.04 kernels randomise mmap with 32 bits: the TSan runtime of GCC 13 then aborts ("unexpected memory mapping").
       - name: Lower ASLR entropy for TSan
         run: sudo sysctl -w vm.mmap_rnd_bits=28
-      # No display and no Vulkan driver on purpose: suites outside GPU_TEST_SUITES that open a device (anim, assets, apps/demo)
-      # skip it, instead of reporting races inside the uninstrumented Mesa and xcb libraries.
+      # No display and no Vulkan driver on purpose, so that nothing reports races inside the uninstrumented Mesa and xcb
+      # libraries. demo-test-unit sets ENGINE_TEST_NO_GPU=1: a test outside GPU_TEST_SUITES that creates a device fails.
       - name: Unit tests under TSan
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
