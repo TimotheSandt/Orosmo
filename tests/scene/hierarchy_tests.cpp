@@ -31,6 +31,20 @@ bool near(const core::DVec3 &a, const core::DVec3 &b, double eps = 1e-9)
 {
     return std::abs(a.x - b.x) <= eps && std::abs(a.y - b.y) <= eps && std::abs(a.z - b.z) <= eps;
 }
+// Accès qui arrête le cas si l'entité n'a pas (ou plus) de Transform, au lieu de déréférencer un pointeur nul.
+const Transform &tf(const World &world, Entity e)
+{
+    const Transform *t = world.transform(e);
+    REQUIRE(t != nullptr);
+    return *t;
+}
+
+Transform &edit(World &world, Entity e)
+{
+    Transform *t = world.editTransform(e);
+    REQUIRE(t != nullptr);
+    return *t;
+}
 } // namespace
 
 TEST_SUITE("scene/hierarchy")
@@ -107,19 +121,19 @@ TEST_SUITE("scene/hierarchy")
         REQUIRE(world.setParent(child, root));
         REQUIRE(world.setParent(grandChild, child));
         CHECK(world.updateTransforms() == 3u);
-        CHECK(near(world.transform(root)->worldPosition, {10.0, 0.0, 0.0}));
-        CHECK(near(world.transform(child)->worldPosition, {10.0, 0.0, -2.0}));
-        CHECK(near(world.transform(grandChild)->worldPosition, {10.0, 6.0, -2.0}));
+        CHECK(near(tf(world, root).worldPosition, {10.0, 0.0, 0.0}));
+        CHECK(near(tf(world, child).worldPosition, {10.0, 0.0, -2.0}));
+        CHECK(near(tf(world, grandChild).worldPosition, {10.0, 6.0, -2.0}));
 
         // Déplacer la racine déplace toute la descendance.
-        world.editTransform(root)->position = core::DVec3(0.0, 100.0, 0.0);
+        edit(world, root).position = core::DVec3(0.0, 100.0, 0.0);
         CHECK(world.updateTransforms() == 3u);
-        CHECK(near(world.transform(grandChild)->worldPosition, {0.0, 106.0, -2.0}));
+        CHECK(near(tf(world, grandChild).worldPosition, {0.0, 106.0, -2.0}));
 
         // Une entité intermédiaire sans Transform transmet celle de son ancêtre.
         world.remove(child, world.transformType());
         CHECK(world.updateTransforms() == 1u);
-        CHECK(near(world.transform(grandChild)->worldPosition, {0.0, 106.0, 0.0}));
+        CHECK(near(tf(world, grandChild).worldPosition, {0.0, 106.0, 0.0}));
     }
 
     TEST_CASE("Transforms: changing the parent recomputes the moved subtree only")
@@ -136,12 +150,12 @@ TEST_SUITE("scene/hierarchy")
         REQUIRE(world.setParent(node, left));
         REQUIRE(world.setParent(leaf, node));
         CHECK(world.updateTransforms() == 4u);
-        CHECK(near(world.transform(leaf)->worldPosition, {-5.0, 1.0, 1.0}));
+        CHECK(near(tf(world, leaf).worldPosition, {-5.0, 1.0, 1.0}));
 
         REQUIRE(world.setParent(node, right));
         CHECK(world.dirtyTransformCount() == 1u);
         CHECK(world.updateTransforms() == 2u); // node et leaf, pas left ni right
-        CHECK(near(world.transform(leaf)->worldPosition, {5.0, 1.0, 1.0}));
+        CHECK(near(tf(world, leaf).worldPosition, {5.0, 1.0, 1.0}));
         CHECK(world.setParent(node, right)); // même parent : rien à recalculer
         CHECK(world.updateTransforms() == 0u);
     }
@@ -161,13 +175,13 @@ TEST_SUITE("scene/hierarchy")
         REQUIRE(world.setTransform(other, at(0.0, 0.0, 0.0)));
         CHECK(world.updateTransforms() == 6u);
         CHECK(world.updateTransforms() == 0u); // rien de sale
-        CHECK(near(world.transform(chain[4])->worldPosition, {5.0, 0.0, 0.0}));
+        CHECK(near(tf(world, chain[4]).worldPosition, {5.0, 0.0, 0.0}));
 
-        world.editTransform(chain[2])->position.x = 2.0;
+        edit(world, chain[2]).position.x = 2.0;
         world.markTransformDirty(chain[3]); // déjà couvert par chain[2]
         CHECK(world.updateTransforms() == 3u); // chain[2], [3], [4]
-        CHECK(near(world.transform(chain[4])->worldPosition, {6.0, 0.0, 0.0}));
-        CHECK(near(world.transform(chain[1])->worldPosition, {2.0, 0.0, 0.0}));
+        CHECK(near(tf(world, chain[4]).worldPosition, {6.0, 0.0, 0.0}));
+        CHECK(near(tf(world, chain[1]).worldPosition, {2.0, 0.0, 0.0}));
 
         // Écriture directe par la vue : l'appelant marque l'entité.
         world.view(world.transformType()).each([&](Entity e, Transform &t) {
@@ -176,7 +190,7 @@ TEST_SUITE("scene/hierarchy")
         });
         world.markTransformDirty(other);
         CHECK(world.updateTransforms() == 1u);
-        CHECK(near(world.transform(other)->worldPosition, {0.0, 4.0, 0.0}));
+        CHECK(near(tf(world, other).worldPosition, {0.0, 4.0, 0.0}));
 
         // Une entité sale détruite avant la mise à jour est ignorée.
         world.editTransform(chain[4]);
@@ -202,7 +216,7 @@ TEST_SUITE("scene/hierarchy")
         // Position exacte : rotation d'un quart de tour (x, z) -> (z, -x), puis translations.
         const core::DVec3 exact = core::DVec3(1.0e7, -3.0e6, 1.0e7) + core::DVec3(-4321.125 - 0.75, 9.25 + 0.5, -(1234.5678 + 0.0123));
         const core::WorldPosition camera(exact + core::DVec3(2.3, 1.1, -3.7));
-        const core::Mat4 m = relativeMatrix(*world.transform(part), camera);
+        const core::Mat4 m = relativeMatrix(tf(world, part), camera);
         const core::Vec3 rel(m[3]);
         const core::DVec3 expected = exact - camera.value;
         const double error = glm::length(core::DVec3(rel) - expected);
@@ -232,10 +246,10 @@ TEST_SUITE("scene/hierarchy")
         }
         const std::size_t all = world.updateTransforms();
         CHECK(all == 100000u);
-        world.editTransform(roots[10])->position.z = 1.0;
+        edit(world, roots[10]).position.z = 1.0;
         const std::size_t some = world.updateTransforms();
         CHECK(some == 100u);
-        CHECK(near(world.transform(world.firstChild(roots[10]))->worldPosition, {10.0, 1.0, 1.0}));
+        CHECK(near(tf(world, world.firstChild(roots[10])).worldPosition, {10.0, 1.0, 1.0}));
     }
 
     TEST_CASE("Transforms: many dirty leaves under a long clean chain; a dirty ancestor covers its dirty descendants")
@@ -258,14 +272,14 @@ TEST_SUITE("scene/hierarchy")
         }
         CHECK(world.updateTransforms() == 6000u);
         for (const Entity leaf : leaves)
-            world.editTransform(leaf)->position.z = 1.0;
+            edit(world, leaf).position.z = 1.0;
         CHECK(world.updateTransforms() == 3000u); // chaque chaîne d'ancêtres propre n'est remontée qu'une fois
-        CHECK(near(world.transform(leaves[7])->worldPosition, {7.0, 3000.0, 1.0}));
+        CHECK(near(tf(world, leaves[7]).worldPosition, {7.0, 3000.0, 1.0}));
 
         for (const Entity leaf : leaves)
             world.markTransformDirty(leaf);
-        world.editTransform(chain[2000])->position.y = 2.0; // ancêtre sale, après ses descendants dans la file
+        edit(world, chain[2000]).position.y = 2.0; // ancêtre sale, après ses descendants dans la file
         CHECK(world.updateTransforms() == 1000u + 3000u);
-        CHECK(near(world.transform(leaves[7])->worldPosition, {7.0, 3001.0, 1.0}));
+        CHECK(near(tf(world, leaves[7]).worldPosition, {7.0, 3001.0, 1.0}));
     }
 }

@@ -3,6 +3,8 @@
 
 #include <orosmo/core/error.hpp>
 
+#include <algorithm>
+#include <atomic>
 #include <string>
 #include <utility>
 
@@ -25,6 +27,30 @@ Result<> checkComponentType(const ComponentDesc &desc, std::size_t size, std::si
 }
 } // namespace detail
 
+namespace
+{
+// Générations des types : uniques dans le processus (tous les mondes), pour qu'un identifiant d'un monde ne désigne jamais
+// un autre type après une affectation entre mondes (`a = b`). 0 est réservé à « Transform » (premier type de chaque monde,
+// jamais retiré ni migré). Pas de génération procédurale ici : la valeur n'entre ni dans les sauvegardes ni dans les
+// empreintes. Le compteur 32 bits ne reboucle qu'après 2^32 enregistrements dans un même processus (G390).
+std::atomic<std::uint32_t> gSlotGenerations{1};
+
+// Réserve au moins `needed` éléments, par paliers géométriques : N appels qui ajoutent un élément chacun restent linéaires.
+void reserveGrowth(std::vector<std::uint32_t> &v, std::size_t needed)
+{
+    if (v.capacity() < needed)
+        v.reserve(std::max(needed, v.capacity() * 2u));
+}
+
+std::uint32_t nextSlotGeneration() noexcept
+{
+    std::uint32_t g = gSlotGenerations.fetch_add(1, std::memory_order_relaxed);
+    if (g == 0) // rebouclage : 0 reste réservé à Transform
+        g = gSlotGenerations.fetch_add(1, std::memory_order_relaxed);
+    return g;
+}
+} // namespace
+
 World::World()
 {
     auto id = registerComponent(describeComponent<Transform>(std::string(kTransformName)));
@@ -34,7 +60,7 @@ World::World()
 
 void World::assertNotIterating() const noexcept
 {
-    ENGINE_ASSERT(iterating_ == 0, "World: structural change during a view or forEach iteration");
+    ENGINE_ASSERT(iterating_.value == 0, "World: structural change during a view or forEach iteration");
 }
 
 // ── Entités ───────────────────────────────────────────────────────────────────
@@ -135,7 +161,7 @@ bool World::destroy(Entity entity)
     for (std::size_t i = 0; i < doomed.size(); ++i)
         for (std::uint32_t c = records_[doomed[i]].firstChild; c != kNone; c = records_[c].nextSibling)
             doomed.push_back(c);
-    freeIndices_.reserve(freeIndices_.size() + doomed.size());
+    reserveGrowth(freeIndices_, freeIndices_.size() + doomed.size());
     detach(entity.index);
     for (std::uint32_t index : doomed)
     {
@@ -181,7 +207,7 @@ Result<ComponentId> World::registerComponent(ComponentDesc desc)
         p.setDesc(std::move(desc));
         return *existing;
     }
-    if (iterating_ > 0)
+    if (iterating_.value > 0)
         return core::makeError(ErrorCode::kBusy, "component " + desc.name + ": a new type cannot be registered during an iteration");
     std::uint32_t index = 0;
     while (index < slots_.size() && slots_[index].used)
@@ -190,13 +216,14 @@ Result<ComponentId> World::registerComponent(ComponentDesc desc)
         slots_.emplace_back();
     Slot &slot = slots_[index];
     slot.used = true;
+    slot.generation = desc.name == kTransformName ? 0u : nextSlotGeneration();
     slot.pool = ComponentPool(std::move(desc));
     return ComponentId{index, slot.generation};
 }
 
 Result<> World::unregisterComponent(std::string_view name)
 {
-    if (iterating_ > 0)
+    if (iterating_.value > 0)
         return core::makeError(ErrorCode::kBusy, "a component type cannot be unregistered during an iteration");
     if (name == kTransformName)
         return core::makeError(ErrorCode::kInvalidArgument, "the engine component Transform cannot be unregistered");
@@ -205,7 +232,7 @@ Result<> World::unregisterComponent(std::string_view name)
         return std::unexpected(id.error());
     Slot &slot = slots_[id->index];
     slot.used = false;
-    ++slot.generation;
+    slot.generation = nextSlotGeneration();
     slot.pool = ComponentPool(ComponentDesc{});
     return {};
 }
@@ -231,7 +258,7 @@ Result<ComponentMigration> World::migrateComponent(ComponentDesc desc)
         report.id = *existing;
         return report;
     }
-    if (iterating_ > 0)
+    if (iterating_.value > 0)
         return core::makeError(ErrorCode::kBusy, "component " + desc.name + ": cannot be migrated during an iteration");
     const ComponentDesc &old = slot.pool.desc();
     report.kind = classifyMigration(old.fields, desc.fields);
@@ -242,7 +269,7 @@ Result<ComponentMigration> World::migrateComponent(ComponentDesc desc)
         migrateComponentValue(old, slot.pool.at(i), migrated.desc(), target, report.warnings);
     }
     slot.pool = std::move(migrated);
-    ++slot.generation;
+    slot.generation = nextSlotGeneration();
     report.id = ComponentId{existing->index, slot.generation};
     return report;
 }
@@ -405,7 +432,7 @@ Result<> World::setParent(Entity child, Entity parent)
                 return core::makeError(ErrorCode::kInvalidArgument, "setParent: the parent is the child itself or one of its descendants");
     if (records_[child.index].parent == (parent.isNull() ? kNone : parent.index))
         return {};
-    dirty_.reserve(dirty_.size() + 1u); // place pour le marquage avant de toucher aux liens
+    reserveGrowth(dirty_, dirty_.size() + 1u); // place pour le marquage avant de toucher aux liens
     detach(child.index);
     if (!parent.isNull())
     {

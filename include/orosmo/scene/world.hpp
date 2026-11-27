@@ -64,6 +64,11 @@ class World
 {
   public:
     World();
+    // Copie profonde. Le compteur des parcours en cours n'est pas copié : une copie (même faite dans un rappel de `each`) est
+    // libre. Remplacer un monde pendant l'un de ses parcours est une erreur de programmation (ENGINE_ASSERT_ALWAYS).
+    // Les générations des types (`ComponentId::generation`) sont uniques dans le processus : après `a = b`, un identifiant ou
+    // une `View` d'un type que `b` n'a pas est refusé (jamais lu comme un autre type) ; une copie du même registre
+    // (restauration d'une capture) garde ses identifiants valides. « Transform » a toujours la génération 0.
     World(const World &) = default;
     World &operator=(const World &) = default;
     World(World &&) noexcept = default;
@@ -180,10 +185,25 @@ class World
         requires(sizeof...(T) > 0)
     friend class View;
 
+    // Nombre de parcours en cours. Jamais copié ni transféré : une copie part de 0, une affectation garde celui de la
+    // destination et refuse une destination en cours de parcours (premier membre : vérifié avant toute modification).
+    struct IterationCount
+    {
+        int value = 0;
+        IterationCount() = default;
+        IterationCount(const IterationCount &) noexcept {}
+        IterationCount &operator=(const IterationCount &) noexcept
+        {
+            ENGINE_ASSERT_ALWAYS(value == 0, "World: a world cannot be replaced during one of its iterations");
+            return *this;
+        }
+        ~IterationCount() = default;
+    };
+
     // Compte les parcours en cours, y compris quand un rappel sort par une exception.
     struct IterationGuard
     {
-        explicit IterationGuard(int &counter) noexcept : counter_(counter) { ++counter_; }
+        explicit IterationGuard(IterationCount &counter) noexcept : counter_(counter.value) { ++counter_; }
         ~IterationGuard() { --counter_; }
         IterationGuard(const IterationGuard &) = delete;
         IterationGuard &operator=(const IterationGuard &) = delete;
@@ -223,6 +243,7 @@ class World
     bool coveredByDirtyAncestor(std::uint32_t index);
     void assertNotIterating() const noexcept;
 
+    IterationCount iterating_; // premier membre (voir IterationCount)
     std::vector<EntityRecord> records_;
     std::vector<std::uint32_t> freeIndices_;
     std::size_t liveCount_ = 0;
@@ -232,7 +253,6 @@ class World
     std::vector<std::pair<std::uint32_t, const Transform *>> stack_; // parcours de updateTransforms, réutilisé
     std::vector<std::uint32_t> path_;                                 // remontée des ancêtres de updateTransforms, réutilisée
     std::uint32_t coverPass_ = 0;
-    int iterating_ = 0;
 };
 
 // ── Définitions des modèles ─────────────────────────────────────────────────────
