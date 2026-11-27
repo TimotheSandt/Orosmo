@@ -6,6 +6,8 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <cstdint>
+#include <limits>
 #include <istream>
 #include <ostream>
 #include <utility>
@@ -38,6 +40,17 @@ bool equalsIgnoreCase(std::string_view left, std::string_view right) noexcept
 std::optional<std::uint32_t> parseUnsigned(std::string_view text, std::uint32_t maximum) noexcept
 {
     std::uint32_t value = 0;
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (text.empty() || error != std::errc{} || end != text.data() + text.size() || value > maximum)
+    {
+        return std::nullopt;
+    }
+    return value;
+}
+
+std::optional<std::uint64_t> parseUnsigned64(std::string_view text, std::uint64_t maximum) noexcept
+{
+    std::uint64_t value = 0;
     const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
     if (text.empty() || error != std::errc{} || end != text.data() + text.size() || value > maximum)
     {
@@ -335,6 +348,8 @@ orosmo::renderer::FramePacing framePacingFor(const LaunchOptions &options) noexc
 orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *const *argv)
 {
     LaunchOptions options;
+    bool simSeedGiven = false;
+    bool simStepsGiven = false;
     for (int index = 1; index < argc; ++index)
     {
         const std::string argument(argv[index]);
@@ -671,6 +686,35 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
             }
             options.pointLights = *count;
         }
+        else if (matchOption("--sim-agents", value))
+        {
+            const auto count = value ? parseUnsigned(*value, 1000000U) : std::nullopt;
+            if (!count || *count == 0)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --sim-agents (1 to 1000000): " + value.value_or(""));
+            }
+            options.simAgents = *count;
+        }
+        else if (matchOption("--seed", value))
+        {
+            const auto seed = value ? parseUnsigned64(*value, std::numeric_limits<std::uint64_t>::max()) : std::nullopt;
+            if (!seed)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --seed (unsigned 64-bit integer): " + value.value_or(""));
+            }
+            options.simSeed = *seed;
+            simSeedGiven = true;
+        }
+        else if (matchOption("--sim-steps", value))
+        {
+            const auto steps = value ? parseUnsigned64(*value, 10000000U) : std::nullopt;
+            if (!steps)
+            {
+                return makeError(ErrorCode::kInvalidArgument, "Invalid value for --sim-steps (0 to 10000000): " + value.value_or(""));
+            }
+            options.simSteps = *steps;
+            simStepsGiven = true;
+        }
         else if (matchOption("--scene", value))
         {
             if (!value || (*value != "default" && *value != "mixed" && *value != "anim"))
@@ -697,6 +741,15 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
         {
             return makeError(ErrorCode::kInvalidArgument, "Unknown argument: " + argument);
         }
+    }
+
+    if (options.simAgents == 0 && (simSeedGiven || simStepsGiven))
+    {
+        return makeError(ErrorCode::kInvalidArgument, "--seed and --sim-steps require --sim-agents");
+    }
+    if (options.simAgents > 0 && (options.headless || !options.captureDirectory.empty()))
+    {
+        return makeError(ErrorCode::kInvalidArgument, "--sim-agents runs without window nor graphics device: it cannot be combined with --headless or --capture");
     }
 
     if (!options.clickId.empty() && options.captureFrames < 3)
@@ -736,7 +789,8 @@ void printUsage(std::ostream &out)
         << "              [--aa none|fxaa|smaa|taa]\n"
         << "              [--headless] [--vsync [on|off]] [--fps-limit N] [--direct-present on|off] [--gpu-timings auto|on|off]\n"
         << "              [--frames-in-flight 1|2|3] [--graph-cache on|off]\n"
-        << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>] [--focus <id>]] [--help]\n";
+        << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>] [--focus <id>]]\n"
+        << "              [--sim-agents N [--seed S] [--sim-steps K]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : Vulkan by default; --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
     out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
@@ -779,6 +833,8 @@ void printUsage(std::ostream &out)
     out << "          Its color texture (path logged) is reloaded live when the file changes on disk.\n";
     out << "Lighting: --lighting forwardplus uses clustered forward+ lighting (depth pre-pass, clusters filled by a compute pass;\n";
     out << "          falls back to forward without compute shaders). --lights N adds N deterministic point lights.\n";
+    out << "Simulation: --sim-agents N runs N agents on the fixed-step simulation without window nor graphics device (seed\n";
+    out << "          --seed S, default 42; --sim-steps K steps, default 1000), prints the state fingerprint and exits.\n";
 }
 
 bool promptForBackend(std::istream &input, std::ostream &output, Backend &selected)
