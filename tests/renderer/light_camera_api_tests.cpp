@@ -80,6 +80,11 @@ TEST_SUITE("renderer/light")
         const rd::Light sky = rd::pointLight({.range = std::numeric_limits<float>::infinity()});
         CHECK(sky == rd::pointLight({0, 0, 0}, {1, 1, 1}, 1.0f, 0.0f, 0.0f));
         CHECK(rd::lightRange(sky) == rd::kLightMaxRange);
+        // Portée finie au-delà de kLightMaxRange : bornée, mais l'atténuation reste (revue de la PR #24).
+        const rd::Light far = rd::pointLight({.range = 2.0e6f});
+        CHECK(far.a > 0.0f);
+        CHECK(rd::lightRange(far) == doctest::Approx(rd::kLightMaxRange).epsilon(1e-4));
+        CHECK(rd::lightAttenuation(5.0e5f, far.a, far.b, rd::lightRange(far)) < 0.05f);
         // Portée nulle ou négative : bornée à 1 mm (la lumière n'éclaire presque rien, sans division par zéro).
         const rd::Light tiny = rd::pointLight({.range = -4.0f});
         CHECK(std::isfinite(tiny.a));

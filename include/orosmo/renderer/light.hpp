@@ -69,7 +69,7 @@ struct PointLightDesc
     glm::vec3 color{1.0f};
     float intensity = 1.0f;
     // Distance (m) où la lumière s'éteint (`lightRange`) : atténuation en carré inverse, ramenée à 0 à la portée. Infinie : sans
-    // atténuation. Bornée à 1 mm au moins. Elle dépend de la couleur et de l'intensité : changer l'une ensuite change la portée.
+    // atténuation (NaN aussi). Une portée finie est bornée à [1 mm, kLightMaxRange]. Elle dépend de la couleur et de l'intensité : changer l'une ensuite change la portée.
     float range = 10.0f;
 };
 

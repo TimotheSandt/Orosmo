@@ -87,11 +87,11 @@ void setRange(Light &light, float range)
 {
     light.a = 0.0f;
     light.b = 0.0f;
-    if (!(range < kLightMaxRange)) // infinie (ou NaN) : sans atténuation
+    if (std::isnan(range) || (std::isinf(range) && range > 0.0f)) // infinie (ou NaN) : sans atténuation
     {
         return;
     }
-    range = std::max(range, kMinRange);
+    range = std::clamp(range, kMinRange, kLightMaxRange); // une portée finie garde son atténuation, même très grande
     const float peak = std::max({light.color.x, light.color.y, light.color.z}) * light.strength * 1.5f;
     const float k = peak / kLightCutoff - 1.0f;
     if (k > 0.0f) // sinon la lumière est déjà sous le seuil : portée nulle, quels que soient les coefficients
