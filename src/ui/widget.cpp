@@ -347,6 +347,8 @@ void Widget::onKey(Ui &, int) {}
 bool Widget::usesArrowKey(int, bool) const { return false; }
 void Widget::onText(Ui &, std::string_view) {}
 bool Widget::onShortcut(Ui &, std::string_view) { return false; }
+void Widget::saveRetained(RetainedState &) const {}
+void Widget::restoreRetained(Ui &, const RetainedState &) {}
 void Widget::onFocusChanged(Ui &ui, bool focused) { emit(ui, EventKind::kFocus, focused); }
 
 void Widget::fire(EventKind kind, bool active)

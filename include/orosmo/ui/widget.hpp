@@ -18,6 +18,7 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -30,6 +31,14 @@ namespace orosmo::ui
 
 class Ui;
 class Widget;
+
+// UI-08 : état d'interaction d'un widget gardé d'un arbre à l'autre (`Widget::saveRetained`). Champs vides : rien à garder.
+struct RetainedState
+{
+    std::optional<float> scroll{}; // défilement vertical, en pixels (borné à la mise en page suivante)
+    std::optional<bool> expanded{}; // section ouverte
+    std::optional<int> selected{};  // onglet choisi
+};
 
 struct Rect
 {
@@ -371,6 +380,13 @@ class Widget
     // Raccourci clavier normalisé (`normalizeShortcut` : "Ctrl+S", "Ctrl+Shift+Z", "F5") ; vrai si le widget l'a pris (élément
     // de menu, bouton). L'interface le propose aux widgets visibles et actifs, dans l'ordre de l'arbre.
     virtual bool onShortcut(Ui &ui, std::string_view shortcut);
+
+    // UI-08 : état d'interaction gardé quand l'arbre est recréé (rechargement à chaud d'une vue `.cui`, `ui::replaceRoot`), par
+    // identifiant de widget. `saveRetained` écrit ce que le widget veut garder (rien par défaut) ; `restoreRetained` le reprend sur
+    // le widget de même identifiant du nouvel arbre, avant sa première mise en page. ScrollView et TextArea gardent le défilement,
+    // Section l'état ouvert, Tabs l'onglet choisi.
+    virtual void saveRetained(RetainedState &state) const;
+    virtual void restoreRetained(Ui &ui, const RetainedState &state);
 
     // Programme l'événement : il est appelé à la fin de `Ui::update`, après les écritures différées qui le précèdent.
     void emit(Ui &ui, EventKind kind, bool active = true);

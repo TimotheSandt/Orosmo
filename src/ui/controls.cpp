@@ -485,6 +485,15 @@ void TextArea::revealCaret(const Ui &ui)
     scroll_ = std::max(scroll_, 0.0f);
 }
 
+void TextArea::saveRetained(RetainedState &state) const { state.scroll = scroll_; }
+
+// Borné par `arrange` à la mise en page suivante (le nombre de rangées n'est connu qu'alors).
+void TextArea::restoreRetained(Ui &, const RetainedState &state)
+{
+    if (state.scroll)
+        scroll_ = std::max(0.0f, *state.scroll);
+}
+
 void TextArea::onFocusChanged(Ui &ui, bool focused)
 {
     Widget::onFocusChanged(ui, focused);

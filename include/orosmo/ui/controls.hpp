@@ -148,6 +148,8 @@ class TextArea : public Widget
     void onText(Ui &ui, std::string_view text) override;
     bool onWheel(Ui &ui, glm::vec2 wheel) override;
     void onFocusChanged(Ui &ui, bool focused) override;
+    void saveRetained(RetainedState &state) const override;
+    void restoreRetained(Ui &ui, const RetainedState &state) override;
 
   protected:
     glm::vec2 measureContent(Ui &ui, glm::vec2 available, const Style &style) override;
