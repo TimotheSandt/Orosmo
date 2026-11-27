@@ -33,9 +33,31 @@ La lumière directionnelle est celle du gabarit `orosmo init`
 ([`tools/engine-sdk/template/src/main.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/tools/engine-sdk/template/src/main.cpp)) ;
 les deux autres sont adaptées de [`tests/renderer/forward_plus_tests.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/tests/renderer/forward_plus_tests.cpp).
 
+## Fabriques à descripteur (depuis M8)
+
+Une seule convention, et des unités lisibles : `direction` est toujours le sens de **propagation** de la lumière (du soleil
+vers le sol, du projecteur vers ce qu'il éclaire), la portée en mètres remplace les coefficients d'atténuation, les angles
+du projecteur sont des demi-angles en degrés. Les champs omis prennent leur valeur par défaut (blanc, intensité 1, portée
+10 m, cône de 30° et 25°).
+
+```cpp
+lights.addLight(rd::directionalLight({.direction = {-0.6f, -0.8f, -0.5f}, .color = {1.0f, 0.96f, 0.9f}, .intensity = 0.85f}));
+lights.addLight(rd::pointLight({.position = {2.0f, 1.0f, 0.0f}, .color = {1.0f, 0.5f, 0.2f}, .intensity = 0.8f, .range = 4.0f}));
+lights.addLight(rd::spotLight({.position = {0.0f, 4.0f, 0.0f}, .direction = {0.0f, -1.0f, 0.0f}, .range = 8.0f,
+                               .outerAngleDegrees = 25.0f, .innerAngleDegrees = 18.0f}));
+```
+
+Elles rendent une `Light` ordinaire : la même lumière que l'ancienne fabrique aux valeurs équivalentes, donc la même image
+(test `A75.10 descriptor light factories give the same image…`). La portée donne une atténuation en carré inverse
+(`a = (crête / (1/256) − 1) / portée²`, `b = 0`), ramenée à zéro à la portée ; une portée infinie veut dire « sans
+atténuation ». La portée est le seuil où la lumière devient invisible : à mi-portée il n'en reste déjà que quelques pour
+cent, donc une lampe qui doit éclairer franchement à 5 m demande une portée bien plus grande (ou plus d'intensité). `rd::lightDirection(light)` rend le sens de propagation quel que soit le type. Les fabriques d'origine
+ci-dessous restent disponibles.
+
 ## Sens des champs, type par type
 
-Le champ `direction` n'a pas le même sens selon le type : c'est le piège le plus courant.
+Avec les fabriques d'origine (et dans le champ `Light::direction`), `direction` n'a pas le même sens selon le type : c'est
+le piège le plus courant, que les fabriques à descripteur évitent.
 
 | Type (`LightType`) | Fabrique | `direction` | Autres champs |
 |---|---|---|---|

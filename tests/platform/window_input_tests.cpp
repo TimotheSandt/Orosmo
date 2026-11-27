@@ -18,8 +18,9 @@ namespace
 // Crée une fenêtre ; renvoie faux (et un message) si le système n'a pas d'affichage.
 bool open(platform::Window &window)
 {
-    if (window.init() != 0)
+    if (auto opened = window.init(); !opened)
     {
+        CHECK((opened.error().code == orosmo::core::ErrorCode::kUnsupported)); // sans affichage : refus propre (A75.8)
         if (tests::gpuRequired())
         {
             FAIL("ENGINE_TEST_REQUIRE_GPU is set but the window could not be created");
@@ -95,6 +96,67 @@ TEST_SUITE("platform/window")
         window.getFramebufferSize(width, height);
         CHECK(width > 0);
         CHECK(window.getContentScale() == glm::vec2(1.0f, 1.0f));
+        // A75.16 : ni lecture d'événements ni image sans fenêtre (newFrame déréférençait un InputManager nul).
+        CHECK_FALSE(window.pollEvents());
+        CHECK_FALSE(window.newFrame());
+        CHECK(window.getFrame() == 0);
+    }
+
+    TEST_CASE("A75.8 Window::init returns a Result: a size of zero is refused without opening anything")
+    {
+        platform::Window window("platform-test", 0, 64, platform::WindowState::kWindowed);
+        const orosmo::core::Result<> opened = window.init();
+        REQUIRE_FALSE(opened.has_value());
+        CHECK((opened.error().code == orosmo::core::ErrorCode::kInvalidArgument));
+        CHECK(window.getWindow() == nullptr);
+        platform::Window negative("platform-test", 96, -1);
+        CHECK_FALSE(negative.init().has_value());
+    }
+
+    TEST_CASE("A75.8 a second init of an open window is refused and keeps the window")
+    {
+        platform::Window window("platform-test", 96, 64, platform::WindowState::kWindowed);
+        if (!open(window))
+        {
+            return;
+        }
+        void *const handle = window.getWindow();
+        const orosmo::core::Result<> again = window.init();
+        REQUIRE_FALSE(again.has_value());
+        CHECK((again.error().code == orosmo::core::ErrorCode::kAlreadyExists));
+        CHECK(window.getWindow() == handle);
+    }
+
+    TEST_CASE("A75.8 (choice 9) Window::input() is the InputManager of getInstance(nativeWindow)")
+    {
+        platform::Window window("platform-test", 96, 64, platform::WindowState::kWindowed);
+        if (!open(window))
+        {
+            return;
+        }
+        CHECK(&window.input() == &platform::InputManager::getInstance(window.getWindow()));
+    }
+
+    TEST_CASE("A75.16 pollEvents reads the events and updates the inputs, without counting a frame; newFrame does both")
+    {
+        platform::Window window("platform-test", 96, 64, platform::WindowState::kWindowed);
+        if (!open(window))
+        {
+            return;
+        }
+        auto *handle = static_cast<GLFWwindow *>(window.getWindow());
+        const GLFWscrollfun callback = glfwSetScrollCallback(handle, nullptr);
+        REQUIRE(callback != nullptr);
+        callback(handle, 0.0, 2.0);
+        glfwSetScrollCallback(handle, callback);
+
+        const int frame = window.getFrame();
+        CHECK(window.pollEvents());
+        CHECK(window.input().getMouseScroll() == glm::vec2(0.0f, 2.0f)); // InputManager::update a eu lieu
+        CHECK(window.getFrame() == frame);                                // aucune image comptée
+        CHECK(window.newFrame());
+        CHECK(window.input().getMouseScroll() == glm::vec2(0.0f, 0.0f));
+        CHECK(window.getFrame() == frame + 1);
     }
 
     TEST_CASE("PLAT-02 the mouse wheel is accumulated until the next Update, then reset")

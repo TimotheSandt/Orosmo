@@ -1,6 +1,11 @@
 #include "orosmo/renderer/light.hpp"
 
+#include "orosmo/renderer/forward_plus.hpp"
+
+#include <glm/trigonometric.hpp>
+
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace orosmo::renderer
@@ -70,6 +75,63 @@ Light ambientLight(const glm::vec3 &color, float strength)
     l.color = color;
     l.strength = strength;
     return l;
+}
+
+namespace
+{
+constexpr float kMinRange = 1e-3f;
+
+// Atténuation en carré inverse (b = 0) dont la portée (`lightRange`) vaut `range` : intensité de crête / (a d²) = kLightCutoff à d =
+// range, soit a = k / range² avec k = crête / kLightCutoff - 1 (même formule que lightRange, forward_plus.cpp et lights.glsl).
+void setRange(Light &light, float range)
+{
+    light.a = 0.0f;
+    light.b = 0.0f;
+    if (std::isnan(range) || (std::isinf(range) && range > 0.0f)) // infinie (ou NaN) : sans atténuation
+    {
+        return;
+    }
+    range = std::clamp(range, kMinRange, kLightMaxRange); // une portée finie garde son atténuation, même très grande
+    const float peak = std::max({light.color.x, light.color.y, light.color.z}) * light.strength * 1.5f;
+    const float k = peak / kLightCutoff - 1.0f;
+    if (k > 0.0f) // sinon la lumière est déjà sous le seuil : portée nulle, quels que soient les coefficients
+    {
+        light.a = k / (range * range);
+    }
+}
+
+float coneCosine(float halfAngleDegrees) { return std::cos(glm::radians(std::clamp(halfAngleDegrees, 0.0f, 180.0f))); }
+} // namespace
+
+Light directionalLight(const DirectionalLightDesc &desc) { return directionalLight(-desc.direction, desc.color, desc.intensity); }
+
+Light pointLight(const PointLightDesc &desc)
+{
+    Light l = pointLight(desc.position, desc.color, desc.intensity, 0.0f, 0.0f);
+    setRange(l, desc.range);
+    return l;
+}
+
+Light spotLight(const SpotLightDesc &desc)
+{
+    const float outer = std::clamp(desc.outerAngleDegrees, 0.0f, 180.0f);
+    const float inner = std::min(std::clamp(desc.innerAngleDegrees, 0.0f, 180.0f), outer);
+    Light l = spotLight(desc.position, desc.direction, desc.color, desc.intensity, coneCosine(outer), coneCosine(inner), 0.0f, 0.0f);
+    setRange(l, desc.range);
+    return l;
+}
+
+glm::vec3 lightDirection(const Light &light) noexcept
+{
+    switch (light.type)
+    {
+        case LightType::kDirectional: return -light.direction;
+        case LightType::kSpot: return light.direction;
+        case LightType::kNone:
+        case LightType::kAmbient:
+        case LightType::kPoint: return glm::vec3(0.0f);
+    }
+    return glm::vec3(0.0f);
 }
 
 core::Result<LightManager> LightManager::create(rhi::Device &device, std::uint32_t initialCapacity)

@@ -13,7 +13,9 @@
 
 #include <orosmo/core/math.hpp>
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -40,6 +42,7 @@ struct Range
     double max = 0.0;
     bool bounded = false;
     bool contains(double v) const { return !bounded || (v >= min && v <= max); }
+    friend bool operator==(const Range &, const Range &) = default;
 };
 constexpr Range range(double lo, double hi) { return Range{lo, hi, true}; }
 
@@ -70,6 +73,9 @@ enum class FieldType : std::uint8_t
     kVec2,
     kVec3,
     kVec4,
+    kDVec3, // DVec3 : positions en double (ECS-02)
+    kQuat,
+    kDQuat,
     kArray,
     kStruct,
     kEnum,
@@ -90,30 +96,76 @@ template <typename T> constexpr FieldType fieldTypeOf()
     else if constexpr (std::is_same_v<T, Vec2>) return FieldType::kVec2;
     else if constexpr (std::is_same_v<T, Vec3>) return FieldType::kVec3;
     else if constexpr (std::is_same_v<T, Vec4>) return FieldType::kVec4;
+    else if constexpr (std::is_same_v<T, DVec3>) return FieldType::kDVec3;
+    else if constexpr (std::is_same_v<T, Quat>) return FieldType::kQuat;
+    else if constexpr (std::is_same_v<T, DQuat>) return FieldType::kDQuat;
     else if constexpr (IsVector<T>::value) return FieldType::kArray;
     else return FieldType::kStruct;
 }
 
-// Description d'un champ pour l'interface automatique : nom, type, plage, texte d'aide.
+// Description d'un champ, copiable et autonome (chaînes possédées, aucun pointeur vers le type C++) : interface automatique
+// (UI-12), et depuis M8 (A79 lot L2) stockage des composants par nom (`scene::ComponentDesc`), sauvegarde et inspecteur à
+// l'exécution. `offset` et `size` : position et taille du champ dans la structure décrite ; `fields` : sous-champs d'une
+// structure réfléchie (type kStruct), décalages relatifs à cette sous-structure. Une structure non réfléchie (kStruct sans
+// sous-champ) est opaque : seuls `offset` et `size` la décrivent. Un type sans constructeur par défaut a `offset ==
+// kUnknownOffset` : le décalage se mesure sur un objet construit (prendre l'adresse d'un membre d'un objet non construit est
+// un comportement indéfini), et `scene` refuse une telle description.
 struct FieldDesc
 {
+    static constexpr std::size_t kUnknownOffset = static_cast<std::size_t>(-1);
+
     std::string name;
-    FieldType type;
+    FieldType type = FieldType::kStruct;
     Range range;
     std::string description;
+    std::size_t offset = 0;
+    std::size_t size = 0;
+    std::vector<FieldDesc> fields;
+
+    friend bool operator==(const FieldDesc &, const FieldDesc &) = default;
 };
 
-template <Reflected T> std::vector<FieldDesc> describeFields()
+template <Reflected T> std::vector<FieldDesc> describeFields();
+
+namespace detail
+{
+// Décalage d'un membre, mesuré sur un objet vivant (`offsetof` ne prend pas de pointeur de membre).
+template <typename T, typename M, typename C> std::size_t memberOffset(const T *object, M C::*member) noexcept
+{
+    if (object == nullptr)
+        return FieldDesc::kUnknownOffset;
+    const auto *base = reinterpret_cast<const unsigned char *>(std::addressof(*object));
+    const auto *at = reinterpret_cast<const unsigned char *>(std::addressof(object->*member));
+    return static_cast<std::size_t>(at - base);
+}
+
+template <typename T, typename F> FieldDesc describeField(const T *object, const F &f)
+{
+    using M = typename F::Member;
+    FieldDesc d{f.name, fieldTypeOf<M>(), f.range, f.description, memberOffset(object, f.member), sizeof(M), {}};
+    if constexpr (Reflected<M>)
+        d.fields = describeFields<M>();
+    return d;
+}
+
+template <typename T> std::vector<FieldDesc> describeFieldsOf(const T *object)
 {
     std::vector<FieldDesc> out;
-    std::apply(
-        [&](const auto &...f) {
-            (out.push_back(FieldDesc{f.name, fieldTypeOf<typename std::remove_cvref_t<decltype(f)>::Member>(), f.range,
-                                     f.description}),
-             ...);
-        },
-        Reflect<T>::fields());
+    std::apply([&](const auto &...f) { (out.push_back(describeField(object, f)), ...); }, Reflect<T>::fields());
     return out;
+}
+} // namespace detail
+
+// Construit un T (valeur par défaut) pour mesurer les décalages ; sans constructeur par défaut : décalages inconnus.
+template <Reflected T> std::vector<FieldDesc> describeFields()
+{
+    if constexpr (std::is_default_constructible_v<T>)
+    {
+        const T object{};
+        return detail::describeFieldsOf<T>(&object);
+    }
+    else
+        return detail::describeFieldsOf<T>(nullptr);
 }
 
 // Appelle fn(name, valeur&, plage) sur chaque champ.

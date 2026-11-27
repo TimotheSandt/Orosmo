@@ -30,6 +30,36 @@ Mis à jour pour la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le j
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M8 lot L2 : entités et transformations (A79, ECS-01, ECS-02)
+
+Branche `feat/M8-L2-ecs` (depuis `feat/M8-L1-fondations`). Nouveau module `scene` (`src/scene/README.md`), couche 6, archive
+`libscene.a`, dépend seulement de `core`. ECS maison (A79 choix 1), composants trivialement copiables (choix 2) ; choix de
+réalisation sous A79 « L2 ». Linux seulement en local (g++ 13.3) ; macOS et Windows par la CI (G264).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| ECS-01 Entités | `include/orosmo/scene/entity.hpp` (`Entity`), `world.hpp` (`World::create`, `destroy`, `alive`) | `make demo-test` (suite `scene/world`) | une entité détruite est refusée par sa génération, même après réutilisation de l'indice, et n'atteint pas les composants de la nouvelle |
+| ECS-01 Composants par nom | `component.hpp` (`ComponentDesc`, `validateComponentDesc`, `describeComponent<T>`), `World::registerComponent`, `componentId`, `componentType<T>`, `add(e, nom)` | suite `scene/world` | description copiée (survit à l'original), valeur par défaut, version ; composant inconnu refusé par nom (`kNotFound`) ; disposition différente `kAlreadyExists` ; descriptions invalides refusées ; retrait d'un type et identifiant périmé |
+| ECS-01 Stockage contigu, requêtes | `component_pool.hpp` (`ComponentPool`), `World::view`, `forEach`, `forEachComponent` | suite `scene/world` | stockage contigu aligné (64 octets), dense après retraits ; vues typées et non typées concordantes ; copie profonde ; **100 000 entités parcourues** (temps dans `src/scene/README.md`) |
+| Réflexion avec décalages | `include/orosmo/core/reflection.hpp` (`FieldDesc::offset`, `size`, `fields`, `kDVec3`, `kQuat`, `kDQuat`) | suite `core/reflection` | décalages et tailles égaux à `offsetof` / `sizeof`, sous-champs, type sans constructeur par défaut |
+| ECS-02 Hiérarchie, transformations | `transform.hpp` (`Transform`, `composeWorld`, `relativeMatrix`), `World::setParent`, `updateTransforms` | suite `scene/hierarchy` | ordre des enfants, changement de parent, cycle refusé, destruction du sous-arbre ; propagation (rotation, échelle, ancêtre sans `Transform`) ; seules les entités sales et leurs descendants recalculées ; **précision à 10^7 m : erreur < 1 mm relative à la caméra** ; 100 000 entités en hiérarchie |
+
+Vérifications (Linux, g++ 13.3, Intel Xe, Mesa) : `make all-debug` sans avertissement ; `make demo-test` **757 cas verts**
+(1 ignoré ; 30 cas dans les suites `scene/*`, `core/reflection` et `core/serialization`, dont 18 nouveaux pour `scene` et 3 pour la
+réflexion) ; `make check` OK (110 en-têtes autonomes, 0 violation de couche) ; ASan + UBSan (`-fsanitize=address,undefined
+-fno-sanitize-recover=all`, debug) **sur les tests du lot seulement** (sources `src/scene/` et tests `tests/scene/`,
+`tests/core/reflection_layout_tests.cpp`, `serialization_tests.cpp`, liés à `libcore.a`) : 30 cas verts, aucun message ; le
+`make demo-test SANITIZE=address,undefined` complet n'a pas été relancé (machine partagée, lot sans code GPU).
+
+Après la revue de la PR #22 (CodeRabbit) : décalages mesurés sur un objet construit (`FieldDesc::kUnknownOffset` sinon),
+vues par `ComponentId`, `kBusy` pour un nouveau type pendant un parcours, garde de parcours sûre face aux exceptions, copie de
+la valeur avant agrandissement du stockage, taille bornée (`ComponentDesc::kMaxSize`), textes d'aide hors de la disposition,
+remontée des ancêtres mémorisée dans `updateTransforms`, valeur par défaut sans `resize` + `memcpy` (faux positif
+`-Warray-bounds` de GCC 16 sous MinGW) ; 7 cas de régression. Horloges retirées des tests : mesures dans `apps/demo/benchmark`
+(`scene-view`, `scene-transforms`, `make -C apps/demo ENGINE_DIR=orosmo TEST_DIR=../../tests benchmark`). Vérifications :
+`make all-debug` sans avertissement, `make demo-test` **776 cas verts** (1 ignoré), `make check` OK, ASan + UBSan sur les tests
+du lot (37 cas) sans message.
+
 ## M8 lot L1 : fondations (A79)
 
 Branche `feat/M8-L1-fondations`. Aucune ligne de `docs/02` ne change d'état : ce lot prépare GAME-01, UI-08 (chargement
@@ -88,6 +118,17 @@ Vérifications : `make all-debug` sans avertissement ; `make demo-test` : 726 ca
 ## M8 lot L0 : `--shadow-quality` de la démo
 
 Option de la démo, sans changement du moteur (`docs/05` M8, A79). `apps/demo/src/launch_options.hpp` : `ShadowQuality`, `parseShadowQuality`, `shadowSettingsForQuality` (préréglages `low`, `medium`, `high` = `ShadowSettings{}`), `shadowQualityLabel` ; `Game::setShadowSettings` passe les réglages à `ShadowFeature::create` ; le panneau de performances affiche « shadows on <qualité> ». Tests : `tests/demo/launch_options_tests.cpp` (lecture, défaut `high`, valeur invalide refusée, préréglages, `high` égal à `ShadowSettings{}`). Démo : `apps/demo/bin/debug/main --shadows on --shadow-quality low`.
+
+## M8 lot L12b : petites fabriques et plateforme (A75.10, A75.12, A75.16, part `platform` d'A75.8)
+
+Sur `feat/M8-L12b-fabriques-platform` (A79). Preuves sous Linux x64 (g++ 13.3, Mesa, OpenGL et Vulkan). Tests : `tests/renderer/light_camera_api_tests.cpp` (sans GPU), cas « A75.10 descriptor light factories give the same image… » de `tests/renderer/forward_plus_tests.cpp` (deux backends), cas A75.8 et A75.16 de `tests/platform/window_input_tests.cpp`.
+
+| Proposition | État | Fichier et symbole | Preuve |
+| --- | --- | --- | --- |
+| A75.10 une convention de direction, portée, degrés | **Fait** (limites : G272) | `light.hpp` `DirectionalLightDesc`, `PointLightDesc`, `SpotLightDesc`, `directionalLight(desc)`, `pointLight(desc)`, `spotLight(desc)`, `lightDirection` ; anciennes fabriques gardées | cas « A75.10 directionalLight(desc) / spotLight(desc) / pointLight(desc) » (portée = `lightRange`) et « same image as the old ones » (tolérance 0, OpenGL et Vulkan) : verts |
+| A75.12 `setForward`, `lookAt` | **Fait** (verticale : G273) | `camera.hpp` `Camera::setForward`, `lookAt`, `forward` | cas « A75.12 setForward… », « A75.12 lookAt… » (cible au centre de l'écran, même vue que `glm::lookAt`) : verts |
+| A75.16 `pollEvents` séparé de `newFrame` | **Fait** | `window.hpp` `Window::pollEvents`, `newFrame` (documenté ; faux sans fenêtre au lieu d'un pointeur nul) ; gabarit : `break` au lieu de `continue` | cas « A75.16 pollEvents… » et « a window that was never created behaves safely » : verts |
+| A75.8 (part `platform`) `init` → `Result<>`, `Window::input()` | **Fait** pour `init` et `input` (changement incompatible : G270 ; reste : G271) | `Window::init` (kInvalidArgument, kAlreadyExists, kUnsupported ; `glfwInit` en échec ne quitte plus), `Window::input` | cas « A75.8 Window::init returns a Result… », « a second init… », « Window::input() is the InputManager of getInstance » : verts |
 
 ## SDK (v0.6.2)
 

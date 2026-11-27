@@ -162,8 +162,8 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 
 | ID | Fonctionnalité | Prio | Critère d'acceptation | État |
 | --- | --- | --- | --- | --- |
-| ECS-01 | Entités et composants | P1 | ECS maison ou EnTT (choix à justifier dans `docs/QUESTIONS.md`) ; tableaux contigus ; composants = données simples, **réfléchies** (CORE-12). | Absent |
-| ECS-02 | Transformations hiérarchiques | P1 | Parents/enfants, grandes coordonnées en `double`. | Absent |
+| ECS-01 | Entités et composants | P1 | ECS maison ou EnTT (choix à justifier dans `docs/QUESTIONS.md`) ; tableaux contigus ; composants = données simples, **réfléchies** (CORE-12). | Fait — ECS maison (A79 choix 1) ; preuve : `docs/STATUS.md`, « M8 lot L2 » |
+| ECS-02 | Transformations hiérarchiques | P1 | Parents/enfants, grandes coordonnées en `double`. | Fait — preuve : `docs/STATUS.md`, « M8 lot L2 » |
 | ECS-03 | Chargement et sauvegarde de scène | P1 | Via CORE-12, versionné. | Absent |
 | SIM-01 | Boucle de simulation à pas fixe | P1 | Découplée du rendu ; rejouable avec la même graine ; capture et restauration d'état ; points d'accroche pour systèmes. | Absent |
 | SIM-02 | Accès aux données du monde | P2 | API de lecture (hauteur, biome, eau) utilisable sans rendu par la simulation. | Hors moteur (A39) |

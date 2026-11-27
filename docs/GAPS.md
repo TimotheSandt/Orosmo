@@ -96,8 +96,8 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | CORE-08 | Événements | Absent | Pas de bus d'événements typé. | M3 (proposé : premier usage, événements de l'interface) |
 | CORE-12 | Sérialisation et réflexion | Absent | Ni sérialisation, ni réflexion, ni versionnage. | M1 |
 | CORE-13 | Observateur de fichiers | Absent | Aucun observateur de fichiers. | M1 |
-| ECS-01 | Entités et composants | Absent | Absent ; choix ECS maison/EnTT à trancher. | M8 |
-| ECS-02 | Transformations hiérarchiques | Absent | Absent (transformations dans `Mesh`). | M8 |
+| ECS-01 | Entités et composants | Fait | Module `scene` (M8 L2), ECS maison (A79 choix 1) ; preuve : `docs/STATUS.md`, « M8 lot L2 » (`include/orosmo/scene/world.hpp` `World`, suite doctest `scene/world`, verte dans `make demo-test`) ; limites G260 à G264. | — |
+| ECS-02 | Transformations hiérarchiques | Fait | `scene::Transform`, `World::updateTransforms` (M8 L2) ; preuve : `docs/STATUS.md`, « M8 lot L2 » (suite doctest `scene/hierarchy`, verte, dont la précision à 10^7 m) ; G260, G262. Le rendu des entités (`Mesh` garde sa transformation) vient en L13. | — |
 | ECS-03 | Chargement et sauvegarde de scène | Absent | Absent. | M8 |
 | GAME-01 | Module de jeu rechargeable | Absent | Absent. | M8 |
 | GAME-02 | État côté moteur | Absent | Absent. | M8 |
@@ -554,6 +554,18 @@ Fondations de M8 (A79 lot L1) : `platform::DynamicLibrary`, liaison de la biblio
 | G233 | TSan : réglage de l'ASLR sur les noyaux récents | Le runtime TSan de GCC 13 refuse l'entropie mmap de 32 bits des noyaux récents (« unexpected memory mapping ») : le job CI `tsan` passe `vm.mmap_rnd_bits=28` ; en local, même réglage (`sudo sysctl -w vm.mmap_rnd_bits=28`) ou `setarch -R make demo-test-unit SANITIZE=thread`. Sans affichage ni pilote Vulkan (`env -u DISPLAY -u WAYLAND_DISPLAY VK_DRIVER_FILES=/nonexistent.json`, comme le job) : **439 cas unitaires propres sous TSan** (dont `core/spsc_queue` et `platform/dynamic_library`). Avec un affichage, TSan signale une course dans Mesa et libxcb (bibliothèques non instrumentées) : `GPU_TEST_SUITES` du `Makefile` (`demo-test-unit`) n'exclut pas toutes les suites qui ouvrent un périphérique (`anim/*`, `assets/*`, `apps/demo*`…) ; elles s'ignorent seulement faute de GPU. Classement à revoir (lot L4, test concurrent simulation + rendu). | M8 L4 |
 | G234 | État statique d'une bibliothèque rechargée sous macOS | Sous Linux (GCC), `-fno-gnu-unique` dans `ENGINE_MODULE_CXXFLAGS` donne à chaque copie chargée ses propres variables `static` de fonctions `inline` et un vrai déchargement (test « each loaded copy has its own static state… ») ; Windows l'a par construction. Sous macOS, dyld peut fusionner les définitions faibles de deux images : le test n'y exige rien et affiche les valeurs observées (`MESSAGE`, journal de la CI). Si elles ne valent pas 1 et 1 : compiler la bibliothèque de jeu avec une visibilité cachée par défaut (`-fvisibility=hidden`, exports marqués). | M8 L5 |
 
+## Ajouts de M8 lot L2 (G260 à G264)
+
+Entités, composants et transformations (A79 lot L2, ECS-01, ECS-02) : module `scene` (`src/scene/README.md`).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G260 | Écriture directe dans un `Transform` non suivie | `World::get` et `view(...).each` rendent un `Transform &` modifiable sans marquer l'entité sale : l'appelant appelle `markTransformDirty` (ou passe par `setTransform` / `editTransform`). Un oubli laisse la partie monde périmée jusqu'au prochain marquage, sans message. Une vue en lecture seule ou un marquage automatique par système est à décider avec la boucle de simulation. | M8 L3 |
+| G261 | Requêtes simples | `view` et `forEach` : intersection de types, parcours du plus petit stockage, un seul thread. Pas d'exclusion (`without`), de type optionnel, de tri, de groupes ni de parcours parallèle (`TaskSystem::parallelFor`) ; recherche d'un type par nom linéaire en nombre de types. | Plus tard (selon besoin mesuré) |
+| G262 | Changement de parent sans garder la position monde | `setParent` garde la transformation **locale** : l'entité saute à la position relative à son nouveau parent. Pas d'option « garder la position monde » (inverse de `worldLinear` à calculer). | M8 L10 ou plus tard |
+| G263 | Génération d'entité sur 32 bits | Après 2^32 destructions du même indice, la génération reboucle et un très vieil identifiant redeviendrait valide (non détecté ; l'indice n'est pas retiré). | Plus tard |
+| G264 | `scene` vérifié sous Linux seulement | Compilé et testé avec g++ 13.3 (debug, release, ASan+UBSan) ; clang de macOS (`-Werror`) et MinGW/MSVC de Windows seulement par la CI. Les composants alignés au-delà de `alignof(std::max_align_t)` utilisent `operator new(std::align_val_t)` (C++17, disponible partout). | CI |
+
 ## Ajouts du lot M8-L11, API de rendu simplifiée (G240 à G243)
 
 Numéros pris à partir de G240 pour ne pas croiser ceux des lots M8 menés en parallèle (L0, L1, L9).
@@ -586,3 +598,14 @@ Numéros pris à partir de G250 (L0/L9 : G222-G223, L11 : G240-G243, L1 en cours
 | ID | Sujet | Détail | Jalon |
 | --- | --- | --- | --- |
 | G290 | Qualité d'ombre selon l'importance d'un objet | Aucune résolution d'ombre propre à un caster : la netteté dépend de la cascade (ou de la lumière, `LightShadowParams`), pas de l'objet. Pistes : ombre dédiée par objet, maillage simplifié pour l'ombre, distance d'ombre par caster (A80). Fonctionnement à confirmer par l'auteur avant M10. | M10 (à confirmer, A80) |
+
+## Ajouts du lot M8-L12b, petites fabriques et plateforme (G270 à G273)
+
+Numéros pris à partir de G270 pour ne pas croiser ceux des lots M8 menés en parallèle.
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G270 | `Window::init` : changement incompatible (A75.8) | `init` rend `core::Result<>` au lieu d'un `int` (0 = succès) : un projet qui écrit `window.init() != 0` ne compile plus (pas de surcharge possible sur le seul type de retour). Démo, gabarit `orosmo init`, tests et site migrés (`if (!window.init(...))`). À annoncer dans les notes de version de M8. | M8 (notes de version) |
+| G271 | Reste d'A75.8 pour `platform` | Noms hérités gardés (`getWidth`, `getElapseTimeSecond`, `getWindow`…, préfixes `get`), `LOG_ERROR` avec code entier dans `window.cpp`, `InputManager` toujours une instance statique par fenêtre native (A10, décision de l'auteur : `Window::input()` la renvoie, choix 9). Renommage avec la migration des conventions de `core` et `ui`. | M10 |
+| G272 | Fabriques de lumières à descripteur : limites (A75.10) | Le champ `Light::direction` garde les deux sens (vers la lumière pour une directionnelle, faisceau pour un projecteur), car c'est la disposition lue par `mesh.frag` et les ombres : seules les fabriques et `lightDirection` ont une convention unique. La portée est convertie en coefficient à la création (carré inverse, `b = 0`) à partir de la couleur et de l'intensité : changer l'une après coup dans une copie change la portée ; pas de `setRange` ni de terme linéaire. La portée est la distance du seuil de 1/256 (celle de `lightRange`, du forward+ et de la fenêtre de `lights.glsl`) : à mi-portée il ne reste qu'environ 4 / (crête × 384) de la lumière, quels que soient les coefficients ; une lumière « qui porte loin » demande une portée large ou plus d'intensité. Une portée décorrélée du seuil demanderait de changer la disposition GPU et le shader (même image impossible). | M10 |
+| G273 | `Camera::setForward` / `lookAt` parallèles à `up` | Une direction parallèle à `up()` (caméra verticale) n'est pas refusée et rend la vue indéfinie (comme `setOrientation`) ; `rotatePitch` seul borne à 10° de la verticale. Documenté dans `camera.hpp`. | M10 |
