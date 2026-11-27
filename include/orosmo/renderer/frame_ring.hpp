@@ -1,7 +1,7 @@
 // Anneau de tampons par image en vol (perf M5, option B) : données réécrites à chaque image (blocs uniformes, tranches de modèle,
 // sommets) dans de la mémoire écrite directement par le CPU (`rhi::MemoryKind::kUpload`), un tampon par image en vol. L'image `n`
 // écrit la zone `n % framesInFlight` ; la zone qu'elle réécrit a été lue par l'image `n - framesInFlight`, que le périphérique a
-// terminée (Device::beginFrame / present limitent l'avance du CPU à kFramesInFlight images, docs/03 §3). Plus aucune écriture ne
+// terminée (Device::beginFrame / present limitent l'avance du CPU à `rhi::Device::framesInFlight()` images, docs/03 §3). Plus aucune écriture ne
 // vise une plage que le GPU lit encore, et une seule écriture (`updateBuffer`) suffit par image et par anneau.
 #pragma once
 
@@ -17,8 +17,9 @@
 namespace orosmo::renderer
 {
 
-// Images en vol par défaut : celles du RHI (OpenGL et Vulkan : 2). Un anneau plus profond reste juste ; moins profond, non.
-inline constexpr std::uint32_t kDefaultFramesInFlight = 2;
+// Images en vol par défaut : celles du RHI (`rhi::kDefaultFramesInFlight`, 2 ; réglable de 1 à 3 par DeviceDesc::framesInFlight,
+// A61 G). Un anneau plus profond que le périphérique reste juste ; moins profond, non.
+inline constexpr std::uint32_t kDefaultFramesInFlight = rhi::kDefaultFramesInFlight;
 
 class FrameRing
 {
