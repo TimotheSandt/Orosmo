@@ -286,6 +286,47 @@ TEST_SUITE("UI-09 navigation")
         CHECK_FALSE(h.ui.popupOpenFor(dd));
     }
 
+    TEST_CASE("UI-09 (revue PR #37) gamepad Up/Down leave a closed dropdown; open, they change its option; the keyboard keeps them")
+    {
+        UiHarness h;
+        int choice = 0;
+        auto root = std::make_unique<ui::VBox>();
+        root->setAlign(ui::Align::kStart, ui::Align::kStart);
+        auto &dd = root->emplace<ui::Dropdown>(std::vector<std::string>{"a", "b", "c"}, ui::Binding<int>::ref(choice));
+        dd.setWidth(ui::SizeSpec::fixed(80));
+        auto &below = root->emplace<ui::Button>("below");
+        h.ui.setRoot(std::move(root));
+        h.frame();
+
+        h.ui.focus(&dd);
+        h.keys({ui::kKeyDown}); // clavier : l'option change, le focus reste
+        h.frame();
+        CHECK(choice == 1);
+        CHECK(h.ui.focused() == &dd);
+
+        ui::GamepadNavigator nav;
+        pf::GamepadState pad;
+        pad.connected = true;
+        pad.setButton(pf::GamepadButton::kA, true); // liste ouverte : Bas change l'option
+        padFrame(h, nav, &pad);
+        REQUIRE(h.ui.popupOpenFor(dd));
+        pad.setButton(pf::GamepadButton::kA, false);
+        padFrame(h, nav, &pad);
+        pad.setButton(pf::GamepadButton::kDpadDown, true);
+        padFrame(h, nav, &pad);
+        h.frame();
+        CHECK(choice == 2);
+        CHECK(h.ui.focused() == &dd);
+        pad.setButton(pf::GamepadButton::kDpadDown, false);
+        padFrame(h, nav, &pad);
+        REQUIRE_FALSE(h.ui.popupOpenFor(dd));
+        pad.setButton(pf::GamepadButton::kDpadDown, true); // liste fermée : Bas sort de la liste déroulante
+        padFrame(h, nav, &pad);
+        h.frame();
+        CHECK(h.ui.focused() == &below);
+        CHECK(choice == 2);
+    }
+
     TEST_CASE("UI-09 the focus ring comes from the theme and only shows after keyboard or gamepad navigation")
     {
         UiHarness h;
