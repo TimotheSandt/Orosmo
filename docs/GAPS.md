@@ -577,3 +577,14 @@ Numéros pris à partir de G240 pour ne pas croiser ceux des lots M8 menés en p
 | ID | Sujet | Détail | Jalon |
 | --- | --- | --- | --- |
 | G290 | Qualité d'ombre selon l'importance d'un objet | Aucune résolution d'ombre propre à un caster : la netteté dépend de la cascade (ou de la lumière, `LightShadowParams`), pas de l'objet. Pistes : ombre dédiée par objet, maillage simplifié pour l'ombre, distance d'ombre par caster (A80). Fonctionnement à confirmer par l'auteur avant M10. | M10 (à confirmer, A80) |
+
+## Ajouts du lot M8-L12b, petites fabriques et plateforme (G270 à G273)
+
+Numéros pris à partir de G270 pour ne pas croiser ceux des lots M8 menés en parallèle.
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G270 | `Window::init` : changement incompatible (A75.8) | `init` rend `core::Result<>` au lieu d'un `int` (0 = succès) : un projet qui écrit `window.init() != 0` ne compile plus (pas de surcharge possible sur le seul type de retour). Démo, gabarit `orosmo init`, tests et site migrés (`if (!window.init(...))`). À annoncer dans les notes de version de M8. | M8 (notes de version) |
+| G271 | Reste d'A75.8 pour `platform` | Noms hérités gardés (`getWidth`, `getElapseTimeSecond`, `getWindow`…, préfixes `get`), `LOG_ERROR` avec code entier dans `window.cpp`, `InputManager` toujours une instance statique par fenêtre native (A10, décision de l'auteur : `Window::input()` la renvoie, choix 9). Renommage avec la migration des conventions de `core` et `ui`. | M10 |
+| G272 | Fabriques de lumières à descripteur : limites (A75.10) | Le champ `Light::direction` garde les deux sens (vers la lumière pour une directionnelle, faisceau pour un projecteur), car c'est la disposition lue par `mesh.frag` et les ombres : seules les fabriques et `lightDirection` ont une convention unique. La portée est convertie en coefficient à la création (carré inverse, `b = 0`) à partir de la couleur et de l'intensité : changer l'une après coup dans une copie change la portée ; pas de `setRange` ni de terme linéaire. La portée est la distance du seuil de 1/256 (celle de `lightRange`, du forward+ et de la fenêtre de `lights.glsl`) : à mi-portée il ne reste qu'environ 4 / (crête × 384) de la lumière, quels que soient les coefficients ; une lumière « qui porte loin » demande une portée large ou plus d'intensité. Une portée décorrélée du seuil demanderait de changer la disposition GPU et le shader (même image impossible). | M10 |
+| G273 | `Camera::setForward` / `lookAt` parallèles à `up` | Une direction parallèle à `up()` (caméra verticale) n'est pas refusée et rend la vue indéfinie (comme `setOrientation`) ; `rotatePitch` seul borne à 10° de la verticale. Documenté dans `camera.hpp`. | M10 |

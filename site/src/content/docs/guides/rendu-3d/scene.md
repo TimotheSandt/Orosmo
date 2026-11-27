@@ -108,7 +108,9 @@ proche, 0 au loin) et le plan lointain est infini par défaut. Le monde a Y en h
 | Option | Type | Défaut | Effet |
 |---|---|---|---|
 | `setPosition` | `glm::vec3` | `(0, 0, 0)` | Position dans le monde. |
-| `setOrientation` | `glm::vec3` | `(0, 0, -1)` | Direction du regard (un vecteur, pas des angles). |
+| `setOrientation` | `glm::vec3` | `(0, 0, -1)` | Direction du regard (un vecteur, pas des angles), prise telle quelle. |
+| `setForward` | `glm::vec3` | `(0, 0, -1)` | Direction du regard, normalisée (un vecteur nul est ignoré). Lue par `forward()`. |
+| `lookAt` | `glm::vec3` | — | Tourne la caméra vers un point du monde (ignoré si c'est sa position). Une cible droit au-dessus ou au-dessous (direction parallèle à `up()`) rend la vue indéfinie : appelez d'abord `setUp` avec un autre haut. Même limite pour `setForward`. |
 | `setUp` | `glm::vec3` | `(0, 1, 0)` | Haut de la caméra. |
 | `setFovDegrees` | `float` | `70` | Champ vertical, en degrés. |
 | `setNearPlane` | `float` | `0.1` | Plan proche (m). |
