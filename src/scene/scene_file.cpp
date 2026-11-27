@@ -279,6 +279,7 @@ Result<> saveSceneFile(const World &world, const std::filesystem::path &path)
         const std::vector<std::uint8_t> bytes = saveSceneBinary(world);
         out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
+    out.close(); // vidange du tampon : une erreur d'écriture (disque plein) peut n'apparaître qu'ici
     if (!out)
         return core::makeError(ErrorCode::kIo, "saveSceneFile: cannot write " + path.string());
     return {};

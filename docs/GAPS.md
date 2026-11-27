@@ -566,7 +566,7 @@ Entités, composants et transformations (A79 lot L2, ECS-01, ECS-02) : module `s
 | G263 | Génération d'entité sur 32 bits | Après 2^32 destructions du même indice, la génération reboucle et un très vieil identifiant redeviendrait valide (non détecté ; l'indice n'est pas retiré). | Plus tard |
 | G264 | `scene` vérifié sous Linux seulement | Compilé et testé avec g++ 13.3 (debug, release, ASan+UBSan) ; clang de macOS (`-Werror`) et MinGW/MSVC de Windows seulement par la CI. Les composants alignés au-delà de `alignof(std::max_align_t)` utilisent `operator new(std::align_val_t)` (C++17, disponible partout). | CI |
 
-## Ajouts de M8 lot L3 (G280 à G288)
+## Ajouts de M8 lot L3 (G280 à G291, sauf G290)
 
 Sauvegarde de scène et boucle de simulation à pas fixe (A79 lot L3, ECS-03, SIM-01) : `scene/scene_file.hpp`,
 `scene/fingerprint.hpp`, module `sim` (`src/sim/README.md`).
@@ -582,6 +582,8 @@ Sauvegarde de scène et boucle de simulation à pas fixe (A79 lot L3, ECS-03, SI
 | G286 | Chargement en copie | `loadScene` (tout ou rien) construit une copie du monde avant d'échanger : mémoire doublée pendant le chargement ; recherche d'un type par nom linéaire. Pas de chargement en flux ni partiel (sous-arbre, préfabriqué). | Plus tard (L12a contenus ?) |
 | G287 | Thread de simulation | **Traité par le lot L4** (`sim/simulation_thread.hpp`, G300 et suivants). Avant : `Simulation` mono-thread, sans thread dédié, instantané en double tampon ni cadence configurable. | M8 L4 (fait) |
 | G288 | Entrées en JSON | `Input::data` est un `core::Json` libre, haché par son texte (`dump()`) : un réel d'entrée est exact (écrit au plus court) mais une entrée lourde coûte une allocation par pas. Pas de format binaire de rejeu (le JSON du `Replay` passe par `core::toBinary` si besoin). | Plus tard |
+| G289 | Pointeur dans un composant | `ComponentData` n'exige qu'un type trivialement copiable : un pointeur (classé `kStruct` opaque par `core::fieldTypeOf`, ou caché dans une structure non réfléchie) est haché et sauvegardé octet par octet, donc l'empreinte et le fichier dépendent d'une adresse. Remarque de revue (PR #25) : refuser les pointeurs à la description ou les hacher par valeur logique est un choix d'API (`core/reflection.hpp` sert aussi l'UI), à trancher par l'auteur ; une structure opaque ne peut pas être inspectée à la compilation. Contournement : stocker des `Entity` ou des indices, jamais d'adresse. | M8 L5 ou plus tard |
+| G291 | Entrées mises en file par un système, puis rejouées | Le journal ne distingue pas une entrée venue de l'extérieur d'une entrée qu'un système a mise en file pour un pas suivant : `play` la met en file d'avance et le système la remet en file au rejeu, elle est livrée deux fois. Contournement : un système ne met pas d'entrée en file (il agit sur le monde). Correction : marquer l'origine dans `pending_`/journal et ne rejouer que les entrées extérieures. | M8 L4 |
 
 ## Ajouts de M8 lot L4 (G300 à G306)
 

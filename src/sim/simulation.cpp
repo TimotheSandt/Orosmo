@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <tuple>
 #include <utility>
 
@@ -24,9 +25,37 @@ constexpr int kReplayVersion = 1;
 
 Json inputToJson(const Input &input) { return Json{{"step", input.step}, {"name", input.name}, {"data", input.data}}; }
 
+// Entier positif ou nul, quelle que soit sa représentation : un document construit en C++ (`{"step", 0}`) stocke un entier
+// signé, le même document relu depuis le texte un entier non signé. Fractions et négatifs refusés.
+bool isNonNegativeInteger(const Json &j)
+{
+    return j.is_number_unsigned() || (j.is_number_integer() && j.get<std::int64_t>() >= 0);
+}
+
+// Charge représentable sans perte en JSON texte : aucun réel infini ni NaN (écrits `null` par `dump()`, ce qui changerait le
+// type reçu par le système après une sauvegarde et confondrait deux charges dans l'empreinte).
+bool isFinitePayload(const Json &j)
+{
+    if (j.is_number_float())
+    {
+        return std::isfinite(j.get<double>());
+    }
+    if (j.is_array() || j.is_object())
+        return std::all_of(j.begin(), j.end(), [](const Json &x) { return isFinitePayload(x); });
+    return true;
+}
+
+Result<> checkPayload(const Input &input, const char *where)
+{
+    if (!isFinitePayload(input.data))
+        return core::makeError(ErrorCode::kInvalidArgument, std::string(where) + ": input " + input.name + " at step " +
+                                                                std::to_string(input.step) + " has an infinite or NaN number");
+    return {};
+}
+
 Result<Input> inputFromJson(const Json &j, const std::string &path)
 {
-    if (!j.is_object() || !j.contains("step") || !j["step"].is_number_unsigned() || !j.contains("name") || !j["name"].is_string())
+    if (!j.is_object() || !j.contains("step") || !isNonNegativeInteger(j["step"]) || !j.contains("name") || !j["name"].is_string())
         return core::makeError(ErrorCode::kParse, path + ": expected {step: unsigned, name: string, data}");
     Input input;
     input.step = j["step"].get<std::uint64_t>();
@@ -53,7 +82,7 @@ Result<std::vector<Input>> inputsFromJson(const Json &j, const std::string &path
 
 Result<std::uint64_t> readU64(const Json &j, const char *key, const std::string &path)
 {
-    if (!j.contains(key) || !j[key].is_number_unsigned())
+    if (!j.contains(key) || !isNonNegativeInteger(j[key]))
         return core::makeError(ErrorCode::kParse, path + "." + key + ": expected unsigned integer");
     return j[key].get<std::uint64_t>();
 }
@@ -165,18 +194,50 @@ std::vector<std::string> Simulation::systemOrder() const
 
 Result<> Simulation::queueInput(Input input)
 {
-    if (input.step < step_)
+    // Pendant un pas, ses entrées sont déjà prélevées : le pas en cours compte comme joué.
+    if (input.step < step_ || (stepping_ && input.step == step_))
         return core::makeError(ErrorCode::kInvalidArgument,
                                "queueInput: step " + std::to_string(input.step) + " is already played (now " + std::to_string(step_) + ")");
+    if (auto r = checkPayload(input, "queueInput"); !r)
+        return r;
+    insertPending(std::move(input));
+    return {};
+}
+
+void Simulation::insertPending(Input input)
+{
     auto at = std::upper_bound(pending_.begin(), pending_.end(), input.step, [](std::uint64_t s, const Input &x) { return s < x.step; });
     pending_.insert(at, std::move(input));
-    return {};
 }
 
 // ── Pas ───────────────────────────────────────────────────────────────────────
 
+namespace
+{
+// Remet `stepping_` à faux en sortie de pas, même si un système lève une exception.
+struct SteppingScope
+{
+    bool &flag;
+    explicit SteppingScope(bool &f) : flag(f) { flag = true; }
+    ~SteppingScope() { flag = false; }
+    SteppingScope(const SteppingScope &) = delete;
+    SteppingScope &operator=(const SteppingScope &) = delete;
+};
+} // namespace
+
+bool Simulation::refuseNested(const char *what) const
+{
+    if (!stepping_)
+        return false;
+    LOG_WARNING("Simulation::", what, ": called from a system during a step (refused, state unchanged)");
+    return true;
+}
+
 void Simulation::step()
 {
+    if (refuseNested("step"))
+        return;
+    SteppingScope scope(stepping_);
     current_.clear();
     std::size_t due = 0;
     while (due < pending_.size() && pending_[due].step == step_)
@@ -186,10 +247,8 @@ void Simulation::step()
 
     scratch_.reset();
     StepContext context{world_, random_, step_, dt_, current_, scratch_, events_};
-    stepping_ = true;
     for (System &system : systems_)
         system.run(context);
-    stepping_ = false;
     world_.updateTransforms();
 
     log_.insert(log_.end(), current_.begin(), current_.end());
@@ -198,12 +257,16 @@ void Simulation::step()
 
 void Simulation::run(std::uint64_t steps)
 {
+    if (refuseNested("run"))
+        return;
     for (std::uint64_t i = 0; i < steps; ++i)
         step();
 }
 
 int Simulation::advance(core::Nanoseconds frameDelta)
 {
+    if (refuseNested("advance"))
+        return 0; // temps non consommé
     const int steps = stepper_.advance(frameDelta);
     for (int i = 0; i < steps; ++i)
         step();
@@ -216,6 +279,10 @@ Snapshot Simulation::capture() const { return Snapshot{world_, random_, step_, p
 
 void Simulation::restore(const Snapshot &snapshot)
 {
+    if (refuseNested("restore"))
+        return;
+    if (snapshot.step < logStart_)
+        logStart_ = snapshot.step;
     world_ = snapshot.world;
     random_ = snapshot.random;
     step_ = snapshot.step;
@@ -246,6 +313,8 @@ Json Simulation::saveState() const
 
 Result<scene::SceneLoadReport> Simulation::loadState(const Json &state, const scene::SceneMigrations &migrations)
 {
+    if (stepping_)
+        return core::makeError(ErrorCode::kInvalidArgument, "loadState: not allowed during a step");
     if (!state.is_object() || !state.contains("version") || !state["version"].is_number_integer() || !state.contains("data") ||
         !state["data"].is_object())
         return core::makeError(ErrorCode::kParse, "simulation state must be {\"version\": int, \"data\": {...}}");
@@ -266,19 +335,34 @@ Result<scene::SceneLoadReport> Simulation::loadState(const Json &state, const sc
     auto pending = inputsFromJson(data["pending"], "state.pending");
     if (!pending)
         return std::unexpected(pending.error());
+    for (const Input &input : *pending)
+    {
+        // Une entrée d'un pas déjà joué ne serait jamais livrée et bloquerait celles qui la suivent.
+        if (input.step < *step)
+            return core::makeError(ErrorCode::kParse, "state.pending: input " + input.name + " at step " + std::to_string(input.step) +
+                                                          " is before the saved step " + std::to_string(*step));
+        if (auto r = checkPayload(input, "state.pending"); !r)
+            return std::unexpected(r.error());
+    }
     scene::World world = world_;
     auto report = scene::loadScene(world, data["scene"], migrations);
     if (!report)
         return std::unexpected(report.error());
     std::stable_sort(pending->begin(), pending->end(), [](const Input &a, const Input &b) { return a.step < b.step; });
     restore(Snapshot{std::move(world), core::Random::fromState(*rngState, *rngIncrement), *step, std::move(*pending)});
+    // Autre partie : le journal d'avant ne la décrit pas. Un rejeu ne peut commencer qu'au pas chargé.
+    log_.clear();
+    logStart_ = *step;
     return report;
 }
 
 // ── Rejeu et empreinte ────────────────────────────────────────────────────────
 
-Replay Simulation::recording(std::uint64_t firstStep) const
+Result<Replay> Simulation::recording(std::uint64_t firstStep) const
 {
+    if (firstStep < logStart_ || firstStep > step_)
+        return core::makeError(ErrorCode::kInvalidArgument, "recording: the input log covers steps " + std::to_string(logStart_) +
+                                                                " to " + std::to_string(step_) + ", not step " + std::to_string(firstStep));
     Replay replay{settings_.seed, firstStep, step_, {}};
     for (const Input &input : log_)
         if (input.step >= firstStep)
@@ -288,6 +372,8 @@ Replay Simulation::recording(std::uint64_t firstStep) const
 
 Result<> Simulation::play(const Replay &replay)
 {
+    if (stepping_)
+        return core::makeError(ErrorCode::kInvalidArgument, "play: not allowed during a step");
     if (replay.seed != settings_.seed)
         return core::makeError(ErrorCode::kInvalidArgument, "play: the replay was recorded with another seed");
     if (replay.firstStep != step_)
@@ -295,9 +381,21 @@ Result<> Simulation::play(const Replay &replay)
                                                                  ", the replay starts at step " + std::to_string(replay.firstStep));
     if (replay.lastStep < replay.firstStep)
         return core::makeError(ErrorCode::kInvalidArgument, "play: lastStep is before firstStep");
+    // Tout le lot est validé avant la première insertion : un rejeu refusé laisse la file intacte.
     for (const Input &input : replay.inputs)
-        if (auto r = queueInput(input); !r)
+    {
+        if (input.step < replay.firstStep || input.step >= replay.lastStep)
+            return core::makeError(ErrorCode::kInvalidArgument, "play: input " + input.name + " at step " + std::to_string(input.step) +
+                                                                    " is outside the replay [" + std::to_string(replay.firstStep) +
+                                                                    ", " + std::to_string(replay.lastStep) + ")");
+        if (auto r = checkPayload(input, "play"); !r)
             return r;
+    }
+    // Le rejeu fait foi dans son intervalle : les entrées déjà en attente (capturées avec l'instantané) y sont remplacées,
+    // sinon elles seraient livrées deux fois ; celles d'après `lastStep` restent.
+    std::erase_if(pending_, [&](const Input &input) { return input.step >= replay.firstStep && input.step < replay.lastStep; });
+    for (const Input &input : replay.inputs)
+        insertPending(input);
     run(replay.lastStep - replay.firstStep);
     return {};
 }
