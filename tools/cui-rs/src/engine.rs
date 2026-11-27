@@ -1095,8 +1095,11 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
         let mut helper_assign = Vec::new();
         let mut locals = Vec::new();
         // UI-08 : ce qui fixe la disposition de la structure partagée par l'hôte et la bibliothèque de jeu (champs liés, blocs
-        // @cui-cpp) ; les constantes et fonctions statiques n'en font pas partie (seule la bibliothèque les utilise).
+        // @cui-cpp) ; les constantes (`let`) seulement si la vue a un bloc @cui-cpp, qui peut dimensionner un membre avec elles ;
+        // les fonctions statiques (non constexpr) jamais.
         let mut layout = vec![view.name.clone()];
+        let mut constants: Vec<String> = Vec::new();
+        let mut has_cpp = false;
         for field in &view.fields {
             // Préfixe réservé au code généré (cui_ui, cui_view, cui_w0...) : un champ ou une constante de ce nom y entrerait en
             // collision ; `view` et les autres noms restent libres.
@@ -1153,6 +1156,7 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
                 ViewField::Let(l) => match expr_cpp(&l.value, &scope) {
                     Ok(v) => {
                         let ty = l.type_name.as_deref().map(cpp_type);
+                        constants.push(format!("let {} {} {v}", ty.as_deref().unwrap_or(""), l.name));
                         let value = if matches!(l.value, Expr::StringLit(_)) && is_constant_text(&l.value) {
                             // constexpr : un littéral, pas std::string
                             v.trim_start_matches("std::string(").trim_end_matches(')').to_string()
@@ -1177,10 +1181,15 @@ pub fn compile(ast: &FileAst, file: &str, stem: &str) -> Result<Output, Vec<Comp
                     }
                 }
                 ViewField::Cpp(block) => {
+                    has_cpp = true;
                     layout.push(format!("@cui-cpp {}", block.content));
                     members.push(format!("    {}", block.content))
                 }
             }
+        }
+
+        if has_cpp {
+            layout.append(&mut constants);
         }
 
         // Arbre.

@@ -82,6 +82,9 @@ fn a_view_exports_its_entry_point_and_the_fingerprint_of_its_structure() {
     assert_ne!(same, fingerprint(&base.replace("@Mutable var s: S", "@Mutable var s: S\n    @Mutable var t: S")));
     assert_ne!(same, fingerprint(&base.replace("@Mutable var s: S", "@Observed var s: S")));
     assert_ne!(same, fingerprint(&base.replace("let w = 1", "let w = 1\n    @cui-cpp {\n        int extra = 0;\n    }")));
+    // Une constante peut dimensionner un membre d'un bloc @cui-cpp : sa valeur compte alors dans l'empreinte.
+    let sized = base.replace("let w = 1", "let w = 1\n    @cui-cpp {\n        alignas(w) double a = 0;\n    }");
+    assert_ne!(fingerprint(&sized), fingerprint(&sized.replace("let w = 1", "let w = 2")));
 }
 
 #[test]
