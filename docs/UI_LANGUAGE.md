@@ -261,7 +261,10 @@ Le SDK (`tools/engine-sdk/engine.mk`) régénère `Generated/%.gen.cpp` quand le
 - Les positions d'erreur sont celles de l'élément ou du modificateur, pas de l'argument fautif (les expressions n'ont pas de position).
 - `once` dans une interpolation n'est pas figé par cette cible : le texte est relu à chaque image.
 - Pas de boucle ni de condition dans le langage (règle 12) : une liste de widgets variable se construit en C++, ou par `ParamPanel`.
-- Pas de rechargement à chaud de la vue elle-même (UI-08, P1) : le thème se recharge, la vue se recompile.
+- Rechargement à chaud de la vue (UI-08), en développement seulement : une vue compilée dans la bibliothèque de jeu est
+  reconstruite après chaque rechargement de cette bibliothèque (`app::ViewHost`). Si les champs liés changent (`@Mutable`,
+  `@Observed`, `@Snapshot`, `@cui-cpp`), l'ancienne vue reste et il faut relancer le programme reconstruit (G361). La vue
+  liée à l'exécutable (version finale) n'est pas rechargée.
 - Navigation (UI-09) : Tab / Maj+Tab suivent l'ordre de tabulation ; une flèche que le widget focalisé n'utilise pas (bouton, case
   à cocher...) passe le focus au voisin le plus proche dans sa direction (sans boucler) ; un curseur, un champ de texte, une
   liste déroulante et les menus gardent leurs flèches. Manette (`ui::GamepadNavigator`, `platform::Gamepads`) : croix et stick

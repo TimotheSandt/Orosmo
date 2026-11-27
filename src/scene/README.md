@@ -33,10 +33,11 @@ template <> struct orosmo::core::Reflect<Velocity> {
 
 orosmo::scene::World world;                                   // « Transform » déjà enregistré
 auto velocity = world.registerComponent<Velocity>("Velocity"); // Result<ComponentType<Velocity>>
+if (!velocity) return;                                         // velocity.error() : nom déjà pris...
 auto ship = world.create();
 world.setTransform(ship, {.position = {1.0e7, 0.0, 0.0}});
-world.add(ship, *velocity, Velocity{{0.f, 0.f, 1.f}});
-world.add(ship, "Velocity");                                  // par nom (sauvegarde, inspecteur) : kNotFound si inconnu
+if (!world.add(ship, *velocity, Velocity{{0.f, 0.f, 1.f}})) return;
+// Autre façon, par nom (sauvegarde, inspecteur) : world.add(ship, "Velocity") ; kNotFound si le nom est inconnu.
 world.view(world.transformType(), *velocity).each([&](auto e, orosmo::scene::Transform &t, Velocity &v) {
     t.position += orosmo::core::widen(v.value) * dt;
     world.markTransformDirty(e);                              // écriture directe : marquer l'entité

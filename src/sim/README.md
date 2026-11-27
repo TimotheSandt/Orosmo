@@ -56,7 +56,8 @@ auto replay = sim.recording();                               // Result<Replay> :
   de les doubler ; celles d'après `lastStep` restent.
 - **Empreinte** : `fingerprint()` = `scene::hashWorld` (champs décrits, ordre dense, table des entités) + état du générateur +
   pas + entrées en attente (tout NaN d'un champ haché comme le NaN canonique : même empreinte après un aller-retour JSON).
-- **Déterminisme** (règle 9) : même graine, mêmes systèmes, mêmes entrées => même empreinte, sur toutes les plateformes, si les
+- **Déterminisme** (règle 9) : même graine, mêmes systèmes, mêmes entrées, mêmes réglages de simulation (le pas `dt`) et même
+  état au pas de départ => même empreinte, sur toutes les plateformes, si les
   systèmes n'utilisent ni horloge, ni `rand()`, ni fonction transcendante (`sin`, `exp`, `pow`… diffèrent entre glibc, macOS et
   MinGW) et sont compilés avec `-ffp-contract=off` (moteur, démo et gabarit : `mk/engine.mk`, `tools/engine-sdk/engine.mk`,
   `OrosmoConfig.cmake`). `make check` (`tools/check_deterministic_math.py`) le vérifie sur `src/sim`, `src/scene` et le

@@ -51,8 +51,13 @@ if (tools.wantsKeyboard()) {                          // la saisie dans la conso
     input.events.clear();
     input.shortcuts.clear();
 }
-if (!tools.wantsMouse())
-    appUi.update(input, viewport);                     // la souris va aux outils quand ils la veulent
+if (tools.wantsMouse()) {                             // la souris va aux outils quand ils la veulent
+    const orosmo::ui::InputFrame none;
+    input.mouse = none.mouse;
+    input.mouseDown = input.secondaryDown = false;
+    input.wheel = none.wheel;
+}
+appUi.update(input, viewport);                         // toujours : le clavier reste à l'application
 appUi.draw(list);
 tools.draw(list);                                      // par-dessus l'interface
 ```
