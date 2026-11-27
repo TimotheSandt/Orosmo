@@ -8,7 +8,7 @@
 //   - Entrées datées par pas : `queueInput({.step = n, ...})` est livrée au pas n (dans l'ordre d'ajout), et enregistrée dans
 //     `inputLog()` ; un `Replay` (graine, pas, entrées) rejoue la même partie. La charge est un JSON sans réel infini ni NaN.
 //   - Pas imbriqués : un système qui appelle `step`, `run`, `advance`, `restore`, `loadState` ou `play` sur sa simulation est
-//     refusé (erreur journalisée ou rendue, état inchangé).
+//     refusé (erreur journalisée ou rendue, état inchangé) ; de même pendant l'`init` d'un module de jeu (`setFrozen`).
 //   - Capture et restauration : `Snapshot` = monde (copie), générateur `core::Random`, numéro de pas, entrées en attente.
 //     `saveState` / `loadState` l'écrivent en JSON (scène par `scene/scene_file.hpp`). Seul un état ENTRE deux pas se
 //     restaure : une capture ou un `saveState` fait par un système pendant un pas est marqué partiel et refusé au chargement.
@@ -16,7 +16,8 @@
 //     journalisé) et un nouvel appel le rejoue avec elles ; les entrées mises en file et les événements émis par la tentative
 //     sont abandonnés (une entrée mise en file pendant un pas n'apparaît dans `pendingInputs()` qu'à la fin du pas) ; les
 //     modifications du monde déjà faites ne sont PAS annulées. Exception pendant `play` : le rejeu reste actif jusqu'à son
-//     `lastStep` (reprise par `step()`, sans doublon des entrées du rejeu), jusqu'à un `restore` ou un `loadState`.
+//     `lastStep` (reprise par `step()`, sans doublon des entrées du rejeu) ; ce filtre fait partie de l'état capturé
+//     (`Snapshot::replayEnd`, `"replayEnd"` de `saveState`) : reprendre après `restore` / `loadState` filtre de même.
 //   - Empreinte : `fingerprint()` hache le monde (`scene::fingerprint`), l'état du générateur, le pas et les entrées en attente.
 //
 // Déterminisme (règle 9) : même graine, même flux, même durée de pas (`ctx.dt`), mêmes systèmes, mêmes entrées et état de
@@ -85,6 +86,9 @@ struct Snapshot
     core::Random random;
     std::uint64_t step = 0;
     std::vector<Input> pending;
+    // Fin du rejeu (`play`) interrompu en cours à la capture (0 sinon) : la reprise après `restore` filtre comme une reprise
+    // directe (une entrée du rejeu déjà en file n'est pas remise par un système).
+    std::uint64_t replayEnd = 0;
     // Vrai si capturé par un système PENDANT un pas : le monde est à moitié mis à jour et les entrées du pas déjà prélevées.
     // Un tel instantané n'est pas restaurable (`restore` le refuse) ; capturer entre deux pas.
     bool partial = false;
@@ -163,11 +167,12 @@ class Simulation
     // ── Capture et restauration ───────────────────────────────────────────────
     // Pendant un pas (appel d'un système) : instantané marqué `partial`, non restaurable, et avertissement au journal.
     Snapshot capture() const;
-    // Remet l'état capturé (monde, générateur, pas, entrées en attente) ; le journal des entrées garde celles d'avant ce pas
-    // s'il couvre ce pas (sinon il repart de ce pas) ; un instantané `partial` est refusé (avertissement, état inchangé) ;
+    // Remet l'état capturé (monde, générateur, pas, entrées en attente, filtre du rejeu) ; le journal des entrées garde celles
+    // d'avant ce pas s'il couvre ce pas (sinon il repart de ce pas) ; un instantané `partial` est refusé (avertissement, état inchangé) ;
     // le temps accumulé par `advance` repart de zéro ; les événements non repris sont abandonnés. Les systèmes ne font pas partie de l'état (enregistrés par le jeu).
     void restore(const Snapshot &snapshot);
-    // État en JSON : {"version", "data": {"step", "random": {"state", "increment"}, "pending": [...], "scene": <scène>}}.
+    // État en JSON : {"version", "data": {"step", "random": {"state", "increment"}, "pending": [...], "scene": <scène>}}, plus
+    // "replayEnd" seulement après un rejeu interrompu qui filtre encore.
     core::Json saveState() const;
     // Les types de composants doivent être enregistrés dans le monde. Tout ou rien ; kParse si une entrée en attente précède le
     // pas sauvegardé ; kInvalidArgument pour un état sauvegardé pendant un pas (`"partial": true`). Le journal des entrées est vidé (il décrivait une autre partie) : `firstLoggedStep()` = pas chargé.
@@ -185,6 +190,12 @@ class Simulation
     // refusée par `queueInput`.
     core::Result<> play(const Replay &replay);
     std::uint64_t fingerprint() const;
+
+    // ── Gel ───────────────────────────────────────────────────────────────────
+    // Posé par `app::GameModule` pendant l'`init` d'une version : step, run, advance, play, restore, loadState et takeEvents
+    // sont refusés (avertissement ou kInvalidArgument, état inchangé). Un `init` rejeté n'a ainsi que le monde, le générateur et
+    // la file d'entrées à remettre : pas, journal, événements et temps accumulé n'ont pas bougé.
+    void setFrozen(bool frozen) noexcept { frozen_ = frozen; }
 
   private:
     struct System
@@ -214,8 +225,10 @@ class Simulation
     bool stepping_ = false;
     std::vector<Input> queued_;   // mises en file par les systèmes pendant le pas : publiées à sa fin, abandonnées s'il lève
     // Fin du dernier rejeu (`play`) : pendant un pas, une entrée mise en file pour un pas avant elle est ignorée (le rejeu la
-    // contient). Reste posée après un rejeu interrompu par une exception ; remise à 0 par `restore` / `loadState`.
+    // contient). Reste posée après un rejeu interrompu par une exception ; capturée avec l'instantané (`Snapshot::replayEnd`)
+    // et remise par `restore`, sauvegardée par `saveState` tant qu'elle filtre encore.
     std::uint64_t replayEnd_ = 0;
+    bool frozen_ = false;
 };
 
 } // namespace orosmo::sim

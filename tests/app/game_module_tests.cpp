@@ -467,13 +467,23 @@ constexpr OrosmoGameApi kMoverV1{app::kGameAbiVersion, "mover v1", &moverV1Init,
 constexpr OrosmoGameApi kMoverChanged{app::kGameAbiVersion, "mover changed", &moverChangedInit<false>, nullptr, nullptr, nullptr};
 constexpr OrosmoGameApi kMoverFails{app::kGameAbiVersion, "mover fails", &moverChangedInit<true>, nullptr, nullptr, nullptr};
 
-// `init` qui met une entrée en file, joue un pas puis échoue (revue PR #41).
+// `init` qui met une entrée en file, tente de jouer un pas (et un rejeu, de reprendre les événements) puis échoue (revue PR #41,
+// PR #37) : refusés pendant `init`.
 bool stepThenFail(app::GameContext *context)
 {
     sim::Simulation *simulation = context->simulation();
     if (simulation == nullptr || !simulation->queueInput({.step = simulation->stepIndex() + 5, .name = "candidate", .data = {}}))
         return false;
     simulation->step();
+    simulation->run(2);
+    (void)simulation->advance(simulation->settings().step * 3);
+    (void)simulation->takeEvents();
+    sim::Replay replay;
+    replay.seed = simulation->settings().seed;
+    replay.firstStep = simulation->stepIndex();
+    replay.lastStep = replay.firstStep + 1;
+    if (simulation->play(replay))
+        return true; // rejeu accepté : le test échoue (version remplacée)
     return false;
 }
 constexpr OrosmoGameApi kStepsThenFails{app::kGameAbiVersion, "steps then fails", &stepThenFail, nullptr, nullptr, nullptr};
@@ -548,15 +558,30 @@ TEST_SUITE("app/game_module")
         CHECK(host.counter().reloads == 2);
     }
 
-    TEST_CASE("GameModule: an init that queues an input, plays a step and fails leaves none of its inputs")
+    TEST_CASE("GameModule: an init cannot play steps; when it fails, the step, the log, the events and the inputs are kept")
     {
         Host host;
         auto game = app::GameModule::fromApi(&kMoverV1, {.simulation = &host.simulation});
         REQUIRE(game.has_value());
-        REQUIRE(host.simulation.queueInput({.step = host.simulation.stepIndex() + 3, .name = "host", .data = {}}).has_value());
+        REQUIRE(host.simulation.addSystem({"host.ping", sim::Phase::kPostUpdate, 0, [](sim::StepContext &ctx) { ctx.emit("ping"); }}));
+        host.simulation.run(2);
+        // Entrée de l'hôte pour le pas courant : un pas joué par `init` l'aurait consommée sans la rendre (revue PR #37).
+        REQUIRE(host.simulation.queueInput({.step = host.simulation.stepIndex(), .name = "host", .data = {}}).has_value());
+        const std::uint64_t stepBefore = host.simulation.stepIndex();
+        const std::vector<sim::Input> logBefore = host.simulation.inputLog();
+        const scene::World &world = host.simulation.world();
+        const std::uint64_t entitiesBefore = world.entities().size();
         REQUIRE_FALSE(game->replace(&kStepsThenFails).has_value());
+        CHECK(game->version() == 1);
+        CHECK(host.simulation.stepIndex() == stepBefore);
+        CHECK(host.simulation.inputLog() == logBefore);
+        CHECK(host.simulation.events().size() == 2);
+        CHECK(host.simulation.alpha() == doctest::Approx(0.0));
+        CHECK(world.entities().size() == entitiesBefore);
         REQUIRE(host.simulation.pendingInputs().size() == 1);
         CHECK(host.simulation.pendingInputs().front().name == "host");
+        host.simulation.step(); // dégel après `init` : l'entrée de l'hôte est livrée à son pas
+        CHECK(host.simulation.inputLog().size() == logBefore.size() + 1);
     }
 
     TEST_CASE("GameModule (GAME-03): changed field type -> restored by field name; a failing init keeps the old version and "

@@ -44,7 +44,10 @@ auto replay = sim.recording();                               // Result<Replay> :
   elles) ; les entrées mises en file et les événements émis par la tentative sont abandonnés (une entrée mise en file
   pendant un pas n'entre dans `pendingInputs()` qu'à la fin du pas) ; les modifications du monde déjà faites par les
   systèmes précédents ne sont **pas** annulées. Exception pendant `play` : le filtre du rejeu reste actif jusqu'à son
-  `lastStep` (la reprise par `step()` ne livre aucune entrée en double), jusqu'à un `restore` ou un `loadState`.
+  `lastStep` (la reprise par `step()` ne livre aucune entrée en double) ; ce filtre fait partie de l'état (`Snapshot::replayEnd`,
+  `"replayEnd"` de `saveState`, écrit seulement s'il filtre encore) : reprendre après `restore` ou `loadState` filtre de même.
+  Pendant l'`init` d'un module de jeu (`setFrozen`, posé par `app::GameModule`), `step`, `run`, `advance`, `restore`,
+  `takeEvents` sont refusés (avertissement) et `play`, `loadState` rendent `kInvalidArgument`.
 - **Entrées** : datées par pas, livrées dans l'ordre d'ajout à `StepContext::inputs`, enregistrées dans `inputLog()`. Une entrée
   d'un pas déjà joué est refusée, comme une entrée du pas en cours mise en file par un système (ses entrées sont déjà
   prélevées) ; les pas suivants restent ouverts. La charge (`core::Json`) ne contient ni infini ni NaN (`dump()` les écrit

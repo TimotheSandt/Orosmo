@@ -218,7 +218,29 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
     journal.previous = replacing ? &previous : nullptr;
     journal.orphans = &orphans;
     Access::journal(context) = &journal;
-    const bool started = next->init(&context);
+    // Revue PR #37 (3) : `init` ne joue aucun pas (ni rejeu, restauration ou reprise d'événements) : pas, journal, événements et
+    // temps accumulé restent ceux d'avant, seuls monde, générateur et file sont à remettre.
+    struct Freeze
+    {
+        sim::Simulation *simulation;
+        explicit Freeze(sim::Simulation *s) : simulation(s)
+        {
+            if (simulation != nullptr)
+                simulation->setFrozen(true);
+        }
+        ~Freeze()
+        {
+            if (simulation != nullptr)
+                simulation->setFrozen(false);
+        }
+        Freeze(const Freeze &) = delete;
+        Freeze &operator=(const Freeze &) = delete;
+    };
+    bool started = false;
+    {
+        const Freeze freeze(targets.simulation);
+        started = next->init(&context);
+    }
     Access::journal(context) = nullptr;
     if (!started)
     {
@@ -229,9 +251,7 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
         {
             // `init` a mis des entrées en file : seule la file est remise (les entrées déjà en attente restent) ; événements non
             // repris et temps accumulé par `advance` inchangés. La file sauvegardée venait de la simulation : refus impossible
-            // (hors pas, mêmes pas, mêmes charges), journalisé par prudence.
-            // Si `init` a joué un pas avant d'échouer, les entrées de ce pas sont déjà passées : seules les suivantes reviennent.
-            std::erase_if(savedPending, [&](const sim::Input &input) { return input.step < targets.simulation->stepIndex(); });
+            // (hors pas, même pas courant : `init` n'en joue aucun, mêmes charges), journalisé par prudence.
             if (auto restored = targets.simulation->restorePending(std::move(savedPending)); !restored)
                 LOG_ERROR(static_cast<int>(restored.error().code), "game module: cannot restore the pending inputs: " + restored.error().describe());
         }
