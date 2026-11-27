@@ -321,7 +321,7 @@ e2e-init:
 	@# `make release` la lie statiquement, sans code de rechargement (GAME-07).
 	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) release
 	@syms=$$(nm -C $(E2E_RUN)/mygame/bin/release/mygame$(E2E_EXE)) || { echo "e2e-init : nm a échoué, contrôle GAME-07 impossible"; exit 1; }; \
-	    ! printf '%s\n' "$$syms" | grep -E 'orosmo::platform::DynamicLibrary|GameModule::load\(|DynamicReloader' \
+	    ! printf '%s\n' "$$syms" | grep -E 'orosmo::platform::DynamicLibrary|GameModule::load\(|DynamicReloader|ViewHost::mountFromLibrary|DevReloader|runCommand' \
 	    || { echo "e2e-init : code de rechargement dans la version finale"; exit 1; }
 	@# 2e build (copy_res recopie les ressources du moteur en lecture seule : elles doivent rester inscriptibles, G220).
 	cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo build --json > ../build.json
@@ -352,6 +352,17 @@ e2e-init:
 	    || { echo "e2e-init : make game refait autre chose que la bibliothèque de jeu"; exit 1; }
 	$(E2E_SH) python3 tools/e2e_reload.py --project $(E2E_RUN)/reload --tool "$(E2E_TOOL)" \
 	    --exe bin/debug/main$(E2E_EXE) --max $(E2E_RELOAD_MAX) --record $(E2E_RUN)/reload.txt
+	@# UI-08 (A79 L8) : même Makefile, même src/game/ et même vue src/HudView.cui que mygame, avec un hôte sans GPU
+	@# (tools/e2e/view_reload_host.cpp). Programme lancé, un .cui invalide garde l'ancienne vue (erreur signalée), puis un .cui
+	@# valide avec un widget de plus est recompilé avec la bibliothèque de jeu (lancé par le programme) et l'arbre recréé, temps mesuré.
+	mkdir -p $(E2E_RUN)/views/src
+	cp $(E2E_RUN)/mygame/Makefile $(E2E_RUN)/mygame/config.mk $(E2E_RUN)/views/
+	cp -r $(E2E_RUN)/mygame/src/game $(E2E_RUN)/views/src/
+	cp $(E2E_RUN)/mygame/src/HudView.cui $(E2E_RUN)/mygame/src/hud_state.hpp $(E2E_RUN)/views/src/
+	cp tools/e2e/view_reload_host.cpp $(E2E_RUN)/views/src/main.cpp
+	cd $(E2E_RUN)/views && $(E2E_ENV) $(MAKE) debug
+	$(E2E_SH) python3 tools/e2e_view_reload.py --project $(E2E_RUN)/views --build "\"$(E2E_TOOL)\" build --game" \
+	    --exe bin/debug/main$(E2E_EXE) --max $(E2E_RELOAD_MAX) --record $(E2E_RUN)/view-reload.txt
 	$(MAKE) -C $(E2E_RUN)/minimal ENGINE_DIR="$(E2E_ENGINE)"
 	$(E2E_RUN)/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
 	@echo "e2e-init : sortie de l'exemple minimal :"; cat $(E2E_RUN)/minimal.txt
