@@ -1,0 +1,32 @@
+// UI-08 : vue de test, version 1 (tests/app/view_host_tests.cpp). v2 ajoute un widget ; v3 change la structure (un champ lié de
+// plus), que l'exécutable compilé avec la v1 ne peut pas lire.
+import "orosmo/ui"
+import "app/view_module/hot_state.hpp"
+
+view HotView {
+    @Mutable var state: HotState
+
+    VBox {
+        Label("\(state.title)").id("title")
+        Checkbox("Flag", checked: $state.flag).id("flag")
+        Button("Press").onClick(state.press).id("press")
+        ScrollView {
+            VBox {
+                Label("Line 1")
+                Label("Line 2")
+                Label("Line 3")
+                Label("Line 4")
+                Label("Line 5")
+                Label("Line 6")
+                Label("Line 7")
+                Label("Line 8")
+            }
+        }
+        .height(30)
+        .id("list")
+        Section("More", expanded: true) {
+            Label("Inside")
+        }
+        .id("more")
+    }
+}

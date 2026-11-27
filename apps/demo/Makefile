@@ -193,8 +193,13 @@ SRCS_CPP := $(shell find $(SRC_DIR) -type f -name "*.cpp" 2>/dev/null)
 # (app::GameModule::load) et rechargée quand elle est reconstruite ; elle ne contient pas le moteur (engine_module_ldflags),
 # l'exécutable l'exporte (engine_host_ldflags). En release : liées dans l'exécutable avec -DOROSMO_GAME_STATIC, sans code de
 # rechargement. Après chaque édition de liens, la règle 13 est vérifiée sur le binaire (tools/check_game_static.py).
+# UI-08 (A79 L8) : en debug/dev, le C++ généré des vues .cui est AUSSI compilé dans cette bibliothèque (rechargé avec elle ;
+# l'exécutable, compilé avec -DOROSMO_CUI_RELOADABLE, construit ses vues par app::ViewHost). CUI_IN_GAME=0 : vues seulement dans
+# l'exécutable, comme avant.
 GAME_MODULE_DIR  ?= $(SRC_DIR)/game
+CUI_IN_GAME      ?= 1
 GAME_MODULE_SRCS := $(filter $(GAME_MODULE_DIR)/%,$(SRCS_CPP))
+GAME_VIEW_OBJS   :=
 ifneq ($(GAME_MODULE_SRCS),)
 ifeq ($(BUILD_TYPE),release)
     GAME_CXXFLAGS += -DOROSMO_GAME_STATIC
@@ -202,6 +207,11 @@ else
     SRCS_CPP         := $(filter-out $(GAME_MODULE_SRCS),$(SRCS_CPP))
     GAME_MODULE      := $(BIN_DIR)/game$(ENGINE_MODULE_EXT)
     GAME_MODULE_OBJS := $(GAME_MODULE_SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/gamelib/%.o)
+    ifeq ($(CUI_IN_GAME),1)
+        GAME_VIEW_OBJS   := $(GEN_CPP_SOURCES:$(ENGINE_GEN_DIR)/%.gen.cpp=$(OBJ_DIR)/gamelib/gen/%.o)
+        GAME_MODULE_OBJS += $(GAME_VIEW_OBJS)
+        GAME_CXXFLAGS    += $(if $(GAME_VIEW_OBJS),-DOROSMO_CUI_RELOADABLE)
+    endif
 endif
 endif
 SRCS_C   := $(shell find $(SRC_DIR) -type f -name "*.c"   2>/dev/null)
@@ -209,7 +219,9 @@ SRCS_C   := $(shell find $(SRC_DIR) -type f -name "*.c"   2>/dev/null)
 OBJS_CPP := $(SRCS_CPP:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/src/%.o)
 OBJS_C   := $(SRCS_C:$(SRC_DIR)/%.c=$(OBJ_DIR)/src/%.o)
 GEN_OBJS := $(GEN_CPP_SOURCES:$(ENGINE_GEN_DIR)/%.gen.cpp=$(OBJ_DIR)/gen/%.o)
-ALL_OBJS := $(OBJS_CPP) $(OBJS_C) $(GEN_OBJS)
+# Vues dans la bibliothèque de jeu : les mêmes objets sont aussi liés dans l'exécutable (un src/main.cpp qui appelle
+# cui::build<Vue> directement marche encore, sans rechargement ; la structure de la vue est cachée, chaque binaire garde la sienne).
+ALL_OBJS := $(OBJS_CPP) $(OBJS_C) $(if $(GAME_VIEW_OBJS),$(GAME_VIEW_OBJS),$(GEN_OBJS))
 TEST_GAME_OBJS := $(filter-out $(OBJ_DIR)/src/main.o $(GAME_MODULE_SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/src/%.o),$(OBJS_CPP) $(OBJS_C))
 
 # Windows icon resource
@@ -226,9 +238,10 @@ endif
 # Test sources
 # tests/**/test_module/ : sources de bibliothèques chargées par les tests (platform::DynamicLibrary), pas de l'exécutable.
 # tests/**/game_module/ : bibliothèque de jeu de test (A79 L5), construite en plusieurs versions, et sa version statique.
-TEST_SRCS   := $(shell find $(TEST_DIR) -type f -name "*.cpp" -not -path "*/test_module/*" -not -path "*/game_module/*" 2>/dev/null)
+# tests/**/view_module/ : bibliothèques de jeu de test qui contiennent une vue .cui (UI-08, A79 L8), voir plus bas.
+TEST_SRCS   := $(shell find $(TEST_DIR) -type f -name "*.cpp" -not -path "*/test_module/*" -not -path "*/game_module/*" -not -path "*/view_module/*" 2>/dev/null)
 # UI-11 : les vues .cui des tests (sauf les cas d'erreur de cui_errors/) sont compilées par cui, puis avec les tests.
-TEST_CUI_SRCS := $(shell find $(TEST_DIR) -type f -name "*.cui" -not -path "*/cui_errors/*" 2>/dev/null)
+TEST_CUI_SRCS := $(shell find $(TEST_DIR) -type f -name "*.cui" -not -path "*/cui_errors/*" -not -path "*/view_module/*" 2>/dev/null)
 TEST_GEN_CPP  := $(patsubst $(TEST_DIR)/%.cui,$(ENGINE_GEN_DIR)/tests/%.gen.cpp,$(TEST_CUI_SRCS))
 TEST_GEN_OBJS := $(TEST_GEN_CPP:$(ENGINE_GEN_DIR)/%.gen.cpp=$(OBJ_DIR)/gen/%.o)
 TEST_OBJS   := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/tests/%.o) $(TEST_GAME_OBJS) $(GEN_OBJS) $(TEST_GEN_OBJS)
@@ -246,7 +259,17 @@ TEST_GAME_SRC       := $(wildcard $(TEST_GAME_DIR)/game.cpp)
 TEST_GAME_VARIANTS  := v1 v2 v3 badabi failinit
 TEST_GAMELIB_OBJS   := $(if $(TEST_GAME_SRC),$(foreach v,$(TEST_GAME_VARIANTS),$(OBJ_DIR)/tests/app/game_module/game_$(v).o))
 TEST_GAMES          := $(if $(TEST_GAME_SRC),$(foreach v,$(TEST_GAME_VARIANTS),bin/tests/test_game_$(v)$(ENGINE_MODULE_EXT)))
-TEST_GAME_STATIC_OBJS := $(if $(TEST_GAME_SRC),$(OBJ_DIR)/tests/app/game_module/static_game.o $(OBJ_DIR)/tests/app/game_module/static_main.o)
+# UI-08 (A79 L8) : une bibliothèque de jeu de test par version de la vue tests/app/view_module/<v>/HotView.cui (son C++ généré
+# + tests/app/view_module/game.cpp), chargée et rechargée par tests/app/view_host_tests.cpp ; la v1 est aussi liée dans
+# bin/tests/test_game_static (forme liée de app::ViewHost, sans le code de rechargement des vues).
+TEST_VIEW_DIR      := $(TEST_DIR)/app/view_module
+TEST_VIEW_VARIANTS := $(if $(wildcard $(TEST_VIEW_DIR)/game.cpp),v1 v2 v3)
+TEST_VIEW_GEN      := $(foreach v,$(TEST_VIEW_VARIANTS),$(ENGINE_GEN_DIR)/tests/app/view_module/$(v)/HotView.gen.cpp)
+TEST_VIEW_OBJS     := $(foreach v,$(TEST_VIEW_VARIANTS),$(OBJ_DIR)/tests/app/view_module/$(v)/HotView.o)
+TEST_VIEW_GAME_OBJ := $(if $(TEST_VIEW_VARIANTS),$(OBJ_DIR)/tests/app/view_module/game.o)
+TEST_VIEW_LIBS     := $(foreach v,$(TEST_VIEW_VARIANTS),bin/tests/test_view_$(v)$(ENGINE_MODULE_EXT))
+TEST_GAME_STATIC_OBJS := $(if $(TEST_GAME_SRC),$(OBJ_DIR)/tests/app/game_module/static_game.o $(OBJ_DIR)/tests/app/game_module/static_main.o \
+                         $(if $(TEST_VIEW_VARIANTS),$(OBJ_DIR)/tests/app/game_module/static_view.o))
 TEST_GAME_STATIC    := $(if $(TEST_GAME_SRC),bin/tests/test_game_static$(ENGINE_EXE_EXT))
 # Règle 13 vérifiée sur le binaire (tools/check_game_static.py, copié dans $(ENGINE_DIR)/tools) : rien si Python 3 manque.
 _GAME_STATIC_CHECK  := $(if $(shell command -v python3 2>/dev/null),$(wildcard $(ENGINE_DIR)/tools/check_game_static.py))
@@ -331,6 +354,14 @@ $(OBJ_DIR)/gamelib/%.o: $(SRC_DIR)/%.cpp
 	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) $(GAME_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
 	$(ors_end)
 
+# Vues .cui de la bibliothèque de jeu (UI-08) : `make game` relance cui sur le .cui modifié, puis compile et relie.
+$(OBJ_DIR)/gamelib/gen/%.o: $(ENGINE_GEN_DIR)/%.gen.cpp
+	@mkdir -p "$(dir $@)"
+	$(call ors_compile,CXX [gen])
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -c $< -o $@
+	$(ors_end)
+$(GAME_MODULE_OBJS): | $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
+
 # ── Compilation rules ─────────────────────────────────────────────────────────
 $(OBJ_DIR)/src/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p "$(dir $@)"
@@ -364,7 +395,7 @@ $(BIN_DIR)/icon.rc: $(ICON_NAME) | $(BIN_DIR)
 # ── Tests ─────────────────────────────────────────────────────────────────────
 .PHONY: test
 TEST_ARGS ?=
-test: $(TEST_TARGET) $(TEST_MODULE) $(TEST_GAMES) $(TEST_GAME_STATIC)
+test: $(TEST_TARGET) $(TEST_MODULE) $(TEST_GAMES) $(TEST_VIEW_LIBS) $(TEST_GAME_STATIC)
 	@./$(TEST_TARGET) $(TEST_ARGS)
 	$(if $(TEST_GAME_STATIC),@./$(TEST_GAME_STATIC))
 
@@ -410,9 +441,33 @@ $(TEST_GAMELIB_OBJS): $(OBJ_DIR)/tests/app/game_module/game_%.o: $(TEST_GAME_DIR
 	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) -DOROSMO_TEST_GAME_VARIANT_$* -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
 	$(ors_end)
 
+# UI-08 : bibliothèques de test avec une vue .cui, contrôlées comme celles du jeu (moteur non copié, aucun état : le C++ généré
+# des vues respecte la règle 13).
+$(TEST_VIEW_LIBS): bin/tests/test_view_%$(ENGINE_MODULE_EXT): $(OBJ_DIR)/tests/app/view_module/%/HotView.o $(TEST_VIEW_GAME_OBJ) $(if $(filter Windows,$(ENGINE_OS)),$(TEST_TARGET)) | bin/tests
+	$(call ors_link,LD)
+	$(ORS_Q)$(CXX) $(ENGINE_CXXFLAGS) $< $(TEST_VIEW_GAME_OBJ) $(call engine_module_ldflags,$(TEST_TARGET)) -o $@
+	$(ors_end)
+	$(if $(filter Linux,$(ENGINE_OS)),@syms=$$(nm -DC --defined-only $@) || { rm -f $@; exit 1; }; \
+	    ! printf '%s\n' "$$syms" | grep -E ' [TDBR] orosmo::' \
+	    || { echo "$@ : le moteur est copié dans la bibliothèque (symboles orosmo:: définis ci-dessus)"; rm -f $@; exit 1; })
+	$(if $(_GAME_STATIC_CHECK),@python3 "$(_GAME_STATIC_CHECK)" --quiet $(if $(filter Windows,$(ENGINE_OS)),$< $(TEST_VIEW_GAME_OBJ),$@) || { rm -f $@; exit 1; })
+
+$(TEST_VIEW_OBJS): $(OBJ_DIR)/tests/app/view_module/%/HotView.o: $(ENGINE_GEN_DIR)/tests/app/view_module/%/HotView.gen.cpp
+	@mkdir -p "$(dir $@)"
+	$(call ors_compile,CXX [gen])
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ors_end)
+
+$(TEST_VIEW_GAME_OBJ): $(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp
+	@mkdir -p "$(dir $@)"
+	$(call ors_compile,CXX)
+	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) $(ENGINE_MODULE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
+	$(ors_end)
+
 # Version finale (GAME-07) : le jeu lié dans l'exécutable, sans code de rechargement (vérifié par nm après l'édition de liens).
 $(OBJ_DIR)/tests/app/game_module/static_game.o: $(TEST_GAME_DIR)/game.cpp
-$(OBJ_DIR)/tests/app/game_module/static_main.o: $(TEST_GAME_DIR)/static_main.cpp
+$(OBJ_DIR)/tests/app/game_module/static_main.o: $(TEST_GAME_DIR)/static_main.cpp | $(TEST_VIEW_GEN)
+$(OBJ_DIR)/tests/app/game_module/static_view.o: $(ENGINE_GEN_DIR)/tests/app/view_module/v1/HotView.gen.cpp
 $(TEST_GAME_STATIC_OBJS):
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CXX)
@@ -425,11 +480,11 @@ $(TEST_GAME_STATIC): $(TEST_GAME_STATIC_OBJS) $(ENGINE_LIBS) | bin/tests
 	$(ors_end)
 	@# Échec de nm (outil absent, binaire illisible) = échec du contrôle ; exécutable refusé = effacé.
 	@syms=$$(nm -C $@) || { echo "$@ : nm a échoué, contrôle GAME-07 impossible"; rm -f $@; exit 1; }; \
-	    ! printf '%s\n' "$$syms" | grep -E 'orosmo::platform::DynamicLibrary|GameModule::load\(|DynamicReloader' \
+	    ! printf '%s\n' "$$syms" | grep -E 'orosmo::platform::DynamicLibrary|GameModule::load\(|DynamicReloader|ViewHost::mountFromLibrary|DevReloader|runCommand' \
 	    || { echo "$@ : code de rechargement lié dans la version statique (symboles ci-dessus)"; rm -f $@; exit 1; }
 
 # Les tests incluent aussi les vues générées de la démo (UI/Views/*.gen.h) : elles doivent exister avant leur compilation.
-$(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp | $(TEST_GEN_CPP) $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
+$(OBJ_DIR)/tests/%.o: $(TEST_DIR)/%.cpp | $(TEST_GEN_CPP) $(TEST_VIEW_GEN) $(GEN_CPP_SOURCES) $(GEN_REDIRECT_SOURCES)
 	@mkdir -p "$(dir $@)"
 	$(call ors_compile,CXX)
 	$(ORS_Q)$(CCACHE) $(CXX) $(ENGINE_CXXFLAGS) -MMD -MP $(ENGINE_INCLUDES) -I$(TEST_DIR) -c $< -o $@
@@ -669,7 +724,7 @@ info:
 -include $(wildcard $(TEST_OBJS:.o=.d))
 -include $(wildcard $(TEST_MODULE_OBJS:.o=.d))
 -include $(wildcard $(GAME_MODULE_OBJS:.o=.d))
--include $(wildcard $(TEST_GAMELIB_OBJS:.o=.d) $(TEST_GAME_STATIC_OBJS:.o=.d))
+-include $(wildcard $(TEST_GAMELIB_OBJS:.o=.d) $(TEST_GAME_STATIC_OBJS:.o=.d) $(TEST_VIEW_OBJS:.o=.d) $(TEST_VIEW_GAME_OBJ:.o=.d))
 -include $(wildcard $(BENCH_OBJS:.o=.d))
 
 # ── Installer (packaging) ─────────────────────────────────────────────────────
