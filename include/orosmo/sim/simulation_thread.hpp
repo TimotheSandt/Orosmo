@@ -174,7 +174,9 @@ class SimulationThread
     // l'arrêt (aucun pas demandé n'est perdu). Les entrées encore en file sont remises à la simulation (`pendingInputs`) ;
     // les événements non lus restent lisibles par `popEvent`. Le propriétaire peut ensuite reprendre la simulation.
     void stop();
-    bool running() const noexcept { return thread_.joinable(); }
+    // Vrai tant que le thread joue : faux après `stop()`, et dès que le thread s'est arrêté sur une erreur (`status()`), même
+    // s'il reste à le rejoindre par `stop()`.
+    bool running() const noexcept;
     // Erreur du thread : un système a levé une exception (le thread s'est arrêté, `frame` et `sync` ne bloquent plus ; le pas
     // interrompu n'est pas rejoué). Sans erreur : succès.
     core::Result<> status() const;
@@ -187,7 +189,7 @@ class SimulationThread
     // horloge relue et pas dus joués (kFixedRate), instantané publié. Tests et mode sans fenêtre.
     void sync();
     // Entrée datée par pas (voir `Simulation::queueInput`), livrée au thread avant son prochain pas. Faux si la file est
-    // pleine ou le thread arrêté (rien n'est ajouté). Une entrée d'un pas déjà joué quand le thread la reçoit est refusée et comptée
+    // pleine ou le thread arrêté, y compris sur une erreur pas encore rejointe (rien n'est ajouté). Une entrée d'un pas déjà joué quand le thread la reçoit est refusée et comptée
     // (`rejectedInputs`, avertissement au journal) : dater au moins à `stepIndex() + latence`.
     bool pushInput(Input input);
     // Dernier instantané publié, inchangé jusqu'au prochain `acquire`.

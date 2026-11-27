@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -98,6 +99,7 @@ TEST_SUITE("sim/simulation")
         // Retard trop grand : au plus maxStepsPerFrame pas par image (le surplus est abandonné).
         Simulation slow({.step = 10ms, .maxStepsPerFrame = 4});
         CHECK(slow.advance(1s) == 4);
+        CHECK(slow.advance(1ms) == 0); // les 960 ms de retard ont été abandonnées, pas gardées
         CHECK(slow.stepSeconds() == doctest::Approx(0.01));
         // Le plafond casse l'indépendance du découpage : 100 ms d'un coup donnent 4 pas, dix fois 10 ms en donnent 10.
         Simulation capped({.step = 10ms, .maxStepsPerFrame = 4});
@@ -391,7 +393,9 @@ TEST_SUITE("sim/simulation")
 
         Simulation c({.seed = 5});
         setup(c, 6);
+        REQUIRE(c.queueInput({7, "bump", 2}));
         c.run(20); // journal d'une autre partie
+        REQUIRE(c.inputLog().size() == 1);
         REQUIRE(c.loadState(state));
         CHECK(c.inputLog().empty());
         CHECK(c.firstLoggedStep() == 100);
@@ -447,6 +451,181 @@ TEST_SUITE("sim/simulation")
         CHECK(live.stepIndex() == 10);
         CHECK(live.fingerprint() == expected);
         CHECK(live.pendingInputs() == std::vector<Input>{{30, "bump", 3}});
+    }
+}
+
+TEST_SUITE("sim/simulation")
+{
+    TEST_CASE("Simulation: a replay records the step duration and the random stream; play refuses other settings")
+    {
+        Simulation live({.step = 10ms, .seed = 4, .stream = 9});
+        setup(live, 3);
+        const Snapshot start = live.capture();
+        REQUIRE(live.queueInput({2, "bump", 5}));
+        live.run(6);
+        auto recorded = live.recording(0);
+        REQUIRE(recorded);
+        CHECK(recorded->stepNanoseconds == 10'000'000);
+        CHECK(recorded->stream == 9u);
+        auto fromJson = replayFromJson(core::parseJson(core::dumpJson(replayToJson(*recorded))).value());
+        REQUIRE(fromJson);
+        CHECK(*fromJson == *recorded);
+
+        Simulation slower({.step = 20ms, .seed = 4, .stream = 9});
+        setup(slower, 3);
+        REQUIRE(slower.queueInput({1, "bump", 1}));
+        const std::vector<Input> before = slower.pendingInputs();
+        CHECK((errorOf(slower.play(*recorded)) == core::ErrorCode::kInvalidArgument));
+        CHECK(slower.pendingInputs() == before); // refusé avant de toucher à la file
+        CHECK(slower.stepIndex() == 0);
+        Simulation otherStream({.step = 10ms, .seed = 4, .stream = 1});
+        setup(otherStream, 3);
+        CHECK((errorOf(otherStream.play(*recorded)) == core::ErrorCode::kInvalidArgument));
+
+        const std::uint64_t expected = live.fingerprint();
+        live.restore(start);
+        REQUIRE(live.play(*recorded)); // réglages identiques : rejoué
+        CHECK(live.fingerprint() == expected);
+        // Document sans ces champs (plus ancien) : durée non vérifiée, flux par défaut.
+        core::Json legacy = replayToJson(Replay{0, 0, 1, {}});
+        legacy["data"].erase("stepNanoseconds");
+        legacy["data"].erase("stream");
+        auto old = replayFromJson(legacy);
+        REQUIRE(old);
+        CHECK(old->stepNanoseconds == 0);
+        CHECK_FALSE(old->stream.has_value()); // flux inconnu : play ne le vérifie pas (revue PR #40)
+    }
+
+    TEST_CASE("Simulation: a capture or a state saved during a step is partial and cannot be restored")
+    {
+        Simulation sim({.seed = 6});
+        setup(sim, 2);
+        std::optional<Snapshot> during;
+        core::Json duringState;
+        REQUIRE(sim.addSystem({"save", Phase::kInput, -1, [&](StepContext &ctx) {
+                                   if (ctx.step == 0)
+                                   {
+                                       during = sim.capture();
+                                       duringState = sim.saveState();
+                                   }
+                               }}));
+        REQUIRE(sim.queueInput({0, "bump", 100}));
+        const Snapshot between = sim.capture();
+        CHECK_FALSE(between.partial);
+        sim.run(3);
+        REQUIRE(during);
+        CHECK(during->partial);
+        const std::uint64_t now = sim.fingerprint();
+        sim.restore(*during); // refusé : l'entrée du pas 0 a déjà quitté la file
+        CHECK(sim.stepIndex() == 3);
+        CHECK(sim.fingerprint() == now);
+        CHECK((errorOf(sim.loadState(duringState)) == core::ErrorCode::kInvalidArgument));
+        CHECK(sim.stepIndex() == 3);
+        sim.restore(between); // entre deux pas : restaurable
+        CHECK(sim.stepIndex() == 0);
+        CHECK(sim.pendingInputs().size() == 1);
+    }
+
+    TEST_CASE("Simulation: restoring a later snapshot that the log no longer covers restarts the log")
+    {
+        Simulation sim({.seed = 8});
+        setup(sim, 2);
+        const Snapshot s0 = sim.capture();
+        REQUIRE(sim.queueInput({0, "bump", 3}));
+        sim.step();
+        const Snapshot s1 = sim.capture();
+        sim.restore(s0); // l'entrée du pas 0 quitte le journal
+        CHECK(sim.inputLog().empty());
+        CHECK(sim.firstLoggedStep() == 0);
+        sim.restore(s1); // pas 1 : le journal ne couvre plus [0, 1)
+        CHECK(sim.firstLoggedStep() == 1);
+        CHECK((errorOf(sim.recording(0)) == core::ErrorCode::kInvalidArgument));
+        CHECK(sim.recording(1));
+        // Retour en arrière dans le préfixe connu : le journal reste valable.
+        REQUIRE(sim.queueInput({1, "bump", 1}));
+        sim.run(3);
+        const Snapshot s2 = sim.capture();
+        sim.run(2);
+        sim.restore(s2);
+        CHECK(sim.firstLoggedStep() == 1);
+        auto kept = sim.recording(1);
+        REQUIRE(kept);
+        CHECK(kept->inputs == std::vector<Input>{{1, "bump", 1}});
+    }
+
+    TEST_CASE("Simulation: inputs queued by a system are not delivered twice by a replay; later ones stay pending")
+    {
+        auto build = [](Simulation &sim) {
+            setup(sim, 3);
+            // Chaque pas, le système prévoit un « bump » pour le pas suivant (entrée régénérée au rejeu).
+            REQUIRE(sim.addSystem({"plan", Phase::kPostUpdate, 0, [&sim](StepContext &ctx) {
+                                       CHECK(sim.queueInput({ctx.step + 1, "bump", static_cast<std::int64_t>(ctx.step)}));
+                                   }}));
+        };
+        Simulation live({.seed = 12});
+        build(live);
+        const Snapshot start = live.capture();
+        REQUIRE(live.queueInput({3, "bump", 50})); // entrée externe au même pas qu'une entrée régénérée
+        live.run(6);
+        auto recorded = live.recording(0);
+        REQUIRE(recorded);
+        const std::uint64_t expected = live.fingerprint();
+        const std::vector<Input> expectedPending = live.pendingInputs();
+        REQUIRE(expectedPending.size() == 1); // le « bump » du pas 6, prévu au pas 5
+
+        live.restore(start);
+        REQUIRE(live.play(*recorded));
+        CHECK(live.fingerprint() == expected);
+        CHECK(live.pendingInputs() == expectedPending); // produite après lastStep : gardée
+        auto again = live.recording(0);
+        REQUIRE(again);
+        CHECK(again->inputs == recorded->inputs); // même livraison, même ordre
+    }
+
+    TEST_CASE("Simulation: a system that throws gives the step inputs back; the step replays with them")
+    {
+        Simulation sim;
+        int seen = 0;
+        bool thrown = false;
+        REQUIRE(sim.addSystem({"read", Phase::kInput, 0, [&](StepContext &ctx) { seen += static_cast<int>(ctx.inputs.size()); }}));
+        REQUIRE(sim.addSystem({"throws", Phase::kUpdate, 0, [&](StepContext &) {
+                                   if (!thrown)
+                                   {
+                                       thrown = true;
+                                       throw std::runtime_error("system failure");
+                                   }
+                               }}));
+        REQUIRE(sim.queueInput({0, "a", 1}));
+        REQUIRE(sim.queueInput({0, "b", 2}));
+        REQUIRE(sim.queueInput({1, "c", 3}));
+        CHECK_THROWS_AS(sim.step(), std::runtime_error);
+        CHECK(sim.stepIndex() == 0);
+        CHECK(sim.inputLog().empty()); // rien de livré jusqu'au bout
+        CHECK(sim.pendingInputs() == std::vector<Input>{{0, "a", 1}, {0, "b", 2}, {1, "c", 3}});
+        sim.step();
+        CHECK(sim.stepIndex() == 1);
+        CHECK(sim.inputLog() == std::vector<Input>{{0, "a", 1}, {0, "b", 2}});
+        CHECK(seen == 4); // pas interrompu (2) puis rejoué (2)
+    }
+
+    TEST_CASE("Simulation: payloads with invalid UTF-8 or binary values are refused; ordinary objects are kept")
+    {
+        Simulation sim;
+        const std::string bad = std::string("a") + static_cast<char>(0xFF);
+        CHECK((errorOf(sim.queueInput({0, "x", bad})) == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(sim.queueInput({0, "x", core::Json{{bad, 1}}})) == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(sim.queueInput({0, bad, 1})) == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(sim.queueInput({0, "x", core::Json::array({std::string("\xC0\x80")})})) == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(sim.queueInput({0, "x", core::Json::binary({1, 2})})) == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(sim.queueInput({0, "x", core::Json{{"in", core::Json::array({core::Json::binary({3})})}}})) ==
+               core::ErrorCode::kInvalidArgument));
+        CHECK(sim.pendingInputs().empty());
+        CHECK(sim.fingerprint() != 0); // dump() ne lève pas : rien d'invalide en file
+        REQUIRE(sim.queueInput({0, "\xC3\xA9", core::Json{{"bytes", core::Json::array({1})}, {"subtype", nullptr}, {"cl\xC3\xA9", "\xE2\x82\xAC \xF0\x9F\x98\x80"}}}));
+        const core::Json state = sim.saveState();
+        Simulation other;
+        REQUIRE(other.loadState(core::parseJson(core::dumpJson(state)).value()));
+        CHECK(other.pendingInputs() == sim.pendingInputs());
     }
 }
 

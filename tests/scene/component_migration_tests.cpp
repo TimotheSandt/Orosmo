@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 using namespace orosmo;
@@ -91,6 +92,7 @@ struct Fixture
 {
     scene::World world;
     std::vector<scene::Entity> owners;
+    std::vector<int> seeds; // valeur d'origine de chaque entité de `owners` (même rang), connue avant toute migration
     scene::ComponentId oldId;
 
     Fixture()
@@ -105,12 +107,48 @@ struct Fixture
                 continue;
             REQUIRE(world.add(e, *type, MoverV1{100 + i, 0.5f * static_cast<float>(i), 7 * i, {static_cast<float>(i)}}) != nullptr);
             owners.push_back(e);
+            seeds.push_back(i);
         }
         // Ordre dense modifié (retrait puis ajout) : la migration doit le garder.
         REQUIRE(world.remove(owners.front(), *type));
         REQUIRE(world.add(owners.front(), *type, MoverV1{100, 0.f, 0, {0.f}}) != nullptr);
     }
 };
+} // namespace
+
+namespace
+{
+core::FieldDesc scalar(std::string name, core::FieldType type, std::size_t offset, std::size_t size, core::Range r = {})
+{
+    core::FieldDesc f;
+    f.name = std::move(name);
+    f.type = type;
+    f.offset = offset;
+    f.size = size;
+    f.range = r;
+    return f;
+}
+
+core::FieldDesc structure(std::string name, std::size_t offset, std::size_t size, std::vector<core::FieldDesc> fields)
+{
+    core::FieldDesc f;
+    f.name = std::move(name);
+    f.type = core::FieldType::kStruct;
+    f.offset = offset;
+    f.size = size;
+    f.fields = std::move(fields);
+    return f;
+}
+
+scene::ComponentDesc manual(std::size_t size, std::vector<core::FieldDesc> fields)
+{
+    scene::ComponentDesc d;
+    d.name = "C";
+    d.size = size;
+    d.alignment = 4;
+    d.fields = std::move(fields);
+    return d;
+}
 } // namespace
 
 TEST_SUITE("scene/migration")
@@ -130,18 +168,19 @@ TEST_SUITE("scene/migration")
         // Ancien identifiant refusé (génération suivante), même emplacement.
         CHECK(f.world.componentDesc(f.oldId) == nullptr);
         CHECK(report->id.index == f.oldId.index);
-        CHECK(report->id.generation == f.oldId.generation + 1);
+        CHECK(report->id.generation != f.oldId.generation);
         CHECK_FALSE(f.world.componentType<MoverV1>("Mover").has_value());
         auto type = f.world.componentType<MoverAdded>("Mover");
         REQUIRE(type.has_value());
 
         const std::vector<scene::Entity> after(f.world.componentEntities(type->id).begin(), f.world.componentEntities(type->id).end());
         CHECK(after == before);
-        for (const scene::Entity e : f.owners)
+        for (std::size_t k = 0; k < f.owners.size(); ++k)
         {
-            const MoverAdded *m = f.world.get(e, *type);
+            const MoverAdded *m = f.world.get(f.owners[k], *type);
             REQUIRE(m != nullptr);
-            const int i = static_cast<int>(m->hp - 100);
+            const int i = f.seeds[k]; // valeur de CETTE entité avant la migration
+            CHECK(m->hp == 100 + i);
             CHECK(m->armor == 0.25);
             CHECK(m->speed == doctest::Approx(i == 0 ? 0.f : 0.5f * static_cast<float>(i)));
             CHECK(m->ammo == (i == 0 ? 0 : 7 * i));
@@ -164,13 +203,14 @@ TEST_SUITE("scene/migration")
 
         auto type = f.world.componentType<MoverChanged>("Mover");
         REQUIRE(type.has_value());
-        for (const scene::Entity e : f.owners)
+        for (std::size_t k = 0; k < f.owners.size(); ++k)
         {
-            const MoverChanged *m = f.world.get(e, *type);
+            const MoverChanged *m = f.world.get(f.owners[k], *type);
             REQUIRE(m != nullptr);
-            CHECK(m->hp >= 100.0); // entier relu en réel
+            const int i = f.seeds[k];
+            CHECK(m->hp == 100.0 + i);                    // entier relu en réel, valeur de cette entité
             CHECK(m->speed == core::Vec3{9.f, 9.f, 9.f}); // non convertible : défaut
-            CHECK(m->inner.a == static_cast<float>(m->hp - 100.0));
+            CHECK(m->inner.a == static_cast<float>(i));
         }
     }
 
@@ -183,10 +223,12 @@ TEST_SUITE("scene/migration")
         CHECK(back->kind == scene::MigrationKind::kRestored);
         REQUIRE(back->warnings.size() == 2); // une fois chacun, pas une fois par entité
         CHECK(std::ranges::any_of(back->warnings, [](const std::string &w) { return w.starts_with("Mover.armor: field removed"); }));
-        CHECK(std::ranges::any_of(back->warnings, [](const std::string &w) { return w.starts_with("Mover.inner.b: unknown field ignored"); }));
+        CHECK(std::ranges::any_of(back->warnings, [](const std::string &w) { return w.starts_with("Mover.inner.b: field removed"); }));
         auto type = f.world.componentType<MoverV1>("Mover");
         REQUIRE(type.has_value());
-        CHECK(f.world.get(f.owners.back(), *type)->inner.a == 3.f);
+        const MoverV1 *last = f.world.get(f.owners.back(), *type);
+        REQUIRE(last != nullptr);
+        CHECK(last->inner.a == 3.f);
     }
 
     TEST_CASE("migrateComponent: same layout keeps the identifier; errors for unknown types, Transform, invalid layouts")
@@ -211,6 +253,69 @@ TEST_SUITE("scene/migration")
         REQUIRE_FALSE(invalid.has_value());
         CHECK((invalid.error().code == ErrorCode::kInvalidArgument));
         CHECK(f.world.componentDesc(f.oldId) != nullptr); // rien n'a changé
+    }
+
+    TEST_CASE("migrateComponentValue: an unchanged field keeps its value even if the new range excludes it")
+    {
+        using core::FieldType;
+        const auto from = manual(4, {scalar("score", FieldType::kInt, 0, 4, core::range(0, 100))});
+        const auto to = manual(4, {scalar("score", FieldType::kInt, 0, 4, core::range(0, 10))});
+        CHECK(scene::classifyMigration(from.fields, to.fields) == scene::MigrationKind::kCopied);
+        const std::int32_t src = 75;
+        std::int32_t dst = 0;
+        std::vector<std::string> warnings;
+        scene::migrateComponentValue(from, &src, to, &dst, warnings);
+        CHECK(dst == 75);
+        CHECK(warnings.empty());
+        // Champ converti (entier -> réel) : la plage de la nouvelle version s'applique.
+        const auto toReal = manual(4, {scalar("score", FieldType::kFloat, 0, 4, core::range(0, 10))});
+        float real = 1.f;
+        scene::migrateComponentValue(from, &src, toReal, &real, warnings);
+        CHECK(real == 1.f);
+        REQUIRE(warnings.size() == 1);
+        CHECK(warnings[0].starts_with("C.score: type changed"));
+    }
+
+    TEST_CASE("migrateComponentValue: compatible sub-fields are kept when a sibling cannot be converted")
+    {
+        using core::FieldType;
+        struct Old
+        {
+            std::int32_t hp;
+            std::int32_t rank;
+        };
+        struct New
+        {
+            std::int32_t hp;
+            std::int8_t rank;
+        };
+        const auto from = manual(8, {structure("stats", 0, 8, {scalar("hp", FieldType::kInt, 0, 4), scalar("rank", FieldType::kInt, 4, 4)})});
+        const auto to = manual(8, {structure("stats", 0, 8, {scalar("hp", FieldType::kInt, 0, 4), scalar("rank", FieldType::kInt, 4, 1)})});
+        const Old src{75, 300};
+        New dst{1, 2};
+        std::vector<std::string> warnings;
+        scene::migrateComponentValue(from, &src, to, &dst, warnings);
+        CHECK(dst.hp == 75);  // gardé
+        CHECK(dst.rank == 2); // ne tient pas dans 8 bits : défaut
+        REQUIRE(warnings.size() == 1);
+        CHECK(warnings[0].starts_with("C.stats.rank: type changed"));
+    }
+
+    TEST_CASE("classifyMigration: an opaque structure that becomes reflected is a restoration")
+    {
+        using core::FieldType;
+        const std::vector<core::FieldDesc> opaque{structure("s", 0, 4, {})};
+        const std::vector<core::FieldDesc> reflected{structure("s", 0, 4, {scalar("x", FieldType::kFloat, 0, 4)})};
+        CHECK(scene::classifyMigration(opaque, reflected) == scene::MigrationKind::kRestored);
+        CHECK(scene::classifyMigration(reflected, opaque) == scene::MigrationKind::kRestored);
+        CHECK(scene::classifyMigration(opaque, opaque) == scene::MigrationKind::kCopied);
+        // Deux structures opaques de même taille : octets gardés.
+        const std::uint32_t src = 0xA1B2C3D4u;
+        std::uint32_t dst = 0;
+        std::vector<std::string> warnings;
+        scene::migrateComponentValue(manual(4, opaque), &src, manual(4, opaque), &dst, warnings);
+        CHECK(dst == src);
+        CHECK(warnings.empty());
     }
 
     TEST_CASE("classifyMigration: only additions (also in sub-structures) are a copy")

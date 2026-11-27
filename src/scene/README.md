@@ -33,28 +33,42 @@ template <> struct orosmo::core::Reflect<Velocity> {
 
 orosmo::scene::World world;                                   // « Transform » déjà enregistré
 auto velocity = world.registerComponent<Velocity>("Velocity"); // Result<ComponentType<Velocity>>
+if (!velocity)
+    return std::unexpected(velocity.error());
 auto ship = world.create();
-world.setTransform(ship, {.position = {1.0e7, 0.0, 0.0}});
-world.add(ship, *velocity, Velocity{{0.f, 0.f, 1.f}});
-world.add(ship, "Velocity");                                  // par nom (sauvegarde, inspecteur) : kNotFound si inconnu
+if (auto placed = world.setTransform(ship, {.position = {1.0e7, 0.0, 0.0}}); !placed)
+    return placed;
+if (world.add(ship, *velocity, Velocity{{0.f, 0.f, 1.f}}) == nullptr) // typé : nul si l'entité est morte
+    return orosmo::core::makeError(orosmo::core::ErrorCode::kNotFound, "ship is gone");
+// Autre façon, par nom (sauvegarde, inspecteur) : Result<void *>, kNotFound si l'entité ou le type est inconnu.
+//   if (auto added = world.add(ship, "Velocity"); !added) return std::unexpected(added.error());
 world.view(world.transformType(), *velocity).each([&](auto e, orosmo::scene::Transform &t, Velocity &v) {
     t.position += orosmo::core::widen(v.value) * dt;
     world.markTransformDirty(e);                              // écriture directe : marquer l'entité
 });
 world.updateTransforms();                                     // seulement les entités sales et leurs descendants
-auto model = relativeMatrix(*world.transform(ship), cameraPosition); // float, relatif à la caméra
+if (const auto *t = world.transform(ship))
+    model = relativeMatrix(*t, cameraPosition);               // float, relatif à la caméra
 ```
 
 ## Règles
 
 - **Identifiants** : une entité détruite incrémente la génération de son indice ; tout ancien `Entity` est refusé (`alive`,
-  `get`, `add`…), même après réutilisation de l'indice. Même principe pour `ComponentId` après `unregisterComponent`.
+  `get`, `add`…), même après réutilisation de l'indice. Même principe pour `ComponentId` après `unregisterComponent` ou
+  `migrateComponent`. Les générations de types sont uniques dans le processus (« Transform » : 0) : après `a = b`, un
+  identifiant ou une `View` d'un type que `b` n'a pas est refusé au lieu de lire un autre type ; une copie du même registre
+  (restauration d'une capture) garde ses identifiants valides.
 - **Enregistrement** : même nom et même disposition (taille, alignement, version, champs) : sans effet, rend l'identifiant
   existant (prévu pour le rechargement, L5) ; même nom, autre disposition : `kAlreadyExists` (la migration est le lot L6).
-  Description invalide (champ hors de la structure, chaîne ou tableau dynamique, alignement…) : `kInvalidArgument` qui nomme le
-  champ. **Migration (L6)** : `migrateComponent(desc)` remplace la disposition d'un type et relit ses valeurs par nom de champ
-  (ordre dense gardé, génération suivante : anciens identifiants refusés) ; c'est `app::GameModule` qui l'appelle au
-  rechargement. `componentType<T>(nom)` vérifie taille, alignement et champs de T contre la description enregistrée.
+  Description invalide (champ hors de la structure, chaîne ou tableau dynamique, alignement, deux champs de même nom au même
+  niveau, version négative…) : `kInvalidArgument` qui nomme le champ. La sauvegarde et la restauration se font champ par
+  champ, par nom : deux structures distinctes peuvent avoir chacune leur champ `x`, pas une même structure. **Migration
+  (L6)** : `migrateComponent(desc)` remplace la disposition d'un type et relit ses valeurs par nom de champ (ordre dense gardé,
+  nouvelle génération : anciens identifiants refusés) ; c'est `app::GameModule` qui l'appelle au rechargement. Chaque champ
+  et chaque sous-champ d'une structure réfléchie migre indépendamment : même type et même taille, valeur copiée telle quelle
+  (sans réappliquer la plage de la nouvelle version) ; type changé, valeur convertie et plage vérifiée, sinon défaut et
+  avertissement ; champ ou sous-champ retiré, avertissement. Une structure opaque devenue réfléchie (ou l'inverse) est une
+  restauration (`kRestored`), sa valeur reste au défaut. `componentType<T>(nom)` vérifie taille, alignement et champs de T contre la description enregistrée.
 - **Pointeurs** : un pointeur de composant reste valide jusqu'au prochain ajout ou retrait du même type. Aucun changement de
   structure pendant un `each` / `forEach` (ENGINE_ASSERT en debug) ; enregistrer un nouveau type ou en retirer un y rend
   `kBusy`. Une `View` garde les identifiants de ses types : valable après d'autres enregistrements, invalide (`valid()`
@@ -68,24 +82,30 @@ auto model = relativeMatrix(*world.transform(ship), cameraPosition); // float, r
   Composition en double sans fonction transcendante (`mat3_cast` du quaternion, produits) : même résultat partout avec
   `-ffp-contract=off` (règle 9). Le passage en float pour le GPU se fait par `relativeMatrix` (soustraction en double avant
   l'arrondi, `core::toLocal`).
-- **Copie** : `World` est copiable (copie profonde) ; non thread-safe (un propriétaire).
+- **Copie** : `World` est copiable (copie profonde ; le compteur des parcours en cours n'est pas copié, une copie faite dans
+  un `each` est libre) ; remplacer un monde pendant l'un de ses parcours est refusé (ENGINE_ASSERT_ALWAYS). Non thread-safe
+  (un propriétaire).
 
 ## Sauvegarde et empreinte (lot L3)
 
 - **Format** : `{"version": kSceneFormatVersion, "data": {"entities": {"generations", "free"}, "hierarchy": [[enfant, parent]...],
   "components": [{"name", "version", "entities", "values"}]}}`. Table des entités entière (mêmes identifiants après chargement,
   références `Entity` valides, mêmes `create` ensuite), ordre des enfants, ordre dense des stockages (ordre de parcours gardé).
-- **Valeurs** : écrites champ par champ à partir de `ComponentDesc::fields` (jamais les octets bruts : ni remplissage, ni cache
-  monde de `Transform`). Réels au plus court qui se relit à l'identique ; NaN et infinis en `"nan"`, `"inf"`, `"-inf"` ;
-  quaternions `[w, x, y, z]` ; énumérations en entier signé de leur taille ; structure non réfléchie en octets hexadécimaux.
+- **Valeurs** : écrites champ par champ à partir de `ComponentDesc::fields` (ni le remplissage entre champs décrits, ni le
+  cache monde de `Transform`). Réels au plus court qui se relit à l'identique ; NaN et infinis en `"nan"`, `"inf"`, `"-inf"` ;
+  quaternions `[w, x, y, z]` ; énumérations en entier signé de leur taille. Exception : un champ **opaque** (structure non
+  réfléchie) est écrit et haché à partir de sa représentation mémoire, en octets hexadécimaux, remplissage interne compris :
+  il n'est pas portable si sa disposition change, et ce remplissage entre dans l'empreinte.
 - **Chargement** : par nom, dans un monde où les types sont enregistrés ; champ manquant = défaut du type ; champ inconnu et type
   non enregistré ignorés avec un avertissement (journal + `SceneLoadReport::warnings`) ; version plus ancienne : migrations du
-  type (`SceneMigrations::components[nom][v]`) ; plus récente : `kVersionMismatch` ; plage d'un champ (`range`) vérifiée. Tout
-  ou rien (chargé dans une copie). Le cache monde est recalculé (`updateTransforms`).
+  type (`SceneMigrations::components[nom][v]`) ; plus récente : `kVersionMismatch` ; version mal formée (même d'un type
+  inconnu) ou deux valeurs du même type pour une entité : `kParse` ; plage d'un champ (`range`) vérifiée. Tout ou rien
+  (chargé dans une copie). `componentFromJson` aussi : en cas d'erreur, la valeur et les avertissements sont inchangés. Le cache monde est recalculé (`updateTransforms`).
 - **Empreinte** : FNV-1a 64 bits (`core/hash.hpp`) de la table des entités, de la hiérarchie et des valeurs des champs décrits
   des types non vides, par nom de type croissant, dans l'ordre dense ; réels par motif de bits, sauf NaN (tous hachés comme
-  le NaN silencieux canonique, relu de `"nan"` : l'aller-retour JSON garde l'empreinte). `saveSceneFile` ferme le fichier
-  avant de conclure (une erreur de vidange, disque plein, rend `kIo`). Un pointeur dans un composant n'est pas refusé et
+  le NaN silencieux canonique, relu de `"nan"` : l'aller-retour JSON garde l'empreinte). `saveSceneFile` écrit `<chemin>.tmp`,
+  le ferme et le vérifie (une erreur de vidange, disque plein, rend `kIo`), puis le renomme sur la destination : un échec
+  laisse la dernière sauvegarde intacte et supprime le temporaire. Un pointeur dans un composant n'est pas refusé et
   rendrait l'empreinte dépendante d'une adresse (G289).
 
 ## Pour les lots suivants (notes de L2, faites depuis)

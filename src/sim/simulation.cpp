@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -32,24 +34,90 @@ bool isNonNegativeInteger(const Json &j)
     return j.is_number_unsigned() || (j.is_number_integer() && j.get<std::int64_t>() >= 0);
 }
 
+// Suite d'octets UTF-8 bien formée (pas de surrogates, forme la plus courte) : `dump()` lève sur une chaîne invalide.
+bool isValidUtf8(std::string_view text)
+{
+    std::size_t i = 0;
+    while (i < text.size())
+    {
+        const auto c = static_cast<unsigned char>(text[i]);
+        std::size_t extra = 0;
+        std::uint32_t cp = 0;
+        if (c < 0x80u)
+        {
+            ++i;
+            continue;
+        }
+        if (c >= 0xC2u && c <= 0xDFu)
+        {
+            extra = 1;
+            cp = c & 0x1Fu;
+        }
+        else if (c >= 0xE0u && c <= 0xEFu)
+        {
+            extra = 2;
+            cp = c & 0x0Fu;
+        }
+        else if (c >= 0xF0u && c <= 0xF4u)
+        {
+            extra = 3;
+            cp = c & 0x07u;
+        }
+        else
+            return false;
+        if (i + extra >= text.size())
+            return false;
+        for (std::size_t k = 1; k <= extra; ++k)
+        {
+            const auto cc = static_cast<unsigned char>(text[i + k]);
+            if ((cc & 0xC0u) != 0x80u)
+                return false;
+            cp = (cp << 6u) | (cc & 0x3Fu);
+        }
+        if ((extra == 2 && (cp < 0x800u || (cp >= 0xD800u && cp <= 0xDFFFu))) || (extra == 3 && (cp < 0x10000u || cp > 0x10FFFFu)))
+            return false;
+        i += extra + 1;
+    }
+    return true;
+}
+
 // Charge représentable sans perte en JSON texte : aucun réel infini ni NaN (écrits `null` par `dump()`, ce qui changerait le
-// type reçu par le système après une sauvegarde et confondrait deux charges dans l'empreinte).
-bool isFinitePayload(const Json &j)
+// type reçu par le système après une sauvegarde et confondrait deux charges dans l'empreinte), aucune valeur binaire (écrite
+// comme un objet {bytes, subtype} : relue objet), chaînes et clés en UTF-8 valide (`dump()` lèverait).
+const char *payloadProblem(const Json &j)
 {
     if (j.is_number_float())
+        return std::isfinite(j.get<double>()) ? nullptr : "an infinite or NaN number";
+    if (j.is_binary())
+        return "a binary value";
+    if (j.is_string())
+        return isValidUtf8(j.get_ref<const std::string &>()) ? nullptr : "a string that is not valid UTF-8";
+    if (j.is_object())
     {
-        return std::isfinite(j.get<double>());
+        for (auto it = j.begin(); it != j.end(); ++it)
+        {
+            if (!isValidUtf8(it.key()))
+                return "an object key that is not valid UTF-8";
+            if (const char *problem = payloadProblem(it.value()))
+                return problem;
+        }
+        return nullptr;
     }
-    if (j.is_array() || j.is_object())
-        return std::all_of(j.begin(), j.end(), [](const Json &x) { return isFinitePayload(x); });
-    return true;
+    if (j.is_array())
+        for (const Json &x : j)
+            if (const char *problem = payloadProblem(x))
+                return problem;
+    return nullptr;
 }
 
 Result<> checkPayload(const Input &input, const char *where)
 {
-    if (!isFinitePayload(input.data))
+    if (!isValidUtf8(input.name))
+        return core::makeError(ErrorCode::kInvalidArgument, std::string(where) + ": input name at step " + std::to_string(input.step) +
+                                                                " is not valid UTF-8");
+    if (const char *problem = payloadProblem(input.data))
         return core::makeError(ErrorCode::kInvalidArgument, std::string(where) + ": input " + input.name + " at step " +
-                                                                std::to_string(input.step) + " has an infinite or NaN number");
+                                                                std::to_string(input.step) + " has " + problem);
     return {};
 }
 
@@ -112,7 +180,13 @@ Json replayToJson(const Replay &replay)
     Json inputs = Json::array();
     for (const Input &input : replay.inputs)
         inputs.push_back(inputToJson(input));
-    Json data{{"seed", replay.seed}, {"firstStep", replay.firstStep}, {"lastStep", replay.lastStep}, {"inputs", std::move(inputs)}};
+    Json data{{"seed", replay.seed},
+              {"firstStep", replay.firstStep},
+              {"lastStep", replay.lastStep},
+              {"stepNanoseconds", replay.stepNanoseconds},
+              {"inputs", std::move(inputs)}};
+    if (replay.stream)
+        data["stream"] = *replay.stream;
     return Json{{"version", kReplayVersion}, {"data", std::move(data)}};
 }
 
@@ -133,6 +207,24 @@ Result<Replay> replayFromJson(const Json &json)
     replay.seed = *seed;
     replay.firstStep = *first;
     replay.lastStep = *last;
+    // Réglages de la partie : absents d'un document plus ancien (non vérifiés).
+    replay.stream.reset();
+    if (data.contains("stepNanoseconds"))
+    {
+        auto stepNs = readU64(data, "stepNanoseconds", "replay");
+        if (!stepNs)
+            return std::unexpected(stepNs.error());
+        if (*stepNs > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+            return core::makeError(ErrorCode::kOutOfRange, "replay.stepNanoseconds: too large");
+        replay.stepNanoseconds = static_cast<std::int64_t>(*stepNs);
+    }
+    if (data.contains("stream"))
+    {
+        auto stream = readU64(data, "stream", "replay");
+        if (!stream)
+            return std::unexpected(stream.error());
+        replay.stream = *stream;
+    }
     if (!data.contains("inputs"))
         return core::makeError(ErrorCode::kParse, "replay.inputs: missing");
     auto inputs = inputsFromJson(data["inputs"], "replay.inputs");
@@ -200,6 +292,10 @@ Result<> Simulation::queueInput(Input input)
                                "queueInput: step " + std::to_string(input.step) + " is already played (now " + std::to_string(step_) + ")");
     if (auto r = checkPayload(input, "queueInput"); !r)
         return r;
+    // Rejeu : une entrée qu'un système met en file pour un pas du rejeu y est déjà (journalisée à sa livraison) ; la remettre
+    // la livrerait deux fois.
+    if (replaying_ && stepping_ && input.step < replayEnd_)
+        return {};
     insertPending(std::move(input));
     return {};
 }
@@ -251,8 +347,19 @@ void Simulation::step()
 
     scratch_.reset();
     StepContext context{world_, random_, step_, dt_, {current_.data(), current_.size()}, scratch_, events_};
-    for (System &system : systems_)
-        system.run(context);
+    try
+    {
+        for (System &system : systems_)
+            system.run(context);
+    }
+    catch (...)
+    {
+        // Pas interrompu : non compté, ses entrées reviennent en tête de file (aucune entrée d'un pas antérieur n'y est) et
+        // ne sont pas journalisées ; un nouvel appel le rejoue avec elles. Le monde n'est pas restauré (voir l'en-tête).
+        pending_.insert(pending_.begin(), std::make_move_iterator(current_.begin()), std::make_move_iterator(current_.end()));
+        current_.clear();
+        throw;
+    }
     world_.updateTransforms();
 
     log_.insert(log_.end(), current_.begin(), current_.end());
@@ -279,14 +386,30 @@ int Simulation::advance(core::Nanoseconds frameDelta)
 
 // ── Capture et restauration ───────────────────────────────────────────────────
 
-Snapshot Simulation::capture() const { return Snapshot{world_, random_, step_, pending_}; }
+Snapshot Simulation::capture() const
+{
+    if (stepping_)
+        LOG_WARNING("Simulation::capture: called during a step, the snapshot is partial and cannot be restored");
+    return Snapshot{world_, random_, step_, pending_, stepping_};
+}
 
 void Simulation::restore(const Snapshot &snapshot)
 {
     if (refuseNested("restore"))
         return;
-    if (snapshot.step < logStart_)
+    if (snapshot.partial)
+    {
+        LOG_WARNING("Simulation::restore: the snapshot was captured during a step (partial), refused, state unchanged");
+        return;
+    }
+    // Le journal couvre [logStart_, step_) : il ne reste valable que si le pas restauré est dans cette couverture (retour en
+    // arrière dans le préfixe connu). Sinon (pas antérieur, ou pas futur dont les entrées ont été effacées ou jamais vues),
+    // il repart du pas restauré.
+    if (snapshot.step < logStart_ || snapshot.step > step_)
+    {
+        log_.clear();
         logStart_ = snapshot.step;
+    }
     world_ = snapshot.world;
     random_ = snapshot.random;
     step_ = snapshot.step;
@@ -312,6 +435,11 @@ Json Simulation::saveState() const
               {"random", Json{{"state", random_.state()}, {"increment", random_.increment()}}},
               {"pending", std::move(pending)},
               {"scene", scene::saveScene(world_)}};
+    if (stepping_)
+    {
+        LOG_WARNING("Simulation::saveState: called during a step, the state is partial and cannot be loaded");
+        data["partial"] = true;
+    }
     return Json{{"version", kStateVersion}, {"data", std::move(data)}};
 }
 
@@ -325,6 +453,8 @@ Result<scene::SceneLoadReport> Simulation::loadState(const Json &state, const sc
     if (state["version"].get<std::int64_t>() != kStateVersion)
         return core::makeError(ErrorCode::kVersionMismatch, "simulation state: unsupported version");
     const Json &data = state["data"];
+    if (data.contains("partial") && data["partial"] != false)
+        return core::makeError(ErrorCode::kInvalidArgument, "loadState: the state was saved during a step (partial)");
     auto step = readU64(data, "step", "state");
     if (!step)
         return std::unexpected(step.error());
@@ -352,7 +482,16 @@ Result<scene::SceneLoadReport> Simulation::loadState(const Json &state, const sc
     auto report = scene::loadScene(world, data["scene"], migrations);
     if (!report)
         return std::unexpected(report.error());
-    std::stable_sort(pending->begin(), pending->end(), [](const Input &a, const Input &b) { return a.step < b.step; });
+    // Tri stable par pas, par insertion (comme `insertPending`) : pas de std::stable_sort, dont le tampon temporaire de
+    // libstdc++ 13 (`get_temporary_buffer`) est signalé par ASan (alloc-dealloc-mismatch).
+    std::vector<Input> sorted;
+    sorted.reserve(pending->size());
+    for (Input &input : *pending)
+    {
+        auto at = std::upper_bound(sorted.begin(), sorted.end(), input.step, [](std::uint64_t s, const Input &x) { return s < x.step; });
+        sorted.insert(at, std::move(input));
+    }
+    *pending = std::move(sorted);
     restore(Snapshot{std::move(world), core::Random::fromState(*rngState, *rngIncrement), *step, std::move(*pending)});
     // Autre partie : le journal d'avant ne la décrit pas. Un rejeu ne peut commencer qu'au pas chargé.
     log_.clear();
@@ -367,7 +506,7 @@ Result<Replay> Simulation::recording(std::uint64_t firstStep) const
     if (firstStep < logStart_ || firstStep > step_)
         return core::makeError(ErrorCode::kInvalidArgument, "recording: the input log covers steps " + std::to_string(logStart_) +
                                                                 " to " + std::to_string(step_) + ", not step " + std::to_string(firstStep));
-    Replay replay{settings_.seed, firstStep, step_, {}};
+    Replay replay{settings_.seed, firstStep, step_, {}, settings_.step.count(), settings_.stream};
     for (const Input &input : log_)
         if (input.step >= firstStep)
             replay.inputs.push_back(input);
@@ -380,6 +519,12 @@ Result<> Simulation::play(const Replay &replay)
         return core::makeError(ErrorCode::kInvalidArgument, "play: not allowed during a step");
     if (replay.seed != settings_.seed)
         return core::makeError(ErrorCode::kInvalidArgument, "play: the replay was recorded with another seed");
+    if (replay.stream && *replay.stream != settings_.stream)
+        return core::makeError(ErrorCode::kInvalidArgument, "play: the replay was recorded with another random stream");
+    if (replay.stepNanoseconds != 0 && replay.stepNanoseconds != settings_.step.count())
+        return core::makeError(ErrorCode::kInvalidArgument, "play: the replay was recorded with another step duration (" +
+                                                                 std::to_string(replay.stepNanoseconds) + " ns, now " +
+                                                                 std::to_string(settings_.step.count()) + " ns)");
     if (replay.firstStep != step_)
         return core::makeError(ErrorCode::kInvalidArgument, "play: the simulation is at step " + std::to_string(step_) +
                                                                  ", the replay starts at step " + std::to_string(replay.firstStep));
@@ -400,6 +545,18 @@ Result<> Simulation::play(const Replay &replay)
     std::erase_if(pending_, [&](const Input &input) { return input.step >= replay.firstStep && input.step < replay.lastStep; });
     for (const Input &input : replay.inputs)
         insertPending(input);
+    struct ReplayScope
+    {
+        Simulation &sim;
+        ReplayScope(Simulation &s, std::uint64_t end) : sim(s)
+        {
+            sim.replaying_ = true;
+            sim.replayEnd_ = end;
+        }
+        ~ReplayScope() { sim.replaying_ = false; }
+        ReplayScope(const ReplayScope &) = delete;
+        ReplayScope &operator=(const ReplayScope &) = delete;
+    } scope(*this, replay.lastStep);
     run(replay.lastStep - replay.firstStep);
     return {};
 }

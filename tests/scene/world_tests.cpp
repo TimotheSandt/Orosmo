@@ -192,6 +192,7 @@ TEST_SUITE("scene/world")
         CHECK(refused(d));
         d = ok;
         d.size = ok.size + 1; // pas un multiple de l'alignement
+        d.defaultValue.resize(d.size); // seul l'alignement est fautif dans ce cas
         CHECK(refused(d));
         d = ok;
         d.defaultValue.resize(2);
@@ -202,8 +203,46 @@ TEST_SUITE("scene/world")
         d = ok;
         d.fields[1].type = core::FieldType::kString; // non trivialement copiable
         CHECK(refused(d));
+        d = ok;
+        d.fields[1].name = d.fields[0].name; // deux champs de même nom au même niveau : une seule clé sauvegardée
+        CHECK(refused(d));
+        d = ok;
+        d.version = -1; // écrite à la sauvegarde puis refusée au chargement
+        CHECK(refused(d));
         CHECK_FALSE(world.componentId("V"));
+        d = ok;
+        d.version = 0; // 0 reste permis
+        CHECK(world.registerComponent(d));
+        REQUIRE(world.unregisterComponent("V"));
         CHECK(world.registerComponent(ok));
+    }
+
+    TEST_CASE("World: the same field name is allowed in two distinct structures")
+    {
+        World world;
+        auto leaf = [](std::size_t offset) {
+            core::FieldDesc f;
+            f.name = "s";
+            f.type = core::FieldType::kStruct;
+            f.offset = offset;
+            f.size = 4;
+            core::FieldDesc x;
+            x.name = "x";
+            x.type = core::FieldType::kFloat;
+            x.size = 4;
+            f.fields.push_back(x);
+            return f;
+        };
+        ComponentDesc d;
+        d.name = "Pair";
+        d.size = 8;
+        d.alignment = 4;
+        d.fields = {leaf(0), leaf(4)};
+        d.fields[1].name = "t";
+        CHECK(world.registerComponent(d));
+        d.name = "Twice";
+        d.fields[1].fields.push_back(d.fields[1].fields[0]); // t.x deux fois
+        CHECK_FALSE(world.registerComponent(d));
     }
 
     TEST_CASE("World: unregistering removes the data and invalidates the id; Transform stays")
@@ -436,6 +475,79 @@ TEST_SUITE("scene/world")
         auto noDefault = world.registerComponent<NoDefaultData>("NoDefault");
         REQUIRE_FALSE(noDefault);
         CHECK((noDefault.error().code == core::ErrorCode::kInvalidArgument));
+    }
+
+    TEST_CASE("World: a copy made during an iteration is not busy")
+    {
+        World world;
+        auto vel = world.registerComponent<Velocity>("Velocity");
+        REQUIRE(vel);
+        world.add(world.create(), *vel);
+        std::unique_ptr<World> copy;
+        world.view(*vel).each([&](Entity, Velocity &) { copy = std::make_unique<World>(world); });
+        REQUIRE(copy);
+        CHECK(copy->registerComponent<Position>("Position")); // pas kBusy : le compteur du parcours n'est pas copié
+        World assigned;
+        world.view(*vel).each([&](Entity, Velocity &) { assigned = world; });
+        CHECK(assigned.registerComponent<Wide>("Wide"));
+        CHECK(world.registerComponent<Position>("Position")); // la source est libre après le parcours
+    }
+
+    TEST_CASE("World: after an assignment, a view of a type the source does not have is refused")
+    {
+        struct Health
+        {
+            float hp = 100.f;
+            float shield = 1.f;
+            float regen = 0.f;
+            float armor = 0.f;
+        };
+        World a;
+        auto vel = a.registerComponent<Velocity>("Velocity");
+        REQUIRE(vel);
+        a.add(a.create(), *vel);
+        World b;
+        ComponentDesc health;
+        health.name = "Health";
+        health.size = sizeof(Health);
+        health.alignment = alignof(Health);
+        auto hp = b.registerComponent(health); // même emplacement que Velocity dans `a`
+        REQUIRE(hp);
+        REQUIRE(hp->index == vel->id.index);
+        REQUIRE(b.add(b.create(), *hp));
+        auto view = a.view(*vel);
+        REQUIRE(view.valid());
+        a = b;
+        CHECK_FALSE(view.valid()); // ne lit jamais un Health comme un Velocity
+        CHECK(a.componentDesc(vel->id) == nullptr);
+        CHECK(a.componentDesc(*hp) != nullptr); // les identifiants de la source restent valides dans sa copie
+        std::size_t seen = 0;
+        view.each([&](Entity, Velocity &) { ++seen; });
+        CHECK(seen == 0);
+        World moved;
+        auto other = moved.registerComponent<Velocity>("Velocity");
+        REQUIRE(other);
+        auto movedView = moved.view(*other);
+        moved = World{};
+        CHECK_FALSE(movedView.valid());
+    }
+
+    TEST_CASE("World: restoring a copy of the same registry keeps ids and views valid")
+    {
+        World world;
+        auto vel = world.registerComponent<Velocity>("Velocity");
+        REQUIRE(vel);
+        const Entity e = world.create();
+        world.add(e, *vel);
+        const World saved = world;
+        auto view = world.view(*vel);
+        REQUIRE(world.unregisterComponent("Velocity"));
+        REQUIRE(world.registerComponent<Position>("Position")); // même emplacement, autre type
+        CHECK_FALSE(view.valid());
+        world = saved;
+        CHECK(view.valid());
+        CHECK(world.get(e, *vel) != nullptr);
+        CHECK(view.count() == 1);
     }
 
     TEST_CASE("World: a view needs at least one component type")
