@@ -154,6 +154,15 @@
                   "shadowColor": "color.shadow", "shadowSize": "shadow.size", "shadowOffset": "shadow.offset"},
         "toastSuccess": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": "space.medium", "accent": "color.success", "width": "control.size", "shadowColor": "color.shadow", "shadowSize": "shadow.size"},
         "toastWarning": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": "space.medium", "accent": "color.warning", "width": "control.size", "shadowColor": "color.shadow", "shadowSize": "shadow.size"},
-        "toastError": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": "space.medium", "accent": "color.error", "width": "control.size", "shadowColor": "color.shadow", "shadowSize": "shadow.size"}
+        "toastError": {"background": "color.surfaceRaised", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": "space.medium", "accent": "color.error", "width": "control.size", "shadowColor": "color.shadow", "shadowSize": "shadow.size"},
+        "debugPanel": {"background": "color.background", "border": "color.outline", "borderWidth": "border.width", "radius": 0, "padding": "space.medium", "spacing": "space.small"},
+        "debugRow": {"fontSize": "font.size.small", "padding": "space.small", "states": {"hover": {"background": "color.controlHover"}}},
+        "debugRowSelected": {"fontSize": "font.size.small", "padding": "space.small", "background": "color.control", "states": {"hover": {"background": "color.controlHover"}}},
+        "debugText": {"fontSize": "font.size.small", "padding": 0},
+        "debugInputLine": {"fontSize": "font.size.small", "foreground": "color.textMuted", "padding": 0},
+        "debugWarning": {"fontSize": "font.size.small", "foreground": "color.warning", "padding": 0},
+        "debugError": {"fontSize": "font.size.small", "foreground": "color.error", "padding": 0},
+        "debugInput": {"fontSize": "font.size.small", "background": "color.field", "border": "color.outline", "borderWidth": "border.width", "radius": "radius.small", "padding": "space.small", "states": {"hover": {"border": "color.outlineHover"}}},
+        "debugHighlight": {"border": "color.focus", "borderWidth": "border.focus", "radius": 0}
     }
 }

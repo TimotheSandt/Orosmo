@@ -148,4 +148,33 @@ TEST_SUITE("Logger")
         CHECK(countOf(text, " message ") == static_cast<std::size_t>(kThreads * kPerThread));
         CHECK(text.find("thread 3 message 99") != std::string::npos);
     }
+
+    // UI-04 (A79 lot L10) : la console de développement relit les messages gardés par numéro d'ordre.
+    TEST_CASE("RecordsSince returns the newer kept messages in order")
+    {
+        const std::uint64_t before = Logger::LastSequence();
+        Logger::Log(L_WARNING,
+#ifdef DEBUG
+                    __FILE__, __LINE__,
+#endif
+                    "records first ", 1);
+        Logger::LogError(L_ERROR,
+#ifdef DEBUG
+                         __FILE__, __LINE__,
+#endif
+                         7, "records second");
+        const auto records = Logger::RecordsSince(before);
+        REQUIRE(records.size() == 2);
+        CHECK(records[0].message == "records first 1");
+        CHECK(records[0].level == L_WARNING);
+        CHECK(records[1].message == "records second");
+        CHECK(records[1].errorCode == 7);
+        CHECK(records[0].sequence < records[1].sequence);
+        CHECK(Logger::LastSequence() == records[1].sequence);
+        // Les `max` derniers seulement ; rien après le dernier.
+        const auto last = Logger::RecordsSince(before, 1);
+        REQUIRE(last.size() == 1);
+        CHECK(last[0].message == "records second");
+        CHECK(Logger::RecordsSince(Logger::LastSequence()).empty());
+    }
 }

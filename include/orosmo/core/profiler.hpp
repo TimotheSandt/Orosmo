@@ -2,6 +2,7 @@
 // Profiler::ProfileGPU, moyennes / min / max par nom (Profiler::GetAverageTime).
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -217,6 +218,20 @@ class Profiler
     static std::chrono::nanoseconds GetMaxTime(const std::string &name) { return getTimer(name).GetMax(); }
     static std::chrono::nanoseconds GetMinTime(const std::string &name) { return getTimer(name).GetMin(); }
     static double GetAverageTimeMs(const std::string &name) { return static_cast<double>(GetAverageTime(name).count()) * 1e-6; }
+
+    // Noms des mesures connues, triés (panneau du profileur des outils de debug, UI-04).
+    static std::vector<std::string> Names()
+    {
+        std::vector<std::string> names;
+        {
+            std::lock_guard<std::mutex> lock(getProfilerMutex());
+            names.reserve(getProfilerData().size());
+            for (const auto &entry : getProfilerData())
+                names.push_back(entry.first);
+        }
+        std::sort(names.begin(), names.end());
+        return names;
+    }
 
   private:
     // Fournisseur seulement si les minuteries sont actives.

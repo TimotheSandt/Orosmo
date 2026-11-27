@@ -460,6 +460,10 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
         {
             options.headless = true;
         }
+        else if (argument == "--debug-tools")
+        {
+            options.debugTools = true;
+        }
         else if (argument == "--strict-backend")
         {
             options.strictBackend = true;
@@ -548,6 +552,16 @@ orosmo::core::Result<LaunchOptions> parseLaunchOptions(int argc, const char *con
                                  "Unknown tab (expected scene|widgets|controls|color|windows|layout|themes): " + *value);
             }
             options.tab = std::string(*tab);
+        }
+        else if (matchOption("--debug-tab", value))
+        {
+            if (!value || (*value != "console" && *value != "widgets" && *value != "entities" && *value != "profiler"))
+            {
+                return makeError(ErrorCode::kInvalidArgument,
+                                 "Unknown --debug-tab value (expected console|widgets|entities|profiler): " + value.value_or(std::string()));
+            }
+            options.debugTools = true;
+            options.debugTab = std::move(*value);
         }
         else if (matchOption("--hover", value))
         {
@@ -790,6 +804,7 @@ void printUsage(std::ostream &out)
         << "              [--headless] [--vsync [on|off]] [--fps-limit N] [--direct-present on|off] [--gpu-timings auto|on|off]\n"
         << "              [--frames-in-flight 1|2|3] [--graph-cache on|off]\n"
         << "              [--capture <dir> [--capture-frames N] [--hover <id>] [--click <id>] [--focus <id>]]\n"
+        << "              [--debug-tools] [--debug-tab console|widgets|entities|profiler]\n"
         << "              [--sim-agents N [--seed S] [--sim-steps K]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : Vulkan by default; --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
@@ -811,6 +826,9 @@ void printUsage(std::ostream &out)
     out << "          on (default) keeps the render graph between frames while plugins, targets and sizes stay the same, off rebuilds it.\n";
     out << "HUD     : --hud sets the performance panel shown with --ui hud: off (nothing), fps (FPS only), full (default: every\n";
     out << "          measurement), graph (full + CPU/GPU frame time history in the bottom right corner). Ctrl+F cycles the levels.\n";
+    out << "Tools   : F12 (or --debug-tools) opens the engine debug tools: console (log, commands: help, hud, camera),\n";
+    out << "          widget inspector (tree, computed sizes, hover highlight), entity inspector, profiler. --debug-tab picks the tab.\n";
+    out << "          Debug builds: F11 toggles borderless, F10 fullscreen.\n";
     out << "Debug   : --debug-view shows normals, albedo, overdraw, LOD colors (needs --instances), wireframe or motion vectors;\n";
     out << "          --freeze-frustum freezes the culling frustum of the instanced objects (needs --instances) and draws it.\n";
     out << "Instances: --instances N adds N instanced objects around the courtyard (frustum culling, distance LOD); the draw\n";

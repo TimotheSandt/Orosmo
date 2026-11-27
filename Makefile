@@ -230,6 +230,10 @@ demo-capture: all-debug
 	@# M6 : personnage skinné animé (glTF généré puis importé) et foule de 1000 agents (un draw call par primitive skinnée).
 	./$(DEMO_BIN) --api opengl --headless --ui hud --scene anim --capture build/demo-capture/anim --capture-frames 30
 	test -s build/demo-capture/anim/scene.png
+	@# UI-04, UI-10 (A79 lot L10) : outils de debug (F12) ouverts sur chaque onglet, au-dessus de l'interface complète.
+	for tab in widgets console entities profiler; do \
+	    ./$(DEMO_BIN) --api opengl --headless --ui full --theme dark --tab widgets --debug-tab $$tab --capture build/demo-capture/debug-tools-$$tab --capture-frames 30 || exit 1; \
+	    test -s build/demo-capture/debug-tools-$$tab/ui.png || exit 1; done
 	test -s build/demo-capture/dark-widgets/ui.png
 	test -s build/demo-capture/light-widgets/ui.png
 	@# compare_png.py : code 0 = identiques (erreur ici) ; 1 + ligne DIFFERENT = images différentes (attendu) ; autre = erreur d'exécution.

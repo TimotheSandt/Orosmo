@@ -12,6 +12,7 @@
 #include "Scene/anim_scene.hpp"
 #include "Scene/demo_scene.hpp"
 #include "Scene/mixed_scene.hpp"
+#include "Game/debug_world.hpp"
 #include "UI/demo_ui_state.hpp"
 #include "UI/performance_stats.hpp"
 #include "launch_options.hpp"
@@ -32,6 +33,7 @@
 #include <orosmo/renderer/scene_renderer.hpp>
 #include <orosmo/renderer/shader_library.hpp>
 #include <orosmo/rhi/device.hpp>
+#include <orosmo/ui/debug_tools.hpp>
 #include <orosmo/ui/font.hpp>
 #include <orosmo/ui/gamepad_navigation.hpp>
 #include <orosmo/ui/text_renderer.hpp>
@@ -89,6 +91,12 @@ class Game
     void setUiMode(demo::UiMode mode) noexcept { uiMode = mode; }
     // --hud (niveau du panneau de performances ; Ctrl+F le change ensuite).
     void setHudLevel(demo::HudLevel level) noexcept { performance.level = level; }
+    // --debug-tools / --debug-tab (UI-04, UI-10) : outils de debug ouverts au départ sur cet onglet (F12 ensuite).
+    void setDebugTools(bool open, std::string tab)
+    {
+        initialDebugTools = open;
+        initialDebugTab = std::move(tab);
+    }
     void setInitialTheme(std::string theme) { initialTheme = std::move(theme); }
     void setInitialTab(std::string tab) { initialTab = std::move(tab); }
     void setCaptureInteraction(std::string hover, std::string click)
@@ -174,6 +182,13 @@ class Game
     std::unique_ptr<orosmo::ui::TextRendererFont> font;
     std::unique_ptr<orosmo::ui::Ui> hudUi;
     std::unique_ptr<orosmo::ui::Ui> fullUi;
+    // Outils de debug du moteur (F12) : console, inspecteurs d'interface et d'entités, profileur. Ils inspectent l'interface
+    // affichée et `debugWorld` (déclaré avant eux : il leur survit).
+    demo::DebugWorld debugWorld;
+    std::unique_ptr<orosmo::ui::debug::DebugTools> debugTools;
+    bool initialDebugTools = false;
+    std::string initialDebugTab = "widgets";
+    void registerConsoleCommands();
 
     orosmo::renderer::Camera camera;
     CameraController cameraController;
