@@ -7,6 +7,7 @@
 #include "hud_state.hpp"
 
 #include <orosmo/app/default_game.hpp>
+#include <orosmo/platform/input_manager.hpp>
 #include <orosmo/platform/window.hpp>
 
 #include <array>
