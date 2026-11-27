@@ -195,6 +195,12 @@ TEST_SUITE("renderer/mesh-builder")
         const auto degenerate = rd::MeshBuilder::computeTangents(positions, normals, std::vector<glm::vec2>(3, glm::vec2(0.0f)), tri);
         CHECK(std::fabs(glm::dot(glm::vec3(degenerate[0]), normals[0])) < 1e-6f);
         CHECK(glm::length(glm::vec3(degenerate[0])) == doctest::Approx(1.0f));
+        // Revue PR #37 : tangente de très grande norme (arête 1e16, delta uv 1e-4 : |t| ≈ 1e20, dot(t, t) déborde) : unitaire.
+        // Le déterminant uv (1e-8) reste au-dessus du seuil des uv dégénérés.
+        const std::vector<glm::vec3> huge{{0, 0, 0}, {1e16f, 0, 0}, {0, 1e16f, 0}};
+        const auto large = rd::MeshBuilder::computeTangents(huge, normals, std::vector<glm::vec2>{{0, 0}, {1e-4f, 0}, {0, 1e-4f}}, tri);
+        CHECK(large[0].x == doctest::Approx(1.0f));
+        CHECK(glm::length(glm::vec3(large[0])) == doctest::Approx(1.0f));
 
         rd::MeshBuilder colored(rd::MeshLayout::kColored);
         colored.addPlane({2.0f, 2.0f}, {1.0f, 0.0f, 0.0f, 1.0f});
@@ -447,6 +453,22 @@ TEST_SUITE("renderer/render-api")
             resolved->setMaterial(nullptr);
             CHECK(resolved->material() == nullptr);
             CHECK(resolved->textureGroup().isNull());
+
+            // Revue PR #37 : un dessin enregistré garde SON matériau jusqu'à endFrame, même remplacé par setMaterial entre-temps.
+            auto first = rd::PbrMaterial::create(*scene.gpu.device, desc, *defaults);
+            auto second = rd::PbrMaterial::create(*scene.gpu.device, twoSided, *defaults);
+            REQUIRE(first.has_value());
+            REQUIRE(second.has_value());
+            const std::weak_ptr<rd::PbrMaterial> watchFirst = *first;
+            resolved->setMaterial(std::move(*first));
+            const TextureHandle swapOut = scene.output();
+            scene.frame(swapOut, [&] {
+                REQUIRE(scene.renderer->drawMesh(*resolved).has_value());
+                resolved->setMaterial(*second);
+                CHECK_FALSE(watchFirst.expired()); // retenu par le dessin enregistré
+                REQUIRE(scene.renderer->drawMesh(*resolved).has_value());
+            });
+            CHECK(watchFirst.expired()); // relâché avec les dessins de l'image
             scene.gpu.expectNoValidationErrors();
         }
     }
@@ -512,6 +534,14 @@ TEST_SUITE("renderer/render-api")
                     REQUIRE(r.beginFrame(e).has_value());
                     CHECK((tests::errorOf(r.endFrame(TextureHandle{})) == ErrorCode::kInvalidArgument));
                     CHECK(r.beginFrame(e).has_value()); // l'image refusée est fermée
+                    // Revue PR #37 : un handle inconnu mais non nul est refusé de même.
+                    CHECK((tests::errorOf(r.endFrame(TextureHandle{.index = 4242, .generation = 7})) == ErrorCode::kInvalidArgument));
+                    CHECK(r.beginFrame(e).has_value());
+                    // Revue PR #37 : pendant une image, ajouter un plugin ou changer de vue de debug est refusé (kBusy), sans effet.
+                    CHECK((tests::errorOf(r.addFeature(std::make_unique<DefineFeature>("OROSMO_TEST_C"))) == ErrorCode::kBusy));
+                    CHECK((tests::errorOf(r.setDebugView(rd::DebugView::kNormals)) == ErrorCode::kBusy));
+                    CHECK((r.debugView() == rd::DebugView::kNone));
+                    CHECK(r.featureNames().empty());
                     CHECK(r.endFrame(out).has_value());
                 });
 

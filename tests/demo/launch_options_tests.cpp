@@ -466,6 +466,16 @@ TEST_SUITE("Demo launch options")
         Assert(!demo::parseLaunchOptions(2, missing).has_value(), "Missing --tab value should be rejected");
     }
 
+    TEST_CASE("launch options: --focus needs --ui full (revue PR #37)")
+    {
+        const char *hud[] = {"Orosmo", "--headless", "--capture", "out", "--focus", "detailMedium", "--capture-frames", "2"};
+        Assert(!demo::parseLaunchOptions(8, hud).has_value(), "--focus without --ui full must be rejected");
+        const char *full[] = {"Orosmo", "--headless", "--ui", "full", "--capture", "out", "--focus", "detailMedium", "--capture-frames", "2"};
+        auto parsed = demo::parseLaunchOptions(10, full);
+        Assert(parsed.has_value(), "--focus with --ui full is accepted");
+        AssertEqual(parsed->focusId, std::string("detailMedium"), "--focus should be parsed");
+    }
+
     TEST_CASE("launch options parse --hover and --click")
     {
         const char *hoverArgs[] = {"Orosmo", "--hover", "volume"};

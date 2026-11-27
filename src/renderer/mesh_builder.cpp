@@ -2,6 +2,7 @@
 
 #include "orosmo/renderer/material.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <string>
@@ -131,7 +132,9 @@ std::vector<glm::vec4> MeshBuilder::computeTangents(std::span<const glm::vec3> p
             const glm::vec3 axis = std::fabs(n.x) < 0.9f ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
             t = axis - n * glm::dot(n, axis);
         }
-        t = glm::normalize(t);
+        // Mise à l'échelle par la plus grande composante avant la normalisation : dot(t, t) ne déborde pas en float (revue PR #37).
+        const float largest = std::max({std::fabs(t.x), std::fabs(t.y), std::fabs(t.z)});
+        t = glm::normalize(t / largest);
         const float w = glm::dot(glm::cross(n, t), bitangents[v]) < 0.0f ? -1.0f : 1.0f;
         result[v] = glm::vec4(t, w);
     }

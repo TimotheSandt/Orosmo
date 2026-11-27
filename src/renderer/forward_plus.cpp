@@ -33,6 +33,11 @@ float lightRange(const Light &light) noexcept
     {
         return 0.0f;
     }
+    if (light.a > 0.0f && light.b == 0.0f)
+    {
+        // Carré inverse seul : sqrt(k / a), sans 4ak qui déborde pour une intensité très grande (revue PR #37).
+        return std::min(std::sqrt(k / light.a), kLightMaxRange);
+    }
     if (light.a > 0.0f)
     {
         const float root = std::sqrt(light.b * light.b + 4.0f * light.a * k);

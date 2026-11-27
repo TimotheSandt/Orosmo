@@ -114,14 +114,14 @@ core::Result<DynamicLibrary> DynamicLibrary::load(const fs::path &path, const Dy
 
     DynamicLibrary library;
     // Chemins absolus : `unload` efface la même copie même si le dossier courant a changé entre-temps.
-    library.sourcePath_ = fs::absolute(path, ec);
+    library.sourcePath_ = fs::absolute(path, ec).make_preferred(); // Windows : LoadLibraryExW attend des antislashs (revue PR #37)
     if (ec)
         return makeError(ErrorCode::kIo, "cannot make " + path.string() + " absolute: " + ec.message());
     library.loadedPath_ = library.sourcePath_;
 
     if (options.copyBeforeLoad)
     {
-        const fs::path copy = fs::absolute(uniqueCopyPath(library.sourcePath_, options.copyDirectory), ec);
+        const fs::path copy = fs::absolute(uniqueCopyPath(library.sourcePath_, options.copyDirectory), ec).make_preferred();
         if (ec)
             return makeError(ErrorCode::kIo, "cannot make the copy directory absolute: " + ec.message());
         if (!fs::copy_file(library.sourcePath_, copy, fs::copy_options::overwrite_existing, ec))

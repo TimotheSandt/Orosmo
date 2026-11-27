@@ -201,6 +201,9 @@ TEST_SUITE("renderer/forward-plus")
         const float small = rd::lightRange(rd::pointLight({}, {1, 1, 1}, 1.0f, 1.0f, 1.0e6f));
         CHECK(small > 0.0f);
         CHECK(small == doctest::Approx((1.5f * 256.0f - 1.0f) / 1.0e6f).epsilon(1e-3));
+        // Revue PR #37 : intensité très grande, portée finie : 4ak déborderait en float ; la portée reste celle demandée.
+        CHECK(rd::lightRange(rd::pointLight({.intensity = 1.0e20f, .range = 10.0f})) == doctest::Approx(10.0f).epsilon(1e-4));
+        CHECK(rd::lightRange(rd::pointLight({.intensity = 1.0f, .range = 10.0f})) == doctest::Approx(10.0f).epsilon(1e-4));
     }
 
     TEST_CASE("ForwardPlusSettings: validation, exponential slices, cluster statistics, capability check (rule 11)")

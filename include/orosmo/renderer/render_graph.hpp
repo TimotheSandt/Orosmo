@@ -163,7 +163,9 @@ class RenderGraph
     RgBuffer createBuffer(std::string name, const RgBufferDesc &desc);
     // A61 C (graphe gardé d'une image à l'autre) : change la ressource GPU d'une ressource IMPORTÉE sans toucher aux déclarations
     // ni à la compilation (image de la fenêtre, historique en double tampon...). Refusé (kInvalidArgument) : handle hors du graphe,
-    // ressource transitoire, ressource GPU nulle. La description importée reste celle de la déclaration.
+    // ressource transitoire, ressource GPU nulle. La description importée reste celle de la déclaration. Précondition : le handle
+    // logique vient de CE graphe et de sa déclaration courante (aucune identité de graphe ni de déclaration n'est portée : un
+    // handle d'un autre graphe, ou d'avant un `reset`, au même indice n'est pas détecté ; G403).
     core::Result<> setImportedTexture(RgTexture texture, rhi::TextureHandle handle);
     core::Result<> setImportedBuffer(RgBuffer buffer, rhi::BufferHandle handle);
     RgTexture findTexture(std::string_view name) const noexcept;

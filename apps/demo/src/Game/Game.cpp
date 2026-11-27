@@ -971,6 +971,8 @@ void Game::update()
             input = windowInput;
             this->gamepads.poll(); // UI-09 : manette branchée à chaud, croix / stick / A / B / LB / RB
             this->gamepadNavigator.apply(this->gamepads.first(), input);
+            if (this->debugTools && this->debugTools->wantsKeyboard())
+                input.navigation.clear(); // la console garde le clavier : la manette n'atteint pas l'interface dessous (apply a suivi les appuis)
         }
 
         this->fullUi->update(input, viewport);
