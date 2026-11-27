@@ -27,7 +27,7 @@ pas exister.
 
 | Fichier créé | Rôle |
 |---|---|
-| `src/` | le projet de démarrage : `main.cpp`, `hud_state.hpp`, `HudView.cui` |
+| `src/` | le projet de démarrage : `main.cpp` (écrit avec `app::Application`, voir [Lire la boucle d'une application](/demarrer/premiere-application/)), `hud_state.hpp`, `HudView.cui`, et la logique de jeu rechargeable `game/` |
 | `config.mk` | nom, version du jeu, `OROSMO_VERSION` : à vous, à versionner |
 | `config.local.mk` | réglages de la machine (par exemple `ENGINE_DIR`), ignoré par git |
 | `Makefile`, `.gitignore` | modèles suivis par `orosmo update` |
@@ -48,9 +48,9 @@ L'outil ne fait que lancer `make`. Les commandes suivantes donnent le même rés
 
 Les autres cibles du `Makefile` (`dev`, `test`, `benchmark`, `compile-commands`, `fclean`…) sont décrites dans
 [Compiler avec Make ou CMake](/reference/construction/#projet-créé-par-orosmo-init). Le projet de démarrage accepte
-`--headless`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et `--help`. Son option `--api` n'accepte que
-`opengl` : il crée toujours un périphérique OpenGL (pour Vulkan, voir
-[Choisir le backend graphique](/guides/application/peripherique/)).
+`--api vulkan|opengl` (Vulkan par défaut, avec repli sur OpenGL s'il ne démarre pas ; `--strict-backend` supprime le
+repli), `--headless`, `--size <L>x<H>`, `--frames <N>`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et
+`--help` (options de `app::Application::main`).
 
 ## Version du moteur
 

@@ -11,9 +11,9 @@ la décrire dans un fichier, voir [le langage .cui](/guides/interface/langage-cu
 
 ## Exemple minimal
 
-L'interface a besoin d'une police (`TextRenderer`), d'un thème et d'un objet `Ui`. Ce code vient du projet de démarrage
-créé par `orosmo init` (`tools/engine-sdk/template/src/main.cpp`), sans la partie fenêtre et rendu 3D
-(voir [Première application](/demarrer/premiere-application/)).
+L'interface a besoin d'une police (`TextRenderer`), d'un thème et d'un objet `Ui`. C'est ce que `app::Application` crée
+pour le projet de démarrage d'`orosmo init` (`src/app/application.cpp`), écrit ici à la main, sans la partie fenêtre et
+rendu 3D (voir [Première application](/demarrer/premiere-application/)).
 
 ```cpp
 #include <orosmo/core/paths.hpp>
@@ -59,8 +59,8 @@ panel.emplace<ui::Button>("Reset").onClick([&](const ui::Event &) { settings.res
 gui.setRoot(std::move(panelOwner));
 ```
 
-Le deuxième argument de `Label` est le nom de style du thème (`widgets.title`). Le projet de démarrage nomme l'objet `interface` ;
-évitez ce nom sous Windows, où `interface` est une macro de `<objbase.h>`.
+Le deuxième argument de `Label` est le nom de style du thème (`widgets.title`). N'appelez pas l'objet `interface` sous
+Windows : c'est une macro de `<objbase.h>`.
 
 ## Dessiner une image
 
