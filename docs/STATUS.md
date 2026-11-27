@@ -45,7 +45,7 @@ Windows et macOS par la CI (G360). Choix de réalisation : `docs/QUESTIONS.md`, 
 
 Vérifications (Linux x64, g++ 13.3) : `make all-debug` sans avertissement ; `make demo-test` 912 cas verts (1 ignoré) puis
 `test_game_static: OK` ; `make check` OK (règle 13 vérifiée aussi sur les bibliothèques de test qui contiennent une vue) ;
-`make e2e-init` OK ; `make cui-test` vert. Sanitizers : voir le rapport du lot. Rendu non touché (aucune capture refaite).
+`make e2e-init` OK ; `make cui-test` vert. ASan + UBSan sur arbre propre (`make demo-test-unit SANITIZE=address,undefined`, `ASAN_OPTIONS=alloc_dealloc_mismatch=0` comme en L7) : 599 cas verts, `test_game_static` sans message. Rendu non touché (aucune capture refaite).
 Site : `reference/construction` complété. Non vérifié : Windows, macOS (G360) ; `clang-format` absent de la machine.
 
 ## M8 lot L7 : construction incrémentale de la bibliothèque de jeu (A79, GAME-06)
