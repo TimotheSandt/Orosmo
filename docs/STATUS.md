@@ -57,6 +57,8 @@ reproduit sous g++ 13.3 avec une copie de `<expected>` marquée `[[nodiscard]]`)
 (« a console command keeps its state… ») ; surlignage gardé lié au widget (« the pinned highlight follows its widget… ») ;
 direction de caméra parallèle à `up` refusée (suite `apps/demo-debug-world`) ; plein écran des builds debug déplacé de F12 à F10
 (`static_assert` dans `Game/debug_world.hpp`). `make all-debug`, `make demo-test` (**806 cas verts**, 1 ignoré) et `make check` OK.
+Après fusion de `dev` (PR #25, lot L3) : faux positif `-Warray-bounds` de GCC 16 (MinGW) désactivé dans `debug_tools_tests.cpp`
+(G34 ; non reproductible sous g++ 13.3, à confirmer par la CI) ; `make demo-test` **832 cas verts**, 1 ignoré, `make check` OK.
 
 ## M8 lot L3 : sauvegarde de scène et boucle à pas fixe (A79, ECS-03, SIM-01)
 
