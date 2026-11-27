@@ -142,6 +142,7 @@ struct SceneRenderSystem::Impl
     {
         core::Handle<renderer::Mesh> handle;
         renderer::ShadowFeature::CasterId id = 0;
+        bool used = true; // demandé par une entité pendant le `draw` en cours
     };
     std::vector<MeshCaster> meshCasters;
     struct ModelCasters
@@ -149,6 +150,7 @@ struct SceneRenderSystem::Impl
         core::Handle<anim::AnimatedModel> handle;
         const assets::RenderModel *render = nullptr; // reconstruit (rebuild) : casters à refaire
         std::vector<renderer::ShadowFeature::CasterId> ids;
+        bool used = true;
     };
     std::vector<ModelCasters> modelCasters;
 
@@ -198,13 +200,45 @@ struct SceneRenderSystem::Impl
             it = resources->animatedModels.contains(it->second.handle) ? std::next(it) : crowds.erase(it);
     }
 
+    // Début d'un `draw` : plus aucun caster n'est demandé.
+    void resetCasterUse() noexcept
+    {
+        for (MeshCaster &c : meshCasters)
+            c.used = false;
+        for (ModelCasters &c : modelCasters)
+            c.used = false;
+    }
+
+    // Fin d'un `draw` réussi : les casters qu'aucune entité n'a demandés (détruite, cachée, sans ombre, autre mode) partent.
+    void removeUnusedCasters()
+    {
+        std::erase_if(meshCasters,
+                      [this](const MeshCaster &c)
+                      {
+                          if (!c.used)
+                              shadows->removeCaster(c.id);
+                          return !c.used;
+                      });
+        std::erase_if(modelCasters,
+                      [this](const ModelCasters &c)
+                      {
+                          if (!c.used)
+                              for (const auto id : c.ids)
+                                  shadows->removeCaster(id);
+                          return !c.used;
+                      });
+    }
+
     core::Result<> ensureMeshCaster(core::Handle<renderer::Mesh> handle, const renderer::Mesh &mesh)
     {
         if (shadows == nullptr)
             return {};
-        for (const MeshCaster &c : meshCasters)
+        for (MeshCaster &c : meshCasters)
             if (c.handle == handle)
+            {
+                c.used = true;
                 return {};
+            }
         auto id = shadows->addMeshCaster(mesh, renderer::Aabb::empty(), renderer::CasterMobility::kMovable);
         if (!id)
             return std::unexpected(id.error());
@@ -216,9 +250,12 @@ struct SceneRenderSystem::Impl
     {
         if (shadows == nullptr)
             return {};
-        for (const ModelCasters &c : modelCasters)
+        for (ModelCasters &c : modelCasters)
             if (c.handle == handle)
+            {
+                c.used = true;
                 return {};
+            }
         ModelCasters casters{handle, &model.renderModel(), {}};
         for (std::size_t i = 0; i < model.renderModel().meshCount(); ++i)
         {
@@ -404,6 +441,7 @@ core::Result<SceneRenderStats> SceneRenderSystem::draw(renderer::SceneRenderer &
     s.stats = {};
     s.stats.lights = lightCount;
     s.forgetStale();
+    s.resetCasterUse();
 
     core::Result<> failure;
     std::unordered_map<const renderer::Mesh *, std::uint32_t> drawsOfMesh; // emplacements d'historique (vecteurs de mouvement)
@@ -441,6 +479,8 @@ core::Result<SceneRenderStats> SceneRenderSystem::draw(renderer::SceneRenderer &
                     }
                     if (*entry != nullptr)
                     {
+                        if (c.castShadows)
+                            mesh->setModelMatrix(model); // le caster suit la dernière transformation donnée au maillage
                         s.batches.add({(*entry)->mesh, (*entry)->material}, model);
                         return;
                     }
@@ -549,6 +589,7 @@ core::Result<SceneRenderStats> SceneRenderSystem::draw(renderer::SceneRenderer &
         s.stats.crowdAgents += static_cast<std::uint32_t>(crowd.worlds.size());
     }
 
+    s.removeUnusedCasters(); // vide sans plugin d'ombres
     std::uint32_t casters = static_cast<std::uint32_t>(s.meshCasters.size());
     for (const auto &m : s.modelCasters)
         casters += static_cast<std::uint32_t>(m.ids.size());

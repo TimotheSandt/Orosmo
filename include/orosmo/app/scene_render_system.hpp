@@ -15,7 +15,9 @@
 //
 // Ombres : avec un `renderer::ShadowFeature` (facultatif), un `castShadows` inscrit le maillage (ou ceux du modèle animé) comme
 // caster mobile ; le caster suit la DERNIÈRE transformation donnée au maillage dans l'image (un maillage partagé par plusieurs
-// entités projette à la place de la dernière, G353). La feature lit les lumières du système (`lights()`).
+// entités projette à la place de la dernière, G353). En `kInstanced`, c'est celle de la dernière instance. Un caster qu'aucune
+// entité ne demande pendant un `draw` (détruite, `visible` ou `castShadows` faux, modèle passé en `kCrowd`) est retiré à la fin de
+// ce `draw`. La feature lit les lumières du système (`lights()`).
 #pragma once
 
 #include <orosmo/app/render_components.hpp>
