@@ -88,7 +88,9 @@ Un handle (`BufferHandle`, `TextureHandle`, `SamplerHandle`, `ShaderHandle`, `Pi
 par `Device::destroy(handle)`.
 
 - `destroy` rend le handle périmé tout de suite. La ressource GPU n'est libérée qu'une fois les images en vol terminées
-  (OpenGL : deux images présentées et une clôture `glFenceSync` franchie ; Vulkan : sémaphore à chronologie).
+  (OpenGL : `framesInFlight()` images présentées et une clôture `glFenceSync` franchie ; Vulkan : sémaphore à chronologie).
+  Le nombre d'images en vol se règle à la création, `DeviceDesc::framesInFlight` de 1 à 3 (2 par défaut) : quand
+  `beginFrame` de l'image k rend la main, l'image k − N est finie par le GPU.
   `DeviceStats::pendingDestruction` compte les libérations en attente.
 - Détruire un handle nul ou déjà périmé ne fait rien.
 - Un emplacement réutilisé change de génération : un ancien handle ne désigne jamais la nouvelle ressource.
