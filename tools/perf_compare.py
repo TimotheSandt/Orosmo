@@ -36,6 +36,14 @@ DEVICE = re.compile(r"Graphics device: (.*?)(?:\x1b\[[0-9;]*m)*$", re.M)
 METRICS = ["frameCpuMs", "frameMedian", "workMedian", "waitMedian", "graphBuilds", "firstFrame", "frameMax", "Render", "CPU/Graph", "CPU/Submit", "RenderGraph/scene", "RenderGraph/upscale", "RenderGraph/ui", "RenderGraph/present", "SwapBuffers"]
 
 
+# Options posées par l'outil : les redéfinir dans --extra fausserait le calcul ou l'en-tête du rapport.
+RESERVED = ("--api", "--ui", "--capture", "--capture-frames", "--headless")
+
+
+def reserved_options(extra):
+    return [o for o in extra if o.split("=", 1)[0] in RESERVED]
+
+
 def run_once(binary, api, mode, frames, ui, scratch, extra=()):
     cmd = [str(binary), "--api", api, "--strict-backend", "--ui", ui, "--gpu-timings", "on", "--capture", str(scratch), "--capture-frames", str(frames)]
     cmd += list(extra)
@@ -75,6 +83,9 @@ def main():
     ap.add_argument("--extra", default="", help="options ajoutées à chaque lancement de la démo")
     ap.add_argument("--out", default="")
     opts = ap.parse_args()
+    bad = reserved_options(shlex.split(opts.extra))
+    if bad:
+        ap.error(f"--extra : options réservées à l'outil : {' '.join(bad)} (utiliser --api, --ui, --frames ou --modes)")
     apis = opts.api.split(",")
     result = {}
     devices = {}

@@ -157,7 +157,7 @@ lancées une fois la charge retombée). Scène « légère » : démo par défau
 python3 tools/perf_compare.py --runs 7 --frames 600 --modes headless,windowed --extra="--vsync off"                  # avant / après
 python3 tools/perf_compare.py --runs 7 --frames 600 --modes headless,windowed --extra="--vsync off --graph-cache off"
 python3 tools/perf_compare.py --runs 7 --frames 600 --modes headless,windowed --extra="--vsync off --frames-in-flight 3"
-# scène lourde : ajouter --ui full --scene mixed --shadows on dans --extra
+python3 tools/perf_compare.py --runs 7 --frames 600 --modes headless,windowed --ui full --extra="--vsync off --scene mixed --shadows on"   # scène lourde
 ```
 
 Médianes (ms par image ; `CPU/Graph` = temps processeur de `SceneRenderer::endFrame`, absent du binaire « avant ») :
