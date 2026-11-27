@@ -314,7 +314,8 @@ e2e-init:
 	test -n "$$(find $(E2E_RUN)/mygame/bin/debug \( -name 'game.so' -o -name 'game.dylib' -o -name 'game.dll' \) -print)"
 	@# `make release` la lie statiquement, sans code de rechargement (GAME-07).
 	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) release
-	@! nm -C $(E2E_RUN)/mygame/bin/release/mygame$(E2E_EXE) | grep -E 'orosmo::platform::DynamicLibrary|GameModule::load\(|DynamicReloader' \
+	@syms=$$(nm -C $(E2E_RUN)/mygame/bin/release/mygame$(E2E_EXE)) || { echo "e2e-init : nm a échoué, contrôle GAME-07 impossible"; exit 1; }; \
+	    ! printf '%s\n' "$$syms" | grep -E 'orosmo::platform::DynamicLibrary|GameModule::load\(|DynamicReloader' \
 	    || { echo "e2e-init : code de rechargement dans la version finale"; exit 1; }
 	@# 2e build (copy_res recopie les ressources du moteur en lecture seule : elles doivent rester inscriptibles, G220).
 	cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo build --json > ../build.json
