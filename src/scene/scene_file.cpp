@@ -6,7 +6,9 @@
 #include <orosmo/core/log.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -14,6 +16,7 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <version>
 
 namespace orosmo::scene
 {
@@ -289,12 +292,39 @@ Result<> saveSceneFile(const World &world, const std::filesystem::path &path)
 {
     // Écriture dans un fichier temporaire du même répertoire, fermé et vérifié, puis renommé sur la destination : un échec
     // (disque plein…) laisse la dernière sauvegarde intacte et supprime le temporaire.
-    std::filesystem::path temporary = path;
-    temporary += ".tmp";
+    // Nom unique, créé sans écraser : un fichier existant (autre sauvegarde nommée `<dest>.tmp…`, temporaire d'un autre appel)
+    // n'est jamais ouvert ni tronqué. Création exclusive (`noreplace`, C++23) quand la bibliothèque l'offre, sinon test
+    // d'existence juste avant.
+    static std::atomic<std::uint64_t> counter{0};
+    std::filesystem::path temporary;
+    std::ofstream out;
+    for (int attempt = 0; attempt < 64 && !out.is_open(); ++attempt)
     {
-        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-        if (!out)
-            return core::makeError(ErrorCode::kIo, "saveSceneFile: cannot open " + temporary.string());
+        // Nom de la destination raccourci (sur une limite de caractère UTF-8) : le temporaire reste sous la limite du système
+        // de fichiers (255) même quand la destination l'approche.
+        auto name = path.filename().native();
+        if (name.size() > 200)
+        {
+            std::size_t cut = 200;
+            while (cut > 0 && (static_cast<unsigned>(name[cut]) & 0xC0u) == 0x80u)
+                --cut;
+            name.resize(cut);
+        }
+        temporary = path.parent_path() / name;
+        temporary += ".orosmo-tmp-" + std::to_string(counter.fetch_add(1, std::memory_order_relaxed));
+        std::error_code exists;
+        if (std::filesystem::exists(temporary, exists) || exists)
+            continue;
+        // MinGW : libstdc++ traduit `noreplace` en mode "x", que la bibliothèque C de Windows refuse (toute ouverture échoue).
+#if defined(__cpp_lib_ios_noreplace) && !defined(_WIN32)
+        out.open(temporary, std::ios::binary | std::ios::out | std::ios::noreplace); // sans trunc : refusé par libstdc++ 13
+#else
+        out.open(temporary, std::ios::binary | std::ios::trunc);
+#endif
+    }
+    {
+        if (!out.is_open())
+            return core::makeError(ErrorCode::kIo, "saveSceneFile: cannot create a temporary file next to " + path.string());
         if (path.extension() == ".json")
             out << core::dumpJson(saveScene(world));
         else

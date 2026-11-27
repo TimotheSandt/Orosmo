@@ -103,8 +103,9 @@ if (const auto *t = world.transform(ship))
   (chargé dans une copie). `componentFromJson` aussi : en cas d'erreur, la valeur et les avertissements sont inchangés. Le cache monde est recalculé (`updateTransforms`).
 - **Empreinte** : FNV-1a 64 bits (`core/hash.hpp`) de la table des entités, de la hiérarchie et des valeurs des champs décrits
   des types non vides, par nom de type croissant, dans l'ordre dense ; réels par motif de bits, sauf NaN (tous hachés comme
-  le NaN silencieux canonique, relu de `"nan"` : l'aller-retour JSON garde l'empreinte). `saveSceneFile` écrit `<chemin>.tmp`,
-  le ferme et le vérifie (une erreur de vidange, disque plein, rend `kIo`), puis le renomme sur la destination : un échec
+  le NaN silencieux canonique, relu de `"nan"` : l'aller-retour JSON garde l'empreinte). `saveSceneFile` écrit un temporaire
+  `<chemin>.orosmo-tmp-<n>` au nom unique, créé sans ouvrir ni tronquer un fichier existant (`std::ios::noreplace` quand
+  la bibliothèque l'offre, sinon test d'existence juste avant), le ferme et le vérifie (une erreur de vidange, disque plein, rend `kIo`), puis le renomme sur la destination : un échec
   laisse la dernière sauvegarde intacte et supprime le temporaire. Un pointeur dans un composant n'est pas refusé et
   rendrait l'empreinte dépendante d'une adresse (G289).
 

@@ -249,7 +249,12 @@ bool SimulationThread::running() const noexcept
 
 bool SimulationThread::pushInput(Input input)
 {
-    if (!running()) // arrêté, ou sorti sur une erreur : aucun thread ne la livrerait
+    if (!thread_.joinable())
+        return false;
+    // Contrôle et insertion sous le verrou qui publie la sortie (et l'erreur, `fail`) : une entrée acceptée l'est avant la
+    // sortie du worker ; après une erreur visible par `status()`, elle est refusée (aucun thread ne la livrerait).
+    std::lock_guard lock(mutex_);
+    if (exited_)
         return false;
     return inputs_.tryPush(std::move(input));
 }
@@ -432,6 +437,7 @@ void SimulationThread::fail(std::string message)
     LOG(::orosmo::core::L_ERROR, message);
     std::lock_guard lock(mutex_);
     failure_ = core::makeError(ErrorCode::kUnknown, std::move(message)).error();
+    exited_ = true; // même transition que l'erreur : `status()` ne la voit jamais avant l'arrêt du worker
 }
 
 void SimulationThread::loop()

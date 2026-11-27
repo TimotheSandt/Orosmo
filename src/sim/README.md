@@ -41,13 +41,18 @@ auto replay = sim.recording();                               // Result<Replay> :
   imbriqué : `step`, `run`, `advance`, `restore` appelés depuis un système sont ignorés (avertissement journalisé),
   `play` et `loadState` rendent `kInvalidArgument`. Un système qui lève une exception ne laisse pas la simulation « dans un pas » :
   le pas n'est pas compté, ses entrées reviennent en tête de file sans être journalisées (un nouvel `step()` le rejoue avec
-  elles) ; les modifications du monde déjà faites par les systèmes précédents ne sont **pas** annulées.
+  elles) ; les entrées mises en file et les événements émis par la tentative sont abandonnés (une entrée mise en file
+  pendant un pas n'entre dans `pendingInputs()` qu'à la fin du pas) ; les modifications du monde déjà faites par les
+  systèmes précédents ne sont **pas** annulées. Exception pendant `play` : le filtre du rejeu reste actif jusqu'à son
+  `lastStep` (la reprise par `step()` ne livre aucune entrée en double), jusqu'à un `restore` ou un `loadState`.
 - **Entrées** : datées par pas, livrées dans l'ordre d'ajout à `StepContext::inputs`, enregistrées dans `inputLog()`. Une entrée
   d'un pas déjà joué est refusée, comme une entrée du pas en cours mise en file par un système (ses entrées sont déjà
   prélevées) ; les pas suivants restent ouverts. La charge (`core::Json`) ne contient ni infini ni NaN (`dump()` les écrit
   `null` : type changé au rechargement, charges confondues dans l'empreinte), ni valeur binaire (relue comme un objet
   `{bytes, subtype}`), ni chaîne ou clé hors UTF-8 (`dump()` lèverait) ; le nom est aussi en UTF-8 : refusée par
-  `queueInput`, `play`, `loadState`.
+  `queueInput`, `play`, `loadState`. Une valeur JSON `discarded` (même imbriquée) est refusée aussi.
+  `restorePending(file)` remplace la seule file (monde, journal, événements et temps accumulé inchangés) : retour arrière
+  d'une mise en file, p. ex. par un `init` de module de jeu rejeté.
   Les entiers positifs signés (document construit en C++) et non signés (document relu) sont acceptés partout.
 - **Capture** : `Snapshot` est une copie profonde (le monde est copiable). Seul un état pris **entre deux pas** se restaure :
   `capture()` / `saveState()` appelés par un système pendant un pas donnent un état partiel (`Snapshot::partial`,

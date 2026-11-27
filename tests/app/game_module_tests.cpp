@@ -467,6 +467,17 @@ constexpr OrosmoGameApi kMoverV1{app::kGameAbiVersion, "mover v1", &moverV1Init,
 constexpr OrosmoGameApi kMoverChanged{app::kGameAbiVersion, "mover changed", &moverChangedInit<false>, nullptr, nullptr, nullptr};
 constexpr OrosmoGameApi kMoverFails{app::kGameAbiVersion, "mover fails", &moverChangedInit<true>, nullptr, nullptr, nullptr};
 
+// `init` qui met une entrée en file, joue un pas puis échoue (revue PR #41).
+bool stepThenFail(app::GameContext *context)
+{
+    sim::Simulation *simulation = context->simulation();
+    if (simulation == nullptr || !simulation->queueInput({.step = simulation->stepIndex() + 5, .name = "candidate", .data = {}}))
+        return false;
+    simulation->step();
+    return false;
+}
+constexpr OrosmoGameApi kStepsThenFails{app::kGameAbiVersion, "steps then fails", &stepThenFail, nullptr, nullptr, nullptr};
+
 template <bool kInvalid> bool tuningInit(app::GameContext *context)
 {
     scene::ComponentDesc desc = scene::describeComponent<CounterV3>("tuning");
@@ -537,13 +548,29 @@ TEST_SUITE("app/game_module")
         CHECK(host.counter().reloads == 2);
     }
 
+    TEST_CASE("GameModule: an init that queues an input, plays a step and fails leaves none of its inputs")
+    {
+        Host host;
+        auto game = app::GameModule::fromApi(&kMoverV1, {.simulation = &host.simulation});
+        REQUIRE(game.has_value());
+        REQUIRE(host.simulation.queueInput({.step = host.simulation.stepIndex() + 3, .name = "host", .data = {}}).has_value());
+        REQUIRE_FALSE(game->replace(&kStepsThenFails).has_value());
+        REQUIRE(host.simulation.pendingInputs().size() == 1);
+        CHECK(host.simulation.pendingInputs().front().name == "host");
+    }
+
     TEST_CASE("GameModule (GAME-03): changed field type -> restored by field name; a failing init keeps the old version and "
               "the state intact")
     {
         Host host;
         auto game = app::GameModule::fromApi(&kMoverV1, {.simulation = &host.simulation});
         REQUIRE(game.has_value());
+        // Système de l'hôte qui émet un événement par pas : les événements non repris survivent au refus (revue PR #37, G405).
+        REQUIRE(host.simulation.addSystem({"host.ping", sim::Phase::kPostUpdate, 0, [](sim::StepContext &ctx) { ctx.emit("ping"); }}));
         host.simulation.run(3); // hp = 10
+        REQUIRE(host.simulation.advance(host.simulation.settings().step / 2) == 0); // demi-pas accumulé, gardé lui aussi
+        const double alphaBefore = host.simulation.alpha();
+        REQUIRE(alphaBefore > 0.0);
         scene::World &world = host.simulation.world();
         const auto oldType = world.componentType<MoverV1>("Mover");
         REQUIRE(oldType.has_value());
@@ -556,6 +583,8 @@ TEST_SUITE("app/game_module")
         REQUIRE_FALSE(failed.has_value());
         REQUIRE(host.simulation.pendingInputs().size() == 1);
         CHECK(host.simulation.pendingInputs().front().name == "host");
+        CHECK(host.simulation.events().size() == 3);
+        CHECK(host.simulation.alpha() == doctest::Approx(alphaBefore));
         CHECK((failed.error().code == ErrorCode::kCancelled));
         CHECK(game->version() == 1);
         CHECK(game->failedReloads() == 1);

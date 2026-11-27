@@ -178,7 +178,8 @@ class SimulationThread
     // s'il reste à le rejoindre par `stop()`.
     bool running() const noexcept;
     // Erreur du thread : un système a levé une exception (le thread s'est arrêté, `frame` et `sync` ne bloquent plus ; le pas
-    // interrompu n'est pas rejoué). Sans erreur : succès.
+    // interrompu n'est pas rejoué). Sans erreur : succès. L'erreur et l'arrêt sont publiés ensemble : dès qu'elle est
+    // visible, `running()` est faux et `pushInput` refuse.
     core::Result<> status() const;
 
     // ── Côté rendu ────────────────────────────────────────────────────────────

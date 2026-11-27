@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -86,6 +87,8 @@ bool isValidUtf8(std::string_view text)
 // comme un objet {bytes, subtype} : relue objet), chaînes et clés en UTF-8 valide (`dump()` lèverait).
 const char *payloadProblem(const Json &j)
 {
+    if (j.is_discarded()) // valeur « rejetée » d'un filtre de lecture : `dump()` écrit `<discarded>`, illisible
+        return "a discarded value";
     if (j.is_number_float())
         return std::isfinite(j.get<double>()) ? nullptr : "an infinite or NaN number";
     if (j.is_binary())
@@ -146,6 +149,22 @@ Result<std::vector<Input>> inputsFromJson(const Json &j, const std::string &path
         out.push_back(std::move(*input));
     }
     return out;
+}
+
+// Tri stable par pas (ordre d'origine gardé à pas égal), sans insertions quadratiques ni std::stable_sort, dont le tampon
+// temporaire de libstdc++ 13 (`get_temporary_buffer`) est signalé par ASan (alloc-dealloc-mismatch) : tri des indices par
+// (pas, position d'origine), puis un seul déplacement par entrée.
+void sortByStep(std::vector<Input> &inputs)
+{
+    std::vector<std::size_t> order(inputs.size());
+    std::iota(order.begin(), order.end(), std::size_t{0});
+    std::sort(order.begin(), order.end(),
+              [&](std::size_t a, std::size_t b) { return std::tie(inputs[a].step, a) < std::tie(inputs[b].step, b); });
+    std::vector<Input> sorted;
+    sorted.reserve(inputs.size());
+    for (std::size_t index : order)
+        sorted.push_back(std::move(inputs[index]));
+    inputs = std::move(sorted);
 }
 
 Result<std::uint64_t> readU64(const Json &j, const char *key, const std::string &path)
@@ -292,11 +311,33 @@ Result<> Simulation::queueInput(Input input)
                                "queueInput: step " + std::to_string(input.step) + " is already played (now " + std::to_string(step_) + ")");
     if (auto r = checkPayload(input, "queueInput"); !r)
         return r;
-    // Rejeu : une entrée qu'un système met en file pour un pas du rejeu y est déjà (journalisée à sa livraison) ; la remettre
-    // la livrerait deux fois.
-    if (replaying_ && stepping_ && input.step < replayEnd_)
+    // Rejeu (`play`, ou reprise par `step` d'un rejeu interrompu) : une entrée qu'un système met en file pour un pas du rejeu y
+    // est déjà (journalisée à sa livraison) ; la remettre la livrerait deux fois.
+    if (stepping_ && input.step < replayEnd_)
         return {};
-    insertPending(std::move(input));
+    // Pendant un pas : gardée à part jusqu'à la fin du pas, pour qu'un pas interrompu ne laisse rien en file.
+    if (stepping_)
+        queued_.push_back(std::move(input));
+    else
+        insertPending(std::move(input));
+    return {};
+}
+
+Result<> Simulation::restorePending(std::vector<Input> pending)
+{
+    if (stepping_)
+        return core::makeError(ErrorCode::kInvalidArgument, "restorePending: not allowed during a step");
+    for (const Input &input : pending)
+    {
+        if (input.step < step_)
+            return core::makeError(ErrorCode::kInvalidArgument, "restorePending: input " + input.name + " at step " +
+                                                                    std::to_string(input.step) + " is already played (now " +
+                                                                    std::to_string(step_) + ")");
+        if (auto r = checkPayload(input, "restorePending"); !r)
+            return r;
+    }
+    sortByStep(pending);
+    pending_ = std::move(pending);
     return {};
 }
 
@@ -345,6 +386,9 @@ void Simulation::step()
     current_.assign(std::make_move_iterator(pending_.begin()), std::make_move_iterator(pending_.begin() + static_cast<std::ptrdiff_t>(due)));
     pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(due));
 
+    queued_.clear();
+    const std::size_t eventsBefore = events_.size();
+
     scratch_.reset();
     StepContext context{world_, random_, step_, dt_, {current_.data(), current_.size()}, scratch_, events_};
     try
@@ -355,13 +399,21 @@ void Simulation::step()
     catch (...)
     {
         // Pas interrompu : non compté, ses entrées reviennent en tête de file (aucune entrée d'un pas antérieur n'y est) et
-        // ne sont pas journalisées ; un nouvel appel le rejoue avec elles. Le monde n'est pas restauré (voir l'en-tête).
+        // ne sont pas journalisées ; un nouvel appel le rejoue avec elles. Les entrées mises en file et les événements émis
+        // par la tentative sont abandonnés (le nouvel essai les reproduit). Le monde n'est pas restauré (voir l'en-tête).
         pending_.insert(pending_.begin(), std::make_move_iterator(current_.begin()), std::make_move_iterator(current_.end()));
         current_.clear();
+        queued_.clear();
+        if (events_.size() > eventsBefore)
+            events_.erase(events_.begin() + static_cast<std::ptrdiff_t>(eventsBefore), events_.end());
         throw;
     }
     world_.updateTransforms();
 
+    // Entrées mises en file par les systèmes : publiées dans leur ordre d'ajout (même file qu'une insertion immédiate).
+    for (Input &input : queued_)
+        insertPending(std::move(input));
+    queued_.clear();
     log_.insert(log_.end(), current_.begin(), current_.end());
     ++step_;
 }
@@ -417,10 +469,14 @@ void Simulation::restore(const Snapshot &snapshot)
     std::erase_if(log_, [&](const Input &input) { return input.step >= step_; });
     stepper_ = core::FixedStepper(settings_.step, settings_.maxStepsPerFrame);
     events_.clear();
+    replayEnd_ = 0; // un rejeu interrompu ne s'applique plus à l'état restauré
 }
 
 std::vector<Event> Simulation::takeEvents()
 {
+    // Pendant un pas, la liste porte encore les événements de la tentative (retirés si elle est interrompue).
+    if (refuseNested("takeEvents"))
+        return {};
     std::vector<Event> out;
     out.swap(events_);
     return out;
@@ -482,16 +538,7 @@ Result<scene::SceneLoadReport> Simulation::loadState(const Json &state, const sc
     auto report = scene::loadScene(world, data["scene"], migrations);
     if (!report)
         return std::unexpected(report.error());
-    // Tri stable par pas, par insertion (comme `insertPending`) : pas de std::stable_sort, dont le tampon temporaire de
-    // libstdc++ 13 (`get_temporary_buffer`) est signalé par ASan (alloc-dealloc-mismatch).
-    std::vector<Input> sorted;
-    sorted.reserve(pending->size());
-    for (Input &input : *pending)
-    {
-        auto at = std::upper_bound(sorted.begin(), sorted.end(), input.step, [](std::uint64_t s, const Input &x) { return s < x.step; });
-        sorted.insert(at, std::move(input));
-    }
-    *pending = std::move(sorted);
+    sortByStep(*pending);
     restore(Snapshot{std::move(world), core::Random::fromState(*rngState, *rngIncrement), *step, std::move(*pending)});
     // Autre partie : le journal d'avant ne la décrit pas. Un rejeu ne peut commencer qu'au pas chargé.
     log_.clear();
@@ -545,18 +592,9 @@ Result<> Simulation::play(const Replay &replay)
     std::erase_if(pending_, [&](const Input &input) { return input.step >= replay.firstStep && input.step < replay.lastStep; });
     for (const Input &input : replay.inputs)
         insertPending(input);
-    struct ReplayScope
-    {
-        Simulation &sim;
-        ReplayScope(Simulation &s, std::uint64_t end) : sim(s)
-        {
-            sim.replaying_ = true;
-            sim.replayEnd_ = end;
-        }
-        ~ReplayScope() { sim.replaying_ = false; }
-        ReplayScope(const ReplayScope &) = delete;
-        ReplayScope &operator=(const ReplayScope &) = delete;
-    } scope(*this, replay.lastStep);
+    // Le filtre du rejeu reste actif jusqu'à `lastStep`, même si un système lève : la reprise par `step()` ne remet pas en
+    // file une entrée que le rejeu contient déjà. `restore` / `loadState` l'abandonnent.
+    replayEnd_ = replay.lastStep;
     run(replay.lastStep - replay.firstStep);
     return {};
 }
