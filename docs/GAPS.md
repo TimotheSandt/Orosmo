@@ -99,13 +99,13 @@ Générée par l'audit du 2026-11-17 à partir de `docs/AUDIT_REPORT.md`, **mise
 | ECS-01 | Entités et composants | Fait | Module `scene` (M8 L2), ECS maison (A79 choix 1) ; preuve : `docs/STATUS.md`, « M8 lot L2 » (`include/orosmo/scene/world.hpp` `World`, suite doctest `scene/world`, verte dans `make demo-test`) ; limites G260 à G264. | — |
 | ECS-02 | Transformations hiérarchiques | Fait | `scene::Transform`, `World::updateTransforms` (M8 L2) ; preuve : `docs/STATUS.md`, « M8 lot L2 » (suite doctest `scene/hierarchy`, verte, dont la précision à 10^7 m) ; G260, G262. Le rendu des entités (`Mesh` garde sa transformation) vient en L13. | — |
 | ECS-03 | Chargement et sauvegarde de scène | Absent | Absent. | M8 |
-| GAME-01 | Module de jeu rechargeable | Absent | Absent. | M8 |
-| GAME-02 | État côté moteur | Absent | Absent. | M8 |
+| GAME-01 | Module de jeu rechargeable | Fait | `app::GameModule` (M8 L5) : interface C `orosmoGameApi` (`abiVersion`), copie sous nom unique, rechargement sur `FileWatcher`, ancienne version gardée jusqu'au démarrage de la nouvelle ; G310, G314 à G316. | — |
+| GAME-02 | État côté moteur | Fait | Composants, systèmes et actions enregistrés par nom via `app::GameContext`, retirés au déchargement ; règle 13 vérifiée sur le binaire (`tools/check_game_static.py`, `make check`) ; G311 à G313, G318. | — |
 | GAME-03 | Migration d'état | Absent | Absent. | M8 |
 | GAME-04 | Registre des gestionnaires | Absent | Absent. | M8 |
 | GAME-05 | Paramètres de gameplay en JSON | Absent | Absent. | M8 |
 | GAME-06 | Construction incrémentale | Absent | Absent. | M8 |
-| GAME-07 | Version finale | Absent | Absent. | M8 |
+| GAME-07 | Version finale | Fait | `GameModule::fromApi` + `OROSMO_GAME_STATIC` (`make release` du gabarit) ; aucun symbole de rechargement lié (`nm`, `bin/tests/test_game_static`) ; G317. | — |
 | PLAT-05 | Saisie de texte | Partiel | Texte Unicode en UTF-8 (`InputManager::GetTextInput`, M3) ; presse-papiers du système (`Window::GetClipboardText` / `SetClipboardText`) ; appuis avec répétition et raccourcis (`InputManager::GetKeyPresses` / `GetShortcuts`) ; pas de composition IME affichée (G107). | M5 |
 | R2D-04 | Cartes de tuiles | Absent | Absent. | M5 (proposé : non cité dans docs/05) |
 | R2D-06 | Plusieurs vues | Absent | Absent (un `Renderer3D` et un `Renderer2D` par fenêtre). | M5 |
@@ -643,6 +643,24 @@ Numéros pris à partir de G250 (L0/L9 : G222-G223, L11 : G240-G243, L1 en cours
 | ID | Sujet | Détail | Jalon |
 | --- | --- | --- | --- |
 | G290 | Qualité d'ombre selon l'importance d'un objet | Aucune résolution d'ombre propre à un caster : la netteté dépend de la cascade (ou de la lumière, `LightShadowParams`), pas de l'objet. Pistes : ombre dédiée par objet, maillage simplifié pour l'ombre, distance d'ombre par caster (A80). Fonctionnement à confirmer par l'auteur avant M10. | M10 (à confirmer, A80) |
+
+## Ajouts de M8 lot L5 (G310 à G319)
+
+Module de jeu rechargeable et version finale statique (A79 lot L5, GAME-01, GAME-02, GAME-07) : module `app`
+(`src/app/README.md`), `tools/check_game_static.py`, gabarit (`apps/demo/Makefile`, `tools/engine-sdk/template/src/game/`).
+
+| ID | Sujet | Détail | Jalon |
+| --- | --- | --- | --- |
+| G310 | Rechargement vérifié sous Linux seulement | Chargement, rechargement, refus d'ABI, retour à l'ancienne version et version statique testés avec g++ 13.3 (Linux x64). Windows MinGW (DLL liée à la bibliothèque d'import de l'exécutable des tests, copie sous nom unique) et macOS (`-undefined dynamic_lookup`) seulement par la CI ; MSVC non couvert. | CI de la PR L5 |
+| G311 | Contrôle de la règle 13 sous Windows et macOS | Sous Windows, `check_game_static.py` lit le fichier objet du jeu, pas la DLL (le démarrage C de MinGW y ajoute ses données, non distinguées) ; l'émulation TLS de MinGW (`__emutls_v.*` en `.data`) est refusée comme le reste. Sous macOS, lecture de `nm -m` (`__DATA,__data`, `__bss`, `__common`, `__thread_*`) non essayée ici. Liste blanche établie sous Linux, complétée par la CI de la PR #28 : `__dyld_private` (Mach-O, ld64) et symboles de section COFF (`.bss`, `.data`, nom commençant par un point) ; analyse des trois formats figée par `tests/tools/test_check_game_static.py`. | CI, plus tard |
+| G312 | Contrôle de la règle 13 limité aux symboles | Un état caché sans symbole (mémoire allouée et gardée par un pointeur en `.data.rel.ro` modifiable par `const_cast`, état dans une bibliothèque tierce liée au jeu, fichier ouvert) n'est pas vu ; une constante non modifiée mais non `const` peut être repliée par l'optimiseur et passer. Les tables `.data.rel.ro` (vtables, `constexpr` avec pointeurs) sont permises par choix. | Plus tard |
+| G313 | Composants orphelins gardés | Un type de composant qu'une nouvelle version n'enregistre plus reste dans le monde avec ses données (`GameModule::orphanComponents`, avertissement) ; rien ne le retire. Disposition changée sous le même nom : `init` échoue (kAlreadyExists) et l'ancienne version reste : la migration est L6. | M8 L6 |
+| G314 | Pas de délai d'attente ni d'isolation de l'`init` | Un `init` qui boucle ou plante (signal, exception non attrapée) arrête l'hôte : pas de bac à sable ni de reprise sur erreur grave ; une exception traverse l'interface C (comportement de GCC/Clang, non garanti par la norme). | Plus tard |
+| G315 | Rechargement par interrogation | `FileWatcher` interroge le fichier (date, taille) ; le rechargement attend `settleDelay` (250 ms) après la dernière modification. Un éditeur de liens plus lent que ce délai donne un premier échec (fichier tronqué, journalisé, ancienne version gardée), puis un rechargement réussi à la modification suivante seulement s'il y en a une (observé sur une machine chargée : un `kIo` journalisé en erreur, puis `reloaded` 0,5 s plus tard). Pas de reprise automatique sans nouvelle modification. | M8 L7 |
+| G316 | `abiVersion` seule | La version d'ABI ne couvre que l'interface `OrosmoGameApi` et `GameContext` ; une bibliothèque compilée contre d'autres en-têtes du moteur (autre version d'`orosmo`, autres options) n'est pas détectée (disposition de `World`, `Simulation`, `std::function` de la bibliothèque standard). Pas d'empreinte des en-têtes ni de la version du moteur. | Plus tard |
+| G317 | Gabarit : `make` = debug avec un jeu | Un projet qui a `src/game/*.cpp` se construit par défaut en debug (bibliothèque rechargée) ; sans `src/game/` le défaut reste release (démo, anciens projets). `make release` lie le jeu statiquement. La cible qui ne reconstruit que la bibliothèque, `ccache`, l'en-tête léger et `orosmo build --game` sont L7 ; `make e2e-init` ne recharge pas encore un jeu modifié (L7). Le programme du gabarit avance la simulation au pas de l'image (rotation du cube par le jeu). | M8 L7, L14 |
+| G318 | Actions : `missing()` non journalisé au rechargement | Les actions de l'ancienne version sont retirées et celles de la nouvelle ajoutées, mais `ActionRegistry::missing()` n'est pas journalisé après un rechargement (A79 L6). | M8 L6 |
+| G319 | Copie du monde à chaque chargement | Pour remettre l'état du moteur si `init` échoue après avoir écrit (revue de la PR #28), `switchTo` copie le monde entier (et le générateur de la simulation) avant chaque `init` : coût proportionnel à la taille du monde à chaque rechargement (développement seulement ; la version statique ne le fait qu'une fois au démarrage). L'état hors du monde (fichiers, ressources du renderer, actions de l'hôte) n'est pas remis. | Plus tard (copie à la demande si mesurée gênante) |
 
 ## Ajouts du lot M8-L12b, petites fabriques et plateforme (G270 à G273)
 

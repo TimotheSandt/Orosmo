@@ -207,6 +207,7 @@ _ENG_LIB_DIR := $(ENGINE_DIR)/lib/$(BUILD_TYPE)
 ENGINE_EXTRA_MODULES ?=
 
 ENGINE_LIBS := \
+    $(_ENG_LIB_DIR)/libapp.a \
     $(_ENG_LIB_DIR)/libui.a \
     $(_ENG_LIB_DIR)/libcore.a \
     $(_ENG_LIB_DIR)/libplatform.a \
