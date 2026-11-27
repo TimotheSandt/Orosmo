@@ -97,7 +97,9 @@ class AnimatedModel
     // ASSET-05 : relit les textures modifiées sur le disque ; si une texture du modèle a été recréée (taille ou format changé),
     // le modèle dessinable est reconstruit (le lecteur garde son état). La reconstruction suit `texturesStale()`, pas le compte du
     // cache : un modèle qui partage son chargeur est reconstruit même si un autre a déjà relu le fichier, et une reconstruction
-    // qui a échoué est retentée à l'appel suivant. Renvoie le nombre de textures relues par cet appel.
+    // qui a échoué est retentée à l'appel suivant. Renvoie le nombre de textures relues par cet appel. Une foule créée depuis ce
+    // modèle (`CrowdRenderer::create(context, model, …)`, qui a son propre modèle dessinable) n'est PAS reconstruite : à recréer
+    // par l'appelant après un rechargement qui a recréé une texture (G402).
     core::Result<std::size_t> reloadChanged();
     // Vrai si une texture liée par les matériaux n'est plus celle du dernier modèle dessinable installé (texture recréée par le
     // cache) : à reconstruire (`rebuild` ou `reloadChanged`) avant de dessiner.

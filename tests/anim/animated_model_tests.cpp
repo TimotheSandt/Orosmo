@@ -493,7 +493,9 @@ TEST_SUITE("anim/animated-model")
             CHECK_FALSE((*a)->texturesStale());
             CHECK_FALSE((*b)->texturesStale());
             auto drawB = [&] { return s.frame([&](CommandEncoder &e) { REQUIRE((*b)->dispatch(e).has_value()); }, [&] { REQUIRE((*b)->draw(*s.renderer, s.camera).has_value()); }); };
+            auto drawA = [&] { return s.frame([&](CommandEncoder &e) { REQUIRE((*a)->dispatch(e).has_value()); }, [&] { REQUIRE((*a)->draw(*s.renderer, s.camera).has_value()); }); };
             CHECK(litPixels(drawB()) > 0);
+            CHECK(litPixels(drawA()) > 0);
 
             // Taille changée : le cache recrée la texture. A la relit et se reconstruit ; B, qui partage le chargeur, voit que sa
             // texture a été remplacée alors que le cache n'a plus rien à relire.
@@ -503,6 +505,7 @@ TEST_SUITE("anim/animated-model")
             REQUIRE(reloadedA.has_value());
             CHECK(*reloadedA == 1);
             CHECK_FALSE((*a)->texturesStale());
+            CHECK(litPixels(drawA()) > 0); // A reconstruit dessine encore le bras (revue PR #37)
             CHECK((*b)->texturesStale());
             CHECK(litPixels(drawB()) == 0); // B ne dessine pas avec des groupes liés à l'ancienne texture
 
