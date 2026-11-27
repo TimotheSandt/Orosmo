@@ -46,6 +46,26 @@ les 16 `scene.png` identiques au pixel près (`tools/compare_png.py`, tolérance
 
 Vérifications : `make all-debug` sans avertissement ; `make demo-test` (après fusion d'`origin/dev`, L3) : 830 cas, 830 verts, 1 ignoré ; `make check` vert ; démo debug Vulkan et OpenGL (`--ui full --scene mixed --shadows on`, `--frames-in-flight 1` et `3`, hors écran, et Vulkan fenêtré avec 1, 2, 3) : validation Vulkan 0 message, aucune erreur GL_KHR_debug ; ASan + UBSan (`make fclean && make demo-fclean && make demo-test SANITIZE=address,undefined TEST_ARGS='--test-suite=*frames-in-flight*,renderer/*,rhi/backend*'`) : 249 cas verts, aucun rapport. Démo : `apps/demo/bin/debug/main --frames-in-flight 3 --graph-cache on` (journal « Perf: framesInFlight=3 graphBuilds=… »). Windows et macOS non vérifiés (G343).
 
+## M8 lot L4 : thread de simulation optionnel (A79, extension de SIM-01)
+
+Branche `feat/M8-L4-thread-simulation` (depuis `feat/M8-L3-sauvegarde-simulation`). Module `sim` (`src/sim/README.md`) :
+`simulation_thread.hpp`, `snapshot_buffer.hpp` ; `Simulation` reçoit événements et arène de pas ; `core::ManualClock` devient
+lisible depuis un autre thread. Choix de réalisation sous A79 « L4 » ; limites G300 à G306. Le mode mono-thread reste le défaut.
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| Thread dédié, même résultat qu'en mono-thread | `include/orosmo/sim/simulation_thread.hpp` (`SimulationThread::start`, `frame`, `sync`, `stop`) | `make demo-test-unit` (suite `sim/thread`) | 12 agents, 300 pas, 6 entrées (apparitions, destructions, impulsions) poussées par la file : **même empreinte et mêmes événements** qu'en mono-thread, en 1, 3 et 4 pas par image et en fréquence fixe (`ManualClock`) |
+| Cadence (`Config`) | `Cadence`, `ThreadSettings`, `declareSimulationConfig`, `readSimulationConfig`, `stepForRate` | suite `sim/thread` | 20, 50 et 120 Hz pendant 2 s d'images à 60 Hz (`ManualClock`) : 40, 100 et 240 pas, nombre exact après chaque image, `alpha` = fraction du `FixedStepper` à 1e-9 ; 1, 2 et 4 pas par image : 50 N pas, au plus une image de retard ; réglages `sim.*` lus (fichier et ligne de commande), valeurs hors plage refusées |
+| Instantané immuable en double tampon, interpolation | `SnapshotBuffer`, `RenderSnapshot` (`alpha`, `transformAt`, `column`, `read`), `interpolate`, `relativeMatrix` | suite `sim/thread` | dernier publié lu, inchangé jusqu'au prochain `acquire` ; état d'avant apparié par entité (nouvelle entité : état courant) ; composants listés copiés ; interpolation exacte aux bornes, rotation de 90° à mi-chemin = 45° sans perte d'échelle |
+| Événements et entrées par `SpscQueue`, arène par thread | `StepContext::emit`, `Simulation::takeEvents`, `StepContext::scratch`, `SimulationThread::pushInput`, `popEvent`, `rejectedInputs` | suite `sim/thread` | file d'événements de 4 places, 400 événements : aucun perdu, dans l'ordre ; entrée d'un pas déjà joué refusée et comptée ; entrées en file rendues à la simulation par `stop` ; arène vide au début de chaque pas |
+| Test concurrent simulation + lecteur (rôle du rendu), sans GPU | `tests/sim/simulation_thread_tests.cpp` (« concurrent simulation and snapshot reader ») | `setarch -R make demo-test-unit SANITIZE=thread` (après `make fclean demo-fclean`, sans affichage ni pilote Vulkan, comme le job `tsan`) | 1000 Hz (horloge réelle) puis 3 pas par image, 64 entités, au moins 400 pas : aucun instantané déchiré, aucun événement perdu, toute entrée livrée, refusée ou en attente |
+
+Vérifications (Linux x64, g++ 13.3, Intel Xe, Mesa ; avant fusion de `origin/dev`) : `make all-debug` sans avertissement ;
+`make demo-test` **798 cas verts** (1 ignoré ; 13 nouveaux, suite `sim/thread`) ; `make demo-test-unit` 505 cas ; **TSan** : 505 cas
+unitaires verts, **0 signalement** ; **ASan + UBSan** (`make demo-test SANITIZE=address,undefined`, arbre propre) : 798 cas verts,
+aucun message ; `make check` OK (118 en-têtes autonomes, 0 violation de couche, chemin rejoué propre). Windows MinGW et macOS : par
+la CI seulement. Non formaté par `tools/format_sources.sh` (clang-format absent) : style voisin suivi à la main.
+
 ## M8 lot L5 : module de jeu rechargeable, version finale statique (A79, GAME-01, GAME-02, GAME-07)
 
 Branche `feat/M8-L5-jeu-rechargeable` (depuis `feat/M8-L3-sauvegarde-simulation`). Nouveau module `app` (niveau `app` de
