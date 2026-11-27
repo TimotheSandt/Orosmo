@@ -310,6 +310,12 @@ e2e-init:
 	@# Sans ENGINE_DIR : le Makefile du projet appelle `orosmo path $(OROSMO_VERSION)` (outil trouvé dans le PATH).
 	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) debug
 	test -n "$$(find $(E2E_RUN)/mygame/Generated -name '*.gen.cpp')"   # sortie de cui dans le projet
+	@# A79 L5 : `make debug` construit la logique de jeu (src/game/) en bibliothèque rechargeable, à côté de l'exécutable.
+	test -n "$$(find $(E2E_RUN)/mygame/bin/debug \( -name 'game.so' -o -name 'game.dylib' -o -name 'game.dll' \) -print)"
+	@# `make release` la lie statiquement, sans code de rechargement (GAME-07).
+	cd $(E2E_RUN)/mygame && $(E2E_ENV) $(MAKE) release
+	@! nm -C $(E2E_RUN)/mygame/bin/release/mygame$(E2E_EXE) | grep -E 'orosmo::platform::DynamicLibrary|GameModule::load\(|DynamicReloader' \
+	    || { echo "e2e-init : code de rechargement dans la version finale"; exit 1; }
 	@# 2e build (copy_res recopie les ressources du moteur en lecture seule : elles doivent rester inscriptibles, G220).
 	cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo build --json > ../build.json
 	@# Motif sans guillemets doubles : sous mingw32-make (Windows), '"…"' arrive à grep avec des barres obliques inverses.

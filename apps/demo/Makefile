@@ -265,6 +265,9 @@ else
 endif
 
 # ── Main targets ──────────────────────────────────────────────────────────────
+# `make` sans but = `all` (A79 L5 : développement si le projet a src/game/). Sans cette ligne, la première règle était celle des
+# archives du moteur ($(ENGINE_LIBS) de engine.mk), qui ne construisait rien.
+.DEFAULT_GOAL := all
 .PHONY: all debug dev release run run-debug run-dev run-release
 
 all debug dev release: $(TARGET) $(GAME_MODULE)
