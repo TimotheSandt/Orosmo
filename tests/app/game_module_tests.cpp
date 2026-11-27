@@ -467,6 +467,17 @@ constexpr OrosmoGameApi kMoverV1{app::kGameAbiVersion, "mover v1", &moverV1Init,
 constexpr OrosmoGameApi kMoverChanged{app::kGameAbiVersion, "mover changed", &moverChangedInit<false>, nullptr, nullptr, nullptr};
 constexpr OrosmoGameApi kMoverFails{app::kGameAbiVersion, "mover fails", &moverChangedInit<true>, nullptr, nullptr, nullptr};
 
+// `init` qui met une entrée en file, joue un pas puis échoue (revue PR #41).
+bool stepThenFail(app::GameContext *context)
+{
+    sim::Simulation *simulation = context->simulation();
+    if (simulation == nullptr || !simulation->queueInput({.step = simulation->stepIndex() + 5, .name = "candidate", .data = {}}))
+        return false;
+    simulation->step();
+    return false;
+}
+constexpr OrosmoGameApi kStepsThenFails{app::kGameAbiVersion, "steps then fails", &stepThenFail, nullptr, nullptr, nullptr};
+
 template <bool kInvalid> bool tuningInit(app::GameContext *context)
 {
     scene::ComponentDesc desc = scene::describeComponent<CounterV3>("tuning");
@@ -535,6 +546,17 @@ TEST_SUITE("app/game_module")
         CHECK(game->lastMigrations().front().warnings.front().starts_with("Counter.bonus: field removed"));
         CHECK(host.counter().value == 5);
         CHECK(host.counter().reloads == 2);
+    }
+
+    TEST_CASE("GameModule: an init that queues an input, plays a step and fails leaves none of its inputs")
+    {
+        Host host;
+        auto game = app::GameModule::fromApi(&kMoverV1, {.simulation = &host.simulation});
+        REQUIRE(game.has_value());
+        REQUIRE(host.simulation.queueInput({.step = host.simulation.stepIndex() + 3, .name = "host", .data = {}}).has_value());
+        REQUIRE_FALSE(game->replace(&kStepsThenFails).has_value());
+        REQUIRE(host.simulation.pendingInputs().size() == 1);
+        CHECK(host.simulation.pendingInputs().front().name == "host");
     }
 
     TEST_CASE("GameModule (GAME-03): changed field type -> restored by field name; a failing init keeps the old version and "

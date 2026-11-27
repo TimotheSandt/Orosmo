@@ -230,6 +230,8 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
             // `init` a mis des entrées en file : seule la file est remise (les entrées déjà en attente restent) ; événements non
             // repris et temps accumulé par `advance` inchangés. La file sauvegardée venait de la simulation : refus impossible
             // (hors pas, mêmes pas, mêmes charges), journalisé par prudence.
+            // Si `init` a joué un pas avant d'échouer, les entrées de ce pas sont déjà passées : seules les suivantes reviennent.
+            std::erase_if(savedPending, [&](const sim::Input &input) { return input.step < targets.simulation->stepIndex(); });
             if (auto restored = targets.simulation->restorePending(std::move(savedPending)); !restored)
                 LOG_ERROR(static_cast<int>(restored.error().code), "game module: cannot restore the pending inputs: " + restored.error().describe());
         }

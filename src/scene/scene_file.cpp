@@ -300,12 +300,23 @@ Result<> saveSceneFile(const World &world, const std::filesystem::path &path)
     std::ofstream out;
     for (int attempt = 0; attempt < 64 && !out.is_open(); ++attempt)
     {
-        temporary = path;
+        // Nom de la destination raccourci (sur une limite de caractère UTF-8) : le temporaire reste sous la limite du système
+        // de fichiers (255) même quand la destination l'approche.
+        auto name = path.filename().native();
+        if (name.size() > 200)
+        {
+            std::size_t cut = 200;
+            while (cut > 0 && (static_cast<unsigned>(name[cut]) & 0xC0u) == 0x80u)
+                --cut;
+            name.resize(cut);
+        }
+        temporary = path.parent_path() / name;
         temporary += ".orosmo-tmp-" + std::to_string(counter.fetch_add(1, std::memory_order_relaxed));
         std::error_code exists;
         if (std::filesystem::exists(temporary, exists) || exists)
             continue;
-#if defined(__cpp_lib_ios_noreplace)
+        // MinGW : libstdc++ traduit `noreplace` en mode "x", que la bibliothèque C de Windows refuse (toute ouverture échoue).
+#if defined(__cpp_lib_ios_noreplace) && !defined(_WIN32)
         out.open(temporary, std::ios::binary | std::ios::out | std::ios::noreplace); // sans trunc : refusé par libstdc++ 13
 #else
         out.open(temporary, std::ios::binary | std::ios::trunc);

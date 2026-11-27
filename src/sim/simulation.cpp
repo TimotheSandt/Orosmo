@@ -474,6 +474,9 @@ void Simulation::restore(const Snapshot &snapshot)
 
 std::vector<Event> Simulation::takeEvents()
 {
+    // Pendant un pas, la liste porte encore les événements de la tentative (retirés si elle est interrompue).
+    if (refuseNested("takeEvents"))
+        return {};
     std::vector<Event> out;
     out.swap(events_);
     return out;

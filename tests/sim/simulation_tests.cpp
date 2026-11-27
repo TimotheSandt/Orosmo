@@ -649,6 +649,19 @@ TEST_CASE("sim : StepContext::inputs, vue des entrées du pas (type léger de si
     CHECK(names == "ab");
 }
 
+TEST_CASE("Simulation: takeEvents is refused during a step")
+{
+    Simulation sim;
+    std::size_t taken = 99;
+    REQUIRE(sim.addSystem({"emit", Phase::kUpdate, 0, [&](StepContext &ctx) {
+                               ctx.emit("one");
+                               taken = sim.takeEvents().size();
+                           }}));
+    sim.step();
+    CHECK(taken == 0);
+    CHECK(sim.takeEvents().size() == 1);
+}
+
 TEST_CASE("sim : StepContext::emit sans charge (forme de l'en-tête léger) et avec charge")
 {
     Simulation sim;

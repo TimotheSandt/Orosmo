@@ -445,6 +445,16 @@ TEST_SUITE("scene/file")
         }
     }
 
+    TEST_CASE("Scene: a destination name close to the file system limit can still be saved")
+    {
+        ComponentType<Agent> type;
+        const World world = makeWorld(type);
+        const TempDir temp;
+        const auto path = temp.path / (std::string(245, 'a') + ".json");
+        REQUIRE(saveSceneFile(world, path));
+        CHECK(std::filesystem::exists(path));
+    }
+
     TEST_CASE("Scene: a failed saveSceneFile keeps the previous save and removes its temporary file")
     {
         ComponentType<Agent> type;
