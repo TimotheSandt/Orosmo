@@ -42,7 +42,7 @@ struct Entity;
 namespace orosmo::ui::debug
 {
 
-// UI-10 : une ligne de l'arbre des widgets (copie : aucun pointeur vers l'interface inspectée).
+// UI-10 : une ligne de l'arbre des widgets (copie : aucun pointeur utilisable vers l'interface inspectée).
 struct WidgetInfo
 {
     int depth = 0;          // 0 : racine
@@ -52,6 +52,7 @@ struct WidgetInfo
     Rect rect;              // rectangle calculé par la dernière mise en page
     glm::vec2 measured{0.0f}; // taille souhaitée (passe de mesure)
     bool visible = true;    // le widget et ses parents sont visibles
+    std::weak_ptr<char> identity; // `Widget::lifetimeToken` : reconnaît le même widget après une reconstruction de l'arbre
 };
 
 // Parcours en profondeur dans l'ordre des enfants ; au plus `maxRows` lignes.
@@ -154,6 +155,7 @@ class DebugTools
     Widget *treeList_ = nullptr;
     int hoveredRow_ = -1;
     int pinnedRow_ = -1;
+    std::weak_ptr<char> pinned_; // widget choisi : `pinnedRow_` est retrouvée d'après lui à chaque rafraîchissement
     Highlight highlight_;
     // Entités
     std::vector<scene::Entity> entities_;

@@ -380,6 +380,11 @@ class Widget
     // Fond, bordure et ombre du style sur `r` (rien si le fond et la bordure sont transparents).
     static void drawBox(renderer::DrawList &list, const Rect &r, const Style &style);
 
+    // Jeton de durée de vie : il expire à la destruction du widget. Une action différée (`Ui::defer`) qui touche au widget le
+    // vérifie d'abord (un gestionnaire exécuté avant elle dans la même image a pu retirer le widget : `clearChildren`). Il sert
+    // aussi d'identité stable (comparaison par `owner_before`), sans risque de confusion avec un widget recréé à la même adresse.
+    std::weak_ptr<char> lifetimeToken() const noexcept { return lifetime_; }
+
   protected:
     // Taille du contenu (sans la marge intérieure du style) quand `available` est offert au contenu.
     // Rectangle que le contenu PROPRE du widget dessine (hors enfants) quand il peut dépasser `rect_` (texte plus large que le
@@ -398,10 +403,6 @@ class Widget
     static void drawText(const Ui &ui, renderer::DrawList &list, std::string_view text, const Rect &r, const Style &style, Align align,
                          const Color *color = nullptr);
     static Rect inset(const Rect &r, float padding) noexcept;
-    // Jeton de durée de vie : il expire à la destruction du widget. Une action différée (`Ui::defer`) qui touche au widget le
-    // vérifie d'abord (un gestionnaire exécuté avant elle dans la même image a pu retirer le widget : `clearChildren`).
-    std::weak_ptr<char> lifetimeToken() const noexcept { return lifetime_; }
-
     Rect rect_;
     glm::vec2 measured_{0.0f};
 

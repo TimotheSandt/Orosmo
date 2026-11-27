@@ -17,6 +17,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -52,6 +53,11 @@ class Console
 
     // Enregistre « help » (liste des commandes) et « clear » (efface les lignes).
     Console();
+    // Ni copie ni déplacement : « help » et « clear » gardent un pointeur vers leur console.
+    Console(const Console &) = delete;
+    Console &operator=(const Console &) = delete;
+    Console(Console &&) = delete;
+    Console &operator=(Console &&) = delete;
 
     // Nom : non vide, sans espace ni guillemet (kInvalidArgument) ; déjà pris : kAlreadyExists.
     core::Result<> add(std::string name, std::string help, ConsoleCommand command);
@@ -75,7 +81,8 @@ class Console
     struct Entry
     {
         std::string help;
-        ConsoleCommand command;
+        // Partagée avec l'appel en cours : la commande garde son état d'un appel à l'autre et peut se retirer pendant l'appel.
+        std::shared_ptr<ConsoleCommand> command;
     };
     std::map<std::string, Entry, std::less<>> commands_;
     std::deque<ConsoleLine> lines_;

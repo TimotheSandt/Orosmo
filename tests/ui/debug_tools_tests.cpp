@@ -15,6 +15,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace
@@ -134,6 +135,34 @@ TEST_SUITE("ui/debug")
         CHECK(console.lines().empty());
     }
 
+    TEST_CASE("a console command keeps its state between two runs and the console cannot be copied")
+    {
+        static_assert(!std::is_copy_constructible_v<dbg::Console>);
+        static_assert(!std::is_copy_assignable_v<dbg::Console>);
+        static_assert(!std::is_move_constructible_v<dbg::Console>);
+        static_assert(!std::is_move_assignable_v<dbg::Console>);
+
+        dbg::Console console;
+        REQUIRE(console
+                    .add("count", "",
+                         [n = 0](std::span<const std::string>) mutable -> core::Result<std::string> { return std::to_string(++n); })
+                    .has_value());
+        CHECK(console.execute("count").value() == "1");
+        CHECK(console.execute("count").value() == "2");
+
+        // La commande peut se retirer pendant son appel.
+        REQUIRE(console
+                    .add("once", "",
+                         [&console, text = std::string("done")](std::span<const std::string>) -> core::Result<std::string>
+                         {
+                             CHECK(console.remove("once"));
+                             return text;
+                         })
+                    .has_value());
+        CHECK(console.execute("once").value() == "done");
+        CHECK_FALSE(console.contains("once"));
+    }
+
     TEST_CASE("console mirrors the engine log")
     {
         dbg::Console console;
@@ -205,6 +234,60 @@ TEST_SUITE("ui/debug")
         CHECK(*t.tools.highlight() == play.rect());
     }
 
+    TEST_CASE("the pinned highlight follows its widget and drops when the widget disappears")
+    {
+        tests::UiHarness h;
+        auto root = std::make_unique<ui::VBox>();
+        ui::VBox *box = root.get();
+        auto addButton = [box](const char *id) -> ui::Button &
+        {
+            auto &b = box->emplace<ui::Button>(id);
+            b.setId(id).setHeight(ui::SizeSpec::fixed(30.0f));
+            return b;
+        };
+        addButton("a");
+        ui::Button &b = addButton("b");
+        h.ui.setRoot(std::move(root));
+        h.frame();
+
+        Tools t;
+        t.tools.inspect(&h.ui);
+        t.tools.open();
+        t.tools.selectTab(dbg::DebugTab::kWidgets);
+        t.frame();
+        t.frame();
+        ui::Widget *list = t.tools.ui().find("debugWidgetTree");
+        REQUIRE(list != nullptr);
+        REQUIRE(list->children().size() == 3);
+        ui::InputFrame press;
+        press.mouse = tests::UiHarness::center(*list->children()[2]);
+        press.mouseDown = true;
+        t.frame(press);
+        ui::InputFrame release = press;
+        release.mouseDown = false;
+        t.frame(release);
+        t.frame(); // souris hors des outils : seul le surlignage gardé reste
+        t.frame();
+        REQUIRE(t.tools.highlight() != nullptr);
+        CHECK(*t.tools.highlight() == b.rect());
+
+        // Arbre inchangé : surlignage gardé.
+        h.frame();
+        t.frame();
+        REQUIRE(t.tools.highlight() != nullptr);
+
+        // Reconstruit avec le même nombre de lignes : le widget choisi a disparu.
+        box->clearChildren();
+        addButton("c");
+        addButton("d");
+        h.frame();
+        t.frame();
+        t.frame();
+        CHECK(t.tools.highlight() == nullptr);
+        for (const auto &row : list->children())
+            CHECK(row->styleName() == "debugRow");
+    }
+
     TEST_CASE("the runtime reflected panel edits fields through their description")
     {
         tests::UiHarness h;
@@ -258,7 +341,7 @@ TEST_SUITE("ui/debug")
         const scene::Entity first = world.create();
         const scene::Entity e = world.create();
         world.add(e, *gauge, Gauge{});
-        world.setTransform(e, {});
+        REQUIRE(world.setTransform(e, {}).has_value());
         CHECK(dbg::describeEntity(world, e).find("Gauge") != std::string::npos);
 
         Tools t;

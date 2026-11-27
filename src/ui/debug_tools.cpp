@@ -91,10 +91,12 @@ void describeInto(const Widget &w, int depth, bool visible, std::size_t maxRows,
     if (out.size() >= maxRows)
         return;
     const bool shown = visible && w.visible();
-    out.push_back(WidgetInfo{depth, widgetTypeName(w), w.id(), w.styleName(), w.rect(), w.measured(), shown});
+    out.push_back(WidgetInfo{depth, widgetTypeName(w), w.id(), w.styleName(), w.rect(), w.measured(), shown, w.lifetimeToken()});
     for (const auto &child : w.children())
         describeInto(*child, depth + 1, shown, maxRows, out);
 }
+
+bool sameWidget(const std::weak_ptr<char> &a, const std::weak_ptr<char> &b) { return !a.owner_before(b) && !b.owner_before(a); }
 
 // Signature des composants d'une entité (reconstruction du panneau quand elle change).
 std::string componentSignature(const scene::World &world, scene::Entity entity)
@@ -403,8 +405,14 @@ void DebugTools::refreshWidgets()
     treeText_.resize(tree_.size());
     for (std::size_t i = 0; i < tree_.size(); ++i)
         treeText_[i] = describeWidget(tree_[i]);
-    if (pinnedRow_ >= static_cast<int>(tree_.size()))
-        pinnedRow_ = -1;
+    // Le choix suit le widget, pas son rang ; widget disparu : plus de choix.
+    pinnedRow_ = -1;
+    if (!pinned_.expired())
+        for (std::size_t i = 0; i < tree_.size() && pinnedRow_ < 0; ++i)
+            if (sameWidget(tree_[i].identity, pinned_))
+                pinnedRow_ = static_cast<int>(i);
+    if (pinnedRow_ < 0)
+        pinned_.reset();
     // Lignes : une par widget, réutilisées (seul leur nombre change la structure).
     const std::size_t have = treeList_->children().size();
     if (have != tree_.size())
@@ -419,7 +427,13 @@ void DebugTools::refreshWidgets()
             const int index = static_cast<int>(i);
             auto &row = treeList_->emplace<Row>([this, i] { return i < treeText_.size() ? treeText_[i] : std::string(); });
             row.onHover([this, index](const Event &e) { hoveredRow_ = e.active ? index : (hoveredRow_ == index ? -1 : hoveredRow_); });
-            row.onClick([this, index](const Event &) { pinnedRow_ = pinnedRow_ == index ? -1 : index; });
+            row.onClick(
+                [this, i, index](const Event &)
+                {
+                    const bool unpin = pinnedRow_ == index || i >= tree_.size();
+                    pinnedRow_ = unpin ? -1 : index;
+                    pinned_ = unpin ? std::weak_ptr<char>() : tree_[i].identity;
+                });
         }
     }
     for (std::size_t i = 0; i < treeList_->children().size(); ++i)

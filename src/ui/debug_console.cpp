@@ -83,7 +83,7 @@ core::Result<> Console::add(std::string name, std::string help, ConsoleCommand c
         return makeError(ErrorCode::kInvalidArgument, "console command '" + name + "' has no function");
     if (commands_.contains(name))
         return makeError(ErrorCode::kAlreadyExists, "console command '" + name + "' already exists");
-    commands_.emplace(std::move(name), Entry{std::move(help), std::move(command)});
+    commands_.emplace(std::move(name), Entry{std::move(help), std::make_shared<ConsoleCommand>(std::move(command))});
     return {};
 }
 
@@ -125,9 +125,9 @@ core::Result<std::string> Console::execute(std::string_view line)
         print(error.error().message, ConsoleLineKind::kError);
         return error;
     }
-    // Copie : la commande peut se retirer elle-même (ou en ajouter) pendant l'appel.
-    const ConsoleCommand command = it->second.command;
-    auto result = command(std::span<const std::string>(*words).subspan(1));
+    // Référence partagée (pas une copie, qui perdrait l'état) : la commande peut se retirer elle-même pendant l'appel.
+    const std::shared_ptr<ConsoleCommand> command = it->second.command;
+    auto result = (*command)(std::span<const std::string>(*words).subspan(1));
     if (!result)
     {
         print(result.error().message, ConsoleLineKind::kError);
