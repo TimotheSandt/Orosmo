@@ -223,7 +223,8 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
     struct Freeze
     {
         sim::Simulation *simulation;
-        explicit Freeze(sim::Simulation *s) : simulation(s)
+        bool previous; // un `init` qui charge un autre module sur la même simulation ne lève pas le gel du premier
+        explicit Freeze(sim::Simulation *s) : simulation(s), previous(s != nullptr && s->frozen())
         {
             if (simulation != nullptr)
                 simulation->setFrozen(true);
@@ -231,7 +232,7 @@ core::Result<> GameModule::Impl::switchTo(const OrosmoGameApi *next)
         ~Freeze()
         {
             if (simulation != nullptr)
-                simulation->setFrozen(false);
+                simulation->setFrozen(previous);
         }
         Freeze(const Freeze &) = delete;
         Freeze &operator=(const Freeze &) = delete;

@@ -472,7 +472,8 @@ TEST_SUITE("scene/file")
         ComponentType<Agent> type;
         const World world = makeWorld(type);
         const TempDir temp;
-        std::filesystem::path parent = temp.path;
+        // Chemin résolu : sous macOS /var est un lien vers /private/var, et la limite porte sur le chemin résolu.
+        std::filesystem::path parent = std::filesystem::canonical(temp.path);
         const std::size_t total = kLimit - 1;
         REQUIRE(parent.native().size() + 1 + kName + 2 <= total);
         while (parent.native().size() + 1 + kName < total) // répertoires d'au plus 200 caractères

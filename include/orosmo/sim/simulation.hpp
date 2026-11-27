@@ -196,6 +196,7 @@ class Simulation
     // sont refusés (avertissement ou kInvalidArgument, état inchangé). Un `init` rejeté n'a ainsi que le monde, le générateur et
     // la file d'entrées à remettre : pas, journal, événements et temps accumulé n'ont pas bougé.
     void setFrozen(bool frozen) noexcept { frozen_ = frozen; }
+    bool frozen() const noexcept { return frozen_; }
 
   private:
     struct System
