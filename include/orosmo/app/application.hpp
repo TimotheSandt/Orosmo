@@ -2,7 +2,8 @@
 // qui reste disponible. Elle possède et relie ce qu'un programme créait à la main : fenêtre, périphérique (avec repli Vulkan ->
 // OpenGL), contexte de rendu (bibliothèque de shaders, cache de pipelines), renderers de scène et 2D, lumières, ombres et
 // tonemapping facultatifs, chargeur de modèles (caches de textures et de programmes), police et `ui::Ui`, `sim::Simulation`,
-// module de jeu facultatif, et le système de rendu des composants de la scène (`SceneRenderSystem`).
+// module de jeu facultatif, le système de rendu des composants de la scène (`SceneRenderSystem`) et l'hôte de la vue `.cui` racine
+// (`ViewHost`, rechargée à chaud en développement : `setView`, A79 lot L14).
 //
 //     int main(int argc, char **argv)
 //     {
@@ -21,16 +22,21 @@
 //      simulation) sans fenêtre ou en capture, sauf horloge fournie (`settings.clock`) : même image d'une exécution à l'autre ;
 //   2. module de jeu (`GameModule::update` : rechargement à chaud en développement), puis `Simulation::advance` (pas fixe ; sauf
 //      `pauseSimulation`) ;
-//   3. `onUpdate(app, temps)` ; 4. `Ui::update` puis `onUi(app, temps)` ;
-//   5. rendu : système de la scène (`update`, caméra active, `dispatch` hors passe), `beginFrame`, `setCamera`, dessins des
+//   3. `onUpdate(app, temps)` ; 4. `ViewHost::update` (vue reconstruite après un `.cui` enregistré), `Ui::update` puis
+//      `onUi(app, temps)` ;
+//   5. rendu : système de la scène (`update` : lecteurs des modèles animés arrêtés par `pauseAnimations`, caméra active,
+//      `dispatch` hors passe), `beginFrame`, `setCamera`, dessins des
 //      composants, `onRender(app, image)` (dessins en plus, dans la passe de la scène), `endFrame`, interface, présentation.
 // Les rappels reçoivent le pas de temps borné et le pas fixe (`FrameTime`, reste d'A75.9).
 //
 // Erreurs : `std::expected` (règle 10). Un rappel `onRender` qui échoue, ou une image qui échoue (y compris `beginFrame` ou
 // `present` du périphérique, perte comprise ; seul kBusy est toléré), arrête `run` (code d'échec). À la destruction, les rappels
 // (et leurs captures) sont libérés avant le module de jeu et le périphérique.
-// Ordre de vie : un état lié par l'interface (`cui::build...(ui, state)`) doit vivre plus longtemps que l'application (le
-// déclarer avant elle) ou être retiré par `ui().setRoot(nullptr)`.
+// Ordre de vie : un état lié par l'interface doit vivre plus longtemps que l'application (le déclarer avant elle). Pour une vue
+// installée par `setView(cui::Vue{.state = &state})`, rien d'autre ne suffit : l'hôte la reconstruit après un rechargement,
+// même si `ui().setRoot(nullptr)` l'a retirée. Pour une vue construite à la main (`cui::build...(ui, state)`),
+// `ui().setRoot(nullptr)` permet de libérer l'état plus tôt. L'hôte de la vue est détruit avant le module de jeu (dont la
+// bibliothèque a pu construire l'arbre) et avant l'interface.
 #pragma once
 
 #include <orosmo/app/game_api.hpp>
@@ -38,11 +44,13 @@
 #include <orosmo/app/game_module.hpp>
 #include <orosmo/app/render_components.hpp>
 #include <orosmo/app/scene_render_system.hpp>
+#include <orosmo/app/view_host.hpp>
 #include <orosmo/core/error.hpp>
 #include <orosmo/core/system.hpp>
 #include <orosmo/core/time.hpp>
 #include <orosmo/renderer/camera.hpp>
 #include <orosmo/renderer/image.hpp>
+#include <orosmo/renderer/material.hpp>
 #include <orosmo/renderer/mesh.hpp>
 #include <orosmo/renderer/mesh_builder.hpp>
 #include <orosmo/rhi/device.hpp>
@@ -145,6 +153,9 @@ struct ApplicationSettings
     bool headless = false;
     bool validation = true; // couches de validation Vulkan / GL_KHR_debug
     bool vsync = false;
+    // Vrai : toujours en fenêtre (`WindowState::kWindowed`). Faux : état par défaut de `platform::Window` (en fenêtre si le moteur
+    // est construit en debug, plein écran sinon).
+    bool windowed = false;
     DeviceFactory createDevice;
 
     // Dossier des ressources (shader/rhi, fonts, themes). Vide : « res » s'il contient shader/rhi (construction de
@@ -165,6 +176,12 @@ struct ApplicationSettings
 
     sim::SimulationSettings simulation{};
     std::optional<GameSource> game; // voir GameSource
+    // Hôte de la vue racine (`setView`, avec `ui`) : `views.game` est remplacé par le module de jeu de l'application. Développement
+    // (`OROSMO_CUI_RELOADABLE`) : `.cui` observés et commande de construction, voir `ViewHostSettings` et `defaultViews()`.
+    ViewHostSettings views{};
+
+    // Journal de `main` (relatif au dossier de l'exécutable) ; vide : fichier horodaté du dossier de données de l'application.
+    std::filesystem::path logFile;
 
     // Delta d'image réel borné (A75.9) ; horloge (défaut : `core::SteadyClock`, ou `ManualClock` d'un test).
     core::Nanoseconds maxFrameDelta = std::chrono::milliseconds(250);
@@ -245,6 +262,10 @@ class Application
     // Arrête l'avance de la simulation (`steps` = 0) ; le rendu et les rappels continuent.
     void pauseSimulation(bool paused) noexcept;
     bool simulationPaused() const noexcept;
+    // Arrête les lecteurs des modèles animés `kSingle` (pose figée, avancés de 0 s par le système de la scène) ; les foules
+    // (`kCrowd`) suivent le `time` de leurs composants, que le jeu fait avancer.
+    void pauseAnimations(bool paused) noexcept;
+    bool animationsPaused() const noexcept;
 
     // ── Scène ─────────────────────────────────────────────────────────────────
     scene::World &world() noexcept;
@@ -263,6 +284,10 @@ class Application
     core::Handle<renderer::Mesh> addMesh(renderer::Mesh mesh);
     core::Result<core::Handle<renderer::Mesh>> addMesh(const renderer::MeshData &data);
     core::Result<core::Handle<renderer::Mesh>> addMesh(const renderer::MeshBuilder &builder);
+    // Maillage avec un matériau créé par `createMaterial` ; kInvalidArgument si `builder` n'est pas en `MeshLayout::kPbr`.
+    core::Result<core::Handle<renderer::Mesh>> addMesh(const renderer::MeshBuilder &builder, const renderer::PbrMaterialDesc &material);
+    // Matériau PBR avec les textures par défaut du chargeur de modèles ; récepteur d'ombres si `shadows`.
+    core::Result<std::shared_ptr<renderer::PbrMaterial>> createMaterial(const renderer::PbrMaterialDesc &desc);
     renderer::Mesh *mesh(core::Handle<renderer::Mesh> handle) noexcept;
     // Modèle animé (glTF), chargé par le chargeur de l'application (textures et programmes partagés) ; matériaux récepteurs
     // d'ombres si `shadows`. Le lecteur se pilote par `animatedModel(h)->play(...)`.
@@ -273,6 +298,15 @@ class Application
     SceneResources &resources() noexcept;
     // Chemin d'une ressource : `resourceDirectory / relative`.
     std::filesystem::path resourcePath(const std::filesystem::path &relative) const;
+
+    // ── Interface : vue racine ────────────────────────────────────────────────
+    // Installe la vue `.cui` (structure générée, `HudView.gen.h`) comme racine de l'interface, par l'hôte `views()` : en
+    // développement (`OROSMO_CUI_RELOADABLE`) avec un module de jeu, construite par la bibliothèque de jeu et reconstruite quand
+    // un `.cui` est enregistré ; sinon (version finale, ou bibliothèque de jeu absente), la vue liée dans l'exécutable. Erreurs de
+    // `ViewHost::setRoot` ; kUnsupported sans interface (`settings.ui`).
+    template <class View> core::Result<> setView(View view);
+    // Hôte de la vue racine ; `views()` sans interface : assertion (ENGINE_ASSERT).
+    ViewHost &views() noexcept;
 
     // ── Sous-systèmes (API bas niveau) ────────────────────────────────────────
     rhi::Device &device() noexcept;
@@ -305,5 +339,17 @@ class Application
     explicit Application(std::unique_ptr<Impl> impl) noexcept;
     std::unique_ptr<Impl> impl_;
 };
+
+template <class View> core::Result<> Application::setView(View view)
+{
+    if (!hasUi())
+        return core::makeError(core::ErrorCode::kUnsupported, "Application::setView: created with settings.ui = false");
+#if defined(OROSMO_CUI_RELOADABLE)
+    // Sans jeu, ou jeu lié statiquement (`GameSource::fromApi`) : rien d'où recharger, la vue liée dans l'exécutable.
+    if (game() == nullptr || !game()->hotReloadable())
+        return views().setLinkedRoot(std::move(view));
+#endif
+    return views().setRoot(std::move(view));
+}
 
 } // namespace orosmo::app

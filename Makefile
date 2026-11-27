@@ -193,7 +193,7 @@ demo-test:
 
 # Tests sans GPU ni fenêtre (unitaires) / seulement ceux qui en demandent un (intégration graphique : contexte OpenGL hors écran,
 # fenêtre). `make demo-test` exécute les deux. ENGINE_TEST_REQUIRE_GPU=1 fait échouer (au lieu d'ignorer) un test GPU sans pilote.
-GPU_TEST_SUITES := rhi/opengl*,rhi/vulkan*,rhi/backend*,renderer/*,platform/window,ui/render
+GPU_TEST_SUITES := rhi/opengl*,rhi/vulkan*,rhi/backend*,renderer/*,platform/window,ui/render,app/view_host/gpu
 .PHONY: demo-test-unit demo-test-gpu
 demo-test-unit:
 	$(MAKE) -f $(ENGINE_MK) BUILD_TYPE=release release
@@ -268,7 +268,8 @@ demo-vulkan-check: all-debug
 #                   `orosmo init` d'un projet neuf (sans réseau : OROSMO_DOWNLOAD_BASE = un faux dossier de release avec
 #                   SHA256SUMS), `make debug` SANS ENGINE_DIR (le Makefile du projet trouve le moteur par `orosmo path`),
 #                   aucun vcpkg_installed, Generated/ dans le projet ; `orosmo build --json` ; `orosmo run -- --api opengl
-#                   --headless …` (capture) si E2E_RUN_GRAPHICS=1 ; exemple minimal copié hors du moteur et compilé ; CMake.
+#                   --headless …` (capture) si E2E_RUN_GRAPHICS=1 ; code du tutoriel 3D du site extrait de la page et compilé
+#                   (A79 L14) ; exemple minimal copié hors du moteur et compilé ; CMake.
 #   Chaque lancement a son dossier (rien n'est effacé ; les droits d'écriture du moteur installé sont rendus à la fin).
 E2E_RUN      := build/e2e/$(shell date +%Y%m%d-%H%M%S)
 E2E_PLATFORM  = $(shell $(MAKE) -s -f $(ENGINE_MK) print-platform)
@@ -372,6 +373,13 @@ e2e-init:
 	grep -q 'src/main\.cpp' $(E2E_RUN)/cui-flag.txt || { echo "e2e-init : CUI_IN_GAME changé, src/main.cpp pas recompilé"; exit 1; }
 	$(E2E_SH) python3 tools/e2e_view_reload.py --project $(E2E_RUN)/views --build "\"$(E2E_TOOL)\" build --game" \
 	    --exe bin/debug/main$(E2E_EXE) --max $(E2E_RELOAD_MAX) --record $(E2E_RUN)/view-reload.txt
+	@# A79 L14 : le tutoriel 3D du site (site/src/content/docs/demarrer/tutoriel-jeu-3d.md), extrait des blocs de code de la page
+	@# et compilé dans un projet `orosmo init`, comme le lecteur le fait. Pas lancé : il faut un modèle glTF animé (hors dépôt).
+	cd $(E2E_RUN) && $(E2E_SH) orosmo init tutorial
+	python3 tools/extract_doc_code.py site/src/content/docs/demarrer/tutoriel-jeu-3d.md --out $(E2E_RUN)/tutorial \
+	    --remove src/HudView.cui --remove src/hud_state.hpp
+	cd $(E2E_RUN)/tutorial && $(E2E_ENV) $(MAKE) debug
+	test -x $(E2E_RUN)/tutorial/bin/debug/main$(E2E_EXE)
 	$(MAKE) -C $(E2E_RUN)/minimal ENGINE_DIR="$(E2E_ENGINE)"
 	$(E2E_RUN)/minimal/bin/minimal$(E2E_EXE) > $(E2E_RUN)/minimal.txt
 	@echo "e2e-init : sortie de l'exemple minimal :"; cat $(E2E_RUN)/minimal.txt

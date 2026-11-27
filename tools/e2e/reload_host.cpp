@@ -39,6 +39,13 @@ int main()
     auto game = orosmo::app::GameModule::load({.path = library, .targets = {.simulation = &simulation}});
     if (!game)
         return fail(game.error().describe());
+    // Comme src/main.cpp : le jeu enregistre Spin et fait tourner les entités qui l'ont ; l'hôte en donne un au cube.
+    auto spin = simulation.world().componentType<game::Spin>("Spin");
+    if (!spin)
+        return fail("the game logic did not register Spin");
+    const orosmo::scene::Entity cube = simulation.world().create();
+    if (simulation.world().add(cube, *spin, game::Spin{}) == nullptr || !simulation.world().setTransform(cube, {}))
+        return fail("cannot give the cube its Spin component");
 
     float before = angleOf(simulation);
     simulation.step();

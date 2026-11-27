@@ -10,6 +10,7 @@
 #include "support/result_support.hpp"
 #include "support/test_support.hpp"
 #include "support/temp_dir.hpp"
+#include "tests/ui/cui/test_panel.gen.h"
 
 #include <orosmo/anim/animated_model.hpp>
 #include <orosmo/anim/crowd.hpp>
@@ -23,6 +24,7 @@
 #include <orosmo/renderer/camera.hpp>
 #include <orosmo/renderer/image.hpp>
 #include <orosmo/renderer/light.hpp>
+#include <orosmo/renderer/material.hpp>
 #include <orosmo/renderer/mesh.hpp>
 #include <orosmo/renderer/mesh_builder.hpp>
 #include <orosmo/renderer/render_target.hpp>
@@ -885,6 +887,109 @@ TEST_SUITE("app/application-gpu")
             CHECK(application->frameIndex() == 2);
             CHECK(fs::exists(dir.path / "shots" / "scene.png"));
             CHECK(fs::exists(dir.path / "shots" / "ui.png"));
+        }
+    }
+
+    TEST_CASE("View host (A79 L14, G365): setView installs the linked view, the host follows each frame and leaves before the UI")
+    {
+        for (const rhi::Backend backend : tests::backendsToRun())
+        {
+            CAPTURE(tests::backendName(backend));
+            CuiTestState state; // lié par la vue : vit plus longtemps que l'application
+            CuiTestStats stats;
+            {
+                auto settings = headlessSettings(backend);
+                settings.ui = true;
+                settings.frames = 0;
+                settings.views.buildCommand = "never run"; // forme liée : rien n'est observé ni lancé
+                auto application = createApp(settings);
+                app::Application &a = *application;
+                auto mounted = a.setView(cui::TestPanel{.state = &state, .stats = &stats});
+                INFO((mounted ? std::string() : mounted.error().describe()));
+                REQUIRE(mounted.has_value());
+                CHECK_FALSE(a.views().reloadable());
+                REQUIRE(a.ui().root() != nullptr);
+                CHECK(a.ui().find("title") != nullptr);
+                REQUIRE(a.frame().has_value());
+                REQUIRE(a.frame().has_value());
+                CHECK(a.views().builds() == 0);
+                CHECK(a.views().rebuilds() == 0);
+                CHECK(a.ui().find("title") != nullptr);
+                CHECK(a.device().validationErrorCount() == 0);
+            } // l'hôte retire l'arbre avant la destruction de l'interface et du jeu (ASan : aucun accès après libération)
+
+            auto settings = headlessSettings(backend); // sans interface : refusé
+            auto application = createApp(settings);
+            auto refused = application->setView(cui::TestPanel{.state = &state, .stats = &stats});
+            REQUIRE_FALSE(refused.has_value());
+            CHECK((refused.error().code == ErrorCode::kUnsupported));
+        }
+    }
+
+    TEST_CASE("pauseAnimations (A79 L14): the players of kSingle models stop, the simulation and rendering go on")
+    {
+        for (const rhi::Backend backend : tests::backendsToRun())
+        {
+            CAPTURE(tests::backendName(backend));
+            auto settings = headlessSettings(backend);
+            settings.frames = 0;
+            auto application = createApp(settings);
+            app::Application &a = *application;
+            auto arm = a.addAnimatedModel(makeArm());
+            INFO((arm ? std::string() : arm.error().message));
+            REQUIRE(arm.has_value());
+            REQUIRE(a.animatedModel(*arm)->play("bend").has_value());
+            REQUIRE_FALSE(a.spawn(app::AnimatedModelComponent{.model = *arm}).isNull());
+            REQUIRE(a.frame().has_value());
+            const float played = a.animatedModel(*arm)->currentTime();
+            CHECK(played > 0.0f);
+
+            CHECK_FALSE(a.animationsPaused());
+            a.pauseAnimations(true);
+            CHECK(a.animationsPaused());
+            const auto steps = a.simulation().stepIndex();
+            REQUIRE(a.frame().has_value());
+            CHECK(a.animatedModel(*arm)->currentTime() == played);
+            CHECK(a.simulation().stepIndex() > steps); // la simulation n'est pas arrêtée par pauseAnimations
+            CHECK(a.sceneSystem().stats().animatedDraws == 1);
+
+            a.pauseAnimations(false);
+            REQUIRE(a.frame().has_value());
+            CHECK(a.animatedModel(*arm)->currentTime() > played);
+            CHECK(a.device().validationErrorCount() == 0);
+        }
+    }
+
+    TEST_CASE("addMesh(builder, material) (A79 L14): PBR mesh with its material, a shadow receiver when shadows are on")
+    {
+        for (const rhi::Backend backend : tests::backendsToRun())
+        {
+            CAPTURE(tests::backendName(backend));
+            auto settings = headlessSettings(backend);
+            settings.shadows = true;
+            settings.hdr = true;
+            settings.frames = 2;
+            auto application = createApp(settings);
+            app::Application &a = *application;
+            const rd::PbrMaterialDesc stone{.name = "ground", .params = {.baseColorFactor = {0.55f, 0.55f, 0.5f, 1.0f}, .metallic = 0.0f, .roughness = 0.9f}};
+            auto ground = a.addMesh(rd::MeshBuilder().addPlane({8.0f, 8.0f}), stone);
+            INFO((ground ? std::string() : ground.error().message));
+            REQUIRE(ground.has_value());
+            const auto &material = a.mesh(*ground)->material();
+            REQUIRE(material != nullptr);
+            CHECK(material->name() == "ground");
+            CHECK(material->params().metallic == 0.0f);
+            CHECK((material->features() & rd::kPbrShadows) != 0);
+            CHECK((tests::errorOf(a.addMesh(coloredCube(), stone)) == ErrorCode::kInvalidArgument)); // kColored : pas de matériau
+
+            auto cube = a.addMesh(coloredCube());
+            REQUIRE(cube.has_value());
+            REQUIRE_FALSE(a.spawn(app::MeshRenderer{.mesh = *ground}).isNull());
+            REQUIRE_FALSE(a.spawn(app::MeshRenderer{.mesh = *cube, .castShadows = true}, {.position = {0.0, 0.8, 0.0}}).isNull());
+            REQUIRE_FALSE(a.spawn(app::LightComponent{.intensity = 2.0f, .direction = {-0.4f, -1.0f, -0.2f}, .castShadows = true}).isNull());
+            REQUIRE(a.run());
+            CHECK(a.sceneSystem().stats().meshDraws == 2);
+            CHECK(a.device().validationErrorCount() == 0);
         }
     }
 }

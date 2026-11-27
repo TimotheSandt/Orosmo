@@ -53,8 +53,9 @@ camera.setOrientation(glm::normalize(glm::vec3(0.0f, -0.35f, -1.0f))); // direct
 camera.setFovDegrees(60.0f);
 ```
 
-Source : [`tools/engine-sdk/template/src/main.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/tools/engine-sdk/template/src/main.cpp)
-(la fonction `makeColoredCube` y est en entier). Pour créer ce projet : [Créer un projet](/demarrer/premier-projet/).
+Adapté de l'ancien programme de départ d'`orosmo init` ; celui d'aujourd'hui passe par `app::Application`, qui fait ces
+étapes pour lui ([`src/app/application.cpp`](https://github.com/TimotheSandt/Orosmo/blob/dev/src/app/application.cpp)), et
+construit son cube par `MeshBuilder::addBox`. Pour créer ce projet : [Créer un projet](/demarrer/premier-projet/).
 
 ## Le cycle d'une image
 
@@ -87,7 +88,7 @@ if (ok) ok = renderer.endFrame({composed.color(0), rhi::Format::kRGBA8Unorm, siz
 
 Si `drawMesh` (ou `setCamera`) échoue après un `beginFrame` réussi, `endFrame` est sauté et l'image reste ouverte : le
 `beginFrame` suivant est refusé (`kInvalidArgument`, « the previous frame was not ended »). Après une telle erreur, affichez
-le message et arrêtez l'application, comme le fait le projet de démarrage (`Frame failed`, `EXIT_FAILURE`).
+le message et arrêtez l'application, comme le fait `app::Application::run` (`Frame failed`, `EXIT_FAILURE`).
 
 `composed` est une `rd::RenderTarget` sans profondeur à la taille du framebuffer, où la scène puis l'interface sont
 dessinées avant la copie dans l'image de la fenêtre. Sa création et la boucle entière sont dans
