@@ -32,12 +32,53 @@ WHITELIST = {
     "__TMC_END__",      # fin de la table de mémoire transactionnelle (crtend)
     "__bss_start", "_edata", "_end", "__data_start", "data_start",  # bornes de sections (éditeur de liens)
     "DW.ref.__gxx_personality_v0",  # pointeur vers la routine de déroulement des exceptions (GCC, ELF)
+    "__dyld_private",   # Mach-O : mot réservé à dyld par l'éditeur de liens (ld64), dans (__DATA,__data)
     "std::__ioinit",    # objet d'initialisation de <iostream> (un par unité qui l'inclut ; état de la bibliothèque standard)
     "_ZStL8__ioinit",
 }
 
 ELF_PE_STATE = re.compile(r"^(\.data(?!\.rel\.ro)(\..*|\$.*)?|\.bss(\..*|\$.*)?|\.tdata(\..*)?|\.tbss(\..*)?|\.tls(\$.*)?)$")
 MACHO_STATE = re.compile(r"\(__DATA,(__data|__bss|__common|__thread_vars|__thread_data|__thread_bss)\)")
+# Ligne de `nm -m` : adresse, (segment,section), portée, nom (démanglé par -C, peut contenir des espaces).
+MACHO_LINE = re.compile(r"^\S+\s+(\(__DATA,\w+\))\s+(?:weak\s+)?(?:private\s+)?(?:non-external|external)\s+"
+                        r"(?:\(was a private external\)\s+)?(?:\[[^\]]*\]\s+)?(.*?)(?:\s+\(was a private external\))?$")
+
+
+def whitelisted(name):
+    # Symbole de section COFF (nom = « .bss », « .data$x »…) ou étiquette locale : pas une variable du jeu.
+    return name in WHITELIST or name.lstrip("_") in WHITELIST or name.startswith(".")
+
+
+def parse_sysv(text):
+    """Sortie de `nm --format=sysv` (GNU, ELF et PE) -> [(nom, section)] des symboles d'état."""
+    found = []
+    for line in text.splitlines():
+        cols = [c.strip() for c in line.split("|")]
+        if len(cols) < 7:
+            continue
+        name, section = cols[0], cols[6]
+        if ELF_PE_STATE.match(section) and not whitelisted(name):
+            found.append((name, section))
+    return found
+
+
+def parse_macho(text):
+    """Sortie de `nm -m -C` (macOS) -> [(nom, section)] des symboles d'état."""
+    found = []
+    for line in text.splitlines():
+        if not MACHO_STATE.search(line):
+            continue
+        m = MACHO_LINE.match(line.strip())
+        name = m.group(2) if m else line.split()[-1]
+        if not whitelisted(name):
+            found.append((name, MACHO_STATE.search(line).group(0)))
+    return found
+
+
+def is_gcc(version_text):
+    """Vrai pour GCC (et non Clang, même appelé « c++ » ou « g++ » comme sous macOS)."""
+    lowered = version_text.lower()
+    return "clang" not in lowered and any(k in lowered for k in ("gcc", "g++", "free software foundation"))
 
 
 def nm_tool():
@@ -47,31 +88,12 @@ def nm_tool():
 def state_symbols(binary):
     """Liste (symbole, section) des symboles définis dans une section modifiable ou TLS."""
     env = dict(os.environ, LC_ALL="C")
-    if platform.system() == "Darwin":
-        out = subprocess.run([nm_tool(), "-m", "--defined-only", binary], capture_output=True, text=True, env=env)
-        if out.returncode != 0:
-            raise RuntimeError(out.stderr.strip())
-        found = []
-        for line in out.stdout.splitlines():
-            m = MACHO_STATE.search(line)
-            if m:
-                name = line.split()[-1]
-                if name.lstrip("_") not in WHITELIST and name not in WHITELIST:
-                    found.append((name, m.group(0)))
-        return found
-    out = subprocess.run([nm_tool(), "--format=sysv", "-C", "--defined-only", binary], capture_output=True, text=True,
-                         env=env)
+    darwin = platform.system() == "Darwin"
+    args = ["-m", "-C", "--defined-only"] if darwin else ["--format=sysv", "-C", "--defined-only"]
+    out = subprocess.run([nm_tool()] + args + [binary], capture_output=True, text=True, env=env)
     if out.returncode != 0:
         raise RuntimeError(out.stderr.strip())
-    found = []
-    for line in out.stdout.splitlines():
-        cols = [c.strip() for c in line.split("|")]
-        if len(cols) < 7:
-            continue
-        name, section = cols[0], cols[6]
-        if ELF_PE_STATE.match(section) and name not in WHITELIST:
-            found.append((name, section))
-    return found
+    return parse_macho(out.stdout) if darwin else parse_sysv(out.stdout)
 
 
 def check(binaries, quiet=False):
@@ -114,10 +136,11 @@ extern "C" const Api *api(int i) { Base b; return kTable[i & 3] + b.f() > 0 ? &k
 """
 
 
-def compiler_flags():
+def compiler_flags(cxx):
     flags = ["-std=c++23", "-fPIC", "-O1", "-DGLM_ENABLE_EXPERIMENTAL"]
-    if "g++" in os.path.basename(os.environ.get("CXX", "g++")):
-        flags.append("-fno-gnu-unique")
+    version = subprocess.run([cxx, "--version"], capture_output=True, text=True)
+    if version.returncode == 0 and is_gcc(version.stdout):
+        flags.append("-fno-gnu-unique")  # comme ENGINE_MODULE_CXXFLAGS (tools/engine-sdk/engine.mk) : GCC seulement
     inc = os.path.join(ROOT, "include")
     flags += ["-I" + inc, "-I" + os.path.join(ROOT, "tests")]
     base = os.environ.get("VCPKG_INSTALLED_ROOT") or os.path.join(ROOT, "vcpkg_installed")
@@ -132,7 +155,7 @@ def compiler_flags():
 def build(cxx, source, out_dir, name, extra=()):
     """Bibliothèque partagée (Linux, macOS : symboles du moteur laissés indéfinis) ; objet sous Windows (pas d'hôte ici)."""
     obj = os.path.join(out_dir, name + ".o")
-    r = subprocess.run([cxx] + compiler_flags() + list(extra) + ["-c", source, "-o", obj], capture_output=True, text=True)
+    r = subprocess.run([cxx] + compiler_flags(cxx) + list(extra) + ["-c", source, "-o", obj], capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"compilation de {source} :\n{r.stderr}")
     system = platform.system()
