@@ -4,7 +4,9 @@
 //   v1       : système « count » qui ajoute 1, système « v1.only », action « game.v1 », composant « V1Only » ;
 //   v2       : « count » ajoute 10, système « v2.only », action « game.v2 » ; plus de « V1Only » ;
 //   badabi   : comme v1, mais `abiVersion` différente (refusée) ;
-//   failinit : enregistre un système puis rend faux à `init` (l'ancienne version doit rester active).
+//   failinit : enregistre un système puis rend faux à `init` (l'ancienne version doit rester active) ;
+//   v3       : comme v2, mais « Counter » gagne un champ (`CounterV3`, migré par le moteur, GAME-03) et « count » ajoute le
+//              pas lu dans les paramètres « tuning » (`tuning.json`, relu à chaud, GAME-05).
 // Avec OROSMO_GAME_STATIC (v1), le même fichier est lié dans `bin/tests/test_game_static` (version finale).
 //
 // Règle 13 : aucun état ici (ni global modifiable, ni `static` local, ni `thread_local`) : les identifiants de composants sont
@@ -20,6 +22,8 @@
 
 #if defined(OROSMO_TEST_GAME_VARIANT_v2)
 #define TEST_GAME_VERSION 2
+#elif defined(OROSMO_TEST_GAME_VARIANT_v3)
+#define TEST_GAME_VERSION 3
 #else
 #define TEST_GAME_VERSION 1
 #endif
@@ -27,11 +31,15 @@
 namespace
 {
 using namespace orosmo;
+#if TEST_GAME_VERSION == 3
+using Counter = test_game::CounterV3;
+#else
 using test_game::Counter;
+#endif
 
-constexpr std::int64_t kIncrement = TEST_GAME_VERSION == 2 ? 10 : 1;
-constexpr const char *kOnlySystem = TEST_GAME_VERSION == 2 ? "v2.only" : "v1.only";
-constexpr const char *kOwnAction = TEST_GAME_VERSION == 2 ? "game.v2" : "game.v1";
+constexpr std::int64_t kIncrement = TEST_GAME_VERSION == 1 ? 1 : 10;
+constexpr const char *kOnlySystem = TEST_GAME_VERSION == 1 ? "v1.only" : "v2.only";
+constexpr const char *kOwnAction = TEST_GAME_VERSION == 1 ? "game.v1" : "game.v2";
 
 bool init(app::GameContext *context)
 {
@@ -52,10 +60,21 @@ bool init(app::GameContext *context)
         world.add(world.create(), *counter, Counter{});
 
     const scene::ComponentType<Counter> type = *counter;
+#if TEST_GAME_VERSION == 3
+    auto tuning = context->registerParams<test_game::Tuning>("tuning", "tuning.json");
+    if (!tuning)
+        return false;
+    const app::Params<test_game::Tuning> params = *tuning; // poignée : le fichier est tenu par le moteur
+    if (!context->addSystem({"count", sim::Phase::kUpdate, 0, [type, params](sim::StepContext &step) {
+                                 step.world.view(type).each([&](scene::Entity, Counter &c) { c.value += params->step; });
+                             }}))
+        return false;
+#else
     if (!context->addSystem({"count", sim::Phase::kUpdate, 0, [type](sim::StepContext &step) {
                                  step.world.view(type).each([](scene::Entity, Counter &c) { c.value += kIncrement; });
                              }}))
         return false;
+#endif
     if (!context->addSystem({kOnlySystem, sim::Phase::kPostUpdate, 0, [](sim::StepContext &) {}}))
         return false;
     if (!context->addAction(kOwnAction, [](const ui::Event &) {}))

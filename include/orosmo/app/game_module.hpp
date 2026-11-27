@@ -14,9 +14,10 @@
 // Ordre de vie : les cibles (`GameTargets`) doivent survivre au module ; `stop()` (ou la destruction) appelle `shutdown`,
 // retire systèmes et actions, puis décharge. Les composants et leurs données restent dans le monde.
 //
-// Pour plus tard : la migration d'un composant dont la disposition change (L6) se branchera dans le passage d'une version à
-// l'autre (`GameModule::Impl::switchTo`, src/app/game_module.cpp) ; aujourd'hui l'`init` de la nouvelle version échoue
-// (kAlreadyExists) et l'ancienne reste active. Le journal de `ActionRegistry::missing()` après rechargement est aussi L6.
+// Migration (GAME-03, lot L6) : un composant de l'ancienne version que la nouvelle enregistre avec une autre disposition est
+// migré par le moteur pendant l'`init` de la nouvelle (`lastMigrations`) ; si cet `init` échoue, le monde est remis tel qu'il
+// était et l'ancienne version reprend. Après chaque passage réussi, les actions demandées par l'interface et absentes sont
+// journalisées (`missingActions`, GAME-04). Les paramètres JSON enregistrés par le jeu sont relus à chaque `update` (GAME-05).
 #pragma once
 
 #include <orosmo/app/game_api.hpp>
@@ -25,6 +26,7 @@
 #include <orosmo/sim/simulation.hpp> // l'hôte possède la simulation cible (le jeu ne voit que sim/system.hpp)
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -63,12 +65,17 @@ class GameModule
     ~GameModule();
 
     // Une image : en développement, regarde si la bibliothèque a changé et la recharge (après `settleDelay`) ; puis appelle
-    // `update` du jeu. À appeler hors d'un pas de simulation.
+    // `update` du jeu ; avant, relit les fichiers de paramètres modifiés. À appeler hors d'un pas de simulation.
     void update(double dt);
 
     // Recharge tout de suite le fichier de `settings.path` (développement). kUnsupported en version statique ; sinon erreurs de
     // `load`, l'ancienne version restant active.
     core::Result<> reload();
+
+    // Version statique (tests, outils) : remplace la version active par une autre table liée dans l'exécutable, par la même
+    // séquence que le rechargement (migration, retour en arrière). kUnsupported avec une bibliothèque dynamique (utiliser
+    // `reload`) ; erreurs de `fromApi`, l'ancienne version restant active.
+    core::Result<> replace(const OrosmoGameApi *api);
 
     // `shutdown`, retrait des systèmes et actions, déchargement. Sans effet si déjà arrêté.
     void stop();
@@ -91,6 +98,15 @@ class GameModule
     // Types de composants enregistrés par une version précédente et plus par l'active : gardés dans le monde avec leurs données
     // (la décision de les retirer revient à la migration, L6).
     const std::vector<std::string> &orphanComponents() const noexcept;
+    // Décision L6 (G313) : les orphelins sont gardés par défaut (un type retiré le temps d'une édition retrouve ses données) ;
+    // cet appel les retire du monde, données comprises (`World::unregisterComponent`). Rend le nombre de types retirés.
+    std::size_t removeOrphanComponents();
+    // Composants migrés par le dernier passage réussi (vide s'il n'y en a pas eu).
+    const std::vector<scene::ComponentMigration> &lastMigrations() const noexcept;
+    // Actions demandées par l'interface et absentes après le dernier passage réussi (aussi journalisées).
+    const std::vector<std::string> &missingActions() const noexcept;
+    // Noms des fichiers de paramètres de la version active.
+    std::vector<std::string> params() const;
 
     struct Impl;
     // Rechargement (développement seulement) : implémenté dans src/app/game_reloader.cpp.

@@ -8,10 +8,23 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace orosmo::app
 {
+
+// État d'un passage d'une version à l'autre, vu par `GameContext` pendant l'`init` de la nouvelle (GAME-03).
+struct detail::ReloadJournal
+{
+    // Enregistrements de la version remplacée (nul au premier démarrage) et types orphelins : les types « du jeu », les seuls
+    // qu'un changement de disposition migre (un type de l'hôte reste refusé, kAlreadyExists).
+    const GameRegistrations *previous = nullptr;
+    const std::vector<std::string> *orphans = nullptr;
+    std::vector<scene::ComponentMigration> migrations;
+
+    bool ownsComponent(std::string_view name) const;
+};
 
 // Accès du module aux membres privés du contexte (le jeu ne voit que l'interface publique).
 struct detail::GameContextAccess
@@ -21,6 +34,7 @@ struct detail::GameContextAccess
     static GameRegistrations *&recording(GameContext &context) noexcept { return context.recording_; }
     static std::uint32_t &version(GameContext &context) noexcept { return context.version_; }
     static bool &reloading(GameContext &context) noexcept { return context.reloading_; }
+    static detail::ReloadJournal *&journal(GameContext &context) noexcept { return context.journal_; }
 };
 
 class GameModule::Reloader
@@ -59,6 +73,9 @@ struct GameModule::Impl
     std::uint32_t failedReloads = 0;
     std::optional<core::Error> lastError;
     std::vector<std::string> orphans;
+    // Dernier passage réussi : composants migrés (GAME-03) et actions demandées par l'interface mais absentes (GAME-04).
+    std::vector<scene::ComponentMigration> lastMigrations;
+    std::vector<std::string> missingActions;
 };
 
 // Contrôle de la table d'un jeu avant tout appel (nulle, ABI, `init` absent).

@@ -5,6 +5,7 @@
 #include "app/game_module/test_game.hpp"
 
 #include <orosmo/app/game_module.hpp>
+#include <orosmo/app/params_host.hpp>
 #include <orosmo/core/system.hpp>
 #include <orosmo/platform/dynamic_library.hpp>
 #include <orosmo/sim/simulation.hpp>
@@ -353,5 +354,324 @@ TEST_SUITE("app/game_module")
         CHECK((app::GameModule::fromApi(nullptr, {.simulation = &host.simulation}).error().code ==
                ErrorCode::kInvalidArgument));
         CHECK((app::GameModule::fromApi(&kStaticApi, {}).error().code == ErrorCode::kInvalidArgument));
+    }
+}
+
+// ── GAME-03, GAME-04, GAME-05 (A79 lot L6) ───────────────────────────────────
+
+namespace
+{
+using test_game::CounterV3;
+
+// Écrit un fichier ; date avancée pour que l'observateur voie le changement même si la taille ne change pas.
+void writeFile(const fs::path &path, const std::string &text)
+{
+    const bool existed = fs::exists(path);
+    const auto before = existed ? fs::last_write_time(path) : fs::file_time_type{};
+    {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        out << text;
+    }
+    if (existed)
+        fs::last_write_time(path, before + std::chrono::seconds(2));
+}
+
+template <typename T> T only(scene::World &world, const char *name)
+{
+    auto type = world.componentType<T>(name);
+    REQUIRE_MESSAGE(type.has_value(), (type ? std::string() : type.error().describe()));
+    T out{};
+    int count = 0;
+    world.view(*type).each([&](scene::Entity, T &value) {
+        out = value;
+        ++count;
+    });
+    CHECK(count == 1);
+    return out;
+}
+
+// Tables liées dans l'exécutable des tests (`GameModule::replace`) : « Mover » change de disposition.
+struct MoverV1
+{
+    std::int64_t hp = 7;
+    float speed = 2.5f;
+};
+struct MoverChanged
+{
+    double hp = -1.0;       // entier -> réel : converti
+    core::Vec3 speed{3.f};  // réel -> vecteur : valeur par défaut
+};
+} // namespace
+
+template <> struct orosmo::core::Reflect<MoverV1>
+{
+    static constexpr auto fields() { return std::make_tuple(field("hp", &MoverV1::hp), field("speed", &MoverV1::speed)); }
+};
+template <> struct orosmo::core::Reflect<MoverChanged>
+{
+    static constexpr auto fields()
+    {
+        return std::make_tuple(field("hp", &MoverChanged::hp), field("speed", &MoverChanged::speed));
+    }
+};
+
+namespace
+{
+bool moverV1Init(app::GameContext *context)
+{
+    auto type = context->registerComponent<MoverV1>("Mover");
+    if (!type)
+        return false;
+    if (context->world().componentEntities(type->id).empty())
+        context->world().add(context->world().create(), *type, MoverV1{});
+    const scene::ComponentType<MoverV1> mover = *type;
+    return context
+        ->addSystem({"move", sim::Phase::kUpdate, 0,
+                     [mover](sim::StepContext &step) { step.world.view(mover).each([](scene::Entity, MoverV1 &m) { m.hp += 1; }); }})
+        .has_value();
+}
+
+template <bool kFail> bool moverChangedInit(app::GameContext *context)
+{
+    auto type = context->registerComponent<MoverChanged>("Mover");
+    if (!type)
+        return false;
+    const scene::ComponentType<MoverChanged> mover = *type;
+    if (!context->addSystem({"move", sim::Phase::kUpdate, 0, [mover](sim::StepContext &step) {
+                                 step.world.view(mover).each([](scene::Entity, MoverChanged &m) { m.hp += 0.5; });
+                             }}))
+        return false;
+    if constexpr (kFail)
+    {
+        context->world().create(); // annulé avec le reste
+        return false;
+    }
+    return true;
+}
+
+constexpr OrosmoGameApi kMoverV1{app::kGameAbiVersion, "mover v1", &moverV1Init, nullptr, nullptr, nullptr};
+constexpr OrosmoGameApi kMoverChanged{app::kGameAbiVersion, "mover changed", &moverChangedInit<false>, nullptr, nullptr, nullptr};
+constexpr OrosmoGameApi kMoverFails{app::kGameAbiVersion, "mover fails", &moverChangedInit<true>, nullptr, nullptr, nullptr};
+
+struct TuningHost
+{
+    std::int64_t step = 1;
+    float scale = 1.f;
+};
+} // namespace
+
+template <> struct orosmo::core::Reflect<TuningHost>
+{
+    static constexpr auto fields()
+    {
+        return std::make_tuple(field("step", &TuningHost::step), field("scale", &TuningHost::scale, range(0.0, 10.0)));
+    }
+};
+
+TEST_SUITE("app/game_module")
+{
+    TEST_CASE("GameModule (GAME-03): a field added to a component -> common fields copied, new one at its default value")
+    {
+        GameFolder folder("migrate-added");
+        folder.install("v1");
+        Host host;
+        auto game = app::GameModule::load(host.settings(folder.library));
+        REQUIRE(game.has_value());
+        host.simulation.run(5);
+        host.click("game.version");
+        const auto oldId = host.simulation.world().componentId("Counter");
+        REQUIRE(oldId.has_value());
+
+        folder.install("v3");
+        REQUIRE_MESSAGE(game->reload().has_value(), (game->lastError() ? game->lastError()->describe() : std::string()));
+        CHECK(game->version() == 2);
+        REQUIRE(game->lastMigrations().size() == 1);
+        const scene::ComponentMigration &migration = game->lastMigrations().front();
+        CHECK(migration.name == "Counter");
+        CHECK(migration.kind == scene::MigrationKind::kCopied);
+        CHECK(migration.fromVersion == 1);
+        CHECK(migration.toVersion == 2);
+        CHECK(migration.values == 1);
+        CHECK(migration.warnings.empty());
+        CHECK(host.simulation.world().componentDesc(*oldId) == nullptr); // ancien identifiant refusé
+
+        CounterV3 c = only<CounterV3>(host.simulation.world(), "Counter");
+        CHECK(c.value == 5);
+        CHECK(c.clicked == 1);
+        CHECK(c.bonus == 42);
+        CHECK(c.reloads == 1);
+        CHECK(c.loadedVersion == 2);
+
+        // Retour à la v1 : `bonus` retiré -> repli sauvegarde/restauration, perte signalée ; les autres champs gardés.
+        folder.install("v1");
+        REQUIRE(game->reload().has_value());
+        REQUIRE(game->lastMigrations().size() == 1);
+        CHECK(game->lastMigrations().front().kind == scene::MigrationKind::kRestored);
+        REQUIRE(game->lastMigrations().front().warnings.size() == 1);
+        CHECK(game->lastMigrations().front().warnings.front().starts_with("Counter.bonus: field removed"));
+        CHECK(host.counter().value == 5);
+        CHECK(host.counter().reloads == 2);
+    }
+
+    TEST_CASE("GameModule (GAME-03): changed field type -> restored by field name; a failing init keeps the old version and "
+              "the state intact")
+    {
+        Host host;
+        auto game = app::GameModule::fromApi(&kMoverV1, {.simulation = &host.simulation});
+        REQUIRE(game.has_value());
+        host.simulation.run(3); // hp = 10
+        scene::World &world = host.simulation.world();
+        const auto oldType = world.componentType<MoverV1>("Mover");
+        REQUIRE(oldType.has_value());
+        const std::uint64_t entitiesBefore = world.entities().size();
+
+        // Nouvelle version qui migre « Mover » puis échoue : monde remis (données, identifiant, entités), v1 active.
+        auto failed = game->replace(&kMoverFails);
+        REQUIRE_FALSE(failed.has_value());
+        CHECK((failed.error().code == ErrorCode::kCancelled));
+        CHECK(game->version() == 1);
+        CHECK(game->failedReloads() == 1);
+        CHECK(world.entities().size() == entitiesBefore);
+        REQUIRE(world.componentType<MoverV1>("Mover").has_value());
+        CHECK(world.componentType<MoverV1>("Mover")->id == oldType->id);
+        CHECK(only<MoverV1>(world, "Mover").hp == 10);
+        host.simulation.run(1); // le système de la v1 (identifiant capturé) marche encore
+        CHECK(only<MoverV1>(world, "Mover").hp == 11);
+        CHECK(game->lastMigrations().empty());
+
+        // Même changement, init réussi : hp entier relu en réel, speed (réel -> vecteur) à sa valeur par défaut.
+        REQUIRE(game->replace(&kMoverChanged).has_value());
+        CHECK(game->version() == 2);
+        REQUIRE(game->lastMigrations().size() == 1);
+        CHECK(game->lastMigrations().front().kind == scene::MigrationKind::kRestored);
+        REQUIRE(game->lastMigrations().front().warnings.size() == 1);
+        CHECK(game->lastMigrations().front().warnings.front().starts_with("Mover.speed: type changed"));
+        MoverChanged m = only<MoverChanged>(world, "Mover");
+        CHECK(m.hp == 11.0);
+        CHECK(m.speed == core::Vec3{3.f});
+        host.simulation.run(2);
+        CHECK(only<MoverChanged>(world, "Mover").hp == 12.0);
+    }
+
+    TEST_CASE("GameModule (GAME-03): a component type of the host is not migrated (kAlreadyExists)")
+    {
+        Host host;
+        REQUIRE(host.simulation.world().registerComponent<MoverChanged>("Mover").has_value());
+        auto game = app::GameModule::fromApi(&kMoverV1, {.simulation = &host.simulation});
+        REQUIRE_FALSE(game.has_value());
+        CHECK((game.error().code == ErrorCode::kCancelled));
+        CHECK(host.simulation.world().componentType<MoverChanged>("Mover").has_value());
+    }
+
+    TEST_CASE("GameModule (GAME-04): a renamed handler leaves the interface binding missing (logged), without crash")
+    {
+        GameFolder folder("renamed");
+        folder.install("v1");
+        Host host;
+        // Ce que compile `.onClick("game.v1")` : liaison tardive par nom.
+        const ui::Handler oldButton = host.actions.bind("game.v1");
+        const ui::Handler newButton = host.actions.bind("game.v2");
+        auto game = app::GameModule::load(host.settings(folder.library));
+        REQUIRE(game.has_value());
+        CHECK(host.actions.contains("game.v1"));
+
+        folder.install("v2"); // « game.v1 » renommé « game.v2 »
+        REQUIRE(game->reload().has_value());
+        CHECK(game->missingActions() == std::vector<std::string>{"game.v1"});
+        oldButton(ui::Event{}); // sans effet, journalisé une fois
+        CHECK_FALSE(host.actions.contains("game.v1"));
+        CHECK(host.actions.contains("game.v2"));
+        newButton(ui::Event{});
+
+        folder.install("v1");
+        REQUIRE(game->reload().has_value());
+        CHECK(game->missingActions() == std::vector<std::string>{"game.v2"});
+    }
+
+    TEST_CASE("GameModule (GAME-05): game parameters read from JSON, changed without compilation, invalid file ignored")
+    {
+        GameFolder folder("params");
+        folder.install("v1");
+        Host host;
+        app::GameModuleSettings settings = host.settings(folder.library);
+        settings.targets.paramsDirectory = folder.dir;
+        settings.targets.params.pollInterval = std::chrono::milliseconds(0);
+        auto game = app::GameModule::load(settings);
+        REQUIRE(game.has_value());
+
+        // v3 : « count » ajoute le pas de « tuning.json » ; fichier absent -> valeur par défaut (100).
+        folder.install("v3");
+        REQUIRE(game->reload().has_value());
+        CHECK(game->params() == std::vector<std::string>{"tuning"});
+        host.simulation.run(1);
+        CHECK(only<CounterV3>(host.simulation.world(), "Counter").value == 100);
+
+        writeFile(folder.dir / "tuning.json", R"({"step": 5})");
+        game->update(0.0); // relu à l'image suivante, sans recompiler
+        host.simulation.run(2);
+        CHECK(only<CounterV3>(host.simulation.world(), "Counter").value == 110);
+
+        writeFile(folder.dir / "tuning.json", R"({"step": "five"})"); // type faux : ignoré
+        game->update(0.0);
+        writeFile(folder.dir / "tuning.json", R"({"step": )"); // JSON illisible : ignoré
+        game->update(0.0);
+        host.simulation.run(1);
+        CHECK(only<CounterV3>(host.simulation.world(), "Counter").value == 115);
+        CHECK(game->failedReloads() == 0);
+    }
+
+    TEST_CASE("ParamsHost: defaults without a file, last valid value kept, unknown field warned, range checked")
+    {
+        const fs::path dir = core::system::executablePath().parent_path() / "game_module_tests" / "params-host";
+        fs::remove_all(dir);
+        fs::create_directories(dir);
+        const fs::path file = dir / "tuning.json";
+
+        auto params = app::ParamsHost<TuningHost>::open(file, {.watch = true, .pollInterval = std::chrono::milliseconds(0)});
+        REQUIRE(params.has_value());
+        CHECK(params->get().step == 1);
+        CHECK(params->revision() == 0);
+        REQUIRE(params->lastError().has_value());
+        CHECK((params->lastError()->code == ErrorCode::kIo));
+        const TuningHost *address = &params->get();
+
+        writeFile(file, R"({"step": 4, "scale": 2.5, "extra": true})");
+        CHECK(params->poll());
+        CHECK(params->get().step == 4);
+        CHECK(params->get().scale == 2.5f);
+        CHECK(params->revision() == 1);
+        CHECK_FALSE(params->lastError().has_value());
+        CHECK(params->file().warnings().size() == 1);
+        CHECK(&params->get() == address); // même adresse : un pointeur gardé voit la nouvelle valeur
+
+        writeFile(file, R"({"step": 9, "scale": 50})"); // hors de la plage [0, 10] : refusé en entier
+        CHECK_FALSE(params->poll());
+        CHECK(params->get().step == 4);
+        REQUIRE(params->lastError().has_value());
+        CHECK((params->lastError()->code == ErrorCode::kOutOfRange));
+
+        writeFile(file, R"({"scale": 3})"); // champ absent : valeur par défaut
+        CHECK(params->poll());
+        CHECK(params->get().step == 1);
+        CHECK(params->get().scale == 3.f);
+        CHECK_FALSE(params->poll()); // rien de nouveau
+
+        fs::remove_all(dir);
+    }
+
+    TEST_CASE("GameModule: orphan component types are kept, and removed on request; replace needs a static build")
+    {
+        GameFolder folder("orphans");
+        folder.install("v1");
+        Host host;
+        auto game = app::GameModule::load(host.settings(folder.library));
+        REQUIRE(game.has_value());
+        CHECK((game->replace(&kMoverV1).error().code == ErrorCode::kUnsupported));
+        folder.install("v2");
+        REQUIRE(game->reload().has_value());
+        CHECK(game->orphanComponents() == std::vector<std::string>{"V1Only"});
+        CHECK(game->removeOrphanComponents() == 1);
+        CHECK(game->orphanComponents().empty());
+        CHECK_FALSE(host.simulation.world().componentId("V1Only").has_value());
     }
 }
