@@ -44,7 +44,11 @@ core::Result<CommandResult> runCommand(const std::string &command, const std::fi
         line = "cd " + quoted(directory.string()) + " && ";
 #endif
     }
+#if defined(_WIN32)
     line += "(" + command + ") 2>&1";
+#else
+    line += "(\n" + command + "\n) 2>&1"; // un commentaire « # » de la commande n'avale pas la parenthèse
+#endif
     std::fflush(nullptr); // sorties du programme écrites avant celles de l'enfant
 #if defined(_WIN32)
     FILE *pipe = _popen(line.c_str(), "r");
