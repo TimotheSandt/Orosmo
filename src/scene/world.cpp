@@ -84,6 +84,46 @@ std::vector<Entity> World::entities() const
     return out;
 }
 
+World::EntityTable World::entityTable() const
+{
+    EntityTable table;
+    table.generations.reserve(records_.size());
+    for (const EntityRecord &r : records_)
+        table.generations.push_back(r.generation);
+    table.freeIndices = freeIndices_;
+    return table;
+}
+
+Result<> World::resetEntities(const EntityTable &table)
+{
+    assertNotIterating();
+    std::vector<bool> isFree(table.generations.size(), false);
+    for (std::uint32_t index : table.freeIndices)
+    {
+        if (index >= table.generations.size())
+            return core::makeError(ErrorCode::kInvalidArgument,
+                                   "entity table: free index " + std::to_string(index) + " is outside the table");
+        if (isFree[index])
+            return core::makeError(ErrorCode::kInvalidArgument,
+                                   "entity table: free index " + std::to_string(index) + " is listed twice");
+        isFree[index] = true;
+    }
+    for (Slot &slot : slots_)
+        if (slot.used)
+            slot.pool.clear();
+    records_.assign(table.generations.size(), EntityRecord{});
+    liveCount_ = 0;
+    for (std::size_t i = 0; i < records_.size(); ++i)
+    {
+        records_[i].generation = table.generations[i];
+        records_[i].alive = !isFree[i];
+        liveCount_ += isFree[i] ? 0u : 1u;
+    }
+    freeIndices_ = table.freeIndices;
+    dirty_.clear();
+    return {};
+}
+
 bool World::destroy(Entity entity)
 {
     assertNotIterating();
@@ -191,6 +231,12 @@ std::vector<ComponentId> World::componentIds() const
         if (slots_[i].used)
             out.push_back(ComponentId{i, slots_[i].generation});
     return out;
+}
+
+std::span<const Entity> World::componentEntities(ComponentId id) const noexcept
+{
+    const ComponentPool *p = pool(id);
+    return p != nullptr ? p->entities() : std::span<const Entity>{};
 }
 
 // ── Données ───────────────────────────────────────────────────────────────────

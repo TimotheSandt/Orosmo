@@ -148,6 +148,12 @@ struct LaunchOptions
     // --transparent-shadow none|full|masked|dithered (REN-39) : ombre des vitres de --scene mixed avec --shadows on. Absent (défaut) :
     // les vitres ne sont pas des casters (comportement d'avant REN-39, captures de référence inchangées).
     std::optional<orosmo::renderer::TransparentShadowMode> transparentShadow;
+    // --sim-agents N [--seed S] [--sim-steps K] (SIM-01, A79 lot L3, choix 8) : mode simulation sans fenêtre NI périphérique
+    // graphique. N agents (1 à 1 000 000), graine S (défaut 42), K pas fixes (défaut 1000, au plus 10 000 000), puis
+    // l'empreinte de l'état est affichée et la démo quitte. 0 (défaut) : démo normale. --seed et --sim-steps exigent --sim-agents.
+    std::uint32_t simAgents = 0;
+    std::uint64_t simSeed = 42;
+    std::uint64_t simSteps = 1000;
 };
 
 // Nom affiché : « OpenGL », « Vulkan », « Metal ».

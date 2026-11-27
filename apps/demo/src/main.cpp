@@ -1,4 +1,5 @@
 #include "Game/Game.h"
+#include "Sim/agent_simulation.hpp"
 #include "launch_options.hpp"
 
 #include <orosmo/core/log.hpp>
@@ -97,6 +98,14 @@ int main(int argc, char **argv)
                 std::cout << demo::backendDisplayName(api) << ": " << demo::backendAvailabilityMessage(api) << '\n';
             }
             return EXIT_SUCCESS;
+        }
+
+        // Mode simulation (SIM-01, A79 lot L3) : ni fenêtre ni périphérique graphique, aucune ressource lue.
+        if (launchOptions.simAgents > 0)
+        {
+            const int simulationExit = demo::runSimulationMode(launchOptions, std::cout);
+            FLUSH_LOG_TO_FILE;
+            return simulationExit;
         }
 
         // The working directory is the executable's: resolve a relative capture directory against the launch directory.
