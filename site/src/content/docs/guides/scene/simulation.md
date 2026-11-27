@@ -60,7 +60,9 @@ Un système est une fonction enregistrée **par nom** (`SystemDesc` : nom, phase
 entrées du pas (`inputs`), `emit(nom, données)` pour publier un événement repris par `takeEvents()`, et l'arène `scratch`.
 
 Pendant un pas, on ne peut ni ajouter ni retirer de système, ni rejouer un pas imbriqué (refusé et journalisé). Un système
-qui lève une exception ne laisse pas la simulation bloquée dans un pas.
+qui lève une exception ne laisse pas la simulation bloquée dans un pas : le pas n'est pas compté, ses entrées reviennent
+en file, et les entrées mises en file ou les événements émis par la tentative sont abandonnés (un nouveau `step()` le rejoue
+sans doublon, y compris au milieu d'un `play`). Le monde, lui, n'est pas restauré.
 
 ## Entrées datées
 

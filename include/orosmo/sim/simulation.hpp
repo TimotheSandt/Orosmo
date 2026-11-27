@@ -13,7 +13,10 @@
 //     `saveState` / `loadState` l'écrivent en JSON (scène par `scene/scene_file.hpp`). Seul un état ENTRE deux pas se
 //     restaure : une capture ou un `saveState` fait par un système pendant un pas est marqué partiel et refusé au chargement.
 //   - Exception d'un système pendant `step()` : le pas n'est pas compté, ses entrées reviennent en tête de la file (rien n'est
-//     journalisé) et un nouvel appel le rejoue avec elles ; les modifications du monde déjà faites ne sont PAS annulées.
+//     journalisé) et un nouvel appel le rejoue avec elles ; les entrées mises en file et les événements émis par la tentative
+//     sont abandonnés (une entrée mise en file pendant un pas n'apparaît dans `pendingInputs()` qu'à la fin du pas) ; les
+//     modifications du monde déjà faites ne sont PAS annulées. Exception pendant `play` : le rejeu reste actif jusqu'à son
+//     `lastStep` (reprise par `step()`, sans doublon des entrées du rejeu), jusqu'à un `restore` ou un `loadState`.
 //   - Empreinte : `fingerprint()` hache le monde (`scene::fingerprint`), l'état du générateur, le pas et les entrées en attente.
 //
 // Déterminisme (règle 9) : même graine, même flux, même durée de pas (`ctx.dt`), mêmes systèmes, mêmes entrées et état de
@@ -129,6 +132,10 @@ class Simulation
     // déjà prélevées) ou si la charge n'est pas représentable sans perte en JSON texte (réel infini ou NaN, valeur binaire,
     // chaîne, clé ou nom qui n'est pas de l'UTF-8 valide).
     core::Result<> queueInput(Input input);
+    // Remplace les seules entrées en attente (retour arrière d'une mise en file, p. ex. `init` d'un module de jeu rejeté) :
+    // monde, générateur, pas, journal, événements et temps accumulé inchangés. kInvalidArgument (file intacte) pendant un pas,
+    // pour une entrée d'un pas déjà joué ou une charge refusée par `queueInput`. Triées par pas (ordre gardé à pas égal).
+    core::Result<> restorePending(std::vector<Input> pending);
     // Entrées livrées depuis `firstLoggedStep()`, dans l'ordre de livraison (une restauration retire celles du pas restauré et
     // d'après).
     const std::vector<Input> &inputLog() const noexcept { return log_; }
@@ -205,7 +212,9 @@ class Simulation
     std::vector<Event> events_;
     core::ArenaAllocator scratch_;
     bool stepping_ = false;
-    bool replaying_ = false;      // `play` en cours : entrées des systèmes avant `replayEnd_` ignorées
+    std::vector<Input> queued_;   // mises en file par les systèmes pendant le pas : publiées à sa fin, abandonnées s'il lève
+    // Fin du dernier rejeu (`play`) : pendant un pas, une entrée mise en file pour un pas avant elle est ignorée (le rejeu la
+    // contient). Reste posée après un rejeu interrompu par une exception ; remise à 0 par `restore` / `loadState`.
     std::uint64_t replayEnd_ = 0;
 };
 

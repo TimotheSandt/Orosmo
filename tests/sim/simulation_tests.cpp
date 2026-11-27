@@ -663,3 +663,118 @@ TEST_CASE("sim : StepContext::emit sans charge (forme de l'en-tête léger) et a
     CHECK(events[0].data.is_null());
     CHECK(events[1].data["v"] == 1);
 }
+
+TEST_SUITE("sim/simulation")
+{
+    TEST_CASE("Simulation: discarded JSON values are refused, even nested (revue PR #37)")
+    {
+        Simulation sim;
+        const core::Json discarded = core::Json(core::Json::value_t::discarded);
+        CHECK((errorOf(sim.queueInput({0, "x", discarded})) == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(sim.queueInput({0, "x", core::Json::array({1, discarded})})) == core::ErrorCode::kInvalidArgument));
+        CHECK((errorOf(sim.queueInput({0, "x", core::Json{{"in", discarded}}})) == core::ErrorCode::kInvalidArgument));
+        CHECK(sim.pendingInputs().empty());
+        REQUIRE(sim.queueInput({0, "x", nullptr})); // null reste accepté
+    }
+
+    TEST_CASE("Simulation: an interrupted step drops the inputs queued and the events emitted by the attempt (revue PR #37)")
+    {
+        Simulation sim;
+        bool thrown = false;
+        REQUIRE(sim.addSystem({"fire", Phase::kInput, 0, [&](StepContext &ctx) {
+                                   for (const Input &input : ctx.inputs)
+                                       if (input.name == "fire")
+                                       {
+                                           REQUIRE(sim.queueInput({ctx.step + 1, "hit", 1}));
+                                           ctx.emit("sound");
+                                       }
+                               }}));
+        REQUIRE(sim.addSystem({"throws", Phase::kUpdate, 0, [&](StepContext &ctx) {
+                                   if (ctx.step == 1 && !thrown)
+                                   {
+                                       thrown = true;
+                                       throw std::runtime_error("system failure");
+                                   }
+                               }}));
+        REQUIRE(sim.queueInput({0, "fire", 0}));
+        REQUIRE(sim.queueInput({1, "fire", 0}));
+        REQUIRE(sim.queueInput({2, "later", 0}));
+        sim.step(); // pas 0 : hit au pas 1, un « sound » non repris
+        REQUIRE(sim.events().size() == 1);
+        CHECK_THROWS_AS(sim.step(), std::runtime_error); // pas 1 : hit au pas 2 et « sound » de la tentative abandonnés
+        CHECK(sim.events().size() == 1);                 // l'événement non repris du pas 0 reste
+        CHECK(sim.pendingInputs() == std::vector<Input>{{1, "fire", 0}, {1, "hit", 1}, {2, "later", 0}});
+        sim.step(); // nouvel essai : un seul hit au pas 2, après « later » (ordre d'ajout)
+        CHECK(sim.pendingInputs() == std::vector<Input>{{2, "later", 0}, {2, "hit", 1}});
+        REQUIRE(sim.events().size() == 2);
+        CHECK(sim.events()[1].step == 1);
+    }
+
+    TEST_CASE("Simulation: a replay interrupted by an exception resumes with step() without duplicate inputs (revue PR #37)")
+    {
+        const auto build = [](Simulation &sim, bool &armed) {
+            REQUIRE(sim.addSystem({"fire", Phase::kInput, 0, [&sim](StepContext &ctx) {
+                                       for (const Input &input : ctx.inputs)
+                                           if (input.name == "fire")
+                                               REQUIRE(sim.queueInput({ctx.step + 1, "hit", 1}));
+                                   }}));
+            REQUIRE(sim.addSystem({"throws", Phase::kUpdate, 0, [&armed](StepContext &ctx) {
+                                       if (armed && ctx.step == 1)
+                                       {
+                                           armed = false;
+                                           throw std::runtime_error("system failure");
+                                       }
+                                   }}));
+        };
+        bool armed = false;
+        Simulation live;
+        build(live, armed);
+        REQUIRE(live.queueInput({1, "fire", 0}));
+        live.run(3);
+        auto replay = live.recording(0);
+        REQUIRE(replay);
+        REQUIRE(replay->inputs == std::vector<Input>{{1, "fire", 0}, {2, "hit", 1}});
+
+        bool armedAgain = true;
+        Simulation copy;
+        build(copy, armedAgain);
+        CHECK_THROWS_AS((void)copy.play(*replay), std::runtime_error);
+        CHECK(copy.stepIndex() == 1);
+        copy.run(2); // reprise : le hit du pas 2 vient du rejeu, celui que le système remet en file est ignoré
+        CHECK(copy.inputLog() == live.inputLog());
+        CHECK(copy.fingerprint() == live.fingerprint());
+    }
+
+    TEST_CASE("Simulation: restorePending replaces the queue only; loadState sorts many inputs by step, stable")
+    {
+        Simulation sim;
+        REQUIRE(sim.addSystem({"ping", Phase::kUpdate, 0, [](StepContext &ctx) { ctx.emit("ping"); }}));
+        sim.step();
+        REQUIRE(sim.advance(sim.settings().step / 2) == 0);
+        const double alpha = sim.alpha();
+        REQUIRE(sim.restorePending({{3, "b", 0}, {2, "a", 0}, {3, "c", 0}}));
+        CHECK(sim.pendingInputs() == std::vector<Input>{{2, "a", 0}, {3, "b", 0}, {3, "c", 0}});
+        CHECK(sim.events().size() == 1);
+        CHECK(sim.alpha() == doctest::Approx(alpha));
+        CHECK((errorOf(sim.restorePending({{0, "past", 0}})) == core::ErrorCode::kInvalidArgument));
+        CHECK(sim.pendingInputs().size() == 3); // refus : file intacte
+
+        // 20 000 entrées par pas décroissant, deux par pas : triées sans insertions quadratiques, ordre gardé à pas égal.
+        core::Json pending = core::Json::array();
+        for (std::uint64_t s = 10'000; s > 0; --s)
+        {
+            pending.push_back(core::Json{{"step", s}, {"name", "first"}, {"data", nullptr}});
+            pending.push_back(core::Json{{"step", s}, {"name", "second"}, {"data", nullptr}});
+        }
+        core::Json state = Simulation{}.saveState();
+        state["data"]["pending"] = std::move(pending);
+        Simulation loaded;
+        REQUIRE(loaded.loadState(state));
+        const std::vector<Input> &queue = loaded.pendingInputs();
+        REQUIRE(queue.size() == 20'000);
+        bool ordered = true;
+        for (std::size_t i = 0; i < queue.size(); ++i)
+            ordered = ordered && queue[i].step == i / 2 + 1 && queue[i].name == (i % 2 == 0 ? "first" : "second");
+        CHECK(ordered);
+    }
+}
