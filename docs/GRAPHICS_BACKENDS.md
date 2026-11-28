@@ -8,4 +8,4 @@
 | --- | --- |
 | OpenGL 4.3+ | **Disponible** : `src/rhi/opengl/` (RHI), c'est celui de la démo |
 | Vulkan | **Pas avant M4** : réécriture sur le RHI avec VMA et couches de validation ; `--api vulkan` répond « not available yet (Vulkan: M4) » |
-| Metal | **Pas avant M9** (MoltenVK d'abord) |
+| Metal | **Absent** : macOS passe par Vulkan et MoltenVK (M9) ; backend natif reporté (proposition, A92) |
