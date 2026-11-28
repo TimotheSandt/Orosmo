@@ -27,7 +27,11 @@ void applyWindowHints(const DeviceDesc &)
 Result<std::vector<const char *>> Swapchain::requiredInstanceExtensions()
 {
     if (glfwVulkanSupported() != GLFW_TRUE)
-        return makeError(ErrorCode::kUnsupported, "Vulkan: GLFW reports no Vulkan loader or window system support (glfwVulkanSupported)");
+        return makeError(ErrorCode::kUnsupported, std::string("Vulkan: GLFW reports no Vulkan loader or window system support (glfwVulkanSupported)")
+#ifdef __APPLE__
+                                                      + ". GLFW needs the Vulkan loader: brew install vulkan-loader molten-vk"
+#endif
+        );
     std::uint32_t count = 0;
     const char **names = glfwGetRequiredInstanceExtensions(&count);
     if (names == nullptr || count == 0)

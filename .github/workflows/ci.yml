@@ -647,9 +647,11 @@ jobs:
             demo-test.log
             demo-macos
 
+      # macOS (M9-L3) : le projet issu du paquet est lancé (Vulkan), SANS VK_DRIVER_FILES : le chargeur et MoltenVK doivent être
+      # trouvés comme chez un utilisateur (VK_LAYER_PATH reste : validation exigée).
       - name: End to end from the package (Unix)
         if: runner.os != 'Windows'
-        run: make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_RUN_GRAPHICS=0 E2E_RELOAD_MAX=60
+        run: env -u VK_DRIVER_FILES -u VK_ICD_FILENAMES make -j3 e2e-init VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed E2E_REQUIRE_VALIDATION=1 E2E_RELOAD_MAX=60
 
       - name: Build and test (Windows)
         if: runner.os == 'Windows'

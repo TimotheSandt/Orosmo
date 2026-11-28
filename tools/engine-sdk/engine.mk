@@ -18,6 +18,7 @@
 #   ENGINE_LIBS          — list of .a archive paths
 #   ENGINE_LINK_LIBS     — $(ENGINE_LIBS) wrapped in --start-group (use in link command)
 #   ENGINE_LDFLAGS       — -L and -l flags for all engine dependencies (third-party libraries of ENGINE_DEPS_DIR)
+#   ENGINE_VULKAN_RPATHS — macOS only: directories searched at run time for the Vulkan loader (/opt/homebrew/lib /usr/local/lib)
 #   ENGINE_DEPS_DIR      — third-party libraries of the engine ({include,lib}/): $(ENGINE_DIR)/deps in a release package;
 #                          without deps/ (engine repository, older packages): $(ENGINE_DIR)/vcpkg_installed/<triplet>;
 #                          ENGINE_VCPKG_ROOT=<dir> forces <dir>/<triplet>
@@ -146,7 +147,10 @@ else # Darwin
                             -framework QuartzCore -framework Metal -framework CoreFoundation
     _ENG_LD_START        :=
     _ENG_LD_END          :=
-    _ENG_DARWIN          := 1   # vcpkg's vulkan-loader is a dylib: the executables need an rpath to it
+    _ENG_DARWIN          := 1   # volk and GLFW load the Vulkan loader at run time: the executables need rpaths to it
+    # Where the system Vulkan loader lives (Homebrew on Apple silicon; Homebrew on Intel and the Vulkan SDK). dyld does not
+    # search /opt/homebrew/lib for dlopen("libvulkan.dylib") without an rpath or DYLD_LIBRARY_PATH. Overridable.
+    ENGINE_VULKAN_RPATHS ?= /opt/homebrew/lib /usr/local/lib
 endif
 
 # ── Compiler flags ────────────────────────────────────────────────────────────
@@ -230,8 +234,10 @@ comma := ,
 _ENG_ASTCENC_LIB := $(patsubst lib%.a,-l%,$(notdir $(firstword $(wildcard $(ENGINE_DEPS_DIR)/lib/libastcenc-*-static.a))))
 _ENG_ASSET_LIBS  := -lktx $(_ENG_ASTCENC_LIB) -lzstd -lmeshoptimizer
 
-# macOS rpath to vcpkg's vulkan-loader dylib: only without deps/ (the Vulkan loader is never shipped in deps/: system install).
+# macOS rpaths: the system loader first (it also finds the MoltenVK driver by itself), then, without deps/ only, vcpkg's
+# vulkan-loader dylib (the Vulkan loader is never shipped in deps/: system install).
 ENGINE_LDFLAGS := -L$(ENGINE_DEPS_DIR)/lib $(_ENG_ASSET_LIBS) $(_ENG_VCPKG_LIBS) \
+    $(if $(_ENG_DARWIN),$(foreach d,$(ENGINE_VULKAN_RPATHS),-Wl$(comma)-rpath$(comma)$(d))) \
     $(if $(and $(_ENG_DARWIN),$(if $(_ENG_DEPS_PACKAGED),,1)),-Wl$(comma)-rpath$(comma)$(abspath $(ENGINE_DEPS_DIR))/lib)
 
 # ── Library loaded at run time by a host executable (A79 lot L1; the game library of GAME-01) ─────────────────────────────

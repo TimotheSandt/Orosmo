@@ -221,9 +221,10 @@ struct BackendDecision
 };
 
 // `availability` : état du backend demandé dans cette construction. `failureReason` : raison renvoyée par `createDevice`
-// si la création a déjà échoué (vide avant la tentative). Seul Vulkan retombe sur OpenGL, sauf `strict` ; Metal et OpenGL
-// indisponibles sont refusés.
-BackendDecision resolveBackend(orosmo::rhi::Backend requested, bool strict, BackendAvailability availability, std::string_view failureReason = {});
+// si la création a déjà échoué (vide avant la tentative). Seul Vulkan retombe sur OpenGL, sauf `strict` ou si OpenGL ne peut
+// pas servir de repli (`openGlFallback`, faux sur macOS) ; Metal et OpenGL indisponibles sont refusés.
+BackendDecision resolveBackend(orosmo::rhi::Backend requested, bool strict, BackendAvailability availability, std::string_view failureReason = {},
+                               bool openGlFallback = orosmo::rhi::fallbackBackend(orosmo::rhi::Backend::kVulkan).has_value());
 
 // --aa taa avec --instances N : les objets instanciés (InstanceRenderer, culling GPU) n'écrivent pas l'AOV de mouvement que le TAA
 // lit ; leur historique serait reprojeté avec un mouvement nul (traînées). Combinaison refusée : le TAA est désactivé (aucun

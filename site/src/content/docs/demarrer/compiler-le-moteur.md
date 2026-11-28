@@ -49,10 +49,21 @@ make install-deps-all            # vcpkg ; triplets x64-mingw-static, x64-osx, a
 make all-debug
 ```
 
+Sous macOS, installez aussi Vulkan (MoltenVK), seule API qui y fonctionne (OpenGL s'arrête à la version 4.1, le moteur
+demande 4.3) :
+
+```bash
+brew install vulkan-loader molten-vk                  # + vulkan-validationlayers pour les couches de validation
+apps/demo/bin/debug/main --api vulkan --strict-backend
+```
+
+Les exécutables du dépôt prennent le chargeur de Homebrew s'il est là, sinon celui de vcpkg ; ce dernier ne trouve pas seul le
+MoltenVK de Homebrew. La couche de validation de Homebrew peut demander `VK_LAYER_PATH` et un manifeste au chemin absolu, comme
+dans `.github/workflows/ci.yml`.
+
 :::caution
-Ces deux plateformes sont compilées par la CI mais pas vérifiées pour le code récent (Windows l'a été avant le
-nettoyage M00 seulement). Sous macOS, OpenGL s'arrête à la version 4.1 alors que le moteur demande 4.3, et il n'y a ni
-Metal ni MoltenVK : seul ce qui ne touche pas au GPU devrait fonctionner. Les problèmes connus sont dans
+Ces deux plateformes sont compilées et testées par la CI, pas sur une vraie machine (Windows l'a été avant le nettoyage M00
+seulement). La CI macOS utilise un GPU paravirtualisé. Il n'y a pas de backend Metal natif. Les problèmes connus sont dans
 [`docs/GAPS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/GAPS.md).
 :::
 

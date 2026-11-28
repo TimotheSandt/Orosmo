@@ -382,9 +382,82 @@ pub fn check_project_layout(project_dir: &Path, triplet: &str, home: Option<&Pat
     results
 }
 
-fn check_graphics_env() -> Vec<CheckResult> {
-    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+/// macOS : Vulkan par MoltenVK, seule API (OpenGL s'arrête à 4.1). Le paquet du moteur n'embarque ni chargeur ni pilote
+/// (A76) : les programmes cherchent le chargeur dans les dossiers de `ENGINE_VULKAN_RPATHS` (engine.mk), et le chargeur de
+/// Homebrew trouve seul le manifeste de MoltenVK. `VK_DRIVER_FILES` liste des manifestes ou des répertoires de manifestes.
+/// Pur (`exists`, `list_dir`, `var`) : testé sur tout système.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+pub fn check_macos_vulkan(
+    exists: impl Fn(&Path) -> bool,
+    list_dir: impl Fn(&Path) -> Vec<std::path::PathBuf>,
+    var: impl Fn(&str) -> Option<String>,
+) -> Vec<CheckResult> {
+    const INSTALL: &str = "brew install vulkan-loader molten-vk";
     let mut results = Vec::new();
+
+    let loader = ["/opt/homebrew/lib", "/usr/local/lib"]
+        .iter()
+        .flat_map(|dir| ["libvulkan.1.dylib", "libvulkan.dylib"].iter().map(move |lib| format!("{dir}/{lib}")))
+        .find(|p| exists(Path::new(p)));
+    match loader {
+        Some(path) => results.push(CheckResult::ok("Vulkan loader", false, path)),
+        None => results.push(CheckResult::warn(
+            "Vulkan loader",
+            false,
+            "libvulkan not found in the default locations (/opt/homebrew/lib, /usr/local/lib); no OpenGL fallback (OpenGL 4.1 is too old)",
+            INSTALL,
+        )),
+    }
+
+    let forced = ["VK_DRIVER_FILES", "VK_ICD_FILENAMES"]
+        .iter()
+        .find_map(|name| var(name).filter(|v| !v.is_empty()).map(|v| (*name, v)));
+    let driver = match &forced {
+        // Un répertoire compte s'il contient au moins un manifeste .json.
+        Some((_, list)) => list.split(':').filter(|p| !p.is_empty()).find_map(|p| {
+            if exists(Path::new(p)) {
+                return Some(p.to_string());
+            }
+            list_dir(Path::new(p))
+                .into_iter()
+                .find(|m| m.extension().is_some_and(|e| e == "json"))
+                .map(|m| m.display().to_string())
+        }),
+        None => {
+            let mut dirs: Vec<String> = ["/opt/homebrew/etc", "/opt/homebrew/share", "/usr/local/etc", "/usr/local/share", "/etc"]
+                .iter()
+                .map(|d| d.to_string())
+                .collect();
+            if let Some(home) = var("HOME") {
+                dirs.push(format!("{home}/.config"));
+                dirs.push(format!("{home}/.local/share"));
+            }
+            dirs.iter().map(|d| format!("{d}/vulkan/icd.d/MoltenVK_icd.json")).find(|p| exists(Path::new(p)))
+        }
+    };
+    match (driver, forced) {
+        (Some(path), Some((name, _))) => results.push(CheckResult::ok("Vulkan driver", false, format!("{path} ({name})"))),
+        (Some(path), None) => results.push(CheckResult::ok("Vulkan driver", false, path)),
+        (None, Some((name, list))) => results.push(CheckResult::warn(
+            "Vulkan driver",
+            false,
+            format!("{name} names no existing manifest: {list}"),
+            format!("Unset {name}, or: {INSTALL}"),
+        )),
+        (None, None) => results.push(CheckResult::warn("Vulkan driver", false, "no MoltenVK_icd.json found", INSTALL)),
+    }
+    results
+}
+
+fn check_graphics_env() -> Vec<CheckResult> {
+    #[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(unused_mut))]
+    let mut results = Vec::new();
+    #[cfg(target_os = "macos")]
+    results.extend(check_macos_vulkan(
+        |p| p.is_file(),
+        |dir| std::fs::read_dir(dir).map(|entries| entries.flatten().map(|e| e.path()).collect()).unwrap_or_default(),
+        |name| env::var(name).ok(),
+    ));
     #[cfg(target_os = "linux")]
     {
         let has_display = env::var("DISPLAY").ok().filter(|v| !v.is_empty()).is_some()
@@ -493,7 +566,7 @@ pub fn fix_command(pm: PkgManager) -> Vec<String> {
             "base-devel", "python", "mesa", "libx11", "libxrandr", "libxinerama", "libxcursor", "libxi", "wayland",
             "libxkbcommon", "vulkan-icd-loader",
         ]),
-        PkgManager::Brew => (&["brew", "install"], &["make", "python", "molten-vk"]),
+        PkgManager::Brew => (&["brew", "install"], &["make", "python", "vulkan-loader", "molten-vk"]),
         PkgManager::Msys2 => (&["pacman", "-S", "--needed"], &[
             "mingw-w64-x86_64-gcc", "mingw-w64-x86_64-make", "mingw-w64-x86_64-python",
         ]),
@@ -591,10 +664,11 @@ pub fn cmd_doctor(args: &[String], engine_version: &str, platform_name: &str) ->
             true,
             os_install_hint("sudo apt install make", "xcode-select --install", "scoop install make (or MSYS2 make)"),
         ),
+        // Le `ar` d'Apple ne connaît pas `--version` : `xcrun --find ar` rend son chemin.
         check_tool(
             "Archiver (ar)",
-            "ar",
-            &["--version"],
+            if cfg!(target_os = "macos") { "xcrun" } else { "ar" },
+            if cfg!(target_os = "macos") { &["--find", "ar"] } else { &["--version"] },
             !cfg!(target_os = "macos"),
             os_install_hint("sudo apt install binutils", "xcode-select --install", "Included with MSYS2 MinGW-w64"),
         ),
@@ -688,6 +762,66 @@ mod tests {
         assert_eq!(parsed_err["ok"], false);
         assert_eq!(parsed_err["checks"][0]["status"], "error");
         assert_eq!(parsed_err["checks"][0]["hint"], "apt install g++");
+    }
+
+    fn mac_checks(files: &[&str], vars: &[(&str, &str)]) -> Vec<CheckResult> {
+        check_macos_vulkan(
+            |p| files.iter().any(|f| Path::new(f) == p),
+            |dir| files.iter().map(Path::new).filter(|f| f.parent() == Some(dir)).map(Path::to_path_buf).collect(),
+            |k| vars.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string()),
+        )
+    }
+
+    #[test]
+    fn macos_reports_the_homebrew_loader_and_moltenvk_driver() {
+        let checks = mac_checks(
+            &["/opt/homebrew/lib/libvulkan.1.dylib", "/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json"],
+            &[],
+        );
+        assert_eq!(checks.len(), 2);
+        assert_eq!((checks[0].name.as_str(), checks[0].severity), ("Vulkan loader", Severity::Ok));
+        assert!(checks[0].detail.contains("/opt/homebrew/lib/libvulkan.1.dylib"));
+        assert_eq!((checks[1].name.as_str(), checks[1].severity), ("Vulkan driver", Severity::Ok));
+        assert!(checks[1].detail.contains("MoltenVK_icd.json"));
+    }
+
+    #[test]
+    fn macos_without_vulkan_gives_the_brew_command_and_names_the_missing_fallback() {
+        let checks = mac_checks(&[], &[]);
+        for c in &checks {
+            assert_eq!(c.severity, Severity::Warn, "{}", c.name);
+            assert!(!c.required);
+            assert!(c.hint.as_deref().unwrap().contains("brew install vulkan-loader molten-vk"));
+        }
+        assert!(checks[0].detail.contains("OpenGL 4.1"));
+    }
+
+    #[test]
+    fn macos_driver_files_variable_wins_over_the_default_manifests() {
+        let brew_icd = "/usr/local/etc/vulkan/icd.d/MoltenVK_icd.json";
+        let ok = mac_checks(&["/sdk/icd.json", brew_icd], &[("VK_DRIVER_FILES", "/nope.json:/sdk/icd.json")]);
+        assert_eq!(ok[1].severity, Severity::Ok);
+        assert!(ok[1].detail.contains("/sdk/icd.json") && ok[1].detail.contains("VK_DRIVER_FILES"));
+        let broken = mac_checks(&[brew_icd], &[("VK_ICD_FILENAMES", "/nope.json")]);
+        assert_eq!(broken[1].severity, Severity::Warn);
+        assert!(broken[1].detail.contains("VK_ICD_FILENAMES"));
+        let home = mac_checks(&["/Users/a/.local/share/vulkan/icd.d/MoltenVK_icd.json"], &[("HOME", "/Users/a")]);
+        assert_eq!(home[1].severity, Severity::Ok);
+    }
+
+    #[test]
+    fn macos_driver_files_variable_accepts_a_directory_of_manifests() {
+        let ok = mac_checks(&["/sdk/icd.d/MoltenVK_icd.json"], &[("VK_DRIVER_FILES", "/sdk/icd.d")]);
+        assert_eq!(ok[1].severity, Severity::Ok);
+        assert!(ok[1].detail.contains("/sdk/icd.d/MoltenVK_icd.json"));
+        let no_manifest = mac_checks(&["/sdk/icd.d/readme.txt"], &[("VK_DRIVER_FILES", "/sdk/icd.d")]);
+        assert_eq!(no_manifest[1].severity, Severity::Warn);
+    }
+
+    #[test]
+    fn brew_fix_command_installs_the_loader_and_the_driver() {
+        let brew = fix_command(PkgManager::Brew);
+        assert!(brew.iter().any(|p| p == "vulkan-loader") && brew.iter().any(|p| p == "molten-vk"));
     }
 
     #[test]
