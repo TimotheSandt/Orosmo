@@ -612,6 +612,7 @@ jobs:
           ENGINE_TEST_REQUIRE_GPU: ${{ runner.os == 'macOS' && '1' || '' }}
           ENGINE_TEST_BACKENDS: ${{ runner.os == 'macOS' && 'vulkan' || '' }}
           ENGINE_TEST_REQUIRE_VALIDATION: ${{ runner.os == 'macOS' && '1' || '' }}
+          ENGINE_TEST_LOG_LEVEL: ${{ runner.os == 'macOS' && 'warning' || '' }}   # messages de validation dans le journal
         run: |
           set -o pipefail
           make -j3 all-debug VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
