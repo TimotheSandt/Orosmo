@@ -88,6 +88,17 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/mygame"
           VK_DRIVER_FILES=/nonexistent.json VK_ICD_FILENAMES=/nonexistent.json ./bin/debug/main --headless --frames 1 || echo "exit $?"
+      - name: Diagnostic
+        if: ${{ !cancelled() && matrix.arch == 'x64' }}
+        run: |
+          set -x
+          brew install vulkan-tools
+          vulkaninfo --summary || true
+          cd "$RUNNER_TEMP/mygame"
+          MVK_CONFIG_LOG_LEVEL=3 ./bin/debug/main --api vulkan --strict-backend --headless --frames 3 > out.txt 2> err.txt || echo "exit $?"
+          tail -c 20000 out.txt; echo ---- stderr; tail -c 20000 err.txt; echo ---- log; tail -n 60 logs/log.log
+          lldb --batch -o run -k "bt 40" -k quit -- ./bin/debug/main --api vulkan --strict-backend --headless --frames 3 2>&1 | tail -n 80 || true
+          lldb --batch -o run -k "bt 40" -k quit -- ./bin/debug/main --api vulkan --strict-backend --frames 3 2>&1 | tail -n 80 || true
       - name: Upload captures
         if: always()
         uses: actions/upload-artifact@v4
