@@ -135,6 +135,12 @@ Trois groupes (`kGroupCount`), liaisons < `kBindingsPerGroup` (docs/03 §4) ; gr
 - Push constants, sommets, indices et groupes sont mémorisés et liés au dessin ; le pipeline graphique est lié à `setPipeline`, le
   pipeline de calcul au dispatch.
 - Dessins indirects : `vkCmdDraw*Indirect` en un appel si `multiDrawIndirect`, sinon un appel par commande.
+- GPU Metal paravirtualisé (MoltenVK sur « Apple Paravirtual device », machines virtuelles macOS dont le runner de la CI, M9-L2,
+  G510) : `drawIndexed` y est enregistré comme un `vkCmdDrawIndexedIndirect` d'une commande, écrite dans un tampon d'arguments de
+  l'encodeur (mémoire d'envoi, 256 commandes puis le double ; détruit avec l'encodeur, après sa soumission). Le dessin indexé
+  direct de ce pilote ne lit pas les indices de la plupart des tampons d'index (rien n'est tracé, sans message) ; l'indirect les
+  lit. Choisi à la création (`VulkanDevice::detectIndexedDrawWorkaround`, journalisé) ; `ENGINE_VULKAN_INDEXED_VIA_INDIRECT=0|1`
+  le force (diagnostic, tests). Sans `drawIndirectFirstInstance`, le contournement n'est pas pris.
 - `generateMips` : chaîne de `vkCmdBlitImage` linéaires (refusé, `kUnsupported`, si le format n'a pas le filtrage linéaire par
   blit) ; même refus qu'OpenGL pour la profondeur et les entiers.
 - Requêtes de temps : une requête Vulkan doit être remise à zéro avant d'être réécrite. Hors passe, `vkCmdResetQueryPool` juste

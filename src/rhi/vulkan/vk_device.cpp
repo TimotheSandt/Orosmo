@@ -227,6 +227,7 @@ Result<> VulkanDevice::init(const DeviceDesc &desc)
     if (auto r = initSwapchain(desc); !r) // image de fond (hors écran : une texture RGBA8) et, pour une fenêtre, la chaîne d'échange
         return r;
     checkTimestampsMeasureWork();
+    detectIndexedDrawWorkaround();
     return {};
 }
 
@@ -299,6 +300,31 @@ void VulkanDevice::checkTimestampsMeasureWork()
         caps_.timestampQueries = false;
         LOG_WARNING("Vulkan (MoltenVK): timestamps do not measure GPU work (no Metal counter sampling on this GPU): timestampQueries = false");
     }
+}
+
+// M9-L2 (G510) : sur le GPU Metal paravirtualisé des machines virtuelles macOS (« Apple Paravirtual device », runner macOS de la
+// CI), MoltenVK traduit vkCmdDrawIndexed en drawIndexedPrimitives direct, et ce dessin ne lit pas les indices de la plupart des
+// tampons d'index : rien n'est tracé (aucun message, ni de Vulkan ni de la validation Metal). Le même dessin en indirect
+// (drawIndexedPrimitives:indirectBuffer:) lit les mêmes indices. Constaté en CI : tampon d'index en mémoire visible de l'hôte, tampon
+// sous-alloué loin dans son bloc ; pas de cause publiée connue. Sur ce périphérique, chaque dessin indexé direct passe donc par une
+// commande indirecte d'un dessin (VkEncoder::drawIndexed). Les autres GPU Apple ne sont pas concernés (non vérifié : pas de Mac
+// réel en CI, G510). ENGINE_VULKAN_INDEXED_VIA_INDIRECT=0 ou 1 force le choix (diagnostic).
+void VulkanDevice::detectIndexedDrawWorkaround()
+{
+    auto driver = makeStruct<VkPhysicalDeviceDriverProperties>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES);
+    auto properties2 = makeStruct<VkPhysicalDeviceProperties2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
+    properties2.pNext = &driver;
+    vkGetPhysicalDeviceProperties2(physicalDevice_, &properties2);
+    bool wanted = driver.driverID == VK_DRIVER_ID_MOLTENVK && std::string_view(properties_.deviceName).find("Paravirtual") != std::string_view::npos;
+    if (const char *forced = std::getenv("ENGINE_VULKAN_INDEXED_VIA_INDIRECT"); forced != nullptr && (forced[0] == '0' || forced[0] == '1'))
+        wanted = forced[0] == '1';
+    // Une commande indirecte porte firstInstance : sans drawIndirectFirstInstance, seuls les dessins à firstInstance nul pourraient
+    // passer ; le contournement est alors abandonné (dessins directs, comme avant).
+    indexedDrawsViaIndirect_ = wanted && features_.drawIndirectFirstInstance != VK_FALSE;
+    if (indexedDrawsViaIndirect_)
+        LOG_INFO("Vulkan: indexed draws are recorded as one-command indirect draws on this device (", properties_.deviceName, ", G510)");
+    else if (wanted)
+        LOG_WARNING("Vulkan: indexed draws should go through indirect commands on this device, but drawIndirectFirstInstance is missing");
 }
 
 Result<> VulkanDevice::createInstance(const DeviceDesc &desc)
@@ -1275,6 +1301,14 @@ void VulkanDevice::destroy(BufferHandle handle)
     if (!buffer)
         return;
     queueRelease([this, b = *buffer]() { vmaDestroyBuffer(allocator_, b.buffer, b.allocation); });
+}
+
+void VulkanDevice::destroyInternalBuffer(BufferHandle handle)
+{
+    auto buffer = buffers_.remove(handle);
+    if (!buffer)
+        return;
+    queueRelease([this, b = *buffer]() { vmaDestroyBuffer(allocator_, b.buffer, b.allocation); }, false);
 }
 
 void VulkanDevice::destroyTextureNow(TextureRes &texture) noexcept

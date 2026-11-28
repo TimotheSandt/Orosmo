@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <span>
 
 namespace orosmo::rhi::vk
 {
@@ -75,7 +76,14 @@ VkEncoder::VkEncoder(VulkanDevice &device) : device_(device)
         error_ = commandBuffer.error();
 }
 
-VkEncoder::~VkEncoder() { releaseCommandBuffers(); }
+VkEncoder::~VkEncoder()
+{
+    releaseCommandBuffers();
+    // Après la soumission (l'encodeur est détruit à la fin de VulkanDevice::submit) ou sans elle (abandon, erreur) : la
+    // libération attend la série de la dernière soumission, sans attendre d'image présentée (rendu hors écran sans `present`).
+    for (BufferHandle h : indexedArgs_)
+        device_.destroyInternalBuffer(h);
+}
 
 // Un encodeur abandonné (erreur, jamais soumis) rend ses tampons à leur réserve, quel que soit leur état (même en cours
 // d'enregistrement) : ils seront remis à zéro avec elle.
@@ -582,8 +590,49 @@ void VkEncoder::draw(std::uint32_t vertexCount, std::uint32_t instanceCount, std
 void VkEncoder::drawIndexed(std::uint32_t indexCount, std::uint32_t instanceCount, std::uint32_t firstIndex, std::int32_t vertexOffset,
                             std::uint32_t firstInstance)
 {
-    if (beforeDraw(true, "drawIndexed"))
-        vkCmdDrawIndexed(commandBuffer_, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+    if (!beforeDraw(true, "drawIndexed"))
+        return;
+    if (device_.indexedDrawsViaIndirect_ && indexCount > 0 && instanceCount > 0)
+    {
+        // G510 : même dessin, lu par le GPU dans une commande indirecte (voir VulkanDevice::detectIndexedDrawWorkaround).
+        VkBuffer buffer = VK_NULL_HANDLE;
+        VkDeviceSize offset = 0;
+        if (indexedIndirectArgs({indexCount, instanceCount, firstIndex, vertexOffset, firstInstance}, buffer, offset))
+            vkCmdDrawIndexedIndirect(commandBuffer_, buffer, offset, 1, sizeof(VkDrawIndexedIndirectCommand));
+        return;
+    }
+    vkCmdDrawIndexed(commandBuffer_, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+}
+
+bool VkEncoder::indexedIndirectArgs(const VkDrawIndexedIndirectCommand &command, VkBuffer &buffer, VkDeviceSize &offset)
+{
+    constexpr VkDeviceSize kCommand = sizeof(VkDrawIndexedIndirectCommand);
+    const BufferRes *current = indexedArgs_.empty() ? nullptr : device_.get(indexedArgs_.back());
+    if (current == nullptr || indexedArgsUsed_ + kCommand > current->desc.size)
+    {
+        // Nouveau tampon, double du précédent (256 commandes au départ) ; les précédents restent lus par les commandes déjà écrites.
+        BufferDesc desc;
+        desc.size = current == nullptr ? 256 * kCommand : current->desc.size * 2;
+        desc.usage = BufferUsage::kIndirect;
+        desc.memory = MemoryKind::kUpload;
+        desc.debugName = "vk.indexedDrawArgs";
+        auto created = device_.createBuffer(desc, {});
+        if (!check(created.has_value(), created ? ErrorCode::kUnknown : created.error().code,
+                   "drawIndexed: cannot allocate the indirect arguments (" + (created ? std::string() : created.error().message) + ")"))
+            return false;
+        indexedArgs_.push_back(*created);
+        indexedArgsUsed_ = 0;
+    }
+    const BufferHandle handle = indexedArgs_.back();
+    // Tampon neuf, encore jamais soumis : écriture directe dans sa mémoire mappée (updateBuffer, chemin kUpload).
+    if (auto r = device_.updateBuffer(handle, indexedArgsUsed_, std::as_bytes(std::span(&command, 1)));
+        !check(r.has_value(), r ? ErrorCode::kUnknown : r.error().code, "drawIndexed: cannot write the indirect arguments"))
+        return false;
+    noteBuffer(handle, device_.get(handle));
+    buffer = device_.get(handle)->buffer;
+    offset = indexedArgsUsed_;
+    indexedArgsUsed_ += kCommand;
+    return true;
 }
 
 void VkEncoder::drawIndirect(BufferHandle args, std::uint64_t offset, std::uint32_t drawCount, std::uint32_t stride)

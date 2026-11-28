@@ -64,6 +64,8 @@ class VkEncoder final : public CommandEncoder
     bool beforeDraw(bool indexed, const char *what);
     void applyViewport();
     void releaseCommandBuffers() noexcept;
+    // M9-L2 (G510) : place d'une commande de dessin indexé indirecte dans les tampons d'arguments de l'encodeur.
+    bool indexedIndirectArgs(const VkDrawIndexedIndirectCommand &command, VkBuffer &buffer, VkDeviceSize &offset);
     // Transition d'une sous-ressource (niveau, couche ou tranche) d'une texture vivante.
     void transition(const TextureRes &texture, VkImageLayout from, VkImageLayout to, std::uint32_t mip, std::uint32_t mipCount, std::uint32_t layer,
                     std::uint32_t layerCount);
@@ -74,6 +76,10 @@ class VkEncoder final : public CommandEncoder
     std::optional<Error> error_;
     std::vector<BufferHandle> uploadBuffers_;
     std::vector<QueryPoolHandle> queryPools_;
+    // M9-L2 (G510) : tampons d'arguments (mémoire d'envoi) des dessins indexés joués en indirect ; rendus à la destruction de
+    // l'encodeur (après sa soumission), détruits dès que le GPU a fini (VulkanDevice::destroyInternalBuffer).
+    std::vector<BufferHandle> indexedArgs_;
+    VkDeviceSize indexedArgsUsed_ = 0;
 
     // Passe
     struct PassAttachment
