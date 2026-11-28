@@ -41,6 +41,7 @@ make demo-test TEST_ARGS='--test-suite=core/config'
 | --- | --- |
 | `ENGINE_TEST_BACKENDS=opengl,vulkan` | Backends testés par les suites communes ; sans elle, tous ceux qui sont compilés. |
 | `ENGINE_TEST_REQUIRE_GPU=1` | Un test GPU sans pilote échoue au lieu d'être sauté (utilisé en CI). |
+| `ENGINE_TEST_REQUIRE_VALIDATION=1` | Le test « the validation layer is active » échoue si la couche de validation n'est pas chargée (CI macOS). |
 | `ENGINE_TEST_NO_GPU=1` | Une aide de test qui crée un périphérique échoue (posée par `make demo-test-unit`). |
 | `LIBGL_ALWAYS_SOFTWARE=1` | Force le rendu logiciel de Mesa (llvmpipe), comme en CI. |
 
