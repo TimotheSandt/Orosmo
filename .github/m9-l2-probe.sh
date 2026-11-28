@@ -14,7 +14,10 @@ run() {
     grep -E "validation|ERROR|error" "$OUT/$name/demo.log" | head -5
 }
 run default
-PRE="OROSMO_M9_PROBE=readback,fresh"; run fresh --ui off; PRE=""
-PRE="OROSMO_M9_PROBE=readback,fresh"; run fresh-inst --ui off --instances 64; PRE=""
-vulkaninfo > "$OUT/vulkaninfo.txt" 2>&1
+PRE="MTL_DEBUG_LAYER=1 MTL_DEBUG_LAYER_ERROR_MODE=nslog MTL_DEBUG_LAYER_WARNING_MODE=nslog"; run mtlval --ui off --instances 64; PRE=""
+PRE="MTL_DEBUG_LAYER=1"; run mtlval-assert --ui off; PRE=""
+PRE="MTL_SHADER_VALIDATION=1 MTL_DEBUG_LAYER=1 MTL_DEBUG_LAYER_ERROR_MODE=nslog"; run mtlshader --ui off; PRE=""
+mkdir -p "$OUT/msl"
+PRE="MVK_CONFIG_SHADER_DUMP_DIR=$OUT/msl MVK_CONFIG_LOG_LEVEL=4"; run dump --ui off --instances 64 --gpu-driven on; PRE=""
+ls "$OUT/msl" | head -50
 exit 0
