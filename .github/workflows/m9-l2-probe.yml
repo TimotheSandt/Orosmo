@@ -1,0 +1,59 @@
+# TEMPORAIRE (M9-L2) : sonde du rendu de la démo sous MoltenVK. Retiré avant la fin du lot.
+name: m9-l2-probe
+on:
+  push:
+    branches: ['feat/M9-L2-*']
+jobs:
+  probe:
+    runs-on: macos-26
+    env:
+      VCPKG_ROOT: /tmp/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-archives
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPRESS: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca
+        with:
+          toolchain: stable
+      - run: brew install ninja cmake zip ccache molten-vk vulkan-loader vulkan-validationlayers vulkan-tools
+      - name: Vulkan env
+        run: |
+          ICD="$(brew --prefix)/etc/vulkan/icd.d/MoltenVK_icd.json"
+          BREW_LAYERS="$(brew --prefix vulkan-validationlayers)/share/vulkan/explicit_layer.d"
+          LAYER_LIB="$(brew --prefix vulkan-validationlayers)/lib/libVkLayer_khronos_validation.dylib"
+          LAYERS="$RUNNER_TEMP/vulkan-layers"; mkdir -p "$LAYERS"
+          python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); m["layer"]["library_path"]=sys.argv[2]; json.dump(m,open(sys.argv[3],"w"),indent=1)' \
+            "$BREW_LAYERS/VkLayer_khronos_validation.json" "$LAYER_LIB" "$LAYERS/VkLayer_khronos_validation.json"
+          { echo "VK_DRIVER_FILES=$ICD"; echo "VK_ICD_FILENAMES=$ICD"; echo "VK_LAYER_PATH=$LAYERS"; } >> "$GITHUB_ENV"
+          brew list --versions molten-vk vulkan-loader vulkan-validationlayers
+      - run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+      - uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-arm64-osx-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: |
+            vcpkg-archives-arm64-osx-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-archives-arm64-osx-
+      - run: |
+          mkdir -p .vcpkg-archives
+          "$VCPKG_ROOT/vcpkg" install --triplet=arm64-osx --x-manifest-root=. --x-install-root=./vcpkg_installed --no-print-usage
+      - uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-arm64-osx-${{ github.run_id }}
+          restore-keys: ccache-arm64-osx-
+      - run: echo "$(brew --prefix)/opt/ccache/libexec" >> "$GITHUB_PATH"
+      - name: Build
+        run: make -j3 all-debug VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed
+      - name: Probe variants
+        run: sh .github/m9-l2-probe.sh "$GITHUB_WORKSPACE/probe"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m9-l2-probe
+          path: probe
