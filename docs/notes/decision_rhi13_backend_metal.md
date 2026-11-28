@@ -133,7 +133,8 @@ python3 tools/perf_compare.py --api vulkan --runs 7 --frames 600 --ui off --extr
 MVK_CONFIG_PERFORMANCE_TRACKING=1 MVK_CONFIG_ACTIVITY_PERFORMANCE_LOGGING_STYLE=2 MVK_CONFIG_LOG_LEVEL=3 \
   apps/demo/bin/release/Orosmo --api vulkan --strict-backend --ui full --capture /tmp/mvk --capture-frames 600
 
-# 5. Premier affichage : à froid (cache de pipelines supprimé), puis à chaud
+# 5. Premier affichage : à froid (cache de pipelines du moteur vide), puis à chaud
+rm -rf /tmp/pc-vide
 ENGINE_VULKAN_PIPELINE_CACHE_DIR=/tmp/pc-vide time apps/demo/bin/release/Orosmo --api vulkan --strict-backend --capture /tmp/f1 --capture-frames 1
 ENGINE_VULKAN_PIPELINE_CACHE_DIR=/tmp/pc-vide time apps/demo/bin/release/Orosmo --api vulkan --strict-backend --capture /tmp/f1 --capture-frames 1
 
@@ -142,7 +143,7 @@ xcrun xctrace record --template 'Metal System Trace' --output orosmo.trace --lau
   "$PWD/apps/demo/bin/release/Orosmo" --api vulkan --strict-backend --ui full --capture /tmp/trace --capture-frames 600
 ```
 
-À relever en plus : `Capabilities::timestampQueries` (si vrai, les lignes `RenderGraph/...` de `perf_compare.py` sont des temps
+Les commandes 1 à 4 sont celles de la sonde ou de la CI (sur le runner) ; les commandes 5 et 6 n'ont pas été essayées. À relever en plus : `Capabilities::timestampQueries` (si vrai, les lignes `RenderGraph/...` de `perf_compare.py` sont des temps
 GPU ; sinon des temps CPU), la ligne « indexed draws are recorded as one-command indirect draws » (elle ne doit **pas** apparaître,
 G510), la fenêtre en Retina (G520) avec et sans `--vsync`.
 
