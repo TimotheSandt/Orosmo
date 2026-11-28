@@ -321,8 +321,9 @@ jobs:
           test -s /tmp/capture/scene.png && test -s /tmp/capture/ui.png
           orosmo doctor
 
-  # macOS: install.sh brings the Vulkan loader and MoltenVK (Homebrew), then the project is built AND run (Vulkan, no OpenGL
-  # fallback there) without any VK_* variable.
+  # macOS: install.sh brings the Vulkan loader and MoltenVK (Homebrew), then the project is built without any VK_* variable.
+  # arm64 also runs it (Vulkan, no OpenGL fallback there). Intel does not: on the virtual GPU of macos-15-intel MoltenVK
+  # aborts, `vulkaninfo` included (docs/GAPS.md G523).
   fresh-macos:
     name: Fresh machine (macOS ${{ matrix.arch }}, install.sh)
     needs: build
@@ -347,17 +348,20 @@ jobs:
       - name: Local release directory (SHA256SUMS)
         working-directory: ${{ runner.temp }}/release
         run: shasum -a 256 -- * > SHA256SUMS && cat SHA256SUMS
-      - name: install.sh --yes, orosmo init, build, run (headless, Vulkan), doctor
+      - name: install.sh --yes, orosmo init, build, run (headless, Vulkan, arm64), doctor
         env:
           OROSMO_DOWNLOAD_BASE: ${{ runner.temp }}/release
+          ARCH: ${{ matrix.arch }}
         run: |
           set -eux
           sh site/public/install.sh --yes
           export PATH="$HOME/.orosmo/bin:$PATH"
           cd "$RUNNER_TEMP" && orosmo init mygame && cd mygame
           orosmo build
-          orosmo run -- --api vulkan --strict-backend --headless --capture "$RUNNER_TEMP/capture" --capture-frames 3
-          test -s "$RUNNER_TEMP/capture/scene.png" && test -s "$RUNNER_TEMP/capture/ui.png"
+          if [ "$ARCH" = arm64 ]; then
+            orosmo run -- --api vulkan --strict-backend --headless --capture "$RUNNER_TEMP/capture" --capture-frames 3
+            test -s "$RUNNER_TEMP/capture/scene.png" && test -s "$RUNNER_TEMP/capture/ui.png"
+          fi
           orosmo doctor
 
   fresh-windows:
@@ -506,7 +510,8 @@ jobs:
             chosen with `--api vulkan|opengl`. Linux and Windows fall back to OpenGL if Vulkan cannot start.
             **macOS**: Vulkan through MoltenVK only (`brew install vulkan-loader molten-vk`, done by `install.sh`, not shipped in
             the package; `orosmo doctor` checks both). No OpenGL fallback (macOS stops at 4.1) and no native Metal backend. macOS
-            is tested in CI on a virtual GPU only, not on a real Mac.
+            is tested in CI on a virtual GPU only, not on a real Mac; the Intel (x64) package is built but its rendering has
+            never been seen to work.
             **Guide**: `docs/USING_THE_ENGINE.md`; incompatible changes: `docs/releases/`.
           generate_release_notes: true
           files: dist/*

@@ -67,7 +67,8 @@ Il n'existe pas de backend Metal natif.
 
 :::caution
 macOS n'est vérifié que par l'intégration continue, sur la machine virtuelle de GitHub (GPU paravirtualisé), jamais sur un
-vrai Mac : fenêtre visible, saisie, écran Retina, GPU physique et performances ne sont pas essayés (G520 à G524 dans
+vrai Mac : fenêtre visible, saisie, écran Retina, GPU physique et performances ne sont pas essayés. Sur Mac Intel, le paquet
+se construit mais aucun rendu n'a pu être observé (MoltenVK s'arrête sur la machine virtuelle de la CI). Voir G520 à G524 dans
 [`docs/GAPS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/GAPS.md)).
 :::
 
@@ -161,7 +162,8 @@ après une nouvelle installation.
 |---|---|---|
 | Linux x64, arm64 | glibc 2.39 ou plus récent (Ubuntu 24.04 et suivants) ; GCC 13+ ou Clang 17+ | x64 seulement : Ubuntu 24.04, g++ 13.3 |
 | Windows x64 | MinGW-w64 g++ 13+ (MSYS2 MINGW64) | non |
-| macOS arm64, x64 | outils en ligne de commande Xcode ; `vulkan-loader` et `molten-vk` (Homebrew, non embarqués) | CI seulement, sur machine virtuelle |
+| macOS arm64 | outils en ligne de commande Xcode ; `vulkan-loader` et `molten-vk` (Homebrew, non embarqués) | CI seulement, sur machine virtuelle |
+| macOS x64 (Intel) | idem | non : compile, rendu jamais observé |
 
 Linux est la seule plateforme essayée de bout en bout sur une vraie machine. Sous Windows et macOS, l'outil, le paquet et les
 installeurs sont construits par la CI mais n'ont pas été essayés sur une machine (G216 dans
