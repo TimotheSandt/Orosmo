@@ -202,7 +202,72 @@ Result<> VulkanDevice::init(const DeviceDesc &desc)
     fillCapabilities();
     if (auto r = initPipelines(); !r)
         return r;
-    return initSwapchain(desc); // image de fond (hors écran : une texture RGBA8) et, pour une fenêtre, la chaîne d'échange
+    if (auto r = initSwapchain(desc); !r) // image de fond (hors écran : une texture RGBA8) et, pour une fenêtre, la chaîne d'échange
+        return r;
+    checkTimestampsMeasureWork();
+    return {};
+}
+
+// MoltenVK n'écrit des heures GPU que si le périphérique Metal échantillonne ses compteurs ; sinon (GPU paravirtualisé du runner
+// macOS, M9-L1) chaque horodatage reçoit l'heure CPU de la fin de son tampon de commandes : deux horodatages qui encadrent du travail
+// sont égaux, et rien dans les propriétés Vulkan ne le signale (timestampPeriod 1, timestampValidBits 64). On le constate ici sur un
+// remplissage de tampon encadré par deux horodatages : s'ils sont égaux, `timestampQueries` est faux (règle 11). Limité à MoltenVK :
+// les autres pilotes écrivent l'heure à l'exécution.
+void VulkanDevice::checkTimestampsMeasureWork()
+{
+    if (!caps_.timestampQueries)
+        return;
+    auto driver = makeStruct<VkPhysicalDeviceDriverProperties>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES);
+    auto properties2 = makeStruct<VkPhysicalDeviceProperties2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
+    properties2.pNext = &driver;
+    vkGetPhysicalDeviceProperties2(physicalDevice_, &properties2);
+    if (driver.driverID != VK_DRIVER_ID_MOLTENVK)
+        return;
+
+    constexpr VkDeviceSize kProbeSize = 16u << 20; // 16 Mio remplis 4 fois : assez de travail pour séparer deux heures GPU
+    auto bufferInfo = makeStruct<VkBufferCreateInfo>(VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO);
+    bufferInfo.size = kProbeSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VmaAllocationCreateInfo alloc{};
+    alloc.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VmaAllocation allocation = nullptr;
+    auto queryInfo = makeStruct<VkQueryPoolCreateInfo>(VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO);
+    queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    queryInfo.queryCount = 2;
+    VkQueryPool pool = VK_NULL_HANDLE;
+    bool measured = false;
+    std::uint64_t stamps[2] = {0, 0};
+    if (vmaCreateBuffer(allocator_, &bufferInfo, &alloc, &buffer, &allocation, nullptr) == VK_SUCCESS &&
+        vkCreateQueryPool(device_, &queryInfo, nullptr, &pool) == VK_SUCCESS)
+    {
+        vkResetQueryPool(device_, pool, 0, 2);
+        const auto submitted = immediate(
+            [&](VkCommandBuffer commandBuffer)
+            {
+                vkCmdWriteTimestamp2(commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, pool, 0);
+                for (std::uint32_t i = 0; i < 4; ++i)
+                    vkCmdFillBuffer(commandBuffer, buffer, 0, VK_WHOLE_SIZE, i);
+                vkCmdWriteTimestamp2(commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, pool, 1);
+            });
+        measured = submitted.has_value() && vkGetQueryPoolResults(device_, pool, 0, 2, sizeof(stamps), stamps, sizeof(std::uint64_t),
+                                                                  VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) == VK_SUCCESS;
+    }
+    if (pool != VK_NULL_HANDLE)
+        vkDestroyQueryPool(device_, pool, nullptr);
+    if (buffer != VK_NULL_HANDLE)
+        vmaDestroyBuffer(allocator_, buffer, allocation);
+    if (!measured)
+    {
+        LOG_WARNING("Vulkan (MoltenVK): the timestamp check could not run; timestamp queries are kept");
+        return;
+    }
+    if (stamps[1] <= stamps[0])
+    {
+        caps_.timestampQueries = false;
+        LOG_WARNING("Vulkan (MoltenVK): timestamps do not measure GPU work (no Metal counter sampling on this GPU): timestampQueries = false");
+    }
 }
 
 Result<> VulkanDevice::createInstance(const DeviceDesc &desc)
@@ -546,6 +611,8 @@ void VulkanDevice::fillCapabilities()
     caps_.bc7Textures = features_.textureCompressionBC != VK_FALSE && formatSupports(Format::kBC7Unorm, TextureUsage::kSampled | TextureUsage::kCopyDst);
     caps_.astcTextures = features_.textureCompressionASTC_LDR != VK_FALSE && formatSupports(Format::kASTC4x4Unorm, TextureUsage::kSampled | TextureUsage::kCopyDst);
     caps_.wireframe = features_.fillModeNonSolid != VK_FALSE;
+    caps_.srgbStorageImages = formatSupports(Format::kRGBA8Srgb, TextureUsage::kStorage);
+    caps_.validation = validationEnabled_;
     caps_.spirvShaders = true;
     caps_.shaderFloat64 = features_.shaderFloat64 != VK_FALSE;
     // Capacités réservées (RHI-18) : faux tant que non implémentées.
