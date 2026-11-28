@@ -179,11 +179,13 @@ Result<> VulkanDevice::submit(std::unique_ptr<CommandEncoder> encoder)
 void VkEncoder::transition(const TextureRes &texture, VkImageLayout from, VkImageLayout to, std::uint32_t mip, std::uint32_t mipCount, std::uint32_t layer,
                            std::uint32_t layerCount)
 {
-    // Image 3D : une seule couche Vulkan (les tranches d'une cible de rendu 3D sont des couches de vue, pas d'image).
+    // Image 3D : une seule couche Vulkan (les tranches d'une cible de rendu 3D sont des couches de vue, pas d'image). Toutes les
+    // couches restantes plutôt que 1 : avec 2D_ARRAY_COMPATIBLE, « 1 » désignerait une seule tranche une fois maintenance9 activée
+    // (avertissement des couches 1.4.36x sur MoltenVK, M9-L1) ; VK_REMAINING_ARRAY_LAYERS désigne toute la profondeur dans les deux cas.
     if (texture.desc.dimension == TextureDimension::k3D)
     {
         layer = 0;
-        layerCount = 1;
+        layerCount = VK_REMAINING_ARRAY_LAYERS;
     }
     transitionImage(commandBuffer_, texture.image, texture.aspect, from, to, mip, mipCount, layer, layerCount);
 }
