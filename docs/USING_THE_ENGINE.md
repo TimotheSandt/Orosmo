@@ -278,7 +278,7 @@ liste des changements incompatibles est dans `docs/releases/<jalon>.md`) ; un **
 
 ## 8. Limites connues
 
-- **Backend graphique** : OpenGL (défaut) et Vulkan ; Metal n'existe pas avant M9 et est refusé avec un message. Choix par
+- **Backend graphique** : OpenGL (défaut) et Vulkan ; il n'y a pas de backend Metal natif (`metal` est refusé avec un message ; macOS passe par Vulkan et MoltenVK). Choix par
   `--backend <opengl|vulkan|metal>` (alias de `--api`, casse indifférente, `--backend=vulkan` accepté). Si Vulkan ne démarre pas (pas
   de chargeur, pas de GPU Vulkan 1.3), la raison s'affiche sur stderr et la démo retombe sur OpenGL ; `--strict-backend` supprime ce
   repli (code de sortie non nul). Sous macOS il n'y a jamais de repli (OpenGL 4.1) : voir §2.

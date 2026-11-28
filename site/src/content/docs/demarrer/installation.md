@@ -165,8 +165,8 @@ après une nouvelle installation.
 | macOS arm64 | outils en ligne de commande Xcode ; `vulkan-loader` et `molten-vk` (Homebrew, non embarqués) | CI seulement, sur machine virtuelle |
 | macOS x64 (Intel) | idem | non : compile, rendu jamais observé |
 
-Linux est la seule plateforme essayée de bout en bout sur une vraie machine. Sous Windows et macOS, l'outil, le paquet et les
-installeurs sont construits par la CI mais n'ont pas été essayés sur une machine (G216 dans
+Linux est la seule plateforme essayée de bout en bout sur une vraie machine. Sous Windows et macOS, l'outil et le paquet sont
+exercés par la CI (installeurs compris à la construction d'une release) mais n'ont pas été essayés sur une vraie machine (G216 dans
 [`docs/GAPS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/GAPS.md)). Un `OROSMO_HOME` dont le chemin contient
 une espace n'est pas vérifié (G214) : choisissez un chemin sans espace. Paquets natifs (`.deb`, Homebrew, winget) et
 signature des binaires ne sont pas encore proposés (G218).

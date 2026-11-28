@@ -1,6 +1,6 @@
 # Orosmo
 
-**Orosmo** est un moteur 3D et 2D générique en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec une interface décrite dans un langage maison (`.cui`) précompilé en C++. *(Note A37 : le code procédural de génération de terrain est archivé dans la branche `archive/procedural-world` et poursuivra sa vie dans un projet séparé / addon M11.)*
+**Orosmo** est un moteur 3D et 2D générique en **C++23** (rendu Vulkan et OpenGL ; sous macOS, Vulkan par MoltenVK, sans backend Metal natif), avec une interface décrite dans un langage maison (`.cui`) précompilé en C++. *(Note A37 : le code procédural de génération de terrain est archivé dans la branche `archive/procedural-world` et poursuivra sa vie dans un projet séparé / addon M11.)*
 
 > Première release utilisable : M3 (guide : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)). L'architecture évolue encore ;
 > les changements incompatibles sont listés dans [docs/releases/](docs/releases/). Spécification, checklist et plan : [docs/](docs/README.md). Règles de travail : [CLAUDE.md](CLAUDE.md).

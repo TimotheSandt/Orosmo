@@ -118,7 +118,8 @@ Les mesures de performance comparées se font avec `tools/perf_compare.py` ([Mes
 | Linux x64 | `make check`, build debug `-Werror`, `make demo-test` (Mesa llvmpipe et lavapipe sous Xvfb), `make cui-test`, capture et comparaison à la référence, capture sans fenêtre identique à la capture fenêtrée, tests Python, `make demo-capture`, `make e2e-init` (paquet avec `deps/` extrait en lecture seule, `orosmo init`, compilation sans vcpkg, lancement). |
 | Linux arm64 | Build debug et `make demo-test`. |
 | Linux x64 ASan + UBSan | `make demo-test SANITIZE=address,undefined`. |
-| Windows x64 (MinGW), macOS arm64 | Build debug et `make demo-test` par vcpkg, `make e2e-init` sans lancement graphique (`E2E_RUN_GRAPHICS=0`) ; bloquants. Sans `ENGINE_TEST_REQUIRE_GPU`, un test GPU sans pilote y est sauté. |
+| Windows x64 (MinGW) | Build debug et `make demo-test` par vcpkg, `make e2e-init` sans lancement graphique (`E2E_RUN_GRAPHICS=0`) ; bloquant. Sans `ENGINE_TEST_REQUIRE_GPU`, un test GPU sans pilote y est sauté. |
+| macOS arm64 (`macos-26`, MoltenVK) | Build debug et `make demo-test` par vcpkg, tests GPU Vulkan et de fenêtre exigés avec la couche de validation, captures comparées (`tools/demo_reference_check.py`), `make e2e-init` avec lancement ; bloquant. |
 
 Les pilotes logiciels de la CI n'ont pas toutes les capacités d'un GPU : un test qui ne passe qu'en CI se reproduit avec la
 même version de Mesa et `LIBGL_ALWAYS_SOFTWARE=1`. Le GPU, le pilote et les mesures de référence sont notés dans
@@ -128,8 +129,8 @@ même version de Mesa et `LIBGL_ALWAYS_SOFTWARE=1`. Le GPU, le pilote et les mes
 
 - La comparaison OpenGL/Vulkan est automatisée (`make demo-vulkan-check`), mais une seule référence OpenGL sert aux deux
   backends et la comparaison ne fait partie ni de `make demo-test` ni de la CI.
-- Les tests graphiques et les captures ne tournent en CI que sous Linux.
-- Metal n'est pas testé (backend absent).
+- Les tests graphiques et les captures tournent en CI sous Linux et macOS (GPU paravirtualisé), pas sous Windows.
+- Il n'y a pas de backend Metal natif à tester.
 
 ## Voir aussi
 

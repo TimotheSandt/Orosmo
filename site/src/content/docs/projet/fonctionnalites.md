@@ -90,8 +90,9 @@ Ces éléments sont « Partiel » dans la checklist : ils sont vérifiés sous L
 
 ## Plateformes
 
-Aucune plateforme n'est encore « Fait » dans la checklist. Linux est la seule vérifiée. Windows et macOS sont compilés
-par la CI, mais le code récent n'y a pas été observé. Le mode sans fenêtre (`--headless`) est vérifié sous Linux :
+Aucune plateforme n'est encore « Fait » dans la checklist. Linux est la seule vérifiée sur une vraie machine. Windows est
+compilé par la CI sans rendu ; macOS arm64 est testé par la CI sur machine virtuelle (Vulkan par MoltenVK), jamais sur un
+vrai Mac. Le mode sans fenêtre (`--headless`) est vérifié sous Linux et sur ce runner :
 [Cadence d'images, mode sans fenêtre, captures](/guides/application/cadence-captures/).
 
 ## Prévu
@@ -100,7 +101,8 @@ Ces fonctions n'existent pas encore. Le plan est dans
 [`docs/05-PLAN_PAR_JALONS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/05-PLAN_PAR_JALONS.md), les limites
 connues dans [`docs/GAPS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/GAPS.md).
 
-- Validation sur macOS et backend Metal (jalon M9). Metal est reconnu par le RHI mais refusé : il n'est pas disponible.
+- Essai sur un vrai Mac. Un backend Metal natif n'est pas prévu à ce jour (report proposé après M9) : Metal est reconnu par
+  le RHI mais refusé.
 - Extensions de rendu : voxels et ray tracing, ajoutés comme plugins du renderer (jalon M10).
 - Modules et addons, puis registre d'addons (jalons M11 et M12).
 - Effets livrés comme modules : brouillard, particules, occlusion ambiante, eau, réfraction (jalon M13).
