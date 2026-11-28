@@ -321,23 +321,33 @@ jobs:
           test -s /tmp/capture/scene.png && test -s /tmp/capture/ui.png
           orosmo doctor
 
+  # macOS: install.sh brings the Vulkan loader and MoltenVK (Homebrew), then the project is built AND run (Vulkan, no OpenGL
+  # fallback there) without any VK_* variable.
   fresh-macos:
-    name: Fresh machine (macOS arm64, install.sh)
+    name: Fresh machine (macOS ${{ matrix.arch }}, install.sh)
     needs: build
     if: ${{ !cancelled() && needs.build.result == 'success' }}
-    runs-on: macos-latest
-    continue-on-error: true   # not proven yet; macOS OpenGL stops at 4.1: build only, no run (as e2e-init in ci.yml)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            os: macos-latest
+          - arch: x64
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true   # not blocking the release: virtual GPU of the runner, never tried on a real Mac (docs/GAPS.md)
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: orosmo-macos-arm64
+          name: orosmo-macos-${{ matrix.arch }}
           path: ${{ runner.temp }}/release
       - name: Local release directory (SHA256SUMS)
         working-directory: ${{ runner.temp }}/release
         run: shasum -a 256 -- * > SHA256SUMS && cat SHA256SUMS
-      - name: install.sh --yes, orosmo init, build
+      - name: install.sh --yes, orosmo init, build, run (headless, Vulkan), doctor
         env:
           OROSMO_DOWNLOAD_BASE: ${{ runner.temp }}/release
         run: |
@@ -346,6 +356,9 @@ jobs:
           export PATH="$HOME/.orosmo/bin:$PATH"
           cd "$RUNNER_TEMP" && orosmo init mygame && cd mygame
           orosmo build
+          orosmo run -- --api vulkan --strict-backend --headless --capture "$RUNNER_TEMP/capture" --capture-frames 3
+          test -s "$RUNNER_TEMP/capture/scene.png" && test -s "$RUNNER_TEMP/capture/ui.png"
+          orosmo doctor
 
   fresh-windows:
     name: Fresh machine (Windows x64, install.ps1)
@@ -489,7 +502,11 @@ jobs:
             prebuilt and static (no vcpkg, no `make install`; the Vulkan loader, OpenGL and X11/Wayland come from the system).
             Installed by `orosmo install <version>` (checked against `SHA256SUMS`), or used offline: `orosmo init --package orosmo-pkg-<platform>.zip myproject`.
 
-            **Graphics API**: the RHI has an OpenGL 4.3+ backend (with `glClipControl`: OpenGL 4.5 or `GL_ARB_clip_control`);
-            Backends: OpenGL 4.3 and Vulkan 1.3 (`--backend vulkan|opengl`, fallback to OpenGL if Vulkan cannot start); Metal later. **Guide**: `docs/USING_THE_ENGINE.md`; incompatible changes: `docs/releases/`.
+            **Graphics API**: Vulkan 1.3 (default) and OpenGL 4.3+ (with `glClipControl`: OpenGL 4.5 or `GL_ARB_clip_control`),
+            chosen with `--api vulkan|opengl`. Linux and Windows fall back to OpenGL if Vulkan cannot start.
+            **macOS**: Vulkan through MoltenVK only (`brew install vulkan-loader molten-vk`, done by `install.sh`, not shipped in
+            the package; `orosmo doctor` checks both). No OpenGL fallback (macOS stops at 4.1) and no native Metal backend. macOS
+            is tested in CI on a virtual GPU only, not on a real Mac.
+            **Guide**: `docs/USING_THE_ENGINE.md`; incompatible changes: `docs/releases/`.
           generate_release_notes: true
           files: dist/*
