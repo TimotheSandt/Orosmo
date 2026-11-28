@@ -54,7 +54,7 @@ C'est la liste de référence. L'IA ne la modifie pas sans accord, sauf pour rem
 | RHI-10 | Dessin instancié et indirect | P0 | `drawIndexed` instancié ; `drawIndirect` avec compteur (multi-draw indirect). | Partiel |
 | RHI-11 | Minuteries GPU et noms de debug | P1 | Requêtes de temps par passe ; noms visibles dans RenderDoc. | Partiel |
 | RHI-12 | Pipeline de shaders | P0 | GLSL → SPIR-V hors ligne → SPIRV-Cross (MSL, GLSL) ; réflexion des liaisons ; inclusions ; rechargement à chaud. | Partiel |
-| RHI-13 | Backend Metal | P2 | Via MoltenVK validé d'abord ; backend natif seulement si les mesures le justifient. | Absent |
+| RHI-13 | Backend Metal | P2 | Via MoltenVK validé d'abord ; backend natif seulement si les mesures le justifient. | Absent (natif ; MoltenVK : Partiel, GPU de CI seulement ; décision proposée « reportée », A92) |
 | RHI-14 | Tests de rendu | P0 | Images de référence par backend, comparaison automatisée, rapport de différence. | Partiel — fait : comparaison automatisée avec rapport et image de différence (`tools/demo_parity.py --diff-out`, `make demo-vulkan-check`, 15 captures OpenGL/Vulkan). **Manque** : une référence par backend (une seule référence OpenGL sert aux deux), une seule scène, hors `demo-test` et CI (G143) |
 | RHI-15 | Rendu vers plusieurs cibles (MRT) | P0 | Jusqu'à 8 attachements couleur (lus dans `Capabilities`) + profondeur, format et opérations par cible ; sorties distinctes dans un même shader. | Fait (OpenGL) — preuve : `docs/STATUS.md`, « M2 B4 » |
 | RHI-16 | Textures 3D et images de stockage | P0 | Lecture/écriture en compute ; formats flottants 16 et 32 bits, `RG16F`, `RGBA16F`, `R32F`, `R32UI` garantis. | Partiel |

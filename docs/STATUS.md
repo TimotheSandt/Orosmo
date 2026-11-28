@@ -30,6 +30,15 @@ Mis à jour pour la fin de M8 (`v0.7.0` préparée, 2026-11-27), après la distr
 | **M15 Façade du projet** | **Planifié (A78, 2026-11-26)** : site vitrine soigné et documentation simplifiée, en fin de plan, après la charte et le wireframe de l'auteur ; la simplicité de l'API est planifiée en M8 (A77) | `docs/05` M15 et M8 |
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
+## M9 lot L4 : mesures sur le runner et décision RHI-13 (A90, A92)
+
+Branche `feat/M9-L4-mesures-decision`. Aucun code ; RHI-13 reste **Absent**.
+
+| Élément | Fichier | Commande | Résultat |
+| --- | --- | --- | --- |
+| Mesures indicatives sous MoltenVK (build, taille, premier affichage, temps CPU par image, compteurs MoltenVK) | `docs/notes/decision_rhi13_backend_metal.md` | `tools/perf_compare.py --api vulkan --runs 7 --frames 300` (sonde CI temporaire, 2 machines) | run 46121707903 : build release 116 / 152 s, démo 19,2 Mo, travail CPU hors écran 0,07 à 0,53 ms ; **aucune conclusion de performance** (GPU paravirtualisé, G530) |
+| Décision RHI-13, **proposée** : reportée, à remesurer sur un vrai Mac | même note, `docs/QUESTIONS.md` A92 | — | en attente de l'auteur |
+
 ## M9 lot L2 : rendu de la démo sous MoltenVK (A90)
 
 Branche `feat/M9-L2-rendu-moltenvk` (depuis celle de L1). Preuve : CI macOS uniquement (pas de Mac réel) ; `docs/GAPS.md` G510, G511.
