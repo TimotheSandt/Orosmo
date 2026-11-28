@@ -111,7 +111,7 @@ TEST_SUITE("rhi/opengl/window")
         // Le périphérique détruit, la fenêtre reste valide et peut en adopter un autre.
         CHECK(glfwGetWindowAttrib(window.handle, GLFW_CONTEXT_VERSION_MAJOR) >= 4);
         auto second = window.device();
-        SKIP_TEST_IF_NULL_FOR(second.get(), "opengl", "second windowed device");
+        REQUIRE(second != nullptr); // la première création a réussi : la fenêtre doit pouvoir en adopter un autre
         CHECK(second->beginFrame().has_value());
     }
 

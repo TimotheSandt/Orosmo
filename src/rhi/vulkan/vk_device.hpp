@@ -417,7 +417,7 @@ class VulkanDevice final : public Device
     Result<> createLogicalDevice();
     Result<> createAllocator();
     void fillCapabilities();
-    void checkTimestampsMeasureWork(); // MoltenVK : horodatages qui ne mesurent rien -> timestampQueries faux (voir vk_device.cpp)
+    Result<> checkTimestampsMeasureWork(); // MoltenVK : horodatages sans mesure -> timestampQueries faux ; erreur si périphérique perdu
     void detectIndexedDrawWorkaround(); // M9-L2 : GPU Metal paravirtualisé -> dessins indexés directs joués en indirect (vk_device.cpp)
     void shutdown() noexcept;
     Result<> submitRaw(std::span<const VkCommandBuffer> commandBuffers, const SubmitSync &sync);
