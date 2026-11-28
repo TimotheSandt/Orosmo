@@ -7,8 +7,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdlib>
-#include <cstring>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -585,16 +583,6 @@ orosmo::core::Result<> DemoScene::init(orosmo::rhi::Device &device, orosmo::rend
         }
     }
     (void)groundData;
-    probeDevice_ = &device; // M9-L2 SONDE TEMPORAIRE
-    if (const char *probe = std::getenv("OROSMO_M9_PROBE"); probe != nullptr && std::strstr(probe, "readback") != nullptr)
-    {
-        auto vb = device.readBuffer(groundMesh_.vertexBuffer(), 0, groundMesh_.vertexBufferSize());
-        auto ib = device.readBuffer(groundMesh_.indexBuffer(), 0, std::uint64_t{groundMesh_.indexCount()} * 4);
-        const bool vbOk = vb && vb->size() == groundData.vertices.size() * 4 && std::memcmp(vb->data(), groundData.vertices.data(), vb->size()) == 0;
-        const bool ibOk = ib && ib->size() == groundData.indices.size() * 4 && std::memcmp(ib->data(), groundData.indices.data(), ib->size()) == 0;
-        LOG_WARNING("M9PROBE readback ground: vertices ", vbOk ? "OK" : "BAD", " indices ", ibOk ? "OK" : "BAD", " vcount ",
-                    groundData.vertices.size() / 9, " icount ", groundMesh_.indexCount(), " instances ", groundMesh_.instanceCount());
-    }
 
     elapsedSeconds_ = 0.0f;
     applyTransforms();
@@ -996,22 +984,6 @@ orosmo::core::Result<> DemoScene::render(orosmo::renderer::SceneRenderer &render
         ++shadowFrames_;
     }
     meshDraws_ = 0;
-    ++probeFrame_;
-    if (const char *probe = std::getenv("OROSMO_M9_PROBE"); probe != nullptr && std::strstr(probe, "fresh") != nullptr && probeDevice_ != nullptr)
-    {
-        // M9-L2 SONDE TEMPORAIRE : un maillage créé à chaque image (après le premier envoi), dessiné en plus.
-        auto fresh = orosmo::renderer::Mesh::create(*probeDevice_, buildCourtyardMeshData());
-        if (fresh)
-        {
-            fresh->setProgram(meshProgram_);
-            fresh->setPosition({0.0f, 3.0f, 0.0f});
-            probeMeshes_.push_back(std::move(*fresh));
-            if (auto r = renderer.drawMesh(probeMeshes_.back()); !r)
-            {
-                return r;
-            }
-        }
-    }
     if (auto r = renderer.drawMesh(groundMesh_); !r)
     {
         return r;

@@ -7,8 +7,6 @@
 #include <string>
 #include <utility>
 #include <cstring>
-#include <cstdlib>
-#include <span>
 #include <limits>
 #include <vector>
 
@@ -871,34 +869,8 @@ core::Result<> SceneRenderer::drawDebug(const DebugDraw &debug)
 
 core::Result<> SceneRenderer::playDraws(rhi::CommandEncoder &e, bool prepass)
 {
-    // M9-L2 SONDE TEMPORAIRE : OROSMO_M9_PROBE=indirect -> dessins des maillages en drawIndexedIndirect.
-    const char *probeEnv = std::getenv("OROSMO_M9_PROBE");
-    const bool probeIndirect = probeEnv != nullptr && std::strstr(probeEnv, "indirect") != nullptr;
-    rhi::BufferHandle probeArgs;
-    if (probeIndirect)
-    {
-        std::vector<rhi::DrawIndexedIndirectCommand> commands;
-        for (const SceneDraw &draw : draws_)
-        {
-            commands.push_back({draw.count, std::max(draw.instanceCount, 1u), 0, 0, 0});
-        }
-        if (!commands.empty())
-        {
-            rhi::BufferDesc d;
-            d.size = commands.size() * sizeof(rhi::DrawIndexedIndirectCommand);
-            d.usage = rhi::BufferUsage::kIndirect | rhi::BufferUsage::kCopyDst;
-            d.debugName = "m9probe.indirect";
-            auto created = device_.createBuffer(d, std::as_bytes(std::span(commands)));
-            if (created)
-            {
-                probeArgs = *created; // fuite volontaire (sonde)
-            }
-        }
-    }
-    std::uint64_t probeIndex = 0;
     for (const SceneDraw &draw : draws_)
     {
-        const std::uint64_t probeCommand = probeIndex++;
         if (prepass && draw.prepassPipeline.isNull())
         {
             continue; // dessin externe, lignes, fil de fer : seulement dans la passe de scène
@@ -948,11 +920,6 @@ core::Result<> SceneRenderer::playDraws(rhi::CommandEncoder &e, bool prepass)
             e.setVertexBuffer(1, draw.instanceBuffer);
         }
         e.setIndexBuffer(draw.indexBuffer, rhi::IndexType::kUint32);
-        if (!probeArgs.isNull())
-        {
-            e.drawIndexedIndirect(probeArgs, probeCommand * sizeof(rhi::DrawIndexedIndirectCommand), 1, 0);
-            continue;
-        }
         e.drawIndexed(draw.count, draw.instanceCount);
     }
     return {};
