@@ -360,7 +360,23 @@ Result<> VulkanDevice::createInstance(const DeviceDesc &desc)
     }
     info.pNext = chain;
 
-    const VkResult result = vkCreateInstance(&info, nullptr, &instance_);
+    VkResult result = vkCreateInstance(&info, nullptr, &instance_);
+    if (result == VK_ERROR_LAYER_NOT_PRESENT && validationEnabled_)
+    {
+        // Manifeste trouvé mais bibliothèque introuvable (macOS : `library_path` relatif que dlopen ne cherche pas dans le préfixe
+        // Homebrew, M9-L1) : le périphérique est créé sans validation, comme quand la couche n'est pas installée.
+        LOG_WARNING("Vulkan: ", kValidationLayer, " is listed but its library cannot be loaded (check VK_LAYER_PATH and the manifest's library_path): no validation");
+        layers.clear();
+        std::erase_if(extensions, [](const char *e) { return std::string_view(e) == VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME; });
+        info.enabledLayerCount = 0;
+        info.ppEnabledLayerNames = nullptr;
+        info.enabledExtensionCount = static_cast<std::uint32_t>(extensions.size());
+        info.ppEnabledExtensionNames = extensions.data();
+        info.pNext = nullptr;
+        validationEnabled_ = false;
+        validationErrors_.store(0); // messages du chargeur pendant l'essai refusé : pas des messages de validation
+        result = vkCreateInstance(&info, nullptr, &instance_);
+    }
     if (result != VK_SUCCESS)
     {
         instance_ = VK_NULL_HANDLE;
