@@ -212,4 +212,84 @@ void main() { outColor = u.color; })";
         CHECK(rgba(gpu.pixel(color, 1, 1)) == std::array<std::uint8_t, 4>{0, 0, 255, 255});
         gpu.expectNoValidationErrors();
     }
+
+    // M9-L2 (G510) : le contournement du GPU Metal paravirtualisé (dessins indexés directs joués en commandes indirectes) se force
+    // par l'environnement ; les dessins donnent la même image (firstIndex, vertexOffset, firstInstance compris), au-delà de la
+    // capacité du premier tampon d'arguments (256 commandes), et les tampons d'arguments sont rendus après la soumission.
+    TEST_CASE("G510: ENGINE_VULKAN_INDEXED_VIA_INDIRECT records indexed draws as indirect commands with the same result")
+    {
+        if (!tests::isBackendAvailable(Backend::kVulkan))
+        {
+            if (tests::backendRequired("vulkan"))
+            {
+                FAIL("Required by ENGINE_TEST_REQUIRE_GPU but unavailable: Vulkan 1.3 device");
+            }
+            MESSAGE("Skipped: no Vulkan device on this machine");
+            return;
+        }
+        {
+            ScopedEnv off("ENGINE_VULKAN_INDEXED_VIA_INDIRECT", "0");
+            Gpu gpu(Backend::kVulkan);
+            REQUIRE(gpu.device);
+            CHECK_FALSE(static_cast<vk::VulkanDevice &>(*gpu).indexedDrawsViaIndirect());
+        }
+        ScopedEnv on("ENGINE_VULKAN_INDEXED_VIA_INDIRECT", "1");
+        Gpu gpu(Backend::kVulkan);
+        REQUIRE(gpu.device);
+        auto &device = static_cast<vk::VulkanDevice &>(*gpu);
+        if (!gpu->capabilities().drawIndirectFirstInstance)
+        {
+            CHECK_FALSE(device.indexedDrawsViaIndirect()); // sans la fonctionnalité, pas de contournement
+            return;
+        }
+        REQUIRE(device.indexedDrawsViaIndirect());
+        const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {8, 8});
+        // Deux triangles plein écran : sommets 0..2 (inutilisés) et 3..5 ; indices 0, 0, 0 puis 0, 1, 2 (vertexOffset 3, firstIndex 3).
+        const std::vector<float> positions{0, 0, 0, 0, 0, 0, -1, -1, 3, -1, -1, 3};
+        const std::vector<float> colors{1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1}; // par instance : rouge, vert, bleu
+        const std::vector<std::uint32_t> indices{0, 0, 0, 0, 1, 2};
+        const BufferHandle vb = gpu.buffer(BufferUsage::kVertex, bytesOf(positions), 0, "positions");
+        const BufferHandle inst = gpu.buffer(BufferUsage::kVertex, bytesOf(colors), 0, "instances");
+        const BufferHandle ib = gpu.buffer(BufferUsage::kIndex, bytesOf(indices), 0, "indices", MemoryKind::kUpload);
+        const char *vs = R"(#version 450
+layout(location = 0) in vec2 position;
+layout(location = 1) in vec4 instanceColor;
+layout(location = 0) out vec4 vColor;
+void main() { gl_Position = vec4(position, 0.0, 1.0); vColor = instanceColor; })";
+        const char *fs = R"(#version 450
+layout(location = 0) in vec4 vColor;
+layout(location = 0) out vec4 color;
+void main() { color = vColor; })";
+        GraphicsPipelineDesc d;
+        d.vertex = gpu.shader(ShaderStage::kVertex, vs);
+        d.fragment = gpu.shader(ShaderStage::kFragment, fs);
+        d.vertexBuffers = {{.binding = 0, .stride = 8, .stepRate = VertexStepRate::kVertex},
+                           {.binding = 1, .stride = 16, .stepRate = VertexStepRate::kInstance}};
+        d.vertexAttributes = {{.location = 0, .binding = 0, .format = VertexFormat::kFloat2, .offset = 0},
+                              {.location = 1, .binding = 1, .format = VertexFormat::kFloat4, .offset = 0}};
+        d.colorTargets = {ColorTargetState{}};
+        d.raster.cull = CullMode::kNone;
+        auto pipe = gpu->createGraphicsPipeline(d);
+        REQUIRE(pipe.has_value());
+        const std::uint32_t buffersBefore = gpu->stats().buffers;
+        constexpr int kDraws = 600; // plus que les 256 commandes du premier tampon d'arguments : un second, puis un troisième
+        gpu.run(
+            [&](CommandEncoder &e)
+            {
+                e.beginRenderPass(passOn(color));
+                e.setPipeline(*pipe);
+                e.setVertexBuffer(0, vb);
+                e.setVertexBuffer(1, inst);
+                e.setIndexBuffer(ib, IndexType::kUint32);
+                for (int i = 0; i < kDraws; ++i)
+                {
+                    e.drawIndexed(3, 1, 3, 3, static_cast<std::uint32_t>(i % 3)); // la dernière : 599 % 3 = 2, bleu
+                }
+                e.endRenderPass();
+            });
+        CHECK(rgba(gpu.pixel(color, 4, 4)) == std::array<std::uint8_t, 4>{0, 0, 255, 255});
+        // Les tampons d'arguments de l'encodeur (3) ne sont plus vivants : détruits avec lui, après sa soumission.
+        CHECK(gpu->stats().buffers == buffersBefore);
+        gpu.expectNoValidationErrors();
+    }
 }

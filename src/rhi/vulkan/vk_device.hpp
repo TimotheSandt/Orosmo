@@ -403,6 +403,8 @@ class VulkanDevice final : public Device
     // et nombre d'octets repris du fichier (0 : absent, ou d'un autre GPU ou pilote). Diagnostic et tests.
     const std::string &pipelineCachePath() const noexcept { return pipelineCachePath_; }
     std::size_t pipelineCacheLoadedBytes() const noexcept { return pipelineCacheLoadedBytes_; }
+    // M9-L2 (G510) : dessins indexés directs enregistrés en commandes indirectes (GPU Metal paravirtualisé, ou forcé par l'environnement).
+    bool indexedDrawsViaIndirect() const noexcept { return indexedDrawsViaIndirect_; }
 
   private:
     VulkanDevice() = default;
@@ -414,6 +416,7 @@ class VulkanDevice final : public Device
     Result<> createAllocator();
     void fillCapabilities();
     void checkTimestampsMeasureWork(); // MoltenVK : horodatages qui ne mesurent rien -> timestampQueries faux (voir vk_device.cpp)
+    void detectIndexedDrawWorkaround(); // M9-L2 : GPU Metal paravirtualisé -> dessins indexés directs joués en indirect (vk_device.cpp)
     void shutdown() noexcept;
     Result<> submitRaw(std::span<const VkCommandBuffer> commandBuffers, const SubmitSync &sync);
     // vk_pipelines.cpp : cache de pipelines (chargé du disque à la création, enregistré à l'arrêt) et dispositions.
@@ -463,6 +466,8 @@ class VulkanDevice final : public Device
     VmaAllocator allocator_ = nullptr;
     VkPhysicalDeviceProperties properties_{};
     VkPhysicalDeviceFeatures features_{};
+    // M9-L2 (G510) : vkCmdDrawIndexed joué comme un vkCmdDrawIndexedIndirect d'une commande (VkEncoder::drawIndexed).
+    bool indexedDrawsViaIndirect_ = false;
     bool debugUtils_ = false;
     bool validationEnabled_ = false;
     bool windowed_ = false;
