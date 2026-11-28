@@ -364,7 +364,11 @@ e2e-init:
 	    cd $(E2E_RUN)/mygame \
 	      && echo "e2e-init : rpaths de l'exécutable du projet" && otool -l bin/debug/main | grep -A2 LC_RPATH \
 	      && echo "e2e-init : capture avec fenêtre" \
-	      && ./bin/debug/main $(E2E_API_ARGS) --capture "$(abspath $(E2E_RUN))/capture-window" --capture-frames 3 \
+	      && { ./bin/debug/main $(E2E_API_ARGS) --capture "$(abspath $(E2E_RUN))/capture-window" --capture-frames 3 \
+	             > ../window.txt 2>&1; code=$$?; cat ../window.txt; test $$code = 0; } \
+	      && ! grep 'Vulkan validation:' ../window.txt | grep -v ' 0 error/warning message' \
+	      && { test "$(E2E_REQUIRE_VALIDATION)" != 1 || test "$(E2E_API)" != vulkan \
+	           || grep -q 'Vulkan validation: 0 error/warning message' ../window.txt; } \
 	      && test -s "$(abspath $(E2E_RUN))/capture-window/scene.png" \
 	      && echo "e2e-init : sans pilote Vulkan" \
 	      && { VK_DRIVER_FILES=/nonexistent.json VK_ICD_FILENAMES=/nonexistent.json ./bin/debug/main --headless --frames 1 \

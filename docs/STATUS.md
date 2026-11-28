@@ -40,7 +40,7 @@ temporaire (runs 46102675622, 46105212375). Aucun vrai Mac (G520 à G524).
 | --- | --- | --- | --- |
 | Chargeur et MoltenVK trouvés sans variable d'environnement | `tools/engine-sdk/engine.mk` `ENGINE_VULKAN_RPATHS`, `cmake/OrosmoConfig.cmake` ; `tests/tools/test_engine_mk_darwin.py` | `make e2e-init` sous macOS, sans `VK_DRIVER_FILES` | projet issu du paquet lancé sans fenêtre et avec fenêtre, 0 message de validation |
 | Pas de repli OpenGL sur macOS, message d'installation | `rhi::fallbackBackend`, `src/rhi/vulkan/vk_device.cpp` ; suites `rhi/backends`, `demo/launch options`, `app` | `make demo-test` ; `e2e-init` « sans pilote Vulkan » | Linux 958 / 958 (1 ignoré) ; macOS arm64 vert, message avec `brew install` |
-| `orosmo doctor` | `tools/engine-init-rs/src/doctor.rs` `check_macos_vulkan` | `cargo test -p orosmo` (dans `make cui-test`) ; `orosmo doctor` | 38 verts ; `[ok] Vulkan loader`, `[ok] Vulkan driver` sur macOS |
+| `orosmo doctor` | `tools/engine-init-rs/src/doctor.rs` `check_macos_vulkan` | `cargo test -p orosmo` (dans `make cui-test`) ; `orosmo doctor` | 39 verts ; `[ok] Vulkan loader`, `[ok] Vulkan driver` sur macOS |
 | macOS Intel | — | sonde `macos-15-intel` | construit et installé ; **rendu absent** (G523) |
 | Release | `.github/workflows/build-engine.yml` `fresh-macos` | non exécuté (aucun tag) | G524 |
 
