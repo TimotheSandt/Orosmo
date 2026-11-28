@@ -1,0 +1,62 @@
+"""Tests de tools/demo_reference_check.py (exécution : python3 -m unittest discover -s tests/tools)."""
+import importlib.util, os, subprocess, sys, tempfile, unittest
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TOOL = os.path.join(ROOT, "tools", "demo_reference_check.py")
+spec = importlib.util.spec_from_file_location("demo_reference_check", TOOL)
+drc = importlib.util.module_from_spec(spec); spec.loader.exec_module(drc)
+
+# Un faux binaire de démo : écrit scene.png et ui.png (copies d'une référence) dans --capture, et la ligne de validation.
+FAKE_DEMO = r'''#!{python}
+import shutil, sys
+args = sys.argv[1:]
+out = args[args.index("--capture") + 1]
+shutil.copy({scene!r}, out + "/scene.png")
+shutil.copy({ui!r}, out + "/ui.png")
+print("Vulkan validation: 0 error/warning message(s) during the run" if {validation} else "no validation")
+'''
+
+
+class DemoReferenceCheck(unittest.TestCase):
+    def test_every_case_has_its_reference_image(self):
+        names = [name for name, _, _, _ in drc.CASES]
+        self.assertEqual(len(names), len(set(names)))
+        for name, _, image, reference in drc.CASES:
+            self.assertIn(image, ("scene", "ui"), name)
+            self.assertTrue(os.path.isfile(os.path.join(drc.REFERENCES, reference)), reference)
+
+    def test_lot_cases_are_covered(self):
+        # A90 (L2) : scène, interface, ombres, forward+, GPU-driven, post-traitement.
+        names = {name for name, _, _, _ in drc.CASES}
+        self.assertTrue({"scene", "ui", "shadows", "forwardplus", "gpudriven", "post"} <= names)
+
+    def run_tool(self, scene, validation):
+        with tempfile.TemporaryDirectory() as d:
+            binary = os.path.join(d, "apps", "demo", "bin", "debug", "main")
+            os.makedirs(os.path.dirname(binary))
+            with open(binary, "w") as f:
+                f.write(FAKE_DEMO.format(python=sys.executable, scene=scene,
+                                         ui=os.path.join(drc.REFERENCES, "ui-opengl-controls-focus-1280x720.png"), validation=validation))
+            os.chmod(binary, 0o755)
+            r = subprocess.run([sys.executable, TOOL, "--bin", binary, "--out", os.path.join(d, "out"), "--only", "scene", "ui"],
+                               capture_output=True, text=True)
+            return r.returncode, r.stdout
+
+    def test_matching_captures_and_silent_validation_pass(self):
+        rc, out = self.run_tool(os.path.join(drc.REFERENCES, "scene-opengl-demo-1280x720.png"), True)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("OK (images dans la tolérance)", out)
+
+    def test_a_different_scene_fails(self):
+        rc, out = self.run_tool(os.path.join(drc.REFERENCES, "scene-opengl-post-full-1280x720.png"), True)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("ECHEC", out)
+
+    def test_missing_validation_line_fails(self):
+        rc, out = self.run_tool(os.path.join(drc.REFERENCES, "scene-opengl-demo-1280x720.png"), False)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("validation", out)
+
+
+if __name__ == "__main__":
+    unittest.main()
