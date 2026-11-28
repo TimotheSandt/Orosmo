@@ -224,7 +224,7 @@ void VulkanDevice::checkTimestampsMeasureWork()
     if (driver.driverID != VK_DRIVER_ID_MOLTENVK)
         return;
 
-    constexpr VkDeviceSize kProbeSize = 16u << 20; // 16 Mio remplis 4 fois : assez de travail pour séparer deux heures GPU
+    constexpr VkDeviceSize kProbeSize = 64u << 20; // 64 Mio remplis une fois : assez de travail pour séparer deux heures GPU
     auto bufferInfo = makeStruct<VkBufferCreateInfo>(VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO);
     bufferInfo.size = kProbeSize;
     bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -247,8 +247,7 @@ void VulkanDevice::checkTimestampsMeasureWork()
             [&](VkCommandBuffer commandBuffer)
             {
                 vkCmdWriteTimestamp2(commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, pool, 0);
-                for (std::uint32_t i = 0; i < 4; ++i)
-                    vkCmdFillBuffer(commandBuffer, buffer, 0, VK_WHOLE_SIZE, i);
+                vkCmdFillBuffer(commandBuffer, buffer, 0, VK_WHOLE_SIZE, 0x5A5A5A5Au); // un seul remplissage : aucun risque d'écriture après écriture
                 vkCmdWriteTimestamp2(commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, pool, 1);
             });
         measured = submitted.has_value() && vkGetQueryPoolResults(device_, pool, 0, 2, sizeof(stamps), stamps, sizeof(std::uint64_t),
