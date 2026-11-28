@@ -20,7 +20,7 @@ TEST_SUITE("rhi/opengl/device")
     TEST_CASE("shaders: SPIR-V is refused, compile errors carry the driver log")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         ShaderDesc spirv;
         spirv.language = ShaderLanguage::kSpirv;
         const std::byte word{0x03};
@@ -43,7 +43,7 @@ TEST_SUITE("rhi/opengl/device")
     TEST_CASE("a synchronous read during a pass does not redirect the next draw (revue CodeRabbit)")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {4, 4});
         const TextureHandle other = gpu.target(Format::kRGBA8Unorm, {4, 4}, "other");
         const PipelineHandle pipe = gpu.pipeline(gpu.shader(ShaderStage::kVertex, kFullscreenVsGlsl450), gpu.shader(ShaderStage::kFragment, kRedFsGlsl450));

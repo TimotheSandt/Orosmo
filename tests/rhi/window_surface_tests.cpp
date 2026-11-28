@@ -95,10 +95,10 @@ TEST_SUITE("rhi/opengl/window")
     TEST_CASE("a window is adopted: the backbuffer has the framebuffer size and the window outlives the device")
     {
         TestWindow window;
-        SKIP_TEST_IF_NULL(window.handle, "OpenGL 4.3 window");
+        SKIP_TEST_IF_NULL_FOR(window.handle, "opengl", "OpenGL 4.3 window");
         {
             auto device = window.device();
-            SKIP_TEST_IF_NULL(device.get(), "windowed OpenGL 4.3 device");
+            SKIP_TEST_IF_NULL_FOR(device.get(), "opengl", "windowed OpenGL 4.3 device");
             auto frame = device->beginFrame();
             REQUIRE(frame.has_value());
             auto pixels = device->readTexture(*frame);
@@ -111,16 +111,16 @@ TEST_SUITE("rhi/opengl/window")
         // Le périphérique détruit, la fenêtre reste valide et peut en adopter un autre.
         CHECK(glfwGetWindowAttrib(window.handle, GLFW_CONTEXT_VERSION_MAJOR) >= 4);
         auto second = window.device();
-        SKIP_TEST_IF_NULL(second.get(), "second windowed device");
+        REQUIRE(second != nullptr); // la première création a réussi : la fenêtre doit pouvoir en adopter un autre
         CHECK(second->beginFrame().has_value());
     }
 
     TEST_CASE("rendering into the window backbuffer: clear, draw, read back, present, several frames")
     {
         TestWindow window;
-        SKIP_TEST_IF_NULL(window.handle, "OpenGL 4.3 window");
+        SKIP_TEST_IF_NULL_FOR(window.handle, "opengl", "OpenGL 4.3 window");
         auto device = window.device();
-        SKIP_TEST_IF_NULL(device.get(), "windowed OpenGL 4.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "opengl", "windowed OpenGL 4.3 device");
         auto vs = createShaderFromGlsl(*device, ShaderStage::kVertex, kFullscreen450Vs, {.name = "vs"});
         auto fs = createShaderFromGlsl(*device, ShaderStage::kFragment, kBlueFs, {.name = "fs"});
         REQUIRE(vs.has_value());
@@ -176,9 +176,9 @@ TEST_SUITE("rhi/opengl/window")
     TEST_CASE("a scissor far below the window is flipped without signed overflow and hides the draw")
     {
         TestWindow window;
-        SKIP_TEST_IF_NULL(window.handle, "OpenGL 4.3 window");
+        SKIP_TEST_IF_NULL_FOR(window.handle, "opengl", "OpenGL 4.3 window");
         auto device = window.device();
-        SKIP_TEST_IF_NULL(device.get(), "windowed OpenGL 4.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "opengl", "windowed OpenGL 4.3 device");
         auto vs = createShaderFromGlsl(*device, ShaderStage::kVertex, kFullscreen450Vs, {.name = "vs"});
         auto fs = createShaderFromGlsl(*device, ShaderStage::kFragment, kBlueFs, {.name = "fs"});
         REQUIRE(vs.has_value());
@@ -232,9 +232,9 @@ TEST_SUITE("rhi/opengl/window")
     TEST_CASE("the backbuffer is the sole attachment of its pass and cannot be sampled, uploaded or mipmapped")
     {
         TestWindow window;
-        SKIP_TEST_IF_NULL(window.handle, "OpenGL 4.3 window");
+        SKIP_TEST_IF_NULL_FOR(window.handle, "opengl", "OpenGL 4.3 window");
         auto device = window.device();
-        SKIP_TEST_IF_NULL(device.get(), "windowed OpenGL 4.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "opengl", "windowed OpenGL 4.3 device");
         Gpu gpu(std::move(device)); // pas de second périphérique : le contexte de la fenêtre reste courant
         auto frame = gpu->beginFrame();
         REQUIRE(frame.has_value());
@@ -274,9 +274,9 @@ TEST_SUITE("rhi/opengl/window")
     TEST_CASE("resize re-reads the window framebuffer; vsync can be switched")
     {
         TestWindow window(64, 48);
-        SKIP_TEST_IF_NULL(window.handle, "OpenGL 4.3 window");
+        SKIP_TEST_IF_NULL_FOR(window.handle, "opengl", "OpenGL 4.3 window");
         auto device = window.device(true);
-        SKIP_TEST_IF_NULL(device.get(), "windowed OpenGL 4.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "opengl", "windowed OpenGL 4.3 device");
         glfwSetWindowSize(window.handle, 96, 72);
         // Le redimensionnement X11 est asynchrone : on attend qu'il soit appliqué (sans gestionnaire de fenêtres il peut ne
         // jamais l'être : le test compare alors à la taille stable courante).

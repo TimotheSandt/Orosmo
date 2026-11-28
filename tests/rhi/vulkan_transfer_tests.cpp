@@ -20,7 +20,7 @@ bool skipWithoutVulkan()
 {
     if (tests::isBackendAvailable(Backend::kVulkan))
         return false;
-    if (tests::gpuRequired())
+    if (tests::backendRequired("vulkan"))
         FAIL("Required by ENGINE_TEST_REQUIRE_GPU but unavailable: Vulkan 1.3 device");
     MESSAGE("Skipped: no Vulkan device on this machine");
     return true;

@@ -15,15 +15,17 @@ namespace platform = orosmo::platform;
 namespace
 {
 
-// Crée une fenêtre ; renvoie faux (et un message) si le système n'a pas d'affichage.
+// Crée une fenêtre ; renvoie faux (et un message) si le système n'a pas d'affichage. La fenêtre n'a pas de contexte OpenGL
+// (GLFW_NO_API), comme celles du moteur, qui reçoivent les attributs du RHI (prepareWindowHints) : le contexte OpenGL implicite de
+// GLFW n'existe pas sur le GPU paravirtualisé de la CI macOS, où ces tests étaient sautés (« no display », M9-L1).
 bool open(platform::Window &window)
 {
-    if (auto opened = window.init(); !opened)
+    if (auto opened = window.init([] { glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); }); !opened)
     {
         CHECK((opened.error().code == orosmo::core::ErrorCode::kUnsupported)); // sans affichage : refus propre (A75.8)
         if (tests::gpuRequired())
         {
-            FAIL("ENGINE_TEST_REQUIRE_GPU is set but the window could not be created");
+            FAIL("ENGINE_TEST_REQUIRE_GPU is set but the window could not be created: " << opened.error().message);
         }
         MESSAGE("no display: window test skipped");
         return false;

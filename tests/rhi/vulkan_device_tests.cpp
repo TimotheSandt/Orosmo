@@ -44,7 +44,7 @@ TEST_SUITE("rhi/vulkan/device")
     TEST_CASE("a Vulkan device reports its capabilities and no validation message")
     {
         auto device = makeVulkan();
-        SKIP_TEST_IF_NULL(device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "Vulkan 1.3 device");
         const Capabilities &caps = device->capabilities();
         CHECK((caps.backend == Backend::kVulkan));
         CHECK_FALSE(caps.deviceName.empty());
@@ -60,7 +60,7 @@ TEST_SUITE("rhi/vulkan/device")
     TEST_CASE("buffers: GPU-only and upload buffers round-trip, ranges are checked, stale handles are refused")
     {
         auto device = makeVulkan();
-        SKIP_TEST_IF_NULL(device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "Vulkan 1.3 device");
         std::vector<std::uint8_t> data(256);
         for (std::size_t i = 0; i < data.size(); ++i)
             data[i] = static_cast<std::uint8_t>(i * 7 + 3);
@@ -105,7 +105,7 @@ TEST_SUITE("rhi/vulkan/device")
     TEST_CASE("textures: upload and read back whole levels and sub-regions, with mips, arrays and 3D")
     {
         auto device = makeVulkan();
-        SKIP_TEST_IF_NULL(device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "Vulkan 1.3 device");
         std::vector<std::uint8_t> texels(4 * 4 * 4);
         for (std::size_t i = 0; i < texels.size(); ++i)
             texels[i] = static_cast<std::uint8_t>(i);
@@ -180,7 +180,7 @@ TEST_SUITE("rhi/vulkan/device")
     TEST_CASE("the offscreen backbuffer is a RGBA8 texture of the surface size; resize replaces it under the same handle")
     {
         auto device = makeVulkan({16, 8});
-        SKIP_TEST_IF_NULL(device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "Vulkan 1.3 device");
         auto frame = device->beginFrame();
         REQUIRE(frame.has_value());
         auto desc = device->textureDesc(*frame);
@@ -206,7 +206,7 @@ TEST_SUITE("rhi/vulkan/device")
     TEST_CASE("samplers and timestamp pools: creation, limits and the not-ready state before any write")
     {
         auto device = makeVulkan();
-        SKIP_TEST_IF_NULL(device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "Vulkan 1.3 device");
         SamplerDesc sampler;
         sampler.debugName = "linear";
         CHECK(device->createSampler(sampler).has_value());
@@ -231,7 +231,7 @@ TEST_SUITE("rhi/vulkan/device")
     TEST_CASE("destroyed resources leave the live counts at once and the device stops cleanly with resources left")
     {
         auto device = makeVulkan();
-        SKIP_TEST_IF_NULL(device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "Vulkan 1.3 device");
         BufferDesc desc;
         desc.size = 64;
         desc.usage = BufferUsage::kUniform;
@@ -249,7 +249,7 @@ TEST_SUITE("rhi/vulkan/device")
     TEST_CASE("a non-zero z offset is refused for a 2D copy")
     {
         auto device = makeVulkan();
-        SKIP_TEST_IF_NULL(device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "Vulkan 1.3 device");
         TextureDesc desc;
         desc.format = Format::kRGBA8Unorm;
         desc.size = {4, 4, 1};
@@ -268,7 +268,7 @@ TEST_SUITE("rhi/vulkan/device")
     TEST_CASE("a buffer destroyed right after an unsubmitted update is kept until that copy is done")
     {
         auto device = makeVulkan();
-        SKIP_TEST_IF_NULL(device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "Vulkan 1.3 device");
         BufferDesc desc;
         desc.size = 64;
         desc.usage = BufferUsage::kStorage | BufferUsage::kCopySrc;
@@ -299,7 +299,7 @@ TEST_SUITE("rhi/vulkan/device")
     TEST_CASE("encoder: several slices of one 3D mip are transitioned once, and the validation layers stay silent")
     {
         Gpu gpu(Backend::kVulkan);
-        SKIP_TEST_IF_NULL(gpu.device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "vulkan", "Vulkan 1.3 device");
         if (gpu->capabilities().maxColorAttachments < 2)
             return;
         TextureDesc td;
@@ -337,7 +337,7 @@ void main() { a = vec4(1.0, 0.0, 0.0, 1.0); b = vec4(0.0, 1.0, 0.0, 1.0); })";
     TEST_CASE("encoder: offsets equal to the buffer size and a non-zero dynamic offset on a 'to the end' entry are refused")
     {
         Gpu gpu(Backend::kVulkan);
-        SKIP_TEST_IF_NULL(gpu.device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "vulkan", "Vulkan 1.3 device");
         const std::vector<std::byte> data(256, std::byte{0});
         const BufferHandle vertex = gpu.buffer(BufferUsage::kVertex | BufferUsage::kIndex, data, 0, "vi");
         auto vbad = gpu->createCommandEncoder();
@@ -372,7 +372,7 @@ void main() { outColor = u.color; })";
     TEST_CASE("encoder: a texture destroyed after setBindGroup makes the draw fail instead of using the stale descriptor set")
     {
         Gpu gpu(Backend::kVulkan);
-        SKIP_TEST_IF_NULL(gpu.device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "vulkan", "Vulkan 1.3 device");
         TextureDesc td;
         td.size = {2, 2, 1};
         td.usage = TextureUsage::kSampled | TextureUsage::kCopyDst;
@@ -403,7 +403,7 @@ void main() { outColor = texture(tex, vec2(0.5)); })";
     TEST_CASE("pipelines: array bindings that overlap another binding after the stages are merged are refused")
     {
         Gpu gpu(Backend::kVulkan);
-        SKIP_TEST_IF_NULL(gpu.device.get(), "Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "vulkan", "Vulkan 1.3 device");
         const char *vs = R"(#version 450
 layout(std140, set = 0, binding = 0) uniform A { vec4 a; } arr[2];
 void main() { gl_Position = arr[0].a + arr[1].a; })";

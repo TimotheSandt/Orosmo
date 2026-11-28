@@ -45,6 +45,33 @@ sh install.sh
 Sous Windows : `irm <url> -OutFile install.ps1`, lecture, puis `.\install.ps1`.
 :::
 
+## macOS : Vulkan par MoltenVK
+
+macOS n'a qu'OpenGL 4.1, trop ancien pour le moteur (4.3) : le rendu passe uniquement par Vulkan, traduit vers Metal par
+MoltenVK. Ni MoltenVK ni le chargeur Vulkan ne sont dans le paquet du moteur : ils viennent de Homebrew. L'installeur les
+propose ; à la main :
+
+```bash
+xcode-select --install                    # compilateur (Apple clang) et make
+brew install vulkan-loader molten-vk      # chargeur Vulkan et pilote MoltenVK
+orosmo doctor                             # lignes « Vulkan loader » et « Vulkan driver » en [ok]
+```
+
+Aucune variable d'environnement n'est nécessaire : les programmes liés avec `engine.mk` ou le paquet CMake cherchent le
+chargeur dans `/opt/homebrew/lib` (Homebrew, puce Apple) et `/usr/local/lib` (Homebrew Intel, SDK Vulkan), et le chargeur de
+Homebrew trouve seul MoltenVK. Pour un chargeur installé ailleurs, donnez son dossier dans le `config.local.mk` du projet
+(`ENGINE_VULKAN_RPATHS := /chemin/lib`), et un autre pilote par la variable `VK_DRIVER_FILES`.
+
+Si Vulkan ne démarre pas, le programme s'arrête avec la raison et la commande à lancer : il n'y a pas de repli sur OpenGL.
+Il n'existe pas de backend Metal natif.
+
+:::caution
+macOS n'est vérifié que par l'intégration continue, sur la machine virtuelle de GitHub (GPU paravirtualisé), jamais sur un
+vrai Mac : fenêtre visible, saisie, écran Retina, GPU physique et performances ne sont pas essayés. Sur Mac Intel, le paquet
+se construit mais aucun rendu n'a pu être observé (MoltenVK s'arrête sur la machine virtuelle de la CI). Voir G520 à G524 dans
+[`docs/GAPS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/GAPS.md)).
+:::
+
 ## Options
 
 | Option | Type | Défaut | Effet |
@@ -135,10 +162,11 @@ après une nouvelle installation.
 |---|---|---|
 | Linux x64, arm64 | glibc 2.39 ou plus récent (Ubuntu 24.04 et suivants) ; GCC 13+ ou Clang 17+ | x64 seulement : Ubuntu 24.04, g++ 13.3 |
 | Windows x64 | MinGW-w64 g++ 13+ (MSYS2 MINGW64) | non |
-| macOS arm64, x64 | clang++ 17+ ; MoltenVK pour Vulkan (non embarqué) | non |
+| macOS arm64 | outils en ligne de commande Xcode ; `vulkan-loader` et `molten-vk` (Homebrew, non embarqués) | CI seulement, sur machine virtuelle |
+| macOS x64 (Intel) | idem | non : compile, rendu jamais observé |
 
-Linux est la seule plateforme essayée de bout en bout. Sous Windows et macOS, l'outil, le paquet et les installeurs sont
-construits par la CI mais n'ont pas été essayés sur une machine (G216 dans
+Linux est la seule plateforme essayée de bout en bout sur une vraie machine. Sous Windows et macOS, l'outil et le paquet sont
+exercés par la CI (installeurs compris à la construction d'une release) mais n'ont pas été essayés sur une vraie machine (G216 dans
 [`docs/GAPS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/GAPS.md)). Un `OROSMO_HOME` dont le chemin contient
 une espace n'est pas vérifié (G214) : choisissez un chemin sans espace. Paquets natifs (`.deb`, Homebrew, winget) et
 signature des binaires ne sont pas encore proposés (G218).

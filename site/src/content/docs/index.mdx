@@ -1,6 +1,6 @@
 ---
 title: Orosmo, moteur de jeu 2D et 3D en C++23
-description: "Orosmo, moteur de jeu 2D et 3D open source en C++23 : rendu Vulkan et OpenGL, Metal prévu, interface décrite en langage .cui. Licence Apache-2.0."
+description: "Orosmo, moteur de jeu 2D et 3D open source en C++23 : rendu Vulkan et OpenGL, interface décrite en langage .cui. Licence Apache-2.0."
 head:
   - tag: script
     attrs:
@@ -12,7 +12,7 @@ head:
         "name": "Orosmo",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Linux, Windows, macOS",
-        "description": "Moteur de jeu 2D et 3D open source écrit en C++23. Rendu Vulkan et OpenGL 4.3 derrière une même couche d'abstraction ; backend Metal prévu, pas encore disponible. Interface décrite dans un langage maison, le .cui, compilé en C++.",
+        "description": "Moteur de jeu 2D et 3D open source écrit en C++23. Rendu Vulkan et OpenGL 4.3 derrière une même couche d'abstraction ; macOS par Vulkan et MoltenVK, sans backend Metal natif. Interface décrite dans un langage maison, le .cui, compilé en C++.",
         "url": "https://orosmo.gasshog.fr/",
         "codeRepository": "https://github.com/TimotheSandt/Orosmo",
         "programmingLanguage": "C++",
@@ -29,8 +29,8 @@ import { Image } from 'astro:assets';
 import ombres from '../../assets/captures/scene-ombres.webp';
 
 Orosmo est un moteur de jeu 2D et 3D open source (Apache-2.0) écrit en C++23, développé par Timothé Sandt. Le rendu
-passe par une couche d'abstraction graphique (le RHI) qui a deux backends, Vulkan et OpenGL 4.3 ; un backend Metal est
-prévu et n'existe pas encore. L'interface s'écrit dans un langage maison, le `.cui`, compilé en C++ ; son apparence vient
+passe par une couche d'abstraction graphique (le RHI) qui a deux backends, Vulkan et OpenGL 4.3 ; sous macOS, seul Vulkan fonctionne (par MoltenVK), et il n'y
+a pas de backend Metal natif. L'interface s'écrit dans un langage maison, le `.cui`, compilé en C++ ; son apparence vient
 de thèmes JSON.
 
 [Installer](/demarrer/installation/) · [Code sur GitHub](https://github.com/TimotheSandt/Orosmo) ·
@@ -44,8 +44,8 @@ est livré : scène à entités, simulation à pas fixe rejouable, logique de je
 matériaux PBR, éclairage par environnement, animation, foules) et du cœur du rendu de M5 (graphe de passes, forward+,
 ombres, HDR, anticrénelage, culling GPU, 2D). L'API peut encore changer entre deux versions mineures.
 
-Linux est la seule plateforme vérifiée. Windows et macOS sont compilés par la CI mais n'ont pas été observés pour le code
-récent. La liste complète, avec
+Linux est la seule plateforme vérifiée sur une vraie machine. Windows est compilé par la CI sans rendu ; macOS (arm64) est
+testé par la CI sur machine virtuelle seulement, jamais sur un vrai Mac. La liste complète, avec
 les preuves, est sur la page [État du moteur](/projet/etat/).
 
 <figure>

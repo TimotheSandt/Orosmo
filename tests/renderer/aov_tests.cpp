@@ -447,6 +447,11 @@ TEST_SUITE("renderer/aov")
             CHECK(static_cast<Wants *>(*added)->seen);
             CHECK(scene.renderer->sceneTarget().colorCount() == 2);
             scene.renderer->removeFeature("wants.normals");
+            // Programme recompilé avec les définitions du nouveau jeu d'AOV : l'ancien écrit aovNormals sans cible (avertissement
+            // des couches de validation récentes, M9-L1).
+            auto plain = scene.library->loadGraphics(shaderDir() / "mesh.vert", shaderDir() / "mesh.frag", scene.renderer->aovShaderDefines());
+            REQUIRE(plain.has_value());
+            mesh->setProgram(*plain);
             scene.frame(*mesh, camera, scene.gpu.target(Format::kRGBA8Unorm, {8, 8}, "out2"));
             CHECK(scene.renderer->sceneTarget().colorCount() == 1); // le plugin parti, plus rien n'est alloué
             scene.gpu.expectNoValidationErrors();

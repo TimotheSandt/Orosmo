@@ -264,6 +264,8 @@ Result<> GlDevice::init(const DeviceDesc &desc)
     caps_.bc7Textures = true; // BPTC : cœur d'OpenGL 4.2
     caps_.astcTextures = hasExtension("GL_KHR_texture_compression_astc_ldr");
     caps_.wireframe = true;
+    caps_.srgbStorageImages = glFormatOf(Format::kRGBA8Srgb).imageCompatible; // faux : pas de format d'image sRGB en GLSL 4.30
+    caps_.validation = debugCallbackInstalled_;
     caps_.spirvShaders = false; // GL_ARB_gl_spirv : non utilisé avant le lot B
     caps_.shaderFloat64 = true;  // cœur de GL 4.0 (GL_ARB_gpu_shader_fp64)
     maxImageUnits_ = getInt(GL_MAX_IMAGE_UNITS);

@@ -272,15 +272,23 @@ demo-vulkan-check: all-debug
 #                   aucun module procédural) ;
 #                   `orosmo init` d'un projet neuf (sans réseau : OROSMO_DOWNLOAD_BASE = un faux dossier de release avec
 #                   SHA256SUMS), `make debug` SANS ENGINE_DIR (le Makefile du projet trouve le moteur par `orosmo path`),
-#                   aucun vcpkg_installed, Generated/ dans le projet ; `orosmo build --json` ; `orosmo run -- --api opengl
-#                   --headless …` (capture) si E2E_RUN_GRAPHICS=1 ; code du tutoriel 3D du site extrait de la page et compilé
+#                   aucun vcpkg_installed, Generated/ dans le projet ; `orosmo build --json` ; `orosmo run -- --api $(E2E_API)
+#                   --headless …` (capture) si E2E_RUN_GRAPHICS=1 ; sous macOS, en plus : capture avec fenêtre, `orosmo doctor`
+#                   voit le chargeur et le pilote, et message d'installation sans pilote (pas de repli OpenGL) ; code du tutoriel 3D du site extrait de la page et compilé
 #                   (A79 L14) ; exemple minimal copié hors du moteur et compilé ; CMake.
 #   Chaque lancement a son dossier (rien n'est effacé ; les droits d'écriture du moteur installé sont rendus à la fin).
 E2E_RUN      := build/e2e/$(shell date +%Y%m%d-%H%M%S)
 E2E_PLATFORM  = $(shell $(MAKE) -s -f $(ENGINE_MK) print-platform)
 E2E_EXE       = $(if $(filter Windows_NT,$(OS)),.exe)
-# 1 : e2e-init lance aussi le projet créé (OpenGL 4.3 requis : Linux, ou Mesa sous xvfb). 0 : seulement compiler et lier (macOS ≤ 4.1, Windows sans GPU).
+# 1 : e2e-init lance aussi le projet créé (OpenGL 4.3 : Linux, ou Mesa sous xvfb ; Vulkan : macOS avec MoltenVK). 0 : seulement
+# compiler et lier (Windows sans GPU).
 E2E_RUN_GRAPHICS ?= 1
+E2E_UNAME     = $(shell uname -s 2>/dev/null)
+# macOS : OpenGL s'arrête à 4.1, le projet est lancé en Vulkan (sans repli : un échec doit se voir).
+E2E_API      ?= $(if $(filter Darwin,$(E2E_UNAME)),vulkan,opengl)
+E2E_API_ARGS  = --api $(E2E_API)$(if $(filter vulkan,$(E2E_API)), --strict-backend)
+# 1 (avec E2E_API=vulkan) : la couche de validation doit être active (bilan « 0 error/warning » dans la sortie du jeu).
+E2E_REQUIRE_VALIDATION ?= 0
 # GAME-06 : durée maximale « .cpp du jeu modifié -> code rechargé » (5 s sur la machine de référence ; plus large en CI).
 E2E_RELOAD_MAX ?= 5
 E2E_HOME      = $(abspath $(E2E_RUN))/home
@@ -334,18 +342,41 @@ e2e-init:
 	@# Motif sans guillemets doubles : sous mingw32-make (Windows), '"…"' arrive à grep avec des barres obliques inverses.
 	grep -q 'event.:.done' $(E2E_RUN)/build.json || { echo "e2e-init : pas d'événement done dans build.json :"; tail -n 20 $(E2E_RUN)/build.json; exit 1; }
 	@if [ "$(E2E_RUN_GRAPHICS)" = 1 ]; then \
-	    echo "e2e-init : orosmo run (OpenGL, sans fenêtre)"; \
-	    cd $(E2E_RUN)/mygame && $(E2E_SH) orosmo run -- --api opengl --headless \
-	        --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3 \
+	    echo "e2e-init : orosmo run ($(E2E_API), sans fenêtre)"; \
+	    cd $(E2E_RUN)/mygame && { $(E2E_SH) orosmo run -- $(E2E_API_ARGS) --headless \
+	        --capture "$(abspath $(E2E_RUN))/capture" --capture-frames 3 > ../run.txt 2>&1; code=$$?; cat ../run.txt; test $$code = 0; } \
+	      && ! grep 'Vulkan validation:' ../run.txt | grep -v ' 0 error/warning message' \
+	      && { test "$(E2E_REQUIRE_VALIDATION)" != 1 || test "$(E2E_API)" != vulkan \
+	           || grep -q 'Vulkan validation: 0 error/warning message' ../run.txt; } \
 	      && test -s "$(abspath $(E2E_RUN))/capture/scene.png" && test -s "$(abspath $(E2E_RUN))/capture/ui.png" \
 	    && echo "e2e-init : HUD sans bibliothèque de jeu" \
 	      && cd "$(abspath $(E2E_RUN))/mygame" && lib=$$(find bin/debug -name 'game.so' -o -name 'game.dylib' -o -name 'game.dll') \
 	      && mv "$$lib" "$$lib.off" \
-	      && { ./bin/debug/main$(E2E_EXE) --api opengl --headless --capture "$(abspath $(E2E_RUN))/capture-nogame" \
+	      && { ./bin/debug/main$(E2E_EXE) $(E2E_API_ARGS) --headless --capture "$(abspath $(E2E_RUN))/capture-nogame" \
 	             --capture-frames 3 > ../nogame.txt 2>&1; code=$$?; mv "$$lib.off" "$$lib"; test $$code = 0; } \
 	      && grep -q 'Game logic not started' ../nogame.txt && ! grep -q 'HUD view not built' ../nogame.txt; \
 	  else \
 	    echo "e2e-init : lancement graphique sauté (E2E_RUN_GRAPHICS=0 : exécuteur sans OpenGL 4.3, projet seulement compilé et lié)"; \
+	  fi
+	@# M9-L3 (macOS) : le jeu lié depuis le paquet trouve chargeur et MoltenVK (GLFW compris, avec fenêtre) ; sans pilote, la
+	@# commande d'installation et l'absence de repli sont dites, au lieu d'un échec d'OpenGL.
+	@if [ "$(E2E_RUN_GRAPHICS)" = 1 ] && [ "$(E2E_UNAME)" = Darwin ]; then \
+	    cd $(E2E_RUN)/mygame \
+	      && echo "e2e-init : rpaths de l'exécutable du projet" && otool -l bin/debug/main | grep -A2 LC_RPATH \
+	      && echo "e2e-init : capture avec fenêtre" \
+	      && { ./bin/debug/main $(E2E_API_ARGS) --capture "$(abspath $(E2E_RUN))/capture-window" --capture-frames 3 \
+	             > ../window.txt 2>&1; code=$$?; cat ../window.txt; test $$code = 0; } \
+	      && ! grep 'Vulkan validation:' ../window.txt | grep -v ' 0 error/warning message' \
+	      && { test "$(E2E_REQUIRE_VALIDATION)" != 1 || test "$(E2E_API)" != vulkan \
+	           || grep -q 'Vulkan validation: 0 error/warning message' ../window.txt; } \
+	      && test -s "$(abspath $(E2E_RUN))/capture-window/scene.png" \
+	      && echo "e2e-init : sans pilote Vulkan" \
+	      && { VK_DRIVER_FILES=/nonexistent.json VK_ICD_FILENAMES=/nonexistent.json ./bin/debug/main --headless --frames 1 \
+	             > ../nodriver.txt 2>&1; code=$$?; cat ../nodriver.txt; test $$code != 0; } \
+	      && grep -q 'brew install' ../nodriver.txt && grep -q 'no OpenGL fallback on macOS' ../nodriver.txt \
+	      && ! grep -q 'falling back to OpenGL' ../nodriver.txt \
+	      && $(E2E_SH) orosmo doctor > ../doctor.txt && cat ../doctor.txt \
+	      && grep -q '\[ok\] *Vulkan loader' ../doctor.txt && grep -q '\[ok\] *Vulkan driver' ../doctor.txt; \
 	  fi
 	@# GAME-06 (A79 L7) : projet de même Makefile et même src/game/ que mygame, avec un hôte sans GPU
 	@# (tools/e2e/reload_host.cpp). `make game` ne refait que la bibliothèque, avec ccache s'il est là (un faux suffit ici) ;
@@ -404,7 +435,7 @@ e2e-init:
 	fi
 	@# Lecture seule tenue jusqu'ici ; droits rendus pour pouvoir effacer build/.
 	chmod -R u+w "$(E2E_ENGINE)"
-	@echo "e2e-init : OK ($(E2E_RUN) : orosmo install --package, moteur en lecture seule dans OROSMO_HOME, orosmo init, make sans ENGINE_DIR (orosmo path), orosmo build --json, orosmo run headless si E2E_RUN_GRAPHICS=1, doctor, Make + CMake, compile_commands.json, exemple minimal)"
+	@echo "e2e-init : OK ($(E2E_RUN) : orosmo install --package, moteur en lecture seule dans OROSMO_HOME, orosmo init, make sans ENGINE_DIR (orosmo path), orosmo build --json, orosmo run headless ($(E2E_API)) si E2E_RUN_GRAPHICS=1, doctor, Make + CMake, compile_commands.json, exemple minimal)"
 
 # ── UI-11 : tests du compilateur du langage d'interface ──
 #   make cui-test   tests unitaires (cargo test) + entrées invalides de bout en bout (binaire cui : messages fichier:ligne:colonne ;

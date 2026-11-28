@@ -200,4 +200,18 @@ Result<> prepareWindowHints(const DeviceDesc &desc);
 // Backends compilés dans cette bibliothèque.
 bool isBackendCompiled(Backend backend) noexcept;
 
+// macOS : OpenGL s'arrête à la version 4.1, le RHI demande 4.3 : seul Vulkan (MoltenVK) y fonctionne.
+#ifdef __APPLE__
+inline constexpr bool kHostIsMacOS = true;
+#else
+inline constexpr bool kHostIsMacOS = false;
+#endif
+
+// Backend à essayer quand `requested` ne démarre pas : OpenGL après Vulkan, rien sinon, et jamais sur macOS (un repli y
+// remplacerait l'erreur de Vulkan par une seconde erreur sans rapport). `macOS` : défaut, le système de la compilation.
+std::optional<Backend> fallbackBackend(Backend requested, bool macOS = kHostIsMacOS) noexcept;
+
+// À ajouter au message quand `fallbackBackend` ne propose rien sur macOS.
+inline constexpr const char *kNoFallbackOnMacOS = "no OpenGL fallback on macOS (it stops at OpenGL 4.1, the engine needs 4.3)";
+
 } // namespace orosmo::rhi

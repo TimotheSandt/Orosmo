@@ -153,7 +153,11 @@ le GPU, retirer son fournisseur avant de détruire le périphérique ([Mesurer](
 `Device::capabilities()` rend une `Capabilities` remplie par le backend : nom du GPU et du pilote, limites
 (`maxTextureSize`, `maxColorAttachments`, `maxComputeWorkGroupSize`, `maxStorageBufferBindings`, `minUniformAlignment`...)
 et fonctions qui peuvent manquer : `compute`, `indirectDraw`, `multiDrawIndirect`, `drawIndirectFirstInstance`,
-`timestampQueries`, `anisotropy`, `bc7Textures`, `astcTextures`, `wireframe`, `spirvShaders`, `shaderFloat64`. Les capacités
+`timestampQueries`, `anisotropy`, `bc7Textures`, `astcTextures`, `srgbStorageImages`, `wireframe`, `spirvShaders`,
+`shaderFloat64`, `validation` (couche de validation active). Sous MoltenVK, `timestampQueries` est faux quand deux horodatages
+qui encadrent du travail sont égaux (GPU sans échantillonnage de compteurs Metal, M9). Sur le GPU Metal paravirtualisé des
+machines virtuelles macOS, le backend Vulkan enregistre chaque dessin indexé comme une commande indirecte d'un dessin : le dessin
+indexé direct de ce pilote ne lit pas ses indices (G510). Les capacités
 réservées (`rayQuery`, `accelerationStructure`, `bindless`, `meshShader`, `bufferDeviceAddress`, `sparseResources`) valent
 toutes `false` : rien ne les implémente encore.
 
@@ -201,9 +205,9 @@ sous OpenGL. Les décalages dynamiques de `setBindGroup` se consomment dans l'or
 
 | Backend | État | Points clés |
 | --- | --- | --- |
-| Vulkan 1.3 (`src/rhi/vulkan/`) | Fait sous Linux (Windows et macOS non vérifiés) | chargé à l'exécution par volk, mémoire par VMA, rendu dynamique, `synchronization2`, sémaphore à chronologie, cache de pipelines sur disque, validation de synchronisation |
+| Vulkan 1.3 (`src/rhi/vulkan/`) | Fait sous Linux (Windows non vérifié ; macOS par MoltenVK, sur le GPU paravirtualisé de la CI seulement) | chargé à l'exécution par volk, mémoire par VMA, rendu dynamique, `synchronization2`, sémaphore à chronologie, cache de pipelines sur disque, validation de synchronisation |
 | OpenGL 4.3+ (`src/rhi/opengl/`) | Fait | référence du comportement observable ; contexte de debug `GL_KHR_debug`, `glClipControl`, barrières conservatrices |
-| Metal | Absent (prévu en M9) | reconnu et refusé avec un message |
+| Metal | Absent (report proposé) | reconnu et refusé avec un message |
 
 La démo choisit au lancement (`--api vulkan|opengl`) ; si Vulkan ne démarre pas, elle affiche la raison et retombe sur
 OpenGL, sauf avec `--strict-backend` ([Choisir le backend](/guides/application/peripherique/)). Les mêmes tests
@@ -217,7 +221,7 @@ l'obtient par `glClipControl`, Vulkan par un viewport de hauteur négative.
 
 ## Limites
 
-- Pas de backend Metal (prévu en M9). Sur macOS, OpenGL s'arrête à 4.1, en dessous de ce que le backend OpenGL demande.
+- Pas de backend Metal natif (report proposé) : macOS passe par Vulkan et MoltenVK. Sur macOS, OpenGL s'arrête à 4.1, en dessous de ce que le backend OpenGL demande.
 - Une seule file : pas de transferts asynchrones ni de calcul en parallèle du rendu.
 - Dessin indirect sans nombre de commandes lu sur le GPU.
 - Textures cube et tableau créables, mais pas encore vérifiées par un test d'échantillonnage dans un shader.

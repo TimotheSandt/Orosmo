@@ -19,7 +19,7 @@ Seul endroit (avec `src/rhi/opengl/`) où existent `Vk*`, `vk*`, volk et VMA. M�
 
 - **volk** (vcpkg) charge Vulkan à l'exécution (`volkInitialize`, `volkLoadInstance`, `volkLoadDevice`) : le moteur ne se lie PAS au
   chargeur Vulkan. Sans chargeur ou sans GPU compatible, `createDevice` renvoie `kUnsupported` avec la raison ; les tests et
-  les démos retombent sur OpenGL (RHI-04). Les fonctions sont globales : un seul pilote par processus.
+  les démos retombent sur OpenGL (RHI-04), sauf sous macOS, où `fallbackBackend` ne renvoie rien. Les fonctions sont globales : un seul pilote par processus.
 - **Vulkan 1.3** exigé : rendu dynamique (`VK_KHR_dynamic_rendering`, noyau 1.3), `synchronization2`, sémaphore à chronologie,
   `hostQueryReset`. Un GPU qui ne les a pas est écarté avec la raison (liste dans le message d'erreur). Choix du GPU : discret,
   puis intégré, puis processeur (lavapipe) ; `ENGINE_VULKAN_DEVICE=<indice ou fragment du nom>` force un GPU.
@@ -135,6 +135,12 @@ Trois groupes (`kGroupCount`), liaisons < `kBindingsPerGroup` (docs/03 §4) ; gr
 - Push constants, sommets, indices et groupes sont mémorisés et liés au dessin ; le pipeline graphique est lié à `setPipeline`, le
   pipeline de calcul au dispatch.
 - Dessins indirects : `vkCmdDraw*Indirect` en un appel si `multiDrawIndirect`, sinon un appel par commande.
+- GPU Metal paravirtualisé (MoltenVK sur « Apple Paravirtual device », machines virtuelles macOS dont le runner de la CI, M9-L2,
+  G510) : `drawIndexed` y est enregistré comme un `vkCmdDrawIndexedIndirect` d'une commande, écrite dans un tampon d'arguments de
+  l'encodeur (mémoire d'envoi, 256 commandes puis le double ; détruit avec l'encodeur, après sa soumission). Le dessin indexé
+  direct de ce pilote ne lit pas les indices de la plupart des tampons d'index (rien n'est tracé, sans message) ; l'indirect les
+  lit. Choisi à la création (`VulkanDevice::detectIndexedDrawWorkaround`, journalisé) ; `ENGINE_VULKAN_INDEXED_VIA_INDIRECT=0|1`
+  le force (diagnostic, tests). Sans `drawIndirectFirstInstance`, le contournement n'est pas pris.
 - `generateMips` : chaîne de `vkCmdBlitImage` linéaires (refusé, `kUnsupported`, si le format n'a pas le filtrage linéaire par
   blit) ; même refus qu'OpenGL pour la profondeur et les entiers.
 - Requêtes de temps : une requête Vulkan doit être remise à zéro avant d'être réécrite. Hors passe, `vkCmdResetQueryPool` juste

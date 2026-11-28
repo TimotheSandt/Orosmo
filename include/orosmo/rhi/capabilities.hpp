@@ -38,11 +38,20 @@ struct Capabilities
     // `firstInstance` non nul dans les commandes indirectes (Vulkan : drawIndirectFirstInstance ; OpenGL 4.3 : toujours). Sans elle,
     // une commande indirecte doit avoir firstInstance = 0.
     bool drawIndirectFirstInstance = false;
+    // Horodatages GPU qui mesurent le travail encadré. Faux aussi quand le pilote en accepte mais n'écrit pas d'heure GPU : MoltenVK
+    // sans échantillonnage de compteurs Metal (GPU paravirtualisé) date tous les horodatages d'un tampon de commandes de sa fin, sur
+    // l'horloge CPU ; aucune propriété Vulkan ne le dit, le backend le constate à la création (M9-L1).
     bool timestampQueries = false;
     bool anisotropy = false;
     bool bc7Textures = false;  // Format::kBC7* échantillonnables (OpenGL : BPTC, cœur 4.2 ; Vulkan : textureCompressionBC)
     bool astcTextures = false; // Format::kASTC4x4* (OpenGL : GL_KHR_texture_compression_astc_ldr ; Vulkan : textureCompressionASTC_LDR)
     bool wireframe = false;
+    // Format::kRGBA8Srgb utilisable en image de stockage (TextureUsage::kStorage). OpenGL 4.3 : jamais (pas de format d'image sRGB) ;
+    // Vulkan : VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT du pilote (MoltenVK sur GPU Apple : oui).
+    bool srgbStorageImages = false;
+    // Couche de validation réellement active (Vulkan : VK_LAYER_KHRONOS_validation chargée ; OpenGL : contexte de debug et
+    // GL_KHR_debug branché). Faux si `DeviceDesc::validation` est faux ou si la couche manque (le périphérique est créé quand même).
+    bool validation = false;
     bool spirvShaders = false; // ShaderLanguage::kSpirv accepté
     bool shaderFloat64 = false; // `double` dans les shaders (OpenGL 4.0+, Vulkan shaderFloat64)
 

@@ -17,7 +17,7 @@ Un identifiant n'est « Fait » que s'il a un test automatisé ou une commande d
 Lire les identifiants : `REN-…`, `RHI-…`, `PLAT-…`, `ASSET-…`, `ANIM-…`, `UI-…` et leurs semblables sont les lignes de la
 checklist (`docs/02`). `Gnnn` est une limite connue dans `docs/GAPS.md`. `Ann` est une décision ou une question dans
 `docs/QUESTIONS.md`. `Mn` est un jalon du plan (`docs/05`) : M8 est la scène, la simulation et la logique de jeu
-rechargeable (livré en `v0.7.0`) ; M9, macOS et Metal ; M11, les modules et addons.
+rechargeable (livré en `v0.7.0`) ; M9, macOS (pas encore publié) ; M11, les modules et addons.
 :::
 
 ## Décompte par section
@@ -83,14 +83,16 @@ Chaque ligne cite l'identifiant de la checklist.
 
 ## Partiel
 
-- Plateformes (PLAT-01 à 05) : manettes limitées à la navigation de l'interface (PLAT-03, G223) ; Windows et macOS sont compilés par la CI mais pas vérifiés pour le code récent ;
-  `--headless` n'est vérifié que sous Linux ; pas de composition IME (G107).
-- RHI : Vulkan n'est vérifié que sous Linux avec un GPU (G142) ; Metal est reconnu mais refusé.
+- Plateformes (PLAT-01 à 05) : manettes limitées à la navigation de l'interface (PLAT-03, G223) ; Windows est compilé par la CI sans rendu, macOS arm64 testé par la CI sur machine virtuelle seulement ;
+  `--headless` n'est vérifié que sous Linux et sur le runner macOS ; pas de composition IME (G107).
+- RHI : Vulkan est vérifié sous Linux avec un GPU et, sous macOS (MoltenVK), sur le GPU paravirtualisé de la CI seulement
+  (G142, G510) ; Metal est reconnu mais refusé. Ces apports de M9 ne sont dans aucune version publiée.
 - Rendu : anticrénelage FXAA, SMAA 1x et TAA livrés, MSAA absent (REN-19) ; lumières de surface (REN-05), ombres de contact (REN-08), variantes de matériaux sans constantes de
   spécialisation (REN-11, A71), imposteurs (REN-31).
 - Assets : le rechargement à chaud ne concerne que les textures, pas les modèles glTF (ASSET-05, G200) ; pas d'exécutable de cuisson.
 - Interface : thèmes avec des tailles encore en dur dans certains widgets (UI-07), rendu économe sans cache par couche (UI-13).
-- Outils (TOOL-03, TEST, DOC-01, BLD-01, BLD-02) : le parcours est vérifié sous Linux seulement.
+- Outils (TOOL-03, TEST, DOC-01, BLD-01, BLD-02) : le parcours est vérifié sur une vraie machine sous Linux seulement ; la CI le suit aussi sous
+  Windows (sans rendu) et macOS (machine virtuelle).
 
 ## Absent
 
@@ -99,7 +101,7 @@ Chaque ligne cite l'identifiant de la checklist.
   comme modules préinstallés (M13).
 - 2D : cartes de tuiles, éclairage 2D (R2D-04, R2D-07).
 - Contenu : import OBJ, cinématique inverse, morph targets, retargeting (ASSET-06, ANIM-05, ANIM-06).
-- Backend Metal (RHI-13), transferts asynchrones (RHI-19).
+- Backend Metal natif (RHI-13, report proposé), transferts asynchrones (RHI-19).
 - Voxels et ray tracing (EXT-01 à EXT-05).
 - Modules, addons et registre (MOD-01 à MOD-09).
 

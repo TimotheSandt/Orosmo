@@ -159,7 +159,7 @@ std::string usage(std::string_view program)
     out << "Usage: " << program
         << " [--api vulkan|opengl] [--strict-backend] [--headless] [--size WxH] [--frames N] [--capture DIR] [--capture-frames N]"
            " [--help]\n"
-           "  --api             graphics API (default: Vulkan, falling back to OpenGL if it cannot start)\n"
+           "  --api             graphics API (default: Vulkan, falling back to OpenGL if it cannot start; no fallback on macOS)\n"
            "  --strict-backend  no fallback: fail if the requested API cannot start\n"
            "  --headless        no window (off-screen rendering; a GPU is still needed)\n"
            "  --frames N        stop after N frames\n"
@@ -242,6 +242,10 @@ struct Application::Impl
 
     core::Result<> createDevice(rhi::Backend wanted)
     {
+        // `--api opengl` sur macOS : l'échec (fenêtre ou périphérique) vient de la version d'OpenGL, pas d'un affichage manquant.
+        const std::string macHint = rhi::kHostIsMacOS && wanted == rhi::Backend::kOpenGL
+                                        ? " (macOS stops at OpenGL 4.1, the engine needs 4.3: use --api vulkan)"
+                                        : "";
         rhi::DeviceDesc desc;
         desc.backend = wanted;
         desc.validation = settings.validation;
@@ -260,7 +264,7 @@ struct Application::Impl
             {
                 window.reset();
                 return makeError(ErrorCode::kUnsupported, std::string("window: ") + opened.error().message +
-                                                              " (no display? --headless renders off-screen; on Linux without X: xvfb-run)");
+                                                              " (no display? --headless renders off-screen; on Linux without X: xvfb-run)" + macHint);
             }
             desc.surface.nativeWindow = window->getWindow();
         }
@@ -270,7 +274,7 @@ struct Application::Impl
             if (window)
                 window->close();
             window.reset();
-            return makeError(created.error().code, std::string(backendName(wanted)) + " device: " + created.error().message);
+            return makeError(created.error().code, std::string(backendName(wanted)) + " device: " + created.error().message + macHint);
         }
         device = std::move(*created);
         backend = wanted;
@@ -284,8 +288,11 @@ struct Application::Impl
         {
             if (settings.backend != rhi::Backend::kVulkan || !settings.backendFallback)
                 return first;
+            const auto fallback = rhi::fallbackBackend(settings.backend);
+            if (!fallback)
+                return makeError(first.error().code, first.error().message + "; " + rhi::kNoFallbackOnMacOS);
             LOG_WARNING("Vulkan cannot start (", first.error().message, "); falling back to OpenGL");
-            if (auto second = createDevice(rhi::Backend::kOpenGL); !second)
+            if (auto second = createDevice(*fallback); !second)
                 return makeError(second.error().code, first.error().message + "; fallback: " + second.error().message);
             fellBack = true;
         }

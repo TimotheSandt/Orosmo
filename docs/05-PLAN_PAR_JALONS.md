@@ -231,6 +231,12 @@ Une branche `feat/M8-L<n>-…` par lot, créée depuis `dev`, une PR vers `dev` 
 **Démo** : visualiseur sur un Mac.
 **Terminé** : CI macOS verte ; limites connues dans `docs/GAPS.md`.
 
+### Lots de M9 (proposés par l'IA le 2026-11-27, `docs/QUESTIONS.md` A90 ; sans Mac : la seule preuve est la CI macOS)
+
+Branches `feat/M9-L<n>-…` depuis `milestone/M9`, une PR vers `milestone/M9` par lot ; rien sur `dev` avant la validation de M8. C'est une exception à la règle de conduite 5, décidée par l'auteur.
+
+- **L0** sonde du runner macOS et plan · **L1** CI macOS avec MoltenVK et couches de validation, tests GPU Vulkan et de fenêtre exécutés et verts · **L2** différences de rendu de la démo (scène vide) et captures comparées en CI · **L3** exécution et distribution sur macOS (découverte de MoltenVK, paquet, `orosmo doctor`, e2e avec rendu, HiDPI) · **L4** mesures et décision RHI-13 (proposée, non appliquée) · **L5** documentation, site, release et PR de jalon (brouillon).
+
 ## M10 · Extensions et finition
 
 - Vérifier que les points d'accroche tiennent : un plugin voxel minimal (EXT-01) s'ajoute **sans modifier** le renderer ni les backends ; l'interface d'accélération de rayons (EXT-03) est présente dans le RHI, désactivée dans OpenGL.

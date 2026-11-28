@@ -46,7 +46,7 @@ l'application, appelle la fonction de préparation, puis tourne jusqu'à la ferm
 | Champ de `ApplicationSettings` | Défaut | Rôle |
 | --- | --- | --- |
 | `title`, `width`, `height` | `"Orosmo"`, 1280, 720 | fenêtre |
-| `backend`, `backendFallback` | Vulkan, oui | backend demandé, repli sur OpenGL s'il ne démarre pas |
+| `backend`, `backendFallback` | Vulkan, oui | backend demandé, repli sur OpenGL s'il ne démarre pas (jamais sous macOS : OpenGL 4.1) |
 | `headless` | non | sans fenêtre (rendu hors écran, pas fixe) |
 | `validation`, `vsync` | oui, non | couches de validation (Vulkan, `GL_KHR_debug`), synchronisation verticale |
 | `windowed` | non | vrai : toujours en fenêtre ; faux : état par défaut de `platform::Window` (fenêtre en debug, plein écran sinon) |

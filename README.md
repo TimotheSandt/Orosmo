@@ -1,6 +1,6 @@
 # Orosmo
 
-**Orosmo** est un moteur 3D et 2D générique en **C++23** (rendu OpenGL et Vulkan, Metal prévu), avec une interface décrite dans un langage maison (`.cui`) précompilé en C++. *(Note A37 : le code procédural de génération de terrain est archivé dans la branche `archive/procedural-world` et poursuivra sa vie dans un projet séparé / addon M11.)*
+**Orosmo** est un moteur 3D et 2D générique en **C++23** (rendu Vulkan et OpenGL ; sous macOS, Vulkan par MoltenVK, sans backend Metal natif), avec une interface décrite dans un langage maison (`.cui`) précompilé en C++. *(Note A37 : le code procédural de génération de terrain est archivé dans la branche `archive/procedural-world` et poursuivra sa vie dans un projet séparé / addon M11.)*
 
 > Première release utilisable : M3 (guide : [docs/USING_THE_ENGINE.md](docs/USING_THE_ENGINE.md)). L'architecture évolue encore ;
 > les changements incompatibles sont listés dans [docs/releases/](docs/releases/). Spécification, checklist et plan : [docs/](docs/README.md). Règles de travail : [CLAUDE.md](CLAUDE.md).
@@ -35,8 +35,8 @@ récent (Ubuntu 24.04+) ; Windows et macOS ne sont pas vérifiés ([docs/GAPS.md
 
 - **Compilateur** : GCC 13+ ou Clang 17+ (testé : GCC 13.3, Linux), MSVC 2022 / MinGW sous Windows.
 - **Outils** : GNU Make, CMake, Rust (`cargo`, pour `tools/cui-rs` et `tools/engine-init-rs`), Python 3 (contrôles et comparaison d'images).
-- **Pilotes** : OpenGL 4.3+ avec `glClipControl` (OpenGL 4.5 ou `GL_ARB_clip_control`, présent sur les pilotes actuels) ; Vulkan à
-  partir de M4, couches de validation conseillées.
+- **Pilotes** : Vulkan 1.3 (backend par défaut ; sous macOS par MoltenVK), couches de validation conseillées. Pour le backend
+  OpenGL seulement : OpenGL 4.3+ avec `glClipControl` (OpenGL 4.5 ou `GL_ARB_clip_control`, présent sur les pilotes actuels).
 - **Dépendances** : glfw3, glm, stb, freetype, vulkan, shaderc, glad (v1), msdfgen, nlohmann-json (JSON), cgltf (glTF), doctest (tests) — liste dans [vcpkg.json](vcpkg.json).
 
 ## Compiler
@@ -73,7 +73,9 @@ redirection vers un fichier), rien ne change. Il faut Python 3 (sinon, affichage
 make install-deps-all            # vcpkg (triplets x64-mingw-static, x64-osx, arm64-osx)
 make all-debug
 ```
-(Windows : vérifié avant M00 seulement ; macOS : non vérifié, voir [docs/GAPS.md](docs/GAPS.md).)
+macOS : Vulkan par MoltenVK seulement (`brew install vulkan-loader molten-vk` ; OpenGL s'arrête à 4.1, pas de repli ; pas de
+backend Metal natif).
+(Windows : vérifié avant M00 seulement ; macOS : CI sur machine virtuelle seulement, aucun vrai Mac ; voir [docs/GAPS.md](docs/GAPS.md).)
 
 ## Lancer, tester
 
@@ -85,7 +87,7 @@ make all-debug
 | `make demo-test SANITIZE=address,undefined` | Idem sous ASan + UBSan (arbre propre : `make fclean` avant) |
 | `make demo-test-unit` / `make demo-test-gpu` | Seulement les tests sans GPU ni fenêtre / seulement l'intégration graphique (contexte OpenGL, fenêtre). `ENGINE_TEST_REQUIRE_GPU=1` : un test graphique sans pilote ni affichage échoue au lieu d'être ignoré |
 | `make check` | Dépôt, couches, isolation des API (y compris GLFW et `<windows.h>`), en-têtes autonomes : **bloquant** (échoue à la première violation, comme la CI) |
-| `main --api opengl --headless --capture <dossier>` | Rend 10 images à 1280x720 (options : `--ui off|hud|full`, `--hud off|fps|full|graph` (panneau de performances, défaut `full`), `--theme dark|light|framed`, `--tab scene|widgets|controls|color|windows|layout|themes`, `--size WxH`, `--vsync [on|off]` (synchronisation verticale, active par défaut ; sans effet avec `--headless`), `--fps-limit N` (10 à 1000, coupe la vsync), `--direct-present on|off` (Vulkan : dessin direct dans l'image de la fenêtre, actif par défaut ; `off` revient à la copie si l'image scintille à très haute cadence sans vsync, G193), `--gpu-timings auto|on|off` (minuteries GPU : `auto`, défaut, seulement quand le panneau affiche des temps GPU, c'est-à-dire `--hud full|graph` ; les outils qui lisent les lignes `Perf: RenderGraph/...` passent `on`), `--capture-frames N`, `--hover <id>`, `--click <id>`, `--focus <id>` (focus clavier et anneau de focus, UI-09)) ; Vulkan par défaut, avec repli sur OpenGL s'il ne démarre pas ; `--backend` est un alias de `--api`, `--strict-backend` pour l'interdire |
+| `main --api opengl --headless --capture <dossier>` | Rend 10 images à 1280x720 (options : `--ui off|hud|full`, `--hud off|fps|full|graph` (panneau de performances, défaut `full`), `--theme dark|light|framed`, `--tab scene|widgets|controls|color|windows|layout|themes`, `--size WxH`, `--vsync [on|off]` (synchronisation verticale, active par défaut ; sans effet avec `--headless`), `--fps-limit N` (10 à 1000, coupe la vsync), `--direct-present on|off` (Vulkan : dessin direct dans l'image de la fenêtre, actif par défaut ; `off` revient à la copie si l'image scintille à très haute cadence sans vsync, G193), `--gpu-timings auto|on|off` (minuteries GPU : `auto`, défaut, seulement quand le panneau affiche des temps GPU, c'est-à-dire `--hud full|graph` ; les outils qui lisent les lignes `Perf: RenderGraph/...` passent `on`), `--capture-frames N`, `--hover <id>`, `--click <id>`, `--focus <id>` (focus clavier et anneau de focus, UI-09)) ; Vulkan par défaut, avec repli sur OpenGL s'il ne démarre pas (pas de repli sur macOS) ; `--backend` est un alias de `--api`, `--strict-backend` pour l'interdire. Sur macOS, `--api opengl` échoue (OpenGL 4.1 seulement) : utiliser `--api vulkan` (MoltenVK) |
 | `python3 tools/compare_png.py A.png B.png` | Compare deux images (tolérance, budget de pixels, image de différence) |
 | `python3 -m unittest discover -s tests/tools` | Tests des outils Python |
 | `make debug` / `make release` | Archives du moteur dans `lib/<type>/` |

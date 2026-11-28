@@ -49,7 +49,7 @@ L'outil ne fait que lancer `make`. Les commandes suivantes donnent le même rés
 Les autres cibles du `Makefile` (`dev`, `test`, `benchmark`, `compile-commands`, `fclean`…) sont décrites dans
 [Compiler avec Make ou CMake](/reference/construction/#projet-créé-par-orosmo-init). Le projet de démarrage accepte
 `--api vulkan|opengl` (Vulkan par défaut, avec repli sur OpenGL s'il ne démarre pas ; `--strict-backend` supprime le
-repli), `--headless`, `--size <L>x<H>`, `--frames <N>`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et
+repli ; sous macOS il n'y a pas de repli, seul Vulkan y fonctionne), `--headless`, `--size <L>x<H>`, `--frames <N>`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et
 `--help` (options de `app::Application::main`).
 
 ## Version du moteur
@@ -134,7 +134,8 @@ utilisez `find_package(Orosmo)` avec CMake : voir [Compiler avec Make ou CMake](
 
 - Les versions sont `0.MINEUR.CORRECTIF` : tant que la majeure vaut 0, un changement mineur peut casser l'API (la liste est
   dans `docs/releases/` du dépôt) ; un correctif ne la casse pas.
-- Seul Linux est vérifié ; Windows et macOS sont construits par la CI mais pas essayés.
+- Seul Linux est essayé sur une vraie machine ; Windows est construit par la CI, macOS arm64 construit et lancé par la CI sur
+  machine virtuelle.
 - Pas de système de modules ni d'addons pour l'instant.
 
 Toutes les commandes et options de l'outil : [Commande orosmo](/reference/commande-orosmo/). Détails :

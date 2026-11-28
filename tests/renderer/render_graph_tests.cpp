@@ -559,7 +559,12 @@ TEST_SUITE("renderer/render_graph")
                 std::unique_ptr<core::IGpuTimer> CreateTimer(const std::string &name) const override
                 {
                     names.push_back(name);
-                    return std::make_unique<Observed>(inner.CreateTimer(name), &readySeen);
+                    std::unique_ptr<core::IGpuTimer> timer = inner.CreateTimer(name);
+                    if (timer == nullptr)
+                    {
+                        return nullptr; // sans horodatages, le fournisseur n'en crée pas (le Profiler mesure sur le CPU)
+                    }
+                    return std::make_unique<Observed>(std::move(timer), &readySeen);
                 }
             };
             rd::ProfilerGpuTimerFactory timers(*g.gpu.device);

@@ -104,7 +104,8 @@ ENGINE_TEST_BACKENDS=opengl,vulkan ENGINE_TEST_REQUIRE_GPU=1 make demo-test
 ```
 
 `ENGINE_TEST_BACKENDS` choisit les backends testés ; avec `ENGINE_TEST_REQUIRE_GPU=1`, un backend demandé mais indisponible
-fait échouer au lieu de sauter le test.
+fait échouer au lieu de sauter le test. Un test propre à un backend se saute par `SKIP_TEST_IF_NULL_FOR(ptr, "vulkan", raison)` : la CI
+macOS (`ENGINE_TEST_BACKENDS=vulkan`) exige ainsi Vulkan sans exiger OpenGL 4.3.
 
 ## Liste de contrôle
 
@@ -121,7 +122,7 @@ fait échouer au lieu de sauter le test.
 
 ## Limites
 
-Le backend Metal n'existe pas encore (prévu en M9). Les points marqués « à vérifier » dans `docs/ADD_A_BACKEND.md` (repère de Metal et WebGPU,
+Le backend Metal n'existe pas (report proposé : `docs/notes/decision_rhi13_backend_metal.md`). Les points marqués « à vérifier » dans `docs/ADD_A_BACKEND.md` (repère de Metal et WebGPU,
 fichiers `.mm`, liaison des frameworks) n'ont pas été confirmés.
 
 ## Voir aussi

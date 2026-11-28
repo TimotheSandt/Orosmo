@@ -21,6 +21,22 @@ using orosmo::core::ErrorCode;
 
 TEST_SUITE("rhi/backend/device")
 {
+    TEST_CASE("M9-L1 the validation layer is active when the CI requires it (ENGINE_TEST_REQUIRE_VALIDATION)")
+    {
+        // Sans couche chargée, « 0 message de validation » ne prouve rien : la CI qui l'installe pose la variable.
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            MESSAGE(tests::backendName(backend), ": validation ", gpu->capabilities().validation ? "active" : "inactive", " on ",
+                    gpu->capabilities().deviceName);
+            if (tests::validationRequired())
+            {
+                CHECK_MESSAGE(gpu->capabilities().validation, "ENGINE_TEST_REQUIRE_VALIDATION is set but the validation layer is not active (VK_LAYER_PATH?)");
+            }
+        }
+    }
+
     TEST_CASE("capabilities describe the device (limits, alignment); OpenGL keeps the reserved optional features false")
     {
         FOR_EACH_BACKEND(backend)
@@ -201,7 +217,21 @@ TEST_SUITE("rhi/backend/device")
             CHECK((tests::errorOf(gpu->createTexture(bad)) == ErrorCode::kInvalidArgument));
             bad.mipLevels = 1;
             bad.usage = TextureUsage::kStorage;
-            bad.format = Format::kRGBA8Srgb; // pas une image de stockage
+            bad.format = Format::kRGBA8Srgb; // image de stockage selon le pilote (règle 11) : OpenGL 4.3 jamais, MoltenVK oui
+            if (gpu->capabilities().srgbStorageImages)
+            {
+                auto accepted = gpu->createTexture(bad);
+                CHECK(accepted.has_value());
+                if (accepted)
+                {
+                    gpu->destroy(*accepted);
+                }
+            }
+            else
+            {
+                CHECK((tests::errorOf(gpu->createTexture(bad)) == ErrorCode::kUnsupported));
+            }
+            bad.format = Format::kD32Float; // une profondeur n'est jamais une image de stockage
             CHECK((tests::errorOf(gpu->createTexture(bad)) == ErrorCode::kUnsupported));
             gpu.expectNoValidationErrors();
         }
@@ -402,6 +432,95 @@ void main() { color = vColor; })";
             auto r = gpu->submit(std::move(encoder));
             REQUIRE_FALSE(r.has_value());
             CHECK(r.error().message.find("vertex buffer binding") != std::string::npos);
+            gpu.expectNoValidationErrors();
+        }
+    }
+
+    // M9-L2 (G510) : sous MoltenVK, sur le GPU Metal paravirtualisé du runner macOS, un dessin indexé direct ne lisait pas les
+    // indices d'un tampon en mémoire d'envoi (ni ceux d'un tampon sous-alloué loin dans son bloc) : rien n'était tracé, sans aucun
+    // message (maillages absents de la démo). Chaque sorte de tampon d'index, remplie par le CPU ou par une copie GPU, est lue par
+    // un dessin direct et par un dessin indirect, sur plusieurs tampons (sous-allocations successives).
+    TEST_CASE("M9-L2 (G510): indexed draws read the indices of every kind of index buffer, direct and indirect")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {8, 8});
+            const std::vector<float> positions{-1, -1, 3, -1, -1, 3};
+            const std::vector<std::uint32_t> indices{0, 1, 2};
+            const BufferHandle vb = gpu.buffer(BufferUsage::kVertex, bytesOf(positions), 0, "positions");
+            const std::vector<DrawIndexedIndirectCommand> commands{{3, 1, 0, 0, 0}};
+            const BufferHandle args = gpu.buffer(BufferUsage::kIndirect, bytesOf(commands), 0, "args");
+            const char *vs = R"(#version 450
+layout(location = 0) in vec2 position;
+void main() { gl_Position = vec4(position, 0.0, 1.0); })";
+            const char *fs = R"(#version 450
+layout(location = 0) out vec4 color;
+void main() { color = vec4(0.0, 1.0, 0.0, 1.0); })";
+            GraphicsPipelineDesc d;
+            d.vertex = gpu.shader(ShaderStage::kVertex, vs);
+            d.fragment = gpu.shader(ShaderStage::kFragment, fs);
+            d.vertexBuffers = {{.binding = 0, .stride = 8, .stepRate = VertexStepRate::kVertex}};
+            d.vertexAttributes = {{.location = 0, .binding = 0, .format = VertexFormat::kFloat2, .offset = 0}};
+            d.colorTargets = {ColorTargetState{}};
+            d.raster.cull = CullMode::kNone;
+            auto pipe = gpu->createGraphicsPipeline(d);
+            REQUIRE(pipe.has_value());
+
+            constexpr int kCount = 8;
+            const BufferUsage usage = BufferUsage::kIndex | BufferUsage::kCopySrc | BufferUsage::kCopyDst;
+            // GPU seul (données initiales : copie de transfert) ; envoi (écrit par le CPU) ; envoi et GPU seul remplis par une copie GPU.
+            const std::array<const char *, 4> kindNames{"gpu-only", "upload", "upload, GPU copy", "gpu-only, GPU copy"};
+            std::array<std::vector<BufferHandle>, 4> kinds;
+            for (int k = 0; k < kCount; ++k)
+            {
+                kinds[0].push_back(gpu.buffer(usage, bytesOf(indices), 0, "indices.gpu"));
+                kinds[1].push_back(gpu.buffer(usage, bytesOf(indices), 0, "indices.upload", MemoryKind::kUpload));
+                kinds[2].push_back(gpu.buffer(usage, {}, 12, "indices.upload.copied", MemoryKind::kUpload));
+                kinds[3].push_back(gpu.buffer(usage, {}, 12, "indices.gpu.copied"));
+            }
+            gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    for (int k = 0; k < kCount; ++k)
+                    {
+                        e.copyBuffer(kinds[0][k], kinds[2][k], {.srcOffset = 0, .dstOffset = 0, .size = 12});
+                        e.copyBuffer(kinds[0][k], kinds[3][k], {.srcOffset = 0, .dstOffset = 0, .size = 12});
+                    }
+                });
+            const std::array<std::uint8_t, 4> green{0, 255, 0, 255};
+            for (std::size_t kind = 0; kind < kinds.size(); ++kind)
+            {
+                // Une lettre par dessin : D/I tracé (direct/indirect), d/i rien de tracé.
+                std::string results;
+                for (int k = 0; k < kCount; ++k)
+                {
+                    for (const bool indirect : {false, true})
+                    {
+                        // Sans la capacité, drawIndexedIndirect est refusé : seuls les dessins directs sont vérifiés.
+                        if (indirect && !gpu->capabilities().drawIndirectFirstInstance)
+                            continue;
+                        gpu.run(
+                            [&](CommandEncoder &e)
+                            {
+                                e.beginRenderPass(passOn(color));
+                                e.setPipeline(*pipe);
+                                e.setVertexBuffer(0, vb);
+                                e.setIndexBuffer(kinds[kind][k], IndexType::kUint32);
+                                if (indirect)
+                                    e.drawIndexedIndirect(args, 0, 1, 0);
+                                else
+                                    e.drawIndexed(3);
+                                e.endRenderPass();
+                            });
+                        const bool drawn = rgba(gpu.pixel(color, 4, 4)) == green;
+                        results += drawn ? (indirect ? 'I' : 'D') : (indirect ? 'i' : 'd');
+                    }
+                }
+                INFO((std::string(tests::backendName(backend)) + ", index buffers " + kindNames[kind] + ": " + results));
+                CHECK(results.find_first_of("di") == std::string::npos);
+            }
             gpu.expectNoValidationErrors();
         }
     }

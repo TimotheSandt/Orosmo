@@ -76,7 +76,7 @@ auto tryBackend = [](rhi::Backend backend, platform::Window &window) -> core::Re
 
 auto window = std::make_unique<platform::Window>("monjeu", 1280, 720, platform::WindowState::kWindowed);
 auto created = tryBackend(rhi::Backend::kVulkan, *window);
-if (!created && created.error().code == core::ErrorCode::kUnsupported)
+if (!created && created.error().code == core::ErrorCode::kUnsupported && rhi::fallbackBackend(rhi::Backend::kVulkan))
 {
     std::cerr << created.error().message << " ; repli sur OpenGL\n";
     window = std::make_unique<platform::Window>("monjeu", 1280, 720, platform::WindowState::kWindowed);
@@ -84,6 +84,10 @@ if (!created && created.error().code == core::ErrorCode::kUnsupported)
 }
 // puis, si created est valide : rhi::Device &device = **created;
 ```
+
+`rhi::fallbackBackend(demandé)` dit quel backend essayer : OpenGL après Vulkan, rien pour les autres, et rien sous macOS,
+où OpenGL s'arrête à la version 4.1 (l'erreur de Vulkan est alors rendue telle quelle ; elle dit quoi installer, voir
+[Installer](/demarrer/installation/#macos--vulkan-par-moltenvk)).
 
 Adapté de `apps/demo/src/main.cpp` et `Game::createGraphics`. La démo prend la décision dans `demo::resolveBackend`
 (`apps/demo/src/launch_options.cpp`) : seul Vulkan retombe sur OpenGL, et `--strict-backend` supprime le repli. En ligne
@@ -101,6 +105,8 @@ de commande : `--api vulkan|opengl`, `--list-apis`, `--choose-api`
 | `timestampQueries` | minuteries GPU |
 | `anisotropy`, `wireframe`, `shaderFloat64`, `spirvShaders` | fonctions de rendu et de shaders |
 | `bc7Textures`, `astcTextures` | formats compressés échantillonnables |
+| `srgbStorageImages` | `Format::kRGBA8Srgb` utilisable en image de stockage |
+| `validation` | couche de validation réellement active (Vulkan : `VK_LAYER_KHRONOS_validation` ; OpenGL : contexte de debug) |
 | `rayQuery`, `accelerationStructure`, `bindless`, `meshShader`, `bufferDeviceAddress`, `sparseResources` | réservés : toujours `false` |
 
 ```cpp
@@ -117,7 +123,9 @@ Les deux backends donnent les mêmes valeurs sur un GPU récent, avec ces diffé
 |---|---|---|
 | `compute`, `indirectDraw` | toujours vrai | toujours vrai |
 | `multiDrawIndirect`, `drawIndirectFirstInstance` | toujours vrai | selon le GPU |
-| `timestampQueries` | toujours vrai | selon la file et le GPU |
+| `timestampQueries` | toujours vrai | selon la file et le GPU ; faux sous MoltenVK quand les horodatages ne mesurent pas le travail du GPU (constaté à la création) |
+| `srgbStorageImages` | toujours faux | selon le format (MoltenVK sur GPU Apple : vrai) |
+| `validation` | si `desc.validation` et contexte de debug | si `desc.validation` et couche installée |
 | `anisotropy` | si l'extension de filtrage anisotrope est présente | selon le GPU |
 | `bc7Textures` | toujours vrai | selon le GPU |
 | `astcTextures` | si `GL_KHR_texture_compression_astc_ldr` est présente | selon le GPU |
@@ -157,8 +165,9 @@ passe en premier ; sans variable, le backend préfère un GPU discret, puis int�
 
 ## Limites
 
-- Metal est reconnu par `Backend::kMetal` mais refusé : il n'existe pas encore.
-- Vulkan n'est vérifié que sous Linux. Sous Windows et macOS (MoltenVK), il ne l'est pas.
+- Metal est reconnu par `Backend::kMetal` mais refusé : il n'y a pas de backend Metal natif.
+- Vulkan est vérifié sous Linux. Sous macOS (MoltenVK), il ne l'est que par la CI, sur un GPU paravirtualisé ; sous Windows,
+  il ne l'est pas.
 - Pas de transferts asynchrones (copies sur une file dédiée) : toutes les copies passent par la file principale.
 
 Voir [État du moteur](/projet/etat/).

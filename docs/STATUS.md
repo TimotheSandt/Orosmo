@@ -1,6 +1,6 @@
 # STATUS
 
-Mis à jour pour la fin de M8 (`v0.7.0` préparée, 2026-11-27), après la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le jalon M14 (site vitrine et wiki, 2026-11-24, intégré à `dev` le 2026-11-25), après M6 (`v0.6.0`, 2026-11-24), après M5 (`v0.5.0`, 2026-11-22), après la `v0.4.1` (2026-11-21), après la fin de M4, après M3 (2026-11-19) et le nettoyage « Orosmo » (2026-11-20). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
+Mis à jour pour la fin de M9 (2026-11-28, sur `milestone/M9`, sans version), après la fin de M8 (`v0.7.0` préparée, 2026-11-27), après la distribution du SDK (`v0.6.2`, A76, 2026-11-25), après le jalon M14 (site vitrine et wiki, 2026-11-24, intégré à `dev` le 2026-11-25), après M6 (`v0.6.0`, 2026-11-24), après M5 (`v0.5.0`, 2026-11-22), après la `v0.4.1` (2026-11-21), après la fin de M4, après M3 (2026-11-19) et le nettoyage « Orosmo » (2026-11-20). États détaillés et preuves de l'audit : [AUDIT_REPORT.md](AUDIT_REPORT.md) (instantané du 2026-11-17, non régénéré). Liste de travail : [GAPS.md](GAPS.md).
 
 ## Jalons
 
@@ -25,11 +25,57 @@ Mis à jour pour la fin de M8 (`v0.7.0` préparée, 2026-11-27), après la distr
 | **v0.4.1 Outillage DX et SDK** | **Livré côté code ; à proposer à `main`** | `docs/releases/M4-1.md` : `orosmo doctor`, `compile_commands.json`, support CMake optionnel (`OrosmoConfig.cmake`), empreinte du compilateur `cui` dans le cache (G113). Clone de la branche : `make check`, 422 / 422 cas (13 586 assertions), `cui-test`, `demo-capture`, `demo-vulkan-check`, `e2e-init` (doctor, Make, CMake, compile_commands), 14 tests Python verts |
 | **M6 Assets, matériaux et animation** | **Livré côté code, sur `milestone/M6` ; à proposer à `main`** | `docs/releases/M6.md` : modules `assets` et `anim`, import et export glTF 2.0 (cgltf), textures sRGB ou linéaires, KTX2 (BC7, ASTC, Basis), cuisson de maillages (meshoptimizer, LOD, `.omesh`), rechargement à chaud des textures, matériaux PBR avec variantes et instances, IBL (harmoniques sphériques, cube préfiltré, sondes), skinning GPU, clips, machine à états, courbes, foules instanciées (1000 agents, un draw call par primitive) ; RHI : formats compressés `kBC7*` et `kASTC4x4*`. Linux x64, g++ 13.3, Mesa 26.1.6, Intel Arc, clone propre (`b54f89d`) : `make all-debug` sans avertissement ; `make demo-test` **679 cas** (678 verts, 1 ignoré, 1 rouge : le cas de fenêtre `PLAT-01` connu instable, suite relancée seule 6 / 6) ; ASan + UBSan : même résultat, aucun signalement ASan, **3 messages UBSan** de `platform/window.hpp:34` (booléen non initialisé, code non touché par M6), **corrigé** par `fix/M6-window-params` (G201) : ASan + UBSan relancés, 0 message, 679 / 680 (1 rouge : cas de fenêtre instable) ; `make demo-test` 680 / 680 ; `make check`, `make demo-capture`, `make demo-vulkan-check` (validation à 0), `make cui-test`, tests Python verts ; démo `--scene anim` : captures `anim/scene` et `anim/ui` identiques OpenGL / Vulkan à 2/255. 10 identifiants passent à Fait, 2 à Partiel (REN-11, ASSET-05) (G195 à G201, A70 à A72) |
 | **M5 Cœur du rendu** | **Livré côté code, sur `milestone/M5` ; à proposer à `main`** | `docs/releases/M5.md` : graphe de passes et plugins, `FrameData`, forward+ clusterisé, ombres en cascade avec cache, HDR et post-traitements, anticrénelage (FXAA, SMAA 1x, TAA), AOV à la demande, instancing, culling CPU et GPU (Hi-Z, multi-draw indirect), LOD, transparents triés, modes de fusion, batch 2D, mélange 2D/3D, interface économe, roue de couleur ; RHI : ajouts `Capabilities::drawIndirectFirstInstance` et `CommandEncoder::id()` (revue). Linux x64, g++ 13.3, Mesa, Intel Arc : `make demo-test` **545 / 545**, suites GPU en Vulkan **229 / 229** (316 cas hors GPU ignorés), `make check`, `make demo-vulkan-check` (validation à 0 message), `make demo-capture` verts ; ASan + UBSan : 545 / 545 sans signalement ; clone propre (`df005c7`) : tout vert. Après la revue de la PR #12 (`9423484`) : `make demo-test` **582 / 582**, GPU Vulkan **244 / 244**, GPU sur rasteriseurs logiciels **244 / 244**, `make check`, `make demo-capture`, `make demo-vulkan-check` verts. Après les optimisations (A61) : `make demo-test` **611 / 611**, GPU Vulkan **265 / 265**, GPU logiciel **265 / 265**, tout vert ; Vulkan par défaut ; 0,49 → 0,26 ms par image (Vulkan, release). 17 identifiants passent à Fait, 5 d'Absent à Partiel (G151 à G188) |
+| **M9 macOS et Metal** | **Livré côté code et partiellement : CI macOS sur machine virtuelle seulement ; sur `milestone/M9`, pas dans `dev` (attend la validation de M8) ; démo « visualiseur sur un Mac » absente** | `docs/releases/M9.md`, `docs/releases/M9-MR.md` ; run 46123557575 (macOS arm64) : 955 / 955 (1 ignoré), six captures Vulkan à 0,1 % au plus des références, `make e2e-init` avec rendu ; RHI-13 Absent (report proposé, A92) |
 | **M14 Site vitrine et wiki** | **Livré côté code, sur `milestone/M14` ; rien n'est publié (publication après M6, au premier tag `v*` sur `main`)** | `docs/releases/M14.md` : `site/` (Astro 7 + Starlight ; **après la refonte : 64 pages**, couvrant M6 ; première livraison : 16 pages), `npm ci && npm run build && npm run check-links && npm run check-anchors` (après la refonte : 5375 liens internes, 1659 ancres, 0 cassé ; première livraison : 470 liens), `docker build` + `docker run` + `curl` (200, santé `healthy`), `.github/workflows/site.yml` (actionlint 0 erreur, jamais exécuté sur GitHub), `docs/DEPLOIEMENT_SITE.md` ; hébergement proposé en A74 |
 | **M8 Interface avancée, scène, simulation, logique rechargeable** | **Livré côté code, dans `dev` (18 lots, A79) ; `v0.7.0` préparée, ni tag ni release ; à proposer à `main`** | `docs/releases/M8.md`, `docs/releases/M8-MR.md` : modules `scene`, `sim`, `app` ; clone propre (`8b255e6`) : `make all-debug` sans avertissement, `make demo-test` **924 / 924**, `make check`, `make e2e-init` (logique rechargée en 1,80 s sans perte d'état, `.cui` → vue recréée en 2,65 s), démo OpenGL et Vulkan sans message de validation, `--sim-agents 500 --seed 42` : même empreinte deux fois ; ASan + UBSan et TSan : voir « M8 lot L15 ». Totaux `docs/02` : Fait 68, Partiel 45, Absent 35 |
 | **M15 Façade du projet** | **Planifié (A78, 2026-11-26)** : site vitrine soigné et documentation simplifiée, en fin de plan, après la charte et le wireframe de l'auteur ; la simplicité de l'API est planifiée en M8 (A77) | `docs/05` M15 et M8 |
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
+## M9 lot L5 : documentation et release (A90)
+
+Branche `feat/M9-L5-release`. Documentation seulement. Livré et limites : `docs/releases/M9.md`. Aucun identifiant ne passe à
+« Fait » : les totaux de `docs/02` sont ceux de M8.
+
+| ID | Avant M9 | Après M9 | Preuve | Manque |
+| --- | --- | --- | --- | --- |
+| RHI-04 | Partiel | Partiel | pas de repli OpenGL sur macOS : `rhi::fallbackBackend`, `tests/rhi/backends_tests.cpp` ; run 46123557575 | backend Metal natif |
+| RHI-13 | Absent | Absent | note `docs/notes/decision_rhi13_backend_metal.md` (proposition, A92) | décision de l'auteur, vrai Mac |
+| RHI-14 | Partiel | Partiel | `tools/demo_reference_check.py`, étape bloquante macOS ; run 46123557575 | référence par backend (G511), Linux Vulkan hors CI |
+| BLD-01 | Partiel | Partiel | `README.md` « Windows / macOS » ; CI `macos-26` | vrai Mac, Windows réel |
+| BLD-02 | Partiel | Partiel | `.github/workflows/ci.yml` ; run 46123557575, les six jobs verts | rendu Windows, macOS Intel |
+| PLAT-01 | Partiel | Partiel | suites de fenêtre exigées sur le runner macOS (`ENGINE_TEST_REQUIRE_GPU=1`) | HiDPI ×2 (G520), vrai écran |
+| PLAT-04 | Partiel | Partiel | captures `--headless` Vulkan sur le runner macOS | Windows, vrai Mac |
+
+## M9 lot L4 : mesures sur le runner et décision RHI-13 (A90, A92)
+
+Branche `feat/M9-L4-mesures-decision`. Aucun code ; RHI-13 reste **Absent**.
+
+| Élément | Fichier | Commande | Résultat |
+| --- | --- | --- | --- |
+| Mesures indicatives sous MoltenVK (build, taille, premier affichage, temps CPU par image, compteurs MoltenVK) | `docs/notes/decision_rhi13_backend_metal.md` | `tools/perf_compare.py --api vulkan --runs 7 --frames 300` (sonde CI temporaire, 2 machines) | run 46121707903 : build release 116 / 152 s, démo 19,2 Mo, travail CPU hors écran 0,07 à 0,53 ms ; **aucune conclusion de performance** (GPU paravirtualisé, G530) |
+| Décision RHI-13, **proposée** : reportée, à remesurer sur un vrai Mac | même note, `docs/QUESTIONS.md` A92 | — | en attente de l'auteur |
+
+## M9 lot L2 : rendu de la démo sous MoltenVK (A90)
+
+Branche `feat/M9-L2-rendu-moltenvk` (depuis celle de L1). Preuve : CI macOS uniquement (pas de Mac réel) ; `docs/GAPS.md` G510, G511.
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| Cause de la scène vide : dessin indexé direct du GPU Metal paravirtualisé | `VulkanDevice::detectIndexedDrawWorkaround`, `VkEncoder::drawIndexed` (`src/rhi/vulkan/`) | `make demo-test` (CI macOS) : `M9-L2 (G510)` de `tests/rhi/rhi_device_tests.cpp`, `G510` de `tests/rhi/vulkan_backend_tests.cpp` | sans la correction : dessins directs noirs (run 46111452015) ; avec : 2 cas verts (run 46112499873) ; Linux : verts, validation muette |
+| Captures macOS comparées (scène, interface, ombres, forward+, GPU-driven, post-traitement) | `tools/demo_reference_check.py` ; étape bloquante de `ci.yml` | `python3 tools/demo_reference_check.py --api vulkan` | runner macOS : 0,1 % au plus (tolérance 8 / 2 %), 0 message de validation |
+
+## M9 lot L3 : exécution et distribution sur macOS (A90, A91)
+
+Branche `feat/M9-L3-distribution-macos`. Preuve macOS : CI de la PR #45 (`macos-26`, GPU « Apple Paravirtual device ») et une sonde
+temporaire (runs 46102675622, 46105212375). Aucun vrai Mac (G520 à G524).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| Chargeur et MoltenVK trouvés sans variable d'environnement | `tools/engine-sdk/engine.mk` `ENGINE_VULKAN_RPATHS`, `cmake/OrosmoConfig.cmake` ; `tests/tools/test_engine_mk_darwin.py` | `make e2e-init` sous macOS, sans `VK_DRIVER_FILES` | projet issu du paquet lancé sans fenêtre et avec fenêtre, 0 message de validation |
+| Pas de repli OpenGL sur macOS, message d'installation | `rhi::fallbackBackend`, `src/rhi/vulkan/vk_device.cpp` ; suites `rhi/backends`, `demo/launch options`, `app` | `make demo-test` ; `e2e-init` « sans pilote Vulkan » | Linux 958 / 958 (1 ignoré) ; macOS arm64 vert, message avec `brew install` |
+| `orosmo doctor` | `tools/engine-init-rs/src/doctor.rs` `check_macos_vulkan` | `cargo test -p orosmo` (dans `make cui-test`) ; `orosmo doctor` | 39 verts ; `[ok] Vulkan loader`, `[ok] Vulkan driver` sur macOS |
+| macOS Intel | — | sonde `macos-15-intel` | construit et installé ; **rendu absent** (G523) |
+| Release | `.github/workflows/build-engine.yml` `fresh-macos` | non exécuté (aucun tag) | G524 |
 
 ## M8 lot L15 : démo, documentation, release (A79)
 
