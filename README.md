@@ -73,7 +73,9 @@ redirection vers un fichier), rien ne change. Il faut Python 3 (sinon, affichage
 make install-deps-all            # vcpkg (triplets x64-mingw-static, x64-osx, arm64-osx)
 make all-debug
 ```
-(Windows : vérifié avant M00 seulement ; macOS : non vérifié, voir [docs/GAPS.md](docs/GAPS.md).)
+macOS : Vulkan par MoltenVK seulement (`brew install vulkan-loader molten-vk` ; OpenGL s'arrête à 4.1, pas de repli ; pas de
+backend Metal natif).
+(Windows : vérifié avant M00 seulement ; macOS : CI sur machine virtuelle seulement, aucun vrai Mac ; voir [docs/GAPS.md](docs/GAPS.md).)
 
 ## Lancer, tester
 

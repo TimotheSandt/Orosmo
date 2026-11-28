@@ -49,7 +49,7 @@ L'outil ne fait que lancer `make`. Les commandes suivantes donnent le même rés
 Les autres cibles du `Makefile` (`dev`, `test`, `benchmark`, `compile-commands`, `fclean`…) sont décrites dans
 [Compiler avec Make ou CMake](/reference/construction/#projet-créé-par-orosmo-init). Le projet de démarrage accepte
 `--api vulkan|opengl` (Vulkan par défaut, avec repli sur OpenGL s'il ne démarre pas ; `--strict-backend` supprime le
-repli), `--headless`, `--size <L>x<H>`, `--frames <N>`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et
+repli ; sous macOS il n'y a pas de repli, seul Vulkan y fonctionne), `--headless`, `--size <L>x<H>`, `--frames <N>`, `--capture <dossier>`, `--capture-frames <N>` (3 par défaut) et
 `--help` (options de `app::Application::main`).
 
 ## Version du moteur
