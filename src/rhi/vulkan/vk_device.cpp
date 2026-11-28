@@ -6,6 +6,8 @@
 
 #include <orosmo/core/log.hpp>
 
+#include <vulkan/vulkan_beta.h> // VkPhysicalDevicePortabilitySubsetFeaturesKHR (VK_KHR_portability_subset, MoltenVK)
+
 #include <algorithm>
 #include <charconv>
 #include <cstdlib>
@@ -104,6 +106,16 @@ VkBool32 VKAPI_PTR debugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT
     if (error || warning)
     {
         (void)type;
+        const char *text = (data != nullptr && data->pMessage != nullptr) ? data->pMessage : "";
+        // MoltenVK 1.4.2 (Homebrew, M9-L1) signale « Blending is enabled » pour TOUTE cible de rendu d'un format non mélangeable
+        // (R32_UINT des AOV, de l'identifiant d'objet), blendEnable vrai ou non : corrigé en amont (condition `&& pCA->blendEnable`).
+        // Ce n'est pas une erreur du moteur : createGraphicsPipeline refuse déjà le mélange sur un format sans
+        // VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT. Journalisé, non compté (docs/GAPS.md G504).
+        if (std::string_view(text).starts_with("VK_ERROR_FEATURE_NOT_PRESENT: Blending is enabled for attachment with format"))
+        {
+            LOG_INFO("Vulkan validation (MoltenVK false positive, ignored): ", text);
+            return VK_FALSE;
+        }
         if (device != nullptr)
             device->validationErrors_.fetch_add(1);
         const char *message = (data != nullptr && data->pMessage != nullptr) ? data->pMessage : "(no message)";
@@ -552,8 +564,21 @@ Result<> VulkanDevice::createLogicalDevice()
     vkEnumerateDeviceExtensionProperties(physicalDevice_, nullptr, &extCount, exts.data());
     if (windowed_)
         extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    // MoltenVK : l'extension est exigée quand elle est présente, et ses fonctions (échantillonneurs de comparaison modifiables, vue 2D
+    // d'une image 3D...) ne sont utilisables qu'ACTIVÉES : sans la structure, la validation signale chaque usage (« portability
+    // error », M9-L1). Toutes celles que le pilote offre sont activées ; les absentes restent fausses.
+    // VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR n'est déclaré qu'avec VK_ENABLE_BETA_EXTENSIONS : sa valeur.
+    constexpr auto kPortabilitySubsetFeatures = static_cast<VkStructureType>(1000163000);
+    auto portability = makeStruct<VkPhysicalDevicePortabilitySubsetFeaturesKHR>(kPortabilitySubsetFeatures);
     if (hasExtension(exts, "VK_KHR_portability_subset"))
-        extensions.push_back("VK_KHR_portability_subset"); // exigé par MoltenVK quand il est présent
+    {
+        extensions.push_back("VK_KHR_portability_subset");
+        auto query = makeStruct<VkPhysicalDeviceFeatures2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
+        query.pNext = &portability;
+        vkGetPhysicalDeviceFeatures2(physicalDevice_, &query);
+        portability.pNext = nullptr;
+        f13.pNext = &portability;
+    }
 
     const float priority = 1.0f;
     auto queueInfo = makeStruct<VkDeviceQueueCreateInfo>(VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO);
