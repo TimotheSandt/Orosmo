@@ -48,7 +48,7 @@ brew install vulkan-loader molten-vk vulkan-validationlayers
 git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
 ~/vcpkg/vcpkg install --triplet=arm64-osx --x-install-root=./vcpkg_installed
 make -j6 all-debug VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed
-make -j6 demo-test VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed
+ENGINE_TEST_REQUIRE_GPU=1 ENGINE_TEST_BACKENDS=vulkan make -j6 demo-test VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed
 apps/demo/bin/debug/main --api vulkan --strict-backend        # fenêtre visible, souris, clavier, manette, Retina
 python3 tools/demo_reference_check.py --api vulkan --out build/ref
 ```
