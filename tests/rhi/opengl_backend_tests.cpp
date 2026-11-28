@@ -13,7 +13,7 @@ TEST_SUITE("rhi/opengl/backend")
     TEST_CASE("after a pass, the pipeline's vertex array no longer references its vertex and index buffers (G98 a)")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         auto &device = static_cast<gl::GlDevice &>(*gpu);
         const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {4, 4});
         const std::vector<float> positions{-1, -1, 3, -1, -1, 3};
@@ -55,7 +55,7 @@ void main() { gl_Position = vec4(position, 0.0, 1.0); })";
     TEST_CASE("a pipeline knows whether its program accesses storage (the criterion of the barrier between draws)")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         auto &device = static_cast<gl::GlDevice &>(*gpu);
         const PipelineHandle plain = gpu.pipeline(gpu.shaderRaw(ShaderStage::kVertex, kFullscreenVs), gpu.shaderRaw(ShaderStage::kFragment, kRedFs));
         const char *ssboFs = R"(#version 430 core
@@ -78,7 +78,7 @@ void main() { color = imageLoad(img, ivec2(0)); })";
     TEST_CASE("kUpload buffers are persistently mapped: a write the GPU no longer reads is a memcpy, one it may still read stays ordered (perf M5)")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         auto &device = static_cast<gl::GlDevice &>(*gpu);
         if (!device.uploadStats().persistent)
         {

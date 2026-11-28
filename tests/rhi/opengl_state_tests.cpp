@@ -44,7 +44,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("a texture update during a pass does not replace the texture bound by setBindGroup (reserved texture unit)")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         const TextureHandle red = solidTexture(gpu, 255, 0, 0, "red");
         const TextureHandle green = solidTexture(gpu, 0, 255, 0, "green");
         auto sampler = gpu->createSampler({.minFilter = Filter::kNearest, .magFilter = Filter::kNearest, .mipFilter = std::nullopt});
@@ -73,7 +73,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("submit refuses an encoder whose render pass or debug group is still open, and leaves no scope behind")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {2, 2});
         auto openPass = gpu->createCommandEncoder();
         openPass->beginRenderPass(passOn(color, {1, 0, 0, 1}));
@@ -96,7 +96,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("a slice of a 3D texture is a render target; a slice beyond the depth of the mip level is refused")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         TextureDesc d;
         d.dimension = TextureDimension::k3D;
         d.size = {4, 4, 4};
@@ -141,7 +141,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("the clear value of an integer target must be representable (NaN, negative, 2^32 refused)")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         const TextureHandle ids = gpu.target(Format::kR32Uint, {2, 2}, "ids");
         for (const float bad : {std::numeric_limits<float>::quiet_NaN(), -1.0f, 4294967296.0f})
         {
@@ -163,7 +163,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("indirect draws and copies: misaligned offsets and ranges that would wrap around are refused")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         const PipelineHandle pipe = gpu.pipeline(gpu.shaderRaw(ShaderStage::kVertex, kFullscreenVs), gpu.shaderRaw(ShaderStage::kFragment, kRedFs));
         const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {2, 2});
         const std::vector<DrawIndirectCommand> commands{{3, 1, 0, 0}, {3, 1, 0, 0}};
@@ -196,7 +196,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("buffer <-> texture copies need only the bytes actually transferred (no padding after the last row)")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         // 2x2 RGBA8 au pas de 4 texels : 16 octets jusqu'au début de la dernière ligne, puis 8 : 24 octets suffisent.
         std::vector<std::uint8_t> staging(24, 0);
         const std::uint8_t a[4] = {10, 20, 30, 255}, b[4] = {40, 50, 60, 255}, c[4] = {70, 80, 90, 255}, d[4] = {100, 110, 120, 255};
@@ -231,7 +231,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("updateTexture reads tight rows from CPU memory: bufferRowLength only applies to buffer copies")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         TextureDesc td;
         td.size = {2, 2, 1};
         td.usage = TextureUsage::kSampled | TextureUsage::kCopyDst | TextureUsage::kCopySrc;
@@ -248,7 +248,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("capabilities expose the storage buffer binding limit; a binding beyond it is refused by setBindGroup")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         CHECK(gpu->capabilities().maxStorageBufferBindings >= 8u); // minimum d'OpenGL 4.3
         const BufferHandle ssbo = gpu.buffer(BufferUsage::kStorage, {}, 64);
         BindGroupDesc gd;
@@ -265,7 +265,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("destroyed resources are released only after the frames in flight AND the GPU fence of their frame")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {2, 2});
         const BufferHandle b = gpu.buffer(BufferUsage::kVertex, {}, 16);
         gpu.run([&](CommandEncoder &e) { e.beginRenderPass(passOn(color)); e.endRenderPass(); });
@@ -282,7 +282,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("MRT up to Capabilities::maxColorAttachments (8 on OpenGL 4.3+) with a distinct output per target (RHI-15)")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         const std::uint32_t count = gpu->capabilities().maxColorAttachments;
         REQUIRE(count >= 1);
         REQUIRE(count <= 8);
@@ -333,7 +333,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("a refused clear value leaves every target of the pass untouched (all clears validated first)")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {2, 2}, "color");
         const TextureHandle ids = gpu.target(Format::kR32Uint, {2, 2}, "ids");
         gpu.run([&](CommandEncoder &e) { e.beginRenderPass(passOn(color, {0, 0, 1, 1})); e.endRenderPass(); }); // bleu
@@ -351,7 +351,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("a bufferRowLength that does not fit in a GLint is refused in both copy directions")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         TextureDesc td;
         td.size = {1, 1, 1};
         td.usage = TextureUsage::kCopyDst | TextureUsage::kCopySrc;
@@ -371,7 +371,7 @@ TEST_SUITE("rhi/opengl/state")
     TEST_CASE("A26: a counter-clockwise triangle (in NDC, y up) is front-facing on an offscreen target and on the convention's rows")
     {
         Gpu gpu;
-        SKIP_TEST_IF_NULL(gpu.device.get(), "OpenGL 4.3 context");
+        SKIP_TEST_IF_NULL_FOR(gpu.device.get(), "opengl", "OpenGL 4.3 context");
         const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {8, 8});
         const char *vs = R"(#version 430 core
 layout(location = 0) in vec2 position;

@@ -12,9 +12,12 @@
 #pragma GCC diagnostic ignored "-Wstringop-overread"
 #endif
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <string>
+#include <string_view>
 
 namespace tests
 {
@@ -23,6 +26,52 @@ namespace tests
 inline bool gpuRequired()
 {
     const char *value = std::getenv("ENGINE_TEST_REQUIRE_GPU");
+    return value != nullptr && std::string(value) != "0" && !std::string(value).empty();
+}
+
+// Vrai si le nom de backend `name` (« opengl », « vulkan »…) figure dans la liste `list` de ENGINE_TEST_BACKENDS (séparateurs
+// virgule, espace ou point-virgule, sans casse). Une liste absente ou vide désigne tous les backends.
+inline bool backendListed(const char *list, std::string_view name)
+{
+    if (list == nullptr || *list == '\0')
+    {
+        return true;
+    }
+    std::string current;
+    const auto matches = [&]
+    {
+        std::transform(current.begin(), current.end(), current.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const bool same = current == name;
+        current.clear();
+        return same;
+    };
+    for (const char *p = list; *p != '\0'; ++p)
+    {
+        if (*p == ',' || *p == ' ' || *p == ';')
+        {
+            if (matches())
+            {
+                return true;
+            }
+        }
+        else
+        {
+            current.push_back(*p);
+        }
+    }
+    return matches();
+}
+
+// Vrai si l'absence du backend `name` doit faire échouer le test : ENGINE_TEST_REQUIRE_GPU est posée ET ENGINE_TEST_BACKENDS (si elle
+// est posée) le désigne. La CI macOS (`ENGINE_TEST_BACKENDS=vulkan`) exige ainsi Vulkan sans exiger OpenGL 4.3, que macOS n'a pas
+// (M9-L1, comme `backendsToRun` de tests/rhi/backends.hpp).
+inline bool backendRequired(std::string_view name) { return gpuRequired() && backendListed(std::getenv("ENGINE_TEST_BACKENDS"), name); }
+
+// Vrai si les tests doivent trouver la couche de validation active (ENGINE_TEST_REQUIRE_VALIDATION différente de "0", posée par la CI
+// qui l'installe) : sans elle, « 0 message de validation » ne prouve rien.
+inline bool validationRequired()
+{
+    const char *value = std::getenv("ENGINE_TEST_REQUIRE_VALIDATION");
     return value != nullptr && std::string(value) != "0" && !std::string(value).empty();
 }
 
@@ -74,6 +123,22 @@ template <typename T, typename U> void AssertEqual(const T &actual, const U &exp
                 FAIL("Required by ENGINE_TEST_REQUIRE_GPU but unavailable: " reason);                   \
             }                                                                                           \
             WARN_MESSAGE(false, "Skipped (no driver): " reason);                                        \
+            return;                                                                                     \
+        }                                                                                               \
+    } while (0)
+
+// Comme SKIP_TEST_IF_NULL pour un test propre à un backend (`backendName` : "opengl", "vulkan") : l'absence n'échoue que si ce backend
+// est exigé (tests::backendRequired), pas quand ENGINE_TEST_BACKENDS en désigne un autre.
+#define SKIP_TEST_IF_NULL_FOR(pointer, backendName, reason)                                             \
+    do                                                                                                  \
+    {                                                                                                   \
+        if ((pointer) == nullptr)                                                                       \
+        {                                                                                               \
+            if (tests::backendRequired(backendName))                                                    \
+            {                                                                                           \
+                FAIL("Required by ENGINE_TEST_REQUIRE_GPU but unavailable: " reason);                   \
+            }                                                                                           \
+            WARN_MESSAGE(false, "Skipped (no driver, " backendName " not required): " reason);          \
             return;                                                                                     \
         }                                                                                               \
     } while (0)
