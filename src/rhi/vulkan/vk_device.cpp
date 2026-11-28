@@ -6,6 +6,8 @@
 
 #include <orosmo/core/log.hpp>
 
+#include <vulkan/vulkan_beta.h> // VkPhysicalDevicePortabilitySubsetFeaturesKHR (VK_KHR_portability_subset, MoltenVK)
+
 #include <algorithm>
 #include <charconv>
 #include <cstdlib>
@@ -104,6 +106,16 @@ VkBool32 VKAPI_PTR debugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT
     if (error || warning)
     {
         (void)type;
+        const char *text = (data != nullptr && data->pMessage != nullptr) ? data->pMessage : "";
+        // MoltenVK 1.4.2 (Homebrew, M9-L1) signale « Blending is enabled » pour TOUTE cible de rendu d'un format non mélangeable
+        // (R32_UINT des AOV, de l'identifiant d'objet), blendEnable vrai ou non : corrigé en amont (condition `&& pCA->blendEnable`).
+        // Ce n'est pas une erreur du moteur : createGraphicsPipeline refuse déjà le mélange sur un format sans
+        // VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT. Journalisé, non compté (docs/GAPS.md G504).
+        if (std::string_view(text).starts_with("VK_ERROR_FEATURE_NOT_PRESENT: Blending is enabled for attachment with format"))
+        {
+            LOG_INFO("Vulkan validation (MoltenVK false positive, ignored): ", text);
+            return VK_FALSE;
+        }
         if (device != nullptr)
             device->validationErrors_.fetch_add(1);
         const char *message = (data != nullptr && data->pMessage != nullptr) ? data->pMessage : "(no message)";
@@ -202,7 +214,81 @@ Result<> VulkanDevice::init(const DeviceDesc &desc)
     fillCapabilities();
     if (auto r = initPipelines(); !r)
         return r;
-    return initSwapchain(desc); // image de fond (hors écran : une texture RGBA8) et, pour une fenêtre, la chaîne d'échange
+    if (auto r = initSwapchain(desc); !r) // image de fond (hors écran : une texture RGBA8) et, pour une fenêtre, la chaîne d'échange
+        return r;
+    checkTimestampsMeasureWork();
+    return {};
+}
+
+// MoltenVK n'écrit des heures GPU que si le périphérique Metal échantillonne ses compteurs ; sinon (GPU paravirtualisé du runner
+// macOS, M9-L1) chaque horodatage reçoit l'heure CPU de la fin de son tampon de commandes : deux horodatages qui encadrent du travail
+// sont égaux, et rien dans les propriétés Vulkan ne le signale (timestampPeriod 1, timestampValidBits 64). On le constate ici sur un
+// remplissage de tampon encadré par deux horodatages : s'ils sont égaux, `timestampQueries` est faux (règle 11). Limité à MoltenVK :
+// les autres pilotes écrivent l'heure à l'exécution.
+void VulkanDevice::checkTimestampsMeasureWork()
+{
+    if (!caps_.timestampQueries)
+        return;
+    auto driver = makeStruct<VkPhysicalDeviceDriverProperties>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES);
+    auto properties2 = makeStruct<VkPhysicalDeviceProperties2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
+    properties2.pNext = &driver;
+    vkGetPhysicalDeviceProperties2(physicalDevice_, &properties2);
+    if (driver.driverID != VK_DRIVER_ID_MOLTENVK)
+        return;
+
+    constexpr VkDeviceSize kProbeSize = 64u << 20; // 64 Mio remplis une fois : assez de travail pour séparer deux heures GPU
+    auto bufferInfo = makeStruct<VkBufferCreateInfo>(VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO);
+    bufferInfo.size = kProbeSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VmaAllocationCreateInfo alloc{};
+    alloc.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VmaAllocation allocation = nullptr;
+    auto queryInfo = makeStruct<VkQueryPoolCreateInfo>(VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO);
+    queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    queryInfo.queryCount = 2;
+    VkQueryPool pool = VK_NULL_HANDLE;
+    bool measured = false;
+    bool accepted = false;
+    std::uint64_t stamps[2] = {0, 0};
+    if (vmaCreateBuffer(allocator_, &bufferInfo, &alloc, &buffer, &allocation, nullptr) == VK_SUCCESS &&
+        vkCreateQueryPool(device_, &queryInfo, nullptr, &pool) == VK_SUCCESS)
+    {
+        vkResetQueryPool(device_, pool, 0, 2);
+        const auto submitted = immediate(
+            [&](VkCommandBuffer commandBuffer)
+            {
+                vkCmdWriteTimestamp2(commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, pool, 0);
+                vkCmdFillBuffer(commandBuffer, buffer, 0, VK_WHOLE_SIZE, 0x5A5A5A5Au); // un seul remplissage : aucun risque d'écriture après écriture
+                vkCmdWriteTimestamp2(commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, pool, 1);
+            },
+            &accepted);
+        measured = submitted.has_value() && vkGetQueryPoolResults(device_, pool, 0, 2, sizeof(stamps), stamps, sizeof(std::uint64_t),
+                                                                  VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) == VK_SUCCESS;
+    }
+    auto release = [this, pool, buffer, allocation]()
+    {
+        if (pool != VK_NULL_HANDLE)
+            vkDestroyQueryPool(device_, pool, nullptr);
+        if (buffer != VK_NULL_HANDLE)
+            vmaDestroyBuffer(allocator_, buffer, allocation);
+    };
+    // Soumission acceptée mais attente échouée : les commandes peuvent encore être en vol, la destruction attend leur fin.
+    if (accepted && !measured)
+        queueRelease(release, false);
+    else
+        release();
+    if (!measured)
+    {
+        LOG_WARNING("Vulkan (MoltenVK): the timestamp check could not run; timestamp queries are kept");
+        return;
+    }
+    if (stamps[1] <= stamps[0])
+    {
+        caps_.timestampQueries = false;
+        LOG_WARNING("Vulkan (MoltenVK): timestamps do not measure GPU work (no Metal counter sampling on this GPU): timestampQueries = false");
+    }
 }
 
 Result<> VulkanDevice::createInstance(const DeviceDesc &desc)
@@ -295,7 +381,23 @@ Result<> VulkanDevice::createInstance(const DeviceDesc &desc)
     }
     info.pNext = chain;
 
-    const VkResult result = vkCreateInstance(&info, nullptr, &instance_);
+    VkResult result = vkCreateInstance(&info, nullptr, &instance_);
+    if (result == VK_ERROR_LAYER_NOT_PRESENT && validationEnabled_)
+    {
+        // Manifeste trouvé mais bibliothèque introuvable (macOS : `library_path` relatif que dlopen ne cherche pas dans le préfixe
+        // Homebrew, M9-L1) : le périphérique est créé sans validation, comme quand la couche n'est pas installée.
+        LOG_WARNING("Vulkan: ", kValidationLayer, " is listed but its library cannot be loaded (check VK_LAYER_PATH and the manifest's library_path): no validation");
+        layers.clear();
+        std::erase_if(extensions, [](const char *e) { return std::string_view(e) == VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME; });
+        info.enabledLayerCount = 0;
+        info.ppEnabledLayerNames = nullptr;
+        info.enabledExtensionCount = static_cast<std::uint32_t>(extensions.size());
+        info.ppEnabledExtensionNames = extensions.data();
+        info.pNext = nullptr;
+        validationEnabled_ = false;
+        validationErrors_.store(0); // messages du chargeur pendant l'essai refusé : pas des messages de validation
+        result = vkCreateInstance(&info, nullptr, &instance_);
+    }
     if (result != VK_SUCCESS)
     {
         instance_ = VK_NULL_HANDLE;
@@ -472,8 +574,21 @@ Result<> VulkanDevice::createLogicalDevice()
     vkEnumerateDeviceExtensionProperties(physicalDevice_, nullptr, &extCount, exts.data());
     if (windowed_)
         extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    // MoltenVK : l'extension est exigée quand elle est présente, et ses fonctions (échantillonneurs de comparaison modifiables, vue 2D
+    // d'une image 3D...) ne sont utilisables qu'ACTIVÉES : sans la structure, la validation signale chaque usage (« portability
+    // error », M9-L1). Toutes celles que le pilote offre sont activées ; les absentes restent fausses.
+    // VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR n'est déclaré qu'avec VK_ENABLE_BETA_EXTENSIONS : sa valeur.
+    constexpr auto kPortabilitySubsetFeatures = static_cast<VkStructureType>(1000163000);
+    auto portability = makeStruct<VkPhysicalDevicePortabilitySubsetFeaturesKHR>(kPortabilitySubsetFeatures);
     if (hasExtension(exts, "VK_KHR_portability_subset"))
-        extensions.push_back("VK_KHR_portability_subset"); // exigé par MoltenVK quand il est présent
+    {
+        extensions.push_back("VK_KHR_portability_subset");
+        auto query = makeStruct<VkPhysicalDeviceFeatures2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
+        query.pNext = &portability;
+        vkGetPhysicalDeviceFeatures2(physicalDevice_, &query);
+        portability.pNext = nullptr;
+        f13.pNext = &portability;
+    }
 
     const float priority = 1.0f;
     auto queueInfo = makeStruct<VkDeviceQueueCreateInfo>(VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO);
@@ -546,6 +661,8 @@ void VulkanDevice::fillCapabilities()
     caps_.bc7Textures = features_.textureCompressionBC != VK_FALSE && formatSupports(Format::kBC7Unorm, TextureUsage::kSampled | TextureUsage::kCopyDst);
     caps_.astcTextures = features_.textureCompressionASTC_LDR != VK_FALSE && formatSupports(Format::kASTC4x4Unorm, TextureUsage::kSampled | TextureUsage::kCopyDst);
     caps_.wireframe = features_.fillModeNonSolid != VK_FALSE;
+    caps_.srgbStorageImages = formatSupports(Format::kRGBA8Srgb, TextureUsage::kStorage);
+    caps_.validation = validationEnabled_;
     caps_.spirvShaders = true;
     caps_.shaderFloat64 = features_.shaderFloat64 != VK_FALSE;
     // Capacités réservées (RHI-18) : faux tant que non implémentées.

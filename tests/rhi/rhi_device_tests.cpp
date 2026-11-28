@@ -21,6 +21,22 @@ using orosmo::core::ErrorCode;
 
 TEST_SUITE("rhi/backend/device")
 {
+    TEST_CASE("M9-L1 the validation layer is active when the CI requires it (ENGINE_TEST_REQUIRE_VALIDATION)")
+    {
+        // Sans couche chargée, « 0 message de validation » ne prouve rien : la CI qui l'installe pose la variable.
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            MESSAGE(tests::backendName(backend), ": validation ", gpu->capabilities().validation ? "active" : "inactive", " on ",
+                    gpu->capabilities().deviceName);
+            if (tests::validationRequired())
+            {
+                CHECK_MESSAGE(gpu->capabilities().validation, "ENGINE_TEST_REQUIRE_VALIDATION is set but the validation layer is not active (VK_LAYER_PATH?)");
+            }
+        }
+    }
+
     TEST_CASE("capabilities describe the device (limits, alignment); OpenGL keeps the reserved optional features false")
     {
         FOR_EACH_BACKEND(backend)
@@ -201,7 +217,21 @@ TEST_SUITE("rhi/backend/device")
             CHECK((tests::errorOf(gpu->createTexture(bad)) == ErrorCode::kInvalidArgument));
             bad.mipLevels = 1;
             bad.usage = TextureUsage::kStorage;
-            bad.format = Format::kRGBA8Srgb; // pas une image de stockage
+            bad.format = Format::kRGBA8Srgb; // image de stockage selon le pilote (règle 11) : OpenGL 4.3 jamais, MoltenVK oui
+            if (gpu->capabilities().srgbStorageImages)
+            {
+                auto accepted = gpu->createTexture(bad);
+                CHECK(accepted.has_value());
+                if (accepted)
+                {
+                    gpu->destroy(*accepted);
+                }
+            }
+            else
+            {
+                CHECK((tests::errorOf(gpu->createTexture(bad)) == ErrorCode::kUnsupported));
+            }
+            bad.format = Format::kD32Float; // une profondeur n'est jamais une image de stockage
             CHECK((tests::errorOf(gpu->createTexture(bad)) == ErrorCode::kUnsupported));
             gpu.expectNoValidationErrors();
         }

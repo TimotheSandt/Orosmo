@@ -56,3 +56,19 @@ TEST_SUITE("rhi/backends")
         CHECK(runs <= 1);
     }
 }
+
+// M9-L1 : SKIP_TEST_IF_NULL_FOR suit ENGINE_TEST_BACKENDS comme backendsToRun (sans GPU : lecture de la liste seulement).
+TEST_SUITE("tests/support")
+{
+    TEST_CASE("M9-L1 backendListed: an absent or empty ENGINE_TEST_BACKENDS lists every backend, otherwise only the named ones")
+    {
+        CHECK(tests::backendListed(nullptr, "opengl"));
+        CHECK(tests::backendListed("", "vulkan"));
+        CHECK(tests::backendListed("vulkan", "vulkan"));
+        CHECK_FALSE(tests::backendListed("vulkan", "opengl")); // CI macOS : OpenGL 4.3 absent n'est pas un échec
+        CHECK(tests::backendListed("OpenGL, Vulkan", "vulkan"));
+        CHECK(tests::backendListed("opengl;vulkan", "opengl"));
+        CHECK_FALSE(tests::backendListed("vulkanx,bogus", "vulkan"));
+        CHECK_FALSE(tests::backendListed("vulkan", "vulk"));
+    }
+}

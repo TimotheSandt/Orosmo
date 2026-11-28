@@ -485,7 +485,7 @@ jobs:
             os: windows-latest
             triplet: x64-mingw-static
           - name: macOS arm64
-            os: macos-latest
+            os: macos-26   # image épinglée (M9-L1, A90) : le GPU paravirtualisé et la pile MoltenVK en dépendent
             triplet: arm64-osx
     steps:
       - uses: actions/checkout@v4
@@ -507,6 +507,36 @@ jobs:
       - name: Setup macOS tools
         if: runner.os == 'macOS'
         run: brew install ninja cmake zip ccache
+
+      # M9-L1 : Vulkan sur macOS = MoltenVK (sur Metal, GPU « Apple Paravirtual device » du runner) + chargeur + couches de
+      # validation, de Homebrew. Homebrew n'épingle pas les versions : elles sont journalisées ici. VK_LAYER_PATH doit viser le
+      # dossier explicit_layer.d du paquet (lien opt/ : `find` ne le suit pas, la sonde M9-L0 n'avait trouvé aucune couche).
+      - name: Vulkan on macOS (MoltenVK, loader, validation layers)
+        if: runner.os == 'macOS'
+        run: |
+          brew install molten-vk vulkan-loader vulkan-validationlayers vulkan-tools
+          sw_vers
+          brew list --versions molten-vk vulkan-loader vulkan-validationlayers vulkan-tools
+          ICD="$(brew --prefix)/etc/vulkan/icd.d/MoltenVK_icd.json"
+          BREW_LAYERS="$(brew --prefix vulkan-validationlayers)/share/vulkan/explicit_layer.d"
+          LAYER_LIB="$(brew --prefix vulkan-validationlayers)/lib/libVkLayer_khronos_validation.dylib"
+          test -f "$ICD" || { echo "::error::MoltenVK ICD not found: $ICD"; exit 1; }
+          test -f "$BREW_LAYERS/VkLayer_khronos_validation.json" || { echo "::error::validation layer manifest not found in $BREW_LAYERS"; exit 1; }
+          test -f "$LAYER_LIB" || { echo "::error::validation layer library not found: $LAYER_LIB"; exit 1; }
+          # Le manifeste de Homebrew nomme la bibliothèque sans chemin : dlopen ne cherche pas dans le préfixe Homebrew et SIP retire
+          # DYLD_LIBRARY_PATH à travers /bin/sh (make). Copie du manifeste avec le chemin absolu de la bibliothèque.
+          LAYERS="$RUNNER_TEMP/vulkan-layers"
+          mkdir -p "$LAYERS"
+          python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); m["layer"]["library_path"]=sys.argv[2]; json.dump(m,open(sys.argv[3],"w"),indent=1)' \
+            "$BREW_LAYERS/VkLayer_khronos_validation.json" "$LAYER_LIB" "$LAYERS/VkLayer_khronos_validation.json"
+          grep library_path "$LAYERS/VkLayer_khronos_validation.json"
+          {
+            echo "VK_DRIVER_FILES=$ICD"
+            echo "VK_ICD_FILENAMES=$ICD"
+            echo "VK_LAYER_PATH=$LAYERS"
+          } >> "$GITHUB_ENV"
+          VK_DRIVER_FILES="$ICD" VK_LAYER_PATH="$LAYERS" vulkaninfo --summary 2>&1 | tee vulkaninfo-summary.txt
+          grep -q VK_LAYER_KHRONOS_validation vulkaninfo-summary.txt || { echo "::error::the loader does not list VK_LAYER_KHRONOS_validation"; exit 1; }
 
       - name: Bootstrap vcpkg (Unix)
         if: runner.os != 'Windows'
@@ -574,11 +604,48 @@ jobs:
           if [ -d /mingw64/lib/ccache/bin ]; then echo "ccache: /mingw64/lib/ccache/bin (mis en tête du PATH par chaque étape de compilation)"; else echo "ccache: /mingw64/lib/ccache/bin absent, compilation directe"; fi
           ccache --zero-stats
 
+      # macOS (M9-L1) : les tests GPU Vulkan et de fenêtre sont EXIGÉS (un saut est un échec), OpenGL excepté (macOS s'arrête à
+      # OpenGL 4.1, le RHI demande 4.3) ; la couche de validation doit être active (test « M9-L1 the validation layer is active »).
       - name: Build and test (Unix)
         if: runner.os != 'Windows'
+        env:
+          ENGINE_TEST_REQUIRE_GPU: ${{ runner.os == 'macOS' && '1' || '' }}
+          ENGINE_TEST_BACKENDS: ${{ runner.os == 'macOS' && 'vulkan' || '' }}
+          ENGINE_TEST_REQUIRE_VALIDATION: ${{ runner.os == 'macOS' && '1' || '' }}
+          ENGINE_TEST_LOG_LEVEL: ${{ runner.os == 'macOS' && 'warning' || '' }}   # messages de validation dans le journal
         run: |
+          set -o pipefail
           make -j3 all-debug VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
-          make -j3 demo-test VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make -j3 demo-test VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed 2>&1 | tee demo-test.log
+          # Un cas sauté faute de pilote ou d'affichage, hors OpenGL, est un échec (les macros échouent déjà ; ceci attrape un oubli).
+          if grep -E "Skipped \(no driver\)|no display" demo-test.log | grep -v -i "opengl"; then
+            echo "::error::a GPU or window test was skipped although ENGINE_TEST_REQUIRE_GPU is set"; exit 1
+          fi
+          # macOS : aucun message de validation compté, même par un cas qui ne lit pas le compteur (le faux positif MoltenVK
+          # écrit « Vulkan validation (MoltenVK … » et n'est pas concerné ; la ligne de bilan non plus).
+          if [ "$RUNNER_OS" = macOS ] && grep "Vulkan validation: " demo-test.log | grep -v "message(s) during the run"; then
+            echo "::error::Vulkan validation reported messages during demo-test"; exit 1
+          fi
+
+      # Démo Vulkan sous MoltenVK (M9-L1) : démarre, capture, et la couche de validation (active : la ligne de bilan n'est écrite
+      # qu'avec elle) ne signale rien. Les images sont publiées sans comparaison (lot L2).
+      - name: Demo capture (macOS, Vulkan, validation)
+        if: ${{ !cancelled() && runner.os == 'macOS' }}
+        run: |
+          set -o pipefail
+          mkdir -p demo-macos
+          (cd apps/demo && ./bin/debug/main --api vulkan --strict-backend --headless --capture "$GITHUB_WORKSPACE/demo-macos" --capture-frames 5) 2>&1 | tee demo-macos/demo.log
+          grep -q "Vulkan validation: 0 error/warning message(s)" demo-macos/demo.log || { echo "::error::Vulkan validation not active or not silent on the demo"; grep -i "validation" demo-macos/demo.log | head -50; exit 1; }
+
+      - name: Upload macOS logs and captures
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-vulkan
+          path: |
+            vulkaninfo-summary.txt
+            demo-test.log
+            demo-macos
 
       - name: End to end from the package (Unix)
         if: runner.os != 'Windows'

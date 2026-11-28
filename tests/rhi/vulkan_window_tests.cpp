@@ -81,9 +81,9 @@ TEST_SUITE("rhi/vulkan/window")
     TEST_CASE("a windowed Vulkan device presents several frames through the swapchain without a validation message")
     {
         VulkanWindow window;
-        SKIP_TEST_IF_NULL(window.handle, "window able to host a Vulkan surface");
+        SKIP_TEST_IF_NULL_FOR(window.handle, "vulkan", "window able to host a Vulkan surface");
         auto device = window.device(true);
-        SKIP_TEST_IF_NULL(device.get(), "windowed Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "windowed Vulkan 1.3 device");
         for (int i = 0; i < 6; ++i)
             CHECK(renderAndPresent(*device));
         CHECK(device->validationErrorCount() == 0);
@@ -92,9 +92,9 @@ TEST_SUITE("rhi/vulkan/window")
     TEST_CASE("the swapchain follows a window resize and a vsync change")
     {
         VulkanWindow window;
-        SKIP_TEST_IF_NULL(window.handle, "window able to host a Vulkan surface");
+        SKIP_TEST_IF_NULL_FOR(window.handle, "vulkan", "window able to host a Vulkan surface");
         auto device = window.device(false);
-        SKIP_TEST_IF_NULL(device.get(), "windowed Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "windowed Vulkan 1.3 device");
         CHECK(renderAndPresent(*device));
         glfwSetWindowSize(window.handle, 96, 72);
         for (int i = 0; i < 20; ++i) // le gestionnaire de fenêtres applique la taille de façon asynchrone
@@ -116,9 +116,9 @@ TEST_SUITE("rhi/vulkan/window")
         // acquise, un second beginFrame ne doit pas en acquérir une autre (la chaîne s'épuiserait) ; la lecture de l'image de fond
         // avant present rend le dessin.
         VulkanWindow window;
-        SKIP_TEST_IF_NULL(window.handle, "window able to host a Vulkan surface");
+        SKIP_TEST_IF_NULL_FOR(window.handle, "vulkan", "window able to host a Vulkan surface");
         auto device = window.device(false);
-        SKIP_TEST_IF_NULL(device.get(), "windowed Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "windowed Vulkan 1.3 device");
         for (int i = 0; i < 5; ++i)
         {
             auto first = device->beginFrame();
@@ -152,9 +152,9 @@ TEST_SUITE("rhi/vulkan/window")
         // Paramètre de la démo (--direct-present, case de l'interface) : la chaîne est reconstruite à l'acquisition suivante ;
         // une image acquise en dessin direct est d'abord dessinée et présentée normalement.
         VulkanWindow window;
-        SKIP_TEST_IF_NULL(window.handle, "window able to host a Vulkan surface");
+        SKIP_TEST_IF_NULL_FOR(window.handle, "vulkan", "window able to host a Vulkan surface");
         auto device = window.device(false);
-        SKIP_TEST_IF_NULL(device.get(), "windowed Vulkan 1.3 device");
+        SKIP_TEST_IF_NULL_FOR(device.get(), "vulkan", "windowed Vulkan 1.3 device");
         const auto &counters = static_cast<orosmo::rhi::vk::VulkanDevice &>(*device).transferCounters();
         std::uint64_t directSeen = 0;
         for (int round = 0; round < 4; ++round)

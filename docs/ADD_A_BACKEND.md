@@ -201,7 +201,9 @@ Ajouter un backend : l'ajouter aux candidats de `tests/rhi/backends.hpp` (si `Ba
 testent alors sans autre écriture**. Les tests propres au backend (état natif, extensions) vont dans un fichier à part :
 
 1. Écris `tests/<...>/<backend>_device_tests.cpp` sur le modèle de `vulkan_device_tests.cpp` : une fonction `make<Backend>()` qui
-   renvoie `nullptr` (avec `MESSAGE`) si le backend n'est pas compilé ou si `createDevice` échoue, et `SKIP_TEST_IF_NULL`.
+   renvoie `nullptr` (avec `MESSAGE`) si le backend n'est pas compilé ou si `createDevice` échoue, et `SKIP_TEST_IF_NULL_FOR(ptr,
+   "<backend>", raison)` : l'absence n'échoue que si ce backend est exigé (`ENGINE_TEST_REQUIRE_GPU` et, si elle est posée,
+   `ENGINE_TEST_BACKENDS` qui le nomme).
 2. Rends tes assertions identiques à celles d'OpenGL : mêmes tailles, mêmes pixels lus, mêmes `ErrorCode`.
 3. Les suites GPU doivent se déclarer dans `GPU_TEST_SUITES` du `Makefile` (aujourd'hui `rhi/opengl*,rhi/shader/opengl,renderer/*,...`)
    pour être exclues de `make demo-test-unit` et lancées par `make demo-test-gpu`. Ajoute ton préfixe de suite (`rhi/<backend>*`).

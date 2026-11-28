@@ -55,7 +55,7 @@ TEST_SUITE("rhi/vulkan/backend")
     {
         if (!tests::isBackendAvailable(Backend::kVulkan))
         {
-            if (tests::gpuRequired())
+            if (tests::backendRequired("vulkan"))
             {
                 FAIL("Required by ENGINE_TEST_REQUIRE_GPU but unavailable: Vulkan 1.3 device");
             }
@@ -114,6 +114,10 @@ TEST_SUITE("rhi/vulkan/backend")
     {
         if (!tests::isBackendAvailable(Backend::kVulkan))
         {
+            if (tests::backendRequired("vulkan"))
+            {
+                FAIL("Required by ENGINE_TEST_REQUIRE_GPU but unavailable: Vulkan 1.3 device");
+            }
             MESSAGE("Skipped: no Vulkan device on this machine");
             return;
         }
@@ -184,6 +188,10 @@ void main() { outColor = u.color; })";
     {
         if (!tests::isBackendAvailable(Backend::kVulkan))
         {
+            if (tests::backendRequired("vulkan"))
+            {
+                FAIL("Required by ENGINE_TEST_REQUIRE_GPU but unavailable: Vulkan 1.3 device");
+            }
             MESSAGE("Skipped: no Vulkan device on this machine");
             return;
         }

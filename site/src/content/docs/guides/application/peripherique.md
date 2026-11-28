@@ -101,6 +101,8 @@ de commande : `--api vulkan|opengl`, `--list-apis`, `--choose-api`
 | `timestampQueries` | minuteries GPU |
 | `anisotropy`, `wireframe`, `shaderFloat64`, `spirvShaders` | fonctions de rendu et de shaders |
 | `bc7Textures`, `astcTextures` | formats compressés échantillonnables |
+| `srgbStorageImages` | `Format::kRGBA8Srgb` utilisable en image de stockage |
+| `validation` | couche de validation réellement active (Vulkan : `VK_LAYER_KHRONOS_validation` ; OpenGL : contexte de debug) |
 | `rayQuery`, `accelerationStructure`, `bindless`, `meshShader`, `bufferDeviceAddress`, `sparseResources` | réservés : toujours `false` |
 
 ```cpp
@@ -117,7 +119,9 @@ Les deux backends donnent les mêmes valeurs sur un GPU récent, avec ces diffé
 |---|---|---|
 | `compute`, `indirectDraw` | toujours vrai | toujours vrai |
 | `multiDrawIndirect`, `drawIndirectFirstInstance` | toujours vrai | selon le GPU |
-| `timestampQueries` | toujours vrai | selon la file et le GPU |
+| `timestampQueries` | toujours vrai | selon la file et le GPU ; faux sous MoltenVK quand les horodatages ne mesurent pas le travail du GPU (constaté à la création) |
+| `srgbStorageImages` | toujours faux | selon le format (MoltenVK sur GPU Apple : vrai) |
+| `validation` | si `desc.validation` et contexte de debug | si `desc.validation` et couche installée |
 | `anisotropy` | si l'extension de filtrage anisotrope est présente | selon le GPU |
 | `bc7Textures` | toujours vrai | selon le GPU |
 | `astcTextures` | si `GL_KHR_texture_compression_astc_ldr` est présente | selon le GPU |

@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <string_view>
 
 #include <orosmo/core/log.hpp>
 #include <orosmo/platform/window.hpp>
@@ -48,6 +49,20 @@ DOCTEST_REGISTER_LISTENER("trace", 1, TraceListener);
 int main(int argc, char **argv)
 {
     orosmo::core::Logger::SetMinimumLevel(orosmo::core::L_FATAL);
+    // ENGINE_TEST_LOG_LEVEL=warning|error : journal du moteur affiché pendant les tests (messages des couches de validation en CI,
+    // M9-L1) ; sans la variable, seuls les messages fatals.
+    if (const char *level = std::getenv("ENGINE_TEST_LOG_LEVEL"); level != nullptr)
+    {
+        const std::string_view name(level);
+        if (name == "warning")
+        {
+            orosmo::core::Logger::SetMinimumLevel(orosmo::core::L_WARNING);
+        }
+        else if (name == "error")
+        {
+            orosmo::core::Logger::SetMinimumLevel(orosmo::core::L_ERROR);
+        }
+    }
 
 #if defined(__linux__)
     // Les tests créent des fenêtres cachées. Sous Wayland, une fenêtre jamais affichée ne reçoit pas de rappel d'image : une

@@ -153,7 +153,9 @@ le GPU, retirer son fournisseur avant de détruire le périphérique ([Mesurer](
 `Device::capabilities()` rend une `Capabilities` remplie par le backend : nom du GPU et du pilote, limites
 (`maxTextureSize`, `maxColorAttachments`, `maxComputeWorkGroupSize`, `maxStorageBufferBindings`, `minUniformAlignment`...)
 et fonctions qui peuvent manquer : `compute`, `indirectDraw`, `multiDrawIndirect`, `drawIndirectFirstInstance`,
-`timestampQueries`, `anisotropy`, `bc7Textures`, `astcTextures`, `wireframe`, `spirvShaders`, `shaderFloat64`. Les capacités
+`timestampQueries`, `anisotropy`, `bc7Textures`, `astcTextures`, `srgbStorageImages`, `wireframe`, `spirvShaders`,
+`shaderFloat64`, `validation` (couche de validation active). Sous MoltenVK, `timestampQueries` est faux quand deux horodatages
+qui encadrent du travail sont égaux (GPU sans échantillonnage de compteurs Metal, M9). Les capacités
 réservées (`rayQuery`, `accelerationStructure`, `bindless`, `meshShader`, `bufferDeviceAddress`, `sparseResources`) valent
 toutes `false` : rien ne les implémente encore.
 

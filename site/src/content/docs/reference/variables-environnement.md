@@ -27,6 +27,7 @@ sous macOS, `%APPDATA%` sous Windows. La démo y place aussi le cache SPIR-V des
 |---|---|
 | `ENGINE_TEST_BACKENDS` | liste de backends (`opengl,vulkan`) : restreint ceux que les tests essaient |
 | `ENGINE_TEST_REQUIRE_GPU` | si définie, non vide et différente de `0` (en CI : `1`), un backend désigné mais indisponible, ou un test de fenêtre sans affichage, échoue au lieu d'être ignoré |
+| `ENGINE_TEST_REQUIRE_VALIDATION` | si définie, non vide et différente de `0`, les tests exigent une couche de validation active (`Capabilities::validation`) |
 | `ENGINE_TEST_WAYLAND` | sous une session Wayland qui a aussi X11 (XWayland), les tests passent par X11, comme la CI (xvfb). Définie (toute valeur), elle garde Wayland : à réserver aux tests sans fenêtre cachée, car une présentation avec vsync sur une fenêtre cachée peut y attendre sans fin (G191) |
 | `DOCTEST_TRACE`, `CI` | écrit `[trace] suite :: cas` sur la sortie d'erreur au début de chaque cas |
 

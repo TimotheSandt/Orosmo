@@ -413,6 +413,7 @@ class VulkanDevice final : public Device
     Result<> createLogicalDevice();
     Result<> createAllocator();
     void fillCapabilities();
+    void checkTimestampsMeasureWork(); // MoltenVK : horodatages qui ne mesurent rien -> timestampQueries faux (voir vk_device.cpp)
     void shutdown() noexcept;
     Result<> submitRaw(std::span<const VkCommandBuffer> commandBuffers, const SubmitSync &sync);
     // vk_pipelines.cpp : cache de pipelines (chargé du disque à la création, enregistré à l'arrêt) et dispositions.
