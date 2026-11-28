@@ -155,7 +155,9 @@ le GPU, retirer son fournisseur avant de détruire le périphérique ([Mesurer](
 et fonctions qui peuvent manquer : `compute`, `indirectDraw`, `multiDrawIndirect`, `drawIndirectFirstInstance`,
 `timestampQueries`, `anisotropy`, `bc7Textures`, `astcTextures`, `srgbStorageImages`, `wireframe`, `spirvShaders`,
 `shaderFloat64`, `validation` (couche de validation active). Sous MoltenVK, `timestampQueries` est faux quand deux horodatages
-qui encadrent du travail sont égaux (GPU sans échantillonnage de compteurs Metal, M9). Les capacités
+qui encadrent du travail sont égaux (GPU sans échantillonnage de compteurs Metal, M9). Sur le GPU Metal paravirtualisé des
+machines virtuelles macOS, le backend Vulkan enregistre chaque dessin indexé comme une commande indirecte d'un dessin : le dessin
+indexé direct de ce pilote ne lit pas ses indices (G510). Les capacités
 réservées (`rayQuery`, `accelerationStructure`, `bindless`, `meshShader`, `bufferDeviceAddress`, `sparseResources`) valent
 toutes `false` : rien ne les implémente encore.
 

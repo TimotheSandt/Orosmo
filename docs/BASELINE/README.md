@@ -164,3 +164,25 @@ controls --focus detailMedium --capture <dir> --capture-frames 5` (`ui.png`), In
 l'anneau du style `focusRing` de `base.json`. `make demo-capture` la compare avec la tolérance des références GPU (8, 2 %) et
 vérifie que la capture sans focus en diffère. Les captures sans `--focus` sont inchangées par UI-09 (0 pixel d'écart : onglets
 `controls`, `widgets`, `windows`, liste déroulante ouverte ; l'anneau n'apparaît qu'après une navigation au clavier ou à la manette).
+
+## Captures de la démo sous MoltenVK comparées aux références (M9-L2, 2026-11-28)
+
+Il n'y a **pas de référence Vulkan** (RHI-14) : la règle « même image pour un même shader, quel que soit le backend » fait des
+images OpenGL de `reference/` les références de Vulkan aussi. Elles viennent de Linux (Intel Arc, Mesa 26.1.6), produites par
+`apps/demo/bin/debug/main --api opengl --headless … --capture <dossier> --capture-frames 5`. Sur macOS, OpenGL s'arrête à 4.1 :
+la CI compare donc les captures Vulkan (MoltenVK) du runner directement à ces images.
+
+```bash
+python3 tools/demo_reference_check.py --api vulkan --out build/demo-reference   # cas : scene, ui, shadows, forwardplus, gpudriven, post
+```
+
+- Tolérance : 8 par canal, 2 % de pixels au plus ; la ligne `Vulkan validation: 0 error/warning message(s)` est exigée.
+- `reference/scene-opengl-gpudriven-1280x720.png` (nouvelle) : `--ui off --instances 2000 --gpu-driven on`, OpenGL, Intel Arc ;
+  sha256 `8f8c520e60dc9f2aa622cfff42af65be57ec43f0e35730a473143f1f2f3e2266` (deux captures identiques). Vulkan sur le même GPU :
+  1 pixel au-delà de la tolérance 8.
+- Forward+ est comparé à `scene-opengl-demo-1280x720.png` (même éclairage par construction) ; l'interface à
+  `ui-opengl-controls-focus-1280x720.png`.
+- Résultats du runner macOS (`macos-26`, « Apple Paravirtual device », MoltenVK 1.4.2), runs 46111939941 et 46112499873 : scène 0,0011 %,
+  interface 0,0014 %, ombres 0,1002 %, forward+ 0,0011 %, GPU-driven 0,0005 %, post-traitement 0,0001 % de pixels au-delà de la
+  tolérance. Avant la correction de G510, la scène différait de 16,4 % (aucun maillage dessiné).
+- Linux (Intel Arc, Vulkan) : mêmes six cas dans la tolérance, avec et sans `ENGINE_VULKAN_INDEXED_VIA_INDIRECT=1`.

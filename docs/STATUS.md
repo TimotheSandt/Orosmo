@@ -31,6 +31,15 @@ Mis à jour pour la fin de M8 (`v0.7.0` préparée, 2026-11-27), après la distr
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
 
+## M9 lot L2 : rendu de la démo sous MoltenVK (A90)
+
+Branche `feat/M9-L2-rendu-moltenvk` (depuis celle de L1). Preuve : CI macOS uniquement (pas de Mac réel) ; `docs/GAPS.md` G510, G511.
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| Cause de la scène vide : dessin indexé direct du GPU Metal paravirtualisé | `VulkanDevice::detectIndexedDrawWorkaround`, `VkEncoder::drawIndexed` (`src/rhi/vulkan/`) | `make demo-test` (CI macOS) : `M9-L2 (G510)` de `tests/rhi/rhi_device_tests.cpp`, `G510` de `tests/rhi/vulkan_backend_tests.cpp` | sans la correction : dessins directs noirs (run 46111452015) ; avec : 2 cas verts (run 46112499873) ; Linux : verts, validation muette |
+| Captures macOS comparées (scène, interface, ombres, forward+, GPU-driven, post-traitement) | `tools/demo_reference_check.py` ; étape bloquante de `ci.yml` | `python3 tools/demo_reference_check.py --api vulkan` | runner macOS : 0,1 % au plus (tolérance 8 / 2 %), 0 message de validation |
+
 ## M8 lot L15 : démo, documentation, release (A79)
 
 Branche `feat/M8-L15-finalisation` (depuis `dev` à `305c643`). Choix : `docs/QUESTIONS.md`, A79, « Lot L15 ». Critères de
