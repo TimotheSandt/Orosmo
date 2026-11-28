@@ -1,5 +1,6 @@
 """Tests de tools/demo_reference_check.py (exécution : python3 -m unittest discover -s tests/tools)."""
-import importlib.util, os, subprocess, sys, tempfile, unittest
+import contextlib, importlib.util, io, os, subprocess, sys, tempfile, unittest
+from unittest import mock
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TOOL = os.path.join(ROOT, "tools", "demo_reference_check.py")
@@ -56,6 +57,30 @@ class DemoReferenceCheck(unittest.TestCase):
         rc, out = self.run_tool(os.path.join(drc.REFERENCES, "scene-opengl-demo-1280x720.png"), False)
         self.assertEqual(rc, 1, out)
         self.assertIn("validation", out)
+
+    def test_unknown_case_name_is_refused(self):
+        r = subprocess.run([sys.executable, TOOL, "--only", "scene", "nope"], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("nope", r.stderr)
+        self.assertNotIn("OK", r.stdout)
+
+    def test_timeout_fails_the_case_writes_the_log_and_continues(self):
+        calls = []
+
+        def fake_run(binary, api, args, out):
+            calls.append(out.name)
+            raise subprocess.TimeoutExpired("main", 300, output=b"partial output\n")
+
+        with tempfile.TemporaryDirectory() as d:
+            stdout = io.StringIO()
+            argv = [TOOL, "--out", d, "--only", "scene", "ui"]
+            with mock.patch.object(drc, "run", fake_run), mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(stdout):
+                self.assertEqual(drc.main(), 1)
+            self.assertEqual(calls, ["scene", "ui"])
+            for name in calls:
+                self.assertIn("ECHEC " + name, stdout.getvalue())
+                with open(os.path.join(d, name, "demo.log")) as f:
+                    self.assertIn("partial output", f.read())
 
 
 if __name__ == "__main__":

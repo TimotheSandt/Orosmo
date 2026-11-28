@@ -76,8 +76,8 @@ class VkEncoder final : public CommandEncoder
     std::optional<Error> error_;
     std::vector<BufferHandle> uploadBuffers_;
     std::vector<QueryPoolHandle> queryPools_;
-    // M9-L2 (G510) : tampons d'arguments (mémoire d'envoi) des dessins indexés joués en indirect ; libérés à la destruction de
-    // l'encodeur, donc après sa soumission (VulkanDevice::submit).
+    // M9-L2 (G510) : tampons d'arguments (mémoire d'envoi) des dessins indexés joués en indirect ; rendus à la destruction de
+    // l'encodeur (après sa soumission), détruits dès que le GPU a fini (VulkanDevice::destroyInternalBuffer).
     std::vector<BufferHandle> indexedArgs_;
     VkDeviceSize indexedArgsUsed_ = 0;
 

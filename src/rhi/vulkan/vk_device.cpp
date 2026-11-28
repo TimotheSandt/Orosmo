@@ -1303,6 +1303,14 @@ void VulkanDevice::destroy(BufferHandle handle)
     queueRelease([this, b = *buffer]() { vmaDestroyBuffer(allocator_, b.buffer, b.allocation); });
 }
 
+void VulkanDevice::destroyInternalBuffer(BufferHandle handle)
+{
+    auto buffer = buffers_.remove(handle);
+    if (!buffer)
+        return;
+    queueRelease([this, b = *buffer]() { vmaDestroyBuffer(allocator_, b.buffer, b.allocation); }, false);
+}
+
 void VulkanDevice::destroyTextureNow(TextureRes &texture) noexcept
 {
     for (auto &[key, view] : texture.views)

@@ -52,6 +52,9 @@ def main():
     ap.add_argument("--max-diff-percent", type=float, default=2.0)
     ap.add_argument("--only", nargs="*", default=None, help="noms des cas à jouer (défaut : tous)")
     opts = ap.parse_args()
+    unknown = sorted(set(opts.only or []) - {name for name, _, _, _ in CASES})
+    if unknown:
+        ap.error(f"--only : cas inconnu(s) : {', '.join(unknown)} (connus : {', '.join(name for name, _, _, _ in CASES)})")
     out = Path(opts.out).resolve()
     binary = Path(opts.bin).resolve()
     failed = 0
@@ -60,7 +63,14 @@ def main():
             continue
         directory = out / name
         directory.mkdir(parents=True, exist_ok=True)
-        code, log = run(binary, opts.api, args, directory)
+        try:
+            code, log = run(binary, opts.api, args, directory)
+        except subprocess.TimeoutExpired as e:
+            partial = "".join(s.decode(errors="replace") if isinstance(s, bytes) else s or "" for s in (e.stdout, e.stderr))
+            (directory / "demo.log").write_text(f"{partial}\ndelai depasse : {e.timeout} s\n")
+            print(f"ECHEC {name} : délai de {e.timeout} s dépassé (journal : {directory / 'demo.log'})")
+            failed += 1
+            continue
         (directory / "demo.log").write_text(log)
         if code != 0:
             print(f"ECHEC {name} : code de sortie {code} (journal : {directory / 'demo.log'})")

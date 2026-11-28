@@ -79,9 +79,10 @@ VkEncoder::VkEncoder(VulkanDevice &device) : device_(device)
 VkEncoder::~VkEncoder()
 {
     releaseCommandBuffers();
-    // Détruits après la soumission (l'encodeur est détruit à la fin de VulkanDevice::submit) : la libération attend sa série.
+    // Après la soumission (l'encodeur est détruit à la fin de VulkanDevice::submit) ou sans elle (abandon, erreur) : la
+    // libération attend la série de la dernière soumission, sans attendre d'image présentée (rendu hors écran sans `present`).
     for (BufferHandle h : indexedArgs_)
-        device_.destroy(h);
+        device_.destroyInternalBuffer(h);
 }
 
 // Un encodeur abandonné (erreur, jamais soumis) rend ses tampons à leur réserve, quel que soit leur état (même en cours

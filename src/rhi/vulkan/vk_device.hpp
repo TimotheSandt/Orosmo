@@ -313,6 +313,8 @@ class VulkanDevice final : public Device
     // `waitFrames` faux : ressource interne (tampons de transfert), libérée dès que le GPU a fini.
     void queueRelease(std::function<void()> release, bool waitFrames = true);
     void collectReleases(bool ignoreFrames = false);
+    // Tampon interne au backend (arguments de l'encodeur) : détruit dès que le GPU a fini tout ce qui a été soumis jusqu'ici.
+    void destroyInternalBuffer(BufferHandle handle);
 
     // Tampon de commandes primaire prêt à enregistrer, tiré de la réserve courante (README.md, « Tampons de commandes »).
     // `retireCommandBuffer` : soumis avec la série `serial`. `releaseUnsubmitted` : jamais soumis (abandon, refus), quel que soit

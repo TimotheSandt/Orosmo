@@ -498,6 +498,9 @@ void main() { color = vec4(0.0, 1.0, 0.0, 1.0); })";
                 {
                     for (const bool indirect : {false, true})
                     {
+                        // Sans la capacité, drawIndexedIndirect est refusé : seuls les dessins directs sont vérifiés.
+                        if (indirect && !gpu->capabilities().drawIndirectFirstInstance)
+                            continue;
                         gpu.run(
                             [&](CommandEncoder &e)
                             {

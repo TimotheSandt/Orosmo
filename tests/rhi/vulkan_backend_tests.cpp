@@ -244,9 +244,11 @@ void main() { outColor = u.color; })";
         }
         REQUIRE(device.indexedDrawsViaIndirect());
         const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {8, 8});
+        // 8x8 : quatre bandes de 2 colonnes (lignes 0..3) pour les dessins observés, les lignes 4..7 pour le remplissage.
         // Deux triangles plein écran : sommets 0..2 (inutilisés) et 3..5 ; indices 0, 0, 0 puis 0, 1, 2 (vertexOffset 3, firstIndex 3).
         const std::vector<float> positions{0, 0, 0, 0, 0, 0, -1, -1, 3, -1, -1, 3};
-        const std::vector<float> colors{1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1}; // par instance : rouge, vert, bleu
+        // Par instance : rouge, vert, bleu, jaune, puis le blanc du remplissage.
+        const std::vector<float> colors{1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1};
         const std::vector<std::uint32_t> indices{0, 0, 0, 0, 1, 2};
         const BufferHandle vb = gpu.buffer(BufferUsage::kVertex, bytesOf(positions), 0, "positions");
         const BufferHandle inst = gpu.buffer(BufferUsage::kVertex, bytesOf(colors), 0, "instances");
@@ -272,24 +274,43 @@ void main() { color = vColor; })";
         auto pipe = gpu->createGraphicsPipeline(d);
         REQUIRE(pipe.has_value());
         const std::uint32_t buffersBefore = gpu->stats().buffers;
-        constexpr int kDraws = 600; // plus que les 256 commandes du premier tampon d'arguments : un second, puis un troisième
-        gpu.run(
-            [&](CommandEncoder &e)
+        constexpr int kDraws = 600; // plus que les 256 commandes du premier tampon d'arguments : un second est créé
+        // Première et dernière commandes de chaque tampon d'arguments, de part et d'autre du changement (255 | 256).
+        constexpr std::array<int, 4> kObserved{0, 255, 256, kDraws - 1};
+        const auto record = [&](CommandEncoder &e)
+        {
+            e.beginRenderPass(passOn(color));
+            e.setPipeline(*pipe);
+            e.setVertexBuffer(0, vb);
+            e.setVertexBuffer(1, inst);
+            e.setIndexBuffer(ib, IndexType::kUint32);
+            for (int i = 0; i < kDraws; ++i)
             {
-                e.beginRenderPass(passOn(color));
-                e.setPipeline(*pipe);
-                e.setVertexBuffer(0, vb);
-                e.setVertexBuffer(1, inst);
-                e.setIndexBuffer(ib, IndexType::kUint32);
-                for (int i = 0; i < kDraws; ++i)
-                {
-                    e.drawIndexed(3, 1, 3, 3, static_cast<std::uint32_t>(i % 3)); // la dernière : 599 % 3 = 2, bleu
-                }
-                e.endRenderPass();
-            });
-        CHECK(rgba(gpu.pixel(color, 4, 4)) == std::array<std::uint8_t, 4>{0, 0, 255, 255});
-        // Les tampons d'arguments de l'encodeur (3) ne sont plus vivants : détruits avec lui, après sa soumission.
+                const auto found = std::find(kObserved.begin(), kObserved.end(), i);
+                const auto zone = static_cast<std::uint32_t>(found - kObserved.begin()); // 4 : remplissage
+                e.setScissor(found != kObserved.end() ? Rect{static_cast<std::int32_t>(2 * zone), 0, 2, 4} : Rect{0, 4, 8, 4});
+                e.drawIndexed(3, 1, 3, 3, zone);
+            }
+            e.endRenderPass();
+        };
+        gpu.run(record);
+        // Les tampons d'arguments ne sont plus vivants et n'attendent aucune image présentée (rendu hors écran sans `present`).
         CHECK(gpu->stats().buffers == buffersBefore);
+        CHECK(gpu->stats().pendingDestruction == 0);
+        const std::array<std::array<std::uint8_t, 4>, 4> expected{{{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255}, {255, 255, 0, 255}}};
+        for (std::uint32_t zone = 0; zone < expected.size(); ++zone)
+        {
+            INFO("draw ", kObserved[zone]);
+            CHECK(rgba(gpu.pixel(color, 2 * zone + 1, 1)) == expected[zone]);
+        }
+        CHECK(rgba(gpu.pixel(color, 4, 6)) == std::array<std::uint8_t, 4>{255, 255, 255, 255});
+        // Encodeur abandonné sans soumission : ses tampons d'arguments sont rendus de la même façon.
+        {
+            auto dropped = gpu->createCommandEncoder();
+            record(*dropped);
+        }
+        CHECK(gpu->stats().buffers == buffersBefore);
+        CHECK(gpu->stats().pendingDestruction == 0);
         gpu.expectNoValidationErrors();
     }
 }
