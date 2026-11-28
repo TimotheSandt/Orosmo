@@ -26,7 +26,8 @@ class DarwinLinkFlags(unittest.TestCase):
             probe.write_text("include %s\nprint-ldflags:\n\t@echo '$(ENGINE_LDFLAGS)'\n.DEFAULT_GOAL := print-ldflags\n"
                              % ENGINE_MK.as_posix(), encoding="utf-8")
             # `?=` garderait une valeur venue de l'environnement ; la surcharge d'un test passe par `extra`.
-            env = {k: v for k, v in os.environ.items() if k != "ENGINE_VULKAN_RPATHS"}
+            ignored = ("ENGINE_VULKAN_RPATHS", "MAKEFLAGS", "GNUMAKEFLAGS")
+            env = {k: v for k, v in os.environ.items() if k not in ignored}
             result = subprocess.run(
                 [MAKE, "-s", "-f", str(probe), "OS=", "_ENG_UNAME=" + system, "ENGINE_DIR=" + engine.as_posix(),
                  *extra, "print-ldflags"], cwd=tmp, capture_output=True, text=True, check=True, env=env)
