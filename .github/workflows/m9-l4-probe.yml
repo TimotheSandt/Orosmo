@@ -57,7 +57,7 @@ jobs:
       - name: Release build from clean, timed (no ccache)
         run: |
           start=$(date +%s)
-          make -j3 all-release VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed
+          make -j3 all-release PROJECT_NAME=Orosmo VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed
           echo "BUILD release_seconds=$(( $(date +%s) - start )) jobs=3"
       - name: Sizes
         run: |
