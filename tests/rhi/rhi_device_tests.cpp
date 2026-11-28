@@ -436,6 +436,71 @@ void main() { color = vColor; })";
         }
     }
 
+    TEST_CASE("M9-L2 indexed draw: the index buffer offset is honoured by direct and indirect draws")
+    {
+        FOR_EACH_BACKEND(backend)
+        {
+            Gpu gpu(backend);
+            REQUIRE(gpu.device);
+            const TextureHandle color = gpu.target(Format::kRGBA8Unorm, {8, 8});
+            const std::vector<float> positions{-1, -1, 3, -1, -1, 3};
+            const std::vector<std::uint32_t> indices{0, 1, 2};
+            const BufferHandle vb = gpu.buffer(BufferUsage::kVertex, bytesOf(positions), 0, "positions");
+            constexpr std::uint64_t kLargest = std::uint64_t{64} << 20;
+            const BufferHandle ib = gpu.buffer(BufferUsage::kIndex | BufferUsage::kCopyDst, {}, kLargest + 256, "indices");
+            const std::vector<std::uint64_t> offsets{0, 4, 16, 256, 4096, 65536, 1u << 20, 1u << 24, kLargest};
+            for (const std::uint64_t offset : offsets)
+            {
+                REQUIRE(gpu->updateBuffer(ib, offset, bytesOf(indices)).has_value());
+            }
+            std::vector<DrawIndexedIndirectCommand> commands(offsets.size());
+            for (std::size_t i = 0; i < offsets.size(); ++i)
+            {
+                commands[i] = {3, 1, static_cast<std::uint32_t>(offsets[i] / 4), 0, 0};
+            }
+            const BufferHandle args = gpu.buffer(BufferUsage::kIndirect, bytesOf(commands), 0, "args");
+            const char *vs = R"(#version 450
+layout(location = 0) in vec2 position;
+void main() { gl_Position = vec4(position, 0.0, 1.0); })";
+            const char *fs = R"(#version 450
+layout(location = 0) out vec4 color;
+void main() { color = vec4(0.0, 1.0, 0.0, 1.0); })";
+            GraphicsPipelineDesc d;
+            d.vertex = gpu.shader(ShaderStage::kVertex, vs);
+            d.fragment = gpu.shader(ShaderStage::kFragment, fs);
+            d.vertexBuffers = {{.binding = 0, .stride = 8, .stepRate = VertexStepRate::kVertex}};
+            d.vertexAttributes = {{.location = 0, .binding = 0, .format = VertexFormat::kFloat2, .offset = 0}};
+            d.colorTargets = {ColorTargetState{}};
+            d.raster.cull = CullMode::kNone;
+            auto pipe = gpu->createGraphicsPipeline(d);
+            REQUIRE(pipe.has_value());
+            const std::array<std::uint8_t, 4> green{0, 255, 0, 255};
+            for (std::size_t i = 0; i < offsets.size(); ++i)
+            {
+                for (int mode = 0; mode < 3; ++mode) // 0 : décalage de liaison ; 1 : firstIndex ; 2 : indirect (firstIndex)
+                {
+                    gpu.run(
+                        [&](CommandEncoder &e)
+                        {
+                            e.beginRenderPass(passOn(color));
+                            e.setPipeline(*pipe);
+                            e.setVertexBuffer(0, vb);
+                            e.setIndexBuffer(ib, IndexType::kUint32, mode == 0 ? offsets[i] : 0);
+                            if (mode == 2)
+                                e.drawIndexedIndirect(args, i * sizeof(DrawIndexedIndirectCommand), 1, 0);
+                            else
+                                e.drawIndexed(3, 1, mode == 1 ? static_cast<std::uint32_t>(offsets[i] / 4) : 0);
+                            e.endRenderPass();
+                        });
+                    const auto px = rgba(gpu.pixel(color, 4, 4));
+                    MESSAGE("M9-L2 offset ", offsets[i], " mode ", mode, " -> ", int(px[0]), ",", int(px[1]), ",", int(px[2]));
+                    CHECK(px == green);
+                }
+            }
+            gpu.expectNoValidationErrors();
+        }
+    }
+
     TEST_CASE("indirect draws: two commands in one multi-draw (RHI-10)")
     {
         FOR_EACH_BACKEND(backend)

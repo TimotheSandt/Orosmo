@@ -13,7 +13,13 @@ run() {
     echo "exit $?" >> "$OUT/$name/demo.log"
     grep -E "validation|ERROR|error" "$OUT/$name/demo.log" | head -5
 }
-run default --ui off
-PRE="OROSMO_M9_PROBE=indirect"; run indirect --ui off; PRE=""
-PRE="OROSMO_M9_PROBE=indirect"; run indirect-dvwire --ui off --debug-view wireframe; PRE=""
+cd ../..
+V="VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed"
+make -j3 -f mk/engine.mk BUILD_TYPE=release release $V > "$OUT/build-tests.log" 2>&1 && make -f mk/engine.mk sync-demo BUILD_TYPE=release $V >> "$OUT/build-tests.log" 2>&1 && \
+make -j3 -C apps/demo ENGINE_DIR=orosmo RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico $V bin/tests/tests >> "$OUT/build-tests.log" 2>&1
+echo "build tests: $?"
+cd apps/demo
+ENGINE_TEST_BACKENDS=vulkan ENGINE_TEST_REQUIRE_GPU=1 ./bin/tests/tests -tc='*M9-L2*' > "$OUT/m9-test.log" 2>&1
+echo "m9 test: $?"
+grep -E "M9-L2 offset|test cases" "$OUT/m9-test.log"
 exit 0
