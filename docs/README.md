@@ -21,7 +21,7 @@ Le dossier `docs/` sera complété par l'IA : `CLEANUP_PLAN.md`, `AUDIT_REPORT.m
 
 1. Copie les fichiers dans le dépôt : `CLAUDE.md` à la racine, les autres dans `docs/` (y compris ce `README.md`). Le projet vient de Windows et continue sous Linux.
 2. **Ordre de travail** : nettoyage (M00) → audit → jalons M0 à M10. Donne à l'IA les messages ci-dessous **un par un**, dans cet ordre, et attends chaque fin avant le suivant.
-3. Pendant chaque jalon, l'IA travaille sur des branches de fonctionnalité qu'elle fusionne dans `dev`. **Tu testes sur `dev`**, tu lui signales les bugs, elle les corrige sur des branches `fix/`.
+3. Pendant chaque jalon, l'IA travaille sur des branches de fonctionnalité et ouvre des PR vers `dev`, que **tu fusionnes**. **Tu testes sur `dev`**, tu lui signales les bugs, elle les corrige sur des branches `fix/`.
 4. Quand un jalon est complet, elle prépare les notes de version et la description de la merge request, puis s'arrête. **Toi seul fusionnes `dev` vers `main`.**
 5. Active les protections de branche sur ton hébergeur (voir `docs/06` §5).
 
@@ -49,4 +49,4 @@ Après mon accord :
 
 ## Message pour corriger un bug
 
-> Sur `dev`, voici le bug : (décris-le). Crée `fix/<sujet>`, écris d'abord un test qui échoue, corrige, vérifie, fusionne dans `dev`.
+> Sur `dev`, voici le bug : (décris-le). Crée `fix/<sujet>`, écris d'abord un test qui échoue, corrige, vérifie, ouvre une PR vers `dev`.

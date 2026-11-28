@@ -19,7 +19,7 @@ proposée au dépôt est publiée sous cette même licence (section 5 de la lice
 1. Ouvrez un [ticket](https://github.com/TimotheSandt/Orosmo/issues) qui décrit le bug ou la fonction, avant d'écrire du code.
 2. Faites un fork, puis une branche depuis `dev` : `fix/<sujet>`, `feat/<ID>-<sujet>` (l'ID est une ligne de la checklist,
    voir [État du moteur](/projet/etat/)), `chore/<sujet>` ou `docs/<sujet>`.
-3. Ouvrez une pull request vers `dev`. `main` est réservé à l'auteur : il y fusionne `dev` à la fin de chaque jalon, en
+3. Ouvrez une pull request vers `dev` ; seul l'auteur la fusionne. `main` lui est réservé : il y fusionne `dev` à la fin de chaque jalon, en
    « Create a merge commit », jamais en squash.
 
 Pas de `git push --force`, de `--no-verify`, ni de réécriture de l'historique de `main` ou `dev`.
