@@ -607,3 +607,9 @@ Ordre : L0 → L1 → (L2 et L3 en parallèle) → L4 → L5.
 
 **Question** : l'auteur retient-il 1 (rester sans MoltenVK dans le SDK), et veut-il 2 et 3 avant la première release annoncée pour macOS ?
 
+## A92. RHI-13 : backend Metal natif, oui ou non (M9-L4, 2026-11-28, proposé par l'IA, non appliqué)
+
+**Proposition** : **reporter**. Garder Vulkan sur MoltenVK, ne rien écrire sous `src/rhi/metal/`, remesurer sur un vrai Mac. Le GPU paravirtualisé du runner ne permet **aucune décision de performance**. Mesures indicatives, critères qui feraient pencher vers un backend natif, commandes à jouer sur un Mac et coût estimé (un jalon, 5 à 7 lots, puis un troisième chemin à maintenir) : `docs/notes/decision_rhi13_backend_metal.md`.
+
+**Questions** : (1) l'auteur retient-il le report ? (2) les seuils C1 à C3 de la note lui conviennent-ils ? (3) a-t-il, ou peut-il emprunter, un Mac réel (sinon RHI-13 reste Absent et M10 avance sans lui) ?
+
