@@ -621,6 +621,11 @@ jobs:
           if grep -E "Skipped \(no driver\)|no display" demo-test.log | grep -v -i "opengl"; then
             echo "::error::a GPU or window test was skipped although ENGINE_TEST_REQUIRE_GPU is set"; exit 1
           fi
+          # macOS : aucun message de validation compté, même par un cas qui ne lit pas le compteur (le faux positif MoltenVK
+          # écrit « Vulkan validation (MoltenVK … » et n'est pas concerné ; la ligne de bilan non plus).
+          if [ "$RUNNER_OS" = macOS ] && grep "Vulkan validation: " demo-test.log | grep -v "message(s) during the run"; then
+            echo "::error::Vulkan validation reported messages during demo-test"; exit 1
+          fi
 
       # Démo Vulkan sous MoltenVK (M9-L1) : démarre, capture, et la couche de validation (active : la ligne de bilan n'est écrite
       # qu'avec elle) ne signale rien. Les images sont publiées sans comparaison (lot L2).
