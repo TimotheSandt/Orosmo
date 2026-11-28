@@ -622,15 +622,12 @@ jobs:
             echo "::error::a GPU or window test was skipped although ENGINE_TEST_REQUIRE_GPU is set"; exit 1
           fi
 
-      # Démo Vulkan sous MoltenVK (M9-L1) : démarre, capture, et la couche de validation (active : la ligne de bilan n'est écrite
-      # qu'avec elle) ne signale rien. Les images sont publiées sans comparaison (lot L2).
-      - name: Demo capture (macOS, Vulkan, validation)
+      # Démo Vulkan sous MoltenVK (M9-L2) : captures `--headless` (scène, interface, ombres, forward+, GPU-driven, post-traitement)
+      # comparées aux images de référence OpenGL de docs/BASELINE/reference (tolérance 8 par canal, 2 % de pixels au plus), et la
+      # couche de validation (active : la ligne de bilan n'est écrite qu'avec elle) ne signale rien. Bloquant.
+      - name: Demo captures compared to the references (macOS, Vulkan, validation)
         if: ${{ !cancelled() && runner.os == 'macOS' }}
-        run: |
-          set -o pipefail
-          mkdir -p demo-macos
-          (cd apps/demo && ./bin/debug/main --api vulkan --strict-backend --headless --capture "$GITHUB_WORKSPACE/demo-macos" --capture-frames 5) 2>&1 | tee demo-macos/demo.log
-          grep -q "Vulkan validation: 0 error/warning message(s)" demo-macos/demo.log || { echo "::error::Vulkan validation not active or not silent on the demo"; grep -i "validation" demo-macos/demo.log | head -50; exit 1; }
+        run: python3 tools/demo_reference_check.py --api vulkan --out "$GITHUB_WORKSPACE/demo-macos" --tolerance 8 --max-diff-percent 2
 
       - name: Upload macOS logs and captures
         if: always() && runner.os == 'macOS'
