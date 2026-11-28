@@ -3,6 +3,7 @@
 La branche Darwin du Makefile est évaluée sur n'importe quel système en imposant `_ENG_UNAME=Darwin` : seules les variables
 sont affichées, rien n'est compilé.
 """
+import os
 import pathlib
 import shutil
 import subprocess
@@ -24,9 +25,11 @@ class DarwinLinkFlags(unittest.TestCase):
             probe = pathlib.Path(tmp) / "Makefile"
             probe.write_text("include %s\nprint-ldflags:\n\t@echo '$(ENGINE_LDFLAGS)'\n.DEFAULT_GOAL := print-ldflags\n"
                              % ENGINE_MK.as_posix(), encoding="utf-8")
+            # `?=` garderait une valeur venue de l'environnement ; la surcharge d'un test passe par `extra`.
+            env = {k: v for k, v in os.environ.items() if k != "ENGINE_VULKAN_RPATHS"}
             result = subprocess.run(
                 [MAKE, "-s", "-f", str(probe), "OS=", "_ENG_UNAME=" + system, "ENGINE_DIR=" + engine.as_posix(),
-                 *extra, "print-ldflags"], cwd=tmp, capture_output=True, text=True, check=True)
+                 *extra, "print-ldflags"], cwd=tmp, capture_output=True, text=True, check=True, env=env)
             return result.stdout.split()
 
     def test_packaged_engine_searches_the_homebrew_and_sdk_loader_directories(self):

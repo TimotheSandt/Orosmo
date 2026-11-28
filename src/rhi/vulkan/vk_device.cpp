@@ -226,7 +226,8 @@ Result<> VulkanDevice::init(const DeviceDesc &desc)
         return r;
     if (auto r = initSwapchain(desc); !r) // image de fond (hors écran : une texture RGBA8) et, pour une fenêtre, la chaîne d'échange
         return r;
-    checkTimestampsMeasureWork();
+    if (auto r = checkTimestampsMeasureWork(); !r)
+        return r;
     detectIndexedDrawWorkaround();
     return {};
 }
@@ -236,16 +237,16 @@ Result<> VulkanDevice::init(const DeviceDesc &desc)
 // sont égaux, et rien dans les propriétés Vulkan ne le signale (timestampPeriod 1, timestampValidBits 64). On le constate ici sur un
 // remplissage de tampon encadré par deux horodatages : s'ils sont égaux, `timestampQueries` est faux (règle 11). Limité à MoltenVK :
 // les autres pilotes écrivent l'heure à l'exécution.
-void VulkanDevice::checkTimestampsMeasureWork()
+Result<> VulkanDevice::checkTimestampsMeasureWork()
 {
     if (!caps_.timestampQueries)
-        return;
+        return {};
     auto driver = makeStruct<VkPhysicalDeviceDriverProperties>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES);
     auto properties2 = makeStruct<VkPhysicalDeviceProperties2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
     properties2.pNext = &driver;
     vkGetPhysicalDeviceProperties2(physicalDevice_, &properties2);
     if (driver.driverID != VK_DRIVER_ID_MOLTENVK)
-        return;
+        return {};
 
     constexpr VkDeviceSize kProbeSize = 64u << 20; // 64 Mio remplis une fois : assez de travail pour séparer deux heures GPU
     auto bufferInfo = makeStruct<VkBufferCreateInfo>(VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO);
@@ -263,6 +264,7 @@ void VulkanDevice::checkTimestampsMeasureWork()
     bool measured = false;
     bool accepted = false;
     std::uint64_t stamps[2] = {0, 0};
+    Result<> status; // en erreur seulement si le périphérique est perdu pendant la mesure : la création échoue
     if (vmaCreateBuffer(allocator_, &bufferInfo, &alloc, &buffer, &allocation, nullptr) == VK_SUCCESS &&
         vkCreateQueryPool(device_, &queryInfo, nullptr, &pool) == VK_SUCCESS)
     {
@@ -275,8 +277,14 @@ void VulkanDevice::checkTimestampsMeasureWork()
                 vkCmdWriteTimestamp2(commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, pool, 1);
             },
             &accepted);
-        measured = submitted.has_value() && vkGetQueryPoolResults(device_, pool, 0, 2, sizeof(stamps), stamps, sizeof(std::uint64_t),
-                                                                  VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) == VK_SUCCESS;
+        Result<> outcome = submitted;
+        if (outcome)
+            outcome = fromVk(vkGetQueryPoolResults(device_, pool, 0, 2, sizeof(stamps), stamps, sizeof(std::uint64_t),
+                                                   VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT),
+                             "vkGetQueryPoolResults (timestamp check)");
+        measured = outcome.has_value();
+        if (!outcome && outcome.error().code == ErrorCode::kDeviceLost)
+            status = outcome;
     }
     auto release = [this, pool, buffer, allocation]()
     {
@@ -290,16 +298,19 @@ void VulkanDevice::checkTimestampsMeasureWork()
         queueRelease(release, false);
     else
         release();
+    if (!status)
+        return status;
     if (!measured)
     {
         LOG_WARNING("Vulkan (MoltenVK): the timestamp check could not run; timestamp queries are kept");
-        return;
+        return {};
     }
     if (stamps[1] <= stamps[0])
     {
         caps_.timestampQueries = false;
         LOG_WARNING("Vulkan (MoltenVK): timestamps do not measure GPU work (no Metal counter sampling on this GPU): timestampQueries = false");
     }
+    return {};
 }
 
 // M9-L2 (G510) : sur le GPU Metal paravirtualisé des machines virtuelles macOS (« Apple Paravirtual device », runner macOS de la

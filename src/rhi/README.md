@@ -14,6 +14,9 @@ API publique : `include/orosmo/rhi/` (aucun type d'API graphique). Backends priv
 | `include/orosmo/rhi/shader_compiler.hpp`, `src/rhi/shader_compiler.cpp` | pipeline de shaders (RHI-12) : `compileGlsl`, `translateToGlsl430`, `ShaderCache`, `createShaderFromGlsl`, `ShaderHotReloader` |
 | `src/rhi/opengl/` | backend OpenGL 4.3 (`gl_device.cpp` ressources, `gl_encoder.cpp` commandes, `gl_translate.hpp` tables) |
 
+Le backend OpenGL demande OpenGL 4.3. Sous macOS, où OpenGL s'arrête à 4.1, le rendu passe par Vulkan (`src/rhi/vulkan/`) via
+MoltenVK.
+
 ## Utilisation
 
 ```cpp

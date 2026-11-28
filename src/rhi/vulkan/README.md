@@ -19,7 +19,7 @@ Seul endroit (avec `src/rhi/opengl/`) où existent `Vk*`, `vk*`, volk et VMA. M�
 
 - **volk** (vcpkg) charge Vulkan à l'exécution (`volkInitialize`, `volkLoadInstance`, `volkLoadDevice`) : le moteur ne se lie PAS au
   chargeur Vulkan. Sans chargeur ou sans GPU compatible, `createDevice` renvoie `kUnsupported` avec la raison ; les tests et
-  les démos retombent sur OpenGL (RHI-04). Les fonctions sont globales : un seul pilote par processus.
+  les démos retombent sur OpenGL (RHI-04), sauf sous macOS, où `fallbackBackend` ne renvoie rien. Les fonctions sont globales : un seul pilote par processus.
 - **Vulkan 1.3** exigé : rendu dynamique (`VK_KHR_dynamic_rendering`, noyau 1.3), `synchronization2`, sémaphore à chronologie,
   `hostQueryReset`. Un GPU qui ne les a pas est écarté avec la raison (liste dans le message d'erreur). Choix du GPU : discret,
   puis intégré, puis processeur (lavapipe) ; `ENGINE_VULKAN_DEVICE=<indice ou fragment du nom>` force un GPU.

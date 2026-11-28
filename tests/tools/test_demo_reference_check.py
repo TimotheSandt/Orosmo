@@ -17,6 +17,8 @@ shutil.copy({ui!r}, out + "/ui.png")
 print("Vulkan validation: 0 error/warning message(s) during the run" if {validation} else "no validation")
 '''
 
+NEEDS_SHEBANG = "le faux binaire est un script `#!`, que Windows ne sait pas lancer"
+
 
 class DemoReferenceCheck(unittest.TestCase):
     def test_every_case_has_its_reference_image(self):
@@ -43,16 +45,19 @@ class DemoReferenceCheck(unittest.TestCase):
                                capture_output=True, text=True)
             return r.returncode, r.stdout
 
+    @unittest.skipIf(os.name == "nt", NEEDS_SHEBANG)
     def test_matching_captures_and_silent_validation_pass(self):
         rc, out = self.run_tool(os.path.join(drc.REFERENCES, "scene-opengl-demo-1280x720.png"), True)
         self.assertEqual(rc, 0, out)
         self.assertIn("OK (images dans la tolérance)", out)
 
+    @unittest.skipIf(os.name == "nt", NEEDS_SHEBANG)
     def test_a_different_scene_fails(self):
         rc, out = self.run_tool(os.path.join(drc.REFERENCES, "scene-opengl-post-full-1280x720.png"), True)
         self.assertEqual(rc, 1, out)
         self.assertIn("ECHEC", out)
 
+    @unittest.skipIf(os.name == "nt", NEEDS_SHEBANG)
     def test_missing_validation_line_fails(self):
         rc, out = self.run_tool(os.path.join(drc.REFERENCES, "scene-opengl-demo-1280x720.png"), False)
         self.assertEqual(rc, 1, out)
