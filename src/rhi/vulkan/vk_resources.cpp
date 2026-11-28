@@ -176,6 +176,9 @@ Result<BufferHandle> VulkanDevice::createBuffer(const BufferDesc &desc, std::spa
         !r)
         return std::unexpected(r.error());
     res.mapped = allocInfo.pMappedData;
+    if (desc.debugName.starts_with("m9probe")) // M9-L2 SONDE TEMPORAIRE
+        LOG_WARNING("M9PROBE buffer ", desc.debugName, " memory ", reinterpret_cast<std::uintptr_t>(allocInfo.deviceMemory), " offset ", allocInfo.offset,
+                    " size ", allocInfo.size, " type ", allocInfo.memoryType);
     setObjectName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<std::uint64_t>(res.buffer), desc.debugName);
 
     const BufferHandle handle = buffers_.add(res);

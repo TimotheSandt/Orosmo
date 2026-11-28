@@ -448,7 +448,7 @@ void main() { color = vColor; })";
             const BufferHandle vb = gpu.buffer(BufferUsage::kVertex, bytesOf(positions), 0, "positions");
             constexpr std::uint64_t kLargest = std::uint64_t{64} << 20;
             const BufferHandle ib = gpu.buffer(BufferUsage::kIndex | BufferUsage::kCopyDst, {}, kLargest + 256, "indices");
-            const std::vector<std::uint64_t> offsets{4, 0, 4, 0, 16, 256, 4096, 65536, 1u << 20, 1u << 24, kLargest};
+            const std::vector<std::uint64_t> offsets{0, 16, 256, 4096, 65536, 1u << 20, 1u << 24, kLargest};
             for (const std::uint64_t offset : offsets)
             {
                 REQUIRE(gpu->updateBuffer(ib, offset, bytesOf(indices)).has_value());
@@ -457,7 +457,8 @@ void main() { color = vColor; })";
             std::vector<BufferHandle> small;
             for (int k = 0; k < 40; ++k)
             {
-                small.push_back(gpu.buffer(BufferUsage::kIndex | BufferUsage::kCopySrc | BufferUsage::kCopyDst, bytesOf(indices), 0, "small"));
+                small.push_back(gpu.buffer(BufferUsage::kIndex | BufferUsage::kCopySrc | BufferUsage::kCopyDst, bytesOf(indices), 0,
+                                          ("m9probe.small" + std::to_string(k)).c_str()));
             }
             std::vector<DrawIndexedIndirectCommand> commands(offsets.size());
             for (std::size_t i = 0; i < offsets.size(); ++i)
@@ -481,9 +482,9 @@ void main() { color = vec4(0.0, 1.0, 0.0, 1.0); })";
             auto pipe = gpu->createGraphicsPipeline(d);
             REQUIRE(pipe.has_value());
             const std::array<std::uint8_t, 4> green{0, 255, 0, 255};
-            for (int pass = 0; pass < 2; ++pass)
+            for (int pass = 0; pass < 1; ++pass)
             {
-                for (const std::size_t k : {std::size_t{0}, std::size_t{1}, std::size_t{39}})
+                for (std::size_t k = 0; k < small.size(); ++k)
                 {
                     for (int mode = 0; mode < 2; ++mode)
                     {

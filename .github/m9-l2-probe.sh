@@ -19,7 +19,7 @@ make -j3 -f mk/engine.mk BUILD_TYPE=release release $V > "$OUT/build-tests.log" 
 make -j3 -C apps/demo ENGINE_DIR=orosmo RES_DIR=../../res SHADER_DIR=../../shaders TEST_DIR=../../tests ICON_NAME=../../res/public/icon.ico $V bin/tests/tests >> "$OUT/build-tests.log" 2>&1
 echo "build tests: $?"
 cd apps/demo
-ENGINE_TEST_BACKENDS=vulkan ENGINE_TEST_REQUIRE_GPU=1 ./bin/tests/tests -tc='*M9-L2*' > "$OUT/m9-test.log" 2>&1
+ENGINE_TEST_LOG_LEVEL=warning ENGINE_TEST_BACKENDS=vulkan ENGINE_TEST_REQUIRE_GPU=1 ./bin/tests/tests -tc='*M9-L2*' > "$OUT/m9-test.log" 2>&1
 echo "m9 test: $?"
-grep -E "M9-L2 offset|test cases" "$OUT/m9-test.log"
+grep -E "M9-L2|M9PROBE|test cases" "$OUT/m9-test.log"
 exit 0
