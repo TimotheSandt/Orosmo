@@ -134,7 +134,8 @@ utilisez `find_package(Orosmo)` avec CMake : voir [Compiler avec Make ou CMake](
 
 - Les versions sont `0.MINEUR.CORRECTIF` : tant que la majeure vaut 0, un changement mineur peut casser l'API (la liste est
   dans `docs/releases/` du dépôt) ; un correctif ne la casse pas.
-- Seul Linux est vérifié ; Windows et macOS sont construits par la CI mais pas essayés.
+- Seul Linux est essayé sur une vraie machine ; Windows est construit par la CI, macOS arm64 construit et lancé par la CI sur
+  machine virtuelle.
 - Pas de système de modules ni d'addons pour l'instant.
 
 Toutes les commandes et options de l'outil : [Commande orosmo](/reference/commande-orosmo/). Détails :

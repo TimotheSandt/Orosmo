@@ -165,8 +165,9 @@ passe en premier ; sans variable, le backend préfère un GPU discret, puis int�
 
 ## Limites
 
-- Metal est reconnu par `Backend::kMetal` mais refusé : il n'existe pas encore.
-- Vulkan n'est vérifié que sous Linux. Sous Windows et macOS (MoltenVK), il ne l'est pas.
+- Metal est reconnu par `Backend::kMetal` mais refusé : il n'y a pas de backend Metal natif.
+- Vulkan est vérifié sous Linux. Sous macOS (MoltenVK), il ne l'est que par la CI, sur un GPU paravirtualisé ; sous Windows,
+  il ne l'est pas.
 - Pas de transferts asynchrones (copies sur une file dédiée) : toutes les copies passent par la file principale.
 
 Voir [État du moteur](/projet/etat/).

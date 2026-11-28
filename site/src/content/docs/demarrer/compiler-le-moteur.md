@@ -1,6 +1,6 @@
 ---
 title: Compiler le moteur
-description: Prérequis, dépendances et premier build du moteur depuis le dépôt, avec la démo. Linux est vérifié ; Windows et macOS ne le sont pas.
+description: Prérequis, dépendances et premier build du moteur depuis le dépôt, avec la démo. Linux est vérifié ; Windows ne l'est pas ; macOS ne l'est que par la CI sur machine virtuelle.
 sidebar:
   order: 6
   label: Compiler le moteur

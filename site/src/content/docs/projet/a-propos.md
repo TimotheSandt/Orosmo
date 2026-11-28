@@ -37,7 +37,8 @@ La simplicité d'utilisation est prévue, même si elle n'est pas encore atteint
 - C++23 : j'aime le C++, et la plupart de mes projets sont écrits dans ce langage, à part ce qui touche au web.
 - OpenGL : j'ai appris la programmation graphique avec OpenGL, l'API la plus simple parmi celles qui sont performantes.
 - Vulkan : c'est l'avenir ; l'API offre plus de fonctions et elle est plus efficace.
-- Metal : prévu plus tard, pour la compatibilité avec les Mac. Il n'existe pas encore.
+- Metal : sous macOS, le moteur passe par Vulkan, traduit vers Metal par MoltenVK. Un backend Metal natif n'existe pas ; il
+  sera réexaminé après des mesures sur un vrai Mac.
 - Plusieurs backends à la fois : pour que le moteur fonctionne sur le plus de machines possible. Le code du moteur
   passe par une couche commune (le RHI) ; voir [Choisir le backend graphique](/guides/application/peripherique/).
 
