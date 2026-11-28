@@ -43,6 +43,7 @@ jobs:
           mkdir -p .vcpkg-archives
           "$VCPKG_ROOT/vcpkg" install --triplet=arm64-osx --x-manifest-root=. --x-install-root=./vcpkg_installed --no-print-usage
       - uses: actions/cache/save@v4
+        if: always()
         with:
           path: .vcpkg-archives
           key: vcpkg-archives-arm64-osx-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
@@ -55,6 +56,7 @@ jobs:
       - name: Build
         run: make -j3 all-debug VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed
       - uses: actions/cache/save@v4
+        if: always()
         with:
           path: .ccache
           key: ccache-arm64-osx-${{ github.run_id }}
