@@ -556,3 +556,40 @@ Choix faits pendant le jalon M5 (`docs/releases/M5.md`). Aucun n'est une décisi
   2. **Maillage simplifié pour l'ombre** des objets secondaires (LOD de caster) : moins cher, pas plus net ; le budget gagné peut aller aux cascades.
   3. **Distance d'ombre par caster** : un objet secondaire cesse de projeter une ombre au-delà d'une distance qui lui est propre.
   Questions pour l'auteur, à trancher avant M10 : quelles pistes garder ; nombre maximal d'ombres dédiées ; réglage par caster ou par « classe d'importance » (ex. `kHero`, `kNormal`, `kMinor`) ; comportement quand l'atlas est plein. Manque correspondant : G290.
+
+## A90. M9 (macOS et Metal) : constat de la sonde et découpage en lots (2026-11-27, proposé par l'IA)
+
+**Cadre fixé par l'auteur** : pas de Mac ; la seule preuve possible est la CI macOS ; tout ce qui n'est pas vérifié sur une vraie machine reste « Partiel » ou « Absent » (`docs/GAPS.md`, à partir de G500) ; pas de backend Metal natif sans son accord ; rien sur `dev` avant la validation de M8.
+
+**Avant M9** (CI de `dev`, run 46082244083, `macos-26-arm64`) : aucun périphérique Vulkan (`VK_ERROR_INCOMPATIBLE_DRIVER`), pas de contexte OpenGL 4.3, tests de fenêtre sautés. Le job est vert parce que les tests GPU s'ignorent.
+
+**Sonde** (run 46087273521, branche `feat/M9-L0-sonde-ci`, macOS 26.7.2, Apple M1 virtualisé) :
+- `MTLCreateSystemDefaultDevice` : « Apple Paravirtual device », familles Metal 1001 à 1005 ;
+- MoltenVK 1.4.2 (Homebrew, `VK_DRIVER_FILES`) : périphérique Vulkan 1.3.357, surface de fenêtre comprise ;
+- `make all-debug` puis `make demo-test` : 948 cas, 946 verts, **2 échecs** (`tests/renderer/resources_tests.cpp:816`, minuteries GPU à 0 ; `tests/rhi/rhi_device_tests.cpp:205`, texture attendue « non prise en charge » acceptée), 1 ignoré ;
+- démo `--api vulkan --strict-backend` (fenêtre et `--headless`) : démarre et capture, mais **les maillages de la scène manquent** (16,4 % de pixels différents de la référence) ; le HUD et les gizmos sont corrects ;
+- couches de validation **non chargées** (chemin faux dans la sonde) : aucune preuve de validation à ce stade ; OpenGL 4.3 impossible (macOS s'arrête à 4.1).
+
+**Découpage** (taille : S < ½ j, M ≈ 1 j, L > 1 j) :
+
+| Lot | Contenu | Dépend de | Critères de fin | Taille |
+| --- | --- | --- | --- | --- |
+| L0 | Sonde, ce plan | — | résultats écrits ici ; plan relu par un autre agent | S |
+| L1 | Job macOS : MoltenVK et couches de validation installés ; tests GPU Vulkan et de fenêtre **exigés** (un saut = échec, OpenGL excepté) ; correction des 2 échecs et des messages de validation | L0 | CI macOS verte avec les suites Vulkan exécutées, 0 message de validation, aucune régression Linux/Windows | M |
+| L2 | Rendu de la démo sous MoltenVK : cause de la scène vide, test de régression, captures (scène, interface, ombres, forward+, GPU-driven, post-traitement) comparées en CI | L1 | écart à la référence dans la tolérance sur le runner, 0 message de validation | M à L |
+| L3 | Exécution et distribution : découverte du chargeur et de l'ICD sans variable d'environnement quand c'est possible, message clair sinon (OpenGL inutilisable sur macOS : pas de repli trompeur), commande d'installation documentée, `orosmo doctor`, paquet et `e2e-init` avec rendu en CI, taille du framebuffer en HiDPI | L1 (L2 pour l'e2e avec rendu) | `e2e-init` avec rendu vert sur macOS ; doc d'installation ; ce qui demande un vrai Mac listé dans GAPS | M |
+| L4 | Mesures (temps CPU/GPU du runner, indicatives seulement) et note de décision RHI-13 : backend Metal natif oui ou non, **proposée** à l'auteur | L2 | note dans `docs/`, limites des mesures écrites ; aucune ligne de `src/rhi/metal/` | S |
+| L5 | Documentation (`STATUS`, `GAPS`, `docs/02` colonne état, site et wiki), `docs/releases/M9.md` et `M9-MR.md`, clone propre, PR **brouillon** `milestone/M9` → `dev`, non fusionnée | L1 à L4 | CI verte, revue traitée | S |
+
+Ordre : L0 → L1 → (L2 et L3 en parallèle) → L4 → L5.
+
+**Hors portée, à dire à l'auteur** : la démo du jalon (« visualiseur sur un Mac ») n'est pas réalisable sans Mac ; elle est remplacée par des captures produites sur le runner, ce qui ne vaut pas un essai réel (fenêtre visible, saisie, Retina, GPU Apple physique, performances).
+
+**Validation (agent distinct, 2026-11-27) : validé avec modifications**, toutes retenues ; elles complètent le tableau ci-dessus et font foi.
+
+- **L1** : `SKIP_TEST_IF_NULL` (`tests/support/test_support.hpp`) échoue quel que soit le backend quand `ENGINE_TEST_REQUIRE_GPU` vaut 1 ; il doit respecter `ENGINE_TEST_BACKENDS=vulkan` comme `tests/rhi/backends.hpp`, avec un test de cette exception. Critère : aucun cas sauté hors OpenGL. Un test échoue si `VK_LAYER_KHRONOS_validation` n'est pas active alors qu'elle est exigée. Les 2 échecs passent par `Capabilities` (règle 11), sans relâcher les assertions. Image épinglée (`macos-26`), versions de MoltenVK et des couches journalisées (Homebrew ne les épingle pas).
+- **L2** : référence Vulkan manquante (RHI-14) : dire d'où elle vient ; tolérance chiffrée (8 ; 2 % au plus) ; la comparaison macOS est bloquante (pas de `continue-on-error`) ; `--headless` sur macOS (PLAT-04) inclus.
+- **L3** : couvre aussi `build-engine.yml` (`macos-x64` sur `macos-15-intel`, jamais sondé ; `fresh-macos`) et le texte de release (« Metal later », repli OpenGL). Intel : mini-sonde, sinon Partiel dans `GAPS`. Embarquer MoltenVK dans `deps/` est contraire à A76 : à **proposer** à l'auteur, pas à appliquer. `E2E_RUN_GRAPHICS` passe à 1 sur macOS (G215). HiDPI ×2 non vérifiable sur le runner : `GAPS`, pas un critère de fin.
+- **L4** : un GPU paravirtualisé ne justifie aucune décision ; la note propose « reporté, à remesurer sur un vrai Mac ».
+- **L5** : mettre à jour G2, G67, G91, G110, G142, G215, G216, G280, G384, et RHI-04, RHI-13, RHI-14, BLD-01, BLD-02, PLAT-01, PLAT-04. `docs/releases/M9.md` dit en clair que la démo du jalon est **absente**.
+- **Écart à la règle de conduite 5 de `docs/05`** (décision de l'auteur) : pour M9, les lots fusionnent dans `milestone/M9`, pas dans `dev`, tant que M8 n'est pas validé.
