@@ -42,6 +42,10 @@ jobs:
       - run: |
           mkdir -p .vcpkg-archives
           "$VCPKG_ROOT/vcpkg" install --triplet=arm64-osx --x-manifest-root=. --x-install-root=./vcpkg_installed --no-print-usage
+      - uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-arm64-osx-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
       - uses: actions/cache/restore@v4
         with:
           path: .ccache
@@ -50,6 +54,10 @@ jobs:
       - run: echo "$(brew --prefix)/opt/ccache/libexec" >> "$GITHUB_PATH"
       - name: Build
         run: make -j3 all-debug VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed
+      - uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-arm64-osx-${{ github.run_id }}
       - name: Probe variants
         run: sh .github/m9-l2-probe.sh "$GITHUB_WORKSPACE/probe"
       - uses: actions/upload-artifact@v4

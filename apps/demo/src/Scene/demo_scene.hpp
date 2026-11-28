@@ -147,6 +147,9 @@ class DemoScene
     glm::vec3 heroPosition_{0.0f, 2.85f, 0.0f};
     float elapsedSeconds_ = 0.0f;
     bool initialized_ = false;
+    orosmo::rhi::Device *probeDevice_ = nullptr; // M9-L2 SONDE TEMPORAIRE
+    std::vector<orosmo::renderer::Mesh> probeMeshes_; // M9-L2 SONDE TEMPORAIRE
+    int probeFrame_ = 0; // M9-L2 SONDE TEMPORAIRE
 
     bool lightingInitialized_ = false;
     float lastSunElevation_ = 0.0f;
