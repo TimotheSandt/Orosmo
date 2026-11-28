@@ -13,11 +13,9 @@ run() {
     echo "exit $?" >> "$OUT/$name/demo.log"
     grep -E "validation|ERROR|error" "$OUT/$name/demo.log" | head -5
 }
-run default
-PRE="MTL_DEBUG_LAYER=1 MTL_DEBUG_LAYER_ERROR_MODE=nslog MTL_DEBUG_LAYER_WARNING_MODE=nslog"; run mtlval --ui off --instances 64; PRE=""
-PRE="MTL_DEBUG_LAYER=1"; run mtlval-assert --ui off; PRE=""
-PRE="MTL_SHADER_VALIDATION=1 MTL_DEBUG_LAYER=1 MTL_DEBUG_LAYER_ERROR_MODE=nslog"; run mtlshader --ui off; PRE=""
-mkdir -p "$OUT/msl"
-PRE="MVK_CONFIG_SHADER_DUMP_DIR=$OUT/msl MVK_CONFIG_LOG_LEVEL=4"; run dump --ui off --instances 64 --gpu-driven on; PRE=""
-ls "$OUT/msl" | head -50
+mkdir -p "$OUT/msl-default" "$OUT/msl-inst" "$OUT/pc1" "$OUT/pc2" "$OUT/pc3"
+PRE="ENGINE_VULKAN_PIPELINE_CACHE_DIR=$OUT/pc1 MVK_CONFIG_SHADER_DUMP_DIR=$OUT/msl-default"; run default --ui off; PRE=""
+PRE="ENGINE_VULKAN_PIPELINE_CACHE_DIR=$OUT/pc2 MVK_CONFIG_SHADER_DUMP_DIR=$OUT/msl-inst"; run inst --ui off --instances 64; PRE=""
+PRE="ENGINE_VULKAN_PIPELINE_CACHE_DIR=$OUT/pc3 MVK_CONFIG_SHADER_DUMP_DIR=$OUT/msl-gd"; run gd --ui off --instances 64 --gpu-driven on; PRE=""
+ls "$OUT/msl-default" | wc -l
 exit 0
