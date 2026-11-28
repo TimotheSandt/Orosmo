@@ -116,7 +116,8 @@ sw_vers && system_profiler SPDisplaysDataType && brew list --versions molten-vk 
 # 1. Correction d'abord : tests, puis captures comparées, avec et sans le contournement de G510
 make -j6 all-debug VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed
 make -j6 demo-test VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed
-python3 tools/demo_reference_check.py --api vulkan
+ENGINE_VULKAN_INDEXED_VIA_INDIRECT=0 python3 tools/demo_reference_check.py --api vulkan --out build/ref-direct
+ENGINE_VULKAN_INDEXED_VIA_INDIRECT=1 python3 tools/demo_reference_check.py --api vulkan --out build/ref-indirect
 
 # 2. Build release (chronométré) ; PROJECT_NAME est nécessaire (G531)
 make fclean && make demo-fclean
