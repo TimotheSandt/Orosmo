@@ -1,0 +1,87 @@
+# M9 L0 : sonde TEMPORAIRE du runner macOS (Metal, MoltenVK, fenêtre). Retirée avant la fin du lot.
+name: M9 probe (macOS)
+on:
+  push:
+    branches: ['feat/M9-L0-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  VCPKG_ROOT: /tmp/vcpkg
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-archives
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca
+        with:
+          toolchain: stable
+      - name: Machine and Metal
+        run: |
+          sw_vers; uname -a; sysctl -n machdep.cpu.brand_string
+          system_profiler SPDisplaysDataType || true
+          cat > /tmp/metal.swift <<'SWIFT'
+          import Metal
+          if let d = MTLCreateSystemDefaultDevice() {
+              print("metal device: \(d.name)")
+              for f in [1001,1002,1003,1004,1005,1006,1007,1008,1009,5001] {
+                  if let g = MTLGPUFamily(rawValue: f), d.supportsFamily(g) { print("family \(f)") }
+              }
+          } else { print("metal device: none") }
+          SWIFT
+          swift /tmp/metal.swift || true
+      - name: MoltenVK (Homebrew)
+        run: |
+          brew install ninja cmake zip molten-vk vulkan-loader vulkan-tools vulkan-validationlayers
+          brew list --versions molten-vk vulkan-loader vulkan-validationlayers
+          ICD=$(find "$(brew --prefix)/etc/vulkan" "$(brew --prefix molten-vk)" -name 'MoltenVK_icd.json' | head -1)
+          LAYERS=$(dirname "$(find "$(brew --prefix vulkan-validationlayers)" -name 'VkLayer_khronos_validation.json' | head -1)")
+          echo "ICD=$ICD LAYERS=$LAYERS"
+          echo "VK_DRIVER_FILES=$ICD" >> "$GITHUB_ENV"
+          echo "VK_ICD_FILENAMES=$ICD" >> "$GITHUB_ENV"
+          echo "VK_LAYER_PATH=$LAYERS" >> "$GITHUB_ENV"
+          VK_DRIVER_FILES="$ICD" VK_LAYER_PATH="$LAYERS" vulkaninfo > vulkaninfo.txt 2>&1 || true
+          head -150 vulkaninfo.txt
+      - name: vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" --depth=1
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+      - uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-arm64-osx-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: vcpkg-archives-arm64-osx-
+      - name: Build
+        run: |
+          mkdir -p .vcpkg-archives
+          "$VCPKG_ROOT/vcpkg" install --triplet=arm64-osx --x-manifest-root=. --x-install-root=./vcpkg_installed --no-print-usage
+          make -j3 all-debug VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed
+      - name: Tests (whole suite with MoltenVK)
+        continue-on-error: true
+        timeout-minutes: 30
+        run: make -j3 demo-test VCPKG_TRIPLET=arm64-osx VCPKG_INSTALLED_ROOT=./vcpkg_installed 2>&1 | tee tests.log
+      - name: Demo captures (Vulkan)
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          mkdir -p cap-headless cap-window
+          ls apps/demo/bin/debug
+          (cd apps/demo && ./bin/debug/main --api vulkan --strict-backend --headless --capture "$GITHUB_WORKSPACE/cap-headless" --capture-frames 5) 2>&1 | tee demo-headless.log
+          (cd apps/demo && ./bin/debug/main --api vulkan --strict-backend --capture "$GITHUB_WORKSPACE/cap-window" --capture-frames 5) 2>&1 | tee demo-window.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m9-probe-${{ matrix.os }}
+          path: |
+            vulkaninfo.txt
+            tests.log
+            demo-headless.log
+            demo-window.log
+            cap-headless
+            cap-window
