@@ -182,7 +182,7 @@ une erreur (un prérequis obligatoire manque), 0 sinon ; les avertissements ne c
 |---|---|---|
 | C++23 compiler | oui | `$CXX` sinon `g++` puis `clang++` ; GCC ≥ 13, Clang ≥ 17, Apple Clang ≥ 15 |
 | GNU Make | oui | `make --version` répond (`$MAKE`, `mingw32-make` sous Windows) |
-| Archiver (ar) | oui, sauf macOS | `ar --version` répond |
+| Archiver (ar) | oui, sauf macOS | `ar --version` répond (macOS : `xcrun --find ar`) |
 | Python 3 | non | `python3 --version` (`python` sous Windows) |
 | CMake | non | `cmake --version` |
 | Installed engines | non | au moins un moteur dans `$OROSMO_HOME/engines` |

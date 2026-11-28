@@ -646,10 +646,11 @@ pub fn cmd_doctor(args: &[String], engine_version: &str, platform_name: &str) ->
             true,
             os_install_hint("sudo apt install make", "xcode-select --install", "scoop install make (or MSYS2 make)"),
         ),
+        // Le `ar` d'Apple ne connaît pas `--version` : `xcrun --find ar` rend son chemin.
         check_tool(
             "Archiver (ar)",
-            "ar",
-            &["--version"],
+            if cfg!(target_os = "macos") { "xcrun" } else { "ar" },
+            if cfg!(target_os = "macos") { &["--find", "ar"] } else { &["--version"] },
             !cfg!(target_os = "macos"),
             os_install_hint("sudo apt install binutils", "xcode-select --install", "Included with MSYS2 MinGW-w64"),
         ),
