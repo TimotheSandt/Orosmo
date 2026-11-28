@@ -515,7 +515,7 @@ void main() { color = vec4(0.0, 1.0, 0.0, 1.0); })";
                         results += drawn ? (indirect ? 'I' : 'D') : (indirect ? 'i' : 'd');
                     }
                 }
-                INFO(tests::backendName(backend), ", index buffers ", kindNames[kind], ": ", results);
+                INFO(std::string(tests::backendName(backend)) + ", index buffers " + kindNames[kind] + ": " + results);
                 CHECK(results.find_first_of("di") == std::string::npos);
             }
             gpu.expectNoValidationErrors();
