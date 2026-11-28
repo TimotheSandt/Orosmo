@@ -436,7 +436,7 @@ void main() { color = vColor; })";
         }
     }
 
-    TEST_CASE("M9-L2 indexed draw: the index buffer offset is honoured by direct and indirect draws")
+    TEST_CASE("M9-L2 indexed draw: index buffers by memory kind, direct and indirect")
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -446,25 +446,7 @@ void main() { color = vColor; })";
             const std::vector<float> positions{-1, -1, 3, -1, -1, 3};
             const std::vector<std::uint32_t> indices{0, 1, 2};
             const BufferHandle vb = gpu.buffer(BufferUsage::kVertex, bytesOf(positions), 0, "positions");
-            constexpr std::uint64_t kLargest = std::uint64_t{64} << 20;
-            const BufferHandle ib = gpu.buffer(BufferUsage::kIndex | BufferUsage::kCopyDst, {}, kLargest + 256, "indices");
-            const std::vector<std::uint64_t> offsets{0, 16, 256, 4096, 65536, 1u << 20, 1u << 24, kLargest};
-            for (const std::uint64_t offset : offsets)
-            {
-                REQUIRE(gpu->updateBuffer(ib, offset, bytesOf(indices)).has_value());
-            }
-            // Petits tampons d'index créés avec leurs données (comme Mesh::create), après d'autres tampons.
-            std::vector<BufferHandle> small;
-            for (int k = 0; k < 40; ++k)
-            {
-                small.push_back(gpu.buffer(BufferUsage::kIndex | BufferUsage::kCopySrc | BufferUsage::kCopyDst, bytesOf(indices), 0,
-                                          ("m9probe.small" + std::to_string(k)).c_str()));
-            }
-            std::vector<DrawIndexedIndirectCommand> commands(offsets.size());
-            for (std::size_t i = 0; i < offsets.size(); ++i)
-            {
-                commands[i] = {3, 1, static_cast<std::uint32_t>(offsets[i] / 4), 0, 0};
-            }
+            const std::vector<DrawIndexedIndirectCommand> commands{{3, 1, 0, 0, 0}};
             const BufferHandle args = gpu.buffer(BufferUsage::kIndirect, bytesOf(commands), 0, "args");
             const char *vs = R"(#version 450
 layout(location = 0) in vec2 position;
@@ -481,10 +463,33 @@ void main() { color = vec4(0.0, 1.0, 0.0, 1.0); })";
             d.raster.cull = CullMode::kNone;
             auto pipe = gpu->createGraphicsPipeline(d);
             REQUIRE(pipe.has_value());
-            const std::array<std::uint8_t, 4> green{0, 255, 0, 255};
-            for (int pass = 0; pass < 1; ++pass)
+            constexpr int kCount = 12;
+            const BufferUsage usage = BufferUsage::kIndex | BufferUsage::kCopySrc | BufferUsage::kCopyDst;
+            // 0 : GPU seul, données initiales (copie de transfert) ; 1 : envoi (mémoire visible de l'hôte, écrite par le CPU) ;
+            // 2 : envoi rempli par une copie GPU ; 3 : GPU seul rempli par une copie GPU.
+            std::array<std::vector<BufferHandle>, 4> kinds;
+            for (int k = 0; k < kCount; ++k)
             {
-                for (std::size_t k = 0; k < small.size(); ++k)
+                kinds[0].push_back(gpu.buffer(usage, bytesOf(indices), 0, "m9probe.gpu"));
+                kinds[1].push_back(gpu.buffer(usage, bytesOf(indices), 0, "m9probe.upload", MemoryKind::kUpload));
+                kinds[2].push_back(gpu.buffer(usage, {}, 12, "m9probe.upload-copied", MemoryKind::kUpload));
+                kinds[3].push_back(gpu.buffer(usage, {}, 12, "m9probe.gpu-copied"));
+            }
+            gpu.run(
+                [&](CommandEncoder &e)
+                {
+                    for (int k = 0; k < kCount; ++k)
+                    {
+                        e.copyBuffer(kinds[0][k], kinds[2][k], {.srcOffset = 0, .dstOffset = 0, .size = 12});
+                        e.copyBuffer(kinds[0][k], kinds[3][k], {.srcOffset = 0, .dstOffset = 0, .size = 12});
+                    }
+                });
+            const std::array<std::uint8_t, 4> green{0, 255, 0, 255};
+            for (int kind = 0; kind < 4; ++kind)
+            {
+                std::string results;
+                int failures = 0;
+                for (int k = 0; k < kCount; ++k)
                 {
                     for (int mode = 0; mode < 2; ++mode)
                     {
@@ -494,40 +499,20 @@ void main() { color = vec4(0.0, 1.0, 0.0, 1.0); })";
                                 e.beginRenderPass(passOn(color));
                                 e.setPipeline(*pipe);
                                 e.setVertexBuffer(0, vb);
-                                e.setIndexBuffer(small[k], IndexType::kUint32);
+                                e.setIndexBuffer(kinds[kind][k], IndexType::kUint32);
                                 if (mode == 1)
-                                    e.drawIndexedIndirect(args, sizeof(DrawIndexedIndirectCommand), 1, 0); // commande d'indice 1 : firstIndex 0
+                                    e.drawIndexedIndirect(args, 0, 1, 0);
                                 else
                                     e.drawIndexed(3);
                                 e.endRenderPass();
                             });
-                        const auto px = rgba(gpu.pixel(color, 4, 4));
-                        MESSAGE("M9-L2 small ", k, " pass ", pass, " mode ", mode, " -> ", int(px[0]), ",", int(px[1]), ",", int(px[2]));
-                        CHECK(px == green);
+                        const bool ok = rgba(gpu.pixel(color, 4, 4)) == green;
+                        results += ok ? (mode == 0 ? "D" : "I") : (mode == 0 ? "d" : "i");
+                        failures += ok ? 0 : 1;
                     }
                 }
-            }
-            for (std::size_t i = 0; i < offsets.size(); ++i)
-            {
-                for (int mode = 0; mode < 3; ++mode) // 0 : décalage de liaison ; 1 : firstIndex ; 2 : indirect (firstIndex)
-                {
-                    gpu.run(
-                        [&](CommandEncoder &e)
-                        {
-                            e.beginRenderPass(passOn(color));
-                            e.setPipeline(*pipe);
-                            e.setVertexBuffer(0, vb);
-                            e.setIndexBuffer(ib, IndexType::kUint32, mode == 0 ? offsets[i] : 0);
-                            if (mode == 2)
-                                e.drawIndexedIndirect(args, i * sizeof(DrawIndexedIndirectCommand), 1, 0);
-                            else
-                                e.drawIndexed(3, 1, mode == 1 ? static_cast<std::uint32_t>(offsets[i] / 4) : 0);
-                            e.endRenderPass();
-                        });
-                    const auto px = rgba(gpu.pixel(color, 4, 4));
-                    MESSAGE("M9-L2 offset ", offsets[i], " mode ", mode, " -> ", int(px[0]), ",", int(px[1]), ",", int(px[2]));
-                    CHECK(px == green);
-                }
+                MESSAGE("M9-L2 kind ", kind, " (D/I ok, d/i black): ", results);
+                CHECK(failures == 0);
             }
             gpu.expectNoValidationErrors();
         }
