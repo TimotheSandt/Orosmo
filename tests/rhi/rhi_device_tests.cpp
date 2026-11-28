@@ -436,7 +436,11 @@ void main() { color = vColor; })";
         }
     }
 
-    TEST_CASE("M9-L2 indexed draw: index buffers by memory kind, direct and indirect")
+    // M9-L2 (G510) : sous MoltenVK, sur le GPU Metal paravirtualisé du runner macOS, un dessin indexé direct ne lisait pas les
+    // indices d'un tampon en mémoire d'envoi (ni ceux d'un tampon sous-alloué loin dans son bloc) : rien n'était tracé, sans aucun
+    // message (maillages absents de la démo). Chaque sorte de tampon d'index, remplie par le CPU ou par une copie GPU, est lue par
+    // un dessin direct et par un dessin indirect, sur plusieurs tampons (sous-allocations successives).
+    TEST_CASE("M9-L2 (G510): indexed draws read the indices of every kind of index buffer, direct and indirect")
     {
         FOR_EACH_BACKEND(backend)
         {
@@ -463,17 +467,18 @@ void main() { color = vec4(0.0, 1.0, 0.0, 1.0); })";
             d.raster.cull = CullMode::kNone;
             auto pipe = gpu->createGraphicsPipeline(d);
             REQUIRE(pipe.has_value());
-            constexpr int kCount = 12;
+
+            constexpr int kCount = 8;
             const BufferUsage usage = BufferUsage::kIndex | BufferUsage::kCopySrc | BufferUsage::kCopyDst;
-            // 0 : GPU seul, données initiales (copie de transfert) ; 1 : envoi (mémoire visible de l'hôte, écrite par le CPU) ;
-            // 2 : envoi rempli par une copie GPU ; 3 : GPU seul rempli par une copie GPU.
+            // GPU seul (données initiales : copie de transfert) ; envoi (écrit par le CPU) ; envoi et GPU seul remplis par une copie GPU.
+            const std::array<const char *, 4> kindNames{"gpu-only", "upload", "upload, GPU copy", "gpu-only, GPU copy"};
             std::array<std::vector<BufferHandle>, 4> kinds;
             for (int k = 0; k < kCount; ++k)
             {
-                kinds[0].push_back(gpu.buffer(usage, bytesOf(indices), 0, "m9probe.gpu"));
-                kinds[1].push_back(gpu.buffer(usage, bytesOf(indices), 0, "m9probe.upload", MemoryKind::kUpload));
-                kinds[2].push_back(gpu.buffer(usage, {}, 12, "m9probe.upload-copied", MemoryKind::kUpload));
-                kinds[3].push_back(gpu.buffer(usage, {}, 12, "m9probe.gpu-copied"));
+                kinds[0].push_back(gpu.buffer(usage, bytesOf(indices), 0, "indices.gpu"));
+                kinds[1].push_back(gpu.buffer(usage, bytesOf(indices), 0, "indices.upload", MemoryKind::kUpload));
+                kinds[2].push_back(gpu.buffer(usage, {}, 12, "indices.upload.copied", MemoryKind::kUpload));
+                kinds[3].push_back(gpu.buffer(usage, {}, 12, "indices.gpu.copied"));
             }
             gpu.run(
                 [&](CommandEncoder &e)
@@ -485,13 +490,13 @@ void main() { color = vec4(0.0, 1.0, 0.0, 1.0); })";
                     }
                 });
             const std::array<std::uint8_t, 4> green{0, 255, 0, 255};
-            for (int kind = 0; kind < 4; ++kind)
+            for (std::size_t kind = 0; kind < kinds.size(); ++kind)
             {
+                // Une lettre par dessin : D/I tracé (direct/indirect), d/i rien de tracé.
                 std::string results;
-                int failures = 0;
                 for (int k = 0; k < kCount; ++k)
                 {
-                    for (int mode = 0; mode < 2; ++mode)
+                    for (const bool indirect : {false, true})
                     {
                         gpu.run(
                             [&](CommandEncoder &e)
@@ -500,19 +505,18 @@ void main() { color = vec4(0.0, 1.0, 0.0, 1.0); })";
                                 e.setPipeline(*pipe);
                                 e.setVertexBuffer(0, vb);
                                 e.setIndexBuffer(kinds[kind][k], IndexType::kUint32);
-                                if (mode == 1)
+                                if (indirect)
                                     e.drawIndexedIndirect(args, 0, 1, 0);
                                 else
                                     e.drawIndexed(3);
                                 e.endRenderPass();
                             });
-                        const bool ok = rgba(gpu.pixel(color, 4, 4)) == green;
-                        results += ok ? (mode == 0 ? "D" : "I") : (mode == 0 ? "d" : "i");
-                        failures += ok ? 0 : 1;
+                        const bool drawn = rgba(gpu.pixel(color, 4, 4)) == green;
+                        results += drawn ? (indirect ? 'I' : 'D') : (indirect ? 'i' : 'd');
                     }
                 }
-                MESSAGE("M9-L2 kind ", kind, " (D/I ok, d/i black): ", results);
-                CHECK(failures == 0);
+                INFO(tests::backendName(backend), ", index buffers ", kindNames[kind], ": ", results);
+                CHECK(results.find_first_of("di") == std::string::npos);
             }
             gpu.expectNoValidationErrors();
         }
