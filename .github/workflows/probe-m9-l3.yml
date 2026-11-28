@@ -1,0 +1,100 @@
+# TEMPORAIRE (M9-L3), à retirer avant la fin du lot : parcours d'un utilisateur macOS (paquet de ce commit, install.sh, init,
+# build, run) sur arm64 et sur Intel (macos-15-intel, jamais sondé). Reprend les étapes de build-engine.yml, sans rien publier.
+name: Probe M9-L3
+on:
+  push:
+    branches: ["feat/M9-L3-*"]
+permissions:
+  contents: read
+env:
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-archives
+jobs:
+  probe:
+    name: Probe macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            os: macos-26
+            triplet: arm64-osx
+          - arch: x64
+            os: macos-15-intel
+            triplet: x64-osx
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Machine
+        run: |
+          sw_vers; uname -m; c++ --version
+          system_profiler SPDisplaysDataType || true
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca
+        with:
+          toolchain: stable
+      - run: brew install ninja cmake zip
+      - name: Restore vcpkg archives
+        uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: |
+            vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-archives-${{ matrix.triplet }}-
+      - name: vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git /tmp/vcpkg --depth=1
+          /tmp/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          /tmp/vcpkg/vcpkg install --triplet=${{ matrix.triplet }} --x-manifest-root=. --x-install-root=./vcpkg_installed --no-print-usage
+      - name: Save vcpkg archives
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-archives
+          key: vcpkg-archives-${{ matrix.triplet }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+      - name: Package and tool (as build-engine.yml)
+        run: make -j3 -f mk/engine.mk engine-tool WERROR=0 VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
+      - name: install.sh, init, build
+        run: |
+          set -eux
+          mkdir -p "$RUNNER_TEMP/release"
+          cp dist/orosmo-macos-${{ matrix.arch }} dist/orosmo-pkg-macos-${{ matrix.arch }}.zip "$RUNNER_TEMP/release/"
+          (cd "$RUNNER_TEMP/release" && shasum -a 256 -- * > SHA256SUMS)
+          export OROSMO_DOWNLOAD_BASE="$RUNNER_TEMP/release"
+          sh site/public/install.sh --yes
+          brew list --versions molten-vk vulkan-loader
+          export PATH="$HOME/.orosmo/bin:$PATH"
+          cd "$RUNNER_TEMP" && orosmo init mygame && cd mygame
+          orosmo build
+          otool -l bin/debug/main | grep -A2 LC_RPATH
+      - name: doctor
+        run: |
+          cd "$RUNNER_TEMP/mygame" && "$HOME/.orosmo/bin/orosmo" doctor
+      - name: Run headless (Vulkan, no VK_* variable)
+        if: ${{ !cancelled() }}
+        run: |
+          set -eux
+          cd "$RUNNER_TEMP/mygame"
+          "$HOME/.orosmo/bin/orosmo" run -- --api vulkan --strict-backend --headless --capture "$RUNNER_TEMP/capture" --capture-frames 3
+          test -s "$RUNNER_TEMP/capture/scene.png"
+      - name: Run with a window
+        if: ${{ !cancelled() }}
+        run: |
+          cd "$RUNNER_TEMP/mygame"
+          ./bin/debug/main --api vulkan --strict-backend --capture "$RUNNER_TEMP/capture-window" --capture-frames 3
+      - name: Run without a driver (message)
+        if: ${{ !cancelled() }}
+        run: |
+          cd "$RUNNER_TEMP/mygame"
+          VK_DRIVER_FILES=/nonexistent.json VK_ICD_FILENAMES=/nonexistent.json ./bin/debug/main --headless --frames 1 || echo "exit $?"
+      - name: Upload captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe-m9-l3-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/capture
+            ${{ runner.temp }}/capture-window
+          retention-days: 7
+          if-no-files-found: ignore
