@@ -88,6 +88,15 @@ bool envFlag(const char *name, bool fallback)
     return !(value[0] == '0' || value[0] == 'n' || value[0] == 'N' || value[0] == 'f' || value[0] == 'F');
 }
 
+// macOS : Vulkan passe par MoltenVK, que le paquet du moteur n'embarque pas (A76) : dire quoi installer.
+#ifdef __APPLE__
+constexpr const char *kInstallLoaderHint = ". Install the Vulkan loader and MoltenVK: brew install vulkan-loader molten-vk (check with `orosmo doctor`)";
+constexpr const char *kInstallDriverHint = ". Install MoltenVK: brew install molten-vk (check with `orosmo doctor`; another driver manifest: VK_DRIVER_FILES)";
+#else
+constexpr const char *kInstallLoaderHint = "";
+constexpr const char *kInstallDriverHint = "";
+#endif
+
 bool volkReady()
 {
     static const bool ready = volkInitialize() == VK_SUCCESS;
@@ -181,7 +190,8 @@ Result<> VulkanDevice::init(const DeviceDesc &desc)
     backbufferSize_ = {std::max(1u, desc.surface.size.width), std::max(1u, desc.surface.size.height)};
 
     if (!volkReady())
-        return makeError(ErrorCode::kUnsupported, "Vulkan: loader not found (libvulkan.so.1 / vulkan-1.dll / libvulkan.dylib)");
+        return makeError(ErrorCode::kUnsupported,
+                         std::string("Vulkan: loader not found (libvulkan.so.1 / vulkan-1.dll / libvulkan.dylib)") + kInstallLoaderHint);
     if (volkGetInstanceVersion() < VK_API_VERSION_1_3)
     {
         const std::uint32_t v = volkGetInstanceVersion();
@@ -251,6 +261,7 @@ void VulkanDevice::checkTimestampsMeasureWork()
     queryInfo.queryCount = 2;
     VkQueryPool pool = VK_NULL_HANDLE;
     bool measured = false;
+    bool accepted = false;
     std::uint64_t stamps[2] = {0, 0};
     if (vmaCreateBuffer(allocator_, &bufferInfo, &alloc, &buffer, &allocation, nullptr) == VK_SUCCESS &&
         vkCreateQueryPool(device_, &queryInfo, nullptr, &pool) == VK_SUCCESS)
@@ -262,14 +273,23 @@ void VulkanDevice::checkTimestampsMeasureWork()
                 vkCmdWriteTimestamp2(commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, pool, 0);
                 vkCmdFillBuffer(commandBuffer, buffer, 0, VK_WHOLE_SIZE, 0x5A5A5A5Au); // un seul remplissage : aucun risque d'écriture après écriture
                 vkCmdWriteTimestamp2(commandBuffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, pool, 1);
-            });
+            },
+            &accepted);
         measured = submitted.has_value() && vkGetQueryPoolResults(device_, pool, 0, 2, sizeof(stamps), stamps, sizeof(std::uint64_t),
                                                                   VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) == VK_SUCCESS;
     }
-    if (pool != VK_NULL_HANDLE)
-        vkDestroyQueryPool(device_, pool, nullptr);
-    if (buffer != VK_NULL_HANDLE)
-        vmaDestroyBuffer(allocator_, buffer, allocation);
+    auto release = [this, pool, buffer, allocation]()
+    {
+        if (pool != VK_NULL_HANDLE)
+            vkDestroyQueryPool(device_, pool, nullptr);
+        if (buffer != VK_NULL_HANDLE)
+            vmaDestroyBuffer(allocator_, buffer, allocation);
+    };
+    // Soumission acceptée mais attente échouée : les commandes peuvent encore être en vol, la destruction attend leur fin.
+    if (accepted && !measured)
+        queueRelease(release, false);
+    else
+        release();
     if (!measured)
     {
         LOG_WARNING("Vulkan (MoltenVK): the timestamp check could not run; timestamp queries are kept");
@@ -417,7 +437,10 @@ Result<> VulkanDevice::createInstance(const DeviceDesc &desc)
     if (result != VK_SUCCESS)
     {
         instance_ = VK_NULL_HANDLE;
-        return fromVk(result, "vkCreateInstance");
+        auto failed = fromVk(result, "vkCreateInstance");
+        if (!failed && result == VK_ERROR_INCOMPATIBLE_DRIVER)
+            return makeError(failed.error().code, failed.error().message + kInstallDriverHint);
+        return failed;
     }
     volkLoadInstance(instance_);
 
@@ -436,7 +459,7 @@ Result<> VulkanDevice::pickPhysicalDevice(const DeviceDesc &)
     if (auto r = fromVk(vkEnumeratePhysicalDevices(instance_, &count, nullptr), "vkEnumeratePhysicalDevices"); !r)
         return r;
     if (count == 0)
-        return makeError(ErrorCode::kUnsupported, "Vulkan: no physical device (no GPU driver with an ICD)");
+        return makeError(ErrorCode::kUnsupported, std::string("Vulkan: no physical device (no GPU driver with an ICD)") + kInstallDriverHint);
     std::vector<VkPhysicalDevice> devices(count);
     if (const VkResult listed = vkEnumeratePhysicalDevices(instance_, &count, devices.data()); listed != VK_SUCCESS && listed != VK_INCOMPLETE)
         return fromVk(listed, "vkEnumeratePhysicalDevices");

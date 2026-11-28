@@ -182,7 +182,7 @@ une erreur (un prérequis obligatoire manque), 0 sinon ; les avertissements ne c
 |---|---|---|
 | C++23 compiler | oui | `$CXX` sinon `g++` puis `clang++` ; GCC ≥ 13, Clang ≥ 17, Apple Clang ≥ 15 |
 | GNU Make | oui | `make --version` répond (`$MAKE`, `mingw32-make` sous Windows) |
-| Archiver (ar) | oui, sauf macOS | `ar --version` répond |
+| Archiver (ar) | oui, sauf macOS | `ar --version` répond (macOS : `xcrun --find ar`) |
 | Python 3 | non | `python3 --version` (`python` sous Windows) |
 | CMake | non | `cmake --version` |
 | Installed engines | non | au moins un moteur dans `$OROSMO_HOME/engines` |
@@ -193,6 +193,11 @@ une erreur (un prérequis obligatoire manque), 0 sinon ; les avertissements ne c
 | CMake package | non | `cmake/OrosmoConfig.cmake` |
 | Display server (Linux) | non | `DISPLAY` ou `WAYLAND_DISPLAY` défini |
 | Vulkan runtime (Linux) | non | `vulkaninfo --summary` ou `libvulkan.so.1` présent |
+| Vulkan loader (macOS) | non | `libvulkan.1.dylib` ou `libvulkan.dylib` dans `/opt/homebrew/lib` ou `/usr/local/lib` |
+| Vulkan driver (macOS) | non | un fichier nommé par `VK_DRIVER_FILES` ou `VK_ICD_FILENAMES`, sinon `MoltenVK_icd.json` dans un dossier `vulkan/icd.d` |
+
+Sous macOS, les deux dernières lignes sont des avertissements (on peut compiler sans elles), mais sans elles aucun programme ne
+peut afficher : `brew install vulkan-loader molten-vk` (voir [Installer](/demarrer/installation/#macos--vulkan-par-moltenvk)).
 
 Le moteur du projet est `orosmo/` s'il existe, sinon celui d'`OROSMO_VERSION`. Dans le dépôt du moteur (un `mk/engine.mk`),
 `doctor` contrôle `vcpkg_installed/<triplet>` et `tools/cui`. vcpkg n'est plus contrôlé : le moteur n'en a pas besoin.
@@ -223,5 +228,5 @@ exemple de forme.
 
 ## Limites
 
-Pas de gestion de modules ni d'addons (`orosmo addon …`) pour l'instant. Windows et macOS ne sont pas vérifiés (G216 dans
+Pas de gestion de modules ni d'addons (`orosmo addon …`) pour l'instant. Windows et macOS ne sont pas vérifiés sur une vraie machine (G216 dans
 [`docs/GAPS.md`](https://github.com/TimotheSandt/Orosmo/blob/dev/docs/GAPS.md)). Voir [État du moteur](/projet/etat/).

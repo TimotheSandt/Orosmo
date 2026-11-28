@@ -146,7 +146,8 @@ struct ApplicationSettings
     int width = 1280;
     int height = 720;
 
-    // Backend voulu ; Vulkan qui ne démarre pas passe à OpenGL si `backendFallback` (pas de repli depuis OpenGL ni Metal).
+    // Backend voulu ; Vulkan qui ne démarre pas passe à OpenGL si `backendFallback` (pas de repli depuis OpenGL ni Metal, ni
+    // sur macOS : `rhi::fallbackBackend`).
     rhi::Backend backend = rhi::Backend::kVulkan;
     bool backendFallback = true;
     // Sans fenêtre : rendu hors écran de `width` × `height` (un GPU est quand même demandé).

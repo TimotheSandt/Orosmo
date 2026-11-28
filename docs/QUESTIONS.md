@@ -593,3 +593,17 @@ Ordre : L0 → L1 → (L2 et L3 en parallèle) → L4 → L5.
 - **L4** : un GPU paravirtualisé ne justifie aucune décision ; la note propose « reporté, à remesurer sur un vrai Mac ».
 - **L5** : mettre à jour G2, G67, G91, G110, G142, G215, G216, G280, G384, et RHI-04, RHI-13, RHI-14, BLD-01, BLD-02, PLAT-01, PLAT-04. `docs/releases/M9.md` dit en clair que la démo du jalon est **absente**.
 - **Écart à la règle de conduite 5 de `docs/05`** (décision de l'auteur) : pour M9, les lots fusionnent dans `milestone/M9`, pas dans `dev`, tant que M8 n'est pas validé.
+
+## A91. M9-L3 : distribution macOS (2026-11-27, appliqué en partie, le reste à décider par l'auteur)
+
+**Appliqué (réalisation de la ligne L3 de A90, sans embarquer de bibliothèque)** :
+- les exécutables liés avec `engine.mk` / `OrosmoConfig.cmake` portent des rpaths vers `/opt/homebrew/lib` et `/usr/local/lib` (`ENGINE_VULKAN_RPATHS`, `OROSMO_VULKAN_RPATHS`, redéfinissables) : volk **et** GLFW trouvent le chargeur sans `DYLD_LIBRARY_PATH`, sans code de chargement propre au moteur. Dans le dépôt, le chargeur du système passe avant celui de vcpkg (qui ne trouve pas le MoltenVK de Homebrew) ;
+- pas de repli sur OpenGL sous macOS (`rhi::fallbackBackend`), avec un message qui nomme `brew install vulkan-loader molten-vk`.
+
+**Proposé, non appliqué** :
+1. **Embarquer MoltenVK et le chargeur Vulkan** dans `deps/` (ou lier MoltenVK en statique). Pour : un jeu distribué marcherait sur un Mac sans Homebrew, ce qui n'est **pas** le cas aujourd'hui (le joueur doit installer Homebrew et les deux paquets). Contre : contraire à A76 (jamais le chargeur dans `deps/`), taille du paquet, versions et licences (Apache-2.0) à suivre, signature. Proposition : garder A76 pour le SDK, et traiter à part, au moment où un jeu doit être distribué à des joueurs (M15), une étape de packaging qui copie chargeur, MoltenVK et manifeste dans le bundle `.app`.
+2. **Version minimale de macOS** : la release est construite sur `macos-latest` / `macos-15-intel` sans `MACOSX_DEPLOYMENT_TARGET`, les archives exigent donc la version du runner (G522). Fixer une cible (par exemple 14.0) demande de la poser pour vcpkg et pour le moteur, puis de l'essayer.
+3. **Image de release macOS arm64** : `macos-latest` (non épinglée) alors que la CI épingle `macos-26` (A90) ; proposition : épingler aussi.
+
+**Question** : l'auteur retient-il 1 (rester sans MoltenVK dans le SDK), et veut-il 2 et 3 avant la première release annoncée pour macOS ?
+

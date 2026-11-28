@@ -76,7 +76,7 @@ auto tryBackend = [](rhi::Backend backend, platform::Window &window) -> core::Re
 
 auto window = std::make_unique<platform::Window>("monjeu", 1280, 720, platform::WindowState::kWindowed);
 auto created = tryBackend(rhi::Backend::kVulkan, *window);
-if (!created && created.error().code == core::ErrorCode::kUnsupported)
+if (!created && created.error().code == core::ErrorCode::kUnsupported && rhi::fallbackBackend(rhi::Backend::kVulkan))
 {
     std::cerr << created.error().message << " ; repli sur OpenGL\n";
     window = std::make_unique<platform::Window>("monjeu", 1280, 720, platform::WindowState::kWindowed);
@@ -84,6 +84,10 @@ if (!created && created.error().code == core::ErrorCode::kUnsupported)
 }
 // puis, si created est valide : rhi::Device &device = **created;
 ```
+
+`rhi::fallbackBackend(demandé)` dit quel backend essayer : OpenGL après Vulkan, rien pour les autres, et rien sous macOS,
+où OpenGL s'arrête à la version 4.1 (l'erreur de Vulkan est alors rendue telle quelle ; elle dit quoi installer, voir
+[Installer](/demarrer/installation/#macos--vulkan-par-moltenvk)).
 
 Adapté de `apps/demo/src/main.cpp` et `Game::createGraphics`. La démo prend la décision dans `demo::resolveBackend`
 (`apps/demo/src/launch_options.cpp`) : seul Vulkan retombe sur OpenGL, et `--strict-backend` supprime le repli. En ligne

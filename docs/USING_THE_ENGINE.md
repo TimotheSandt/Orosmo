@@ -66,9 +66,15 @@ $OROSMO_HOME/engines/<x.y.z>/     un paquet extrait tel quel ; rien ne l'écrit 
 | --- | --- | --- | --- |
 | Linux (vérifié : Ubuntu 24.04, g++ 13.3) | g++ 13+ ou clang++ 17+ | GNU Make ; **glibc ≥ 2.39** (Ubuntu 24.04 et plus récent, G217) | OpenGL 4.5 (ou 4.3 + `GL_ARB_clip_control`), Vulkan 1.3 conseillé, X11 ou Wayland |
 | Windows (non vérifié, G216) | MinGW-w64 g++ 13+ (MSYS2 MINGW64) | `mingw32-make` | OpenGL 4.5 |
-| macOS (non vérifié, G216) | clang++ 17+ (Homebrew LLVM ; le clang d'Apple doit fournir `std::expected`) | GNU Make | macOS s'arrête à OpenGL 4.1 et le chargeur Vulkan (MoltenVK) n'est pas embarqué (G215) : ce qui se passe de GPU (`orosmo::core`, `examples/minimal`) devrait fonctionner, non vérifié |
+| macOS (CI sur machine virtuelle seulement, G520 à G524) | outils en ligne de commande Xcode (Apple clang) | GNU Make | Vulkan par MoltenVK seulement : `brew install vulkan-loader molten-vk` (non embarqués, A76) ; OpenGL s'arrête à 4.1, donc aucun repli |
 
 Ni Rust, ni Python, ni vcpkg ne sont nécessaires (Python 3 ajoute la barre de progression de `make`).
+
+**macOS** : aucune variable d'environnement à poser. `engine.mk` et `OrosmoConfig.cmake` donnent aux exécutables des chemins de
+recherche (`ENGINE_VULKAN_RPATHS` / `OROSMO_VULKAN_RPATHS`, défaut `/opt/homebrew/lib /usr/local/lib`) par lesquels volk et GLFW
+trouvent le chargeur ; le chargeur de Homebrew trouve seul MoltenVK. `orosmo doctor` contrôle les deux. Pour un chargeur ailleurs,
+redéfinissez la variable ; pour un autre pilote, `VK_DRIVER_FILES`. Sans chargeur ou sans pilote, le jeu s'arrête avec la raison et
+la commande à lancer.
 
 ## 3. Créer et construire un projet
 
@@ -275,8 +281,8 @@ liste des changements incompatibles est dans `docs/releases/<jalon>.md`) ; un **
 - **Backend graphique** : OpenGL (défaut) et Vulkan ; Metal n'existe pas avant M9 et est refusé avec un message. Choix par
   `--backend <opengl|vulkan|metal>` (alias de `--api`, casse indifférente, `--backend=vulkan` accepté). Si Vulkan ne démarre pas (pas
   de chargeur, pas de GPU Vulkan 1.3), la raison s'affiche sur stderr et la démo retombe sur OpenGL ; `--strict-backend` supprime ce
-  repli (code de sortie non nul). Rendu sous macOS : voir §2.
+  repli (code de sortie non nul). Sous macOS il n'y a jamais de repli (OpenGL 4.1) : voir §2.
 - **Texte** : `TextRendererFont` affiche l'ASCII (REN-36) ; pas de composition IME affichée (PLAT-05, partiel, G107) ; la sélection et le presse-papiers existent dans les champs de
   texte (`ui::useSystemClipboard`, voir `docs/UI_LANGUAGE.md`).
 - **Interface** : pas de rechargement à chaud de la vue elle-même (le thème se recharge) ; pas de navigation à la manette.
-- **Windows, macOS** : construits en CI, jamais observés verts ; les problèmes sont suivis dans `docs/GAPS.md`.
+- **Windows, macOS** : construits et testés par la CI, jamais essayés sur une vraie machine ; les problèmes sont suivis dans `docs/GAPS.md`.

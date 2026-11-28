@@ -30,7 +30,6 @@ Mis à jour pour la fin de M8 (`v0.7.0` préparée, 2026-11-27), après la distr
 | **M15 Façade du projet** | **Planifié (A78, 2026-11-26)** : site vitrine soigné et documentation simplifiée, en fin de plan, après la charte et le wireframe de l'auteur ; la simplicité de l'API est planifiée en M8 (A77) | `docs/05` M15 et M8 |
 | **SDK (`v0.6.2`, A76)** | **Livré côté code, dans `dev` ; revue CodeRabbit de la PR #15 traitée sur `fix/SDK-review1` ; Windows et macOS non essayés (G216)** | `docs/releases/v0.6.2.md` : paquet avec `deps/`, outil `orosmo` (`tools/engine-init-rs/src/`), gabarit à `OROSMO_VERSION` (`apps/demo/Makefile`), `Generated/` dans le projet. **État final (2026-11-26, `fix/SDK-review1`)** : `cargo test` 28 + 16 verts sans avertissement ; `make e2e-init` **vert** de bout en bout (G220 corrigé : `doctor` 13 ok, 0 erreur ; 2e build `orosmo build --json` sur moteur en lecture seule) ; `orosmo migrate` essayé à la main (échec annulé, succès) ; `make demo-test-unit` 426 / 426 ; `make check` OK. *Historique (2026-11-25, `788c332`)* : `e2e-init` rouge à `doctor` (G220), 14 tests `cargo` |
 
-
 ## M9 lot L2 : rendu de la démo sous MoltenVK (A90)
 
 Branche `feat/M9-L2-rendu-moltenvk` (depuis celle de L1). Preuve : CI macOS uniquement (pas de Mac réel) ; `docs/GAPS.md` G510, G511.
@@ -39,6 +38,19 @@ Branche `feat/M9-L2-rendu-moltenvk` (depuis celle de L1). Preuve : CI macOS uniq
 | --- | --- | --- | --- |
 | Cause de la scène vide : dessin indexé direct du GPU Metal paravirtualisé | `VulkanDevice::detectIndexedDrawWorkaround`, `VkEncoder::drawIndexed` (`src/rhi/vulkan/`) | `make demo-test` (CI macOS) : `M9-L2 (G510)` de `tests/rhi/rhi_device_tests.cpp`, `G510` de `tests/rhi/vulkan_backend_tests.cpp` | sans la correction : dessins directs noirs (run 46111452015) ; avec : 2 cas verts (run 46112499873) ; Linux : verts, validation muette |
 | Captures macOS comparées (scène, interface, ombres, forward+, GPU-driven, post-traitement) | `tools/demo_reference_check.py` ; étape bloquante de `ci.yml` | `python3 tools/demo_reference_check.py --api vulkan` | runner macOS : 0,1 % au plus (tolérance 8 / 2 %), 0 message de validation |
+
+## M9 lot L3 : exécution et distribution sur macOS (A90, A91)
+
+Branche `feat/M9-L3-distribution-macos`. Preuve macOS : CI de la PR #45 (`macos-26`, GPU « Apple Paravirtual device ») et une sonde
+temporaire (runs 46102675622, 46105212375). Aucun vrai Mac (G520 à G524).
+
+| Élément | Fichier et symbole | Commande | Résultat |
+| --- | --- | --- | --- |
+| Chargeur et MoltenVK trouvés sans variable d'environnement | `tools/engine-sdk/engine.mk` `ENGINE_VULKAN_RPATHS`, `cmake/OrosmoConfig.cmake` ; `tests/tools/test_engine_mk_darwin.py` | `make e2e-init` sous macOS, sans `VK_DRIVER_FILES` | projet issu du paquet lancé sans fenêtre et avec fenêtre, 0 message de validation |
+| Pas de repli OpenGL sur macOS, message d'installation | `rhi::fallbackBackend`, `src/rhi/vulkan/vk_device.cpp` ; suites `rhi/backends`, `demo/launch options`, `app` | `make demo-test` ; `e2e-init` « sans pilote Vulkan » | Linux 958 / 958 (1 ignoré) ; macOS arm64 vert, message avec `brew install` |
+| `orosmo doctor` | `tools/engine-init-rs/src/doctor.rs` `check_macos_vulkan` | `cargo test -p orosmo` (dans `make cui-test`) ; `orosmo doctor` | 39 verts ; `[ok] Vulkan loader`, `[ok] Vulkan driver` sur macOS |
+| macOS Intel | — | sonde `macos-15-intel` | construit et installé ; **rendu absent** (G523) |
+| Release | `.github/workflows/build-engine.yml` `fresh-macos` | non exécuté (aucun tag) | G524 |
 
 ## M8 lot L15 : démo, documentation, release (A79)
 

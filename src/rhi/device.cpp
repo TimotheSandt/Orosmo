@@ -17,6 +17,13 @@ CommandEncoder::CommandEncoder() noexcept : id_(nextEncoderId.fetch_add(1, std::
 
 bool isBackendCompiled(Backend backend) noexcept { return backend == Backend::kOpenGL || backend == Backend::kVulkan; }
 
+std::optional<Backend> fallbackBackend(Backend requested, bool macOS) noexcept
+{
+    if (requested != Backend::kVulkan || macOS)
+        return std::nullopt;
+    return Backend::kOpenGL;
+}
+
 Result<> prepareWindowHints(const DeviceDesc &desc)
 {
     if (desc.backend == Backend::kOpenGL)

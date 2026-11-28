@@ -170,7 +170,14 @@ if(NOT TARGET Orosmo::Orosmo)
             ${_OROSMO_IMPORTED_TARGETS}
             ${_OROSMO_ASSET_LIBS} ${_OROSMO_PLATFORM_LIBS}
         )
-        # rpath to vcpkg's vulkan-loader dylib: only without deps/ (the Vulkan loader is never shipped in deps/).
+        # volk and GLFW load the Vulkan loader at run time: rpaths to the system loader (as engine.mk, ENGINE_VULKAN_RPATHS),
+        # then, without deps/ only, to vcpkg's vulkan-loader dylib (the Vulkan loader is never shipped in deps/).
+        if(NOT DEFINED OROSMO_VULKAN_RPATHS)
+            set(OROSMO_VULKAN_RPATHS /opt/homebrew/lib /usr/local/lib)
+        endif()
+        foreach(_orosmo_rpath IN LISTS OROSMO_VULKAN_RPATHS)
+            target_link_options(Orosmo::Orosmo INTERFACE "-Wl,-rpath,${_orosmo_rpath}")
+        endforeach()
         if(NOT _OROSMO_DEPS_PACKAGED)
             target_link_options(Orosmo::Orosmo INTERFACE
                 "-Wl,-rpath,${_OROSMO_VCPKG_DIR}/lib"
