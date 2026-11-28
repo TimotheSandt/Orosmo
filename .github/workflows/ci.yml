@@ -518,9 +518,18 @@ jobs:
           sw_vers
           brew list --versions molten-vk vulkan-loader vulkan-validationlayers vulkan-tools
           ICD="$(brew --prefix)/etc/vulkan/icd.d/MoltenVK_icd.json"
-          LAYERS="$(brew --prefix vulkan-validationlayers)/share/vulkan/explicit_layer.d"
+          BREW_LAYERS="$(brew --prefix vulkan-validationlayers)/share/vulkan/explicit_layer.d"
+          LAYER_LIB="$(brew --prefix vulkan-validationlayers)/lib/libVkLayer_khronos_validation.dylib"
           test -f "$ICD" || { echo "::error::MoltenVK ICD not found: $ICD"; exit 1; }
-          test -f "$LAYERS/VkLayer_khronos_validation.json" || { echo "::error::validation layer manifest not found in $LAYERS"; exit 1; }
+          test -f "$BREW_LAYERS/VkLayer_khronos_validation.json" || { echo "::error::validation layer manifest not found in $BREW_LAYERS"; exit 1; }
+          test -f "$LAYER_LIB" || { echo "::error::validation layer library not found: $LAYER_LIB"; exit 1; }
+          # Le manifeste de Homebrew nomme la bibliothèque sans chemin : dlopen ne cherche pas dans le préfixe Homebrew et SIP retire
+          # DYLD_LIBRARY_PATH à travers /bin/sh (make). Copie du manifeste avec le chemin absolu de la bibliothèque.
+          LAYERS="$RUNNER_TEMP/vulkan-layers"
+          mkdir -p "$LAYERS"
+          python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); m["layer"]["library_path"]=sys.argv[2]; json.dump(m,open(sys.argv[3],"w"),indent=1)' \
+            "$BREW_LAYERS/VkLayer_khronos_validation.json" "$LAYER_LIB" "$LAYERS/VkLayer_khronos_validation.json"
+          grep library_path "$LAYERS/VkLayer_khronos_validation.json"
           {
             echo "VK_DRIVER_FILES=$ICD"
             echo "VK_ICD_FILENAMES=$ICD"
@@ -604,6 +613,7 @@ jobs:
           ENGINE_TEST_BACKENDS: ${{ runner.os == 'macOS' && 'vulkan' || '' }}
           ENGINE_TEST_REQUIRE_VALIDATION: ${{ runner.os == 'macOS' && '1' || '' }}
         run: |
+          set -o pipefail
           make -j3 all-debug VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed
           make -j3 demo-test VCPKG_TRIPLET=${{ matrix.triplet }} VCPKG_INSTALLED_ROOT=./vcpkg_installed 2>&1 | tee demo-test.log
           # Un cas sauté faute de pilote ou d'affichage, hors OpenGL, est un échec (les macros échouent déjà ; ceci attrape un oubli).
@@ -614,8 +624,9 @@ jobs:
       # Démo Vulkan sous MoltenVK (M9-L1) : démarre, capture, et la couche de validation (active : la ligne de bilan n'est écrite
       # qu'avec elle) ne signale rien. Les images sont publiées sans comparaison (lot L2).
       - name: Demo capture (macOS, Vulkan, validation)
-        if: runner.os == 'macOS'
+        if: ${{ !cancelled() && runner.os == 'macOS' }}
         run: |
+          set -o pipefail
           mkdir -p demo-macos
           (cd apps/demo && ./bin/debug/main --api vulkan --strict-backend --headless --capture "$GITHUB_WORKSPACE/demo-macos" --capture-frames 5) 2>&1 | tee demo-macos/demo.log
           grep -q "Vulkan validation: 0 error/warning message(s)" demo-macos/demo.log || { echo "::error::Vulkan validation not active or not silent on the demo"; grep -i "validation" demo-macos/demo.log | head -50; exit 1; }
