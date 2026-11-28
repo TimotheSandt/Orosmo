@@ -6,10 +6,12 @@ Lis `docs/` avant tout travail : `01` vision, `02` checklist, `03` architecture,
 
 ## Git (détail dans `docs/06-WORKFLOW_GIT_ET_NETTOYAGE.md`)
 
-- `main` : réservé à l'auteur. **Ne commit, ne fusionne et ne pousse jamais dessus.**
-- `dev` : branche d'intégration. Jamais de commit direct dessus.
-- Une branche par fonctionnalité (`feat/<ID>-<sujet>`), par bug (`fix/<sujet>`), par nettoyage (`chore/<sujet>`), toujours créée depuis `dev`. Fusion dans `dev` avec `--no-ff`, seulement quand compilation, tests et définition de « terminé » sont verts.
-- Fin de jalon : préparer `docs/releases/<jalon>.md` et la description de la merge request, vérifier depuis un clone propre, puis **s'arrêter**. L'auteur ouvre la merge request vers `main`.
+- `main` : versions validées, réservé à l'auteur. **Ne commit, ne fusionne et ne pousse jamais dessus.**
+- `dev` : intégration et test. **Ne pousse jamais directement dessus**, même si le compte utilisé le permet : ouvre une PR vers `dev`, **seul l'auteur la fusionne**.
+- Une branche depuis `dev` par fonctionnalité (`feat/<ID>-<sujet>`), bug (`fix/<sujet>`), nettoyage (`chore/<sujet>`) ou doc (`docs/<sujet>`). PR ouverte quand compilation, tests et définition de « terminé » sont verts.
+- Un gros jalon est découpé en lots (`feat/<jalon>-L<n>-<sujet>`), une PR par lot. Chaque lot compile, passe les tests et laisse `dev` utilisable.
+- Validation : l'auteur teste `dev` ; les corrections passent par des branches `fix/<jalon>-<sujet>`, avec leur PR vers `dev`. Pendant la validation, `dev` ne reçoit que des corrections ; le jalon suivant avance sur `milestone/<jalon>`.
+- Fin de jalon (jalon validé) : préparer `docs/releases/<jalon>.md` et la description de la PR `dev` → `main`, vérifier depuis un clone propre, puis **s'arrêter**. L'auteur ouvre la PR, la fusionne en **merge commit** (jamais squash) et pose le tag.
 - Interdits : `git push --force`, `--no-verify`, réécriture de l'historique de `main` ou `dev`, suppression d'une branche non fusionnée, gros binaires et secrets dans le dépôt.
 - Commits petits, au format `type(ID): résumé` ; les déplacements de fichiers (`git mv`) sont dans des commits séparés.
 - **Premier travail : M00, nettoyage du projet et du dépôt** (voir `docs/06`), avant l'audit. L'historique actuel est conservé.

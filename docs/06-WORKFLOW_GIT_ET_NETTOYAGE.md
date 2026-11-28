@@ -7,18 +7,20 @@ Ce document dit **comment l'IA travaille avec Git** et **ce qu'elle fait en tout
 | Branche | Rôle | Qui y écrit |
 | --- | --- | --- |
 | `main` | Version validée, une par jalon terminé | **Seul l'auteur** (par merge request) |
-| `dev` | Intégration : l'auteur y teste et cherche les bugs | L'IA, par fusion de branches de fonctionnalité |
+| `dev` | Intégration : l'auteur y teste et cherche les bugs | **Seul l'auteur** (en fusionnant les PR de l'IA) |
+| `milestone/<jalon>` | Jalon suivant, préparé pendant la validation du précédent | L'IA |
 | `feat/<ID>-<sujet>` | Une fonctionnalité (ex. `feat/RHI-15-mrt`) | L'IA |
+| `feat/<jalon>-L<n>-<sujet>` | Un lot d'un gros jalon | L'IA |
 | `fix/<sujet>` | Un bug signalé par l'auteur | L'IA |
 | `chore/<sujet>` | Nettoyage, build, CI, outils | L'IA |
 | `docs/<sujet>` | Documentation seule | L'IA |
 | `backup/<date>-<sujet>` | Sauvegarde avant une opération risquée | L'IA, jamais modifiée ensuite |
 
 Règles :
-1. **Jamais de commit direct sur `main` ni sur `dev`.** Tout passe par une branche créée depuis `dev`.
-2. **Une branche = une fonctionnalité** (un ou quelques identifiants de la checklist qui vont ensemble). Courte durée : on fusionne dès que c'est terminé et testé.
+1. **Jamais de commit direct sur `main` ni sur `dev`.** Tout passe par une branche créée depuis `dev` et une PR. L'IA ne pousse jamais directement sur `dev`, même si le compte qu'elle utilise le permet.
+2. **Une branche = une fonctionnalité** (un ou quelques identifiants de la checklist qui vont ensemble). Courte durée : la PR est ouverte dès que c'est terminé et testé. **Un gros jalon est découpé en lots**, une branche et une PR par lot ; chaque lot compile, passe les tests et laisse `dev` utilisable.
 3. **Jamais de `git push --force`**, jamais de `--no-verify`, jamais de suppression d'une branche non fusionnée, jamais de réécriture de l'historique de `main` ou `dev`.
-4. **Fusion dans `dev`** : seulement quand la branche (a) compile, (b) passe tous les tests, (c) respecte la définition de « terminé » de `CLAUDE.md`, (d) a `docs/STATUS.md` à jour. Fusion avec `git merge --no-ff` pour garder la trace de la fonctionnalité. Si `dev` a avancé, l'IA met d'abord sa branche à jour (`git merge dev` dans la branche) et relance les tests.
+4. **PR vers `dev`** : ouverte seulement quand la branche (a) compile, (b) passe tous les tests, (c) respecte la définition de « terminé » de `CLAUDE.md`, (d) a `docs/STATUS.md` à jour. **Seul l'auteur la fusionne**, en merge commit pour garder la trace de la fonctionnalité. Si `dev` a avancé, l'IA met d'abord sa branche à jour (`git merge dev` dans la branche) et relance les tests.
 5. **`main` ne bouge jamais par l'IA.** Quand un jalon est complet, l'IA prépare le terrain (voir §3) et **s'arrête**. L'auteur ouvre la merge request `dev` → `main`.
 
 ## 2. Commits
@@ -32,17 +34,18 @@ Règles :
 
 ## 3. Fin de jalon
 
-Quand tous les identifiants du jalon sont `Fait` avec preuve et que `dev` est vert :
+**Validation du jalon.** Une fois les lots fusionnés, l'auteur teste sur `dev`. Les corrections passent par des branches `fix/<jalon>-<sujet>`, avec leur PR vers `dev`. Pendant cette période, `dev` **ne reçoit que des corrections** (sinon le jalon suivant partirait dans la PR vers `main`) ; le jalon suivant avance sur `milestone/<jalon>`.
+
+Quand tous les identifiants du jalon sont `Fait` avec preuve, que la validation est terminée et que `dev` est vert :
 1. Mettre à jour `docs/STATUS.md` et écrire `docs/releases/<jalon>.md` : ce qui est livré, comment lancer la démo, ce qui n'est pas fait et pourquoi, bugs connus.
 2. Vérifier que `dev` compile et que les tests passent **depuis un clone propre** (`git clone` dans un dossier vide, build, tests, démo).
 3. Rédiger la description de la merge request (résumé, liste des identifiants, commande de démo, résultat des tests) dans `docs/releases/<jalon>-MR.md`.
-   Le message de fin de jalon donne aussi la **commande exacte pour ouvrir la merge request**, prête à copier (l'auteur l'exécute après avoir poussé `dev`) :
+   Le message de fin de jalon donne aussi la **commande exacte pour ouvrir la merge request**, prête à copier (`dev` est déjà à jour sur le serveur, puisque tout y arrive par PR) :
    ```bash
-   git push origin dev
    gh pr create --draft --base main --head dev --title "<jalon> : <titre>" --body-file docs/releases/<jalon>-MR.md
    ```
 4. **S'arrêter** et le dire. L'auteur teste, ouvre la merge request vers `main`, la fusionne, puis pose le tag `<jalon>` (ex. `M2`). L'IA ne pose pas ce tag.
-   **Mode de fusion `dev` → `main` : « Create a merge commit », jamais « Squash and merge ».** Un squash met le jalon dans un seul commit de `main` que `dev` ne contient pas : la base commune de GitHub reste en arrière, et la merge request suivante recompte tout le jalon précédent (cela a donné 345 fichiers au lieu de 69 en M1 et bloqué la revue CodeRabbit, limitée à 300 fichiers). Si un squash a quand même eu lieu : avant de commencer le jalon suivant, l'IA fait sur `chore/sync-main-squash` `git merge -s ours origin/main` (arbre de `dev` inchangé, après avoir vérifié que `main` n'a rien que `dev` n'ait pas) puis fusionne dans `dev` avec `--no-ff`.
+   **Mode de fusion `dev` → `main` : « Create a merge commit », jamais « Squash and merge ».** Un squash met le jalon dans un seul commit de `main` que `dev` ne contient pas : la base commune de GitHub reste en arrière, et la merge request suivante recompte tout le jalon précédent (cela a donné 345 fichiers au lieu de 69 en M1 et bloqué la revue CodeRabbit, limitée à 300 fichiers). Si un squash a quand même eu lieu : avant de commencer le jalon suivant, l'IA fait sur `chore/sync-main-squash` `git merge -s ours origin/main` (arbre de `dev` inchangé, après avoir vérifié que `main` n'a rien que `dev` n'ait pas) puis ouvre une PR vers `dev`, que l'auteur fusionne en merge commit.
 
 ### Publier une release (SDK du moteur)
 
@@ -67,17 +70,22 @@ Le workflow `.github/workflows/build-engine.yml` construit l'outil `orosmo` et l
 ## 4. Bugs signalés par l'auteur
 
 1. L'auteur décrit le bug sur `dev`.
-2. L'IA crée `fix/<sujet>` depuis `dev`, écrit **d'abord un test qui échoue** (ou une capture de référence), corrige, vérifie que le test passe, fusionne dans `dev`.
+2. L'IA crée `fix/<sujet>` depuis `dev`, écrit **d'abord un test qui échoue** (ou une capture de référence), corrige, vérifie que le test passe, ouvre une PR vers `dev`.
 3. Si le bug révèle un manque de la checklist ou de la spécification, l'IA l'écrit dans `docs/GAPS.md` ou `docs/QUESTIONS.md`.
 
-## 5. Protection recommandée (à régler par l'auteur sur la plateforme d'hébergement)
+## 5. Protections du dépôt (rulesets GitHub, réglées par l'auteur)
 
-- `main` : interdit de pousser directement, merge request obligatoire, intégration continue verte obligatoire.
-- `main` : modes de fusion autorisés limités à « Merge » (Settings → Rules → Rulesets, règle « Require a pull request », « Allowed merge methods »), pour exclure le squash et le rebase.
-- `dev` : intégration continue verte obligatoire avant fusion ; pas de push forcé.
-- Suppression automatique des branches de fonctionnalité après fusion.
+| Ruleset | Branche | Effet | Contournement |
+| --- | --- | --- | --- |
+| `main` | `main` | PR obligatoire ; ni suppression ni push forcé | aucun |
+| `owner-only-merge` | `main` | seul le rôle admin met la branche à jour | admin, par PR |
+| `ci-verte` | `main` | les six jobs de `ci.yml` doivent être verts | aucun |
+| `dev-owner` | `dev` | seul le rôle admin met la branche à jour ; CI verte | admin |
+| `dev-securite` | `dev` | ni suppression ni push forcé | aucun |
 
-L'IA ne configure pas ces protections elle-même ; elle rappelle à l'auteur de les activer.
+- Les contrôles requis portent les **noms des jobs** de `ci.yml` : renommer un job demande de mettre les rulesets à jour, sinon la PR reste en attente.
+- Les agents IA utilisent le compte de l'auteur : GitHub ne les distingue pas de lui. La règle « seul l'auteur fusionne » ne tient donc, pour eux, que par `CLAUDE.md`.
+- L'IA ne modifie pas ces protections sans demande de l'auteur.
 
 ## 6. M00 · Nettoyage du projet et du dépôt (tout premier travail)
 
