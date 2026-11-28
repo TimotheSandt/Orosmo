@@ -130,9 +130,9 @@ TEST_SUITE("Demo launch options")
 
     TEST_CASE("resolveBackend: Vulkan falls back to OpenGL with the reason, unless strict (RHI-04)")
     {
-        const auto notBuilt = demo::resolveBackend(Backend::kVulkan, false, BackendAvailability::kNotBuilt);
+        const auto notBuilt = demo::resolveBackend(Backend::kVulkan, false, BackendAvailability::kNotBuilt, {}, true);
         Assert(notBuilt.fellBack && !notBuilt.refused && notBuilt.backend == Backend::kOpenGL, "not compiled: fallback");
-        const auto failed = demo::resolveBackend(Backend::kVulkan, false, BackendAvailability::kAvailable, "no Vulkan 1.3 device");
+        const auto failed = demo::resolveBackend(Backend::kVulkan, false, BackendAvailability::kAvailable, "no Vulkan 1.3 device", true);
         Assert(failed.fellBack && !failed.refused && failed.backend == Backend::kOpenGL, "creation failed: fallback");
         Assert(failed.message.find("no Vulkan 1.3 device") != std::string::npos, "the reason is shown");
         Assert(failed.message.find("OpenGL") != std::string::npos, "the fallback is named");
@@ -141,6 +141,17 @@ TEST_SUITE("Demo launch options")
         Assert(strict.refused && !strict.fellBack, "strict: no fallback");
         Assert(strict.message.find("no Vulkan 1.3 device") != std::string::npos, "strict: the reason is shown");
         Assert(demo::resolveBackend(Backend::kVulkan, true, BackendAvailability::kNotBuilt).refused, "strict and not compiled: refused");
+    }
+
+    TEST_CASE("resolveBackend: without a usable OpenGL (macOS) a failing Vulkan is refused with the reason (M9-L3)")
+    {
+        const auto failed = demo::resolveBackend(Backend::kVulkan, false, BackendAvailability::kAvailable, "no Vulkan driver", false);
+        Assert(failed.refused && !failed.fellBack && failed.backend == Backend::kVulkan, "no fallback");
+        Assert(failed.message.find("no Vulkan driver") != std::string::npos, "the reason is shown");
+        Assert(failed.message.find("OpenGL 4.1") != std::string::npos, "the missing fallback is explained");
+        Assert(failed.message.find("falling back") == std::string::npos, "no fallback is announced");
+        const auto fine = demo::resolveBackend(Backend::kVulkan, false, BackendAvailability::kAvailable, {}, false);
+        Assert(!fine.refused && fine.message.empty(), "a working Vulkan is kept");
     }
 
     TEST_CASE("resolveBackend: Metal is refused, never replaced (RHI-04)")

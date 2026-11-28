@@ -471,6 +471,8 @@ TEST_SUITE("app/application-gpu")
 
     TEST_CASE("Backend fallback: Vulkan that cannot start falls back to OpenGL; refused without fallback or from OpenGL")
     {
+        if (!rhi::fallbackBackend(rhi::Backend::kVulkan))
+            return; // macOS : cas suivant
         const auto available = tests::backendsToRun();
         if (std::find(available.begin(), available.end(), rhi::Backend::kOpenGL) == available.end())
             return;
@@ -512,6 +514,26 @@ TEST_SUITE("app/application-gpu")
         auto noGl = app::Application::create(gl);
         REQUIRE_FALSE(noGl.has_value());
         CHECK(attempts == 1); // pas de repli depuis OpenGL
+    }
+
+    TEST_CASE("M9-L3 no OpenGL fallback where OpenGL cannot run (macOS): the Vulkan error is returned and says why")
+    {
+        if (rhi::fallbackBackend(rhi::Backend::kVulkan))
+            return; // Linux, Windows : cas précédent
+        auto settings = headlessSettings(rhi::Backend::kVulkan);
+        int attempts = 0;
+        settings.createDevice = [&attempts](const rhi::DeviceDesc &) -> orosmo::core::Result<std::unique_ptr<rhi::Device>>
+        {
+            ++attempts;
+            return orosmo::core::makeError(ErrorCode::kUnsupported, "test: no Vulkan");
+        };
+        settings.backendFallback = true;
+        auto application = app::Application::create(settings);
+        REQUIRE_FALSE(application.has_value());
+        CHECK(attempts == 1);
+        CHECK((application.error().code == ErrorCode::kUnsupported));
+        CHECK(application.error().message.find("test: no Vulkan") != std::string::npos);
+        CHECK(application.error().message.find("OpenGL 4.1") != std::string::npos);
     }
 
     TEST_CASE("Callbacks: update, then UI, then render, each frame; the game module runs on the fixed step")

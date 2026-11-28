@@ -813,7 +813,8 @@ void printUsage(std::ostream &out)
         << "              [--sim-agents N [--seed S] [--sim-steps K]] [--help]\n";
     out << "Available API names: " << joinBackendNames() << '\n';
     out << "Backend : Vulkan by default; --backend is an alias of --api. If Vulkan cannot start (no loader, no Vulkan 1.3 GPU), the reason is printed\n";
-    out << "          and OpenGL is used instead; --strict-backend disables this fallback and exits with an error.\n";
+    out << "          and OpenGL is used instead (not on macOS, where OpenGL stops at 4.1); --strict-backend disables this fallback\n";
+    out << "          and exits with an error.\n";
     out << "Example: Orosmo --api opengl --ui full --theme dark --tab scene\n";
     out << "Capture : renders N frames (default 10) at WxH (default 1280x720, min 640x400), writes <dir>/scene.png and\n";
     out << "          <dir>/ui.png, then exits. --hover/--click simulate pointer interaction (--click needs >= 3 frames, --hover >= 2);\n"
@@ -921,7 +922,8 @@ std::string backendAvailabilityMessage(Backend api)
     return "Unknown graphics backend state.";
 }
 
-BackendDecision resolveBackend(Backend requested, bool strict, BackendAvailability availability, std::string_view failureReason)
+BackendDecision resolveBackend(Backend requested, bool strict, BackendAvailability availability, std::string_view failureReason,
+                               bool openGlFallback)
 {
     BackendDecision decision;
     decision.backend = requested;
@@ -942,6 +944,12 @@ BackendDecision resolveBackend(Backend requested, bool strict, BackendAvailabili
     {
         decision.refused = true;
         decision.message = "Vulkan cannot start and --strict-backend forbids the OpenGL fallback: " + reason;
+        return decision;
+    }
+    if (!openGlFallback)
+    {
+        decision.refused = true;
+        decision.message = "Vulkan cannot start: " + reason + "; " + orosmo::rhi::kNoFallbackOnMacOS;
         return decision;
     }
     decision.backend = Backend::kOpenGL;

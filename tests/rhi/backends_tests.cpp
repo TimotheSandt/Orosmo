@@ -34,6 +34,24 @@ TEST_SUITE("rhi/backends")
         }
     }
 
+    TEST_CASE("M9-L3 only Vulkan falls back, to OpenGL, and never on macOS (OpenGL stops at 4.1 there)")
+    {
+        using orosmo::rhi::fallbackBackend;
+        REQUIRE(fallbackBackend(Backend::kVulkan, false).has_value());
+        CHECK((*fallbackBackend(Backend::kVulkan, false) == Backend::kOpenGL));
+        CHECK_FALSE(fallbackBackend(Backend::kVulkan, true).has_value());
+        for (const bool macOS : {false, true})
+        {
+            CHECK_FALSE(fallbackBackend(Backend::kOpenGL, macOS).has_value());
+            CHECK_FALSE(fallbackBackend(Backend::kMetal, macOS).has_value());
+        }
+#ifdef __APPLE__
+        CHECK_FALSE(fallbackBackend(Backend::kVulkan).has_value());
+#else
+        CHECK(fallbackBackend(Backend::kVulkan).has_value());
+#endif
+    }
+
     TEST_CASE("the backend list of ENGINE_TEST_BACKENDS is parsed without case, duplicates or unknown names")
     {
         const auto list = tests::detail::parseBackendList("OpenGL, vulkan;opengl,bogus");

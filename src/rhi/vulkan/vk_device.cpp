@@ -88,6 +88,15 @@ bool envFlag(const char *name, bool fallback)
     return !(value[0] == '0' || value[0] == 'n' || value[0] == 'N' || value[0] == 'f' || value[0] == 'F');
 }
 
+// macOS : Vulkan passe par MoltenVK, que le paquet du moteur n'embarque pas (A76) : dire quoi installer.
+#ifdef __APPLE__
+constexpr const char *kInstallLoaderHint = ". Install the Vulkan loader and MoltenVK: brew install vulkan-loader molten-vk (check with `orosmo doctor`)";
+constexpr const char *kInstallDriverHint = ". Install MoltenVK: brew install molten-vk (check with `orosmo doctor`; another driver manifest: VK_DRIVER_FILES)";
+#else
+constexpr const char *kInstallLoaderHint = "";
+constexpr const char *kInstallDriverHint = "";
+#endif
+
 bool volkReady()
 {
     static const bool ready = volkInitialize() == VK_SUCCESS;
@@ -181,7 +190,8 @@ Result<> VulkanDevice::init(const DeviceDesc &desc)
     backbufferSize_ = {std::max(1u, desc.surface.size.width), std::max(1u, desc.surface.size.height)};
 
     if (!volkReady())
-        return makeError(ErrorCode::kUnsupported, "Vulkan: loader not found (libvulkan.so.1 / vulkan-1.dll / libvulkan.dylib)");
+        return makeError(ErrorCode::kUnsupported,
+                         std::string("Vulkan: loader not found (libvulkan.so.1 / vulkan-1.dll / libvulkan.dylib)") + kInstallLoaderHint);
     if (volkGetInstanceVersion() < VK_API_VERSION_1_3)
     {
         const std::uint32_t v = volkGetInstanceVersion();
@@ -391,7 +401,10 @@ Result<> VulkanDevice::createInstance(const DeviceDesc &desc)
     if (result != VK_SUCCESS)
     {
         instance_ = VK_NULL_HANDLE;
-        return fromVk(result, "vkCreateInstance");
+        auto failed = fromVk(result, "vkCreateInstance");
+        if (!failed && result == VK_ERROR_INCOMPATIBLE_DRIVER)
+            return makeError(failed.error().code, failed.error().message + kInstallDriverHint);
+        return failed;
     }
     volkLoadInstance(instance_);
 
@@ -410,7 +423,7 @@ Result<> VulkanDevice::pickPhysicalDevice(const DeviceDesc &)
     if (auto r = fromVk(vkEnumeratePhysicalDevices(instance_, &count, nullptr), "vkEnumeratePhysicalDevices"); !r)
         return r;
     if (count == 0)
-        return makeError(ErrorCode::kUnsupported, "Vulkan: no physical device (no GPU driver with an ICD)");
+        return makeError(ErrorCode::kUnsupported, std::string("Vulkan: no physical device (no GPU driver with an ICD)") + kInstallDriverHint);
     std::vector<VkPhysicalDevice> devices(count);
     if (const VkResult listed = vkEnumeratePhysicalDevices(instance_, &count, devices.data()); listed != VK_SUCCESS && listed != VK_INCOMPLETE)
         return fromVk(listed, "vkEnumeratePhysicalDevices");
