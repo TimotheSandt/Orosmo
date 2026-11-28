@@ -1,7 +1,10 @@
 #include <orosmo/platform/gamepad.hpp>
 
+#include <orosmo/core/log.hpp>
+
 #include <GLFW/glfw3.h>
 
+#include <cstdlib>
 #include <utility>
 
 namespace orosmo::platform
@@ -21,7 +24,26 @@ namespace
 const GamepadState kDisconnected{};
 
 bool validSlot(int slot) noexcept { return slot >= 0 && slot < Gamepads::kMaxGamepads; }
+
+// Manettes absentes de la base de GLFW. Une ligne par GUID ; vérifier les numéros contre les codes du noyau avant d'ajouter.
+constexpr const char *kEngineMappings =
+    // Xbox Wireless Controller en Bluetooth (045e:0b13, micrologiciel 5.09), pilote hid de Linux.
+    "050000005e040000130b000009050000,Xbox Wireless Controller,a:b0,b:b1,x:b3,y:b4,leftshoulder:b6,rightshoulder:b7,back:b10,"
+    "start:b11,guide:b12,leftstick:b13,rightstick:b14,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,leftx:a0,lefty:a1,"
+    "rightx:a2,righty:a3,righttrigger:a4,lefttrigger:a5,platform:Linux,\n";
 } // namespace
+
+std::string extraGamepadMappings(const char *environment)
+{
+    std::string text = kEngineMappings;
+    if (environment != nullptr && *environment != '\0')
+    {
+        text += environment;
+        if (text.back() != '\n')
+            text += '\n';
+    }
+    return text;
+}
 
 void Gamepads::store(int slot, GamepadState state)
 {
@@ -36,6 +58,13 @@ void Gamepads::store(int slot, GamepadState state)
 void Gamepads::poll()
 {
     events_.clear();
+    if (!mappingsAdded_)
+    {
+        mappingsAdded_ = true;
+        const std::string mappings = extraGamepadMappings(std::getenv("SDL_GAMECONTROLLERCONFIG"));
+        if (glfwUpdateGamepadMappings(mappings.c_str()) != GLFW_TRUE)
+            LOG_WARNING("Gamepads: cannot add the gamepad mappings (check SDL_GAMECONTROLLERCONFIG)");
+    }
     for (int slot = 0; slot < kMaxGamepads; ++slot)
     {
         if (simulated_[static_cast<std::size_t>(slot)])
@@ -54,6 +83,16 @@ void Gamepads::poll()
             for (std::size_t i = 0; i < kGamepadAxisCount; ++i)
                 state.axes[i] = raw.axes[i];
         }
+        // Branché mais sans disposition connue : dit une fois pourquoi il ne répond pas (le GUID sert à écrire sa correspondance).
+        const bool ignored = !state.connected && glfwJoystickPresent(GLFW_JOYSTICK_1 + slot) == GLFW_TRUE;
+        if (ignored && !ignored_[static_cast<std::size_t>(slot)])
+        {
+            const char *name = glfwGetJoystickName(GLFW_JOYSTICK_1 + slot);
+            const char *guid = glfwGetJoystickGUID(GLFW_JOYSTICK_1 + slot);
+            LOG_INFO("Gamepads: \"", name != nullptr ? name : "?", "\" ignored, no known layout (GUID ", guid != nullptr ? guid : "?",
+                     "; add one with SDL_GAMECONTROLLERCONFIG)");
+        }
+        ignored_[static_cast<std::size_t>(slot)] = ignored;
         store(slot, std::move(state));
     }
 }

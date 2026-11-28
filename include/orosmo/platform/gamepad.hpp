@@ -1,6 +1,7 @@
 // PLAT-03 (sous-ensemble pour UI-09, A79 choix 7) : manettes à disposition standard (Xbox : A, B, X, Y, gâchettes hautes, croix,
-// sticks). Boutons, axes et branchement à chaud seulement ; pas de vibration, de remappage ni de manette sans disposition connue
-// (docs/GAPS.md). `Gamepads::poll` lit les manettes par GLFW (après `Window::init`) ; `simulate` remplace l'état d'un emplacement
+// sticks). Boutons, axes et branchement à chaud seulement ; pas de vibration ni de remappage en jeu (docs/GAPS.md). La
+// disposition d'une manette vient de la base intégrée à GLFW, complétée par `extraGamepadMappings` ; sans disposition connue,
+// elle est ignorée (signalée une fois dans le journal). `Gamepads::poll` lit les manettes par GLFW (après `Window::init`) ; `simulate` remplace l'état d'un emplacement
 // (tests, rejouage) sans manette ni fenêtre.
 #pragma once
 
@@ -66,6 +67,10 @@ struct GamepadEvent
     bool connected = false;
 };
 
+// Correspondances ajoutées à la base de GLFW, au format SDL_GameControllerDB (une par ligne) : celles du moteur, puis
+// `environment` (valeur de la variable SDL_GAMECONTROLLERCONFIG, nulle ou vide : rien), qui l'emporte pour un même GUID.
+std::string extraGamepadMappings(const char *environment);
+
 class Gamepads
 {
   public:
@@ -93,6 +98,8 @@ class Gamepads
 
     std::array<GamepadState, kMaxGamepads> states_{};
     std::array<bool, kMaxGamepads> simulated_{};
+    std::array<bool, kMaxGamepads> ignored_{}; // joystick sans disposition connue déjà signalé
+    bool mappingsAdded_ = false;                // correspondances ajoutées au premier `poll` (GLFW initialisé)
     std::vector<GamepadEvent> events_;
 };
 

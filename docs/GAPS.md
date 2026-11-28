@@ -617,7 +617,7 @@ Numéros pris à partir de G240 pour ne pas croiser ceux des lots M8 menés en p
 | ID | Sujet | Détail | Jalon |
 | --- | --- | --- | --- |
 | G222 | Focus hors de la vue d'une `ScrollView` | Tab ou une flèche peut donner le focus à un widget défilé hors de sa `ScrollView` : la vue ne défile pas vers lui (l'anneau de focus est découpé comme le widget, donc invisible). Les flèches choisissent le voisin par géométrie, y compris hors de la zone visible. | M10 |
-| G223 | Manettes : reste de PLAT-03 | `platform::Gamepads` ne lit que les manettes à disposition standard reconnues par GLFW, par scrutation à chaque image ; ni vibration, ni remappage, ni joystick quelconque, ni deuxième stick ou gâchettes dans la navigation de l'interface. Aucune manette réelle essayée (tests par `Gamepads::simulate`) ; Windows et macOS non vérifiés. | Après M10 (P2) |
+| G223 | Manettes : reste de PLAT-03 | `platform::Gamepads` ne lit que les manettes à disposition standard reconnues par GLFW, par scrutation à chaque image ; ni vibration, ni remappage, ni joystick quelconque, ni deuxième stick ou gâchettes dans la navigation de l'interface. Disposition : base de GLFW, plus les correspondances du moteur (`extraGamepadMappings` : Xbox Wireless Controller Bluetooth sous Linux, numéros relus dans les codes du noyau) et `SDL_GAMECONTROLLERCONFIG`. Une seule manette réelle (celle-ci) ; tests par `Gamepads::simulate` ; Windows et macOS non vérifiés. | Après M10 (P2) |
 
 ## Ajouts de M8 lot L10 (G295 à G299)
 
