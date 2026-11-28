@@ -69,7 +69,9 @@ d'un style de widget s'applique aussi.
 ## Limites
 
 - Une `ScrollView` ne défile pas vers le widget focalisé (G222).
-- Manettes : ni vibration, ni remappage, ni joystick sans disposition connue (G223).
+- Manettes : ni vibration, ni remappage en jeu (G223). Une manette sans disposition connue est ignorée et son GUID est
+  écrit dans le journal : donnez sa correspondance (format SDL_GameControllerDB) dans la variable d'environnement
+  `SDL_GAMECONTROLLERCONFIG` avant de lancer le programme.
 - La façade [`app::Application`](/guides/application/facade/) ne branche pas la manette : appelez `GamepadNavigator`
   vous-même (G380).
 
